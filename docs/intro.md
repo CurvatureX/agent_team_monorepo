@@ -13,12 +13,12 @@ This is the internal documentation hub for our team's monorepo. Here you'll find
 
 ### 📋 Product Design
 
-- [Product Design Overview](./product-design/product-design-intro)
+- [Product Design Overview](./product-design/)
 - [One Pager](./product-design/core-product-design)
 
 ### 🛠️ Technical Design
 
-- [Technical Design Overview](./tech-design/tech-design-intro)
+- [Technical Design Overview](./tech-design/)
 - [API Overview](./tech-design/api-overview)
 
 ## Getting Started
