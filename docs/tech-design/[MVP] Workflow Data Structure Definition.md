@@ -4,7 +4,7 @@
 
 ### 模块定义 & 解释
 
-![svgviewer-output (2)](/Users/bytedance/Downloads/flow-definition.svg)
+![flow-definition](../images/flow-definition.svg)
 
 
 
@@ -386,18 +386,273 @@ message CredentialConfig {
 
 ### 模块工作流
 
-![svgviewer-output (4)](/Users/bytedance/Downloads/module-workflow.svg)
-
-
+```mermaid
+graph LR
+    subgraph "Core Data Structures"
+        WB[WorkflowBase]
+        N[Node]
+        C[Connection]
+        WC[WorkflowConnections]
+        
+        WB --> N
+        WB --> WC
+        WC --> C
+        N --> NP[NodeParameters]
+        N --> NC[NodeCredentials]
+        C --> NCT[NodeConnectionType]
+    end
+    
+    subgraph "Connection Types"
+        NCT --> MAIN[MAIN]
+        NCT --> AI_LM[AI_LANGUAGE_MODEL]
+        NCT --> AI_T[AI_TOOL]
+        NCT --> AI_M[AI_MEMORY]
+        NCT --> AI_A[AI_AGENT]
+        NCT --> AI_C[AI_CHAIN]
+        NCT --> AI_D[AI_DOCUMENT]
+        NCT --> AI_E[AI_EMBEDDING]
+        NCT --> AI_R[AI_RETRIEVER]
+        NCT --> AI_V[AI_VECTOR_STORE]
+        NCT --> AI_OP[AI_OUTPUT_PARSER]
+        NCT --> AI_RR[AI_RERANKER]
+        NCT --> AI_TS[AI_TEXT_SPLITTER]
+    end
+    
+    subgraph "Execution Layer"
+        WEPD[WorkflowExecutionDataProcess]
+        RED[RunExecutionData]
+        RD[RunData]
+        TD[TaskData]
+        TDC[TaskDataConnections]
+        NED[NodeExecutionData]
+        
+        WEPD --> RED
+        RED --> RD
+        RD --> TD
+        TD --> TDC
+        TDC --> NED
+        
+        NED --> JSON[JSON Data]
+        NED --> BD[BinaryData]
+        NED --> PID[PairedItemData]
+    end
+    
+    subgraph "AI Components"
+        AAR[AiAgentRequest]
+        ATC[AiToolConfiguration]
+        ALMC[AiLanguageModelConfiguration]
+        AMC[AiMemoryConfiguration]
+        
+        AAR --> AI_A
+        ATC --> AI_T
+        ALMC --> AI_LM
+        AMC --> AI_M
+    end
+    
+    subgraph "Service Interface"
+        WS[WorkflowService]
+        WS --> CWR[CreateWorkflowRequest]
+        WS --> EWR[ExecuteWorkflowRequest]
+        WS --> GWR[GetWorkflowRequest]
+        WS --> GESR[GetExecutionStatusRequest]
+        
+        CWR --> WB
+        EWR --> WEPD
+        GWR --> WB
+        GESR --> RED
+    end
+    
+    subgraph "Data Flow Process"
+        Input[User Input] --> WB
+        WB --> Parse[Connection Parse]
+        Parse --> Exec[Node Execution]
+        Exec --> TDC
+        TDC --> Output[Result Output]
+        
+        Exec --> AI_Proc[AI Processing]
+        AI_Proc --> AI_LM
+        AI_Proc --> AI_T
+        AI_Proc --> AI_M
+        
+        AI_LM --> LLM[Language Model]
+        AI_T --> ExtAPI[External APIs]
+        AI_M --> MemStore[Memory Store]
+        
+        LLM --> NLP[Natural Language Processing]
+        ExtAPI --> Calendar[Google Calendar]
+        ExtAPI --> Email[Email Service]
+        ExtAPI --> HTTP[HTTP APIs]
+        
+        MemStore --> Context[Context Retrieval]
+        Context --> AI_Proc
+    end
+    
+    subgraph "Message Types"
+        MT1[WorkflowBase]
+        MT2[NodeExecutionData]
+        MT3[TaskData]
+        MT4[Connection]
+        MT5[AiAgentRequest]
+        MT6[ExecutionStatus]
+        
+        MT1 --> WfDef[Workflow Definition]
+        MT2 --> ExecData[Execution Data]
+        MT3 --> TaskRes[Task Results]
+        MT4 --> NodeRel[Node Relationships]
+        MT5 --> AiInt[AI Interactions]
+        MT6 --> StatTrack[Status Tracking]
+    end
+    
+    style WB fill:#e1f5fe
+    style NCT fill:#f3e5f5
+    style RED fill:#fff3e0
+    style AAR fill:#e8f5e8
+    style WS fill:#fce4ec
+```
 
 ## UseCase - 秘书Agent
 
 ##### 时序图
-
-![svgviewer-output (3)](/Users/bytedance/Downloads/agent-case.svg)
+![flow-definition](../images/agent-case.svg)
 
 
 
 ##### 工作流
 
-![svgviewer-output (6)](/Users/bytedance/Downloads/agent-case-flow.svg)
+```mermaid
+graph TB
+    subgraph "Secretary Agent Workflow"
+        UserReq[User Request: Schedule Meeting]
+        UserReq --> SecAgent[Secretary AI Agent Node]
+        
+        SecAgent --> LM[Language Model Connection]
+        SecAgent --> Tools[Tool Connections]
+        SecAgent --> Memory[Memory Connection]
+        SecAgent --> MainOut[Main Output]
+        
+        LM --> OpenAI[OpenAI GPT-4]
+        
+        Tools --> GCTool[Google Calendar Tool]
+        Tools --> EmailTool[Email Send Tool]
+        Tools --> HTTPTool[HTTP Request Tool]
+        Tools --> CodeTool[Code Execution Tool]
+        
+        Memory --> BufferMem[Buffer Memory]
+        Memory --> UserPrefs[User Preferences]
+        
+        MainOut --> NextActions[Next Actions]
+    end
+    
+    subgraph "External Integrations"
+        GCTool --> GCal[Google Calendar API]
+        GCal --> FreeBusy[FreeBusy Query]
+        GCal --> CreateEvent[Create Calendar Event]
+        GCal --> SetReminder[Set Reminder]
+        
+        EmailTool --> SMTP[SMTP Server]
+        SMTP --> Notification[Email Notification]
+        
+        HTTPTool --> iCloud[iCloud Calendar]
+        iCloud --> CalDAV[CalDAV Protocol]
+    end
+    
+    subgraph "Workflow Execution Flow"
+        WF[Workflow Definition]
+        WF --> Connections[WorkflowConnections]
+        WF --> Nodes[Node Array]
+        
+        Connections --> SecAgentConn[Secretary Agent Connections]
+        SecAgentConn --> MainConn[main connections]
+        SecAgentConn --> AILMConn[ai_languageModel connections]
+        SecAgentConn --> AIToolConn[ai_tool connections]
+        SecAgentConn --> AIMemConn[ai_memory connections]
+        
+        Nodes --> SecAgentNode[Secretary Agent Node]
+        Nodes --> OpenAINode[OpenAI Model Node]
+        Nodes --> GCalNode[Google Calendar Node]
+        Nodes --> EmailNode[Email Send Node]
+        
+        SecAgentNode --> NodeParams[Node Parameters]
+        NodeParams --> AgentType[agent: toolsAgent]
+        NodeParams --> Prompt[System Prompt]
+        NodeParams --> Tools[Available Tools]
+    end
+    
+    subgraph "Execution Data Flow"
+        ExecProcess[WorkflowExecutionDataProcess]
+        ExecProcess --> RunExecData[RunExecutionData]
+        RunExecData --> RunData[RunData]
+        
+        RunData --> SecAgentTask[Secretary Agent TaskData]
+        RunData --> GCalTask[Google Calendar TaskData]
+        RunData --> EmailTask[Email Send TaskData]
+        
+        SecAgentTask --> TaskDataConn[TaskDataConnections]
+        TaskDataConn --> MainData[main data]
+        TaskDataConn --> AIData[ai_tool data]
+        
+        MainData --> NodeExecData[NodeExecutionData]
+        NodeExecData --> JSONData[JSON: meeting request]
+        NodeExecData --> BinaryData[Binary: attachments]
+        
+        AIData --> ToolResults[Tool Execution Results]
+        ToolResults --> CalendarData[Calendar API Response]
+        ToolResults --> EmailData[Email Send Response]
+    end
+    
+    subgraph "Scheduling Triggers"
+        CronTrigger[Cron Trigger: Daily 9AM]
+        CronTrigger --> DailyCheck[Daily Schedule Check]
+        
+        CalTrigger[Google Calendar Trigger]
+        CalTrigger --> EventCreated[Event Created]
+        CalTrigger --> EventUpdated[Event Updated]
+        CalTrigger --> EventStarting[Event Starting Soon]
+        
+        DailyCheck --> TaskPriority[Task Priority Analysis]
+        EventStarting --> ReminderFlow[Reminder Workflow]
+        
+        TaskPriority --> SecAgent
+        ReminderFlow --> EmailTool
+    end
+    
+    subgraph "Data Storage"
+        WF --> StaticData[Static Data]
+        StaticData --> UserSettings[User Preferences]
+        StaticData --> TaskHistory[Task History]
+        StaticData --> PriorityRules[Priority Rules]
+        
+        WF --> PinData[Pin Data]
+        PinData --> TestData[Test Calendar Data]
+        PinData --> MockResponses[Mock API Responses]
+        
+        RunExecData --> Metadata[Execution Metadata]
+        Metadata --> Performance[Performance Metrics]
+        Metadata --> ErrorLogs[Error Logs]
+    end
+    
+    subgraph "AI Agent Architecture"
+        SecAgent --> AgentCore[Agent Core Logic]
+        AgentCore --> Planning[Task Planning]
+        AgentCore --> Execution[Tool Execution]
+        AgentCore --> Response[Response Generation]
+        
+        Planning --> TimeAnalysis[Available Time Analysis]
+        Planning --> ConflictCheck[Conflict Detection]
+        Planning --> Optimization[Schedule Optimization]
+        
+        Execution --> APICall[External API Calls]
+        Execution --> DataTransform[Data Transformation]
+        Execution --> ErrorHandle[Error Handling]
+        
+        Response --> NLGeneration[Natural Language Generation]
+        Response --> ActionSummary[Action Summary]
+        Response --> UserFeedback[User Feedback]
+    end
+    
+    style SecAgent fill:#e1f5fe
+    style GCTool fill:#f3e5f5
+    style Memory fill:#fff3e0
+    style CronTrigger fill:#e8f5e8
+    style StaticData fill:#fce4ec
+```
