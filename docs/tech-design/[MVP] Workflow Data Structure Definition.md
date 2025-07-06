@@ -8,21 +8,44 @@ slug: /tech-design/mvp-workflow-data-structure-definition
 
 # [MVP] Workflow 节点的数据结构定义
 
-## 模块定义
+## 📚 目录
+
+- [🏗️ 模块定义](#模块定义)
+  - [模块定义 & 解释](#模块定义--解释)
+  - [模块工作流](#模块工作流)
+- [🎯 UseCase - 秘书 Agent](#usecase---秘书-agent)
+  - [时序图](#时序图)
+  - [工作流](#工作流)
+  - [🏗️ 总体架构](#总体架构)
+    - [🔧 核心模块详解](#核心模块详解)
+    - [⏰ 智能定时任务系统](#智能定时任务系统)
+    - [🔄 数据流转逻辑](#数据流转逻辑)
+    - [🎯 系统价值](#系统价值)
+- [💻 Example Workflow JSON](#example-workflow-json秘书-agent---个人助理专家)
+
+---
+
+## 🏗️ 模块定义
 
 ### 模块定义 & 解释
 
 ![flow-definition](../images/flow-definition.svg)
 
-##### 1.工作流核心模块 (Workflow Core Module) - 工作流的整体定义和管理
+#### 1️⃣ 工作流核心模块 (Workflow Core Module)
 
-Workflow 模块作为最核心的模块之一，负责整体工作流的生成以及调度
+> **核心功能**：工作流的整体定义和管理
 
-- Workflow: 工作流定义，包含节点、连接、设置等
+**模块职责**
 
-- WorkflowSettings: 工作流配置，包含错误策略、超时等
+- 🔄 **Workflow** - 工作流定义，包含节点、连接、设置等
+- ⚙️ **WorkflowSettings** - 工作流配置，包含错误策略、超时等
+- 📍 **Position** - 节点位置信息
 
-- Position: 节点位置信息
+**关键特性**
+
+- 工作流整体生成和调度
+- 分布式节点管理
+- 统一配置管理
 
 ```protobuf
 // ============================================================================
@@ -70,7 +93,9 @@ enum CallerPolicy {
 
 ```
 
-##### 2. 节点模块 (Node Module) - 定义工作流中的执行单元
+#### 2️⃣ 节点模块 (Node Module)
+
+> **核心功能**：定义工作流中的执行单元
 
 ```protobuf
 // ============================================================================
@@ -111,13 +136,15 @@ message RetryPolicy {
 }
 ```
 
-- Node: 节点定义，包含类型、参数、位置、错误处理等
+**核心组件**
 
-- RetryPolicy: 重试策略配置
+- 🔧 **Node** - 节点定义，包含类型、参数、位置、错误处理等
+- 🔄 **RetryPolicy** - 重试策略配置
+- ⚠️ **ErrorHandling** - 错误处理方式枚举
 
-- ErrorHandling: 错误处理方式枚举
+#### 3️⃣ 连接系统模块 (Connection System Module)
 
-##### 3. 连接系统模块 (Connection System Module) - 负责节点间的数据流和控制流
+> **核心功能**：负责节点间的数据流和控制流
 
 ```protobuf
 // ============================================================================
@@ -165,13 +192,15 @@ enum ConnectionType {
 
 ```
 
-- ConnectionsMap: 连接映射，核心的数据流控制
+**核心组件**
 
-- Connection: 单个连接定义
+- 🗺️ **ConnectionsMap** - 连接映射，核心的数据流控制
+- 🔗 **Connection** - 单个连接定义
+- 🏷️ **ConnectionType** - 12 种连接类型，包括 main、ai_tool、ai_memory 等
 
-- ConnectionType: 12 种连接类型，包括 main、ai_tool、ai_memory 等
+#### 4️⃣ 执行系统模块 (Execution System Module)
 
-##### 4. 执行系统模块 (Execution System Module) - 管理工作流的执行状态和过程
+> **核心功能**：管理工作流的执行状态和过程
 
 ```protobuf
 // ============================================================================
@@ -262,13 +291,15 @@ message ErrorData {
 }
 ```
 
-- ExecutionData: 执行数据，包含状态、时间、结果等
+**核心组件**
 
-- RunData: 运行数据，按节点组织
+- 📊 **ExecutionData** - 执行数据，包含状态、时间、结果等
+- 🔄 **RunData** - 运行数据，按节点组织
+- 📝 **TaskData** - 任务数据，包含执行时间、状态等
 
-- TaskData: 任务数据，包含执行时间、状态等
+#### 5️⃣ AI 系统模块 (AI System Module)
 
-##### 5. AI 系统模块 (AI System Module) - AI Agent 和相关组件
+> **核心功能**：AI Agent 和相关组件
 
 ```protobuf
 // ============================================================================
@@ -311,15 +342,16 @@ message AIMemory {
 
 ```
 
-- AIAgentConfig: AI Agent 配置
+**核心组件**
 
-- AILanguageModel: AI 语言模型配置
+- 🤖 **AIAgentConfig** - AI Agent 配置
+- 🧠 **AILanguageModel** - AI 语言模型配置
+- 🛠️ **AITool** - AI 工具定义
+- 💭 **AIMemory** - AI 记忆系统
 
-- AITool: AI 工具定义
+#### 6️⃣ 触发器模块 (Trigger Module)
 
-- AIMemory: AI 记忆系统
-
-##### 6.触发器模块 (Trigger Module)
+> **核心功能**：工作流触发和调度管理
 
 ```protobuf
 // ============================================================================
@@ -354,11 +386,14 @@ message Schedule {
 }
 ```
 
-- Trigger: 触发器定义
+**核心组件**
 
-- Schedule: 调度配置
+- 🚀 **Trigger** - 触发器定义
+- 📅 **Schedule** - 调度配置
 
-##### 7. 集成系统模块 (Integration System Module)
+#### 7️⃣ 集成系统模块 (Integration System Module)
+
+> **核心功能**：第三方系统集成和凭证管理
 
 ```protobuf
 // ============================================================================
@@ -384,11 +419,12 @@ message CredentialConfig {
 }
 ```
 
-- Integration: 第三方集成定义
+**核心组件**
 
-- CredentialConfig: 凭证配置管理
+- 🔌 **Integration** - 第三方集成定义
+- 🔐 **CredentialConfig** - 凭证配置管理
 
-### 模块工作流
+### 🔄 模块工作流
 
 ```mermaid
 graph LR
@@ -514,13 +550,13 @@ graph LR
     style WS fill:#fce4ec
 ```
 
-## UseCase - 秘书 Agent
+## 🎯 UseCase - 秘书 Agent
 
-##### 时序图
+### 📊 时序图
 
-![flow-definition](../images/agent-case.svg)
+![agent-case](../images/agent-case.svg)
 
-##### 工作流
+### 🔄 工作流图
 
 ```mermaid
 graph TB
@@ -658,4 +694,969 @@ graph TB
     style Memory fill:#fff3e0
     style CronTrigger fill:#e8f5e8
     style StaticData fill:#fce4ec
+```
+
+---
+
+## 💻 Example Workflow JSON：秘书 Agent - 个人助理专家
+
+### 系统概览
+
+本个人秘书工作流程采用**模块化设计**，包含 **5 个核心功能模块** 和 **2 个智能定时任务系统**。所有用户交互通过 **Slack** 统一处理，实现自然语言驱动的智能时间管理。
+
+系统由 5 个核心模块组成，实现完整的 AI 驱动时间管理流程：
+
+**1️⃣ 用户交互入口模块** - 通过 Slack 接收用户消息，AI Agent 智能解析意图并路由到相应模块
+
+**2️⃣ 日程管理模块** - 整合 Google Calendar 和 iCloud Calendar 数据，AI 智能分解任务并生成多个时间选项供用户选择，支持双日历同步
+
+**3️⃣ 查询处理模块** - 实时整合 Postgres 任务数据和日历信息，AI 生成智能回答，支持日程查询、任务状态和空闲时间查询
+
+**4️⃣ 总结生成模块** - 基于历史数据生成工作总结报告，包含任务完成统计、时间分配分析和效率指标计算
+
+**5️⃣ 任务延期处理模块** - 智能处理未完成任务，AI 重新分析排期并推荐新时间选项，支持人性化交互和状态跟踪
+
+```mermaid
+graph TB
+    %% 用户交互入口
+    A[💬 Slack Trigger<br/>监听用户消息] --> B[🤖 AI Agent<br/>智能路由判断]
+
+    B --> C{🔀 Switch<br/>操作类型}
+
+    C -->|日程管理| D[📅 Google Calendar<br/>获取现有日程]
+    C -->|查询请求| E[🗄️ Postgres<br/>查询任务数据]
+    C -->|总结生成| F[🗄️ Postgres<br/>统计数据收集]
+
+    %% 日程管理分支
+    D --> G[📱 iCloud Calendar<br/>获取iPhone日程]
+    G --> H[🤖 AI Agent<br/>任务分解+时间分析]
+    H --> I[🤖 AI Agent<br/>生成时间选项推荐]
+    I --> J[💬 Slack<br/>发送时间选项]
+    J --> K[💬 Slack Trigger<br/>等待用户选择]
+    K --> L{🔀 Switch<br/>用户选择判断}
+
+    L -->|选择时间| M[📅 Google Calendar<br/>写入选定日程]
+    L -->|重新推荐| N[🤖 AI Agent<br/>调整推荐策略]
+    N --> I
+
+    M --> O[📱 iCloud Calendar<br/>同步日程]
+    O --> P[🗄️ Postgres<br/>保存任务记录]
+    P --> Q[💬 Slack<br/>发送确认消息]
+
+    %% 查询处理分支
+    E --> R[📅 Google Calendar<br/>查询日程安排]
+    R --> S[📱 iCloud Calendar<br/>查询iPhone日程]
+    S --> T[🤖 AI Agent<br/>整合数据+智能问答]
+    T --> U[💬 Slack<br/>回复查询结果]
+
+    %% 总结生成分支
+    F --> V[🤖 AI Agent<br/>数据分析+报告生成]
+    V --> W[💬 Slack<br/>发送总结报告]
+
+    %% 定时提醒系统
+    X[⏰ Cron<br/>每15分钟检查] --> Y[🗄️ Postgres<br/>查询待提醒任务]
+    Y --> Z[🤖 AI Agent<br/>提醒决策]
+    Z --> AA[💬 Slack<br/>发送提醒消息]
+
+    %% 任务延期处理
+    AA --> BB[💬 Slack Trigger<br/>等待用户反馈]
+    BB --> CC{🔀 Switch<br/>反馈类型判断}
+
+    CC -->|已完成| DD[🗄️ Postgres<br/>标记任务完成]
+    CC -->|未完成| EE[🤖 AI Agent<br/>询问剩余工作]
+
+    EE --> FF[💬 Slack Trigger<br/>收集用户回复]
+    FF --> GG[🤖 AI Agent<br/>重新分析排期]
+    GG --> HH[📅 Google Calendar<br/>获取最新日程]
+    HH --> II[🤖 AI Agent<br/>推荐新时间]
+    II --> JJ[💬 Slack<br/>发送时间选项]
+    JJ --> KK{🔀 Switch<br/>确认结果}
+
+    KK -->|确认| LL[📅 Google Calendar<br/>更新日程]
+    KK -->|修改| II
+
+    LL --> MM[🗄️ Postgres<br/>更新任务状态]
+    MM --> NN[💬 Slack<br/>发送鼓励消息]
+
+    %% 周报自动生成系统
+    OO[⏰ Cron<br/>每周日20:00执行] --> PP[🗄️ Postgres<br/>收集本周任务数据]
+    PP --> QQ[📅 Google Calendar<br/>获取本周日程]
+    QQ --> RR[📱 iCloud Calendar<br/>获取本周活动]
+    RR --> SS[🤖 AI Agent<br/>生成周报分析]
+    SS --> TT[💬 Slack<br/>推送周报给用户]
+
+    %% 样式定义
+    classDef slack fill:#ff9f43,stroke:#ff6b35,stroke-width:2px,color:#fff
+    classDef ai fill:#5f27cd,stroke:#341f97,stroke-width:2px,color:#fff
+    classDef switch fill:#00d2d3,stroke:#00a085,stroke-width:2px,color:#fff
+    classDef calendar fill:#ff6b6b,stroke:#ee5253,stroke-width:2px,color:#fff
+    classDef database fill:#2ed573,stroke:#20bf6b,stroke-width:2px,color:#fff
+    classDef cron fill:#3742fa,stroke:#2f3542,stroke-width:2px,color:#fff
+
+    class A,J,K,Q,U,W,AA,BB,FF,JJ,NN,TT slack
+    class B,H,I,N,T,V,Z,EE,GG,II,SS ai
+    class C,L,CC,KK switch
+    class D,G,M,O,R,S,HH,LL,QQ,RR calendar
+    class E,F,P,Y,DD,MM,PP database
+    class X,OO cron
+```
+
+```json
+{
+  "id": "workflow-personal-secretary-001",
+  "name": "Personal Secretary Agent Workflow",
+  "active": true,
+  "nodes": [
+    {
+      "id": "node-slack-trigger",
+      "name": "Slack Trigger",
+      "type": "trigger",
+      "type_version": 1,
+      "position": { "x": 100, "y": 100 },
+      "disabled": false,
+      "parameters": {
+        "trigger_type": "slack",
+        "channel": "#personal-assistant",
+        "listen_for": "user_messages"
+      },
+      "credentials": { "slack_token": "SLACK_BOT_TOKEN" },
+      "on_error": "STOP_WORKFLOW_ON_ERROR",
+      "retry_policy": { "max_tries": 1, "wait_between_tries": 0 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-ai-router",
+      "name": "AI Router Agent",
+      "type": "ai_agent",
+      "type_version": 1,
+      "position": { "x": 300, "y": 100 },
+      "disabled": false,
+      "parameters": {
+        "agent_type": "router",
+        "prompt": "分析用户意图并路由到相应模块：日程管理、查询请求、总结生成",
+        "tools": "[]",
+        "memory": "BufferMemory"
+      },
+      "credentials": {},
+      "on_error": "CONTINUE_REGULAR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 2, "wait_between_tries": 5 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-operation-switch",
+      "name": "Operation Switch",
+      "type": "switch",
+      "type_version": 1,
+      "position": { "x": 500, "y": 100 },
+      "disabled": false,
+      "parameters": {
+        "switch_type": "operation_type",
+        "conditions": [
+          { "type": "schedule_management", "value": "日程管理" },
+          { "type": "query_request", "value": "查询请求" },
+          { "type": "summary_generation", "value": "总结生成" }
+        ]
+      },
+      "credentials": {},
+      "on_error": "CONTINUE_REGULAR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 1, "wait_between_tries": 0 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-google-calendar-get",
+      "name": "Google Calendar Get",
+      "type": "ai_tool",
+      "type_version": 1,
+      "position": { "x": 700, "y": 50 },
+      "disabled": false,
+      "parameters": {
+        "tool_type": "calendar",
+        "tool_name": "GoogleCalendarTool",
+        "action": "get_events"
+      },
+      "credentials": { "oauth_token": "GOOGLE_OAUTH_TOKEN" },
+      "on_error": "CONTINUE_ERROR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 2, "wait_between_tries": 10 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-icloud-calendar-get",
+      "name": "iCloud Calendar Get",
+      "type": "ai_tool",
+      "type_version": 1,
+      "position": { "x": 900, "y": 50 },
+      "disabled": false,
+      "parameters": {
+        "tool_type": "calendar",
+        "tool_name": "iCloudCalendarTool",
+        "action": "get_events"
+      },
+      "credentials": {
+        "apple_id": "APPLE_ID",
+        "app_specific_password": "APP_SPECIFIC_PASSWORD"
+      },
+      "on_error": "CONTINUE_ERROR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 2, "wait_between_tries": 10 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-task-analyzer",
+      "name": "Task Analyzer AI",
+      "type": "ai_agent",
+      "type_version": 1,
+      "position": { "x": 1100, "y": 50 },
+      "disabled": false,
+      "parameters": {
+        "agent_type": "taskAnalyzer",
+        "prompt": "任务分解+时间分析，生成多个时间选项推荐",
+        "tools": "[]",
+        "memory": "BufferMemory"
+      },
+      "credentials": {},
+      "on_error": "CONTINUE_REGULAR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 2, "wait_between_tries": 5 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-slack-send-options",
+      "name": "Slack Send Options",
+      "type": "ai_tool",
+      "type_version": 1,
+      "position": { "x": 1300, "y": 50 },
+      "disabled": false,
+      "parameters": {
+        "tool_type": "notification",
+        "tool_name": "SlackNotificationTool",
+        "channel": "#personal-assistant",
+        "action": "send_options",
+        "template": "时间选项推荐"
+      },
+      "credentials": { "slack_token": "SLACK_BOT_TOKEN" },
+      "on_error": "CONTINUE_ERROR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 2, "wait_between_tries": 10 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-slack-wait-choice",
+      "name": "Slack Wait User Choice",
+      "type": "trigger",
+      "type_version": 1,
+      "position": { "x": 1500, "y": 50 },
+      "disabled": false,
+      "parameters": {
+        "trigger_type": "slack",
+        "channel": "#personal-assistant",
+        "listen_for": "user_choice",
+        "timeout": 300
+      },
+      "credentials": { "slack_token": "SLACK_BOT_TOKEN" },
+      "on_error": "CONTINUE_ERROR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 1, "wait_between_tries": 0 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-choice-switch",
+      "name": "User Choice Switch",
+      "type": "switch",
+      "type_version": 1,
+      "position": { "x": 1700, "y": 50 },
+      "disabled": false,
+      "parameters": {
+        "switch_type": "user_choice",
+        "conditions": [
+          { "type": "select_time", "value": "选择时间" },
+          { "type": "regenerate", "value": "重新推荐" }
+        ]
+      },
+      "credentials": {},
+      "on_error": "CONTINUE_REGULAR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 1, "wait_between_tries": 0 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-google-calendar-write",
+      "name": "Google Calendar Write",
+      "type": "ai_tool",
+      "type_version": 1,
+      "position": { "x": 1900, "y": 50 },
+      "disabled": false,
+      "parameters": {
+        "tool_type": "calendar",
+        "tool_name": "GoogleCalendarTool",
+        "action": "create_event"
+      },
+      "credentials": { "oauth_token": "GOOGLE_OAUTH_TOKEN" },
+      "on_error": "CONTINUE_ERROR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 2, "wait_between_tries": 10 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-icloud-calendar-sync",
+      "name": "iCloud Calendar Sync",
+      "type": "ai_tool",
+      "type_version": 1,
+      "position": { "x": 2100, "y": 50 },
+      "disabled": false,
+      "parameters": {
+        "tool_type": "calendar",
+        "tool_name": "iCloudCalendarTool",
+        "action": "sync_event"
+      },
+      "credentials": {
+        "apple_id": "APPLE_ID",
+        "app_specific_password": "APP_SPECIFIC_PASSWORD"
+      },
+      "on_error": "CONTINUE_ERROR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 2, "wait_between_tries": 10 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-postgres-save",
+      "name": "Postgres Save Task",
+      "type": "database",
+      "type_version": 1,
+      "position": { "x": 2300, "y": 50 },
+      "disabled": false,
+      "parameters": {
+        "db_type": "postgresql",
+        "action": "insert",
+        "table": "tasks"
+      },
+      "credentials": { "postgres_connection": "POSTGRES_CONNECTION_STRING" },
+      "on_error": "CONTINUE_ERROR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 2, "wait_between_tries": 10 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-slack-confirm",
+      "name": "Slack Confirm",
+      "type": "ai_tool",
+      "type_version": 1,
+      "position": { "x": 2500, "y": 50 },
+      "disabled": false,
+      "parameters": {
+        "tool_type": "notification",
+        "tool_name": "SlackNotificationTool",
+        "channel": "#personal-assistant",
+        "action": "send_confirmation"
+      },
+      "credentials": { "slack_token": "SLACK_BOT_TOKEN" },
+      "on_error": "CONTINUE_ERROR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 2, "wait_between_tries": 10 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-postgres-query-tasks",
+      "name": "Postgres Query Tasks",
+      "type": "database",
+      "type_version": 1,
+      "position": { "x": 700, "y": 150 },
+      "disabled": false,
+      "parameters": {
+        "db_type": "postgresql",
+        "action": "query",
+        "table": "tasks"
+      },
+      "credentials": { "postgres_connection": "POSTGRES_CONNECTION_STRING" },
+      "on_error": "CONTINUE_ERROR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 2, "wait_between_tries": 10 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-google-calendar-query",
+      "name": "Google Calendar Query",
+      "type": "ai_tool",
+      "type_version": 1,
+      "position": { "x": 900, "y": 150 },
+      "disabled": false,
+      "parameters": {
+        "tool_type": "calendar",
+        "tool_name": "GoogleCalendarTool",
+        "action": "query_schedule"
+      },
+      "credentials": { "oauth_token": "GOOGLE_OAUTH_TOKEN" },
+      "on_error": "CONTINUE_ERROR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 2, "wait_between_tries": 10 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-icloud-calendar-query",
+      "name": "iCloud Calendar Query",
+      "type": "ai_tool",
+      "type_version": 1,
+      "position": { "x": 1100, "y": 150 },
+      "disabled": false,
+      "parameters": {
+        "tool_type": "calendar",
+        "tool_name": "iCloudCalendarTool",
+        "action": "query_activities"
+      },
+      "credentials": {
+        "apple_id": "APPLE_ID",
+        "app_specific_password": "APP_SPECIFIC_PASSWORD"
+      },
+      "on_error": "CONTINUE_ERROR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 2, "wait_between_tries": 10 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-data-integrator",
+      "name": "Data Integrator AI",
+      "type": "ai_agent",
+      "type_version": 1,
+      "position": { "x": 1300, "y": 150 },
+      "disabled": false,
+      "parameters": {
+        "agent_type": "dataIntegrator",
+        "prompt": "整合任务数据和双日历信息，生成智能回答",
+        "tools": "[]",
+        "memory": "BufferMemory"
+      },
+      "credentials": {},
+      "on_error": "CONTINUE_REGULAR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 2, "wait_between_tries": 5 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-slack-reply-query",
+      "name": "Slack Reply Query",
+      "type": "ai_tool",
+      "type_version": 1,
+      "position": { "x": 1500, "y": 150 },
+      "disabled": false,
+      "parameters": {
+        "tool_type": "notification",
+        "tool_name": "SlackNotificationTool",
+        "channel": "#personal-assistant",
+        "action": "reply_query_result"
+      },
+      "credentials": { "slack_token": "SLACK_BOT_TOKEN" },
+      "on_error": "CONTINUE_ERROR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 2, "wait_between_tries": 10 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-postgres-stats",
+      "name": "Postgres Statistics",
+      "type": "database",
+      "type_version": 1,
+      "position": { "x": 700, "y": 250 },
+      "disabled": false,
+      "parameters": {
+        "db_type": "postgresql",
+        "action": "statistics",
+        "table": "tasks"
+      },
+      "credentials": { "postgres_connection": "POSTGRES_CONNECTION_STRING" },
+      "on_error": "CONTINUE_ERROR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 2, "wait_between_tries": 10 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-report-generator",
+      "name": "Report Generator AI",
+      "type": "ai_agent",
+      "type_version": 1,
+      "position": { "x": 900, "y": 250 },
+      "disabled": false,
+      "parameters": {
+        "agent_type": "reportGenerator",
+        "prompt": "数据分析+报告生成",
+        "tools": "[]",
+        "memory": "BufferMemory"
+      },
+      "credentials": {},
+      "on_error": "CONTINUE_REGULAR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 2, "wait_between_tries": 5 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-slack-send-report",
+      "name": "Slack Send Report",
+      "type": "ai_tool",
+      "type_version": 1,
+      "position": { "x": 1100, "y": 250 },
+      "disabled": false,
+      "parameters": {
+        "tool_type": "notification",
+        "tool_name": "SlackNotificationTool",
+        "channel": "#personal-assistant",
+        "action": "send_summary_report"
+      },
+      "credentials": { "slack_token": "SLACK_BOT_TOKEN" },
+      "on_error": "CONTINUE_ERROR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 2, "wait_between_tries": 10 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-reminder-cron",
+      "name": "Reminder Cron",
+      "type": "trigger",
+      "type_version": 1,
+      "position": { "x": 100, "y": 350 },
+      "disabled": false,
+      "parameters": {
+        "trigger_type": "cron",
+        "cron_expression": "*/15 * * * *",
+        "timezone": "Asia/Shanghai"
+      },
+      "credentials": {},
+      "on_error": "CONTINUE_REGULAR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 1, "wait_between_tries": 0 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-postgres-remind-query",
+      "name": "Postgres Reminder Query",
+      "type": "database",
+      "type_version": 1,
+      "position": { "x": 300, "y": 350 },
+      "disabled": false,
+      "parameters": {
+        "db_type": "postgresql",
+        "action": "query_pending_reminders",
+        "table": "tasks"
+      },
+      "credentials": { "postgres_connection": "POSTGRES_CONNECTION_STRING" },
+      "on_error": "CONTINUE_ERROR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 2, "wait_between_tries": 10 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-remind-decision-ai",
+      "name": "Reminder Decision AI",
+      "type": "ai_agent",
+      "type_version": 1,
+      "position": { "x": 500, "y": 350 },
+      "disabled": false,
+      "parameters": {
+        "agent_type": "reminderDecision",
+        "prompt": "智能提醒决策：重要性权重+防骚扰+日程感知",
+        "tools": "[]",
+        "memory": "BufferMemory"
+      },
+      "credentials": {},
+      "on_error": "CONTINUE_REGULAR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 2, "wait_between_tries": 5 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-slack-send-reminder",
+      "name": "Slack Send Reminder",
+      "type": "ai_tool",
+      "type_version": 1,
+      "position": { "x": 700, "y": 350 },
+      "disabled": false,
+      "parameters": {
+        "tool_type": "notification",
+        "tool_name": "SlackNotificationTool",
+        "channel": "#personal-assistant",
+        "action": "send_reminder"
+      },
+      "credentials": { "slack_token": "SLACK_BOT_TOKEN" },
+      "on_error": "CONTINUE_ERROR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 2, "wait_between_tries": 10 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-weekly-cron",
+      "name": "Weekly Report Cron",
+      "type": "trigger",
+      "type_version": 1,
+      "position": { "x": 100, "y": 450 },
+      "disabled": false,
+      "parameters": {
+        "trigger_type": "cron",
+        "cron_expression": "0 20 * * 0",
+        "timezone": "Asia/Shanghai"
+      },
+      "credentials": {},
+      "on_error": "CONTINUE_REGULAR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 1, "wait_between_tries": 0 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-postgres-weekly-data",
+      "name": "Postgres Weekly Data",
+      "type": "database",
+      "type_version": 1,
+      "position": { "x": 300, "y": 450 },
+      "disabled": false,
+      "parameters": {
+        "db_type": "postgresql",
+        "action": "collect_weekly_data",
+        "table": "tasks"
+      },
+      "credentials": { "postgres_connection": "POSTGRES_CONNECTION_STRING" },
+      "on_error": "CONTINUE_ERROR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 2, "wait_between_tries": 10 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-google-calendar-weekly",
+      "name": "Google Calendar Weekly",
+      "type": "ai_tool",
+      "type_version": 1,
+      "position": { "x": 500, "y": 450 },
+      "disabled": false,
+      "parameters": {
+        "tool_type": "calendar",
+        "tool_name": "GoogleCalendarTool",
+        "action": "get_weekly_schedule"
+      },
+      "credentials": { "oauth_token": "GOOGLE_OAUTH_TOKEN" },
+      "on_error": "CONTINUE_ERROR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 2, "wait_between_tries": 10 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-icloud-calendar-weekly",
+      "name": "iCloud Calendar Weekly",
+      "type": "ai_tool",
+      "type_version": 1,
+      "position": { "x": 700, "y": 450 },
+      "disabled": false,
+      "parameters": {
+        "tool_type": "calendar",
+        "tool_name": "iCloudCalendarTool",
+        "action": "get_weekly_activities"
+      },
+      "credentials": {
+        "apple_id": "APPLE_ID",
+        "app_specific_password": "APP_SPECIFIC_PASSWORD"
+      },
+      "on_error": "CONTINUE_ERROR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 2, "wait_between_tries": 10 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-weekly-report-ai",
+      "name": "Weekly Report AI",
+      "type": "ai_agent",
+      "type_version": 1,
+      "position": { "x": 900, "y": 450 },
+      "disabled": false,
+      "parameters": {
+        "agent_type": "weeklyReportGenerator",
+        "prompt": "生成周报分析：任务统计+时间分析+效率趋势+问题识别+下周重点",
+        "tools": "[]",
+        "memory": "BufferMemory"
+      },
+      "credentials": {},
+      "on_error": "CONTINUE_REGULAR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 2, "wait_between_tries": 5 },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "node-slack-push-weekly",
+      "name": "Slack Push Weekly Report",
+      "type": "ai_tool",
+      "type_version": 1,
+      "position": { "x": 1100, "y": 450 },
+      "disabled": false,
+      "parameters": {
+        "tool_type": "notification",
+        "tool_name": "SlackNotificationTool",
+        "channel": "#personal-assistant",
+        "action": "push_weekly_report"
+      },
+      "credentials": { "slack_token": "SLACK_BOT_TOKEN" },
+      "on_error": "CONTINUE_ERROR_OUTPUT_ON_ERROR",
+      "retry_policy": { "max_tries": 2, "wait_between_tries": 10 },
+      "notes": {},
+      "webhooks": []
+    }
+  ],
+  "connections": {
+    "connections": {
+      "Slack Trigger": {
+        "main": {
+          "connections": [
+            { "node": "AI Router Agent", "type": "MAIN", "index": 0 }
+          ]
+        }
+      },
+      "AI Router Agent": {
+        "main": {
+          "connections": [
+            { "node": "Operation Switch", "type": "MAIN", "index": 0 }
+          ]
+        }
+      },
+      "Operation Switch": {
+        "schedule_management": {
+          "connections": [
+            { "node": "Google Calendar Get", "type": "MAIN", "index": 0 }
+          ]
+        },
+        "query_request": {
+          "connections": [
+            { "node": "Postgres Query Tasks", "type": "MAIN", "index": 0 }
+          ]
+        },
+        "summary_generation": {
+          "connections": [
+            { "node": "Postgres Statistics", "type": "MAIN", "index": 0 }
+          ]
+        }
+      },
+      "Google Calendar Get": {
+        "main": {
+          "connections": [
+            { "node": "iCloud Calendar Get", "type": "MAIN", "index": 0 }
+          ]
+        }
+      },
+      "iCloud Calendar Get": {
+        "main": {
+          "connections": [
+            { "node": "Task Analyzer AI", "type": "MAIN", "index": 0 }
+          ]
+        }
+      },
+      "Task Analyzer AI": {
+        "main": {
+          "connections": [
+            { "node": "Slack Send Options", "type": "MAIN", "index": 0 }
+          ]
+        }
+      },
+      "Slack Send Options": {
+        "main": {
+          "connections": [
+            { "node": "Slack Wait User Choice", "type": "MAIN", "index": 0 }
+          ]
+        }
+      },
+      "Slack Wait User Choice": {
+        "main": {
+          "connections": [
+            { "node": "User Choice Switch", "type": "MAIN", "index": 0 }
+          ]
+        }
+      },
+      "User Choice Switch": {
+        "select_time": {
+          "connections": [
+            { "node": "Google Calendar Write", "type": "MAIN", "index": 0 }
+          ]
+        },
+        "regenerate": {
+          "connections": [
+            { "node": "Task Analyzer AI", "type": "MAIN", "index": 0 }
+          ]
+        }
+      },
+      "Google Calendar Write": {
+        "main": {
+          "connections": [
+            { "node": "iCloud Calendar Sync", "type": "MAIN", "index": 0 }
+          ]
+        }
+      },
+      "iCloud Calendar Sync": {
+        "main": {
+          "connections": [
+            { "node": "Postgres Save Task", "type": "MAIN", "index": 0 }
+          ]
+        }
+      },
+      "Postgres Save Task": {
+        "main": {
+          "connections": [
+            { "node": "Slack Confirm", "type": "MAIN", "index": 0 }
+          ]
+        }
+      },
+      "Postgres Query Tasks": {
+        "main": {
+          "connections": [
+            { "node": "Google Calendar Query", "type": "MAIN", "index": 0 }
+          ]
+        }
+      },
+      "Google Calendar Query": {
+        "main": {
+          "connections": [
+            { "node": "iCloud Calendar Query", "type": "MAIN", "index": 0 }
+          ]
+        }
+      },
+      "iCloud Calendar Query": {
+        "main": {
+          "connections": [
+            { "node": "Data Integrator AI", "type": "MAIN", "index": 0 }
+          ]
+        }
+      },
+      "Data Integrator AI": {
+        "main": {
+          "connections": [
+            { "node": "Slack Reply Query", "type": "MAIN", "index": 0 }
+          ]
+        }
+      },
+      "Postgres Statistics": {
+        "main": {
+          "connections": [
+            { "node": "Report Generator AI", "type": "MAIN", "index": 0 }
+          ]
+        }
+      },
+      "Report Generator AI": {
+        "main": {
+          "connections": [
+            { "node": "Slack Send Report", "type": "MAIN", "index": 0 }
+          ]
+        }
+      },
+      "Reminder Cron": {
+        "main": {
+          "connections": [
+            { "node": "Postgres Reminder Query", "type": "MAIN", "index": 0 }
+          ]
+        }
+      },
+      "Postgres Reminder Query": {
+        "main": {
+          "connections": [
+            { "node": "Reminder Decision AI", "type": "MAIN", "index": 0 }
+          ]
+        }
+      },
+      "Reminder Decision AI": {
+        "main": {
+          "connections": [
+            { "node": "Slack Send Reminder", "type": "MAIN", "index": 0 }
+          ]
+        }
+      },
+      "Weekly Report Cron": {
+        "main": {
+          "connections": [
+            { "node": "Postgres Weekly Data", "type": "MAIN", "index": 0 }
+          ]
+        }
+      },
+      "Postgres Weekly Data": {
+        "main": {
+          "connections": [
+            { "node": "Google Calendar Weekly", "type": "MAIN", "index": 0 }
+          ]
+        }
+      },
+      "Google Calendar Weekly": {
+        "main": {
+          "connections": [
+            { "node": "iCloud Calendar Weekly", "type": "MAIN", "index": 0 }
+          ]
+        }
+      },
+      "iCloud Calendar Weekly": {
+        "main": {
+          "connections": [
+            { "node": "Weekly Report AI", "type": "MAIN", "index": 0 }
+          ]
+        }
+      },
+      "Weekly Report AI": {
+        "main": {
+          "connections": [
+            { "node": "Slack Push Weekly Report", "type": "MAIN", "index": 0 }
+          ]
+        }
+      }
+    }
+  },
+  "settings": {
+    "timezone": { "default": "Asia/Shanghai" },
+    "save_execution_progress": true,
+    "save_manual_executions": true,
+    "timeout": 600,
+    "error_policy": "CONTINUE_REGULAR_OUTPUT",
+    "caller_policy": "WORKFLOW_MAIN"
+  },
+  "static_data": {
+    "reminder_strategies": {
+      "importance_weights": {
+        "high": 30,
+        "medium": 60,
+        "low": 120
+      },
+      "anti_spam_rules": {
+        "max_reminders_per_hour": 2,
+        "min_interval_minutes": 15
+      },
+      "schedule_awareness": {
+        "avoid_busy_periods": true,
+        "respect_working_hours": true
+      }
+    },
+    "user_preferences": {
+      "timezone": "Asia/Shanghai",
+      "working_hours": {
+        "start": "09:00",
+        "end": "18:00"
+      },
+      "notification_channels": ["#personal-assistant"],
+      "calendar_sync": ["google", "icloud"]
+    },
+    "task_priority_rules": {
+      "deadline_weight": 0.4,
+      "importance_weight": 0.3,
+      "complexity_weight": 0.2,
+      "user_preference_weight": 0.1
+    }
+  },
+  "pin_data": {},
+  "created_at": 1719990000,
+  "updated_at": 1719990000,
+  "version": "1.2.0",
+  "tags": [
+    "secretary",
+    "ai-agent",
+    "google-calendar",
+    "icloud-calendar",
+    "smart-reminder",
+    "weekly-report",
+    "task-management",
+    "slack-integration",
+    "cron-scheduler",
+    "postgresql",
+    "user-confirmation",
+    "delay-handling",
+    "data-integration",
+    "intelligent-routing"
+  ]
+}
 ```
