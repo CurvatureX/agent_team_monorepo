@@ -4,7 +4,7 @@
 
 ### 模块定义 & 解释
 
-![svgviewer-output (2)](/Users/bytedance/Downloads/flow-definition.svg)
+![svgviewer-output (2)](https://github.com/CurvatureX/agent_team_monorepo/blob/master/docs/images/flow-definition.svg)
 
 
 
@@ -386,7 +386,7 @@ message CredentialConfig {
 
 ### 模块工作流
 
-![svgviewer-output (4)](/Users/bytedance/Downloads/module-workflow.svg)
+![svgviewer-output (4)](https://github.com/CurvatureX/agent_team_monorepo/blob/master/docs/images/module-workflow.svg)
 
 
 
@@ -394,10 +394,10 @@ message CredentialConfig {
 
 ##### 时序图
 
-![svgviewer-output (3)](/Users/bytedance/Downloads/agent-case.svg)
+![svgviewer-output (3)](https://github.com/CurvatureX/agent_team_monorepo/blob/master/docs/images/agent-case.svg)
 
 
 
 ##### 工作流
 
-![svgviewer-output (6)](/Users/bytedance/Downloads/agent-case-flow.svg)
+![svgviewer-output (6)](https://github.com/CurvatureX/agent_team_monorepo/blob/master/docs/images/agent-case-flow.svg)
