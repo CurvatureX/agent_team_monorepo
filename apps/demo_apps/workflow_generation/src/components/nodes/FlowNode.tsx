@@ -17,6 +17,7 @@ interface FlowNodeData {
 }
 
 const FlowNode: React.FC<NodeProps<FlowNodeData>> = ({
+  id,
   data,
   selected,
 }) => {
@@ -161,7 +162,7 @@ const FlowNode: React.FC<NodeProps<FlowNodeData>> = ({
         <>
           {/* Loop Plus Button */}
           <div
-            onClick={() => data.onAddNode("", "loop")}
+            onClick={() => data.onAddNode(id, "loop")}
             className="absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 w-5 h-5 bg-blue-500 border border-white rounded-full flex items-center justify-center cursor-pointer z-10 nodrag"
             style={{ top: "30%", right: "-20px", transform: "translateY(-50%)" }}
             title="Add loop node"
@@ -171,7 +172,7 @@ const FlowNode: React.FC<NodeProps<FlowNodeData>> = ({
 
           {/* Done Plus Button */}
           <div
-            onClick={() => data.onAddNode("", "done")}
+            onClick={() => data.onAddNode(id, "done")}
             className="absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 w-5 h-5 bg-green-500 border border-white rounded-full flex items-center justify-center cursor-pointer z-10 nodrag"
             style={{ top: "70%", right: "-20px", transform: "translateY(-50%)" }}
             title="Add done node"
@@ -183,7 +184,7 @@ const FlowNode: React.FC<NodeProps<FlowNodeData>> = ({
         <>
           {/* True Plus Button */}
           <div
-            onClick={() => data.onAddNode("", "true")}
+            onClick={() => data.onAddNode(id, "true")}
             className="absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 w-5 h-5 bg-green-500 border border-white rounded-full flex items-center justify-center cursor-pointer z-10 nodrag"
             style={{ top: "30%", right: "-20px", transform: "translateY(-50%)" }}
             title="Add true node"
@@ -193,7 +194,7 @@ const FlowNode: React.FC<NodeProps<FlowNodeData>> = ({
 
           {/* False Plus Button */}
           <div
-            onClick={() => data.onAddNode("", "false")}
+            onClick={() => data.onAddNode(id, "false")}
             className="absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 w-5 h-5 bg-red-500 border border-white rounded-full flex items-center justify-center cursor-pointer z-10 nodrag"
             style={{ top: "70%", right: "-20px", transform: "translateY(-50%)" }}
             title="Add false node"
@@ -204,7 +205,7 @@ const FlowNode: React.FC<NodeProps<FlowNodeData>> = ({
       ) : (
         /* Single Plus Button for other flow nodes */
         <div
-          onClick={() => data.onAddNode("", "output")}
+          onClick={() => data.onAddNode(id, "output")}
           className="absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 w-5 h-5 bg-amber-500 border border-white rounded-full flex items-center justify-center cursor-pointer z-10 nodrag"
           style={{ top: "50%", right: "-20px", transform: "translateY(-50%)" }}
           title="Add connected node"

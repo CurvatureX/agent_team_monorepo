@@ -28,7 +28,8 @@ import MemoryNode from "./components/nodes/MemoryNode";
 import FlowNode from "./components/nodes/FlowNode";
 import HumanInTheLoopNode from "./components/nodes/HumanInTheLoopNode";
 import SubtypeDropdown from "./components/SubtypeDropdown";
-import { Workflow, Download } from "lucide-react";
+import dagre from 'dagre';
+import { Workflow, Download, Brush } from "lucide-react";
 
 // Define node types
 const nodeTypes: NodeTypes = {
@@ -273,8 +274,15 @@ const nodeSubtypes = {
 const initialNodes: Node[] = [];
 const initialEdges: Edge[] = [];
 
-let nodeId = 0;
-const getNodeId = () => `node_${nodeId++}`;
+const nodeCounters: { [key: string]: number } = {};
+const getNodeId = (nodeType: string) => {
+  if (nodeCounters[nodeType] === undefined) {
+    nodeCounters[nodeType] = 0;
+  }
+  const id = nodeCounters[nodeType];
+  nodeCounters[nodeType]++;
+  return `${nodeType}_${id}`;
+};
 
 // MVP Workflow JSON structure interfaces
 interface MVPWorkflow {
@@ -283,7 +291,10 @@ interface MVPWorkflow {
   active: boolean;
   nodes: MVPNode[];
   connections: {
-    connections: Record<string, Record<string, { connections: MVPConnection[] }>>;
+    connections: Record<
+      string,
+      Record<string, { connections: MVPConnection[] }>
+    >;
   };
   settings: {
     timezone: { default: string };
@@ -338,14 +349,14 @@ function WorkflowEditor() {
       save_manual_executions: true,
       timeout: 300,
       error_policy: "STOP_WORKFLOW",
-      caller_policy: "WORKFLOW_MAIN"
+      caller_policy: "WORKFLOW_MAIN",
     },
     static_data: {},
     pin_data: {},
     created_at: Math.floor(Date.now() / 1000),
     updated_at: Math.floor(Date.now() / 1000),
     version: "1.0.0",
-    tags: ["example", "workflow"]
+    tags: ["example", "workflow"],
   });
 
   const [selectedNodeType, setSelectedNodeType] = useState<string>("trigger");
@@ -357,7 +368,7 @@ function WorkflowEditor() {
     sourceNodeId?: string;
     sourceHandle?: string;
   } | null>(null);
-  const { project, deleteElements } = useReactFlow();
+  const { project, deleteElements, fitView } = useReactFlow();
   const connectingNodeId = useRef<{
     nodeId: string;
     handleId: string;
@@ -366,7 +377,7 @@ function WorkflowEditor() {
 
   // Convert MVP JSON to React Flow format
   const convertJSONToReactFlow = useCallback(() => {
-    const reactFlowNodes: Node[] = workflowJSON.nodes.map(mvpNode => ({
+    const reactFlowNodes: Node[] = workflowJSON.nodes.map((mvpNode) => ({
       id: mvpNode.id,
       type: convertMVPTypeToReactFlow(mvpNode.type),
       position: mvpNode.position,
@@ -381,25 +392,32 @@ function WorkflowEditor() {
     }));
 
     const reactFlowEdges: Edge[] = [];
-    Object.entries(workflowJSON.connections.connections).forEach(([sourceId, connectionTypes]) => {
-      Object.entries(connectionTypes).forEach(([connectionType, connectionData]) => {
-        connectionData.connections.forEach((connection, index) => {
-          const sourceNode = workflowJSON.nodes.find(n => n.id === sourceId);
-          const targetNode = workflowJSON.nodes.find(n => n.id === connection.node);
-          
-          if (sourceNode && targetNode) {
-            reactFlowEdges.push({
-              id: `edge_${sourceNode.id}_${targetNode.id}_${index}`,
-              source: sourceNode.id,
-              target: targetNode.id,
-              sourceHandle: connectionType === "ai_memory" ? "memory" : 
-                           connectionType === "ai_tool" ? "tool" : "output",
-              targetHandle: "input",
+    Object.entries(workflowJSON.connections.connections).forEach(
+      ([sourceId, connectionTypes]) => {
+        Object.entries(connectionTypes).forEach(
+          ([connectionType, connectionData]) => {
+            connectionData.connections.forEach((connection, index) => {
+              const sourceNode = workflowJSON.nodes.find(
+                (n) => n.id === sourceId
+              );
+              const targetNode = workflowJSON.nodes.find(
+                (n) => n.id === connection.node
+              );
+
+              if (sourceNode && targetNode) {
+                reactFlowEdges.push({
+                  id: `edge_${sourceNode.id}_${targetNode.id}_${connectionType}_${index}`,
+                  source: sourceNode.id,
+                  target: targetNode.id,
+                  sourceHandle: connectionType,
+                  targetHandle: "input",
+                });
+              }
             });
           }
-        });
-      });
-    });
+        );
+      }
+    );
 
     return { nodes: reactFlowNodes, edges: reactFlowEdges };
   }, [workflowJSON]);
@@ -407,35 +425,54 @@ function WorkflowEditor() {
   // Convert MVP node type to React Flow node type
   const convertMVPTypeToReactFlow = (mvpType: string) => {
     switch (mvpType) {
-      case "TRIGGER_NODE": return "trigger";
-      case "AI_AGENT_NODE": return "ai_agent";
-      case "EXTERNAL_ACTION_NODE": return "external_action";
-      case "ACTION_NODE": return "action";
-      case "FLOW_NODE": return "flow";
-      case "HUMAN_IN_THE_LOOP_NODE": return "human_in_the_loop";
-      case "TOOL_NODE": return "tool";
-      case "MEMORY_NODE": return "memory";
-      default: return "action";
+      case "TRIGGER_NODE":
+        return "trigger";
+      case "AI_AGENT_NODE":
+        return "ai_agent";
+      case "EXTERNAL_ACTION_NODE":
+        return "external_action";
+      case "ACTION_NODE":
+        return "action";
+      case "FLOW_NODE":
+        return "flow";
+      case "HUMAN_IN_THE_LOOP_NODE":
+        return "human_in_the_loop";
+      case "TOOL_NODE":
+        return "tool";
+      case "MEMORY_NODE":
+        return "memory";
+      default:
+        return "action";
     }
   };
 
   // Convert React Flow node type to MVP type
   const convertReactFlowTypeToMVP = (reactFlowType: string) => {
     switch (reactFlowType) {
-      case "trigger": return "TRIGGER_NODE";
-      case "ai_agent": return "AI_AGENT_NODE";
-      case "external_action": return "EXTERNAL_ACTION_NODE";
-      case "action": return "ACTION_NODE";
-      case "flow": return "FLOW_NODE";
-      case "human_in_the_loop": return "HUMAN_IN_THE_LOOP_NODE";
-      case "tool": return "TOOL_NODE";
-      case "memory": return "MEMORY_NODE";
-      default: return "ACTION_NODE";
+      case "trigger":
+        return "TRIGGER_NODE";
+      case "ai_agent":
+        return "AI_AGENT_NODE";
+      case "external_action":
+        return "EXTERNAL_ACTION_NODE";
+      case "action":
+        return "ACTION_NODE";
+      case "flow":
+        return "FLOW_NODE";
+      case "human_in_the_loop":
+        return "HUMAN_IN_THE_LOOP_NODE";
+      case "tool":
+        return "TOOL_NODE";
+      case "memory":
+        return "MEMORY_NODE";
+      default:
+        return "ACTION_NODE";
     }
   };
 
   // Derive React Flow state from JSON
-  const { nodes: initialNodesFlow, edges: initialEdgesFlow } = convertJSONToReactFlow();
+  const { nodes: initialNodesFlow, edges: initialEdgesFlow } =
+    convertJSONToReactFlow();
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodesFlow);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdgesFlow);
 
@@ -449,26 +486,29 @@ function WorkflowEditor() {
   const onNodesChangeCallback = useCallback(
     (changes) => {
       onNodesChange(changes);
-  
+
       const removedNodeIds = changes
-        .filter((change) => change.type === 'remove')
+        .filter((change) => change.type === "remove")
         .map((change) => "id" in change && change.id);
-  
+
       if (removedNodeIds.length > 0) {
         setWorkflowJSON((prev) => {
-          const newNodes = prev.nodes.filter((node) => !removedNodeIds.includes(node.id));
-  
+          const newNodes = prev.nodes.filter(
+            (node) => !removedNodeIds.includes(node.id)
+          );
+
           const newConnections = { ...prev.connections.connections };
-          removedNodeIds.forEach(id => delete newConnections[id]);
-  
+          removedNodeIds.forEach((id) => delete newConnections[id]);
+
           Object.keys(newConnections).forEach((sourceId) => {
             Object.keys(newConnections[sourceId]).forEach((connectionType) => {
-              newConnections[sourceId][connectionType].connections = newConnections[sourceId][
-                connectionType
-              ].connections.filter((conn) => !removedNodeIds.includes(conn.node));
+              newConnections[sourceId][connectionType].connections =
+                newConnections[sourceId][connectionType].connections.filter(
+                  (conn) => !removedNodeIds.includes(conn.node)
+                );
             });
           });
-  
+
           return {
             ...prev,
             nodes: newNodes,
@@ -477,16 +517,19 @@ function WorkflowEditor() {
           };
         });
       }
-  
+
       const positionChanges = changes.filter(
-        (change) => change.type === 'position' && "position" in change && change.position
+        (change) =>
+          change.type === "position" && "position" in change && change.position
       );
-  
+
       if (positionChanges.length > 0) {
         setWorkflowJSON((prev) => ({
           ...prev,
           nodes: prev.nodes.map((node) => {
-            const change = positionChanges.find((p) => "id" in p && p.id === node.id);
+            const change = positionChanges.find(
+              (p) => "id" in p && p.id === node.id
+            );
             if (change && "position" in change && change.position) {
               return { ...node, position: change.position };
             }
@@ -498,44 +541,43 @@ function WorkflowEditor() {
     },
     [onNodesChange, setWorkflowJSON]
   );
-  
+
   const onEdgesChangeCallback = useCallback(
     (changes) => {
       onEdgesChange(changes);
-  
+
       const removedEdgeIds = changes
-        .filter((change) => change.type === 'remove')
+        .filter((change) => change.type === "remove")
         .map((change) => "id" in change && change.id);
-  
+
       if (removedEdgeIds.length > 0) {
         setWorkflowJSON((prev) => {
           const newConnections = { ...prev.connections.connections };
-  
+
           removedEdgeIds.forEach((edgeId) => {
             const edge = edges.find((e) => e.id === edgeId);
             if (edge) {
               const sourceNode = prev.nodes.find((n) => n.id === edge.source);
               const targetNode = prev.nodes.find((n) => n.id === edge.target);
-  
+
               if (sourceNode && targetNode) {
                 const connectionType =
-                  edge.sourceHandle === 'memory'
-                    ? 'ai_memory'
-                    : edge.sourceHandle === 'tool'
-                    ? 'ai_tool'
-                    : 'main';
-  
+                  edge.sourceHandle === "memory"
+                    ? "ai_memory"
+                    : edge.sourceHandle === "tool"
+                    ? "ai_tool"
+                    : "main";
+
                 if (newConnections[sourceNode.id]?.[connectionType]) {
-                  newConnections[sourceNode.id][connectionType].connections = newConnections[
-                    sourceNode.id
-                  ][connectionType].connections.filter(
-                    (conn) => conn.node !== targetNode.id
-                  );
+                  newConnections[sourceNode.id][connectionType].connections =
+                    newConnections[sourceNode.id][
+                      connectionType
+                    ].connections.filter((conn) => conn.node !== targetNode.id);
                 }
               }
             }
           });
-  
+
           return {
             ...prev,
             connections: { connections: newConnections },
@@ -549,34 +591,44 @@ function WorkflowEditor() {
 
   const onConnect: OnConnect = useCallback(
     (params) => {
-      const sourceNode = workflowJSON.nodes.find(n => n.id === params.source);
-      const targetNode = workflowJSON.nodes.find(n => n.id === params.target);
-      
-      if (sourceNode && targetNode) {
-        const connectionType = params.sourceHandle === "memory" ? "ai_memory" :
-                             params.sourceHandle === "tool" ? "ai_tool" : "main";
-        
-        setWorkflowJSON(prev => {
+      const sourceNode = workflowJSON.nodes.find((n) => n.id === params.source);
+      const targetNode = workflowJSON.nodes.find((n) => n.id === params.target);
+
+      if (sourceNode && targetNode && params.sourceHandle) {
+        const connectionType = params.sourceHandle;
+
+        setWorkflowJSON((prev) => {
           const newConnections = { ...prev.connections.connections };
-          
+
           if (!newConnections[sourceNode.id]) {
             newConnections[sourceNode.id] = {};
           }
-          
+
           if (!newConnections[sourceNode.id][connectionType]) {
             newConnections[sourceNode.id][connectionType] = { connections: [] };
           }
-          
+
+          const existingConnection = newConnections[sourceNode.id][
+            connectionType
+          ].connections.find((c) => c.node === targetNode.id);
+
+          if (existingConnection) {
+            return prev;
+          }
+
+          const newIndex =
+            newConnections[sourceNode.id][connectionType].connections.length;
+
           newConnections[sourceNode.id][connectionType].connections.push({
             node: targetNode.id,
             type: "MAIN",
-            index: 0
+            index: newIndex,
           });
-          
+
           return {
             ...prev,
             connections: { connections: newConnections },
-            updated_at: Math.floor(Date.now() / 1000)
+            updated_at: Math.floor(Date.now() / 1000),
           };
         });
       }
@@ -604,7 +656,7 @@ function WorkflowEditor() {
       sourceNodeId?: string,
       sourceHandle?: string
     ) => {
-      const newNodeId = getNodeId();
+      const newNodeId = getNodeId(nodeType);
       const newMVPNode: MVPNode = {
         id: newNodeId,
         name: getNodeLabel(nodeType, subtype),
@@ -618,37 +670,49 @@ function WorkflowEditor() {
         on_error: "STOP_WORKFLOW_ON_ERROR",
         retry_policy: { max_tries: 1, wait_between_tries: 0 },
         notes: {},
-        webhooks: []
+        webhooks: [],
       };
 
-      setWorkflowJSON(prev => {
+      setWorkflowJSON((prev) => {
         const newWorkflow = {
           ...prev,
           nodes: [...prev.nodes, newMVPNode],
-          updated_at: Math.floor(Date.now() / 1000)
+          updated_at: Math.floor(Date.now() / 1000),
         };
 
         // Create connection if this is from a plus button
-        if (sourceNodeId && nodeType !== "trigger") {
-          const sourceNode = prev.nodes.find(n => n.id === sourceNodeId);
+        if (sourceNodeId && sourceHandle && nodeType !== "trigger") {
+          const sourceNode = prev.nodes.find((n) => n.id === sourceNodeId);
           if (sourceNode) {
-            const connectionType = sourceHandle === "memory" ? "ai_memory" :
-                                 sourceHandle === "tool" ? "ai_tool" : "main";
-            
+            const connectionType = sourceHandle;
+
             const newConnections = { ...newWorkflow.connections.connections };
-            
+
             if (!newConnections[sourceNode.id]) {
               newConnections[sourceNode.id] = {};
             }
-            
+
             if (!newConnections[sourceNode.id][connectionType]) {
-              newConnections[sourceNode.id][connectionType] = { connections: [] };
+              newConnections[sourceNode.id][connectionType] = {
+                connections: [],
+              };
             }
-            
+
+            const existingConnection = newConnections[sourceNode.id][connectionType].connections.find(
+              (c) => c.node === newMVPNode.id
+            );
+
+            if (existingConnection) {
+              return newWorkflow;
+            }
+
+            const newIndex =
+              newConnections[sourceNode.id][connectionType].connections.length;
+
             newConnections[sourceNode.id][connectionType].connections.push({
               node: newMVPNode.id,
               type: "MAIN",
-              index: 0
+              index: newIndex,
             });
 
             // If this is a loop branch, also create a connection back from the new node to the loop node
@@ -662,7 +726,7 @@ function WorkflowEditor() {
               newConnections[newMVPNode.id]["main"].connections.push({
                 node: sourceNode.id,
                 type: "MAIN",
-                index: 0
+                index: 0,
               });
             }
 
@@ -678,7 +742,9 @@ function WorkflowEditor() {
 
   const handleAddConnectedNode = useCallback(
     (sourceNodeId: string, sourceHandle: string = "output") => {
-      const sourceNode = workflowJSON.nodes.find((node) => node.id === sourceNodeId);
+      const sourceNode = workflowJSON.nodes.find(
+        (node) => node.id === sourceNodeId
+      );
       if (!sourceNode) {
         return;
       }
@@ -785,7 +851,7 @@ function WorkflowEditor() {
             // Use the selected node type, but determine special cases
             let newNodeType = selectedNodeType;
             let actualSourceHandle = sourceHandle;
-            
+
             // Map plus handles to their main handles
             if (sourceHandle === "loop-plus") {
               actualSourceHandle = "loop";
@@ -1041,6 +1107,47 @@ function WorkflowEditor() {
     linkElement.click();
   }, [workflowJSON]);
 
+  const tidyUpWorkflow = useCallback(() => {
+    const dagreGraph = new dagre.graphlib.Graph();
+    dagreGraph.setDefaultEdgeLabel(() => ({}));
+    dagreGraph.setGraph({ rankdir: 'LR', nodesep: 50, ranksep: 120 });
+
+    workflowJSON.nodes.forEach((node) => {
+      dagreGraph.setNode(node.id, { width: 200, height: 75 });
+    });
+
+    Object.entries(workflowJSON.connections.connections).forEach(([sourceId, connectionTypes]) => {
+      Object.entries(connectionTypes).forEach(([_, connectionData]) => {
+        connectionData.connections.forEach((connection) => {
+          dagreGraph.setEdge(sourceId, connection.node);
+        });
+      });
+    });
+
+    dagre.layout(dagreGraph);
+
+    const newNodes = workflowJSON.nodes.map((node) => {
+      const nodeWithPosition = dagreGraph.node(node.id);
+      return {
+        ...node,
+        position: {
+          x: nodeWithPosition.x - 200 / 2,
+          y: nodeWithPosition.y - 75 / 2,
+        },
+      };
+    });
+
+    setNodes(newNodes);
+    setWorkflowJSON((prev) => ({
+      ...prev,
+      nodes: newNodes,
+      updated_at: Math.floor(Date.now() / 1000),
+    }));
+    setTimeout(() => {
+      fitView();
+    }, 20);
+  }, [workflowJSON, setNodes, fitView]);
+
   const clearCanvas = useCallback(() => {
     setWorkflowJSON({
       id: "example_workflow",
@@ -1054,16 +1161,18 @@ function WorkflowEditor() {
         save_manual_executions: true,
         timeout: 300,
         error_policy: "STOP_WORKFLOW",
-        caller_policy: "WORKFLOW_MAIN"
+        caller_policy: "WORKFLOW_MAIN",
       },
       static_data: {},
       pin_data: {},
       created_at: Math.floor(Date.now() / 1000),
       updated_at: Math.floor(Date.now() / 1000),
       version: "1.0.0",
-      tags: ["example", "workflow"]
+      tags: ["example", "workflow"],
     });
-    nodeId = 0;
+    Object.keys(nodeCounters).forEach((key) => {
+      nodeCounters[key] = 0;
+    });
   }, []);
 
   return (
@@ -1080,6 +1189,13 @@ function WorkflowEditor() {
         </div>
 
         <div className="flex items-center space-x-4">
+          <button
+            onClick={tidyUpWorkflow}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+          >
+            <Brush className="h-4 w-4 mr-2" />
+            Tidy Up
+          </button>
           <button
             onClick={clearCanvas}
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
@@ -1123,14 +1239,6 @@ function WorkflowEditor() {
                 </button>
               ))}
             </div>
-            <div className="mt-4 p-3 bg-blue-50 rounded-md">
-              <p className="text-xs text-blue-700">
-                💡 Click on the canvas to create a node.
-              </p>
-              <p className="text-xs text-blue-700 mt-1">
-                💡 Press ESC to delete selected nodes.
-              </p>
-            </div>
           </div>
 
           {/* React Flow Canvas */}
@@ -1150,7 +1258,11 @@ function WorkflowEditor() {
               snapGrid={[20, 20]}
               defaultEdgeOptions={{
                 style: { strokeWidth: 2, stroke: "#94a3b8" },
-                type: "smoothstep",
+                type: "bezier",
+                markerEnd: {
+                  type: "arrowclosed",
+                  color: "#94a3b8",
+                },
               }}
             >
               <Background
@@ -1174,8 +1286,8 @@ function WorkflowEditor() {
                       Welcome to Workflow Canvas
                     </h2>
                     <p className="text-gray-500 mb-4">
-                      Create your first workflow by clicking anywhere on the canvas
-                      to add a node.
+                      Create your first workflow by clicking anywhere on the
+                      canvas to add a node.
                     </p>
                     <p className="text-sm text-gray-400">
                       You can also use the + buttons on nodes to quickly add
