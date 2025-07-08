@@ -101,19 +101,103 @@ enum CallerPolicy {
 // ============================================================================
 // 节点模块 (Node Module)
 // ============================================================================
+
+// 节点类型枚举 - 8大核心节点类型
+enum NodeType {
+  TRIGGER_NODE = 0;           // 触发器节点 - Semi-rounded box
+  AI_AGENT_NODE = 1;          // AI代理节点 - Rectangle with connection points
+  EXTERNAL_ACTION_NODE = 2;   // 外部动作节点 - Square
+  ACTION_NODE = 3;            // 动作节点 - Square
+  FLOW_NODE = 4;              // 流程控制节点 - Rectangle
+  HUMAN_IN_THE_LOOP_NODE = 5; // 人机交互节点 - Human interaction required
+  TOOL_NODE = 6;              // 工具节点 - Circle
+  MEMORY_NODE = 7;            // 记忆节点 - Circle (包含Buffer/Knowledge/Vector子类型)
+}
+
+// 节点子类型枚举 - 具体实现类型 (待细化)
+enum NodeSubtype {
+  // 触发器子类型
+  TRIGGER_CHAT = 0;
+  TRIGGER_WEBHOOK = 1;
+  TRIGGER_CRON = 2;
+  TRIGGER_MANUAL = 3;
+  TRIGGER_EMAIL = 4;
+  TRIGGER_FORM = 5;
+  TRIGGER_CALENDAR = 6;
+
+  // AI Agent子类型
+  AI_ROUTER_AGENT = 10;
+  AI_TASK_ANALYZER = 11;
+  AI_DATA_INTEGRATOR = 12;
+  AI_REPORT_GENERATOR = 13;
+  AI_REMINDER_DECISION = 14;
+  AI_WEEKLY_REPORT = 15;
+
+  // 外部动作子类型
+  EXTERNAL_GITHUB = 20;
+  EXTERNAL_GOOGLE_CALENDAR = 21;
+  EXTERNAL_TRELLO = 22;
+  EXTERNAL_EMAIL = 23;
+  EXTERNAL_SLACK = 24;
+  EXTERNAL_API_CALL = 25;
+  EXTERNAL_WEBHOOK = 26;
+  EXTERNAL_NOTIFICATION = 27;
+
+  // 动作子类型
+  ACTION_RUN_CODE = 30;
+  ACTION_SEND_HTTP_REQUEST = 31;
+  ACTION_PARSE_IMAGE = 32;
+  ACTION_WEB_SEARCH = 33;
+  ACTION_DATABASE_OPERATION = 34;
+  ACTION_FILE_OPERATION = 35;
+  ACTION_DATA_TRANSFORMATION = 36;
+
+  // 流程控制子类型
+  FLOW_IF = 40;
+  FLOW_FILTER = 41;
+  FLOW_LOOP = 42;
+  FLOW_MERGE = 43;
+  FLOW_SWITCH = 44;
+  FLOW_WAIT = 45;
+
+  // 人机交互子类型
+  HUMAN_GMAIL = 50;
+  HUMAN_SLACK = 51;
+  HUMAN_DISCORD = 52;
+  HUMAN_TELEGRAM = 53;
+  HUMAN_APP = 54;
+
+  // 工具子类型
+  TOOL_GOOGLE_CALENDAR_MCP = 60;
+  TOOL_NOTION_MCP = 61;
+  TOOL_CALENDAR = 62;
+  TOOL_EMAIL = 63;
+  TOOL_HTTP = 64;
+  TOOL_CODE_EXECUTION = 65;
+
+  // 记忆子类型
+  MEMORY_SIMPLE = 70;
+  MEMORY_BUFFER = 71;
+  MEMORY_KNOWLEDGE = 72;
+  MEMORY_VECTOR_STORE = 73;
+  MEMORY_DOCUMENT = 74;
+  MEMORY_EMBEDDING = 75;
+}
+
 message Node {
   string id = 1;
   string name = 2;
-  string type = 3;
-  int32 type_version = 4;
-  Position position = 5;
-  bool disabled = 6;
-  map<string, string> parameters = 7;
-  map<string, string> credentials = 8;
-  ErrorHandling on_error = 9;
-  RetryPolicy retry_policy = 10;
-  map<string, string> notes = 11;
-  repeated string webhooks = 12;
+  NodeType type = 3;              // 使用枚举类型替代字符串
+  NodeSubtype subtype = 4;
+  int32 type_version = 5;
+  Position position = 6;
+  bool disabled = 7;
+  map<string, string> parameters = 8;
+  map<string, string> credentials = 9;
+  ErrorHandling on_error = 10;
+  RetryPolicy retry_policy = 11;
+  map<string, string> notes = 12;
+  repeated string webhooks = 13;
 }
 
 // 节点位置
@@ -138,9 +222,18 @@ message RetryPolicy {
 
 **核心组件**
 
-- 🔧 **Node** - 节点定义，包含类型、参数、位置、错误处理等
+- 🏷️ **NodeType** - 节点类型枚举，定义 8 种核心节点类型及其 UI 形状
+- 🔖 **NodeSubtype** - 节点子类型枚举，具体实现分类（可扩展）
+- 🔧 **Node** - 节点定义，包含类型、子类型、参数、位置、错误处理等
 - 🔄 **RetryPolicy** - 重试策略配置
 - ⚠️ **ErrorHandling** - 错误处理方式枚举
+
+**🆕 新增节点类型说明**
+
+- 🤝 **Human-In-The-Loop Node** - 人机交互节点，用于需要人工干预、确认或输入的场景
+  - 支持多种交互渠道：Gmail、Slack、Discord、Telegram、App 等
+  - 实现异步人工反馈收集和处理
+  - 提供灵活的用户界面集成方案
 
 #### 3️⃣ 连接系统模块 (Connection System Module)
 
