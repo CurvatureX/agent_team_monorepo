@@ -21,7 +21,6 @@ const FlowNode: React.FC<NodeProps<FlowNodeData>> = ({
   data,
   selected,
 }) => {
-
   const isLoopNode = data.subtype === "FLOW_LOOP";
   const isIfNode = data.subtype === "FLOW_IF";
 
@@ -90,6 +89,24 @@ const FlowNode: React.FC<NodeProps<FlowNodeData>> = ({
         className="w-3 h-3 bg-amber-500 border-2 border-white"
       />
 
+      {/* Top Input Handle for return connections to loop nodes */}
+      <Handle
+        type="target"
+        position={Position.Top}
+        id="loop-return"
+        className="w-3 h-3 bg-amber-500 border-2 border-white opacity-0"
+        style={{ left: "25%" }}
+      />
+
+      {/* Special Loop Input Handle for self-connections (positioned on bottom) */}
+      <Handle
+        type="target"
+        position={Position.Bottom}
+        id="loop-in"
+        className="w-3 h-3 bg-amber-500 border-2 border-white opacity-0"
+        style={{ left: "25%" }}
+      />
+
       {/* Output Handles - Different flow nodes have different outputs */}
       {isLoopNode ? (
         <>
@@ -118,6 +135,15 @@ const FlowNode: React.FC<NodeProps<FlowNodeData>> = ({
           <div className="absolute right-4 top-[70%] transform -translate-y-1/2 text-xs text-green-600 font-medium bg-white px-1 rounded">
             Done
           </div>
+
+          {/* Special Loop Output Handle for self-connections (positioned on top) */}
+          <Handle
+            type="source"
+            position={Position.Top}
+            id="loop-loop-out"
+            className="w-3 h-3 bg-blue-500 border-2 border-white opacity-0"
+            style={{ left: "75%" }}
+          />
         </>
       ) : isIfNode ? (
         <>
@@ -164,7 +190,11 @@ const FlowNode: React.FC<NodeProps<FlowNodeData>> = ({
           <div
             onClick={() => data.onAddNode(id, "loop")}
             className="absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 w-5 h-5 bg-blue-500 border border-white rounded-full flex items-center justify-center cursor-pointer z-10 nodrag"
-            style={{ top: "30%", right: "-20px", transform: "translateY(-50%)" }}
+            style={{
+              top: "30%",
+              right: "-20px",
+              transform: "translateY(-50%)",
+            }}
             title="Add loop node"
           >
             <div className="text-white text-xs font-bold">+</div>
@@ -174,7 +204,11 @@ const FlowNode: React.FC<NodeProps<FlowNodeData>> = ({
           <div
             onClick={() => data.onAddNode(id, "done")}
             className="absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 w-5 h-5 bg-green-500 border border-white rounded-full flex items-center justify-center cursor-pointer z-10 nodrag"
-            style={{ top: "70%", right: "-20px", transform: "translateY(-50%)" }}
+            style={{
+              top: "70%",
+              right: "-20px",
+              transform: "translateY(-50%)",
+            }}
             title="Add done node"
           >
             <div className="text-white text-xs font-bold">+</div>
@@ -186,7 +220,11 @@ const FlowNode: React.FC<NodeProps<FlowNodeData>> = ({
           <div
             onClick={() => data.onAddNode(id, "true")}
             className="absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 w-5 h-5 bg-green-500 border border-white rounded-full flex items-center justify-center cursor-pointer z-10 nodrag"
-            style={{ top: "30%", right: "-20px", transform: "translateY(-50%)" }}
+            style={{
+              top: "30%",
+              right: "-20px",
+              transform: "translateY(-50%)",
+            }}
             title="Add true node"
           >
             <div className="text-white text-xs font-bold">+</div>
@@ -196,7 +234,11 @@ const FlowNode: React.FC<NodeProps<FlowNodeData>> = ({
           <div
             onClick={() => data.onAddNode(id, "false")}
             className="absolute opacity-0 group-hover:opacity-100 transition-opacity duration-200 w-5 h-5 bg-red-500 border border-white rounded-full flex items-center justify-center cursor-pointer z-10 nodrag"
-            style={{ top: "70%", right: "-20px", transform: "translateY(-50%)" }}
+            style={{
+              top: "70%",
+              right: "-20px",
+              transform: "translateY(-50%)",
+            }}
             title="Add false node"
           >
             <div className="text-white text-xs font-bold">+</div>

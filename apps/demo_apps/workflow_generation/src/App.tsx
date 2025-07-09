@@ -17,6 +17,7 @@ import ReactFlow, {
   ReactFlowProvider,
   useReactFlow,
   Connection,
+  MarkerType,
 } from "reactflow";
 import "reactflow/dist/style.css";
 
@@ -28,7 +29,8 @@ import MemoryNode from "./components/nodes/MemoryNode";
 import FlowNode from "./components/nodes/FlowNode";
 import HumanInTheLoopNode from "./components/nodes/HumanInTheLoopNode";
 import SubtypeDropdown from "./components/SubtypeDropdown";
-import dagre from 'dagre';
+import ChatBox from "./components/ChatBox";
+import dagre from "dagre";
 import { Workflow, Download, Brush } from "lucide-react";
 
 // Define node types
@@ -405,12 +407,36 @@ function WorkflowEditor() {
               );
 
               if (sourceNode && targetNode) {
+                const isFromLoopHandle = connectionType === "loop";
+                const isToLoopNode = targetNode.subtype === "FLOW_LOOP";
+                const shouldUseSmoothstep = isFromLoopHandle || isToLoopNode;
+
                 reactFlowEdges.push({
                   id: `edge_${sourceNode.id}_${targetNode.id}_${connectionType}_${index}`,
                   source: sourceNode.id,
                   target: targetNode.id,
-                  sourceHandle: connectionType,
-                  targetHandle: "input",
+                  sourceHandle: isToLoopNode ? "output" : connectionType,
+                  targetHandle: isToLoopNode ? "loop-return" : "input",
+                  ...(shouldUseSmoothstep && {
+                    type: "smoothstep",
+                    style: {
+                      strokeWidth: 2,
+                      stroke: "#999999",
+                    },
+                    markerEnd: {
+                      type: MarkerType.ArrowClosed,
+                      color: "#999999",
+                      width: 16,
+                      height: 16,
+                    },
+                    data: { isLoopRelated: true },
+                    ...(isToLoopNode && {
+                      pathOptions: {
+                        offset: 60,
+                        borderRadius: 10,
+                      },
+                    }),
+                  }),
                 });
               }
             });
@@ -484,12 +510,12 @@ function WorkflowEditor() {
   }, [workflowJSON, convertJSONToReactFlow, setNodes, setEdges]);
 
   const onNodesChangeCallback = useCallback(
-    (changes) => {
+    (changes: any) => {
       onNodesChange(changes);
 
       const removedNodeIds = changes
-        .filter((change) => change.type === "remove")
-        .map((change) => "id" in change && change.id);
+        .filter((change: any) => change.type === "remove")
+        .map((change: any) => "id" in change && change.id);
 
       if (removedNodeIds.length > 0) {
         setWorkflowJSON((prev) => {
@@ -498,7 +524,7 @@ function WorkflowEditor() {
           );
 
           const newConnections = { ...prev.connections.connections };
-          removedNodeIds.forEach((id) => delete newConnections[id]);
+          removedNodeIds.forEach((id: any) => delete newConnections[id]);
 
           Object.keys(newConnections).forEach((sourceId) => {
             Object.keys(newConnections[sourceId]).forEach((connectionType) => {
@@ -698,9 +724,9 @@ function WorkflowEditor() {
               };
             }
 
-            const existingConnection = newConnections[sourceNode.id][connectionType].connections.find(
-              (c) => c.node === newMVPNode.id
-            );
+            const existingConnection = newConnections[sourceNode.id][
+              connectionType
+            ].connections.find((c) => c.node === newMVPNode.id);
 
             if (existingConnection) {
               return newWorkflow;
@@ -1110,19 +1136,21 @@ function WorkflowEditor() {
   const tidyUpWorkflow = useCallback(() => {
     const dagreGraph = new dagre.graphlib.Graph();
     dagreGraph.setDefaultEdgeLabel(() => ({}));
-    dagreGraph.setGraph({ rankdir: 'LR', nodesep: 50, ranksep: 120 });
+    dagreGraph.setGraph({ rankdir: "LR", nodesep: 50, ranksep: 120 });
 
     workflowJSON.nodes.forEach((node) => {
       dagreGraph.setNode(node.id, { width: 200, height: 75 });
     });
 
-    Object.entries(workflowJSON.connections.connections).forEach(([sourceId, connectionTypes]) => {
-      Object.entries(connectionTypes).forEach(([_, connectionData]) => {
-        connectionData.connections.forEach((connection) => {
-          dagreGraph.setEdge(sourceId, connection.node);
+    Object.entries(workflowJSON.connections.connections).forEach(
+      ([sourceId, connectionTypes]) => {
+        Object.entries(connectionTypes).forEach(([_, connectionData]) => {
+          connectionData.connections.forEach((connection) => {
+            dagreGraph.setEdge(sourceId, connection.node);
+          });
         });
-      });
-    });
+      }
+    );
 
     dagre.layout(dagreGraph);
 
@@ -1191,10 +1219,10 @@ function WorkflowEditor() {
         <div className="flex items-center space-x-4">
           <button
             onClick={tidyUpWorkflow}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors flex items-center space-x-2"
           >
-            <Brush className="h-4 w-4 mr-2" />
-            Tidy Up
+            <Brush className="h-4 w-4" />
+            <span>Tidy Up</span>
           </button>
           <button
             onClick={clearCanvas}
@@ -1215,9 +1243,9 @@ function WorkflowEditor() {
       {/* Main Content Area */}
       <div className="flex flex-col">
         {/* Canvas Section */}
-        <div className="h-[70vh] relative">
+        <div className="h-[70vh] flex">
           {/* Node Type Selector */}
-          <div className="absolute top-4 left-6 z-10 bg-white rounded-lg shadow-lg border border-gray-200 p-4 w-64">
+          <div className="w-72 flex-shrink-0 bg-white border-r border-gray-200 p-4">
             <h3 className="text-sm font-medium text-gray-700 mb-3">
               Select Node Type
             </h3>
@@ -1242,7 +1270,7 @@ function WorkflowEditor() {
           </div>
 
           {/* React Flow Canvas */}
-          <div className="h-full">
+          <div className="flex-1 relative">
             <ReactFlow
               nodes={nodes}
               edges={edges}
@@ -1257,11 +1285,16 @@ function WorkflowEditor() {
               snapToGrid
               snapGrid={[20, 20]}
               defaultEdgeOptions={{
-                style: { strokeWidth: 2, stroke: "#94a3b8" },
-                type: "bezier",
+                style: {
+                  strokeWidth: 2,
+                  stroke: "#999999",
+                },
+                type: "default",
                 markerEnd: {
-                  type: "arrowclosed",
-                  color: "#94a3b8",
+                  type: MarkerType.ArrowClosed,
+                  color: "#999999",
+                  width: 16,
+                  height: 16,
                 },
               }}
             >
@@ -1297,6 +1330,11 @@ function WorkflowEditor() {
                 </Panel>
               )}
             </ReactFlow>
+          </div>
+
+          {/* AI Assistant ChatBox */}
+          <div className="w-96 flex-shrink-0">
+            <ChatBox />
           </div>
         </div>
 
