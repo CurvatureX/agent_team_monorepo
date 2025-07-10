@@ -1,0 +1,124 @@
+syntax = "proto3";
+
+package workflow_agent;
+
+// Service definition
+service WorkflowAgent {
+  // Generate workflow from natural language description
+  rpc GenerateWorkflow(WorkflowGenerationRequest) returns (WorkflowGenerationResponse);
+  
+  // Refine existing workflow based on feedback
+  rpc RefineWorkflow(WorkflowRefinementRequest) returns (WorkflowRefinementResponse);
+  
+  // Validate workflow structure and configuration
+  rpc ValidateWorkflow(WorkflowValidationRequest) returns (WorkflowValidationResponse);
+}
+
+// Request/Response messages for workflow generation
+message WorkflowGenerationRequest {
+  string description = 1;
+  map<string, string> context = 2;
+  map<string, string> user_preferences = 3;
+}
+
+message WorkflowGenerationResponse {
+  bool success = 1;
+  WorkflowData workflow = 2;
+  repeated string suggestions = 3;
+  repeated string missing_info = 4;
+  repeated string errors = 5;
+}
+
+// Request/Response messages for workflow refinement
+message WorkflowRefinementRequest {
+  string workflow_id = 1;
+  string feedback = 2;
+  WorkflowData original_workflow = 3;
+}
+
+message WorkflowRefinementResponse {
+  bool success = 1;
+  WorkflowData updated_workflow = 2;
+  repeated string changes = 3;
+  repeated string errors = 4;
+}
+
+// Request/Response messages for workflow validation
+message WorkflowValidationRequest {
+  map<string, string> workflow_data = 1;
+}
+
+message WorkflowValidationResponse {
+  bool valid = 1;
+  repeated string errors = 2;
+  repeated string warnings = 3;
+}
+
+// Core data structures
+message WorkflowData {
+  string id = 1;
+  string name = 2;
+  bool active = 3;
+  repeated NodeData nodes = 4;
+  ConnectionsMapData connections = 5;
+  WorkflowSettingsData settings = 6;
+  map<string, string> static_data = 7;
+  map<string, string> pin_data = 8;
+  int64 created_at = 9;
+  int64 updated_at = 10;
+  string version = 11;
+  repeated string tags = 12;
+}
+
+message NodeData {
+  string id = 1;
+  string name = 2;
+  string type = 3;
+  string subtype = 4;
+  int32 type_version = 5;
+  PositionData position = 6;
+  bool disabled = 7;
+  map<string, string> parameters = 8;
+  map<string, string> credentials = 9;
+  string on_error = 10;
+  RetryPolicyData retry_policy = 11;
+  map<string, string> notes = 12;
+  repeated string webhooks = 13;
+}
+
+message PositionData {
+  float x = 1;
+  float y = 2;
+}
+
+message RetryPolicyData {
+  int32 max_tries = 1;
+  int32 wait_between_tries = 2;
+}
+
+message ConnectionsMapData {
+  map<string, NodeConnectionsData> connections = 1;
+}
+
+message NodeConnectionsData {
+  map<string, ConnectionArrayData> connection_types = 1;
+}
+
+message ConnectionArrayData {
+  repeated ConnectionData connections = 1;
+}
+
+message ConnectionData {
+  string node = 1;
+  string type = 2;
+  int32 index = 3;
+}
+
+message WorkflowSettingsData {
+  map<string, string> timezone = 1;
+  bool save_execution_progress = 2;
+  bool save_manual_executions = 3;
+  int32 timeout = 4;
+  string error_policy = 5;
+  string caller_policy = 6;
+}
