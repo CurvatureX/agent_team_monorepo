@@ -3,21 +3,229 @@
  * and scoped locally.
  */
 
+/* 首页统一星际舰队风格 - 完全覆盖主题样式 */
 .heroBanner {
   padding: 4rem 0;
   text-align: center;
   position: relative;
   overflow: hidden;
+  min-height: 85vh;
+  display: flex;
+  align-items: center;
+  /* 强制覆盖所有主题，统一使用星际舰队深空背景 */
+  background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 25%, #16213e 50%, #0f0f23 75%, #000000 100%) !important;
+  color: #e8f4f8 !important;
 }
 
-@media screen and (max-width: 996px) {
-  .heroBanner {
-    padding: 2rem;
-  }
+/* 星空背景容器 */
+.stars {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
 }
 
+/* 星空效果 - 无论什么主题都显示 */
+.stars::before,
+.stars::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background-image: 
+    radial-gradient(2px 2px at 20px 30px, #ffffff, transparent),
+    radial-gradient(2px 2px at 40px 70px, rgba(255,255,255,0.8), transparent),
+    radial-gradient(1px 1px at 90px 40px, #ffffff, transparent),
+    radial-gradient(1px 1px at 130px 80px, rgba(255,255,255,0.6), transparent),
+    radial-gradient(2px 2px at 160px 30px, #ffffff, transparent),
+    radial-gradient(1px 1px at 200px 90px, rgba(255,255,255,0.9), transparent);
+  background-size: 300px 200px, 400px 250px, 350px 180px, 450px 220px, 380px 200px, 320px 170px;
+  background-repeat: repeat;
+  animation: twinkle 4s ease-in-out infinite;
+}
+
+.stars::after {
+  animation-delay: 2s;
+  opacity: 0.5;
+}
+
+@keyframes twinkle {
+  0%, 100% { opacity: 0.2; }
+  50% { opacity: 0.8; }
+}
+
+/* 头部容器 */
+.header {
+  text-align: center;
+  margin-bottom: 3rem;
+  max-width: 800px;
+  margin: 0 auto;
+  position: relative;
+  z-index: 5;
+  animation: fadeInUp 1s ease-out;
+}
+
+/* logo图标 */
+.logo {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+/* 标题样式 - 强制覆盖主题样式 */
+.title {
+  font-size: 3.5rem !important;
+  font-weight: 700 !important;
+  color: #ffffff !important;
+  margin-bottom: 1rem !important;
+  letter-spacing: -0.02em !important;
+  line-height: 1.1 !important;
+  text-shadow: 0 0 20px rgba(0, 191, 255, 0.3) !important;
+}
+
+/* 欢迎文字 - 强制覆盖主题样式 */
+.welcomeText {
+  font-size: 1.5rem !important;
+  color: #00bfff !important;
+  margin-bottom: 1rem !important;
+  font-weight: 500 !important;
+}
+
+/* 描述文字 - 强制覆盖主题样式 */
+.description {
+  font-size: 1.1rem !important;
+  color: #a0c4cc !important;
+  max-width: 600px !important;
+  margin: 0 auto 2rem !important;
+  line-height: 1.6 !important;
+}
+
+/* 按钮样式 */
 .buttons {
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-top: 2rem;
+}
+
+/* 按钮强制覆盖所有主题样式 */
+.exploreButton {
+  background: linear-gradient(135deg, #0066cc, #0099ff) !important;
+  color: #ffffff !important;
+  border: none !important;
+  padding: 1rem 2rem !important;
+  font-size: 1.1rem !important;
+  font-weight: 600 !important;
+  border-radius: 8px !important;
+  transition: all 0.3s ease !important;
+  text-decoration: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.5rem !important;
+  box-shadow: 0 6px 20px rgba(0, 153, 255, 0.3) !important;
+}
+
+.exploreButton:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 25px rgba(0, 153, 255, 0.4) !important;
+  background: linear-gradient(135deg, #0073e6, #00a6ff) !important;
+  color: #ffffff !important;
+  text-decoration: none !important;
+}
+
+/* 渐入动画 */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 容器背景 - 毛玻璃效果，强制覆盖主题 */
+.heroBanner .container {
+  background: rgba(10, 25, 47, 0.6) !important;
+  backdrop-filter: blur(20px) !important;
+  border-radius: 24px !important;
+  padding: 3rem 2rem !important;
+  border: 1px solid rgba(0, 191, 255, 0.1) !important;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6) !important;
+}
+
+/* 响应式设计 */
+@media screen and (max-width: 996px) {
+  .heroBanner {
+    padding: 2rem 1rem !important;
+    min-height: 75vh !important;
+  }
+  
+  .title {
+    font-size: 2.5rem !important;
+  }
+
+  .welcomeText {
+    font-size: 1.2rem !important;
+  }
+
+  .description {
+    font-size: 1rem !important;
+  }
+  
+  .exploreButton {
+    padding: 1rem 1.5rem !important;
+  }
+
+  .heroBanner .container {
+    padding: 2rem 1rem !important;
+  }
+}
+
+/* 强制覆盖任何可能的主题干扰 */
+:global([data-theme='light']) .heroBanner {
+  background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 25%, #16213e 50%, #0f0f23 75%, #000000 100%) !important;
+  color: #e8f4f8 !important;
+}
+
+:global([data-theme='dark']) .heroBanner {
+  background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 25%, #16213e 50%, #0f0f23 75%, #000000 100%) !important;
+  color: #e8f4f8 !important;
+}
+
+/* 确保标题在所有主题下都一致 */
+:global([data-theme='light']) .heroBanner .title,
+:global([data-theme='dark']) .heroBanner .title {
+  color: #ffffff !important;
+  text-shadow: 0 0 20px rgba(0, 191, 255, 0.3) !important;
+}
+
+/* 确保欢迎文字在所有主题下都一致 */
+:global([data-theme='light']) .heroBanner .welcomeText,
+:global([data-theme='dark']) .heroBanner .welcomeText {
+  color: #00bfff !important;
+}
+
+/* 确保描述文字在所有主题下都一致 */
+:global([data-theme='light']) .heroBanner .description,
+:global([data-theme='dark']) .heroBanner .description {
+  color: #a0c4cc !important;
+}
+
+/* 确保按钮在所有主题下都一致 */
+:global([data-theme='light']) .heroBanner .exploreButton,
+:global([data-theme='dark']) .heroBanner .exploreButton {
+  background: linear-gradient(135deg, #0066cc, #0099ff) !important;
+  color: #ffffff !important;
+  box-shadow: 0 6px 20px rgba(0, 153, 255, 0.3) !important;
+}
+
+:global([data-theme='light']) .heroBanner .exploreButton:hover,
+:global([data-theme='dark']) .heroBanner .exploreButton:hover {
+  background: linear-gradient(135deg, #0073e6, #00a6ff) !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 25px rgba(0, 153, 255, 0.4) !important;
 }
