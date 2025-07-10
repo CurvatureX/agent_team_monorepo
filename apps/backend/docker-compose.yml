@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  # Redis for LangGraph state management
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # PostgreSQL for data storage
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: workflow_agent
+      POSTGRES_USER: workflow_user
+      POSTGRES_PASSWORD: workflow_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workflow_user -d workflow_agent"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Workflow Agent Service
+  workflow-agent:
+    build:
+      context: ./workflow_agent
+      dockerfile: Dockerfile
+    environment:
+      - DEBUG=false
+      - GRPC_HOST=0.0.0.0
+      - GRPC_PORT=50051
+      - DATABASE_URL=postgresql://workflow_user:workflow_password@postgres:5432/workflow_agent
+      - REDIS_URL=redis://redis:6379/0
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - DEFAULT_MODEL_PROVIDER=openai
+      - DEFAULT_MODEL_NAME=gpt-4
+      - LANGGRAPH_CHECKPOINT_BACKEND=redis
+    ports:
+      - "50051:50051"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./shared/proto:/app/shared/proto:ro
+    restart: unless-stopped
+
+  # API Gateway Service
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    environment:
+      - DEBUG=false
+      - WORKFLOW_AGENT_HOST=workflow-agent
+      - WORKFLOW_AGENT_PORT=50051
+      - DATABASE_URL=sqlite:///./api_gateway.db
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-in-production}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - workflow-agent
+    volumes:
+      - ./shared/proto:/app/shared/proto:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  redis_data:
+  postgres_data:
