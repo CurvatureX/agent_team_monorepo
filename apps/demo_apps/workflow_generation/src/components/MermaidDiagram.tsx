@@ -26,7 +26,7 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ chart, id = 'mermaid-di
     if (mermaidRef.current && chart) {
       mermaidRef.current.innerHTML = '';
       const uniqueId = `${id}-${Date.now()}`;
-      
+
       mermaid.render(uniqueId, chart).then(({ svg }) => {
         if (mermaidRef.current) {
           mermaidRef.current.innerHTML = svg;
@@ -41,8 +41,8 @@ const MermaidDiagram: React.FC<MermaidDiagramProps> = ({ chart, id = 'mermaid-di
   }, [chart, id]);
 
   return (
-    <div 
-      ref={mermaidRef} 
+    <div
+      ref={mermaidRef}
       className="w-full h-full flex items-center justify-center bg-white rounded-lg border border-gray-200 shadow-sm"
     />
   );

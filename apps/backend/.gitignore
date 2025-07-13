@@ -88,4 +88,8 @@ Thumbs.db
 
 # gRPC generated files
 *_pb2.py
-*_pb2_grpc.py
+*_pb2_grpc.py-e
+# Environment and API files
+*.env
+*.claude
+*.langgraph_api/

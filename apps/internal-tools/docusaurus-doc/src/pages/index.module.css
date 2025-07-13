@@ -35,7 +35,7 @@
   position: absolute;
   width: 100%;
   height: 100%;
-  background-image: 
+  background-image:
     radial-gradient(2px 2px at 20px 30px, #ffffff, transparent),
     radial-gradient(2px 2px at 40px 70px, rgba(255,255,255,0.8), transparent),
     radial-gradient(1px 1px at 90px 40px, #ffffff, transparent),
@@ -163,7 +163,7 @@
     padding: 2rem 1rem !important;
     min-height: 75vh !important;
   }
-  
+
   .title {
     font-size: 2.5rem !important;
   }
@@ -175,7 +175,7 @@
   .description {
     font-size: 1rem !important;
   }
-  
+
   .exploreButton {
     padding: 1rem 1.5rem !important;
   }
