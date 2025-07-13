@@ -23,7 +23,6 @@
 {
   "session_id": "550e8400-e29b-41d4-a716-446655440000",
   "created_at": "2024-01-20T10:30:00Z",
-  "expires_at": "2024-01-20T11:30:00Z"
 }
 ```
 
@@ -34,7 +33,7 @@
 ```json
 {
   "session_id": "550e8400-e29b-41d4-a716-446655440000",
-  "message": "我想创建一个数据处理工作流"
+  "message": "帮我抢购一张5090，有货时通知我"
 }
 ```
 
@@ -42,18 +41,13 @@
 ```
 Content-Type: text/event-stream
 
-data: {"type": "message", "content": "我理解您想要创建一个数据处理工作流"}
+data: {"type": "message", "content": "1. 我将为你监控 BestBuy, Amazon 的实时货源，有其他需要监控的网站吗？"}
 
-data: {"type": "message", "content": "请问需要处理什么类型的数据？"}
-
-data: {"type": "signal", "action": "start_workflow_listening"}
+data: {"type": "message", "content": "2. 发现有货后我会通过邮件通知你，你还有其他需要我通知的渠道吗？"}
 ```
 
 **事件类型**
 - `type: "message"` - AI回复消息
-- `type: "signal"` - 系统信号
-  - `action: "start_workflow_listening"` - 可以开始生成workflow
-  - `action: "need_more_info"` - 需要更多信息
 
 ### 3. GET /workflow
 监听工作流生成进度
@@ -71,7 +65,9 @@ data: {"type": "waiting"}
 
 data: {"type": "start", "workflow_id": "wf_abc123"}
 
-data: {"type": "progress", "workflow_id": "wf_abc123", "progress": 50}
+data: {"type": "draft", "workflow_id": "wf_abc123", "data": {...}}
+
+data: {"type": "debugging", "workflow_id": "wf_abc123", "data": {...}}
 
 data: {"type": "complete", "workflow_id": "wf_abc123", "data": {...}}
 ```
@@ -79,35 +75,10 @@ data: {"type": "complete", "workflow_id": "wf_abc123", "data": {...}}
 **事件类型**
 - `type: "waiting"` - 等待开始
 - `type: "start"` - 开始生成
-- `type: "progress"` - 生成进度（0-100）
+- `type: "draft"` - 生成草稿
+- `type: "debugging"` - 系统自动调试中
 - `type: "complete"` - 生成完成，包含workflow数据
 - `type: "error"` - 生成失败
-
-**Workflow数据结构**
-```json
-{
-  "nodes": [
-    {
-      "id": "node_1",
-      "type": "trigger",  // trigger|action|condition|loop|end
-      "label": "定时触发器",
-      "config": {},
-      "position": {"x": 100, "y": 200}
-    }
-  ],
-  "edges": [
-    {
-      "id": "edge_1",
-      "source": "node_1",
-      "target": "node_2"
-    }
-  ],
-  "metadata": {
-    "name": "数据处理工作流",
-    "created_at": "2024-01-20T10:32:15Z"
-  }
-}
-```
 
 ## 错误响应
 
@@ -130,24 +101,32 @@ data: {"type": "complete", "workflow_id": "wf_abc123", "data": {...}}
 ```mermaid
 sequenceDiagram
     participant Client
-    participant Server
+    participant Session as /session
+    participant Chat as /chat
+    participant Workflow as /workflow
+    participant Agent as AI Agent
     
-    Client->>Server: POST /session
-    Server-->>Client: {session_id}
+    Client->>Session: POST /session
+    Session-->>Client: {session_id}
     
-    Client->>Server: GET /workflow?session_id=xxx
-    Note over Client,Server: 建立SSE连接，等待推送
+    Client->>Workflow: GET /workflow?session_id=xxx
+    Note over Client,Workflow: SSE连接建立，保持等待状态
     
     loop 多轮对话
-        Client->>Server: POST /chat
-        Server-->>Client: SSE: AI回复
+        Client->>Chat: POST /chat {message}
+        Chat->>Agent: 分析用户意图
         
-        alt 需要更多信息
-            Server-->>Client: SSE: 询问细节
-        else 信息充足
-            Server-->>Client: SSE: signal "start_workflow_listening"
-            Server-->>Client: Workflow SSE: 生成进度
-            Server-->>Client: Workflow SSE: 完成 + JSON
+        alt Agent需要更多信息
+            Chat-->>Client: SSE: "请问使用什么数据库？"
+            Note over Client,Chat: 继续对话循环
+        else Agent判断信息充足
+            
+                Agent->>Workflow: 触发工作流生成
+                Workflow-->>Client: SSE: {type: "start"}
+                Workflow-->>Client: SSE: {type: "draft", data: {...}}
+                Workflow-->>Client: SSE: {type: "debugging", data: {...}}
+                Workflow-->>Client: SSE: {type: "complete", data: {...}}
         end
     end
+    
 ```
