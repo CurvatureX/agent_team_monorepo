@@ -449,4 +449,8 @@ secrets.json
 # Cache directories
 .cache/
 .temp/
-.tmp/ 
+.tmp/ -e
+# Environment and API files
+.env
+.claude
+.langgraph_api/
