@@ -105,22 +105,22 @@ sequenceDiagram
     participant Chat as /chat
     participant Workflow as /workflow
     participant Agent as AI Agent
-    
+
     Client->>Session: POST /session
     Session-->>Client: {session_id}
-    
+
     Client->>Workflow: GET /workflow?session_id=xxx
     Note over Client,Workflow: SSE连接建立，保持等待状态
-    
+
     loop 多轮对话
         Client->>Chat: POST /chat {message}
         Chat->>Agent: 分析用户意图
-        
+
         alt Agent需要更多信息
             Chat-->>Client: SSE: "请问使用什么数据库？"
             Note over Client,Chat: 继续对话循环
         else Agent判断信息充足
-            
+
                 Agent->>Workflow: 触发工作流生成
                 Workflow-->>Client: SSE: {type: "start"}
                 Workflow-->>Client: SSE: {type: "draft", data: {...}}
@@ -128,5 +128,5 @@ sequenceDiagram
                 Workflow-->>Client: SSE: {type: "complete", data: {...}}
         end
     end
-    
+
 ```

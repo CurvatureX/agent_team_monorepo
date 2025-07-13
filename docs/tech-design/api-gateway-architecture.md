@@ -131,7 +131,7 @@ class WorkflowAgentClient:
     def __init__(self):
         self.channel: Optional[grpc.aio.Channel] = None
         self.stub = None
-        
+
     async def connect(self):
         server_address = f"{settings.WORKFLOW_AGENT_HOST}:{settings.WORKFLOW_AGENT_PORT}"
         self.channel = grpc.aio.insecure_channel(server_address)
@@ -153,11 +153,11 @@ class WorkflowAgentClient:
 class Settings(BaseSettings):
     APP_NAME: str = "API Gateway"
     DEBUG: bool = False
-    
+
     # gRPC 配置
     WORKFLOW_AGENT_HOST: str = "localhost"
     WORKFLOW_AGENT_PORT: int = 50051
-    
+
     # CORS 配置
     ALLOWED_ORIGINS: List[str] = [
         "http://localhost:3000",
@@ -231,9 +231,9 @@ async def lifespan(app: FastAPI):
     # 启动时初始化 gRPC 连接
     app.state.workflow_client = WorkflowAgentClient()
     await app.state.workflow_client.connect()
-    
+
     yield
-    
+
     # 关闭时清理连接
     await app.state.workflow_client.close()
 ```
@@ -286,7 +286,7 @@ import structlog
 logger = structlog.get_logger()
 
 # 请求日志
-logger.info("API request received", 
+logger.info("API request received",
            method=request.method,
            path=request.url.path,
            client_ip=request.client.host)

@@ -1,10 +1,9 @@
+import structlog
 import uvicorn
+from agents.workflow_agent import WorkflowAgent
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from langgraph.server import add_routes
-from dotenv import load_dotenv
-import structlog
-
-from agents.workflow_agent import WorkflowAgent
 
 # Load environment variables
 load_dotenv()
@@ -20,7 +19,7 @@ structlog.configure(
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
-        structlog.processors.JSONRenderer()
+        structlog.processors.JSONRenderer(),
     ],
     context_class=dict,
     logger_factory=structlog.stdlib.LoggerFactory(),

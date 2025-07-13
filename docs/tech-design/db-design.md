@@ -48,23 +48,23 @@ CREATE TABLE workflows (
     workflow_id VARCHAR(50) UNIQUE NOT NULL,
     session_id UUID NOT NULL REFERENCES sessions(session_id) ON DELETE CASCADE,
     user_id UUID NOT NULL,
-    
+
     -- 版本管理
     sequence_number INTEGER NOT NULL,
     parent_workflow_id VARCHAR(50) REFERENCES workflows(workflow_id),
     is_current BOOLEAN DEFAULT false,
-    
+
     -- 源追踪
     source_type VARCHAR(20), -- 'template', 'user_workflow', 'scratch'
     source_template_id VARCHAR(50) REFERENCES workflow_templates(template_id),
     source_workflow_id VARCHAR(50) REFERENCES workflows(workflow_id),
     source_user_id UUID,
-    
+
     -- 工作流数据
     status VARCHAR(20) NOT NULL DEFAULT 'waiting',
     workflow_data JSONB,
     error_message TEXT,
-    
+
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     completed_at TIMESTAMP WITH TIME ZONE
@@ -85,15 +85,15 @@ CREATE TABLE workflow_templates (
     description TEXT,
     category VARCHAR(100),
     tags TEXT[],
-    
+
     created_by_user_id UUID,
     is_public BOOLEAN DEFAULT false,
     is_official BOOLEAN DEFAULT false,
-    
+
     template_data JSONB NOT NULL,
     usage_count INTEGER DEFAULT 0,
     version VARCHAR(20) DEFAULT '1.0.0',
-    
+
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -133,7 +133,7 @@ SELECT * FROM workflows WHERE session_id = ? AND is_current = true;
 
 -- 获取上一个工作流
 WITH current_workflow AS (
-    SELECT sequence_number FROM workflows 
+    SELECT sequence_number FROM workflows
     WHERE session_id = ? AND is_current = true
 )
 SELECT w.* FROM workflows w, current_workflow c
@@ -155,7 +155,7 @@ FROM workflows WHERE session_id = ?;
 COMMIT;
 
 -- 从模板创建工作流
-INSERT INTO workflows (workflow_id, session_id, user_id, sequence_number, 
+INSERT INTO workflows (workflow_id, session_id, user_id, sequence_number,
                       source_type, source_template_id, workflow_data, is_current)
 SELECT ?, ?, ?, 1, 'template', wt.template_id, wt.template_data, true
 FROM workflow_templates wt WHERE wt.template_id = ?;
@@ -164,8 +164,8 @@ FROM workflow_templates wt WHERE wt.template_id = ?;
 ### 模板系统
 ```sql
 -- 获取可用模板
-SELECT t.*, 
-       CASE 
+SELECT t.*,
+       CASE
            WHEN t.created_by_user_id = ? THEN 'own'
            WHEN t.is_official = true THEN 'official'
            ELSE 'community'
@@ -175,7 +175,7 @@ WHERE t.is_public = true OR t.created_by_user_id = ? OR t.is_official = true
 ORDER BY t.is_official DESC, t.usage_count DESC;
 
 -- 保存工作流为模板
-INSERT INTO workflow_templates (template_id, template_name, description, 
+INSERT INTO workflow_templates (template_id, template_name, description,
                                created_by_user_id, is_public, template_data)
 SELECT ?, ?, ?, w.user_id, ?, w.workflow_data
 FROM workflows w WHERE w.workflow_id = ?;
@@ -185,7 +185,7 @@ FROM workflows w WHERE w.workflow_id = ?;
 ```sql
 -- 查询工作流来源
 SELECT w.workflow_id, w.source_type,
-       CASE 
+       CASE
            WHEN w.source_type = 'template' THEN wt.template_name
            WHEN w.source_type = 'user_workflow' THEN 'Copied from user workflow'
            ELSE 'Created from scratch'

@@ -83,7 +83,7 @@
    ```bash
    # 终端1: 启动Workflow Agent
    cd workflow_agent && uv run python -m main
-   
+
    # 终端2: 启动API Gateway
    cd api-gateway && uv run uvicorn main:app --reload --port 8000
    ```
@@ -94,7 +94,7 @@
    ```bash
    # API Gateway
    cd api-gateway && python -m venv venv && source venv/bin/activate && pip install -e . && cd ..
-   
+
    # Workflow Agent
    cd workflow_agent && python -m venv venv && source venv/bin/activate && pip install -e . && cd ..
    ```
@@ -113,8 +113,8 @@
    ```bash
    # 终端1: 启动Workflow Agent
    cd workflow_agent && source venv/bin/activate && python -m main
-   
-   # 终端2: 启动API Gateway  
+
+   # 终端2: 启动API Gateway
    cd api-gateway && source venv/bin/activate && uvicorn main:app --reload --port 8000
    ```
 

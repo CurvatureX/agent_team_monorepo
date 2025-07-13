@@ -4,24 +4,26 @@ LangGraph nodes for Workflow Agent
 
 import asyncio
 import json
-import uuid
-import time
 import sys
+import time
+import uuid
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Any, Dict, List
+
 import structlog
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
 
 # Add the backend path to sys.path to import shared modules
 backend_path = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(backend_path))
 
-from shared.prompts.loader import PromptLoader
 from agents.state import AgentState, WorkflowGenerationState
+from shared.prompts.loader import PromptLoader
+
 from core.config import settings
-from core.models import Workflow, Node, NodeType, Position, ConnectionsMap
+from core.models import ConnectionsMap, Node, NodeType, Position, Workflow
 
 logger = structlog.get_logger()
 

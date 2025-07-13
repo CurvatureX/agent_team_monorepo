@@ -1,16 +1,18 @@
 """
 API Gateway for Workflow Agent Team
 """
+
 import logging
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+
 import structlog
 from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import workflow
 from .core.config import settings
 from .core.grpc_client import WorkflowAgentClient
+from .routers import workflow
 
 # Load environment variables
 load_dotenv()
@@ -26,7 +28,7 @@ structlog.configure(
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
-        structlog.processors.JSONRenderer()
+        structlog.processors.JSONRenderer(),
     ],
     context_class=dict,
     logger_factory=structlog.stdlib.LoggerFactory(),
@@ -41,13 +43,13 @@ async def lifespan(app: FastAPI):
     """Application lifespan events"""
     # Startup
     logger.info("Starting API Gateway")
-    
+
     # Initialize gRPC client
     app.state.workflow_client = WorkflowAgentClient()
     await app.state.workflow_client.connect()
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down API Gateway")
     await app.state.workflow_client.close()
@@ -57,7 +59,7 @@ app = FastAPI(
     title="API Gateway",
     description="API Gateway for Workflow Agent Team",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # Configure CORS
@@ -87,10 +89,5 @@ async def root():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        log_level="info"
-    )
+
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True, log_level="info")

@@ -2,7 +2,8 @@
 LangGraph state management for Workflow Agent
 """
 
-from typing import Dict, Any, List, Optional, TypedDict, NotRequired
+from typing import Any, Dict, List, NotRequired, Optional, TypedDict
+
 from langgraph.graph import MessagesState
 
 

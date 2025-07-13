@@ -449,7 +449,7 @@ secrets.json
 # Cache directories
 .cache/
 .temp/
-.tmp/ -e 
+.tmp/ -e
 # Environment and API files
 .env
 .claude
