@@ -1,0 +1,154 @@
+syntax = "proto3";
+
+package workflow_engine;
+
+option go_package = "github.com/agent-team/workflow_engine/proto";
+
+// ============================================================================
+// 执行系统模块 (Execution System Module)
+// ============================================================================
+
+// 执行数据
+message ExecutionData {
+  string execution_id = 1;
+  string workflow_id = 2;
+  ExecutionStatus status = 3;
+  int64 start_time = 4;
+  int64 end_time = 5;
+  RunData run_data = 6;
+  ExecutionMode mode = 7;
+  string triggered_by = 8;
+  map<string, string> metadata = 9;
+}
+
+// 执行状态
+enum ExecutionStatus {
+  NEW = 0;
+  RUNNING = 1;
+  SUCCESS = 2;
+  ERROR = 3;
+  CANCELED = 4;
+  WAITING = 5;
+  PAUSED = 6;
+}
+
+// 执行模式
+enum ExecutionMode {
+  MANUAL = 0;
+  TRIGGER = 1;
+  WEBHOOK = 2;
+  RETRY = 3;
+  SCHEDULED = 4;
+}
+
+// 运行数据
+message RunData {
+  map<string, NodeRunData> node_data = 1;
+}
+
+// 节点运行数据
+message NodeRunData {
+  repeated TaskData tasks = 1;
+}
+
+// 任务数据
+message TaskData {
+  int64 start_time = 1;
+  int64 execution_time = 2;
+  string source = 3;
+  repeated NodeExecutionData data = 4;
+  map<string, string> execution_status = 5;
+  ErrorData error = 6;
+}
+
+// 节点执行数据
+message NodeExecutionData {
+  repeated DataItem data = 1;
+  map<string, string> metadata = 2;
+}
+
+// 数据项
+message DataItem {
+  map<string, string> json_data = 1;
+  repeated BinaryData binary_data = 2;
+  bool paused = 3;
+  map<string, string> metadata = 4;
+}
+
+// 二进制数据
+message BinaryData {
+  string property_name = 1;
+  bytes data = 2;
+  string mime_type = 3;
+  string file_name = 4;
+  int64 file_size = 5;
+}
+
+// 错误数据
+message ErrorData {
+  string message = 1;
+  string stack = 2;
+  string name = 3;
+  int32 line_number = 4;
+  map<string, string> context = 5;
+}
+
+// ============================================================================
+// 执行请求和响应消息
+// ============================================================================
+
+// 执行工作流请求
+message ExecuteWorkflowRequest {
+  string workflow_id = 1;
+  ExecutionMode mode = 2;
+  string triggered_by = 3;
+  map<string, string> input_data = 4;
+  map<string, string> metadata = 5;
+}
+
+// 执行工作流响应
+message ExecuteWorkflowResponse {
+  string execution_id = 1;
+  ExecutionStatus status = 2;
+  string message = 3;
+  ErrorData error = 4;
+}
+
+// 获取执行状态请求
+message GetExecutionStatusRequest {
+  string execution_id = 1;
+}
+
+// 获取执行状态响应
+message GetExecutionStatusResponse {
+  ExecutionData execution = 1;
+  bool found = 2;
+  string message = 3;
+}
+
+// 取消执行请求
+message CancelExecutionRequest {
+  string execution_id = 1;
+  string reason = 2;
+}
+
+// 取消执行响应
+message CancelExecutionResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// 获取执行历史请求
+message GetExecutionHistoryRequest {
+  string workflow_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+  ExecutionStatus status_filter = 4;
+}
+
+// 获取执行历史响应
+message GetExecutionHistoryResponse {
+  repeated ExecutionData executions = 1;
+  int32 total_count = 2;
+  bool has_more = 3;
+} 
