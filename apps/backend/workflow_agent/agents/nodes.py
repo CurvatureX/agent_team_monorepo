@@ -2,15 +2,23 @@
 LangGraph nodes for Workflow Agent
 """
 
+import asyncio
 import json
 import uuid
 import time
+import sys
+from pathlib import Path
 from typing import Dict, Any, List
 import structlog
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 
+# Add the backend path to sys.path to import shared modules
+backend_path = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(backend_path))
+
+from shared.prompts.loader import PromptLoader
 from agents.state import AgentState, WorkflowGenerationState
 from core.config import settings
 from core.models import Workflow, Node, NodeType, Position, ConnectionsMap
@@ -24,6 +32,7 @@ class WorkflowAgentNodes:
     def __init__(self):
         self.llm = self._setup_llm()
         self.node_templates = self._load_node_templates()
+        self.prompt_loader = PromptLoader()
 
     def _initialize_state_defaults(self, state: AgentState) -> AgentState:
         """Initialize state with default values for missing optional fields"""
@@ -124,23 +133,18 @@ class WorkflowAgentNodes:
         """Analyze user requirements and extract key information"""
 
         # Initialize missing fields with defaults
-        if "description" not in state:
-            raise ValueError("Description is required to analyze requirements")
+        # Use user_input instead of description as that's what's in the state
+        if "user_input" not in state:
+            raise ValueError("User input is required to analyze requirements")
 
         state = self._initialize_state_defaults(state)
-        logger.info("Analyzing user requirements", description=state["description"])
+        logger.info("Analyzing user requirements", description=state["user_input"])
 
-        system_prompt = """你是一个工作流程分析专家。分析用户的自然语言描述，提取关键信息：
-        1. 识别触发条件（什么时候执行）
-        2. 确定主要操作（需要做什么）
-        3. 识别数据流（数据如何传递）
-        4. 确定集成需求（需要连接哪些外部服务）
-        5. 识别人工干预点（需要人工确认的地方）
-        
-        以JSON格式返回分析结果。"""
-
-        user_prompt = (
-            f"用户描述：{state['description']}\n\n请分析这个描述并提取工作流程的关键信息。"
+        # Use the prompt loader to get system and user prompts
+        system_prompt, user_prompt = await asyncio.to_thread(
+            self.prompt_loader.get_system_and_user_prompts,
+            "analyze_requirement",
+            description=state["user_input"],
         )
 
         messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
@@ -173,6 +177,8 @@ class WorkflowAgentNodes:
 
         except Exception as e:
             logger.error("Failed to analyze requirements", error=str(e))
+            if "workflow_errors" not in state:
+                state["workflow_errors"] = []
             state["workflow_errors"].append(f"Failed to analyze requirements: {str(e)}")
             state["current_step"] = "error"
 
@@ -184,16 +190,12 @@ class WorkflowAgentNodes:
 
         requirements = state.get("requirements", {})
 
-        system_prompt = """基于需求分析结果，生成详细的工作流程计划。计划应该包括：
-        1. 节点列表（按执行顺序）
-        2. 节点之间的连接关系
-        3. 每个节点的配置要求
-        4. 数据传递方式
-        5. 错误处理策略
-        
-        以JSON格式返回计划。"""
-
-        user_prompt = f"需求分析结果：{json.dumps(requirements, ensure_ascii=False)}\n\n请生成详细的工作流程计划。"
+        # Use the prompt loader to get system and user prompts
+        system_prompt, user_prompt = await asyncio.to_thread(
+            self.prompt_loader.get_system_and_user_prompts,
+            "generate_plan",
+            requirements=requirements,
+        )
 
         messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
 
@@ -227,6 +229,8 @@ class WorkflowAgentNodes:
 
         except Exception as e:
             logger.error("Failed to generate plan", error=str(e))
+            if "workflow_errors" not in state:
+                state["workflow_errors"] = []
             state["workflow_errors"].append(f"Failed to generate plan: {str(e)}")
             state["current_step"] = "error"
 
@@ -240,7 +244,6 @@ class WorkflowAgentNodes:
         context = state.get("context", {})
 
         # Simple knowledge check - in production this would be more sophisticated
-        required_info = []
         missing_info = []
 
         # Check for integration requirements
@@ -270,7 +273,6 @@ class WorkflowAgentNodes:
         logger.info("Generating complete workflow")
 
         plan = state.get("current_plan", {})
-        requirements = state.get("requirements", {})
         context = state.get("context", {})
 
         try:
@@ -305,9 +307,6 @@ class WorkflowAgentNodes:
                 to_node = conn.get("to")
 
                 if from_node in node_positions and to_node in node_positions:
-                    from_id = node_positions[from_node]
-                    to_id = node_positions[to_node]
-
                     if from_node not in connections_data["connections"]:
                         connections_data["connections"][from_node] = {"main": {"connections": []}}
 
@@ -318,7 +317,7 @@ class WorkflowAgentNodes:
             # Create the complete workflow
             workflow = Workflow(
                 id=workflow_id,
-                name=f"Generated Workflow - {state['description'][:50]}",
+                name=f"Generated Workflow - {state['user_input'][:50]}",
                 nodes=nodes,
                 connections=ConnectionsMap(**connections_data),
                 created_at=current_time,
@@ -338,6 +337,8 @@ class WorkflowAgentNodes:
 
         except Exception as e:
             logger.error("Failed to generate workflow", error=str(e))
+            if "workflow_errors" not in state:
+                state["workflow_errors"] = []
             state["workflow_errors"].append(f"Failed to generate workflow: {str(e)}")
             state["current_step"] = "error"
 
