@@ -25,4 +25,4 @@ echo "🎯 The documentation will be available at: http://localhost:3000"
 echo "🔧 Features: Cyber-tech theme with pixel-style neon colors"
 echo ""
 
-npm start 
+npm start

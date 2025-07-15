@@ -6,10 +6,10 @@ package workflow_agent;
 service WorkflowAgent {
   // Generate workflow from natural language description
   rpc GenerateWorkflow(WorkflowGenerationRequest) returns (WorkflowGenerationResponse);
-  
+
   // Refine existing workflow based on feedback
   rpc RefineWorkflow(WorkflowRefinementRequest) returns (WorkflowRefinementResponse);
-  
+
   // Validate workflow structure and configuration
   rpc ValidateWorkflow(WorkflowValidationRequest) returns (WorkflowValidationResponse);
 }

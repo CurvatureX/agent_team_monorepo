@@ -90,21 +90,21 @@ class AgentState(TypedDict):
     description: str
     context: Dict[str, Any]
     user_preferences: Dict[str, Any]
-    
+
     # 分析结果
     requirements: Dict[str, Any]
     parsed_intent: Dict[str, Any]
     current_plan: Optional[Dict[str, Any]]
-    
+
     # 信息收集
     collected_info: Dict[str, Any]
     missing_info: List[str]
-    
+
     # 工作流生成
     workflow: Optional[Dict[str, Any]]
     workflow_suggestions: List[str]
     workflow_errors: List[str]
-    
+
     # 流程控制
     current_step: str
     iteration_count: int
@@ -125,18 +125,18 @@ async def analyze_requirement(self, state: AgentState) -> AgentState:
     3. 数据流（数据传递）
     4. 集成需求（外部服务）
     5. 人工干预点（确认点）"""
-    
+
     # 调用 LLM 进行分析
     response = await self.llm.ainvoke([
         SystemMessage(content=system_prompt),
         HumanMessage(content=f"用户描述：{state['description']}")
     ])
-    
+
     # 解析结果并更新状态
     analysis = json.loads(response.content)
     state["requirements"] = analysis
     state["current_step"] = "plan_generation"
-    
+
     return state
 ```
 
@@ -145,7 +145,7 @@ async def analyze_requirement(self, state: AgentState) -> AgentState:
 async def generate_plan(self, state: AgentState) -> AgentState:
     """生成详细的工作流执行计划"""
     requirements = state.get("requirements", {})
-    
+
     plan = {
         "nodes": [
             {"type": "trigger", "subtype": "manual", "name": "Start"},
@@ -158,10 +158,10 @@ async def generate_plan(self, state: AgentState) -> AgentState:
         ],
         "error_handling": "stop_on_error"
     }
-    
+
     state["current_plan"] = plan
     state["current_step"] = "check_knowledge"
-    
+
     return state
 ```
 
@@ -173,21 +173,21 @@ async def generate_plan(self, state: AgentState) -> AgentState:
 def _setup_graph(self):
     """设置 LangGraph 工作流"""
     workflow = StateGraph(AgentState)
-    
+
     # 添加节点
     workflow.add_node("analyze_requirement", self.nodes.analyze_requirement)
     workflow.add_node("generate_plan", self.nodes.generate_plan)
     workflow.add_node("check_knowledge", self.nodes.check_knowledge)
     workflow.add_node("generate_workflow", self.nodes.generate_workflow)
     workflow.add_node("validate_workflow", self.nodes.validate_workflow)
-    
+
     # 设置入口点
     workflow.set_entry_point("analyze_requirement")
-    
+
     # 添加边
     workflow.add_edge("analyze_requirement", "generate_plan")
     workflow.add_edge("generate_plan", "check_knowledge")
-    
+
     # 条件边
     workflow.add_conditional_edges(
         "check_knowledge",
@@ -198,7 +198,7 @@ def _setup_graph(self):
             "complete": END
         }
     )
-    
+
     # 编译图
     self.graph = workflow.compile(checkpointer=self.checkpointer)
 ```
@@ -258,11 +258,11 @@ def _load_node_templates(self) -> Dict[str, Any]:
 async def generate_workflow(self, state: AgentState) -> AgentState:
     """生成完整的工作流 JSON"""
     plan = state.get("current_plan", {})
-    
+
     # 生成工作流 ID 和元数据
     workflow_id = f"workflow-{uuid.uuid4().hex[:8]}"
     current_time = int(time.time())
-    
+
     # 生成节点
     nodes = []
     for i, node_def in enumerate(plan.get("nodes", [])):
@@ -274,10 +274,10 @@ async def generate_workflow(self, state: AgentState) -> AgentState:
             parameters=self._get_node_parameters(node_def, context)
         )
         nodes.append(node)
-    
+
     # 生成连接
     connections = self._generate_connections(plan, nodes)
-    
+
     # 创建完整工作流
     workflow = Workflow(
         id=workflow_id,
@@ -287,7 +287,7 @@ async def generate_workflow(self, state: AgentState) -> AgentState:
         created_at=current_time,
         updated_at=current_time
     )
-    
+
     state["workflow"] = workflow.model_dump()
     return state
 ```
@@ -333,7 +333,7 @@ service WorkflowAgent {
 class WorkflowAgentServicer(workflow_agent_pb2_grpc.WorkflowAgentServicer):
     def __init__(self):
         self.workflow_agent = WorkflowAgent()
-    
+
     async def GenerateWorkflow(self, request, context):
         """生成工作流从自然语言描述"""
         try:
@@ -342,10 +342,10 @@ class WorkflowAgentServicer(workflow_agent_pb2_grpc.WorkflowAgentServicer):
                 context=dict(request.context),
                 user_preferences=dict(request.user_preferences)
             )
-            
+
             # 转换为 protobuf 响应
             workflow_data = self._dict_to_workflow_data(result["workflow"])
-            
+
             return workflow_agent_pb2.WorkflowGenerationResponse(
                 success=result["success"],
                 workflow=workflow_data,
@@ -405,7 +405,7 @@ async def start(self):
     self.server = grpc.aio.server(
         futures.ThreadPoolExecutor(max_workers=settings.MAX_WORKERS)
     )
-    
+
     # 添加服务
     workflow_agent_pb2_grpc.add_WorkflowAgentServicer_to_server(
         self.servicer, self.server
@@ -425,7 +425,7 @@ async def start(self):
 state["iteration_count"] = iteration_count + 1
 if iteration_count >= settings.MAX_ITERATIONS:
     state["current_step"] = "complete"
-    
+
 # 超时控制
 timeout = settings.DEFAULT_TIMEOUT
 async with asyncio.timeout(timeout):
@@ -454,11 +454,11 @@ def should_continue(self, state: AgentState) -> str:
     """确定下一步执行"""
     if state.get("workflow_errors"):
         return "error_recovery"
-    
+
     iteration_count = state.get("iteration_count", 0)
     if iteration_count >= state.get("max_iterations", 10):
         return "complete"
-    
+
     return state.get("current_step", "analyze_requirement")
 ```
 
@@ -469,11 +469,11 @@ def should_continue(self, state: AgentState) -> str:
 ```python
 class NodePlugin:
     """节点插件基类"""
-    
+
     def get_template(self) -> Dict[str, Any]:
         """返回节点模板"""
         raise NotImplementedError
-    
+
     def validate_parameters(self, params: Dict[str, Any]) -> List[str]:
         """验证节点参数"""
         raise NotImplementedError
@@ -487,7 +487,7 @@ node_registry.register("custom_node", CustomNodePlugin())
 ```python
 class ModelProvider:
     """模型提供商基类"""
-    
+
     async def generate(self, messages: List[Message]) -> str:
         raise NotImplementedError
 
@@ -504,7 +504,7 @@ async def update_config(self, new_config: Dict[str, Any]):
     for key, value in new_config.items():
         if hasattr(settings, key):
             setattr(settings, key, value)
-    
+
     # 重新初始化相关组件
     await self._reinitialize_components()
 ```
@@ -515,7 +515,7 @@ async def update_config(self, new_config: Dict[str, Any]):
 
 ```python
 # 节点执行日志
-logger.info("Node execution started", 
+logger.info("Node execution started",
            node_name="analyze_requirement",
            state_id=state.get("id"),
            iteration=state.get("iteration_count"))
@@ -555,10 +555,10 @@ SYSTEM_PROMPTS = {
     3. 所需的外部集成服务
     4. 数据处理和转换需求
     5. 人工干预和决策点
-    
+
     请以 JSON 格式返回分析结果。
     """,
-    
+
     "workflow_generation": """
     基于需求分析，生成详细的工作流配置。
     确保：
@@ -577,12 +577,12 @@ SYSTEM_PROMPTS = {
 async def test_workflow_generation():
     """测试工作流生成"""
     agent = WorkflowAgent()
-    
+
     result = await agent.generate_workflow(
         description="创建定时发送报告的工作流",
         context={"email": "test@example.com"}
     )
-    
+
     assert result["success"] is True
     assert len(result["workflow"]["nodes"]) > 0
     assert "cron" in str(result["workflow"]).lower()

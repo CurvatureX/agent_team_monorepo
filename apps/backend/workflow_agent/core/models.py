@@ -1,13 +1,16 @@
 """
 Data models for Workflow Agent
 """
-from typing import Dict, Any, List, Optional
-from pydantic import BaseModel, Field
+
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
 
 
 class NodeType(str, Enum):
     """Node types based on the technical design"""
+
     TRIGGER_NODE = "trigger"
     AI_AGENT_NODE = "ai_agent"
     EXTERNAL_ACTION_NODE = "external_action"
@@ -20,6 +23,7 @@ class NodeType(str, Enum):
 
 class ConnectionType(str, Enum):
     """Connection types"""
+
     MAIN = "main"
     AI_AGENT = "ai_agent"
     AI_CHAIN = "ai_chain"
@@ -37,12 +41,14 @@ class ConnectionType(str, Enum):
 
 class Position(BaseModel):
     """Node position"""
+
     x: float
     y: float
 
 
 class Connection(BaseModel):
     """Connection definition"""
+
     node: str
     type: ConnectionType
     index: int = 0
@@ -50,6 +56,7 @@ class Connection(BaseModel):
 
 class Node(BaseModel):
     """Workflow node"""
+
     id: str
     name: str
     type: NodeType
@@ -60,18 +67,22 @@ class Node(BaseModel):
     parameters: Dict[str, Any] = Field(default_factory=dict)
     credentials: Dict[str, str] = Field(default_factory=dict)
     on_error: str = "STOP_WORKFLOW_ON_ERROR"
-    retry_policy: Dict[str, int] = Field(default_factory=lambda: {"max_tries": 1, "wait_between_tries": 0})
+    retry_policy: Dict[str, int] = Field(
+        default_factory=lambda: {"max_tries": 1, "wait_between_tries": 0}
+    )
     notes: Dict[str, str] = Field(default_factory=dict)
     webhooks: List[str] = Field(default_factory=list)
 
 
 class ConnectionsMap(BaseModel):
     """Workflow connections mapping"""
+
     connections: Dict[str, Dict[str, List[Connection]]] = Field(default_factory=dict)
 
 
 class WorkflowSettings(BaseModel):
     """Workflow settings"""
+
     timezone: Dict[str, str] = Field(default_factory=lambda: {"default": "UTC"})
     save_execution_progress: bool = True
     save_manual_executions: bool = True
@@ -82,6 +93,7 @@ class WorkflowSettings(BaseModel):
 
 class Workflow(BaseModel):
     """Complete workflow definition"""
+
     id: str
     name: str
     active: bool = True
@@ -98,6 +110,7 @@ class Workflow(BaseModel):
 
 class WorkflowGenerationRequest(BaseModel):
     """Request for workflow generation"""
+
     description: str
     context: Optional[Dict[str, Any]] = None
     user_preferences: Optional[Dict[str, Any]] = None
@@ -105,6 +118,7 @@ class WorkflowGenerationRequest(BaseModel):
 
 class WorkflowGenerationResponse(BaseModel):
     """Response for workflow generation"""
+
     success: bool
     workflow: Optional[Workflow] = None
     suggestions: List[str] = Field(default_factory=list)
@@ -114,6 +128,7 @@ class WorkflowGenerationResponse(BaseModel):
 
 class WorkflowRefinementRequest(BaseModel):
     """Request for workflow refinement"""
+
     workflow_id: str
     feedback: str
     original_workflow: Workflow
@@ -121,6 +136,7 @@ class WorkflowRefinementRequest(BaseModel):
 
 class WorkflowRefinementResponse(BaseModel):
     """Response for workflow refinement"""
+
     success: bool
     updated_workflow: Optional[Workflow] = None
     changes: List[str] = Field(default_factory=list)

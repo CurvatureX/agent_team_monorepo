@@ -28,7 +28,7 @@ const SubtypeDropdown: React.FC<SubtypeDropdownProps> = ({
         className="fixed inset-0 z-40 bg-black bg-opacity-10"
         onClick={onCancel}
       />
-      
+
       {/* Dropdown */}
       <div
         className="fixed z-50 bg-white rounded-lg shadow-xl border border-gray-200 min-w-[280px] max-w-[320px] max-h-[400px] overflow-y-auto"
@@ -45,7 +45,7 @@ const SubtypeDropdown: React.FC<SubtypeDropdownProps> = ({
             Select a specific subtype for this node
           </p>
         </div>
-        
+
         <div className="p-2">
           {subtypes.map((subtype) => (
             <button
@@ -62,7 +62,7 @@ const SubtypeDropdown: React.FC<SubtypeDropdownProps> = ({
             </button>
           ))}
         </div>
-        
+
         <div className="p-3 border-t border-gray-100">
           <button
             onClick={onCancel}
