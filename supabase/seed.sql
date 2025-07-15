@@ -26,8 +26,8 @@ INSERT INTO system_settings (setting_key, setting_value, description, is_public)
 -- Insert common integrations
 INSERT INTO integrations (integration_id, integration_type, name, description, version, configuration, credential_config, supported_operations, required_scopes, active, verified) VALUES
 -- Google Services
-('google_calendar', 'API', 'Google Calendar', 'Google Calendar API integration for event management', '1.0.0', 
- '{"base_url": "https://www.googleapis.com/calendar/v3", "auth_type": "oauth2", "rate_limit": 100}', 
+('google_calendar', 'API', 'Google Calendar', 'Google Calendar API integration for event management', '1.0.0',
+ '{"base_url": "https://www.googleapis.com/calendar/v3", "auth_type": "oauth2", "rate_limit": 100}',
  '{"oauth2": {"client_id": "", "client_secret": "", "scopes": ["https://www.googleapis.com/auth/calendar"]}}',
  ARRAY['create_event', 'update_event', 'delete_event', 'list_events', 'get_event'],
  ARRAY['https://www.googleapis.com/auth/calendar'], true, true),
@@ -55,7 +55,7 @@ INSERT INTO integrations (integration_id, integration_type, name, description, v
  '{"base_url": "https://discord.com/api/v10", "auth_type": "bot_token", "rate_limit": 50}',
  '{"bot_token": {"token": ""}}',
  ARRAY['send_message', 'create_channel', 'manage_roles', 'get_guild_info'],
- ARRAY[], true, true),
+ '{}', true, true),
 
 -- Development Tools
 ('github', 'API', 'GitHub', 'GitHub API integration for code management', '1.0.0',
@@ -88,54 +88,54 @@ INSERT INTO integrations (integration_id, integration_type, name, description, v
  '{"base_url": "https://api.airtable.com/v0", "auth_type": "api_key", "rate_limit": 100}',
  '{"api_key": {"key": ""}}',
  ARRAY['create_record', 'update_record', 'delete_record', 'list_records', 'get_base_info'],
- ARRAY[], true, true),
+ '{}', true, true),
 
 -- Utility Services
 ('http_request', 'UTILITY', 'HTTP Request', 'Generic HTTP request utility for API calls', '1.0.0',
  '{"supports_methods": ["GET", "POST", "PUT", "DELETE", "PATCH"], "timeout": 30}',
  '{"auth_types": ["none", "basic", "bearer", "api_key", "oauth2"]}',
  ARRAY['get', 'post', 'put', 'delete', 'patch', 'head', 'options'],
- ARRAY[], true, true),
+ '{}', true, true),
 
 ('webhook', 'UTILITY', 'Webhook', 'Webhook utility for receiving HTTP callbacks', '1.0.0',
  '{"supported_methods": ["GET", "POST"], "timeout": 30}',
  '{}',
  ARRAY['receive_webhook', 'validate_signature', 'parse_payload'],
- ARRAY[], true, true),
+ '{}', true, true),
 
 -- File Processing
 ('file_processor', 'UTILITY', 'File Processor', 'File processing utility for various file operations', '1.0.0',
  '{"supported_formats": ["txt", "json", "csv", "xml", "pdf", "docx"], "max_size": 10485760}',
  '{}',
  ARRAY['read_file', 'write_file', 'convert_format', 'extract_text', 'validate_format'],
- ARRAY[], true, true),
+ '{}', true, true),
 
 -- AI Services
 ('openai', 'AI', 'OpenAI', 'OpenAI API integration for AI capabilities', '1.0.0',
  '{"base_url": "https://api.openai.com/v1", "auth_type": "api_key", "rate_limit": 100}',
  '{"api_key": {"key": ""}}',
  ARRAY['chat_completion', 'text_completion', 'image_generation', 'text_embedding', 'speech_to_text'],
- ARRAY[], true, true),
+ '{}', true, true),
 
 ('anthropic', 'AI', 'Anthropic', 'Anthropic API integration for AI capabilities', '1.0.0',
  '{"base_url": "https://api.anthropic.com/v1", "auth_type": "api_key", "rate_limit": 100}',
  '{"api_key": {"key": ""}}',
  ARRAY['chat_completion', 'text_completion'],
- ARRAY[], true, true);
+ '{}', true, true);
 
 -- Insert sample workflow templates
 INSERT INTO workflows (
-    id, 
-    user_id, 
-    name, 
-    description, 
-    active, 
-    workflow_data, 
-    settings, 
-    static_data, 
-    version, 
-    tags, 
-    is_template, 
+    id,
+    user_id,
+    name,
+    description,
+    active,
+    workflow_data,
+    settings,
+    static_data,
+    version,
+    tags,
+    is_template,
     template_category,
     created_at,
     updated_at
@@ -382,4 +382,4 @@ INSERT INTO system_settings (setting_key, setting_value, description, is_public)
 -- Storage limits
 ('max_workflows_per_user', '50', 'Maximum workflows per user', true),
 ('max_executions_history', '1000', 'Maximum execution history to keep', true),
-('cleanup_old_executions_days', '30', 'Days to keep old execution records', false); 
+('cleanup_old_executions_days', '30', 'Days to keep old execution records', false);
