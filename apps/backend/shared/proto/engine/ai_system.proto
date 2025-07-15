@@ -1,0 +1,181 @@
+syntax = "proto3";
+
+package workflow_engine;
+
+option go_package = "github.com/agent-team/workflow_engine/proto";
+
+// ============================================================================
+// AI 系统模块 (AI System Module)
+// ============================================================================
+
+// AI Agent 配置
+message AIAgentConfig {
+  string agent_type = 1;
+  string prompt = 2;
+  AILanguageModel language_model = 3;
+  repeated AITool tools = 4;
+  AIMemory memory = 5;
+  map<string, string> parameters = 6;
+}
+
+// AI 语言模型
+message AILanguageModel {
+  string model_type = 1;          // openai, anthropic, local
+  string model_name = 2;          // gpt-4, claude-3, etc.
+  float temperature = 3;
+  int32 max_tokens = 4;
+  float top_p = 5;
+  float frequency_penalty = 6;
+  float presence_penalty = 7;
+  repeated string stop_sequences = 8;
+  map<string, string> parameters = 9;
+}
+
+// AI 工具
+message AITool {
+  string tool_type = 1;           // function, api, mcp
+  string tool_name = 2;
+  string description = 3;
+  string function_schema = 4;     // JSON schema for function tools
+  string endpoint_url = 5;        // URL for API tools
+  map<string, string> parameters = 6;
+  map<string, string> credentials = 7;
+}
+
+// AI 记忆
+message AIMemory {
+  string memory_type = 1;         // buffer, vector, knowledge
+  int32 max_tokens = 2;
+  int32 max_messages = 3;
+  string vector_store_type = 4;   // pinecone, chroma, faiss
+  string embedding_model = 5;     // text-embedding-ada-002, etc.
+  map<string, string> parameters = 6;
+}
+
+// AI Agent 请求
+message AIAgentRequest {
+  string agent_id = 1;
+  string user_input = 2;
+  string conversation_id = 3;
+  map<string, string> context = 4;
+  AIAgentConfig config = 5;
+  bool stream_response = 6;
+}
+
+// AI Agent 响应
+message AIAgentResponse {
+  string agent_id = 1;
+  string response_text = 2;
+  string conversation_id = 3;
+  repeated AIToolCall tool_calls = 4;
+  AIUsageStats usage_stats = 5;
+  map<string, string> metadata = 6;
+  bool is_final = 7;              // for streaming responses
+}
+
+// AI 工具调用
+message AIToolCall {
+  string tool_name = 1;
+  string function_name = 2;
+  string arguments = 3;           // JSON string
+  string result = 4;              // JSON string
+  bool success = 5;
+  string error_message = 6;
+}
+
+// AI 使用统计
+message AIUsageStats {
+  int32 prompt_tokens = 1;
+  int32 completion_tokens = 2;
+  int32 total_tokens = 3;
+  float cost_usd = 4;
+  int64 response_time_ms = 5;
+}
+
+// ============================================================================
+// 工作流生成相关消息
+// ============================================================================
+
+// 工作流生成请求
+message GenerateWorkflowRequest {
+  string description = 1;
+  string user_id = 2;
+  map<string, string> context = 3;
+  repeated string preferred_tools = 4;
+  repeated string constraints = 5;
+}
+
+// 工作流生成响应
+message GenerateWorkflowResponse {
+  string workflow_id = 1;
+  string workflow_json = 2;       // JSON string of the workflow
+  repeated string suggestions = 3;
+  repeated string missing_info = 4;
+  bool success = 5;
+  string error_message = 6;
+  AIUsageStats usage_stats = 7;
+}
+
+// 工作流优化请求
+message RefineWorkflowRequest {
+  string workflow_id = 1;
+  string feedback = 2;
+  string original_workflow_json = 3;
+  string user_id = 4;
+  map<string, string> context = 5;
+}
+
+// 工作流优化响应
+message RefineWorkflowResponse {
+  string workflow_id = 1;
+  string updated_workflow_json = 2;
+  repeated string changes = 3;
+  bool success = 4;
+  string error_message = 5;
+  AIUsageStats usage_stats = 6;
+}
+
+// ============================================================================
+// 调试和验证相关消息
+// ============================================================================
+
+// 工作流验证请求
+message ValidateWorkflowRequest {
+  string workflow_json = 1;
+  string validation_type = 2;     // syntax, logic, connectivity
+  map<string, string> context = 3;
+}
+
+// 工作流验证响应
+message ValidateWorkflowResponse {
+  bool is_valid = 1;
+  repeated ValidationError errors = 2;
+  repeated string warnings = 3;
+  repeated string suggestions = 4;
+}
+
+// 验证错误
+message ValidationError {
+  string error_type = 1;          // syntax, logic, connectivity
+  string message = 2;
+  string node_id = 3;
+  string field = 4;
+  int32 line_number = 5;
+  map<string, string> context = 6;
+}
+
+// 节点测试请求
+message TestNodeRequest {
+  string node_json = 1;           // JSON string of the node
+  map<string, string> input_data = 2;
+  map<string, string> test_context = 3;
+}
+
+// 节点测试响应
+message TestNodeResponse {
+  bool success = 1;
+  map<string, string> output_data = 2;
+  repeated string logs = 3;
+  string error_message = 4;
+  int64 execution_time_ms = 5;
+} 
