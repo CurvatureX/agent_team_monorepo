@@ -74,6 +74,10 @@ app.add_middleware(
 # Include routers
 app.include_router(workflow.router, prefix="/api/v1/workflow", tags=["workflow"])
 
+# Import and include OAuth2 router
+from .routers import oauth
+app.include_router(oauth.router, prefix="/api/v1/oauth2", tags=["oauth2"])
+
 
 @app.get("/health")
 async def health_check():

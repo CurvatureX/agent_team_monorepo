@@ -40,7 +40,7 @@ def main():
     
     # Generate Python code
     cmd = [
-        "python", "-m", "grpc_tools.protoc",
+        "python3", "-m", "grpc_tools.protoc",
         f"--proto_path={proto_dir}",
         f"--python_out={output_dir}",
         f"--grpc_python_out={output_dir}",

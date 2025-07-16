@@ -55,6 +55,12 @@ service IntegrationService {
   
   // 工具执行
   rpc ExecuteTool(ToolExecutionRequest) returns (ToolExecutionResponse);
+  
+  // OAuth2 凭证管理
+  rpc StoreOAuth2Credential(StoreOAuth2CredentialRequest) returns (StoreOAuth2CredentialResponse);
+  rpc RefreshOAuth2Token(RefreshOAuth2TokenRequest) returns (RefreshOAuth2TokenResponse);
+  rpc GetCredential(GetCredentialRequest) returns (GetCredentialResponse);
+  rpc DeleteCredential(DeleteCredentialRequest) returns (DeleteCredentialResponse);
 }
 
 // 触发器管理服务
@@ -294,4 +300,70 @@ enum HealthStatus {
   SERVING = 1;
   NOT_SERVING = 2;
   SERVICE_UNKNOWN = 3;
+}
+
+// ============================================================================
+// OAuth2 凭证管理请求和响应消息
+// ============================================================================
+
+// 存储 OAuth2 凭证请求
+message StoreOAuth2CredentialRequest {
+  string user_id = 1;
+  string provider = 2;                // google_calendar, github, slack
+  string integration_id = 3;
+  OAuth2Credential credential = 4;
+  map<string, string> metadata = 5;
+}
+
+// 存储 OAuth2 凭证响应
+message StoreOAuth2CredentialResponse {
+  bool success = 1;
+  string credential_id = 2;
+  string message = 3;
+  string error_code = 4;
+}
+
+// 刷新 OAuth2 Token 请求
+message RefreshOAuth2TokenRequest {
+  string user_id = 1;
+  string provider = 2;
+  string integration_id = 3;
+  string refresh_token = 4;
+}
+
+// 刷新 OAuth2 Token 响应
+message RefreshOAuth2TokenResponse {
+  bool success = 1;
+  OAuth2Credential credential = 2;
+  string message = 3;
+  string error_code = 4;
+}
+
+// 获取凭证请求
+message GetCredentialRequest {
+  string user_id = 1;
+  string provider = 2;
+  string integration_id = 3;
+}
+
+// 获取凭证响应
+message GetCredentialResponse {
+  bool found = 1;
+  CredentialConfig credential = 2;
+  string message = 3;
+  string error_code = 4;
+}
+
+// 删除凭证请求
+message DeleteCredentialRequest {
+  string user_id = 1;
+  string provider = 2;
+  string integration_id = 3;
+}
+
+// 删除凭证响应
+message DeleteCredentialResponse {
+  bool success = 1;
+  string message = 2;
+  string error_code = 3;
 } 

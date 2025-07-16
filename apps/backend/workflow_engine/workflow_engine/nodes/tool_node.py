@@ -6,10 +6,12 @@ Handles tool integrations including MCP tools, calendar, email, HTTP tools, etc.
 
 import json
 import time
+import asyncio
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 
 from .base import BaseNodeExecutor, NodeExecutionContext, NodeExecutionResult, ExecutionStatus
+from ..core.audit import get_audit_logger, AuditEventType, AuditSeverity
 
 
 class ToolNodeExecutor(BaseNodeExecutor):
@@ -21,7 +23,8 @@ class ToolNodeExecutor(BaseNodeExecutor):
             "MCP",
             "CALENDAR",
             "EMAIL",
-            "HTTP"
+            "HTTP",
+            "GITHUB"
         ]
     
     def validate(self, node: Any) -> List[str]:
@@ -74,6 +77,8 @@ class ToolNodeExecutor(BaseNodeExecutor):
                 return self._execute_email_tool(context, logs, start_time)
             elif subtype == "HTTP":
                 return self._execute_http_tool(context, logs, start_time)
+            elif subtype == "GITHUB":
+                return self._execute_github_tool(context, logs, start_time)
             else:
                 return self._create_error_result(
                     f"Unsupported tool subtype: {subtype}",
@@ -120,20 +125,53 @@ class ToolNodeExecutor(BaseNodeExecutor):
         """Execute calendar tool."""
         calendar_provider = context.get_parameter("calendar_provider")
         action = context.get_parameter("action")
+        user_id = context.get_parameter("user_id", "unknown")
         
         logs.append(f"Executing {calendar_provider} calendar tool with action: {action}")
         
-        # Execute calendar action
-        if action == "create_event":
-            result = self._create_calendar_event(context, calendar_provider)
-        elif action == "list_events":
-            result = self._list_calendar_events(context, calendar_provider)
-        elif action == "update_event":
-            result = self._update_calendar_event(context, calendar_provider)
-        elif action == "delete_event":
-            result = self._delete_calendar_event(context, calendar_provider)
-        else:
-            result = {"error": f"Unknown calendar action: {action}"}
+        # Get audit logger
+        audit_logger = get_audit_logger()
+        execution_time = 0
+        success = True
+        error_message = None
+        
+        try:
+            # Execute calendar action
+            if action == "create_event":
+                result = self._create_calendar_event(context, calendar_provider)
+            elif action == "list_events":
+                result = self._list_calendar_events(context, calendar_provider)
+            elif action == "update_event":
+                result = self._update_calendar_event(context, calendar_provider)
+            elif action == "delete_event":
+                result = self._delete_calendar_event(context, calendar_provider)
+            else:
+                success = False
+                error_message = f"Unknown calendar action: {action}"
+                result = {"error": error_message}
+                
+            execution_time = (time.time() - start_time) * 1000  # Convert to milliseconds
+            
+        except Exception as e:
+            success = False
+            error_message = str(e)
+            execution_time = (time.time() - start_time) * 1000
+            result = {"error": error_message}
+        
+        # Log tool execution for audit
+        asyncio.create_task(audit_logger.log_tool_execution(
+            tool_type="calendar",
+            provider=calendar_provider,
+            user_id=user_id,
+            execution_time=execution_time / 1000,  # Convert back to seconds for audit
+            success=success,
+            error_message=error_message,
+            details={
+                "action": action,
+                "input_data_keys": list(context.input_data.keys()) if context.input_data else [],
+                "result_keys": list(result.keys()) if isinstance(result, dict) else None
+            }
+        ))
         
         output_data = {
             "tool_type": "calendar",
@@ -150,66 +188,105 @@ class ToolNodeExecutor(BaseNodeExecutor):
         )
     
     def _execute_email_tool(self, context: NodeExecutionContext, logs: List[str], start_time: float) -> NodeExecutionResult:
-        """Execute email tool."""
-        email_provider = context.get_parameter("email_provider")
-        action = context.get_parameter("action")
+        """Execute email tool (implemented as Slack messaging)."""
+        provider = context.get_parameter("provider", "slack")
+        action = context.get_parameter("action", "send_message")
         
-        logs.append(f"Executing {email_provider} email tool with action: {action}")
+        logs.append(f"Executing {provider} email tool with action: {action}")
         
-        # Execute email action
-        if action == "send_email":
-            result = self._send_email(context, email_provider)
-        elif action == "read_emails":
-            result = self._read_emails(context, email_provider)
-        elif action == "search_emails":
-            result = self._search_emails(context, email_provider)
-        elif action == "delete_email":
-            result = self._delete_email(context, email_provider)
-        else:
-            result = {"error": f"Unknown email action: {action}"}
-        
-        output_data = {
-            "tool_type": "email",
-            "email_provider": email_provider,
-            "action": action,
-            "result": result,
-            "executed_at": datetime.now().isoformat()
-        }
-        
-        return self._create_success_result(
-            output_data=output_data,
-            execution_time=time.time() - start_time,
-            logs=logs
-        )
+        try:
+            # Import required modules locally to avoid circular imports
+            import asyncio
+            from workflow_engine.clients.slack_client import SlackClient
+            from workflow_engine.services.credential_service import CredentialService
+            
+            # Execute Slack action (treating as email-like functionality)
+            if action == "send_email" or action == "send_message":
+                result = asyncio.run(self._send_slack_message_sync(context))
+            else:
+                result = {"error": f"Unknown email action: {action}. Supported: send_email/send_message"}
+            
+            output_data = {
+                "tool_type": "email",
+                "provider": provider,
+                "action": action,
+                "result": result,
+                "executed_at": datetime.now().isoformat()
+            }
+            
+            return self._create_success_result(
+                output_data=output_data,
+                execution_time=time.time() - start_time,
+                logs=logs
+            )
+            
+        except Exception as e:
+            logs.append(f"Email tool execution failed: {str(e)}")
+            return self._create_error_result(
+                f"Email tool execution failed: {str(e)}",
+                error_details={"exception": str(e), "provider": provider, "action": action},
+                execution_time=time.time() - start_time,
+                logs=logs
+            )
     
     def _execute_http_tool(self, context: NodeExecutionContext, logs: List[str], start_time: float) -> NodeExecutionResult:
-        """Execute HTTP tool."""
+        """Execute HTTP tool with real HTTP requests."""
         url = context.get_parameter("url")
         method = context.get_parameter("method", "GET")
         headers = context.get_parameter("headers", {})
-        auth = context.get_parameter("auth", {})
+        auth_config = context.get_parameter("auth", {})
         
         logs.append(f"Executing HTTP {method} request to {url}")
         
-        # Simulate HTTP request
-        http_result = self._simulate_http_request(url, method, headers, auth, context.input_data)
-        
-        output_data = {
-            "tool_type": "http",
-            "url": url,
-            "method": method,
-            "headers": headers,
-            "auth": auth,
-            "request_data": context.input_data,
-            "http_result": http_result,
-            "executed_at": datetime.now().isoformat()
-        }
-        
-        return self._create_success_result(
-            output_data=output_data,
-            execution_time=time.time() - start_time,
-            logs=logs
-        )
+        try:
+            # Import HTTPClient locally to avoid circular imports
+            from workflow_engine.clients.http_client import HTTPClient
+            
+            # Create HTTP client
+            http_client = HTTPClient()
+            
+            # Prepare request data
+            request_data = context.input_data
+            json_data = context.get_parameter("json", None)
+            
+            # Make HTTP request
+            http_result = http_client.request(
+                method=method,
+                url=url,
+                auth_config=auth_config if auth_config else None,
+                headers=headers if headers else None,
+                data=request_data if request_data else None,
+                json_data=json_data if json_data else None
+            )
+            
+            logs.append(f"HTTP request completed with status {http_result.get('status_code')}")
+            
+            output_data = {
+                "tool_type": "http",
+                "url": url,
+                "method": method,
+                "headers": headers,
+                "auth_config": auth_config,
+                "request_data": request_data,
+                "json_data": json_data,
+                "http_result": http_result,
+                "executed_at": datetime.now().isoformat()
+            }
+            
+            return self._create_success_result(
+                output_data=output_data,
+                execution_time=time.time() - start_time,
+                logs=logs
+            )
+            
+        except Exception as e:
+            logs.append(f"HTTP request failed: {str(e)}")
+            return self._create_error_result(
+                f"HTTP request failed: {str(e)}",
+                error_details={"exception": str(e), "url": url, "method": method},
+                execution_time=time.time() - start_time,
+                logs=logs
+            )
     
     def _simulate_mcp_tool_call(self, tool_name: str, action: str, parameters: Dict[str, Any], input_data: Dict[str, Any]) -> Dict[str, Any]:
         """Simulate MCP tool call."""
@@ -455,19 +532,261 @@ class ToolNodeExecutor(BaseNodeExecutor):
             "success": True
         }
     
-    def _simulate_http_request(self, url: str, method: str, headers: Dict[str, str], auth: Dict[str, str], data: Dict[str, Any]) -> Dict[str, Any]:
-        """Simulate HTTP request."""
+    async def _send_slack_message_sync(self, context: NodeExecutionContext) -> Dict[str, Any]:
+        """Send Slack message (async helper method)."""
+        from workflow_engine.clients.slack_client import SlackClient
+        from workflow_engine.services.credential_service import CredentialService
+        
+        # Get credentials for Slack
+        credential_service = CredentialService()
+        user_id = context.get_parameter("user_id", "default_user")
+        credentials = await credential_service.get_credential(user_id, "slack")
+        
+        if not credentials:
+            raise Exception("Slack credentials not found")
+        
+        # Create Slack client
+        slack_client = SlackClient(credentials)
+        
+        # Get message parameters
+        channel = context.get_parameter("channel", context.input_data.get("recipient", "#general"))
+        message = context.input_data.get("message", context.input_data.get("body", ""))
+        subject = context.input_data.get("subject", "")
+        
+        # Format message (add subject if provided)
+        if subject:
+            formatted_message = f"**{subject}**\n{message}"
+        else:
+            formatted_message = message
+        
+        # Send Slack message
+        result = await slack_client.send_message(channel, formatted_message)
+        
+        # Format response to match email-like structure
         return {
-            "url": url,
-            "method": method,
-            "headers": headers,
-            "auth": auth,
-            "request_data": data,
-            "response": {
-                "status_code": 200,
-                "headers": {"content-type": "application/json"},
-                "body": {"success": True, "message": "HTTP request completed successfully"},
-                "response_time": 0.5
-            },
+            "action": "send_message",
+            "channel": channel,
+            "message": formatted_message,
+            "slack_response": result,
+            "sent_at": datetime.now().isoformat(),
+            "success": result.get("ok", False)
+        }
+    
+    def _execute_github_tool(self, context: NodeExecutionContext, logs: List[str], start_time: float) -> NodeExecutionResult:
+        """Execute GitHub tool with real GitHub API calls."""
+        import asyncio
+        
+        action = context.get_parameter("action")
+        repository = context.get_parameter("repository")
+        user_id = context.get_parameter("user_id", "unknown")
+        
+        logs.append(f"Executing GitHub {action} on repository {repository}")
+        
+        # Get audit logger
+        audit_logger = get_audit_logger()
+        execution_time = 0
+        success = True
+        error_message = None
+        
+        try:
+            # Execute GitHub action asynchronously
+            result = asyncio.run(self._execute_github_action_sync(context, action, repository))
+            execution_time = (time.time() - start_time) * 1000
+            
+            output_data = {
+                "tool_type": "github",
+                "repository": repository,
+                "action": action,
+                "result": result,
+                "executed_at": datetime.now().isoformat()
+            }
+            
+            # Log tool execution for audit
+            asyncio.create_task(audit_logger.log_tool_execution(
+                tool_type="github",
+                provider="github",
+                user_id=user_id,
+                execution_time=execution_time / 1000,
+                success=success,
+                error_message=error_message,
+                details={
+                    "action": action,
+                    "repository": repository,
+                    "input_data_keys": list(context.input_data.keys()) if context.input_data else [],
+                    "result_keys": list(result.keys()) if isinstance(result, dict) else None
+                }
+            ))
+            
+            return self._create_success_result(
+                output_data=output_data,
+                execution_time=time.time() - start_time,
+                logs=logs
+            )
+            
+        except Exception as e:
+            success = False
+            error_message = str(e)
+            execution_time = (time.time() - start_time) * 1000
+            
+            logs.append(f"GitHub tool execution failed: {error_message}")
+            
+            # Log tool execution failure for audit
+            asyncio.create_task(audit_logger.log_tool_execution(
+                tool_type="github",
+                provider="github",
+                user_id=user_id,
+                execution_time=execution_time / 1000,
+                success=success,
+                error_message=error_message,
+                details={
+                    "action": action,
+                    "repository": repository,
+                    "exception_type": type(e).__name__
+                }
+            ))
+            
+            return self._create_error_result(
+                f"GitHub tool execution failed: {error_message}",
+                error_details={"exception": error_message, "repository": repository, "action": action},
+                execution_time=time.time() - start_time,
+                logs=logs
+            )
+    
+    async def _execute_github_action_sync(self, context: NodeExecutionContext, action: str, repository: str) -> Dict[str, Any]:
+        """Execute GitHub action (async helper method)."""
+        from workflow_engine.clients.github_client import GitHubClient
+        from workflow_engine.services.credential_service import CredentialService
+        
+        # Get credentials for GitHub
+        credential_service = CredentialService()
+        user_id = context.get_parameter("user_id", "default_user")
+        credentials = await credential_service.get_credential(user_id, "github")
+        
+        if not credentials:
+            raise Exception("GitHub credentials not found")
+        
+        # Create GitHub client
+        github_client = GitHubClient(credentials)
+        
+        # Execute GitHub action based on action type
+        if action == "create_issue":
+            title = context.input_data.get("title", "New Issue")
+            body = context.input_data.get("body", "")
+            labels = context.input_data.get("labels", [])
+            assignees = context.input_data.get("assignees", [])
+            
+            result = await github_client.create_issue(
+                repo=repository,
+                title=title,
+                body=body,
+                labels=labels,
+                assignees=assignees
+            )
+            
+        elif action == "create_pull_request":
+            title = context.input_data.get("title", "New Pull Request")
+            head = context.input_data.get("head", context.input_data.get("branch", "feature/new-feature"))
+            base = context.input_data.get("base", "main")
+            body = context.input_data.get("body", "")
+            draft = context.input_data.get("draft", False)
+            
+            result = await github_client.create_pull_request(
+                repo=repository,
+                title=title,
+                head=head,
+                base=base,
+                body=body,
+                draft=draft
+            )
+            
+        elif action == "get_repository_info":
+            result = await github_client.get_repository_info(repository)
+            
+        elif action == "create_file":
+            path = context.input_data.get("path", context.input_data.get("file_path"))
+            content = context.input_data.get("content", "")
+            message = context.input_data.get("message", context.input_data.get("commit_message", "Create file"))
+            branch = context.input_data.get("branch", "main")
+            
+            if not path:
+                raise Exception("File path is required for create_file action")
+            
+            result = await github_client.create_file(
+                repo=repository,
+                path=path,
+                content=content,
+                message=message,
+                branch=branch
+            )
+            
+        elif action == "update_file":
+            path = context.input_data.get("path", context.input_data.get("file_path"))
+            content = context.input_data.get("content", "")
+            message = context.input_data.get("message", context.input_data.get("commit_message", "Update file"))
+            sha = context.input_data.get("sha")
+            branch = context.input_data.get("branch", "main")
+            
+            if not path:
+                raise Exception("File path is required for update_file action")
+            if not sha:
+                raise Exception("File SHA is required for update_file action")
+            
+            result = await github_client.update_file(
+                repo=repository,
+                path=path,
+                content=content,
+                message=message,
+                sha=sha,
+                branch=branch
+            )
+            
+        elif action == "get_file_content":
+            path = context.input_data.get("path", context.input_data.get("file_path"))
+            branch = context.input_data.get("branch", "main")
+            
+            if not path:
+                raise Exception("File path is required for get_file_content action")
+            
+            result = await github_client.get_file_content(
+                repo=repository,
+                path=path,
+                branch=branch
+            )
+            
+        elif action == "search_repositories":
+            query = context.input_data.get("query", "")
+            limit = context.input_data.get("limit", 10)
+            sort = context.input_data.get("sort", "updated")
+            
+            if not query:
+                raise Exception("Search query is required for search_repositories action")
+            
+            result = await github_client.search_repositories(
+                query=query,
+                limit=limit,
+                sort=sort
+            )
+            
+        elif action == "list_issues":
+            state = context.input_data.get("state", "open")
+            limit = context.input_data.get("limit", 30)
+            
+            result = await github_client.list_repository_issues(
+                repo=repository,
+                state=state,
+                limit=limit
+            )
+            
+        else:
+            raise Exception(f"Unknown GitHub action: {action}")
+        
+        # Close the client
+        await github_client.close()
+        
+        return {
+            "action": action,
+            "repository": repository,
+            "github_response": result,
             "success": True
-        } 
+        }
+    
