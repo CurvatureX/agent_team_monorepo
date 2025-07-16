@@ -59,13 +59,17 @@ class WorkflowService:
             # Save to database
             db = next(get_db())
             try:
+                # Convert protobuf to JSON for JSONB storage
+                from google.protobuf.json_format import MessageToDict
+                workflow_json = MessageToDict(workflow)
+                
                 db_workflow = WorkflowModel(
                     id=workflow.id,
                     user_id=request.user_id,
                     name=workflow.name,
                     description=workflow.description,
                     active=workflow.active,
-                    workflow_data=workflow,  # Store protobuf as JSONB
+                    workflow_data=workflow_json,  # Store protobuf as JSONB
                     created_at=workflow.created_at,
                     updated_at=workflow.updated_at,
                     version=workflow.version,
@@ -120,8 +124,9 @@ class WorkflowService:
                     )
                 
                 # Convert database model to protobuf
+                from google.protobuf.json_format import ParseDict
                 workflow = workflow_pb2.Workflow()
-                workflow.CopyFrom(db_workflow.workflow_data)
+                ParseDict(db_workflow.workflow_data, workflow)
                 
                 return workflow_service_pb2.GetWorkflowResponse(
                     workflow=workflow,
@@ -166,8 +171,9 @@ class WorkflowService:
                     )
                 
                 # Update workflow protobuf
+                from google.protobuf.json_format import ParseDict, MessageToDict
                 workflow = workflow_pb2.Workflow()
-                workflow.CopyFrom(db_workflow.workflow_data)
+                ParseDict(db_workflow.workflow_data, workflow)
                 
                 if request.name:
                     workflow.name = request.name
@@ -190,11 +196,14 @@ class WorkflowService:
                 workflow.active = request.active
                 workflow.updated_at = int(datetime.now().timestamp())
                 
+                # Convert protobuf to JSON for database storage
+                workflow_json = MessageToDict(workflow)
+                
                 # Update database
                 db_workflow.name = workflow.name
                 db_workflow.description = workflow.description
                 db_workflow.active = workflow.active
-                db_workflow.workflow_data = workflow
+                db_workflow.workflow_data = workflow_json
                 db_workflow.updated_at = workflow.updated_at
                 db_workflow.tags = list(workflow.tags)
                 
@@ -287,12 +296,15 @@ class WorkflowService:
                 )
                 
                 # Apply filters
-                if request.active is not None:
-                    query = query.filter(WorkflowModel.active == request.active)
+                if request.active_only:
+                    query = query.filter(WorkflowModel.active == True)
                 
                 if request.tags:
                     for tag in request.tags:
                         query = query.filter(WorkflowModel.tags.contains([tag]))
+                
+                # Order by updated_at desc (must be before limit/offset)
+                query = query.order_by(WorkflowModel.updated_at.desc())
                 
                 # Apply pagination
                 if request.limit > 0:
@@ -300,23 +312,19 @@ class WorkflowService:
                 if request.offset > 0:
                     query = query.offset(request.offset)
                 
-                # Order by updated_at desc
-                query = query.order_by(WorkflowModel.updated_at.desc())
-                
                 db_workflows = query.all()
                 
                 # Convert to protobuf
+                from google.protobuf.json_format import ParseDict
                 workflows = []
                 for db_workflow in db_workflows:
                     workflow = workflow_pb2.Workflow()
-                    workflow.CopyFrom(db_workflow.workflow_data)
+                    ParseDict(db_workflow.workflow_data, workflow)
                     workflows.append(workflow)
                 
                 return workflow_service_pb2.ListWorkflowsResponse(
                     workflows=workflows,
-                    total=len(workflows),
-                    success=True,
-                    message="Workflows retrieved successfully"
+                    total_count=len(workflows)
                 )
                 
             finally:
@@ -327,6 +335,6 @@ class WorkflowService:
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(f"Failed to list workflows: {str(e)}")
             return workflow_service_pb2.ListWorkflowsResponse(
-                success=False,
-                message=f"Error: {str(e)}"
+                workflows=[],
+                total_count=0
             ) 
