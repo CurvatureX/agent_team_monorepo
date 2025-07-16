@@ -52,14 +52,14 @@ class GRPCServer:
         )
         
         # Add health check service
-        from grpc_health.v1 import health_pb2_grpc
+        from grpc_health.v1 import health_pb2_grpc, health_pb2
         from grpc_health.v1.health import HealthServicer
         health_servicer = HealthServicer()
         health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
         
         # Set all services as serving
-        health_servicer.set("", health_pb2_grpc.HealthCheckResponse.SERVING)
-        health_servicer.set("WorkflowService", health_pb2_grpc.HealthCheckResponse.SERVING)
+        health_servicer.set("", health_pb2.HealthCheckResponse.ServingStatus.SERVING)
+        health_servicer.set("WorkflowService", health_pb2.HealthCheckResponse.ServingStatus.SERVING)
         
         # Add listening port
         listen_addr = f"{self.settings.grpc_host}:{self.settings.grpc_port}"

@@ -13,7 +13,7 @@ from workflow_engine.proto import workflow_service_pb2
 from workflow_engine.proto import execution_pb2
 from workflow_engine.services.workflow_service import WorkflowService
 from workflow_engine.services.execution_service import ExecutionService
-from workflow_engine.services.validation_service import ValidationService
+# from workflow_engine.services.validation_service import ValidationService  # 暂时注释掉
 from workflow_engine.core.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ class MainWorkflowService(workflow_service_pb2_grpc.WorkflowServiceServicer):
         self.logger = logger
         self.workflow_service = WorkflowService()
         self.execution_service = ExecutionService()
-        self.validation_service = ValidationService()
+        # self.validation_service = ValidationService()  # 暂时禁用
 
     # Workflow CRUD operations - delegate to WorkflowService
     def CreateWorkflow(
@@ -103,19 +103,12 @@ class MainWorkflowService(workflow_service_pb2_grpc.WorkflowServiceServicer):
         """Get execution history for a workflow."""
         return self.execution_service.get_execution_history(request, context)
 
-    # Validation operations - delegate to ValidationService
-    def ValidateWorkflow(
-        self, 
-        request: workflow_service_pb2.ValidateWorkflowRequest, 
-        context: grpc.ServicerContext
-    ) -> workflow_service_pb2.ValidateWorkflowResponse:
-        """Validate a workflow."""
-        return self.validation_service.validate_workflow(request, context)
-
-    def TestNode(
-        self, 
-        request: workflow_service_pb2.TestNodeRequest, 
-        context: grpc.ServicerContext
-    ) -> workflow_service_pb2.TestNodeResponse:
-        """Test a single node."""
-        return self.validation_service.test_node(request, context) 
+    # Validation operations - temporarily disabled due to protobuf mismatch
+    # TODO: Re-enable when protobuf definitions are updated
+    # def ValidateWorkflow(self, request, context):
+    #     """Validate a workflow."""
+    #     pass
+    
+    # def TestNode(self, request, context):
+    #     """Test a single node.""" 
+    #     pass 

@@ -1,51 +1,38 @@
-# Workflow Engine Makefile
+.PHONY: help install install-dev test lint format clean proto
 
-.PHONY: help install proto clean test run dev
-
-# Default target
 help:
-	@echo "Available targets:"
-	@echo "  install    - Install dependencies"
-	@echo "  proto      - Generate Python code from protobuf files"
-	@echo "  clean      - Clean generated files"
-	@echo "  test       - Run tests"
-	@echo "  run        - Run the application"
-	@echo "  dev        - Run in development mode"
-	@echo "  db-init    - Initialize database"
-	@echo "  db-migrate - Create database migration"
-	@echo "  db-upgrade - Apply database migrations"
-	@echo "  db-reset   - Reset database"
+	@echo "Available commands:"
+	@echo "  install     - Install production dependencies"
+	@echo "  install-dev - Install development dependencies"
+	@echo "  test        - Run tests"
+	@echo "  lint        - Run linting"
+	@echo "  format      - Format code"
+	@echo "  proto       - Generate Python code from protobuf files"
+	@echo "  clean       - Clean build artifacts"
 
-# Install dependencies
 install:
 	pip install -e .
 
-# Generate protobuf Python code
-proto:
-	python scripts/generate_proto.py
+install-dev:
+	pip install -e ".[dev]"
 
-# Clean generated files
-clean:
-	rm -rf workflow_engine/proto/*.py
-	rm -rf workflow_engine/proto/__pycache__
-	find . -name "*.pyc" -delete
-	find . -name "__pycache__" -delete
-
-# Run tests
 test:
-	pytest tests/ -v
+	pytest
 
-# Run application
-run:
-	uvicorn workflow_engine.main:app --host 0.0.0.0 --port 8000
+lint:
+	flake8 workflow_engine/
+	mypy workflow_engine/
 
-# Run in development mode
-dev:
-	uvicorn workflow_engine.main:app --host 0.0.0.0 --port 8000 --reload
+format:
+	black workflow_engine/
+	isort workflow_engine/
+
+proto:
+	cd protobuf && python generate_python.py
 
 # Database commands
 db-init:
-	alembic init alembic
+	alembic upgrade head
 
 db-migrate:
 	alembic revision --autogenerate -m "$(MSG)"
@@ -53,6 +40,24 @@ db-migrate:
 db-upgrade:
 	alembic upgrade head
 
+db-downgrade:
+	alembic downgrade -1
+
+db-schema:
+	psql $(DATABASE_URL) < database/schema.sql
+
+db-seed:
+	psql $(DATABASE_URL) < database/seed_data.sql
+
 db-reset:
-	alembic downgrade base
-	alembic upgrade head 
+	dropdb --if-exists workflow_engine && createdb workflow_engine
+	$(MAKE) db-schema
+	$(MAKE) db-seed
+
+clean:
+	rm -rf build/
+	rm -rf dist/
+	rm -rf *.egg-info/
+	find . -type d -name __pycache__ -exec rm -rf {} +
+	find . -type f -name "*.pyc" -delete
+	rm -rf workflow_engine/proto/ 
