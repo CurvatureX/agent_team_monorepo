@@ -19,9 +19,9 @@ from langchain_openai import ChatOpenAI
 backend_path = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(backend_path))
 
-from agents.state import AgentState, WorkflowGenerationState
 from shared.prompts.loader import PromptLoader
 
+from agents.state import AgentState, WorkflowGenerationState
 from core.config import settings
 from core.models import ConnectionsMap, Node, NodeType, Position, Workflow
 
@@ -270,6 +270,142 @@ class WorkflowAgentNodes:
         logger.info("Knowledge check completed", missing_info=missing_info)
         return state
 
+    async def capability_scan(self, state: AgentState) -> AgentState:
+        """Quick capability scanning to identify implementation gaps"""
+        logger.info("Performing capability scan")
+
+        state = self._initialize_state_defaults(state)
+        user_requirement = state.get("user_input", "")
+
+        system_prompt, user_prompt = await asyncio.to_thread(
+            self.prompt_loader.get_system_and_user_prompts,
+            "capability_scan",
+            user_requirement=user_requirement,
+            context=state.get("context", {}),
+        )
+
+        messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
+
+        try:
+            response = await self.llm.ainvoke(messages)
+            capability_analysis = json.loads(response.content)
+
+            state["capability_analysis"] = capability_analysis
+            state["current_step"] = "negotiation_engine"
+
+            logger.info("Capability scan completed", analysis=capability_analysis)
+
+        except Exception as e:
+            logger.error("Failed to perform capability scan", error=str(e))
+            state["workflow_errors"].append(f"Capability scan failed: {str(e)}")
+            state["current_step"] = "error"
+
+        return state
+
+    async def negotiation_engine(self, state: AgentState) -> AgentState:
+        """Intelligent negotiation and requirement refinement"""
+        logger.info("Starting requirement negotiation")
+
+        user_requirement = state.get("user_input", "")
+        capability_analysis = state.get("capability_analysis", {})
+
+        system_prompt, user_prompt = await asyncio.to_thread(
+            self.prompt_loader.get_system_and_user_prompts,
+            "negotiation_engine",
+            user_requirement=user_requirement,
+            capability_analysis=capability_analysis,
+            current_situation=state.get("current_situation"),
+            user_responses=state.get("user_responses", []),
+        )
+
+        messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
+
+        try:
+            response = await self.llm.ainvoke(messages)
+            negotiation_result = json.loads(response.content)
+
+            state["negotiation_result"] = negotiation_result
+            state["current_step"] = "task_decomposition"
+
+            logger.info("Negotiation completed", result=negotiation_result)
+
+        except Exception as e:
+            logger.error("Failed to complete negotiation", error=str(e))
+            state["workflow_errors"].append(f"Negotiation failed: {str(e)}")
+            state["current_step"] = "error"
+
+        return state
+
+    async def task_decomposition(self, state: AgentState) -> AgentState:
+        """Decompose requirements into executable tasks"""
+        logger.info("Decomposing tasks")
+
+        confirmed_requirements = state.get("confirmed_requirements", state.get("user_input", ""))
+        user_decisions = state.get("user_decisions", [])
+
+        system_prompt, user_prompt = await asyncio.to_thread(
+            self.prompt_loader.get_system_and_user_prompts,
+            "task_decomposition",
+            confirmed_requirements=confirmed_requirements,
+            user_decisions=user_decisions,
+            technical_constraints=state.get("technical_constraints"),
+            available_capabilities=state.get("capability_analysis", {}).get(
+                "available_capabilities", []
+            ),
+        )
+
+        messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
+
+        try:
+            response = await self.llm.ainvoke(messages)
+            task_decomposition = json.loads(response.content)
+
+            state["task_decomposition"] = task_decomposition
+            state["current_step"] = "workflow_architecture"
+
+            logger.info("Task decomposition completed", tasks=task_decomposition)
+
+        except Exception as e:
+            logger.error("Failed to decompose tasks", error=str(e))
+            state["workflow_errors"].append(f"Task decomposition failed: {str(e)}")
+            state["current_step"] = "error"
+
+        return state
+
+    async def workflow_architecture(self, state: AgentState) -> AgentState:
+        """Design workflow architecture based on tasks"""
+        logger.info("Designing workflow architecture")
+
+        task_decomposition = state.get("task_decomposition", {})
+        confirmed_requirements = state.get("confirmed_requirements", state.get("user_input", ""))
+
+        system_prompt, user_prompt = await asyncio.to_thread(
+            self.prompt_loader.get_system_and_user_prompts,
+            "workflow_architecture",
+            task_decomposition=task_decomposition,
+            confirmed_requirements=confirmed_requirements,
+            technical_constraints=state.get("technical_constraints"),
+            performance_requirements=state.get("performance_requirements"),
+        )
+
+        messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
+
+        try:
+            response = await self.llm.ainvoke(messages)
+            architecture = json.loads(response.content)
+
+            state["workflow_architecture"] = architecture
+            state["current_step"] = "generate_workflow"
+
+            logger.info("Workflow architecture designed", architecture=architecture)
+
+        except Exception as e:
+            logger.error("Failed to design architecture", error=str(e))
+            state["workflow_errors"].append(f"Architecture design failed: {str(e)}")
+            state["current_step"] = "error"
+
+        return state
+
     async def generate_workflow(self, state: AgentState) -> AgentState:
         """Generate the complete workflow JSON"""
         logger.info("Generating complete workflow")
@@ -406,6 +542,202 @@ class WorkflowAgentNodes:
         logger.info("Workflow validation completed", errors=errors, warnings=warnings)
         return state
 
+    async def node_configuration(self, state: AgentState) -> AgentState:
+        """Configure individual workflow nodes with specific parameters"""
+        logger.info("Configuring workflow nodes")
+
+        workflow = state.get("workflow", {})
+        workflow_architecture = state.get("workflow_architecture", {})
+
+        try:
+            # Extract nodes that need configuration
+            nodes = workflow.get("nodes", [])
+            configured_nodes = []
+
+            for node in nodes:
+                # Apply architecture-based configuration
+                if workflow_architecture.get("node_architecture"):
+                    for arch_node in workflow_architecture["node_architecture"]:
+                        if arch_node.get("node_id") == node.get("id"):
+                            # Merge architecture configuration with node
+                            node.update(
+                                {
+                                    "configuration_requirements": arch_node.get(
+                                        "configuration_requirements", []
+                                    ),
+                                    "outputs": arch_node.get("outputs", {}),
+                                    "role": arch_node.get("role", ""),
+                                }
+                            )
+
+                configured_nodes.append(node)
+
+            # Update workflow with configured nodes
+            workflow["nodes"] = configured_nodes
+            state["workflow"] = workflow
+            state["current_step"] = "validate_workflow"
+
+            logger.info("Node configuration completed")
+
+        except Exception as e:
+            logger.error("Failed to configure nodes", error=str(e))
+            state["workflow_errors"].append(f"Node configuration failed: {str(e)}")
+            state["current_step"] = "error"
+
+        return state
+
+    async def test_workflow(self, state: AgentState) -> AgentState:
+        """Test the generated workflow for correctness and performance"""
+        logger.info("Testing workflow")
+
+        workflow = state.get("workflow", {})
+
+        try:
+            test_results = {
+                "test_id": f"test-{uuid.uuid4().hex[:8]}",
+                "timestamp": int(time.time()),
+                "tests_performed": [],
+                "overall_status": "passed",
+                "errors": [],
+                "warnings": [],
+                "performance_metrics": {},
+            }
+
+            # Basic structure validation
+            nodes = workflow.get("nodes", [])
+            connections = workflow.get("connections", {})
+
+            if not nodes:
+                test_results["errors"].append("No nodes found in workflow")
+                test_results["overall_status"] = "failed"
+
+            if len(nodes) > 1 and not connections.get("connections"):
+                test_results["warnings"].append("Multi-node workflow without connections")
+
+            # Node configuration validation
+            for node in nodes:
+                node_test = {
+                    "node_id": node.get("id"),
+                    "node_type": node.get("type"),
+                    "status": "passed",
+                    "issues": [],
+                }
+
+                # Check required parameters
+                if not node.get("parameters"):
+                    node_test["issues"].append("Missing parameters configuration")
+                    node_test["status"] = "warning"
+
+                test_results["tests_performed"].append(node_test)
+
+            # Performance estimation
+            test_results["performance_metrics"] = {
+                "estimated_nodes": len(nodes),
+                "complexity_score": min(len(nodes) * 2, 10),
+                "estimated_runtime": f"{len(nodes) * 0.5}-{len(nodes) * 2} seconds",
+            }
+
+            state["test_results"] = test_results
+
+            if test_results["overall_status"] == "failed":
+                state["current_step"] = "error_analysis"
+            else:
+                state["current_step"] = "deployment"
+
+            logger.info("Workflow testing completed", results=test_results)
+
+        except Exception as e:
+            logger.error("Failed to test workflow", error=str(e))
+            state["workflow_errors"].append(f"Workflow testing failed: {str(e)}")
+            state["current_step"] = "error"
+
+        return state
+
+    async def error_analysis(self, state: AgentState) -> AgentState:
+        """Analyze errors and suggest fixes"""
+        logger.info("Analyzing workflow errors")
+
+        test_results = state.get("test_results", {})
+        workflow_errors = state.get("workflow_errors", [])
+
+        try:
+            error_analysis = {
+                "error_categories": [],
+                "suggested_fixes": [],
+                "auto_fixable": [],
+                "manual_fixes_required": [],
+            }
+
+            # Analyze test errors
+            for error in test_results.get("errors", []):
+                if "No nodes found" in error:
+                    error_analysis["error_categories"].append("structural_error")
+                    error_analysis["suggested_fixes"].append("重新生成工作流结构")
+                    error_analysis["auto_fixable"].append("regenerate_workflow")
+
+            # Analyze workflow generation errors
+            for error in workflow_errors:
+                if "JSON" in error:
+                    error_analysis["error_categories"].append("format_error")
+                    error_analysis["suggested_fixes"].append("修复JSON格式问题")
+                    error_analysis["auto_fixable"].append("fix_json_format")
+                elif "parameter" in error.lower():
+                    error_analysis["error_categories"].append("configuration_error")
+                    error_analysis["manual_fixes_required"].append("需要用户提供缺失的配置参数")
+
+            state["error_analysis"] = error_analysis
+
+            # Decide next step based on analysis
+            if error_analysis["auto_fixable"]:
+                state["current_step"] = "auto_fix"
+            elif error_analysis["manual_fixes_required"]:
+                state["current_step"] = "ask_questions"
+            else:
+                state["current_step"] = "manual_intervention"
+
+            logger.info("Error analysis completed", analysis=error_analysis)
+
+        except Exception as e:
+            logger.error("Failed to analyze errors", error=str(e))
+            state["workflow_errors"].append(f"Error analysis failed: {str(e)}")
+            state["current_step"] = "manual_intervention"
+
+        return state
+
+    async def deployment(self, state: AgentState) -> AgentState:
+        """Prepare workflow for deployment"""
+        logger.info("Preparing workflow deployment")
+
+        workflow = state.get("workflow", {})
+        test_results = state.get("test_results", {})
+
+        try:
+            deployment_config = {
+                "deployment_id": f"deploy-{uuid.uuid4().hex[:8]}",
+                "workflow_id": workflow.get("id"),
+                "timestamp": int(time.time()),
+                "status": "ready",
+                "deployment_url": f"http://workflow-engine/workflows/{workflow.get('id')}",
+                "monitoring_url": f"http://monitoring/workflows/{workflow.get('id')}",
+                "estimated_resources": {"cpu": "100m", "memory": "128Mi", "storage": "1Gi"},
+            }
+
+            # Add deployment metadata to workflow
+            workflow["deployment"] = deployment_config
+            state["workflow"] = workflow
+            state["deployment_config"] = deployment_config
+            state["current_step"] = "complete"
+            state["should_continue"] = False
+
+            logger.info("Deployment prepared successfully", config=deployment_config)
+
+        except Exception as e:
+            logger.error("Failed to prepare deployment", error=str(e))
+            state["workflow_errors"].append(f"Deployment preparation failed: {str(e)}")
+            state["current_step"] = "error"
+
+        return state
+
     def should_continue(self, state: AgentState) -> str:
         """Determine the next step in the workflow generation process"""
         current_step = state.get("current_step", "analyze_requirement")
@@ -417,5 +749,28 @@ class WorkflowAgentNodes:
 
         if current_step == "error" or current_step == "complete":
             return "complete"
+
+        # Handle new workflow stages
+        valid_steps = [
+            "analyze_requirement",
+            "capability_scan",
+            "negotiation_engine",
+            "task_decomposition",
+            "workflow_architecture",
+            "generate_workflow",
+            "node_configuration",
+            "test_workflow",
+            "error_analysis",
+            "deployment",
+            "plan_generation",
+            "check_knowledge",
+            "ask_questions",
+            "validate_workflow",
+            "complete",
+            "error",
+        ]
+
+        if current_step not in valid_steps:
+            return "error"
 
         return current_step

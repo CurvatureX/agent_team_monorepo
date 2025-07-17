@@ -1,0 +1,28 @@
+## Task Decomposition Request
+
+### Confirmed Requirements
+{{ confirmed_requirements }}
+
+### User Decisions and Preferences
+{% if user_decisions %}
+{% for decision in user_decisions %}
+- {{ decision.question }}: {{ decision.choice }}
+{% endfor %}
+{% endif %}
+
+### Technical Constraints
+{% if technical_constraints %}
+{{ technical_constraints | tojson }}
+{% else %}
+No specific technical constraints identified.
+{% endif %}
+
+### Implementation Context
+{% if implementation_context %}
+{{ implementation_context }}
+{% endif %}
+
+### Available Capabilities
+{{ available_capabilities | tojson }}
+
+Please decompose this requirement into a detailed task structure that can be implemented using the available WORKFLOW engine capabilities.

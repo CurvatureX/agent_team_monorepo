@@ -114,6 +114,8 @@ class WorkflowGenerationRequest(BaseModel):
     description: str
     context: Optional[Dict[str, Any]] = None
     user_preferences: Optional[Dict[str, Any]] = None
+    session_id: Optional[str] = None
+    user_id: Optional[str] = None
 
 
 class WorkflowGenerationResponse(BaseModel):
@@ -124,6 +126,9 @@ class WorkflowGenerationResponse(BaseModel):
     suggestions: List[str] = Field(default_factory=list)
     missing_info: List[str] = Field(default_factory=list)
     errors: List[str] = Field(default_factory=list)
+    session_id: Optional[str] = None
+    stage: Optional[str] = None
+    negotiation_questions: List[str] = Field(default_factory=list)
 
 
 class WorkflowRefinementRequest(BaseModel):
@@ -132,6 +137,7 @@ class WorkflowRefinementRequest(BaseModel):
     workflow_id: str
     feedback: str
     original_workflow: Workflow
+    session_id: Optional[str] = None
 
 
 class WorkflowRefinementResponse(BaseModel):
@@ -141,3 +147,78 @@ class WorkflowRefinementResponse(BaseModel):
     updated_workflow: Optional[Workflow] = None
     changes: List[str] = Field(default_factory=list)
     errors: List[str] = Field(default_factory=list)
+    session_id: Optional[str] = None
+
+
+class CapabilityGapAnalysisRequest(BaseModel):
+    """Request for capability gap analysis"""
+
+    user_input: str
+    context: Optional[Dict[str, Any]] = None
+    session_id: Optional[str] = None
+
+
+class CapabilityGapAnalysisResponse(BaseModel):
+    """Response for capability gap analysis"""
+
+    success: bool
+    capability_analysis: Optional[CapabilityAnalysisModel] = None
+    proposed_solutions: List[SolutionModel] = Field(default_factory=list)
+    negotiation_questions: List[str] = Field(default_factory=list)
+    errors: List[str] = Field(default_factory=list)
+
+
+class NegotiationRequest(BaseModel):
+    """Request for negotiation step"""
+
+    session_id: str
+    user_response: str
+    question_id: Optional[str] = None
+
+
+class NegotiationResponse(BaseModel):
+    """Response for negotiation step"""
+
+    success: bool
+    next_questions: List[str] = Field(default_factory=list)
+    tradeoff_analysis: Optional[Dict[str, Any]] = None
+    negotiation_complete: bool = False
+    final_requirements: Optional[str] = None
+    errors: List[str] = Field(default_factory=list)
+
+
+class WorkflowDesignRequest(BaseModel):
+    """Request for workflow design"""
+
+    session_id: str
+    confirmed_requirements: str
+    user_decisions: List[DecisionModel] = Field(default_factory=list)
+
+
+class WorkflowDesignResponse(BaseModel):
+    """Response for workflow design"""
+
+    success: bool
+    task_tree: Optional[TaskTreeModel] = None
+    architecture: Optional[WorkflowArchitectureModel] = None
+    workflow_dsl: Optional[WorkflowDSLModel] = None
+    optimization_suggestions: List[OptimizationModel] = Field(default_factory=list)
+    performance_estimate: Optional[PerformanceEstimateModel] = None
+    errors: List[str] = Field(default_factory=list)
+
+
+class ValidationRequest(BaseModel):
+    """Request for workflow validation"""
+
+    workflow_dsl: Dict[str, Any]
+    validation_type: str = "static"  # static, dynamic, full
+
+
+class ValidationResponse(BaseModel):
+    """Response for workflow validation"""
+
+    success: bool
+    validation_results: Dict[str, Any] = Field(default_factory=dict)
+    errors: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    completeness_score: float = 0.0
