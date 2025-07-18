@@ -12,11 +12,7 @@ interface AssistantCardProps {
   title: string;
   description: string;
   skills: string[];
-  personality: string;
   imagePath: string;
-  experience: string;
-  motto: string;
-  quirk: string;
 }
 
 // 状态配置
@@ -36,11 +32,7 @@ export function AssistantCard({
   title,
   description,
   skills,
-  personality,
   imagePath,
-  experience,
-  motto,
-  quirk,
 }: AssistantCardProps) {
   const [currentStatus, setCurrentStatus] = useState(statusOptions[0]);
 
@@ -87,9 +79,6 @@ export function AssistantCard({
                 {name}
               </h3>
               <p className="text-sm text-primary font-medium">{title}</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                {experience}
-              </p>
             </div>
           </div>
 
@@ -115,35 +104,6 @@ export function AssistantCard({
                     {skill}
                   </Badge>
                 ))}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-start space-x-2">
-                <span className="text-sm font-medium text-gray-900 dark:text-white whitespace-nowrap">
-                  🎭 Personality:
-                </span>
-                <span className="text-sm text-gray-600 dark:text-gray-400">
-                  {personality}
-                </span>
-              </div>
-
-              <div className="flex items-start space-x-2">
-                <span className="text-sm font-medium text-gray-900 dark:text-white whitespace-nowrap">
-                  💭 Motto:
-                </span>
-                <span className="text-sm text-gray-600 dark:text-gray-400 italic">
-                  &ldquo;{motto}&rdquo;
-                </span>
-              </div>
-
-              <div className="flex items-start space-x-2">
-                <span className="text-sm font-medium text-gray-900 dark:text-white whitespace-nowrap">
-                  🎪 Quirky Habit:
-                </span>
-                <span className="text-sm text-gray-600 dark:text-gray-400">
-                  {quirk}
-                </span>
               </div>
             </div>
           </div>

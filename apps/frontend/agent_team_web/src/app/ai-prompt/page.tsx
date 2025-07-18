@@ -171,11 +171,7 @@ const DemoOne = () => {
               title={assistant.title}
               description={assistant.description}
               skills={assistant.skills}
-              personality={assistant.personality}
               imagePath={assistant.imagePath}
-              experience={assistant.experience}
-              motto={assistant.motto}
-              quirk={assistant.quirk}
             />
           </div>
         ))}
