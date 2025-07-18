@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 覆盖根目录的.gitignore规则
+!public/
+!lib/
