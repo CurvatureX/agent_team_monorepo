@@ -36,8 +36,8 @@ const AssistantList = ({ assistants }: AssistantListProps) => {
               transition={{ duration: 0.2 }}
               className="h-full flex flex-col"
             >
-              <h2 className="pl-6 pt-6 text-2xl font-semibold text-foreground">AI Assistants</h2>
-              <p className="pl-6 pb-4 text-sm text-muted-foreground">Select an assistant to view detailed information</p>
+              <h2 className="pl-6 pt-6 text-2xl font-semibold text-foreground">AI Workers</h2>
+              <p className="pl-6 pb-4 text-sm text-muted-foreground">Select a worker to view detailed information</p>
 
               <div className="space-y-3 p-4 flex-1 overflow-y-auto">
                 {assistants.map((assistant) => (
@@ -87,13 +87,13 @@ const AssistantList = ({ assistants }: AssistantListProps) => {
                 ))}
               </div>
 
-              <motion.button
+              {/* <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 className="m-auto mt-6 mb-6 flex w-11/12 items-center justify-center rounded-xl bg-primary text-primary-foreground py-3 px-6 text-base font-medium"
               >
                 View All Assistants <ArrowRight className="ml-2 h-4 w-4" />
-              </motion.button>
+              </motion.button> */}
             </motion.div>
           ) : (
             <motion.div
