@@ -179,38 +179,6 @@ const AssistantList = ({ assistants }: AssistantListProps) => {
                     ))}
                   </div>
                 </div>
-
-                {/* Personality */}
-                <div>
-                  <h4 className="font-semibold text-foreground mb-3 text-lg">Personality</h4>
-                  <p className="text-sm text-muted-foreground">
-                    {selectedAssistant.personality}
-                  </p>
-                </div>
-
-                {/* Experience */}
-                <div>
-                  <h4 className="font-semibold text-foreground mb-3 text-lg">Experience</h4>
-                  <p className="text-sm text-muted-foreground">
-                    {selectedAssistant.experience}
-                  </p>
-                </div>
-
-                {/* Motto */}
-                <div>
-                  <h4 className="font-semibold text-foreground mb-3 text-lg">Motto</h4>
-                  <p className="text-sm text-muted-foreground italic">
-                    &ldquo;{selectedAssistant.motto}&rdquo;
-                  </p>
-                </div>
-
-                {/* Quirk */}
-                <div className="border-t border-border border-dashed pt-6">
-                  <h4 className="font-semibold text-foreground mb-3 text-lg">Fun Fact</h4>
-                  <p className="text-sm text-muted-foreground">
-                    {selectedAssistant.quirk}
-                  </p>
-                </div>
               </motion.div>
             </motion.div>
           )}
