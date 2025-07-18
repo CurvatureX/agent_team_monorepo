@@ -159,7 +159,7 @@ const CanvasPage = () => {
       >
         {/* Left Side - Canvas Area */}
         <motion.div
-          className="p-6 h-full"
+          className="pb-6 px-6 h-full"
           style={{ width: leftPanelWidth }}
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
