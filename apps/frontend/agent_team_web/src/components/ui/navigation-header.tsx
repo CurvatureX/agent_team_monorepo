@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { ExpandableTabs } from "@/components/ui/expandable-tabs";
-import { Home, Bell, User, Settings, Bot } from "lucide-react";
+import { Home, Bell, User, Settings, Bot, DollarSign } from "lucide-react";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
@@ -16,6 +16,7 @@ export const NavigationHeader = () => {
     const tabs = [
         { title: "Home", icon: Home },
         { title: "Assistant", icon: Bot },
+        { title: "Pricing", icon: DollarSign },
         { title: "Notifications", icon: Bell },
         { type: "separator" as const },
         { title: "Profile", icon: User },
@@ -28,6 +29,8 @@ export const NavigationHeader = () => {
             setActiveTabIndex(0); // Home
         } else if (pathname.includes("/canvas")) {
             setActiveTabIndex(1); // Assistant/Canvas page
+        } else if (pathname.includes("/pricing")) {
+            setActiveTabIndex(2); // Pricing page
         } else {
             // Keep current selection, don't set to null
         }
@@ -46,6 +49,9 @@ export const NavigationHeader = () => {
                 break;
             case 1: // Assistant
                 router.push('/canvas');
+                break;
+            case 2: // Pricing
+                router.push('/pricing');
                 break;
             // Can add navigation logic for other tabs
             default:
