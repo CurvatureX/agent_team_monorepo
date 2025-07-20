@@ -36,33 +36,37 @@ CREATE TABLE user_settings (
 -- ==============================================================================
 
 -- Workflows table - stores complete workflow definitions
-CREATE TABLE workflows (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    name VARCHAR(255) NOT NULL,
-    description TEXT,
-    active BOOLEAN DEFAULT true,
-    
-    -- Core workflow data (based on Workflow protobuf)
-    workflow_data JSONB NOT NULL,  -- Complete Workflow protobuf JSON
-    settings JSONB,                -- WorkflowSettings
-    static_data JSONB,             -- Static data for nodes
-    pin_data JSONB,                -- Debug/test data
-    
-    -- Metadata
-    version VARCHAR(50) DEFAULT '1.0.0',
-    tags TEXT[],
-    is_template BOOLEAN DEFAULT false,
-    template_category VARCHAR(100),
-    
-    -- Timestamps (Unix timestamp for consistency with protobuf)
-    created_at BIGINT NOT NULL,
-    updated_at BIGINT NOT NULL,
-    
-    -- Constraints
-    CONSTRAINT workflows_name_not_empty CHECK (length(name) > 0),
-    CONSTRAINT workflows_valid_workflow_data CHECK (workflow_data IS NOT NULL)
-);
+create table public.workflows (
+  id uuid not null default extensions.uuid_generate_v4 (),
+  user_id uuid null,
+  name character varying(255) not null,
+  description text null,
+  active boolean null default true,
+  workflow_data jsonb not null,
+  settings jsonb null,
+  static_data jsonb null,
+  pin_data jsonb null,
+  version character varying(50) null default '1.0.0'::character varying,
+  tags text[] null,
+  is_template boolean null default false,
+  template_category character varying(100) null,
+  created_at bigint not null,
+  updated_at bigint not null,
+  session_id uuid null default gen_random_uuid (),
+  constraint workflows_pkey primary key (id),
+  constraint workflows_session_id_fkey foreign KEY (session_id) references sessions (id),
+  constraint workflows_user_id_fkey foreign KEY (user_id) references users (id) on delete CASCADE,
+  constraint workflows_name_not_empty check ((length((name)::text) > 0)),
+  constraint workflows_valid_workflow_data check ((workflow_data is not null))
+) TABLESPACE pg_default;
+
+create index IF not exists idx_workflows_user_id on public.workflows using btree (user_id) TABLESPACE pg_default;
+
+create index IF not exists idx_workflows_active on public.workflows using btree (active) TABLESPACE pg_default;
+
+create index IF not exists idx_workflows_created_at on public.workflows using btree (created_at) TABLESPACE pg_default;
+
+create index IF not exists idx_workflows_tags on public.workflows using gin (tags) TABLESPACE pg_default;
 
 -- ==============================================================================
 -- Node System (Based on Node protobuf - 8 Core Node Types)

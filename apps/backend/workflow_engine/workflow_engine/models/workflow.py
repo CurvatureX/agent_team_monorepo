@@ -19,6 +19,7 @@ class Workflow(Base):
     
     # User information
     user_id = Column(String(36), nullable=False, index=True)
+    session_id = Column(String(36), nullable=True, index=True)  # 新增：会话ID
     
     # Basic workflow information
     name = Column(String(255), nullable=False)
@@ -42,6 +43,7 @@ class Workflow(Base):
         return {
             'id': self.id,
             'user_id': self.user_id,
+            'session_id': self.session_id,  # 新增：session_id
             'name': self.name,
             'description': self.description,
             'version': self.version,
