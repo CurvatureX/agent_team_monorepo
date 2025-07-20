@@ -42,7 +42,7 @@ flowchart TD
 ### 主要节点类型
 
 #### 1. 咨询类节点 (Consultant Nodes)
-- **Clarification Node** - 解析和澄清用户意图。
+- **Clarification Node** - 解析和澄清用户意图，支持多种澄清目的（初始意图、模板选择、模板修改、能力差距解决、调试问题）。
 - **Negotiation Node** - 与用户协商，获取额外信息或在备选方案中选择。
 - **Gap Analysis Node** - 分析需求与现有能力之间的差距。
 - **Alternative Solution Generation Node** - 当存在能力差距时，生成替代解决方案。
@@ -73,10 +73,30 @@ interface WorkflowState {
   // 当前阶段
   stage: 'clarification' | 'negotiation' | 'gap_analysis' | 'generation' | 'debugging';
 
+  // 澄清阶段上下文
+  clarification_context?: {
+    purpose:
+      | 'initial_intent'        // 澄清用户的初始目标或需求
+      | 'template_selection'    // 确认/选择模板
+      | 'template_modification' // 澄清如何修改模板
+      | 'gap_resolution'        // 澄清如何解决能力差距
+      | 'debug_issue';          // 澄清调试中遇到的问题
+
+    origin: 'new_workflow' | 'from_template';
+    pending_questions: string[];   // 当前 Clarification 阶段待确认的问题
+  };
+
   conversations: Conversation[]; // 用户和AI Agent的全部对话
   intent_summary: string; // AI根据对话总结的用户意图
   gaps: string[]; // 能力差距分析结果
   alternatives: string[]; // 提供的替代方案
+
+  // 模板工作流支持
+  template_workflow?: {
+    id: string;                     // 模板 ID
+    original_workflow: object;      // 模板的原始内容
+  };
+
   current_workflow: object; // 当前生成的workflow
   debug_result: string; // 调试结果
   debug_loop_count: number;
@@ -116,7 +136,7 @@ graph TD
 
 ```mermaid
 graph TD
-    START([用户输入]) --> A["Clarification Node"]
+    START([用户输入/模板选择]) --> A["Clarification Node"]
     A -- "需要澄清" --> n1["Negotiation Node"]
     A -- "信息充足" --> n2["Gap Analysis Node"]
     n2 -- "存在能力差距" --> n3["Alternative Solution Generation Node"]
@@ -124,8 +144,9 @@ graph TD
     n3 --> n1
     n1 -- "用户提供新信息" --> A
     n4 --> n5["Debug Node"]
-    n5 -- "发现错误" --> n4
     n5 -- "测试通过" --> n6([End])
+    n5 -- "实现问题" --> n4
+    n5 -- "需求理解问题" --> A
 ```
 
 ## 详细交互流程
@@ -135,9 +156,9 @@ sequenceDiagram
     participant U as User
     participant A as Agent
 
-    U->>A: 我想要一个工作流...
+    U->>A: 我想要一个工作流.../基于模板X修改工作流
     A->>A: **Clarification Node**: 分析请求
-    Note over A: 请求不够清晰
+    Note over A: 设置澄清上下文 (purpose, origin, pending_questions)
 
     A->>U: 我需要更多关于X的细节
     Note over A: **Negotiation Node**
@@ -161,7 +182,7 @@ sequenceDiagram
     A->>A: **Debug Node**: 测试工作流
     Note over A: 测试失败，正在修复...
 
-    A->>A: **Workflow Generation Node**: 重新生成工作流
+    A->>A: **Clarification Node**: 重新澄清问题，然后生成工作流
     A->>A: **Debug Node**: 再次测试
     Note over A: 测试通过
 
@@ -172,14 +193,15 @@ sequenceDiagram
 
 ```mermaid
 graph TD
-    Start[用户输入] --> Clarification["Clarification<br/>- intent_summary"]
-    Clarification -- "需要澄清" --> Negotiation["Negotiation<br/>- guided_questions"]
+    Start[用户输入/模板选择] --> Clarification["Clarification<br/>- clarification_context<br/>- intent_summary<br/>- template_workflow"]
+    Clarification -- "需要澄清" --> Negotiation["Negotiation<br/>- pending_questions"]
     Negotiation -- "用户提供信息" --> Clarification
     Clarification -- "信息充足" --> GapAnalysis["Gap Analysis<br/>- gaps"]
     GapAnalysis -- "无差距" --> WorkflowGeneration["Workflow Generation<br/>- current_workflow"]
     GapAnalysis -- "有差距" --> AlternativeGeneration["Alternative Generation<br/>- alternatives"]
     AlternativeGeneration --> Negotiation
     WorkflowGeneration --> Debug["Debug<br/>- debug_result"]
-    Debug -- "测试失败" --> WorkflowGeneration
+    Debug -- "实现问题" --> WorkflowGeneration
+    Debug -- "需求理解问题" --> Clarification
     Debug -- "测试成功" --> End([End])
 ```
