@@ -43,21 +43,35 @@
    cd apps/backend
    ```
 
-2. **配置环境变量**
+2. **配置API Gateway环境变量**
    ```bash
-   cp .env.example .env
-   # 编辑 .env 文件，添加你的API密钥
+   # 配置API Gateway的Supabase连接
+   cd api-gateway
+   cp .env.example .env  # 如果有的话
+   # 编辑 .env 文件，添加Supabase配置
+   cd ..
    ```
 
-3. **启动服务**
+3. **启动所有服务**
    ```bash
-   ./start-dev.sh
+   # 开发模式 (支持热重载)
+   ./start-all.sh dev
+   
+   # 或生产模式 (后台运行)
+   ./start-all.sh prod
    ```
 
 4. **验证服务**
-   - API Gateway: http://localhost:8000
-   - API文档: http://localhost:8000/docs
-   - 健康检查: http://localhost:8000/health
+   - 🌐 API Gateway: http://localhost:8000
+   - 📚 API文档: http://localhost:8000/docs
+   - 🔍 健康检查: http://localhost:8000/health
+   - 🗄️ 数据库管理: http://localhost:8080 (Adminer)
+   - 🔧 Redis管理: http://localhost:8081 (Redis Commander)
+
+5. **停止服务**
+   ```bash
+   ./stop-all.sh
+   ```
 
 ### 开发模式启动
 
