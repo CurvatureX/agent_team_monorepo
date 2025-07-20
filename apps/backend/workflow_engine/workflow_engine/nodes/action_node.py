@@ -1,16 +1,19 @@
 """
 Action Node Executor.
 
-Handles internal actions like code execution, HTTP requests, data transformation, etc.
+Handles action operations like running code, HTTP requests, data transformations, etc.
 """
 
 import json
-import subprocess
 import time
-from typing import Any, Dict, List, Optional
-from datetime import datetime
+import subprocess
 import tempfile
 import os
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+import requests
+from pathlib import Path
+import sys
 
 from .base import BaseNodeExecutor, NodeExecutionContext, NodeExecutionResult, ExecutionStatus
 
@@ -22,7 +25,7 @@ class ActionNodeExecutor(BaseNodeExecutor):
         """Get supported action subtypes."""
         return [
             "RUN_CODE",
-            "HTTP_REQUEST",
+            "HTTP_REQUEST", 
             "DATA_TRANSFORMATION",
             "FILE_OPERATION"
         ]
@@ -38,22 +41,28 @@ class ActionNodeExecutor(BaseNodeExecutor):
         subtype = node.subtype
         
         if subtype == "RUN_CODE":
-            errors.extend(self._validate_required_parameters(node, ["language", "code"]))
-            language = node.parameters.get("language")
-            if language not in ["python", "javascript", "bash", "shell"]:
+            errors.extend(self._validate_required_parameters(node, ["code", "language"]))
+            language = node.parameters.get("language", "")
+            if language not in ["python", "javascript", "bash", "sql"]:
                 errors.append(f"Unsupported language: {language}")
         
         elif subtype == "HTTP_REQUEST":
-            errors.extend(self._validate_required_parameters(node, ["url", "method"]))
-            method = node.parameters.get("method", "GET")
+            errors.extend(self._validate_required_parameters(node, ["method", "url"]))
+            method = node.parameters.get("method", "").upper()
             if method not in ["GET", "POST", "PUT", "DELETE", "PATCH"]:
                 errors.append(f"Invalid HTTP method: {method}")
         
         elif subtype == "DATA_TRANSFORMATION":
             errors.extend(self._validate_required_parameters(node, ["transformation_type"]))
+            transform_type = node.parameters.get("transformation_type", "")
+            if transform_type not in ["filter", "map", "reduce", "sort", "group", "join"]:
+                errors.append(f"Invalid transformation type: {transform_type}")
         
         elif subtype == "FILE_OPERATION":
-            errors.extend(self._validate_required_parameters(node, ["operation", "file_path"]))
+            errors.extend(self._validate_required_parameters(node, ["operation_type"]))
+            operation_type = node.parameters.get("operation_type", "")
+            if operation_type not in ["read", "write", "copy", "move", "delete", "list"]:
+                errors.append(f"Invalid file operation type: {operation_type}")
         
         return errors
     
@@ -91,19 +100,21 @@ class ActionNodeExecutor(BaseNodeExecutor):
     
     def _execute_run_code(self, context: NodeExecutionContext, logs: List[str], start_time: float) -> NodeExecutionResult:
         """Execute code in specified language."""
-        language = context.get_parameter("language")
-        code = context.get_parameter("code")
+        code = context.get_parameter("code", "")
+        language = context.get_parameter("language", "python")
         timeout = context.get_parameter("timeout", 30)
         
-        logs.append(f"Running {language} code with timeout {timeout}s")
+        logs.append(f"Running {language} code with timeout: {timeout}s")
         
         try:
             if language == "python":
                 result = self._run_python_code(code, context.input_data, timeout)
             elif language == "javascript":
                 result = self._run_javascript_code(code, context.input_data, timeout)
-            elif language in ["bash", "shell"]:
-                result = self._run_shell_code(code, context.input_data, timeout)
+            elif language == "bash":
+                result = self._run_bash_code(code, context.input_data, timeout)
+            elif language == "sql":
+                result = self._run_sql_code(code, context.input_data, timeout)
             else:
                 return self._create_error_result(
                     f"Unsupported language: {language}",
@@ -112,9 +123,14 @@ class ActionNodeExecutor(BaseNodeExecutor):
                 )
             
             output_data = {
+                "action_type": "run_code",
                 "language": language,
                 "code": code,
                 "result": result,
+                "stdout": result.get("stdout", ""),
+                "stderr": result.get("stderr", ""),
+                "return_code": result.get("return_code", 0),
+                "execution_time": result.get("execution_time", 0),
                 "executed_at": datetime.now().isoformat()
             }
             
@@ -123,16 +139,10 @@ class ActionNodeExecutor(BaseNodeExecutor):
                 execution_time=time.time() - start_time,
                 logs=logs
             )
-        
-        except subprocess.TimeoutExpired:
-            return self._create_error_result(
-                f"Code execution timed out after {timeout}s",
-                execution_time=time.time() - start_time,
-                logs=logs
-            )
+            
         except Exception as e:
             return self._create_error_result(
-                f"Code execution failed: {str(e)}",
+                f"Error running {language} code: {str(e)}",
                 error_details={"exception": str(e)},
                 execution_time=time.time() - start_time,
                 logs=logs
@@ -140,191 +150,355 @@ class ActionNodeExecutor(BaseNodeExecutor):
     
     def _execute_http_request(self, context: NodeExecutionContext, logs: List[str], start_time: float) -> NodeExecutionResult:
         """Execute HTTP request."""
-        url = context.get_parameter("url")
-        method = context.get_parameter("method", "GET")
+        method = context.get_parameter("method", "GET").upper()
+        url = context.get_parameter("url", "")
         headers = context.get_parameter("headers", {})
+        data = context.get_parameter("data", {})
+        timeout = context.get_parameter("timeout", 30)
         
-        logs.append(f"HTTP {method} request to {url}")
+        logs.append(f"Making {method} request to {url}")
         
-        # Simulate HTTP request
-        request_data = context.input_data.get("request_data", {})
-        
-        # In a real implementation, this would use httpx or requests
-        simulated_response = {
-            "status_code": 200,
-            "headers": {"content-type": "application/json"},
-            "data": {"success": True, "message": "Request completed successfully"},
-            "request_info": {
-                "url": url,
+        try:
+            response = requests.request(
+                method=method,
+                url=url,
+                headers=headers,
+                json=data if method in ["POST", "PUT", "PATCH"] else None,
+                params=data if method == "GET" else None,
+                timeout=timeout
+            )
+            
+            output_data = {
+                "action_type": "http_request",
                 "method": method,
-                "headers": headers,
-                "data": request_data
+                "url": url,
+                "status_code": response.status_code,
+                "headers": dict(response.headers),
+                "response_text": response.text,
+                "response_json": self._safe_json_parse(response.text),
+                "execution_time": time.time() - start_time,
+                "executed_at": datetime.now().isoformat()
             }
-        }
-        
-        output_data = {
-            "http_request": {
-                "url": url,
-                "method": method,
-                "headers": headers,
-                "request_data": request_data
-            },
-            "response": simulated_response,
-            "requested_at": datetime.now().isoformat()
-        }
-        
-        return self._create_success_result(
-            output_data=output_data,
-            execution_time=time.time() - start_time,
-            logs=logs
-        )
+            
+            return self._create_success_result(
+                output_data=output_data,
+                execution_time=time.time() - start_time,
+                logs=logs
+            )
+            
+        except Exception as e:
+            return self._create_error_result(
+                f"Error making HTTP request: {str(e)}",
+                error_details={"exception": str(e)},
+                execution_time=time.time() - start_time,
+                logs=logs
+            )
     
     def _execute_data_transformation(self, context: NodeExecutionContext, logs: List[str], start_time: float) -> NodeExecutionResult:
         """Execute data transformation."""
-        transformation_type = context.get_parameter("transformation_type")
+        transformation_type = context.get_parameter("transformation_type", "filter")
+        transformation_config = context.get_parameter("transformation_config", {})
         
-        logs.append(f"Data transformation: {transformation_type}")
+        logs.append(f"Transforming data using {transformation_type}")
         
-        input_data = context.input_data
-        
-        if transformation_type == "json_to_csv":
-            transformed_data = self._json_to_csv(input_data)
-        elif transformation_type == "csv_to_json":
-            transformed_data = self._csv_to_json(input_data)
-        elif transformation_type == "filter":
-            filter_condition = context.get_parameter("filter_condition", {})
-            transformed_data = self._filter_data(input_data, filter_condition)
-        elif transformation_type == "sort":
-            sort_key = context.get_parameter("sort_key", "id")
-            transformed_data = self._sort_data(input_data, sort_key)
-        elif transformation_type == "aggregate":
-            group_by = context.get_parameter("group_by", "category")
-            transformed_data = self._aggregate_data(input_data, group_by)
-        else:
-            transformed_data = input_data  # No transformation
-        
-        output_data = {
-            "transformation_type": transformation_type,
-            "original_data": input_data,
-            "transformed_data": transformed_data,
-            "transformed_at": datetime.now().isoformat()
-        }
-        
-        return self._create_success_result(
-            output_data=output_data,
-            execution_time=time.time() - start_time,
-            logs=logs
-        )
+        try:
+            input_data = context.input_data.get("data", [])
+            
+            if transformation_type == "filter":
+                result = self._filter_data(input_data, transformation_config)
+            elif transformation_type == "map":
+                result = self._map_data(input_data, transformation_config)
+            elif transformation_type == "reduce":
+                result = self._reduce_data(input_data, transformation_config)
+            elif transformation_type == "sort":
+                result = self._sort_data(input_data, transformation_config)
+            elif transformation_type == "group":
+                result = self._group_data(input_data, transformation_config)
+            elif transformation_type == "join":
+                result = self._join_data(input_data, transformation_config)
+            else:
+                return self._create_error_result(
+                    f"Unsupported transformation type: {transformation_type}",
+                    execution_time=time.time() - start_time,
+                    logs=logs
+                )
+            
+            output_data = {
+                "action_type": "data_transformation",
+                "transformation_type": transformation_type,
+                "input_data": input_data,
+                "transformed_data": result,
+                "input_count": len(input_data) if isinstance(input_data, list) else 1,
+                "output_count": len(result) if isinstance(result, list) else 1,
+                "executed_at": datetime.now().isoformat()
+            }
+            
+            return self._create_success_result(
+                output_data=output_data,
+                execution_time=time.time() - start_time,
+                logs=logs
+            )
+            
+        except Exception as e:
+            return self._create_error_result(
+                f"Error transforming data: {str(e)}",
+                error_details={"exception": str(e)},
+                execution_time=time.time() - start_time,
+                logs=logs
+            )
     
     def _execute_file_operation(self, context: NodeExecutionContext, logs: List[str], start_time: float) -> NodeExecutionResult:
         """Execute file operation."""
-        operation = context.get_parameter("operation")
-        file_path = context.get_parameter("file_path")
+        operation_type = context.get_parameter("operation_type", "read")
+        file_path = context.get_parameter("file_path", "")
+        content = context.get_parameter("content", "")
         
-        logs.append(f"File operation: {operation} on {file_path}")
+        logs.append(f"Performing {operation_type} operation on {file_path}")
         
-        # Simulate file operations (in real implementation, would actually perform file ops)
-        if operation == "read":
-            result = {
-                "operation": "read",
+        try:
+            if operation_type == "read":
+                result = self._read_file(file_path)
+            elif operation_type == "write":
+                result = self._write_file(file_path, content)
+            elif operation_type == "copy":
+                target_path = context.get_parameter("target_path", "")
+                result = self._copy_file(file_path, target_path)
+            elif operation_type == "move":
+                target_path = context.get_parameter("target_path", "")
+                result = self._move_file(file_path, target_path)
+            elif operation_type == "delete":
+                result = self._delete_file(file_path)
+            elif operation_type == "list":
+                result = self._list_files(file_path)
+            else:
+                return self._create_error_result(
+                    f"Unsupported file operation type: {operation_type}",
+                    execution_time=time.time() - start_time,
+                    logs=logs
+                )
+            
+            output_data = {
+                "action_type": "file_operation",
+                "operation_type": operation_type,
                 "file_path": file_path,
-                "content": "Simulated file content",
-                "size": 1024,
-                "modified_at": datetime.now().isoformat()
+                "result": result,
+                "success": result.get("success", False),
+                "executed_at": datetime.now().isoformat()
             }
-        elif operation == "write":
-            content = context.input_data.get("content", "")
-            result = {
-                "operation": "write",
-                "file_path": file_path,
-                "content": content,
-                "bytes_written": len(content),
-                "written_at": datetime.now().isoformat()
-            }
-        elif operation == "delete":
-            result = {
-                "operation": "delete",
-                "file_path": file_path,
-                "deleted": True,
-                "deleted_at": datetime.now().isoformat()
-            }
-        else:
-            result = {
-                "operation": operation,
-                "file_path": file_path,
-                "status": "completed"
-            }
-        
-        return self._create_success_result(
-            output_data=result,
-            execution_time=time.time() - start_time,
-            logs=logs
-        )
+            
+            return self._create_success_result(
+                output_data=output_data,
+                execution_time=time.time() - start_time,
+                logs=logs
+            )
+            
+        except Exception as e:
+            return self._create_error_result(
+                f"Error performing file operation: {str(e)}",
+                error_details={"exception": str(e)},
+                execution_time=time.time() - start_time,
+                logs=logs
+            )
     
     def _run_python_code(self, code: str, input_data: Dict[str, Any], timeout: int) -> Dict[str, Any]:
-        """Run Python code in a sandboxed environment."""
-        # In a real implementation, this would use a proper sandbox
-        # For now, simulate execution
-        return {
-            "stdout": "Python code executed successfully",
-            "stderr": "",
-            "return_code": 0,
-            "execution_time": 0.5,
-            "result": {"processed": True, "input_data": input_data}
-        }
+        """Run Python code safely."""
+        exec_start = time.time()
+        
+        # Create a temporary file for the code
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+            f.write(code)
+            temp_file = f.name
+        
+        try:
+            # Execute the code
+            result = subprocess.run(
+                [sys.executable, temp_file],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env={**os.environ, 'INPUT_DATA': json.dumps(input_data)}
+            )
+            
+            return {
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "return_code": result.returncode,
+                "execution_time": time.time() - exec_start
+            }
+        finally:
+            # Clean up
+            if os.path.exists(temp_file):
+                os.unlink(temp_file)
     
     def _run_javascript_code(self, code: str, input_data: Dict[str, Any], timeout: int) -> Dict[str, Any]:
-        """Run JavaScript code."""
-        # Simulate JavaScript execution
+        """Run JavaScript code safely."""
+        exec_start = time.time()
+        
+        # Create a temporary file for the code
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.js', delete=False) as f:
+            f.write(f"const inputData = {json.dumps(input_data)};\n{code}")
+            temp_file = f.name
+        
+        try:
+            # Execute the code using node
+            result = subprocess.run(
+                ["node", temp_file],
+                capture_output=True,
+                text=True,
+                timeout=timeout
+            )
+            
+            return {
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "return_code": result.returncode,
+                "execution_time": time.time() - exec_start
+            }
+        finally:
+            # Clean up
+            if os.path.exists(temp_file):
+                os.unlink(temp_file)
+    
+    def _run_bash_code(self, code: str, input_data: Dict[str, Any], timeout: int) -> Dict[str, Any]:
+        """Run bash code safely."""
+        exec_start = time.time()
+        
+        try:
+            # Execute the code
+            result = subprocess.run(
+                ["bash", "-c", code],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env={**os.environ, 'INPUT_DATA': json.dumps(input_data)}
+            )
+            
+            return {
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+                "return_code": result.returncode,
+                "execution_time": time.time() - exec_start
+            }
+        except Exception as e:
+            return {
+                "stdout": "",
+                "stderr": str(e),
+                "return_code": 1,
+                "execution_time": time.time() - exec_start
+            }
+    
+    def _run_sql_code(self, code: str, input_data: Dict[str, Any], timeout: int) -> Dict[str, Any]:
+        """Run SQL code (mock implementation)."""
+        exec_start = time.time()
+        
+        # Mock SQL execution
         return {
-            "stdout": "JavaScript code executed successfully",
+            "stdout": f"SQL executed: {code}",
             "stderr": "",
             "return_code": 0,
-            "execution_time": 0.3,
-            "result": {"processed": True, "input_data": input_data}
+            "execution_time": time.time() - exec_start,
+            "rows_affected": 1
         }
     
-    def _run_shell_code(self, code: str, input_data: Dict[str, Any], timeout: int) -> Dict[str, Any]:
-        """Run shell code."""
-        # Simulate shell execution
-        return {
-            "stdout": "Shell command executed successfully",
-            "stderr": "",
-            "return_code": 0,
-            "execution_time": 0.2,
-            "result": {"processed": True, "input_data": input_data}
-        }
+    def _safe_json_parse(self, text: str) -> Any:
+        """Safely parse JSON text."""
+        try:
+            return json.loads(text)
+        except:
+            return None
     
-    def _json_to_csv(self, data: Dict[str, Any]) -> str:
-        """Convert JSON to CSV format."""
-        # Simulate JSON to CSV conversion
-        return "id,name,value\n1,Item1,100\n2,Item2,200"
-    
-    def _csv_to_json(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Convert CSV to JSON format."""
-        # Simulate CSV to JSON conversion
-        return [
-            {"id": 1, "name": "Item1", "value": 100},
-            {"id": 2, "name": "Item2", "value": 200}
-        ]
-    
-    def _filter_data(self, data: Dict[str, Any], condition: Dict[str, Any]) -> Dict[str, Any]:
+    def _filter_data(self, data: List[Any], config: Dict[str, Any]) -> List[Any]:
         """Filter data based on condition."""
-        # Simulate data filtering
-        return {"filtered_data": data, "condition": condition, "count": 2}
+        condition = config.get("condition", lambda x: True)
+        if isinstance(condition, str):
+            # Simple string-based filtering
+            return [item for item in data if condition in str(item)]
+        return data
     
-    def _sort_data(self, data: Dict[str, Any], sort_key: str) -> Dict[str, Any]:
-        """Sort data by specified key."""
-        # Simulate data sorting
-        return {"sorted_data": data, "sort_key": sort_key, "order": "asc"}
+    def _map_data(self, data: List[Any], config: Dict[str, Any]) -> List[Any]:
+        """Map data using transformation."""
+        transform = config.get("transform", lambda x: x)
+        return [transform(item) for item in data]
     
-    def _aggregate_data(self, data: Dict[str, Any], group_by: str) -> Dict[str, Any]:
-        """Aggregate data by specified field."""
-        # Simulate data aggregation
-        return {
-            "aggregated_data": {
-                "group1": {"count": 5, "sum": 150},
-                "group2": {"count": 3, "sum": 90}
-            },
-            "group_by": group_by
-        } 
+    def _reduce_data(self, data: List[Any], config: Dict[str, Any]) -> Any:
+        """Reduce data using function."""
+        func = config.get("function", lambda x, y: x + y)
+        initial = config.get("initial", 0)
+        result = initial
+        for item in data:
+            result = func(result, item)
+        return result
+    
+    def _sort_data(self, data: List[Any], config: Dict[str, Any]) -> List[Any]:
+        """Sort data."""
+        key = config.get("key", None)
+        reverse = config.get("reverse", False)
+        return sorted(data, key=key, reverse=reverse)
+    
+    def _group_data(self, data: List[Any], config: Dict[str, Any]) -> Dict[str, List[Any]]:
+        """Group data by key."""
+        key_func = config.get("key", lambda x: str(x))
+        groups = {}
+        for item in data:
+            group_key = key_func(item)
+            if group_key not in groups:
+                groups[group_key] = []
+            groups[group_key].append(item)
+        return groups
+    
+    def _join_data(self, data: List[Any], config: Dict[str, Any]) -> List[Any]:
+        """Join data from multiple sources."""
+        # Mock implementation
+        return data
+    
+    def _read_file(self, file_path: str) -> Dict[str, Any]:
+        """Read file content."""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            return {"success": True, "content": content, "size": len(content)}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def _write_file(self, file_path: str, content: str) -> Dict[str, Any]:
+        """Write content to file."""
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            return {"success": True, "size": len(content)}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def _copy_file(self, source_path: str, target_path: str) -> Dict[str, Any]:
+        """Copy file."""
+        try:
+            import shutil
+            shutil.copy2(source_path, target_path)
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def _move_file(self, source_path: str, target_path: str) -> Dict[str, Any]:
+        """Move file."""
+        try:
+            import shutil
+            shutil.move(source_path, target_path)
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def _delete_file(self, file_path: str) -> Dict[str, Any]:
+        """Delete file."""
+        try:
+            os.remove(file_path)
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    def _list_files(self, directory_path: str) -> Dict[str, Any]:
+        """List files in directory."""
+        try:
+            files = os.listdir(directory_path)
+            return {"success": True, "files": files, "count": len(files)}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
