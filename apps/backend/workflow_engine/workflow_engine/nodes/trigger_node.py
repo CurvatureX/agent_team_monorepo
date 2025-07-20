@@ -1,14 +1,15 @@
 """
 Trigger Node Executor.
 
-Handles various trigger types including manual, webhook, cron, chat, email, form, and calendar triggers.
+Handles trigger operations like manual triggers, webhooks, cron schedules, etc.
 """
 
-import asyncio
 import json
 import time
-from typing import Any, Dict, List
+import asyncio
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+from croniter import croniter
 
 from .base import BaseNodeExecutor, NodeExecutionContext, NodeExecutionResult, ExecutionStatus
 
@@ -39,29 +40,22 @@ class TriggerNodeExecutor(BaseNodeExecutor):
         subtype = node.subtype
         
         if subtype == "WEBHOOK":
-            errors.extend(self._validate_required_parameters(node, ["webhook_url", "method"]))
-            method = node.parameters.get("method", "POST")
+            errors.extend(self._validate_required_parameters(node, ["method", "path"]))
+            method = node.parameters.get("method", "").upper()
             if method not in ["GET", "POST", "PUT", "DELETE"]:
                 errors.append(f"Invalid HTTP method: {method}")
         
         elif subtype == "CRON":
             errors.extend(self._validate_required_parameters(node, ["cron_expression"]))
-            # Basic cron validation could be added here
-        
-        elif subtype == "CHAT":
-            errors.extend(self._validate_required_parameters(node, ["platform", "channel"]))
-            platform = node.parameters.get("platform")
-            if platform not in ["slack", "discord", "telegram", "teams"]:
-                errors.append(f"Unsupported chat platform: {platform}")
+            cron_expr = node.parameters.get("cron_expression", "")
+            if not self._is_valid_cron(cron_expr):
+                errors.append(f"Invalid cron expression: {cron_expr}")
         
         elif subtype == "EMAIL":
-            errors.extend(self._validate_required_parameters(node, ["email_address", "subject_filter"]))
-        
-        elif subtype == "FORM":
-            errors.extend(self._validate_required_parameters(node, ["form_fields"]))
+            errors.extend(self._validate_required_parameters(node, ["email_filter"]))
         
         elif subtype == "CALENDAR":
-            errors.extend(self._validate_required_parameters(node, ["calendar_id", "event_type"]))
+            errors.extend(self._validate_required_parameters(node, ["calendar_id"]))
         
         return errors
     
@@ -105,13 +99,17 @@ class TriggerNodeExecutor(BaseNodeExecutor):
     
     def _execute_manual_trigger(self, context: NodeExecutionContext, logs: List[str], start_time: float) -> NodeExecutionResult:
         """Execute manual trigger."""
-        logs.append("Manual trigger executed")
+        require_confirmation = context.get_parameter("require_confirmation", False)
         
-        # Manual triggers typically pass through input data
+        logs.append(f"Manual trigger executed, confirmation required: {require_confirmation}")
+        
         output_data = {
             "trigger_type": "manual",
             "triggered_at": datetime.now().isoformat(),
-            "input_data": context.input_data
+            "require_confirmation": require_confirmation,
+            "input_data": context.input_data,
+            "user_id": context.metadata.get("user_id"),
+            "session_id": context.metadata.get("session_id")
         }
         
         return self._create_success_result(
@@ -122,20 +120,24 @@ class TriggerNodeExecutor(BaseNodeExecutor):
     
     def _execute_webhook_trigger(self, context: NodeExecutionContext, logs: List[str], start_time: float) -> NodeExecutionResult:
         """Execute webhook trigger."""
-        webhook_url = context.get_parameter("webhook_url")
-        method = context.get_parameter("method", "POST")
+        method = context.get_parameter("method", "POST").upper()
+        path = context.get_parameter("path", "/webhook")
+        authentication = context.get_parameter("authentication", "none")
         
-        logs.append(f"Webhook trigger configured for {method} {webhook_url}")
+        logs.append(f"Webhook trigger: {method} {path}, auth: {authentication}")
         
-        # In a real implementation, this would set up webhook endpoint
-        # For now, simulate webhook data
-        webhook_data = context.input_data.get("webhook_payload", {})
+        # Extract webhook data from input
+        webhook_data = context.input_data.get("webhook_data", {})
         
         output_data = {
             "trigger_type": "webhook",
-            "webhook_url": webhook_url,
             "method": method,
-            "payload": webhook_data,
+            "path": path,
+            "authentication": authentication,
+            "webhook_data": webhook_data,
+            "headers": context.input_data.get("headers", {}),
+            "query_params": context.input_data.get("query_params", {}),
+            "body": context.input_data.get("body", {}),
             "triggered_at": datetime.now().isoformat()
         }
         
@@ -147,17 +149,24 @@ class TriggerNodeExecutor(BaseNodeExecutor):
     
     def _execute_cron_trigger(self, context: NodeExecutionContext, logs: List[str], start_time: float) -> NodeExecutionResult:
         """Execute cron trigger."""
-        cron_expression = context.get_parameter("cron_expression")
+        cron_expression = context.get_parameter("cron_expression", "0 9 * * MON")
+        timezone = context.get_parameter("timezone", "UTC")
         
-        logs.append(f"Cron trigger with expression: {cron_expression}")
+        logs.append(f"Cron trigger: {cron_expression} ({timezone})")
         
-        # In a real implementation, this would schedule the cron job
-        # For now, simulate cron execution
+        # Check if it's time to trigger
+        now = datetime.now()
+        cron_iter = croniter(cron_expression, now)
+        next_run = cron_iter.get_next(datetime)
+        
         output_data = {
             "trigger_type": "cron",
             "cron_expression": cron_expression,
-            "triggered_at": datetime.now().isoformat(),
-            "next_run": (datetime.now() + timedelta(hours=1)).isoformat()  # Simulate next run
+            "timezone": timezone,
+            "current_time": now.isoformat(),
+            "next_run": next_run.isoformat(),
+            "should_trigger": now >= next_run,
+            "triggered_at": datetime.now().isoformat()
         }
         
         return self._create_success_result(
@@ -168,21 +177,22 @@ class TriggerNodeExecutor(BaseNodeExecutor):
     
     def _execute_chat_trigger(self, context: NodeExecutionContext, logs: List[str], start_time: float) -> NodeExecutionResult:
         """Execute chat trigger."""
-        platform = context.get_parameter("platform")
-        channel = context.get_parameter("channel")
-        trigger_phrase = context.get_parameter("trigger_phrase", "")
+        chat_platform = context.get_parameter("chat_platform", "general")
+        message_filter = context.get_parameter("message_filter", "")
         
-        logs.append(f"Chat trigger on {platform} channel {channel}")
+        logs.append(f"Chat trigger: {chat_platform}, filter: {message_filter}")
         
-        # Simulate chat message
-        message_data = context.input_data.get("message", {})
+        # Extract chat data from input
+        chat_data = context.input_data.get("chat_data", {})
         
         output_data = {
             "trigger_type": "chat",
-            "platform": platform,
-            "channel": channel,
-            "trigger_phrase": trigger_phrase,
-            "message": message_data,
+            "chat_platform": chat_platform,
+            "message_filter": message_filter,
+            "chat_data": chat_data,
+            "message": chat_data.get("message", ""),
+            "user": chat_data.get("user", ""),
+            "channel": chat_data.get("channel", ""),
             "triggered_at": datetime.now().isoformat()
         }
         
@@ -194,19 +204,23 @@ class TriggerNodeExecutor(BaseNodeExecutor):
     
     def _execute_email_trigger(self, context: NodeExecutionContext, logs: List[str], start_time: float) -> NodeExecutionResult:
         """Execute email trigger."""
-        email_address = context.get_parameter("email_address")
-        subject_filter = context.get_parameter("subject_filter")
+        email_filter = context.get_parameter("email_filter", "")
+        email_provider = context.get_parameter("email_provider", "gmail")
         
-        logs.append(f"Email trigger for {email_address} with subject filter: {subject_filter}")
+        logs.append(f"Email trigger: {email_provider}, filter: {email_filter}")
         
-        # Simulate email data
-        email_data = context.input_data.get("email", {})
+        # Extract email data from input
+        email_data = context.input_data.get("email_data", {})
         
         output_data = {
             "trigger_type": "email",
-            "email_address": email_address,
-            "subject_filter": subject_filter,
-            "email": email_data,
+            "email_provider": email_provider,
+            "email_filter": email_filter,
+            "email_data": email_data,
+            "subject": email_data.get("subject", ""),
+            "sender": email_data.get("sender", ""),
+            "recipients": email_data.get("recipients", []),
+            "body": email_data.get("body", ""),
             "triggered_at": datetime.now().isoformat()
         }
         
@@ -218,17 +232,21 @@ class TriggerNodeExecutor(BaseNodeExecutor):
     
     def _execute_form_trigger(self, context: NodeExecutionContext, logs: List[str], start_time: float) -> NodeExecutionResult:
         """Execute form trigger."""
+        form_id = context.get_parameter("form_id", "")
         form_fields = context.get_parameter("form_fields", [])
         
-        logs.append(f"Form trigger with fields: {form_fields}")
+        logs.append(f"Form trigger: {form_id}, fields: {form_fields}")
         
-        # Simulate form submission
-        form_data = context.input_data.get("form_submission", {})
+        # Extract form data from input
+        form_data = context.input_data.get("form_data", {})
         
         output_data = {
             "trigger_type": "form",
+            "form_id": form_id,
             "form_fields": form_fields,
             "form_data": form_data,
+            "submitted_by": form_data.get("submitted_by", ""),
+            "submission_time": form_data.get("submission_time", ""),
             "triggered_at": datetime.now().isoformat()
         }
         
@@ -240,19 +258,21 @@ class TriggerNodeExecutor(BaseNodeExecutor):
     
     def _execute_calendar_trigger(self, context: NodeExecutionContext, logs: List[str], start_time: float) -> NodeExecutionResult:
         """Execute calendar trigger."""
-        calendar_id = context.get_parameter("calendar_id")
-        event_type = context.get_parameter("event_type")
+        calendar_id = context.get_parameter("calendar_id", "primary")
+        event_filter = context.get_parameter("event_filter", "")
         
-        logs.append(f"Calendar trigger for {calendar_id} with event type: {event_type}")
+        logs.append(f"Calendar trigger: {calendar_id}, filter: {event_filter}")
         
-        # Simulate calendar event
-        event_data = context.input_data.get("calendar_event", {})
+        # Extract calendar data from input
+        calendar_data = context.input_data.get("calendar_data", {})
         
         output_data = {
             "trigger_type": "calendar",
             "calendar_id": calendar_id,
-            "event_type": event_type,
-            "event": event_data,
+            "event_filter": event_filter,
+            "calendar_data": calendar_data,
+            "events": calendar_data.get("events", []),
+            "event_count": len(calendar_data.get("events", [])),
             "triggered_at": datetime.now().isoformat()
         }
         
@@ -260,4 +280,12 @@ class TriggerNodeExecutor(BaseNodeExecutor):
             output_data=output_data,
             execution_time=time.time() - start_time,
             logs=logs
-        ) 
+        )
+    
+    def _is_valid_cron(self, cron_expression: str) -> bool:
+        """Validate cron expression."""
+        try:
+            croniter(cron_expression)
+            return True
+        except Exception:
+            return False
