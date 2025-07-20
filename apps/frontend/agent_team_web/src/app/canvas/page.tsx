@@ -8,9 +8,12 @@ import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { ExpandableTabs } from "@/components/ui/expandable-tabs";
 import { PanelResizer } from "@/components/ui/panel-resizer";
 import AssistantList from "@/components/ui/assistant-list";
-import { User, Bot, Home, Bell, Settings } from "lucide-react";
+import WorkflowCanvas from "@/components/workflow/WorkflowCanvas";
+import { User, Bot, Home, Bell, Settings, Workflow, Maximize2, ArrowLeft } from "lucide-react";
 import { useResizablePanel } from "@/hooks";
 import { assistants } from "@/lib/assistant-data";
+import { WorkflowData } from "@/types/workflow";
+import { generateWorkflowFromDescription } from "@/utils/workflowGenerator";
 
 interface Message {
   id: string;
@@ -22,6 +25,8 @@ interface Message {
 const CanvasPage = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowData | null>(null);
+  const [isWorkflowExpanded, setIsWorkflowExpanded] = useState(false);
   
   // Use the custom hook for resizable panels
   const { width: rightPanelWidth, isResizing, resizerProps, overlayProps } = useResizablePanel({
@@ -65,6 +70,30 @@ const CanvasPage = () => {
     }
   }, []);
 
+  // Handle worker selection from AssistantList
+  useEffect(() => {
+    const handleAssistantSelect = (event: Event) => {
+      const customEvent = event as CustomEvent<{ assistantId: string }>;
+      const assistantId = customEvent.detail.assistantId;
+      
+      // Find the worker's workflow
+      const assistant = assistants.find(a => a.id === assistantId);
+      console.log('Selected worker:', assistant);
+      
+      if (assistant?.workflow) {
+        console.log('Setting workflow:', assistant.workflow);
+        setCurrentWorkflow(assistant.workflow);
+      } else {
+        setCurrentWorkflow(null);
+      }
+    };
+
+    window.addEventListener('assistant-selected', handleAssistantSelect);
+    return () => {
+      window.removeEventListener('assistant-selected', handleAssistantSelect);
+    };
+  }, []);
+
   const handleSendMessage = useCallback((message: string, files?: File[]) => {
     if (!message.trim()) return;
 
@@ -83,17 +112,41 @@ const CanvasPage = () => {
       console.log('Processing uploaded files:', files);
     }
 
-    // Simulate AI response
-    setTimeout(() => {
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: `I received your message: "${message}". Let me process this request for you.`,
-        sender: 'assistant',
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, aiMessage]);
-      setIsLoading(false);
-    }, 1500);
+    // Check if this is a workflow generation request
+    const lowerMessage = message.toLowerCase();
+    if (lowerMessage.includes('create workflow') || lowerMessage.includes('generate workflow') || lowerMessage.includes('make flow')) {
+      // Generate workflow
+      const newWorkflow = generateWorkflowFromDescription(message);
+      setCurrentWorkflow(newWorkflow);
+      
+      setTimeout(() => {
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: `I've created a workflow based on your description. You can view and edit it on the left. The workflow contains ${newWorkflow.nodes.length} nodes. You can drag to adjust node positions or add new nodes from the panel.`,
+          sender: 'assistant',
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, aiMessage]);
+        setIsLoading(false);
+      }, 1000);
+    } else {
+      // Regular conversation response
+      setTimeout(() => {
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: `I received your message: "${message}". I can help you create a workflow. Just tell me what kind of flow you need. For example: "Create a workflow that starts with AI analysis, then processes data, and finally sends notifications."`,
+          sender: 'assistant',
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, aiMessage]);
+        setIsLoading(false);
+      }, 1500);
+    }
+  }, []);
+
+  const handleWorkflowChange = useCallback((updatedWorkflow: WorkflowData) => {
+    setCurrentWorkflow(updatedWorkflow);
+    console.log('Workflow updated:', updatedWorkflow);
   }, []);
 
   const leftPanelWidth = `calc(100% - ${rightPanelWidth}px)`;
@@ -122,7 +175,7 @@ const CanvasPage = () => {
         </div>
       </motion.div>
 
-      {/* Assistant Icon - Fixed Position Left */}
+      {/* Worker Icon - Fixed Position Left */}
       <motion.div
         className="fixed top-4 left-4 z-30"
         initial={{ opacity: 0, x: -20, rotate: -10 }}
@@ -132,7 +185,7 @@ const CanvasPage = () => {
       >
         <Image
           src="/assistant/AlfieKnowledgeBaseQueryAssistantIcon.png"
-          alt="Alfie Knowledge Base Query Assistant"
+          alt="Alfie Knowledge Base Query Worker"
           width={40}
           height={40}
           className="w-10 h-10"
@@ -165,7 +218,54 @@ const CanvasPage = () => {
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.6, delay: 0.2 }}
         >
-          <AssistantList assistants={assistants} />
+          {currentWorkflow ? (
+            <div className="h-full flex flex-col gap-4">
+              {/* Workflow Header */}
+              <motion.div 
+                className="flex items-center justify-between"
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                <div className="flex items-center gap-2">
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => setCurrentWorkflow(null)}
+                    className="p-2 hover:bg-accent rounded-lg transition-colors mr-2"
+                    title="Back to Workers"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                  </motion.button>
+                  <Workflow className="w-5 h-5 text-primary" />
+                  <h3 className="text-lg font-semibold">
+                    {assistants.find(a => a.workflow === currentWorkflow)?.name || ''}&apos;s Workflow
+                  </h3>
+                </div>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setIsWorkflowExpanded(!isWorkflowExpanded)}
+                  className="p-2 hover:bg-accent rounded-lg transition-colors"
+                >
+                  <Maximize2 className="w-4 h-4" />
+                </motion.button>
+              </motion.div>
+
+              {/* Workflow Canvas */}
+              <div className="flex-1 bg-muted/20 rounded-lg border border-border overflow-hidden">
+                <WorkflowCanvas
+                  workflowData={currentWorkflow}
+                  onWorkflowChange={handleWorkflowChange}
+                  isExpanded={isWorkflowExpanded}
+                  onToggleExpand={() => setIsWorkflowExpanded(!isWorkflowExpanded)}
+                  isSimpleView={false}
+                />
+              </div>
+            </div>
+          ) : (
+            <AssistantList assistants={assistants} />
+          )}
         </motion.div>
 
         {/* Resize Handle */}
@@ -179,6 +279,30 @@ const CanvasPage = () => {
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.6, delay: 0.3 }}
         >
+          {/* Chat Header */}
+          <div className="p-4 border-b border-border/30">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Bot className="w-5 h-5 text-primary" />
+                <h3 className="text-lg font-semibold">Worker Manager</h3>
+              </div>
+              
+              {/* <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => {
+                  // Generate a new workflow
+                  const newWorkflow = generateWorkflowFromDescription('Start with AI analysis, then process data, and finally store results');
+                  setCurrentWorkflow(newWorkflow);
+                }}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-md bg-primary/10 text-primary text-sm hover:bg-primary/20 transition-colors"
+              >
+                <Workflow className="w-4 h-4" />
+                <span>Create Workflow</span>
+              </motion.button> */}
+            </div>
+          </div>
+          
           {/* Chat Messages */}
           <div className="flex-1 p-4 overflow-y-auto pt-2">
             <div className="space-y-4">
@@ -255,6 +379,28 @@ const CanvasPage = () => {
           </motion.div>
         </motion.div>
       </motion.div>
+
+      {/* Expanded Workflow View */}
+      <AnimatePresence>
+        {isWorkflowExpanded && currentWorkflow && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-background z-50"
+          >
+            <div className="w-full h-full p-8">
+              <WorkflowCanvas
+                workflowData={currentWorkflow}
+                onWorkflowChange={handleWorkflowChange}
+                isExpanded={true}
+                onToggleExpand={() => setIsWorkflowExpanded(false)}
+                isSimpleView={false}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

@@ -1,3 +1,12 @@
+import { WorkflowData } from '@/types/workflow';
+import { exampleWorkflow } from './sample-workflows';
+import { generateWorkflowFromDescription } from '@/utils/workflowGenerator';
+
+const alfieWorkflow = generateWorkflowFromDescription('Start with AI analysis, then filter data, finally store results');
+const ramboWorkflow = generateWorkflowFromDescription('Start by fetching data from GitHub, process with AI, require human review, then send notifications');
+const fuxiWorkflow = generateWorkflowFromDescription('Start with AI analysis, transform data, check conditions, then save results');
+const daiyWorkflow = generateWorkflowFromDescription('Trigger on schedule, fetch data, process with AI, send notifications');
+
 export interface Assistant {
   id: string;
   name: string;
@@ -5,6 +14,7 @@ export interface Assistant {
   description: string;
   skills: string[];
   imagePath: string;
+  workflow?: WorkflowData;
 }
 
 export const assistants: Assistant[] = [
@@ -14,7 +24,8 @@ export const assistants: Assistant[] = [
     title: "Knowledge Base Wizard",
     description: "A sophisticated librarian who can find any information faster than you can say 'search'. Alfie has an uncanny ability to connect seemingly unrelated data points and present them in the most elegant way possible.",
     skills: ["Data Mining", "Information Architecture", "Search Optimization", "Knowledge Graphs"],
-    imagePath: "/assistant/AlfieKnowledgeBaseQueryAssistantIcon.png"
+    imagePath: "/assistant/AlfieKnowledgeBaseQueryAssistantIcon.png",
+    workflow: alfieWorkflow
   },
   {
     id: "rambo",
@@ -22,7 +33,8 @@ export const assistants: Assistant[] = [
     title: "AI Operations Commander",
     description: "The ultimate multitasker who treats project management like a military operation. Rambo can coordinate multiple AI systems while maintaining zen-like calm under pressure.",
     skills: ["Team Leadership", "Process Optimization", "Crisis Management", "Strategic Planning"],
-    imagePath: "/assistant/RamboAIManagerIcon.png"
+    imagePath: "/assistant/RamboAIManagerIcon.png",
+    workflow: ramboWorkflow
   },
   {
     id: "pengqi",
@@ -30,7 +42,8 @@ export const assistants: Assistant[] = [
     title: "Automation Virtuoso",
     description: "A master of making repetitive tasks disappear with a flick of digital wand. Pengqi believes that humans should focus on creativity while machines handle the mundane.",
     skills: ["Workflow Automation", "API Integration", "Script Development", "Process Design"],
-    imagePath: "/assistant/PengqiAutomationIcon.png"
+    imagePath: "/assistant/PengqiAutomationIcon.png",
+    workflow: exampleWorkflow
   },
   {
     id: "multi-task",
@@ -62,7 +75,8 @@ export const assistants: Assistant[] = [
     title: "Natural Language Alchemist",
     description: "A linguistic wizard who transforms raw text into meaningful insights. Fuxi understands the subtle nuances of human communication and can make machines speak like poets.",
     skills: ["NLP Processing", "Sentiment Analysis", "Language Modeling", "Text Generation"],
-    imagePath: "/assistant/FuxiNLPWorkflowIcon.png"
+    imagePath: "/assistant/FuxiNLPWorkflowIcon.png",
+    workflow: fuxiWorkflow
   },
   {
     id: "design-agent",
@@ -78,7 +92,8 @@ export const assistants: Assistant[] = [
     title: "Daily Routine Optimizer",
     description: "The master of morning routines and evening rituals. Daisy helps you structure your day for maximum productivity while maintaining work-life balance.",
     skills: ["Schedule Optimization", "Habit Formation", "Productivity Systems", "Time Management"],
-    imagePath: "/assistant/DailyAutomationAssistantIcon.png"
+    imagePath: "/assistant/DailyAutomationAssistantIcon.png",
+    workflow: daiyWorkflow
   },
   {
     id: "ai-employee",
