@@ -1,0 +1,112 @@
+"use client";
+
+import React, { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import { ExpandableTabs } from "@/components/ui/expandable-tabs";
+import { Home, Bell, User, Settings, Bot } from "lucide-react";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
+import Image from "next/image";
+import { useRouter, usePathname } from "next/navigation";
+
+export const NavigationHeader = () => {
+    const router = useRouter();
+    const pathname = usePathname();
+    const [activeTabIndex, setActiveTabIndex] = useState<number | null>(null);
+
+    const tabs = [
+        { title: "Home", icon: Home },
+        { title: "Assistant", icon: Bot },
+        { title: "Notifications", icon: Bell },
+        { type: "separator" as const },
+        { title: "Profile", icon: User },
+        { title: "Settings", icon: Settings },
+    ];
+
+    // Set active tab based on current path
+    useEffect(() => {
+        if (pathname === "/") {
+            setActiveTabIndex(0); // Home
+        } else if (pathname.includes("/canvas")) {
+            setActiveTabIndex(1); // Assistant/Canvas page
+        } else {
+            // Keep current selection, don't set to null
+        }
+    }, [pathname]);
+
+    // Handle tab click events
+    const handleTabChange = (index: number | null) => {
+        if (index === null) return;
+
+        setActiveTabIndex(index); // Update selected state first
+
+        // Navigate to corresponding page based on selected tab
+        switch (index) {
+            case 0: // Home
+                router.push('/');
+                break;
+            case 1: // Assistant
+                router.push('/canvas');
+                break;
+            // Can add navigation logic for other tabs
+            default:
+                console.log("Selected tab:", tabs[index]);
+                break;
+        }
+    };
+
+    // Handle logo click event, navigate to home page
+    const handleLogoClick = () => {
+        router.push('/');
+        setActiveTabIndex(0);
+    };
+
+    return (
+        <>
+            {/* Top navigation tabs */}
+            <motion.div
+                className="w-full pt-4 pb-4 px-4 relative z-20 bg-background/90 backdrop-blur-sm"
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, ease: [0.25, 0.1, 0.25, 1] }}
+            >
+                <div className="flex justify-center">
+                    <ExpandableTabs
+                        tabs={tabs}
+                        onChange={handleTabChange}
+                        initialSelectedIndex={activeTabIndex}
+                    />
+                </div>
+            </motion.div>
+
+            {/* Assistant Icon - Fixed Position Left */}
+            <motion.div
+                className="fixed top-4 left-4 z-30 cursor-pointer"
+                initial={{ opacity: 0, x: -20, rotate: -10 }}
+                animate={{ opacity: 1, x: 0, rotate: 0 }}
+                transition={{ duration: 0.8, delay: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
+                whileHover={{ scale: 1.1, rotate: 5 }}
+                onClick={handleLogoClick}
+                title="Go to Home"
+            >
+                <Image
+                    src="/assistant/AlfieKnowledgeBaseQueryAssistantIcon.png"
+                    alt="Alfie Knowledge Base Query Assistant"
+                    width={40}
+                    height={40}
+                    className="w-10 h-10"
+                />
+            </motion.div>
+
+            {/* Theme Toggle - Fixed Position Right */}
+            <motion.div
+                className="fixed top-4 right-4 z-30"
+                initial={{ opacity: 0, x: 20, rotate: 10 }}
+                animate={{ opacity: 1, x: 0, rotate: 0 }}
+                transition={{ duration: 0.8, delay: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+                whileHover={{ scale: 1.05 }}
+            >
+                <ThemeToggle />
+            </motion.div>
+        </>
+    );
+}; 
