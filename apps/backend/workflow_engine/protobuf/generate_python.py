@@ -6,6 +6,7 @@ This script generates Python classes from the protobuf files in this directory.
 """
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -49,10 +50,93 @@ def check_protoc():
         return False
 
 
+def fix_import_statements(output_dir):
+    """Fix import statements in generated protobuf files."""
+    print("\nFixing import statements...")
+    
+    # Files to fix
+    files_to_fix = [
+        "workflow_service_pb2.py",
+        "execution_pb2.py", 
+        "ai_system_pb2.py",
+        "integration_pb2.py",
+        "workflow_service_pb2_grpc.py"
+    ]
+    
+    for filename in files_to_fix:
+        filepath = output_dir / filename
+        if filepath.exists():
+            print(f"  Fixing imports in {filename}...")
+            
+            with open(filepath, 'r') as f:
+                content = f.read()
+            
+            # Fix various import statement patterns
+            # Fix "from . from . from ." patterns (multiple levels)
+            content = re.sub(
+                r'from \. from \. from \. import',
+                'from . import',
+                content
+            )
+            
+            # Fix "from . from ." patterns (double levels)
+            content = re.sub(
+                r'from \. from \. import',
+                'from . import',
+                content
+            )
+            
+            # Fix direct imports to relative imports
+            content = re.sub(
+                r'import workflow_pb2 as workflow__pb2',
+                'from . import workflow_pb2 as workflow__pb2',
+                content
+            )
+            content = re.sub(
+                r'import execution_pb2 as execution__pb2',
+                'from . import execution_pb2 as execution__pb2',
+                content
+            )
+            content = re.sub(
+                r'import ai_system_pb2 as ai__system__pb2',
+                'from . import ai_system_pb2 as ai__system__pb2',
+                content
+            )
+            content = re.sub(
+                r'import integration_pb2 as integration__pb2',
+                'from . import integration_pb2 as integration__pb2',
+                content
+            )
+            content = re.sub(
+                r'import workflow_service_pb2 as workflow__service__pb2',
+                'from . import workflow_service_pb2 as workflow__service__pb2',
+                content
+            )
+            
+            # Fix any remaining malformed imports
+            content = re.sub(
+                r'from \. import \. import',
+                'from . import',
+                content
+            )
+            
+            with open(filepath, 'w') as f:
+                f.write(content)
+            
+            print(f"  ✅ Fixed {filename}")
+
+
 def generate_python_code():
     """Generate Python code from protobuf files."""
     # Get the current directory (protobuf directory)
     proto_dir = Path(__file__).parent
+    
+    # Find .proto files in shared/proto/engine directory
+    shared_proto_dir = Path("/Users/bytedance/personal/agent_team_monorepo/apps/backend/shared/proto/engine")
+    
+    if not shared_proto_dir.exists():
+        print(f"Error: Shared proto directory not found: {shared_proto_dir}")
+        return
     
     # Output directory for generated Python files
     output_dir = proto_dir.parent / "workflow_engine" / "proto"
@@ -62,11 +146,11 @@ def generate_python_code():
     init_file = output_dir / "__init__.py"
     init_file.write_text('"""Generated protobuf modules."""\n')
     
-    # Find all .proto files
-    proto_files = list(proto_dir.glob("*.proto"))
+    # Find all .proto files in shared/proto/engine
+    proto_files = list(shared_proto_dir.glob("*.proto"))
     
     if not proto_files:
-        print("No .proto files found in the current directory.")
+        print("No .proto files found in the shared/proto/engine directory.")
         return
     
     print(f"Found {len(proto_files)} proto files:")
@@ -81,7 +165,7 @@ def generate_python_code():
             "protoc",
             f"--python_out={output_dir}",
             f"--grpc_python_out={output_dir}",
-            f"--proto_path={proto_dir}",
+            f"--proto_path={shared_proto_dir}",
             str(proto_file)
         ]
         
@@ -93,6 +177,9 @@ def generate_python_code():
             print(f"Error: {e}")
     
     print(f"\nPython code generated in: {output_dir}")
+    
+    # Fix import statements after generation
+    fix_import_statements(output_dir)
     
     # List generated files
     generated_files = list(output_dir.glob("*_pb2.py")) + list(output_dir.glob("*_pb2_grpc.py"))

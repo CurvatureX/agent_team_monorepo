@@ -1,4 +1,4 @@
-.PHONY: help install install-dev test lint format clean proto
+.PHONY: help install install-dev test lint format clean proto proto-fix
 
 help:
 	@echo "Available commands:"
@@ -7,7 +7,8 @@ help:
 	@echo "  test        - Run tests"
 	@echo "  lint        - Run linting"
 	@echo "  format      - Format code"
-	@echo "  proto       - Generate Python code from protobuf files"
+	@echo "  proto       - Generate Python code from protobuf files (with import fixes)"
+	@echo "  proto-fix   - Fix import statements in existing protobuf files"
 	@echo "  clean       - Clean build artifacts"
 
 install:
@@ -29,6 +30,9 @@ format:
 
 proto:
 	cd protobuf && python generate_python.py
+
+proto-fix:
+	python fix_proto_imports.py
 
 # Database commands
 db-init:

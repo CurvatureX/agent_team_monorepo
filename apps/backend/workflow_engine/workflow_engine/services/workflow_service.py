@@ -73,7 +73,7 @@ class WorkflowService:
                     created_at=workflow.created_at,
                     updated_at=workflow.updated_at,
                     version=workflow.version,
-                    tags=list(workflow.tags)
+                    tags=list(workflow.tags)  # Direct array, not JSON
                 )
                 db.add(db_workflow)
                 db.commit()
