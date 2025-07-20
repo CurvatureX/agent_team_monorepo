@@ -179,6 +179,8 @@ class IntelligentDesigner:
         3. 发现并行执行机会
         4. 考虑错误处理和边界情况
 
+        重要：必须返回有效的JSON格式，不要添加任何解释文字。只返回JSON对象。
+
         返回JSON格式：
         {
           "root_task": "主要任务描述",
@@ -214,7 +216,20 @@ class IntelligentDesigner:
 
         try:
             response = await self.llm.ainvoke(messages)
-            task_tree = json.loads(response.content)
+            response_content = response.content.strip()
+
+            # Handle potential JSON parsing issues
+            if not response_content:
+                logger.warning("Empty response from LLM, using fallback")
+                return self._create_fallback_task_tree(requirements)
+
+            # Try to extract JSON from response if it's wrapped in markdown
+            if response_content.startswith("```json"):
+                response_content = response_content.split("```json")[1].split("```")[0].strip()
+            elif response_content.startswith("```"):
+                response_content = response_content.split("```")[1].split("```")[0].strip()
+
+            task_tree = json.loads(response_content)
 
             # Validate and enhance task tree
             task_tree = self._validate_task_tree(task_tree)
@@ -225,6 +240,13 @@ class IntelligentDesigner:
             )
             return task_tree
 
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(
+                "JSON parsing failed in task decomposition",
+                error=str(e),
+                response=response_content[:200] if "response_content" in locals() else "N/A",
+            )
+            return self._create_fallback_task_tree(requirements)
         except Exception as e:
             logger.error("Task decomposition failed", error=str(e))
             return self._create_fallback_task_tree(requirements)
@@ -533,7 +555,7 @@ class IntelligentDesigner:
             )
 
             # Select appropriate node type (RAG-enhanced)
-            node_type = await self._select_node_type_enhanced(task, pattern_nodes, rag_suggestions)
+            node_type = self._select_node_type_enhanced(task, pattern_nodes, rag_suggestions)
 
             # Get RAG-enhanced parameters
             enhanced_params = await self._generate_enhanced_parameters(
@@ -958,6 +980,78 @@ class IntelligentDesigner:
             {"from": "analysis", "to": "decision", "transformation": "format_for_routing"},
         ]
 
+    def _select_node_type_enhanced(
+        self,
+        task: Dict[str, Any],
+        pattern_nodes: List[Dict[str, Any]],
+        rag_suggestions: List[Dict[str, Any]],
+    ) -> str:
+        """Enhanced node type selection using RAG suggestions"""
+        # Start with rule-based selection
+        base_node_type = self._select_node_type(task, pattern_nodes)
+
+        # If we have good RAG suggestions, consider them
+        if rag_suggestions and rag_suggestions[0]["confidence"] in ["high", "medium"]:
+            rag_node_type = rag_suggestions[0]["node_type"]
+
+            # Prefer RAG suggestion if it's high confidence
+            if rag_suggestions[0]["confidence"] == "high":
+                logger.info(
+                    "Using RAG node type suggestion",
+                    task=task.get("name"),
+                    base_type=base_node_type,
+                    rag_type=rag_node_type,
+                    confidence=rag_suggestions[0]["confidence"],
+                )
+                return rag_node_type
+
+            # For medium confidence, use RAG if it's different and more specific
+            if rag_node_type != base_node_type and len(rag_node_type) > len(base_node_type):
+                return rag_node_type
+
+        return base_node_type
+
+    async def _generate_enhanced_parameters(
+        self, task: Dict[str, Any], node_type: str, rag_suggestions: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Generate enhanced parameters using RAG insights"""
+        # Start with base parameters
+        base_params = self._generate_node_parameters(task, node_type)
+
+        # Find matching RAG suggestion
+        matching_suggestion = None
+        for suggestion in rag_suggestions:
+            if suggestion["node_type"] == node_type:
+                matching_suggestion = suggestion
+                break
+
+        if matching_suggestion:
+            # Add RAG-specific configuration hints
+            rag_metadata = matching_suggestion.get("metadata", {})
+
+            if "configuration_hints" in rag_metadata:
+                base_params.update(rag_metadata["configuration_hints"])
+
+            if "best_practices" in rag_metadata:
+                base_params["_rag_best_practices"] = rag_metadata["best_practices"]
+
+            if "example_config" in rag_metadata:
+                # Merge example configuration
+                example_config = rag_metadata["example_config"]
+                for key, value in example_config.items():
+                    if key not in base_params:
+                        base_params[key] = value
+
+        return base_params
+
+    def _get_rag_confidence(self, rag_suggestions: List[Dict[str, Any]]) -> str:
+        """Get overall confidence from RAG suggestions"""
+        if not rag_suggestions:
+            return "none"
+
+        top_suggestion = rag_suggestions[0]
+        return top_suggestion.get("confidence", "low")
+
     def _generate_data_mapping(self, from_task: str, to_task: str) -> Dict[str, Any]:
         """Generate data mapping between tasks"""
         return {
@@ -1076,9 +1170,15 @@ class WorkflowOrchestrator:
         capability_analysis = state["requirement_negotiation"]["capability_analysis"]
         negotiation_history = state["requirement_negotiation"]["negotiation_history"]
 
+        # Add original requirements to capability analysis context
+        negotiation_context = capability_analysis.copy()
+        negotiation_context["original_requirements"] = state["requirement_negotiation"][
+            "original_requirements"
+        ]
+
         # Process negotiation round
         negotiation_result = await self.negotiator.process_negotiation_round(
-            user_input, capability_analysis, negotiation_history
+            user_input, negotiation_context, negotiation_history
         )
 
         # Update negotiation history
@@ -1431,206 +1531,3 @@ class DSLValidator:
             score += 0.1
 
         return min(score, max_score)
-
-    # RAG Enhancement Methods for IntelligentDesigner
-    async def _select_node_type_enhanced(
-        self,
-        task: Dict[str, Any],
-        pattern_nodes: List[Dict[str, Any]],
-        rag_suggestions: List[Dict[str, Any]],
-    ) -> str:
-        """Enhanced node type selection using RAG suggestions"""
-        # Start with rule-based selection
-        base_node_type = self._select_node_type(task, pattern_nodes)
-
-        # If we have good RAG suggestions, consider them
-        if rag_suggestions and rag_suggestions[0]["confidence"] in ["high", "medium"]:
-            rag_node_type = rag_suggestions[0]["node_type"]
-
-            # Prefer RAG suggestion if it's high confidence
-            if rag_suggestions[0]["confidence"] == "high":
-                logger.info(
-                    "Using RAG node type suggestion",
-                    task=task.get("name"),
-                    base_type=base_node_type,
-                    rag_type=rag_node_type,
-                    confidence=rag_suggestions[0]["confidence"],
-                )
-                return rag_node_type
-
-            # For medium confidence, use RAG if it's different and more specific
-            if rag_node_type != base_node_type and len(rag_node_type) > len(base_node_type):
-                return rag_node_type
-
-        return base_node_type
-
-    async def _generate_enhanced_parameters(
-        self, task: Dict[str, Any], node_type: str, rag_suggestions: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        """Generate enhanced parameters using RAG insights"""
-        # Start with base parameters
-        base_params = self._generate_node_parameters(task, node_type)
-
-        # Find matching RAG suggestion
-        matching_suggestion = None
-        for suggestion in rag_suggestions:
-            if suggestion["node_type"] == node_type:
-                matching_suggestion = suggestion
-                break
-
-        if matching_suggestion:
-            # Add RAG-specific configuration hints
-            rag_metadata = matching_suggestion.get("metadata", {})
-
-            if "configuration_hints" in rag_metadata:
-                base_params.update(rag_metadata["configuration_hints"])
-
-            if "best_practices" in rag_metadata:
-                base_params["_rag_best_practices"] = rag_metadata["best_practices"]
-
-            if "example_config" in rag_metadata:
-                # Merge example configuration
-                example_config = rag_metadata["example_config"]
-                for key, value in example_config.items():
-                    if key not in base_params:
-                        base_params[key] = value
-
-        return base_params
-
-    def _get_rag_confidence(self, rag_suggestions: List[Dict[str, Any]]) -> str:
-        """Get overall confidence from RAG suggestions"""
-        if not rag_suggestions:
-            return "none"
-
-        top_suggestion = rag_suggestions[0]
-        return top_suggestion.get("confidence", "low")
-
-    async def get_integration_specific_design(
-        self, integration_type: str, requirements: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Get RAG-enhanced design for specific integrations"""
-        try:
-            guidance = await self.rag.get_integration_guidance(integration_type, requirements)
-
-            # Extract design recommendations
-            design_recommendations = {
-                "recommended_nodes": [],
-                "configuration_requirements": guidance.get("configuration_requirements", []),
-                "best_practices": guidance.get("best_practices", []),
-                "common_patterns": [],
-            }
-
-            # Process specific guidance
-            for guidance_item in guidance.get("specific_guidance", []):
-                if guidance_item["similarity"] > 0.6:  # Good match
-                    design_recommendations["recommended_nodes"].append(
-                        {
-                            "node_type": guidance_item["node_type"],
-                            "title": guidance_item["title"],
-                            "description": guidance_item["description"],
-                            "confidence": guidance_item.get("confidence", "medium"),
-                        }
-                    )
-
-            # Process general patterns
-            for pattern in guidance.get("general_patterns", []):
-                if pattern["similarity"] > 0.5:  # Reasonable match
-                    design_recommendations["common_patterns"].append(
-                        {
-                            "pattern": pattern["title"],
-                            "description": pattern["description"],
-                            "use_case": pattern.get("metadata", {}).get("use_case", ""),
-                        }
-                    )
-
-            return design_recommendations
-
-        except Exception as e:
-            logger.warning(
-                "RAG integration guidance failed", integration=integration_type, error=str(e)
-            )
-            return {
-                "recommended_nodes": [],
-                "configuration_requirements": [],
-                "best_practices": [],
-                "common_patterns": [],
-            }
-
-    async def enhance_architecture_with_rag(
-        self, base_architecture: Dict[str, Any], requirements: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Enhance architecture design with RAG insights"""
-        enhanced_architecture = base_architecture.copy()
-
-        # Get integration-specific enhancements
-        integrations = requirements.get("integrations", [])
-        integration_enhancements = {}
-
-        for integration in integrations:
-            system_name = integration.get("system", "").lower()
-            if system_name:
-                enhancement = await self.get_integration_specific_design(system_name, integration)
-                integration_enhancements[system_name] = enhancement
-
-        # Add RAG insights to architecture
-        enhanced_architecture["rag_insights"] = {
-            "integration_enhancements": integration_enhancements,
-            "confidence_scores": self._calculate_architecture_confidence(enhanced_architecture),
-            "improvement_suggestions": self._generate_rag_improvements(
-                enhanced_architecture, integration_enhancements
-            ),
-        }
-
-        return enhanced_architecture
-
-    def _calculate_architecture_confidence(self, architecture: Dict[str, Any]) -> Dict[str, float]:
-        """Calculate confidence scores for architecture components"""
-        nodes = architecture.get("nodes", [])
-        confidence_scores = {}
-
-        for node in nodes:
-            node_id = node.get("id", "unknown")
-            rag_confidence = node.get("metadata", {}).get("rag_confidence", "none")
-
-            confidence_map = {"high": 0.9, "medium": 0.7, "low": 0.5, "very_low": 0.3, "none": 0.2}
-
-            confidence_scores[node_id] = confidence_map.get(rag_confidence, 0.2)
-
-        return confidence_scores
-
-    def _generate_rag_improvements(
-        self, architecture: Dict[str, Any], integration_enhancements: Dict[str, Any]
-    ) -> List[str]:
-        """Generate improvement suggestions based on RAG insights"""
-        improvements = []
-
-        # Check for missing best practices
-        all_best_practices = []
-        for enhancement in integration_enhancements.values():
-            all_best_practices.extend(enhancement.get("best_practices", []))
-
-        # Deduplicate and add top suggestions
-        unique_practices = list(set(all_best_practices))
-        for practice in unique_practices[:3]:  # Top 3
-            improvements.append(f"最佳实践: {practice}")
-
-        # Check for configuration gaps
-        all_config_reqs = []
-        for enhancement in integration_enhancements.values():
-            all_config_reqs.extend(enhancement.get("configuration_requirements", []))
-
-        if all_config_reqs:
-            improvements.append(f"需要配置: {', '.join(set(all_config_reqs[:3]))}")
-
-        # Check for low confidence nodes
-        nodes = architecture.get("nodes", [])
-        low_confidence_nodes = [
-            node.get("name", node.get("id"))
-            for node in nodes
-            if node.get("metadata", {}).get("rag_confidence") in ["low", "very_low"]
-        ]
-
-        if low_confidence_nodes:
-            improvements.append(f"建议验证这些节点的配置: {', '.join(low_confidence_nodes[:2])}")
-
-        return improvements

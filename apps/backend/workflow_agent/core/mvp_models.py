@@ -11,13 +11,15 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class WorkflowStage(str, Enum):
-    """Workflow generation stages"""
+    """Workflow generation stages matching architecture design"""
 
     LISTENING = "listening"
+    CONSULTANT = "consultant"
     REQUIREMENT_NEGOTIATION = "requirement_negotiation"
     DESIGN = "design"
     CONFIGURATION = "configuration"
-    EXECUTION = "execution"
+    TESTING = "testing"
+    DEPLOYMENT = "deployment"
     MONITORING = "monitoring"
     LEARNING = "learning"
 
@@ -56,6 +58,69 @@ class DeploymentStatus(str, Enum):
     ACTIVE = "active"
     FAILED = "failed"
     STOPPED = "stopped"
+
+
+class NodeType(str, Enum):
+    """Node types from architecture design"""
+
+    # Consultant Nodes
+    LISTEN = "listen"
+    CAPTURE = "capture"
+    SCAN = "scan"
+    ASSESS_SEVERITY = "assess_severity"
+    SEARCH_SIMPLE = "search_simple"
+    SEARCH_MULTIPLE = "search_multiple"
+    NEGOTIATE_REQ = "negotiate_req"
+    SUGGEST_ALT = "suggest_alt"
+    PRESENT_OPTIONS = "present_options"
+    ADJUST_REQ = "adjust_req"
+    CONFIRM_REQ = "confirm_req"
+    GUIDED_CLARIFY = "guided_clarify"
+
+    # Design Nodes
+    EXTRACT_TASKS = "extract_tasks"
+    MAP_CAPABILITIES = "map_capabilities"
+    CREATE_PLAN = "create_plan"
+    GEN_ARCHITECTURE = "gen_architecture"
+    DESIGN_NODES = "design_nodes"
+    DEFINE_FLOW = "define_flow"
+    CREATE_DSL = "create_dsl"
+
+    # Configuration Nodes
+    START_CONFIG = "start_config"
+    SELECT_NODE = "select_node"
+    CONFIG_PARAMS = "config_params"
+    REQUEST_INFO = "request_info"
+
+    # Testing Nodes
+    PREP_TEST = "prep_test"
+    EXEC_TEST = "exec_test"
+    ANALYZE_RESULTS = "analyze_results"
+    FIX_PARAMS = "fix_params"
+    FIX_STRUCTURE = "fix_structure"
+    CHECK_DEPS = "check_deps"
+
+    # Deployment Nodes
+    PREP_DEPLOY = "prep_deploy"
+    DEPLOY = "deploy"
+    VERIFY_DEPLOY = "verify_deploy"
+    NOTIFY_SUCCESS = "notify_success"
+    ROLLBACK = "rollback"
+
+    # Decision Nodes
+    CHECK_GAPS = "check_gaps"
+    SEVERITY_CHECK = "severity_check"
+    VALIDATE_ADJ = "validate_adj"
+    USER_CHOICE = "user_choice"
+    MORE_QUESTIONS = "more_questions"
+    VALIDATE_PLAN = "validate_plan"
+    STRUCTURE_OK = "structure_ok"
+    VALIDATE_CONFIG = "validate_config"
+    MORE_NODES = "more_nodes"
+    TEST_SUCCESS = "test_success"
+    ERROR_TYPE = "error_type"
+    RETRY_COUNT = "retry_count"
+    DEPLOY_SUCCESS = "deploy_success"
 
 
 class Solution(BaseModel):
@@ -106,6 +171,7 @@ class CapabilityAnalysis(BaseModel):
     gap_severity: Dict[str, GapSeverity]  # {gap: severity}
     potential_solutions: Dict[str, List[Solution]]  # {gap: [solutions]}
     complexity_scores: Dict[str, int]  # {capability: complexity_score}
+    rag_insights: Dict[str, Any] = Field(default_factory=dict)  # RAG insights from vector store
 
 
 class TaskNode(BaseModel):
@@ -269,28 +335,217 @@ class ConfigurationCheck(BaseModel):
     completeness_percentage: float = Field(ge=0.0, le=1.0)
 
 
-class MVPWorkflowState(BaseModel):
-    """
-    Complete MVP workflow state with proper Pydantic validation
-    """
+class ParsedIntent(BaseModel):
+    """Parsed user intent"""
+
+    primary_goal: str
+    secondary_goals: List[str] = Field(default_factory=list)
+    constraints: List[str] = Field(default_factory=list)
+    success_criteria: List[str] = Field(default_factory=list)
+
+
+class RuntimeMetrics(BaseModel):
+    """Runtime performance metrics"""
+
+    response_times: List[float] = Field(default_factory=list)
+    error_rate: float = 0.0
+    throughput: float = 0.0
+    resource_usage: Dict[str, Any] = Field(default_factory=dict)
+
+
+class OptimizationOpportunity(BaseModel):
+    """Optimization opportunity"""
+
+    type: str
+    description: str
+    potential_impact: str
+    estimated_effort: str
+
+
+class AlertConfig(BaseModel):
+    """Alert configuration"""
+
+    type: str
+    threshold: float
+    action: str
+    enabled: bool = True
+
+
+class HealthStatus(BaseModel):
+    """Health status"""
+
+    status: str  # "healthy", "degraded", "unhealthy"
+    checks: Dict[str, bool] = Field(default_factory=dict)
+    last_check: datetime = Field(default_factory=datetime.now)
+
+
+class Pattern(BaseModel):
+    """Pattern for learning"""
+
+    type: str
+    frequency: int
+    confidence: float
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class OptimizationHistory(BaseModel):
+    """Optimization history record"""
+
+    optimization_type: str
+    applied_at: datetime
+    impact: str
+    metrics_before: Dict[str, Any] = Field(default_factory=dict)
+    metrics_after: Dict[str, Any] = Field(default_factory=dict)
+
+
+class Feedback(BaseModel):
+    """User feedback"""
+
+    type: str
+    rating: int
+    comment: str
+    timestamp: datetime = Field(default_factory=datetime.now)
+
+
+class TestResult(BaseModel):
+    """Test execution result"""
+
+    test_id: str
+    test_type: str
+    success: bool
+    execution_time: float
+    output: Dict[str, Any] = Field(default_factory=dict)
+    errors: List[str] = Field(default_factory=list)
+
+
+class TestCoverage(BaseModel):
+    """Test coverage metrics"""
+
+    node_coverage: float
+    path_coverage: float
+    condition_coverage: float
+    total_coverage: float
+
+
+class ErrorRecord(BaseModel):
+    """Error record"""
+
+    error_id: str
+    error_type: str
+    message: str
+    stack_trace: str
+    timestamp: datetime = Field(default_factory=datetime.now)
+    resolved: bool = False
+
+
+class PerformanceMetrics(BaseModel):
+    """Performance metrics"""
+
+    execution_time: float
+    memory_usage: float
+    cpu_usage: float
+    network_io: float
+    disk_io: float
+
+
+class RollbackPoint(BaseModel):
+    """Rollback point"""
+
+    point_id: str
+    timestamp: datetime
+    state_snapshot: Dict[str, Any] = Field(default_factory=dict)
+    description: str
+
+
+class WorkflowState(BaseModel):
+    """Complete workflow state matching architecture design"""
 
     # Metadata
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            "session_id": "",
+            "user_id": "anonymous",
+            "created_at": datetime.now(),
+            "updated_at": datetime.now(),
+            "version": "1.0.0",
+            "interaction_count": 0,
+        }
+    )
 
     # Current stage
     stage: WorkflowStage = WorkflowStage.REQUIREMENT_NEGOTIATION
 
-    # Requirement negotiation state - complete implementation
-    requirement_negotiation: Dict[str, Any] = Field(default_factory=dict)
+    # Requirement negotiation state
+    requirement_negotiation: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            "original_requirements": "",
+            "parsed_intent": {},
+            "capability_analysis": {},
+            "identified_constraints": [],
+            "proposed_solutions": [],
+            "user_decisions": [],
+            "negotiation_history": [],
+            "final_requirements": "",
+            "confidence_score": 0.0,
+            "need_clarification": None,  # Boolean: True=needs clarification, False=clear input, None=not assessed
+        }
+    )
 
-    # Design state - complete implementation
-    design_state: Dict[str, Any] = Field(default_factory=dict)
+    # Design state
+    design_state: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            "task_tree": {},
+            "architecture": {},
+            "workflow_dsl": {},
+            "optimization_suggestions": [],
+            "design_patterns_used": [],
+            "estimated_performance": {},
+        }
+    )
 
-    # Configuration state - complete implementation
-    configuration_state: Dict[str, Any] = Field(default_factory=dict)
+    # Configuration state
+    configuration_state: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            "current_node_index": 0,
+            "node_configurations": [],
+            "missing_parameters": [],
+            "validation_results": [],
+            "configuration_templates": [],
+            "auto_filled_params": [],
+        }
+    )
 
-    # Simplified execution state for MVP
-    execution_state: Dict[str, Any] = Field(default_factory=dict)
+    # Execution state
+    execution_state: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            "test_results": [],
+            "test_coverage": {},
+            "errors": [],
+            "performance_metrics": {},
+            "deployment_status": "pending",
+            "rollback_points": [],
+        }
+    )
+
+    # Monitoring state
+    monitoring_state: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            "runtime_metrics": {},
+            "optimization_opportunities": [],
+            "alert_configurations": [],
+            "health_status": {},
+        }
+    )
+
+    # Learning state
+    learning_state: Dict[str, Any] = Field(
+        default_factory=lambda: {
+            "execution_patterns": [],
+            "failure_patterns": [],
+            "optimization_history": [],
+            "user_feedback": [],
+        }
+    )
 
     # Additional compatibility fields
     user_input: str = ""
@@ -319,6 +574,15 @@ class MVPWorkflowState(BaseModel):
     final_result: Optional[Dict[str, Any]] = None
 
     model_config = ConfigDict(arbitrary_types_allowed=True, validate_assignment=True)
+
+
+# Keep MVPWorkflowState for backward compatibility
+class MVPWorkflowState(WorkflowState):
+    """
+    MVP workflow state - extends WorkflowState for backward compatibility
+    """
+
+    pass
 
 
 # Request/Response models for API

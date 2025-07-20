@@ -1,0 +1,25 @@
+Generate solutions for the capability gap: {gap}
+
+Requirements context: {requirements}
+Additional context: {context}
+
+Please provide multiple solution approaches with:
+1. Solution description
+2. Implementation complexity (1-10)
+3. Reliability score (1-10)
+4. Estimated effort
+5. Pros and cons
+
+Format as JSON array:
+{% raw %}
+[
+    {{
+        "solution": "Solution description",
+        "complexity": 7,
+        "reliability": 8,
+        "effort": "2-3 weeks",
+        "pros": ["advantage1", "advantage2"],
+        "cons": ["limitation1", "limitation2"]
+    }}
+]
+{% endraw %}

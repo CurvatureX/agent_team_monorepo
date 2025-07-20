@@ -13,9 +13,12 @@ class WorkflowStage(str, Enum):
     """Workflow generation stages"""
 
     LISTENING = "listening"
+    CONSULTANT = "consultant"
     REQUIREMENT_NEGOTIATION = "requirement_negotiation"
     DESIGN = "design"
     CONFIGURATION = "configuration"
+    TESTING = "testing"
+    DEPLOYMENT = "deployment"
     EXECUTION = "execution"
     MONITORING = "monitoring"
     LEARNING = "learning"
@@ -255,6 +258,9 @@ class WorkflowState(TypedDict):
 
 class MVPWorkflowState(TypedDict):
     """MVP version of workflow state"""
+
+    # User input
+    user_input: str
 
     # Metadata
     metadata: Dict[str, Any]

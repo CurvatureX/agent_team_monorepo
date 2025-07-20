@@ -114,16 +114,18 @@ class SupabaseVectorStore:
             threshold = similarity_threshold or settings.RAG_SIMILARITY_THRESHOLD
             max_count = max_results or settings.RAG_MAX_RESULTS
 
-            # Call the PostgreSQL function for vector similarity search
-            result = self.supabase_client.rpc(
-                "match_node_knowledge",
-                {
-                    "query_embedding": query_embedding,
-                    "match_threshold": threshold,
-                    "match_count": max_count,
-                    "node_type_filter": node_type_filter,
-                },
-            ).execute()
+            # Call the PostgreSQL function for vector similarity search using asyncio.to_thread
+            result = await asyncio.to_thread(
+                lambda: self.supabase_client.rpc(
+                    "match_node_knowledge",
+                    {
+                        "query_embedding": query_embedding,
+                        "match_threshold": threshold,
+                        "match_count": max_count,
+                        "node_type_filter": node_type_filter,
+                    },
+                ).execute()
+            )
 
             # Convert results to NodeKnowledgeEntry objects
             entries = []

@@ -1,0 +1,20 @@
+Analyze the capability gaps between required and available capabilities:
+
+Required: {required_capabilities}
+Available: {available_capabilities}
+RAG Insights: {rag_insights}
+
+Please identify:
+1. Missing capabilities (gaps)
+2. Severity of each gap (low, medium, high, critical)
+3. Potential alternatives or workarounds
+
+Format as JSON:
+{% raw %}
+{{
+    "gaps": ["gap1", "gap2", ...],
+    "severity": {{"gap1": "high", "gap2": "medium", ...}},
+    "alternatives": {{"gap1": ["alt1", "alt2"], ...}},
+    "analysis": "Brief explanation"
+}}
+{% endraw %}

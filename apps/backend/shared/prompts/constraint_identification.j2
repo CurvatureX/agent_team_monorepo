@@ -1,0 +1,28 @@
+Identify constraints based on the analysis and requirements:
+
+Analysis: {analysis}
+Requirements: {requirements}
+
+Please identify:
+1. Technical constraints
+2. Business constraints
+3. Resource constraints
+4. Timeline constraints
+
+For each constraint, provide:
+- Type (technical/business/resource/timeline)
+- Description
+- Severity (low/medium/high/critical)
+- Impact on project
+
+Format as JSON array:
+{% raw %}
+[
+    {{
+        "type": "technical",
+        "description": "Constraint description",
+        "severity": "high",
+        "impact": "Impact description"
+    }}
+]
+{% endraw %}

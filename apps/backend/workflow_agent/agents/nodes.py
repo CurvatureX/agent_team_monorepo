@@ -379,8 +379,7 @@ class WorkflowAgentNodes:
         task_decomposition = state.get("task_decomposition", {})
         confirmed_requirements = state.get("confirmed_requirements", state.get("user_input", ""))
 
-        system_prompt, user_prompt = await asyncio.to_thread(
-            self.prompt_loader.get_system_and_user_prompts,
+        system_prompt, user_prompt = await self.prompt_engine.get_system_and_user_prompts(
             "workflow_architecture",
             task_decomposition=task_decomposition,
             confirmed_requirements=confirmed_requirements,

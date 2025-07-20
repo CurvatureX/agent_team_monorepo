@@ -1,3 +1,11 @@
+import sys
+from pathlib import Path
+
+# Add the backend path to sys.path to import shared modules
+backend_path = Path(__file__).resolve().parent.parent.parent
+if str(backend_path) not in sys.path:
+    sys.path.insert(0, str(backend_path))
+
 """
 Intelligence engines for Workflow Agent
 Based on the MVP plan and architecture design
@@ -7,11 +15,13 @@ import json
 from typing import Any, Dict, List, Optional
 
 import structlog
+from langchain.prompts import PromptTemplate
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
-from agents.state import (
+from core.config import settings
+from core.mvp_models import (
     CapabilityAnalysis,
     Constraint,
     GapSeverity,
@@ -19,10 +29,288 @@ from agents.state import (
     SolutionReliability,
     SolutionType,
 )
-from core.config import settings
+from core.prompt_engine import get_prompt_engine
 from core.vector_store import get_node_knowledge_rag
 
 logger = structlog.get_logger()
+
+
+class LLMCapabilityScanner:
+    def __init__(self, llm, rag_system):
+        self.llm = llm
+        self.rag = rag_system
+        self.capability_library = {}  # Legacy support
+        self.prompt_engine = get_prompt_engine()
+
+        # LLM Prompts
+        # Templates will be loaded on-demand via prompt_engine
+
+    async def _call_llm(self, prompt: str, **kwargs) -> Dict[str, Any]:
+        """Helper method to call LLM with error handling"""
+        try:
+            response = await self.llm.ainvoke([HumanMessage(content=prompt)])
+
+            # Try to parse JSON response
+            try:
+                return json.loads(response.content)
+            except json.JSONDecodeError:
+                # If not JSON, return as text
+                return {"response": response.content}
+
+        except Exception as e:
+            logger.error(f"LLM call failed: {e}")
+            return {"error": str(e)}
+
+    async def _extract_required_capabilities(self, requirements: Dict[str, Any]) -> List[str]:
+        """Extract required capabilities using LLM"""
+        context = {
+            "complexity_preference": requirements.get("estimated_complexity", "medium"),
+            "business_context": requirements.get("primary_goal", ""),
+            "performance_requirements": requirements.get("performance_requirements", {}),
+        }
+
+        prompt_str = await self.prompt_engine.render_prompt(
+            "capability_extraction",
+            requirements=json.dumps(requirements, indent=2),
+            context=json.dumps(context, indent=2),
+        )
+        result = await self._call_llm(prompt_str)
+
+        return result.get("capabilities", [])
+
+    async def _analyze_capability_gaps(
+        self,
+        required_capabilities: List[str],
+        available_capabilities: List[str],
+        rag_insights: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Analyze capability gaps using LLM"""
+        prompt_str = await self.prompt_engine.render_prompt(
+            "gap_analysis",
+            required_capabilities=json.dumps(required_capabilities),
+            available_capabilities=json.dumps(available_capabilities),
+            rag_insights=json.dumps(rag_insights, indent=2),
+        )
+        result = await self._call_llm(prompt_str)
+
+        return result
+
+    async def _generate_solutions(self, gap: str, requirements: Dict[str, Any]) -> List[Dict]:
+        """Generate solutions for capability gap using LLM"""
+        context = {
+            "business_context": requirements.get("primary_goal", ""),
+            "constraints": requirements.get("constraints", {}),
+            "preferences": requirements.get("preferences", {}),
+        }
+
+        prompt_str = await self.prompt_engine.render_prompt(
+            "solution_generation",
+            gap=gap,
+            requirements=json.dumps(requirements, indent=2),
+            context=json.dumps(context, indent=2),
+        )
+        result = await self._call_llm(prompt_str)
+
+        return result if isinstance(result, list) else []
+
+    async def perform_capability_scan(self, requirements: Dict[str, Any]) -> CapabilityAnalysis:
+        """
+        Dynamic capability scanning using LLM and RAG
+        """
+        logger.info("Starting LLM-enhanced capability scan")
+
+        # Step 1: Extract required capabilities using LLM
+        required_capabilities = await self._extract_required_capabilities(requirements)
+
+        # Step 2: Get RAG recommendations
+        rag_recommendations = await self.rag.get_capability_recommendations(
+            required_capabilities,
+            context={
+                "complexity_preference": requirements.get("estimated_complexity", "medium"),
+                "business_context": requirements.get("primary_goal", ""),
+                "performance_requirements": requirements.get("performance_requirements", {}),
+            },
+        )
+
+        # Step 3: Combine static and RAG capabilities
+        static_capabilities = list(self.capability_library.get("capability_matrix", {}).keys())
+        rag_capabilities = []
+
+        for cap_matches in rag_recommendations.get("capability_matches", {}).values():
+            for match in cap_matches:
+                if hasattr(match, "node_type") and match.node_type not in rag_capabilities:
+                    rag_capabilities.append(match.node_type)
+
+        available_capabilities = list(set(static_capabilities + rag_capabilities))
+
+        # Step 4: Analyze gaps using LLM
+        gap_analysis = await self._analyze_capability_gaps(
+            required_capabilities, available_capabilities, rag_recommendations
+        )
+
+        capability_gaps = gap_analysis.get("gaps", [])
+
+        # Safe handling of gap severity with fallback
+        severity_data = gap_analysis.get("severity", {})
+        gap_severity = {}
+        for gap, severity in severity_data.items() if isinstance(severity_data, dict) else []:
+            try:
+                gap_severity[gap] = (
+                    GapSeverity(severity) if isinstance(severity, str) else GapSeverity.MEDIUM
+                )
+            except (ValueError, TypeError):
+                gap_severity[gap] = GapSeverity.MEDIUM  # Default fallback
+
+        # Step 5: Generate solutions for each gap using LLM
+        potential_solutions = {}
+        for gap in capability_gaps:
+            solutions_data = await self._generate_solutions(gap, requirements)
+            solutions = []
+            for sol_data in solutions_data[:5]:  # Top 5 solutions
+                try:
+                    if isinstance(sol_data, dict):
+                        solution = Solution(
+                            type=SolutionType(sol_data.get("type", "api_integration")),
+                            complexity=sol_data.get("complexity", 5),
+                            setup_time=sol_data.get("setup_time", "unknown"),
+                            requires_user_action=sol_data.get("requires_user_action", "none"),
+                            reliability=SolutionReliability(sol_data.get("reliability", "medium")),
+                            description=sol_data.get("description", ""),
+                        )
+                        solutions.append(solution)
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Failed to create Solution from {sol_data}: {e}")
+                    continue
+            potential_solutions[gap] = solutions
+
+        # Step 6: Calculate complexity scores (LLM + legacy fallback)
+        complexity_scores = {}
+        for cap in required_capabilities:
+            if cap in self.capability_library.get("capability_matrix", {}):
+                complexity_scores[cap] = self.capability_library["capability_matrix"][cap][
+                    "complexity_score"
+                ]
+            else:
+                # Use LLM to estimate complexity
+                prompt_str = await self.prompt_engine.render_prompt(
+                    "capability_complexity_estimation",
+                    capability=cap,
+                    context=json.dumps(requirements, indent=2),
+                )
+                complexity_result = await self._call_llm(prompt_str)
+                try:
+                    complexity_scores[cap] = float(complexity_result.get("response", "8"))
+                except (ValueError, TypeError):
+                    complexity_scores[cap] = 8.0  # Default
+
+        # Create capability analysis result
+        try:
+            capability_analysis = CapabilityAnalysis(
+                required_capabilities=required_capabilities,
+                available_capabilities=available_capabilities,
+                capability_gaps=capability_gaps,
+                gap_severity=gap_severity,
+                potential_solutions=potential_solutions,
+                complexity_scores=complexity_scores,
+            )
+        except Exception as e:
+            logger.error("Failed to create CapabilityAnalysis", error=str(e))
+            # Create a dict with the same structure as fallback
+            capability_analysis = {
+                "required_capabilities": required_capabilities,
+                "available_capabilities": available_capabilities,
+                "capability_gaps": capability_gaps,
+                "gap_severity": gap_severity,
+                "potential_solutions": potential_solutions,
+                "complexity_scores": complexity_scores,
+                "rag_insights": {},
+            }
+            return capability_analysis
+
+        # Add RAG insights
+        capability_analysis.rag_insights = {
+            "coverage_score": rag_recommendations.get("coverage_score", 0),
+            "total_rag_matches": rag_recommendations.get("total_matches", 0),
+            "missing_capabilities": rag_recommendations.get("missing_capabilities", []),
+            "recommended_alternatives": rag_recommendations.get("alternatives", [])[:3],
+            "confidence": "high"
+            if rag_recommendations.get("coverage_score", 0) > 0.8
+            else "medium",
+        }
+
+        logger.info(
+            "LLM-enhanced capability scan completed",
+            required=len(required_capabilities),
+            gaps=len(capability_gaps),
+            rag_coverage=rag_recommendations.get("coverage_score", 0),
+        )
+
+        return capability_analysis
+
+    async def assess_complexity(self, capabilities: CapabilityAnalysis) -> Dict[str, Any]:
+        """
+        Comprehensive complexity assessment using LLM
+        """
+        logger.info("Assessing complexity with LLM")
+
+        # Prepare data for LLM
+        capabilities_data = {
+            "required_capabilities": capabilities.required_capabilities,
+            "capability_gaps": capabilities.capability_gaps,
+            "complexity_scores": capabilities.complexity_scores,
+            "gap_severity": {
+                gap: severity.value for gap, severity in capabilities.gap_severity.items()
+            },
+        }
+
+        # Use LLM for complexity assessment
+        prompt_str = await self.prompt_engine.render_prompt(
+            "complexity_assessment",
+            capabilities=json.dumps(capabilities_data, indent=2),
+            requirements="",  # You might want to pass original requirements here
+            context="",
+        )
+        complexity_result = await self._call_llm(prompt_str)
+
+        logger.info(
+            "LLM complexity assessment completed",
+            overall_score=complexity_result.get("overall_score", 0),
+        )
+
+        return complexity_result
+
+    async def identify_constraints(self, analysis: Dict[str, Any]) -> List[Constraint]:
+        """
+        Identify constraints using LLM
+        """
+        logger.info("Identifying constraints with LLM")
+
+        # Use LLM for constraint identification
+        prompt_str = await self.prompt_engine.render_prompt(
+            "constraint_identification",
+            analysis=json.dumps(analysis, indent=2),
+            requirements=json.dumps(analysis.get("requirements", {}), indent=2),
+        )
+        constraint_result = await self._call_llm(prompt_str)
+
+        # Convert to Constraint objects
+        constraints = []
+        for constraint_data in constraint_result if isinstance(constraint_result, list) else []:
+            try:
+                constraints.append(
+                    Constraint(
+                        type=constraint_data.get("type", "unknown"),
+                        description=constraint_data.get("description", ""),
+                        severity=GapSeverity(constraint_data.get("severity", "medium")),
+                        impact=constraint_data.get("impact", ""),
+                    )
+                )
+            except (KeyError, ValueError) as e:
+                logger.warning(f"Failed to parse constraint: {e}")
+                continue
+
+        logger.info("LLM constraint identification completed", count=len(constraints))
+        return constraints
 
 
 class IntelligentAnalyzer:
@@ -36,6 +324,8 @@ class IntelligentAnalyzer:
         self.capability_library = self._load_capability_library()
         self.historical_cases = self._load_historical_cases()
         self.rag = get_node_knowledge_rag()
+        self.prompt_engine = get_prompt_engine()
+        self.scanner = LLMCapabilityScanner(self.llm, self.rag)
 
     def _setup_llm(self):
         """Setup the language model based on configuration"""
@@ -193,28 +483,12 @@ class IntelligentAnalyzer:
         """
         logger.info("Starting deep requirement parsing", input=user_input)
 
-        system_prompt = """
-        你是一个专业的工作流需求分析专家。请深度分析用户的需求，提取关键信息。
+        # Use centralized prompt templates
+        prompt_str = await self.prompt_engine.render_prompt(
+            "analyze_requirement_user", description=user_input
+        )
 
-        请按照以下格式返回JSON：
-        {
-            "primary_goal": "主要目标",
-            "secondary_goals": ["次要目标1", "次要目标2"],
-            "constraints": ["约束条件1", "约束条件2"],
-            "success_criteria": ["成功标准1", "成功标准2"],
-            "triggers": ["触发方式1", "触发方式2"],
-            "main_operations": ["主要操作1", "主要操作2"],
-            "data_flow": ["数据流向1", "数据流向2"],
-            "integrations": ["集成系统1", "集成系统2"],
-            "human_intervention": ["人工干预点1", "人工干预点2"],
-            "complexity_indicators": ["复杂度指标1", "复杂度指标2"],
-            "ambiguities": ["模糊点1", "模糊点2"]
-        }
-        """
-
-        user_prompt = f"用户需求: {user_input}"
-
-        messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
+        messages = [HumanMessage(content=prompt_str)]
 
         try:
             response = await self.llm.ainvoke(messages)
@@ -231,22 +505,74 @@ class IntelligentAnalyzer:
 
         except Exception as e:
             logger.error("Failed to parse requirements", error=str(e))
-            # 返回基础分析结果
+            # Return fallback analysis matching new template structure
             return {
-                "primary_goal": "数据处理自动化",
-                "secondary_goals": [],
-                "constraints": [],
-                "success_criteria": ["系统正常运行"],
-                "triggers": ["manual"],
-                "main_operations": ["data_processing"],
-                "data_flow": ["user_input"],
-                "integrations": [],
-                "human_intervention": [],
-                "complexity_indicators": ["basic_automation"],
-                "ambiguities": ["需要更多详细信息"],
-                "confidence": 0.3,
-                "category": "automation",
-                "estimated_complexity": 5,
+                "requirement_analysis": {
+                    "primary_goal": "基本工作流自动化",
+                    "secondary_goals": ["提高效率"],
+                    "success_criteria": ["系统正常运行"],
+                    "business_value": "自动化处理用户需求",
+                    "confidence_level": 0.3,
+                },
+                "technical_requirements": {
+                    "triggers": [
+                        {
+                            "type": "manual",
+                            "description": "手动触发",
+                            "frequency": "按需",
+                            "conditions": "用户启动",
+                        }
+                    ],
+                    "main_operations": [
+                        {
+                            "operation": "数据处理",
+                            "description": "基本数据处理",
+                            "complexity": "medium",
+                            "ai_required": False,
+                        }
+                    ],
+                    "data_flow": {
+                        "input_sources": ["用户输入"],
+                        "processing_steps": ["基本处理"],
+                        "output_destinations": ["系统输出"],
+                        "data_transformations": ["基本转换"],
+                    },
+                    "integrations": [],
+                    "performance_requirements": {
+                        "volume": "低量",
+                        "latency": "正常",
+                        "availability": "标准",
+                    },
+                },
+                "constraints": {
+                    "technical_constraints": [],
+                    "business_constraints": [],
+                    "resource_constraints": ["需要更多信息"],
+                    "compliance_requirements": [],
+                },
+                "complexity_assessment": {
+                    "overall_complexity": "medium",
+                    "technical_complexity": 5,
+                    "business_complexity": 3,
+                    "integration_complexity": 2,
+                    "complexity_drivers": ["信息不足"],
+                },
+                "risk_analysis": {
+                    "implementation_risks": [],
+                    "operational_risks": [],
+                    "ambiguities": [{"area": "需求理解", "question": "需要更详细的需求描述", "impact": "影响准确分析"}],
+                },
+                "recommendations": {
+                    "immediate_clarifications": ["请提供更详细的需求描述"],
+                    "alternative_approaches": ["从简单功能开始"],
+                    "success_factors": ["明确需求", "逐步实现"],
+                },
+                "metadata": {
+                    "category": "automation",
+                    "estimated_timeline": "1-2天",
+                    "skill_requirements": ["基本配置"],
+                    "similar_patterns": ["基本自动化"],
+                },
             }
 
     def match_historical_cases(self, requirements: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -279,201 +605,20 @@ class IntelligentAnalyzer:
     async def perform_capability_scan(self, requirements: Dict[str, Any]) -> CapabilityAnalysis:
         """
         Dynamic capability scanning with real-time assessment and RAG enhancement
-        完整实现 - 与长期愿景一致 + RAG智能推荐
         """
-        logger.info("Starting enhanced capability scan with RAG")
+        return await self.scanner.perform_capability_scan(requirements)
 
-        # 提取所需能力
-        required_capabilities = self._extract_required_capabilities(requirements)
-
-        # 使用RAG获取智能能力推荐
-        rag_recommendations = await self.rag.get_capability_recommendations(
-            required_capabilities,
-            context={
-                "complexity_preference": requirements.get("estimated_complexity", "medium"),
-                "business_context": requirements.get("primary_goal", ""),
-                "performance_requirements": requirements.get("performance_requirements", {}),
-            },
-        )
-
-        # 增强的可用能力列表（结合静态库和RAG结果）
-        static_capabilities = list(self.capability_library["capability_matrix"].keys())
-        rag_capabilities = []
-
-        for cap_matches in rag_recommendations["capability_matches"].values():
-            for match in cap_matches:
-                if match.node_type not in rag_capabilities:
-                    rag_capabilities.append(match.node_type)
-
-        available_capabilities = list(set(static_capabilities + rag_capabilities))
-
-        # 智能识别缺口（考虑RAG推荐的替代方案）
-        capability_gaps = []
-        for cap in required_capabilities:
-            if cap not in available_capabilities:
-                # 检查是否有RAG推荐的替代方案
-                alternatives = rag_recommendations.get("alternatives", [])
-                has_alternative = any(cap.lower() in alt["content"].lower() for alt in alternatives)
-                if not has_alternative:
-                    capability_gaps.append(cap)
-
-        # 评估缺口严重程度（增强版）
-        gap_severity = {}
-        for gap in capability_gaps:
-            severity = await self._assess_gap_severity_enhanced(
-                gap, requirements, rag_recommendations
-            )
-            gap_severity[gap] = severity
-
-        # 搜索解决方案（结合RAG和静态方案）
-        potential_solutions = {}
-        for gap in capability_gaps:
-            # 获取静态解决方案
-            static_solutions = await self._search_solutions(gap, requirements)
-
-            # 获取RAG推荐的解决方案
-            rag_solutions = await self._get_rag_solutions(gap, requirements)
-
-            # 合并并排序解决方案
-            all_solutions = static_solutions + rag_solutions
-            # 按可靠性和复杂度排序
-            all_solutions.sort(key=lambda x: (x["reliability"], -x["complexity"]))
-
-            potential_solutions[gap] = all_solutions[:5]  # 最多5个解决方案
-
-        # 计算复杂度分数（增强版）
-        complexity_scores = {}
-        for cap in required_capabilities:
-            if cap in self.capability_library["capability_matrix"]:
-                complexity_scores[cap] = self.capability_library["capability_matrix"][cap][
-                    "complexity_score"
-                ]
-            else:
-                # 使用RAG推荐的复杂度
-                rag_complexity = self._get_rag_complexity(cap, rag_recommendations)
-                complexity_scores[cap] = rag_complexity or 8  # 默认高复杂度
-
-        # 创建增强的能力分析结果
-        capability_analysis = CapabilityAnalysis(
-            required_capabilities=required_capabilities,
-            available_capabilities=available_capabilities,
-            capability_gaps=capability_gaps,
-            gap_severity=gap_severity,
-            potential_solutions=potential_solutions,
-            complexity_scores=complexity_scores,
-        )
-
-        # 添加RAG推荐信息到结果中
-        capability_analysis["rag_insights"] = {
-            "coverage_score": rag_recommendations["coverage_score"],
-            "total_rag_matches": rag_recommendations["total_matches"],
-            "missing_capabilities": rag_recommendations["missing_capabilities"],
-            "recommended_alternatives": rag_recommendations["alternatives"][:3],
-            "confidence": "high" if rag_recommendations["coverage_score"] > 0.8 else "medium",
-        }
-
-        logger.info(
-            "Enhanced capability scan completed",
-            required=len(required_capabilities),
-            gaps=len(capability_gaps),
-            rag_coverage=rag_recommendations["coverage_score"],
-            rag_matches=rag_recommendations["total_matches"],
-        )
-
-        return capability_analysis
-
-    def assess_complexity(self, capabilities: CapabilityAnalysis) -> Dict[str, Any]:
+    async def assess_complexity(self, capabilities: CapabilityAnalysis) -> Dict[str, Any]:
         """
         Comprehensive complexity assessment
-        完整实现 - 与长期愿景一致
         """
-        logger.info("Assessing complexity")
+        return await self.scanner.assess_complexity(capabilities)
 
-        # 计算总体复杂度
-        total_complexity = sum(capabilities["complexity_scores"].values())
-        avg_complexity = (
-            total_complexity / len(capabilities["complexity_scores"])
-            if capabilities["complexity_scores"]
-            else 0
-        )
-
-        # 评估各维度复杂度
-        dimensions = {
-            "technical_complexity": self._assess_technical_complexity(capabilities),
-            "integration_complexity": self._assess_integration_complexity(capabilities),
-            "maintenance_complexity": self._assess_maintenance_complexity(capabilities),
-            "user_complexity": self._assess_user_complexity(capabilities),
-        }
-
-        # 风险评估
-        risk_factors = self._identify_risk_factors(capabilities)
-
-        # 时间估算
-        time_estimate = self._estimate_development_time(capabilities)
-
-        complexity_assessment = {
-            "overall_score": avg_complexity,
-            "dimensions": dimensions,
-            "risk_factors": risk_factors,
-            "time_estimate": time_estimate,
-            "recommendations": self._generate_complexity_recommendations(capabilities),
-        }
-
-        logger.info(
-            "Complexity assessment completed",
-            overall_score=avg_complexity,
-            risk_count=len(risk_factors),
-        )
-
-        return complexity_assessment
-
-    def identify_constraints(self, analysis: Dict[str, Any]) -> List[Constraint]:
+    async def identify_constraints(self, analysis: Dict[str, Any]) -> List[Constraint]:
         """
         Identify technical and business constraints
-        完整实现 - 与长期愿景一致
         """
-        logger.info("Identifying constraints")
-
-        constraints = []
-
-        # 技术约束
-        if "integrations" in analysis:
-            for integration in analysis["integrations"]:
-                if integration in ["enterprise_email", "custom_api"]:
-                    constraints.append(
-                        Constraint(
-                            type="technical",
-                            description=f"{integration}需要额外的认证和配置",
-                            severity=GapSeverity.HIGH,
-                            impact="可能需要IT部门支持",
-                        )
-                    )
-
-        # 业务约束
-        if "human_intervention" in analysis:
-            for intervention in analysis["human_intervention"]:
-                constraints.append(
-                    Constraint(
-                        type="business",
-                        description=f"需要人工处理: {intervention}",
-                        severity=GapSeverity.MEDIUM,
-                        impact="需要安排人员值守",
-                    )
-                )
-
-        # 复杂度约束
-        if analysis.get("estimated_complexity", 0) > 7:
-            constraints.append(
-                Constraint(
-                    type="complexity",
-                    description="方案复杂度较高",
-                    severity=GapSeverity.HIGH,
-                    impact="开发和维护成本较高",
-                )
-            )
-
-        logger.info("Constraint identification completed", count=len(constraints))
-        return constraints
+        return await self.scanner.identify_constraints(analysis)
 
     # Helper methods
     def _calculate_confidence(self, analysis: Dict[str, Any]) -> float:
@@ -538,291 +683,6 @@ class IntelligentAnalyzer:
 
         return similarity
 
-    def _extract_required_capabilities(self, requirements: Dict[str, Any]) -> List[str]:
-        """Extract required capabilities from requirements"""
-        capabilities = []
-
-        # 基于触发器
-        for trigger in requirements.get("triggers", []):
-            if trigger == "email":
-                capabilities.append("email_monitoring")
-            elif trigger == "cron":
-                capabilities.append("scheduled_execution")
-            elif trigger == "webhook":
-                capabilities.append("webhook_handling")
-
-        # 基于集成
-        for integration in requirements.get("integrations", []):
-            if integration.lower() in ["slack", "notion", "github", "gmail"]:
-                capabilities.append(f"{integration.lower()}_integration")
-
-        # 基于操作
-        for operation in requirements.get("main_operations", []):
-            if "ai" in operation.lower() or "analyze" in operation.lower():
-                capabilities.append("ai_analysis")
-            elif "transform" in operation.lower():
-                capabilities.append("data_transformation")
-            elif "customer" in operation.lower():
-                capabilities.append("customer_detection")
-
-        return list(set(capabilities))  # 去重
-
-    def _assess_gap_severity(self, gap: str, requirements: Dict[str, Any]) -> GapSeverity:
-        """Assess the severity of a capability gap"""
-        _ = requirements  # Mark as used to avoid warning
-
-        # 关键能力缺口
-        if gap in ["customer_detection", "ai_analysis"]:
-            return GapSeverity.HIGH
-
-        # 中等重要性
-        if gap in ["data_transformation", "notification"]:
-            return GapSeverity.MEDIUM
-
-        # 低重要性
-        return GapSeverity.LOW
-
-    async def _search_solutions(self, gap: str, requirements: Dict[str, Any]) -> List[Solution]:
-        """Search for solutions to capability gaps"""
-        solutions = []
-        _ = requirements  # Mark as used to avoid warning
-
-        if gap == "customer_detection":
-            solutions = [
-                Solution(
-                    type=SolutionType.CODE_NODE,
-                    complexity=3,
-                    setup_time="30分钟",
-                    requires_user_action="提供关键词列表",
-                    reliability=SolutionReliability.MEDIUM,
-                    description="关键词过滤：简单快速，适合明确的客户标识",
-                ),
-                Solution(
-                    type=SolutionType.API_INTEGRATION,
-                    complexity=7,
-                    setup_time="2-3小时",
-                    requires_user_action="配置AI API密钥",
-                    reliability=SolutionReliability.HIGH,
-                    description="AI智能分析：准确率高，适合复杂场景",
-                ),
-                Solution(
-                    type=SolutionType.CODE_NODE,
-                    complexity=5,
-                    setup_time="1小时",
-                    requires_user_action="编写正则表达式",
-                    reliability=SolutionReliability.HIGH,
-                    description="正则表达式匹配：精确匹配，适合格式化内容",
-                ),
-            ]
-        elif gap == "ai_analysis":
-            solutions = [
-                Solution(
-                    type=SolutionType.NATIVE,
-                    complexity=4,
-                    setup_time="20分钟",
-                    requires_user_action="配置AI节点参数",
-                    reliability=SolutionReliability.HIGH,
-                    description="使用内置AI节点：简单配置，稳定可靠",
-                ),
-                Solution(
-                    type=SolutionType.API_INTEGRATION,
-                    complexity=6,
-                    setup_time="45分钟",
-                    requires_user_action="集成外部AI服务",
-                    reliability=SolutionReliability.MEDIUM,
-                    description="外部AI服务：功能强大，需要维护API连接",
-                ),
-            ]
-        else:
-            # 默认解决方案
-            solutions = [
-                Solution(
-                    type=SolutionType.CODE_NODE,
-                    complexity=6,
-                    setup_time="1-2小时",
-                    requires_user_action="编写自定义代码",
-                    reliability=SolutionReliability.MEDIUM,
-                    description="自定义代码实现：灵活性高，需要开发工作",
-                )
-            ]
-
-        return solutions
-
-    def _assess_technical_complexity(self, capabilities: CapabilityAnalysis) -> int:
-        """Assess technical complexity dimension"""
-        return min(
-            sum(capabilities["complexity_scores"].values())
-            // len(capabilities["complexity_scores"]),
-            10,
-        )
-
-    def _assess_integration_complexity(self, capabilities: CapabilityAnalysis) -> int:
-        """Assess integration complexity dimension"""
-        integration_count = len(
-            [cap for cap in capabilities["required_capabilities"] if "integration" in cap]
-        )
-        return min(integration_count * 2, 10)
-
-    def _assess_maintenance_complexity(self, capabilities: CapabilityAnalysis) -> int:
-        """Assess maintenance complexity dimension"""
-        gap_count = len(capabilities["capability_gaps"])
-        return min(gap_count * 3, 10)
-
-    def _assess_user_complexity(self, capabilities: CapabilityAnalysis) -> int:
-        """Assess user complexity dimension"""
-        user_actions = sum(
-            1
-            for solutions in capabilities["potential_solutions"].values()
-            for solution in solutions
-            if solution["requires_user_action"]
-        )
-        return min(user_actions, 10)
-
-    def _identify_risk_factors(self, capabilities: CapabilityAnalysis) -> List[str]:
-        """Identify risk factors in the capability analysis"""
-        risks = []
-
-        # 高严重性缺口
-        for gap, severity in capabilities["gap_severity"].items():
-            if severity == GapSeverity.CRITICAL:
-                risks.append(f"关键能力缺口: {gap}")
-
-        # 复杂度过高
-        for cap, score in capabilities["complexity_scores"].items():
-            if score > 8:
-                risks.append(f"高复杂度能力: {cap}")
-
-        # 可靠性风险
-        for solutions in capabilities["potential_solutions"].values():
-            for solution in solutions:
-                if solution["reliability"] == SolutionReliability.LOW:
-                    risks.append(f"低可靠性解决方案: {solution['description']}")
-
-        return risks
-
-    def _estimate_development_time(self, capabilities: CapabilityAnalysis) -> str:
-        """Estimate development time"""
-        total_complexity = sum(capabilities["complexity_scores"].values())
-        gap_count = len(capabilities["capability_gaps"])
-
-        # 基础时间估算
-        base_hours = total_complexity * 0.5
-        gap_hours = gap_count * 2
-
-        total_hours = base_hours + gap_hours
-
-        if total_hours <= 4:
-            return "2-4小时"
-        elif total_hours <= 8:
-            return "4-8小时"
-        elif total_hours <= 16:
-            return "1-2天"
-        else:
-            return "2-5天"
-
-    def _generate_complexity_recommendations(self, capabilities: CapabilityAnalysis) -> List[str]:
-        """Generate recommendations based on complexity assessment"""
-        recommendations = []
-
-        # 基于缺口数量
-        if len(capabilities["capability_gaps"]) > 3:
-            recommendations.append("建议分阶段实现，先实现核心功能")
-
-        # 基于复杂度
-        high_complexity = [
-            cap for cap, score in capabilities["complexity_scores"].items() if score > 7
-        ]
-        if high_complexity:
-            recommendations.append(f"高复杂度功能 {', '.join(high_complexity)} 建议寻求专业支持")
-
-        # 基于可靠性
-        low_reliability = []
-        for solutions in capabilities["potential_solutions"].values():
-            for solution in solutions:
-                if solution["reliability"] == SolutionReliability.LOW:
-                    low_reliability.append(solution["type"])
-
-        if low_reliability:
-            recommendations.append("建议为低可靠性组件添加监控和备用方案")
-
-        return recommendations
-
-    # RAG Enhancement Methods
-    async def _assess_gap_severity_enhanced(
-        self, gap: str, requirements: Dict[str, Any], rag_recommendations: Dict[str, Any]
-    ) -> GapSeverity:
-        """Enhanced gap severity assessment using RAG insights"""
-        # Start with base assessment
-        base_severity = self._assess_gap_severity(gap, requirements)
-
-        # Check if RAG found alternatives
-        alternatives = rag_recommendations.get("alternatives", [])
-        has_good_alternatives = any(
-            alt.get("similarity", 0) > 0.7
-            for alt in alternatives
-            if gap.lower() in alt.get("content", "").lower()
-        )
-
-        if has_good_alternatives:
-            # Reduce severity if good alternatives exist
-            severity_map = {
-                GapSeverity.CRITICAL: GapSeverity.HIGH,
-                GapSeverity.HIGH: GapSeverity.MEDIUM,
-                GapSeverity.MEDIUM: GapSeverity.LOW,
-                GapSeverity.LOW: GapSeverity.LOW,
-            }
-            return severity_map.get(base_severity, base_severity)
-
-        return base_severity
-
-    async def _get_rag_solutions(self, gap: str, requirements: Dict[str, Any]) -> List[Solution]:
-        """Get RAG-recommended solutions for capability gaps"""
-        solutions = []
-
-        try:
-            # Search for specific solutions to this gap
-            task_description = f"solve {gap} requirement: {requirements.get('primary_goal', '')}"
-            node_suggestions = await self.rag.get_node_type_suggestions(task_description)
-
-            for suggestion in node_suggestions[:3]:  # Top 3 suggestions
-                complexity_map = {"low": 3, "medium": 5, "high": 8}
-                complexity = complexity_map.get(suggestion.get("complexity", "medium"), 5)
-
-                solution = Solution(
-                    type=SolutionType.NATIVE
-                    if "BUILT_IN" in suggestion["node_type"]
-                    else SolutionType.CODE_NODE,
-                    complexity=complexity,
-                    setup_time=suggestion.get("setup_time", "30-60分钟"),
-                    requires_user_action=f"配置{suggestion['title']}节点",
-                    reliability=SolutionReliability.HIGH
-                    if suggestion["confidence"] == "high"
-                    else SolutionReliability.MEDIUM,
-                    description=f"使用{suggestion['title']}: {suggestion['description']}",
-                )
-                solutions.append(solution)
-
-        except Exception as e:
-            logger.warning("RAG solution search failed", gap=gap, error=str(e))
-
-        return solutions
-
-    def _get_rag_complexity(
-        self, capability: str, rag_recommendations: Dict[str, Any]
-    ) -> Optional[int]:
-        """Extract complexity score from RAG recommendations"""
-        capability_matches = rag_recommendations.get("capability_matches", {})
-        matches = capability_matches.get(capability, [])
-
-        if matches:
-            # Use the complexity from the best match
-            best_match = matches[0]
-            complexity_str = best_match.metadata.get("complexity", "medium")
-            complexity_map = {"low": 3, "medium": 5, "high": 8}
-            return complexity_map.get(complexity_str, 5)
-
-        return None
-
 
 class IntelligentNegotiator:
     """
@@ -831,7 +691,8 @@ class IntelligentNegotiator:
     """
 
     def __init__(self):
-        self.llm = self._setup_llm()
+        self.llm_client = self._setup_llm()
+        self.prompt_engine = get_prompt_engine()
         self.negotiation_patterns = self._load_negotiation_patterns()
         self.rag = get_node_knowledge_rag()
 
@@ -998,6 +859,25 @@ class IntelligentNegotiator:
             "negotiation_complete": next_action == "finalize_agreement",
         }
 
+        # If negotiation is complete, generate final requirements
+        if next_action == "finalize_agreement":
+            # Extract original requirements from context or use user input
+            original_requirements = updated_context.get("original_requirements", "")
+            if not original_requirements:
+                # Try to get from history
+                if history:
+                    original_requirements = history[0].get("user_response", "")
+                if not original_requirements:
+                    original_requirements = user_input
+
+            # Generate final requirements
+            final_requirements = self._generate_final_requirements(
+                {"original_requirements": original_requirements}, []
+            )
+
+            negotiation_result["final_requirements"] = final_requirements
+            negotiation_result["confidence_score"] = 0.8
+
         logger.info("Negotiation round processed", action=next_action)
         return negotiation_result
 
@@ -1075,58 +955,119 @@ class IntelligentNegotiator:
     async def _generate_high_severity_question(
         self, gap: str, solutions: List[Solution], history: List[Dict[str, Any]]
     ) -> str:
-        """Generate question for high severity capability gap"""
-        _ = history  # Mark as used
+        """Generate question for high severity capability gap using templates"""
 
-        if not solutions:
+        # Use the negotiation engine prompt template
+        system_prompt = await self.prompt_engine.render_prompt("negotiation_engine.j2")
+
+        # Create context for the negotiation prompt
+        context = {
+            "consultation_type": "gap_resolution",
+            "gap": gap,
+            "solutions": [
+                {
+                    "option_id": f"A{i}",
+                    "title": sol["description"],
+                    "complexity": sol["complexity"],
+                    "setup_time": sol["setup_time"],
+                    "reliability": sol["reliability"],
+                }
+                for i, sol in enumerate(solutions[:3])
+            ],
+            "severity": "high",
+            "history_length": len(history),
+        }
+
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(
+                content=f"Generate consultation for high severity gap: {gap}. Solutions: {json.dumps(context['solutions'])}"
+            ),
+        ]
+
+        try:
+            response = await self.llm_client.ainvoke(messages)
+            content = response.content if hasattr(response, "content") else str(response)
+
+            # Try to parse as JSON for structured response
+            try:
+                result = json.loads(content.strip())
+                if "guided_questions" in result and result["guided_questions"]:
+                    return result["guided_questions"][0]["question"]
+            except:
+                pass
+
+            return content.strip()
+
+        except Exception as e:
+            logger.warning(f"Failed to generate contextual question: {e}")
+            # Fallback to simple question
             return f"关键能力缺口：{gap}。我们需要找到解决方案，您有什么具体要求吗？"
-
-        # 创建详细的解决方案对比
-        solution_descriptions = []
-        for i, solution in enumerate(solutions[:3]):  # 最多3个选项
-            desc = f"{i+1}. {solution['description']} (复杂度: {solution['complexity']}/10, 设置时间: {solution['setup_time']})"
-            solution_descriptions.append(desc)
-
-        question = f"关键能力缺口：{gap}。\n\n可选解决方案：\n"
-        question += "\n".join(solution_descriptions)
-        question += f"\n\n考虑到这是关键功能，建议详细评估。您更倾向于哪种方案？或者有其他考虑因素吗？"
-
-        return question
 
     async def _generate_medium_severity_question(
         self, gap: str, solutions: List[Solution], history: List[Dict[str, Any]]
     ) -> str:
-        """Generate question for medium severity capability gap"""
-        _ = history  # Mark as used
+        """Generate question for medium severity capability gap using templates"""
 
-        if not solutions:
+        # Use the negotiation engine prompt template
+        system_prompt = await self.prompt_engine.render_prompt("negotiation_engine")
+
+        context = {
+            "consultation_type": "requirement_clarification",
+            "gap": gap,
+            "solutions": [
+                {
+                    "option_id": f"B{i}",
+                    "title": sol["description"],
+                    "complexity": sol["complexity"],
+                    "setup_time": sol["setup_time"],
+                }
+                for i, sol in enumerate(solutions[:2])
+            ],
+            "severity": "medium",
+        }
+
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(
+                content=f"Generate consultation for medium severity gap: {gap}. Solutions: {json.dumps(context['solutions'])}"
+            ),
+        ]
+
+        try:
+            response = await self.llm_client.ainvoke(messages)
+            content = response.content if hasattr(response, "content") else str(response)
+
+            try:
+                result = json.loads(content.strip())
+                if "guided_questions" in result and result["guided_questions"]:
+                    return result["guided_questions"][0]["question"]
+            except:
+                pass
+
+            return content.strip()
+
+        except Exception as e:
+            logger.warning(f"Failed to generate medium severity question: {e}")
             return f"需要实现：{gap}。您有偏好的实现方式吗？"
-
-        # 推荐最佳方案
-        best_solution = min(solutions, key=lambda x: x["complexity"])
-        alternative = max(solutions, key=lambda x: x["complexity"]) if len(solutions) > 1 else None
-
-        question = f"需要实现：{gap}。\n\n推荐方案：{best_solution['description']} (复杂度: {best_solution['complexity']}/10)"
-
-        if alternative:
-            question += f"\n备选方案：{alternative['description']} (复杂度: {alternative['complexity']}/10)"
-
-        question += "\n\n您觉得推荐方案如何？"
-
-        return question
 
     async def _generate_low_severity_question(
         self, gap: str, solutions: List[Solution], history: List[Dict[str, Any]]
     ) -> str:
-        """Generate question for low severity capability gap"""
-        _ = history  # Mark as used
+        """Generate question for low severity capability gap using templates"""
 
-        if not solutions:
-            return f"可选功能：{gap}。是否需要包含？"
+        try:
+            # Simple template-based generation for low severity
+            if not solutions:
+                return f"可选功能：{gap}。是否需要包含？"
 
-        # 简单选择
-        simple_solution = min(solutions, key=lambda x: x["complexity"])
-        return f"可选功能：{gap}。建议使用{simple_solution['description']}，您同意吗？"
+            # Use simplest solution
+            simple_solution = min(solutions, key=lambda x: x["complexity"])
+            return f"可选功能：{gap}。建议使用{simple_solution['description']}，您同意吗？"
+
+        except Exception as e:
+            logger.warning(f"Failed to generate low severity question: {e}")
+            return f"可选功能：{gap}。��否需要包含？"
 
     def _calculate_question_priority(
         self, question: str, capability_analysis: CapabilityAnalysis
@@ -1183,9 +1124,7 @@ class IntelligentNegotiator:
             solution_types = [sol["type"] for sol in solutions]
             search_query = f"best practices for {', '.join(solution_types)} implementation"
 
-            rag_insights = await self.rag.vector_store.similarity_search(
-                search_query, max_results=3, similarity_threshold=0.4
-            )
+            rag_insights = await self.rag.vector_store.similarity_search(search_query, k=3)
 
             # Combine traditional logic with RAG insights
             user_skill_level = context.get("user_skill_level", "medium")
@@ -1204,8 +1143,8 @@ class IntelligentNegotiator:
                 recommendation = f"推荐：{balanced_solution['description']} - 平衡复杂度和可靠性"
 
             # Add RAG insights if available
-            if rag_insights and rag_insights[0].similarity > 0.6:
-                best_practice = rag_insights[0].content[:100] + "..."
+            if rag_insights and rag_insights[0].metadata.get("score") > 0.6:
+                best_practice = rag_insights[0].page_content[:100] + "..."
                 recommendation += f"\n\n💡 最佳实践建议：{best_practice}"
 
             return recommendation
@@ -1271,15 +1210,24 @@ class IntelligentNegotiator:
     ) -> Dict[str, Any]:
         """Analyze user response to determine intent"""
         # Simplified analysis
+        lower_input = user_input.lower()
+
+        # Determine intent based on keywords
+        if any(word in lower_input for word in ["选择", "要", "用", "我选择", "我要"]):
+            intent = "selection"
+        elif any(word in lower_input for word in ["好", "是", "对", "确认", "同意"]):
+            intent = "confirmation"
+        elif any(word in lower_input for word in ["完成", "结束", "够了", "可以了"]):
+            intent = "agreement"
+        else:
+            intent = "clarification"
+
         return {
-            "intent": (
-                "selection"
-                if any(word in user_input.lower() for word in ["选择", "要", "用"])
-                else "clarification"
-            ),
+            "intent": intent,
             "confidence": 0.8,
             "extracted_preferences": {},
             "sentiment": "positive",
+            "user_input": user_input,  # Include the actual user input
         }
 
     def _update_context(self, context: Dict[str, Any], analysis: Dict[str, Any]) -> Dict[str, Any]:
@@ -1292,10 +1240,21 @@ class IntelligentNegotiator:
         self, analysis: Dict[str, Any], history: List[Dict[str, Any]]
     ) -> str:
         """Determine next negotiation action"""
-        if len(history) > 5:
+        # Check if we have enough rounds of negotiation
+        if len(history) > 3:
             return "finalize_agreement"
-        elif analysis["intent"] == "selection":
+
+        # Check if user provided substantial requirements
+        user_input = analysis.get("user_input", "").strip()
+        if len(user_input) > 50:  # Substantial input
+            return "finalize_agreement"
+
+        # Check intent
+        intent = analysis.get("intent", "")
+        if intent == "selection":
             return "present_alternatives"
+        elif intent in ["confirmation", "agreement"]:
+            return "finalize_agreement"
         else:
             return "ask_clarification"
 
@@ -1337,7 +1296,32 @@ class IntelligentNegotiator:
 
     def _consolidate_decisions(self, agreements: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Consolidate all decisions"""
-        return {}  # Simplified implementation
+        # Extract the original requirements from the first agreement or negotiation context
+        original_requirements = ""
+
+        # Look for original requirements in agreements
+        for agreement in agreements:
+            if "original_requirements" in agreement:
+                original_requirements = agreement["original_requirements"]
+                break
+            # Also check if there's a context with original requirements
+            if "context" in agreement:
+                context = agreement["context"]
+                if isinstance(context, dict) and "original_requirements" in context:
+                    original_requirements = context["original_requirements"]
+                    break
+
+        # If no original requirements found, try to extract from first agreement
+        if not original_requirements and agreements:
+            first_agreement = agreements[0]
+            if "user_input" in first_agreement:
+                original_requirements = first_agreement["user_input"]
+
+        return {
+            "original_requirements": original_requirements,
+            "agreements": agreements,
+            "decision_count": len(agreements),
+        }
 
     def _identify_optimizations(self, decisions: Dict[str, Any]) -> List[str]:
         """Identify optimization opportunities"""
@@ -1347,7 +1331,15 @@ class IntelligentNegotiator:
         self, decisions: Dict[str, Any], optimizations: List[str]
     ) -> str:
         """Generate final requirements"""
-        return "优化后的最终需求..."  # Simplified implementation
+        # Extract the original requirements from decisions
+        original_requirements = decisions.get("original_requirements", "")
+
+        # If we have original requirements, use them
+        if original_requirements and len(original_requirements.strip()) > 0:
+            return original_requirements
+
+        # Otherwise, generate a basic requirement
+        return "创建一个基本的工作流程来处理用户需求"
 
     def _calculate_confidence_score(self, agreements: List[Dict[str, Any]]) -> float:
         """Calculate confidence score for agreements"""
