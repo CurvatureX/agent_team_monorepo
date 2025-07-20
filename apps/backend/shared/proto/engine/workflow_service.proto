@@ -85,6 +85,7 @@ message CreateWorkflowRequest {
   map<string, string> static_data = 6;
   repeated string tags = 7;
   string user_id = 8;
+  string session_id = 9;  // 新增：会话ID
 }
 
 // 创建工作流响应
@@ -119,6 +120,7 @@ message UpdateWorkflowRequest {
   repeated string tags = 8;
   bool active = 9;
   string user_id = 10;
+  string session_id = 11;  // 新增：会话ID
 }
 
 // 更新工作流响应
