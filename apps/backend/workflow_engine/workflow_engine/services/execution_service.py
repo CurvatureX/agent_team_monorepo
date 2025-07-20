@@ -60,7 +60,7 @@ class ExecutionService:
                     mode=execution_pb2.ExecutionMode.Name(request.mode),
                     triggered_by=request.triggered_by,
                     start_time=execution.start_time,
-                    metadata=dict(request.metadata)
+                    execution_metadata=dict(request.metadata)
                 )
                 db.add(db_execution)
                 db.commit()
@@ -126,13 +126,13 @@ class ExecutionService:
                 # Convert to protobuf
                 execution = execution_pb2.ExecutionData()
                 execution.execution_id = db_execution.execution_id
-                execution.workflow_id = db_execution.workflow_id
+                execution.workflow_id = str(db_execution.workflow_id)  # Convert UUID to string
                 execution.status = execution_pb2.ExecutionStatus.Value(db_execution.status)
                 execution.mode = execution_pb2.ExecutionMode.Value(db_execution.mode)
                 execution.triggered_by = db_execution.triggered_by or ""
                 execution.start_time = db_execution.start_time or 0
                 execution.end_time = db_execution.end_time or 0
-                execution.metadata.update(db_execution.metadata or {})
+                execution.metadata.update(db_execution.execution_metadata or {})
                 
                 # TODO: Add run_data from database
                 
@@ -217,48 +217,26 @@ class ExecutionService:
             
             db = next(get_db())
             try:
-                query = db.query(ExecutionModel).filter(
+                db_executions = db.query(ExecutionModel).filter(
                     ExecutionModel.workflow_id == request.workflow_id
-                )
+                ).order_by(ExecutionModel.start_time.desc()).limit(request.limit).all()
                 
-                if request.status_filter != execution_pb2.ExecutionStatus.NEW:
-                    status_name = execution_pb2.ExecutionStatus.Name(request.status_filter)
-                    query = query.filter(ExecutionModel.status == status_name)
-                
-                # Get total count
-                total_count = query.count()
-                
-                # Apply pagination
-                if request.limit > 0:
-                    query = query.limit(request.limit)
-                if request.offset > 0:
-                    query = query.offset(request.offset)
-                
-                # Order by creation time (newest first)
-                query = query.order_by(ExecutionModel.created_at.desc())
-                
-                db_executions = query.all()
-                
-                # Convert to protobuf
                 executions = []
                 for db_execution in db_executions:
                     execution = execution_pb2.ExecutionData()
                     execution.execution_id = db_execution.execution_id
-                    execution.workflow_id = db_execution.workflow_id
+                    execution.workflow_id = str(db_execution.workflow_id)  # Convert UUID to string
                     execution.status = execution_pb2.ExecutionStatus.Value(db_execution.status)
                     execution.mode = execution_pb2.ExecutionMode.Value(db_execution.mode)
                     execution.triggered_by = db_execution.triggered_by or ""
                     execution.start_time = db_execution.start_time or 0
                     execution.end_time = db_execution.end_time or 0
-                    execution.metadata.update(db_execution.metadata or {})
+                    execution.metadata.update(db_execution.execution_metadata or {})
                     executions.append(execution)
-                
-                has_more = (request.offset + len(executions)) < total_count
                 
                 return execution_pb2.GetExecutionHistoryResponse(
                     executions=executions,
-                    total_count=total_count,
-                    has_more=has_more
+                    total_count=len(executions)
                 )
                 
             finally:
@@ -270,6 +248,5 @@ class ExecutionService:
             context.set_details(f"Failed to get execution history: {str(e)}")
             return execution_pb2.GetExecutionHistoryResponse(
                 executions=[],
-                total_count=0,
-                has_more=False
+                total_count=0
             ) 
