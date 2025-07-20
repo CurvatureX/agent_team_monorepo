@@ -59,21 +59,23 @@ services:
       - ./shared/proto:/app/shared/proto:ro
     restart: unless-stopped
 
-  # API Gateway Service
+  # API Gateway Service - FastAPI MVP
   api-gateway:
     build:
       context: ./api-gateway
       dockerfile: Dockerfile
     environment:
-      - DEBUG=false
-      - WORKFLOW_AGENT_HOST=workflow-agent
-      - WORKFLOW_AGENT_PORT=50051
-      - DATABASE_URL=sqlite:///./api_gateway.db
-      - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-in-production}
+      - DEBUG=true
+      - WORKFLOW_SERVICE_HOST=workflow-agent
+      - WORKFLOW_SERVICE_PORT=50051
+      # Supabase configuration from .env file
+    env_file:
+      - ./api-gateway/.env
     ports:
       - "8000:8000"
     depends_on:
-      - workflow-agent
+      workflow-agent:
+        condition: service_started
     volumes:
       - ./shared/proto:/app/shared/proto:ro
     restart: unless-stopped

@@ -14,7 +14,8 @@
 **请求**
 action: 
 - `create` 从头创建新的 workflow
-- `edit` 编辑某个 workflow，可以是从 template，也可以是从自己的 workflow
+- `edit` 编辑自己的某个 workflow
+- `copy` copy from a public / template workflow
 
 ```json
 {
@@ -34,18 +35,19 @@ action:
 ### 2. GET /chat/stream?session_id=xxxx&user_message=yyy
 发送聊天消息，返回AI流式响应
 
-
 **响应（SSE流）**
+使用业界标准增量模式 (OpenAI/Claude风格):
 ```
 Content-Type: text/event-stream
 
-data: {"type": "message", "content": "1. 我将为你监控 BestBuy, Amazon 的实时货源，有其他需要监控的网站吗？"}
-
-data: {"type": "message", "content": "2. 发现有货后我会通过邮件通知你，你还有其他需要我通知的渠道吗？"}
+data: {"type": "message", "delta": "1. 我将为你监控"}
+data: {"type": "message", "delta": " BestBuy, Amazon"}
+data: {"type": "message", "delta": " 的实时货源"}
 ```
 
 **事件类型**
 - `type: "message"` - AI回复消息
+- `delta`: 增量内容，前端需要累积拼接
 
 ### 3. GET /workflow_generation
 监听工作流生成进度
