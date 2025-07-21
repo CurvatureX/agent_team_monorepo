@@ -18,16 +18,6 @@ class WorkflowStage(str, Enum):
     COMPLETED = "completed"
 
 
-class ClarificationPurpose(str, Enum):
-    """Purpose types for clarification stage"""
-
-    INITIAL_INTENT = "initial_intent"  # 澄清用户的初始目标或需求
-    TEMPLATE_SELECTION = "template_selection"  # 确认/选择模板
-    TEMPLATE_MODIFICATION = "template_modification"  # 澄清如何修改模板
-    GAP_RESOLUTION = "gap_resolution"  # 澄清如何解决能力差距
-    DEBUG_ISSUE = "debug_issue"  # 澄清调试中遇到的问题
-
-
 class WorkflowOrigin(str, Enum):
     """Workflow origin types"""
 
@@ -45,7 +35,6 @@ class Conversation(TypedDict):
 class ClarificationContext(TypedDict):
     """Context for clarification stage"""
 
-    purpose: ClarificationPurpose
     origin: WorkflowOrigin
     pending_questions: List[str]  # 当前 Clarification 阶段待确认的问题
 
@@ -55,6 +44,7 @@ class TemplateWorkflow(TypedDict):
 
     id: str  # 模板 ID
     original_workflow: object  # 模板的原始内容
+    description: str  # 模板的描述
 
 
 class RetrievedDocument(TypedDict):
@@ -79,9 +69,13 @@ class WorkflowState(TypedDict):
 
     # 当前阶段
     stage: WorkflowStage
+    # 前一个阶段
+    previous_stage: NotRequired[str]
 
+    # 执行历史记录
+    execution_history: NotRequired[List[str]]
     # 澄清阶段上下文
-    clarification_context: NotRequired[ClarificationContext]
+    clarification_context: ClarificationContext
 
     conversations: List[Conversation]  # 用户和AI Agent的全部对话
     intent_summary: str  # AI根据对话总结的用户意图

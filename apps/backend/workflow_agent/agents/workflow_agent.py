@@ -14,7 +14,6 @@ from langgraph.graph import END, StateGraph
 from agents.nodes import WorkflowAgentNodes
 from agents.state import (
     ClarificationContext,
-    ClarificationPurpose,
     Conversation,
     WorkflowOrigin,
     WorkflowStage,
@@ -121,22 +120,27 @@ class WorkflowAgent:
         current_time = time.time()
         session_id = session_id or f"session_{int(current_time)}"
 
-        return WorkflowState(
-            metadata={
+        return {
+            "metadata": {
                 "session_id": session_id,
                 "user_id": "anonymous",
                 "created_at": current_time,
                 "updated_at": current_time,
             },
-            stage=WorkflowStage.CLARIFICATION,
-            conversations=[Conversation(role="user", text=user_input)],
-            intent_summary="",
-            gaps=[],
-            alternatives=[],
-            current_workflow={},
-            debug_result="",
-            debug_loop_count=0,
-        )
+            "stage": WorkflowStage.CLARIFICATION,
+            "execution_history": [],
+            "clarification_context": {
+                "origin": WorkflowOrigin.NEW_WORKFLOW,
+                "pending_questions": [],
+            },
+            "conversations": [{"role": "user", "text": user_input}],
+            "intent_summary": "",
+            "gaps": [],
+            "alternatives": [],
+            "current_workflow": {},
+            "debug_result": "",
+            "debug_loop_count": 0,
+        }
 
     async def generate_workflow(
         self,
@@ -236,22 +240,27 @@ class WorkflowAgent:
             # In a full implementation, you'd retrieve the previous state
 
             # Create a state with the user response
-            current_state = WorkflowState(
-                metadata={
+            current_state = {
+                "metadata": {
                     "session_id": session_id,
                     "user_id": "anonymous",
                     "created_at": time.time(),
                     "updated_at": time.time(),
                 },
-                stage=WorkflowStage.CLARIFICATION,  # Start from clarification with new input
-                conversations=[Conversation(role="user", text=user_response)],
-                intent_summary="",
-                gaps=[],
-                alternatives=[],
-                current_workflow={},
-                debug_result="",
-                debug_loop_count=0,
-            )
+                "stage": WorkflowStage.CLARIFICATION,  # Start from clarification with new input
+                "execution_history": [],
+                "clarification_context": {
+                    "origin": WorkflowOrigin.NEW_WORKFLOW,
+                    "pending_questions": [],
+                },
+                "conversations": [{"role": "user", "text": user_response}],
+                "intent_summary": "",
+                "gaps": [],
+                "alternatives": [],
+                "current_workflow": {},
+                "debug_result": "",
+                "debug_loop_count": 0,
+            }
 
             # Run the graph
             config = {"configurable": {"thread_id": thread_id or session_id}}

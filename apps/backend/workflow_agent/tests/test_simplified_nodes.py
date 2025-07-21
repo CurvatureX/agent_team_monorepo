@@ -10,13 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from agents.nodes import WorkflowAgentNodes
-from agents.state import (
-    ClarificationContext,
-    ClarificationPurpose,
-    Conversation,
-    WorkflowOrigin,
-    WorkflowStage,
-)
+from agents.state import ClarificationContext, Conversation, WorkflowOrigin, WorkflowStage
 
 
 class TestWorkflowAgentNodes:
@@ -38,7 +32,12 @@ class TestWorkflowAgentNodes:
         return {
             "metadata": {"session_id": "test_session"},
             "stage": WorkflowStage.CLARIFICATION,
-            "conversations": [Conversation(role="user", text="我需要邮件自动化系统")],
+            "execution_history": [],
+            "clarification_context": {
+                "origin": WorkflowOrigin.NEW_WORKFLOW,
+                "pending_questions": [],
+            },
+            "conversations": [{"role": "user", "text": "我需要邮件自动化系统"}],
             "intent_summary": "",
             "gaps": [],
             "alternatives": [],
@@ -92,11 +91,10 @@ class TestWorkflowAgentNodes:
         """Test negotiation node"""
         # Set up state with pending questions
         sample_state["stage"] = WorkflowStage.NEGOTIATION
-        sample_state["clarification_context"] = ClarificationContext(
-            purpose=ClarificationPurpose.INITIAL_INTENT,
-            origin=WorkflowOrigin.NEW_WORKFLOW,
-            pending_questions=["请详细描述您的需求"],
-        )
+        sample_state["clarification_context"] = {
+            "origin": WorkflowOrigin.NEW_WORKFLOW,
+            "pending_questions": ["请详细描述您的需求"],
+        }
 
         # Test negotiation node
         result = await workflow_nodes.negotiation_node(sample_state)

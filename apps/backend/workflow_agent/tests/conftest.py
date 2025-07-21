@@ -10,13 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from agents.state import (
-    ClarificationContext,
-    ClarificationPurpose,
-    Conversation,
-    WorkflowOrigin,
-    WorkflowStage,
-)
+from agents.state import ClarificationContext, Conversation, WorkflowOrigin, WorkflowStage
 
 
 @pytest.fixture
@@ -50,20 +44,19 @@ def mock_llm():
 def sample_conversations():
     """Sample conversations for testing"""
     return [
-        Conversation(role="user", text="我需要一个系统来自动处理客户邮件咨询"),
-        Conversation(role="assistant", text="我理解您需要自动化处理客户邮件。请问您希望如何识别客户邮件？"),
-        Conversation(role="user", text="通过邮件内容和发件人分析"),
+        {"role": "user", "text": "我需要一个系统来自动处理客户邮件咨询"},
+        {"role": "assistant", "text": "我理解您需要自动化处理客户邮件。请问您希望如何识别客户邮件？"},
+        {"role": "user", "text": "通过邮件内容和发件人分析"},
     ]
 
 
 @pytest.fixture
 def sample_clarification_context():
     """Sample clarification context for testing"""
-    return ClarificationContext(
-        purpose=ClarificationPurpose.INITIAL_INTENT,
-        origin=WorkflowOrigin.NEW_WORKFLOW,
-        pending_questions=["请问您希望如何识别客户邮件？", "您希望使用哪种回复方式？"],
-    )
+    return {
+        "origin": WorkflowOrigin.NEW_WORKFLOW,
+        "pending_questions": ["请问您希望如何识别客户邮件？", "您希望使用哪种回复方式？"],
+    }
 
 
 @pytest.fixture
@@ -134,14 +127,14 @@ def sample_simplified_workflow_state():
             "interaction_count": 3,
         },
         "stage": WorkflowStage.CLARIFICATION,
-        "clarification_context": ClarificationContext(
-            purpose=ClarificationPurpose.INITIAL_INTENT,
-            origin=WorkflowOrigin.NEW_WORKFLOW,
-            pending_questions=["请问您希望如何识别客户邮件？"],
-        ),
+        "execution_history": [],
+        "clarification_context": {
+            "origin": WorkflowOrigin.NEW_WORKFLOW,
+            "pending_questions": ["请问您希望如何识别客户邮件？"],
+        },
         "conversations": [
-            Conversation(role="user", text="我需要一个系统来自动处理客户邮件咨询"),
-            Conversation(role="assistant", text="我理解您需要自动化处理客户邮件"),
+            {"role": "user", "text": "我需要一个系统来自动处理客户邮件咨询"},
+            {"role": "assistant", "text": "我理解您需要自动化处理客户邮件"},
         ],
         "intent_summary": "客户邮件自动化处理系统",
         "gaps": ["email_authentication", "ai_integration"],
@@ -194,12 +187,19 @@ def assert_valid_simple_workflow(workflow: Dict[str, Any]):
 
 def assert_valid_workflow_state(state: Dict[str, Any]):
     """Assert that a workflow state has valid structure"""
-    required_fields = ["metadata", "stage", "conversations", "intent_summary"]
+    required_fields = [
+        "metadata",
+        "stage",
+        "conversations",
+        "intent_summary",
+        "clarification_context",
+    ]
     for field in required_fields:
         assert field in state, f"Missing required field: {field}"
 
     assert isinstance(state["conversations"], list), "Conversations must be a list"
     assert isinstance(state["intent_summary"], str), "Intent summary must be a string"
+    assert isinstance(state["clarification_context"], dict), "Clarification context must be a dict"
 
 
 def assert_valid_debug_result(debug_result: Dict[str, Any]):

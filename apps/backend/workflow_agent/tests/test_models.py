@@ -10,7 +10,6 @@ import pytest
 
 from agents.state import (
     ClarificationContext,
-    ClarificationPurpose,
     Conversation,
     WorkflowOrigin,
     WorkflowStage,
@@ -30,13 +29,7 @@ class TestEnums:
         assert WorkflowStage.DEBUGGING == "debugging"
         assert WorkflowStage.COMPLETED == "completed"
 
-    def test_clarification_purpose_enum(self):
-        """Test ClarificationPurpose enum values"""
-        assert ClarificationPurpose.INITIAL_INTENT == "initial_intent"
-        assert ClarificationPurpose.TEMPLATE_SELECTION == "template_selection"
-        assert ClarificationPurpose.TEMPLATE_MODIFICATION == "template_modification"
-        assert ClarificationPurpose.GAP_RESOLUTION == "gap_resolution"
-        assert ClarificationPurpose.DEBUG_ISSUE == "debug_issue"
+    # Removed ClarificationPurpose enum - purpose field is no longer used
 
     def test_workflow_origin_enum(self):
         """Test WorkflowOrigin enum values"""
@@ -56,13 +49,11 @@ class TestTypedDictModels:
 
     def test_clarification_context_creation(self):
         """Test ClarificationContext TypedDict creation"""
-        context = ClarificationContext(
-            purpose=ClarificationPurpose.INITIAL_INTENT,
-            origin=WorkflowOrigin.NEW_WORKFLOW,
-            pending_questions=["请问您希望如何识别客户邮件？", "您希望使用哪种回复方式？"],
-        )
+        context: ClarificationContext = {
+            "origin": WorkflowOrigin.NEW_WORKFLOW,
+            "pending_questions": ["请问您希望如何识别客户邮件？", "您希望使用哪种回复方式？"],
+        }
 
-        assert context["purpose"] == ClarificationPurpose.INITIAL_INTENT
         assert context["origin"] == WorkflowOrigin.NEW_WORKFLOW
         assert len(context["pending_questions"]) == 2
         assert context["pending_questions"][0] == "请问您希望如何识别客户邮件？"
@@ -81,11 +72,12 @@ class TestTypedDictModels:
                 "interaction_count": 1,
             },
             "stage": WorkflowStage.CLARIFICATION,
-            "clarification_context": ClarificationContext(
-                purpose=ClarificationPurpose.INITIAL_INTENT,
-                origin=WorkflowOrigin.NEW_WORKFLOW,
-                pending_questions=["请详细描述您的需求"],
-            ),
+            "previous_stage": None,
+            "execution_history": [],
+            "clarification_context": {
+                "origin": WorkflowOrigin.NEW_WORKFLOW,
+                "pending_questions": ["请详细描述您的需求"],
+            },
             "conversations": [
                 Conversation(role="user", text="我需要邮件自动化"),
                 Conversation(role="assistant", text="请详细描述您的需求"),
@@ -121,6 +113,12 @@ class TestWorkflowStateStructure:
         state = {
             "metadata": {"session_id": "test"},
             "stage": WorkflowStage.CLARIFICATION,
+            "previous_stage": None,
+            "execution_history": [],
+            "clarification_context": {
+                "origin": WorkflowOrigin.NEW_WORKFLOW,
+                "pending_questions": [],
+            },
             "conversations": [],
             "intent_summary": "",
             "gaps": [],
@@ -146,11 +144,12 @@ class TestWorkflowStateStructure:
         state = {
             "metadata": {"session_id": "test_clarification"},
             "stage": WorkflowStage.CLARIFICATION,
-            "clarification_context": ClarificationContext(
-                purpose=ClarificationPurpose.INITIAL_INTENT,
-                origin=WorkflowOrigin.NEW_WORKFLOW,
-                pending_questions=["需要更多信息"],
-            ),
+            "previous_stage": None,
+            "execution_history": [],
+            "clarification_context": {
+                "origin": WorkflowOrigin.NEW_WORKFLOW,
+                "pending_questions": ["需要更多信息"],
+            },
             "conversations": [
                 Conversation(role="user", text="创建邮件工作流"),
                 Conversation(role="assistant", text="需要更多信息"),
@@ -166,7 +165,7 @@ class TestWorkflowStateStructure:
         # Verify clarification-specific fields
         assert state["stage"] == WorkflowStage.CLARIFICATION
         assert "clarification_context" in state
-        assert state["clarification_context"]["purpose"] == ClarificationPurpose.INITIAL_INTENT
+        assert state["clarification_context"]["origin"] == WorkflowOrigin.NEW_WORKFLOW
         assert len(state["clarification_context"]["pending_questions"]) == 1
 
     def test_gap_analysis_stage_state(self):
@@ -174,6 +173,12 @@ class TestWorkflowStateStructure:
         state = {
             "metadata": {"session_id": "test_gap_analysis"},
             "stage": WorkflowStage.GAP_ANALYSIS,
+            "previous_stage": None,
+            "execution_history": [],
+            "clarification_context": {
+                "origin": WorkflowOrigin.NEW_WORKFLOW,
+                "pending_questions": [],
+            },
             "conversations": [
                 Conversation(role="user", text="邮件自动回复系统"),
                 Conversation(role="assistant", text="分析能力差距中..."),
@@ -208,6 +213,12 @@ class TestWorkflowStateStructure:
         state = {
             "metadata": {"session_id": "test_generation"},
             "stage": WorkflowStage.GENERATION,
+            "previous_stage": None,
+            "execution_history": [],
+            "clarification_context": {
+                "origin": WorkflowOrigin.NEW_WORKFLOW,
+                "pending_questions": [],
+            },
             "conversations": [
                 Conversation(role="user", text="生成邮件处理工作流"),
                 Conversation(role="assistant", text="正在生成工作流..."),
@@ -239,6 +250,12 @@ class TestWorkflowStateStructure:
         state = {
             "metadata": {"session_id": "test_debugging"},
             "stage": WorkflowStage.DEBUGGING,
+            "previous_stage": None,
+            "execution_history": [],
+            "clarification_context": {
+                "origin": WorkflowOrigin.NEW_WORKFLOW,
+                "pending_questions": [],
+            },
             "conversations": [
                 Conversation(role="assistant", text="工作流验证中发现问题"),
                 Conversation(role="user", text="请修复这些问题"),
@@ -275,6 +292,12 @@ class TestWorkflowStateStructure:
         state = {
             "metadata": {"session_id": "test_completed"},
             "stage": WorkflowStage.COMPLETED,
+            "previous_stage": None,
+            "execution_history": [],
+            "clarification_context": {
+                "origin": WorkflowOrigin.NEW_WORKFLOW,
+                "pending_questions": [],
+            },
             "conversations": [
                 Conversation(role="assistant", text="工作流生成成功！"),
                 Conversation(role="user", text="谢谢！"),
@@ -313,30 +336,36 @@ class TestStateTransitions:
             assert isinstance(stage, str)
             assert stage in [s.value for s in WorkflowStage]
 
-    def test_clarification_purposes(self):
-        """Test different clarification purposes"""
-        purposes = [
-            ClarificationPurpose.INITIAL_INTENT,
-            ClarificationPurpose.TEMPLATE_SELECTION,
-            ClarificationPurpose.TEMPLATE_MODIFICATION,
-            ClarificationPurpose.GAP_RESOLUTION,
-            ClarificationPurpose.DEBUG_ISSUE,
-        ]
+    def test_state_history_tracking(self):
+        """Test previous_stage and execution_history tracking"""
+        state = {
+            "metadata": {"session_id": "test_history"},
+            "stage": WorkflowStage.GAP_ANALYSIS,
+            "previous_stage": "clarification",
+            "execution_history": ["clarification", "negotiation", "gap_analysis"],
+            "clarification_context": {
+                "origin": WorkflowOrigin.NEW_WORKFLOW,
+                "pending_questions": [],
+            },
+            "conversations": [],
+            "intent_summary": "",
+            "gaps": [],
+            "alternatives": [],
+            "current_workflow": {},
+            "debug_result": "",
+            "debug_loop_count": 0,
+        }
 
-        for purpose in purposes:
-            context = ClarificationContext(
-                purpose=purpose, origin=WorkflowOrigin.NEW_WORKFLOW, pending_questions=["测试问题"]
-            )
-            assert context["purpose"] == purpose
+        assert state["previous_stage"] == "clarification"
+        assert len(state["execution_history"]) == 3
+        assert state["execution_history"][-1] == "gap_analysis"
 
     def test_workflow_origins(self):
         """Test different workflow origins"""
         origins = [WorkflowOrigin.NEW_WORKFLOW, WorkflowOrigin.FROM_TEMPLATE]
 
         for origin in origins:
-            context = ClarificationContext(
-                purpose=ClarificationPurpose.INITIAL_INTENT, origin=origin, pending_questions=[]
-            )
+            context: ClarificationContext = {"origin": origin, "pending_questions": []}
             assert context["origin"] == origin
 
 

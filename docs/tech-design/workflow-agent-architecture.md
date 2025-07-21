@@ -42,12 +42,14 @@ flowchart TD
 ### 主要节点类型
 
 #### 1. 咨询类节点 (Consultant Nodes)
+
 - **Clarification Node** - 解析和澄清用户意图，支持多种澄清目的（初始意图、模板选择、模板修改、能力差距解决、调试问题）。
 - **Negotiation Node** - 与用户协商，获取额外信息或在备选方案中选择。
 - **Gap Analysis Node** - 分析需求与现有能力之间的差距。
 - **Alternative Solution Generation Node** - 当存在能力差距时，生成替代解决方案。
 
 #### 2. 设计与执行类节点 (Design & Execution Nodes)
+
 - **Workflow Generation Node** - 根据确定的需求生成工作流。
 - **Debug Node** - 测试生成的工作流，发现并尝试修复错误。
 
@@ -71,19 +73,23 @@ interface WorkflowState {
   };
 
   // 当前阶段
-  stage: 'clarification' | 'negotiation' | 'gap_analysis' | 'generation' | 'debugging';
+  stage:
+    | "clarification"
+    | "negotiation"
+    | "gap_analysis"
+    | "generation"
+    | "debugging";
+
+  // 前一个阶段
+  previous_stage?: string;
+
+  // 执行历史记录
+  execution_history: string[];
 
   // 澄清阶段上下文
-  clarification_context?: {
-    purpose:
-      | 'initial_intent'        // 澄清用户的初始目标或需求
-      | 'template_selection'    // 确认/选择模板
-      | 'template_modification' // 澄清如何修改模板
-      | 'gap_resolution'        // 澄清如何解决能力差距
-      | 'debug_issue';          // 澄清调试中遇到的问题
-
-    origin: 'new_workflow' | 'from_template';
-    pending_questions: string[];   // 当前 Clarification 阶段待确认的问题
+  clarification_context: {
+    origin: "new_workflow" | "from_template";
+    pending_questions: string[]; // 当前 Clarification 阶段待确认的问题
   };
 
   conversations: Conversation[]; // 用户和AI Agent的全部对话
@@ -93,8 +99,8 @@ interface WorkflowState {
 
   // 模板工作流支持
   template_workflow?: {
-    id: string;                     // 模板 ID
-    original_workflow: object;      // 模板的原始内容
+    id: string; // 模板 ID
+    original_workflow: object; // 模板的原始内容
   };
 
   current_workflow: object; // 当前生成的workflow
@@ -108,6 +114,7 @@ interface WorkflowState {
 ### 关键决策点设计
 
 #### 决策点 1：能力缺口分析
+
 ```mermaid
 graph TD
     A[Gap Analysis Node] --> B{有能力缺口?}
@@ -117,6 +124,7 @@ graph TD
 ```
 
 #### 决策点 2：用户协商反馈
+
 ```mermaid
 graph TD
     A[Negotiation Node] --> B{用户提供新信息?}
@@ -125,6 +133,7 @@ graph TD
 ```
 
 #### 决策点 3：测试错误处理
+
 ```mermaid
 graph TD
     A[Debug Node] --> B{测试通过?}

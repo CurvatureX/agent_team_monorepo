@@ -19,7 +19,6 @@ from langchain_openai import ChatOpenAI
 
 from agents.state import (
     ClarificationContext,
-    ClarificationPurpose,
     Conversation,
     WorkflowOrigin,
     WorkflowStage,
@@ -76,18 +75,9 @@ class WorkflowAgentNodes:
         logger.info("Processing clarification node")
 
         try:
-            # Determine clarification purpose based on context
-            clarification_context = state.get("clarification_context")
-            if not clarification_context:
-                # First time - initial intent clarification
-                purpose = ClarificationPurpose.INITIAL_INTENT
-                origin = WorkflowOrigin.NEW_WORKFLOW
-                state["clarification_context"] = ClarificationContext(
-                    purpose=purpose, origin=origin, pending_questions=[]
-                )
-            else:
-                purpose = clarification_context["purpose"]
-                origin = clarification_context["origin"]
+            # Get clarification context (now required)
+            clarification_context = state["clarification_context"]
+            origin = clarification_context["origin"]
 
             # Get user input from conversations
             user_input = ""
@@ -98,15 +88,14 @@ class WorkflowAgentNodes:
                         user_input = conv["text"]
                         break
 
-            # If initial intent, use RAG to retrieve knowledge
-            if purpose == ClarificationPurpose.INITIAL_INTENT and user_input:
-                logger.info("Initial intent, retrieving knowledge with RAG tool")
+            # If we have user input, use RAG to retrieve knowledge
+            if user_input:
+                logger.info("Retrieving knowledge with RAG tool")
                 state = await self.rag_tool.retrieve_knowledge(state, query=user_input)
 
             # Analyze user input and generate intent summary using proper prompt engine
             prompt_text = await self.prompt_engine.render_prompt(
                 "clarification",
-                purpose=purpose.value,
                 origin=origin.value,
                 user_input=user_input,
                 conversations=state.get("conversations", []),
@@ -304,7 +293,6 @@ class WorkflowAgentNodes:
 
             # Set up clarification context for gap resolution
             state["clarification_context"] = ClarificationContext(
-                purpose=ClarificationPurpose.GAP_RESOLUTION,
                 origin=state.get("clarification_context", {}).get(
                     "origin", WorkflowOrigin.NEW_WORKFLOW
                 ),
@@ -494,7 +482,6 @@ class WorkflowAgentNodes:
                     # Requirement understanding issues - back to clarification
                     logger.info("Debug found requirement issues, returning to clarification")
                     state["clarification_context"] = ClarificationContext(
-                        purpose=ClarificationPurpose.DEBUG_ISSUE,
                         origin=state.get("clarification_context", {}).get(
                             "origin", WorkflowOrigin.NEW_WORKFLOW
                         ),
