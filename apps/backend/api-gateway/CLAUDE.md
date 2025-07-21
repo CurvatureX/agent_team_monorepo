@@ -81,7 +81,6 @@ This FastAPI application serves as an API Gateway with **frontend-managed authen
 3. Backend verifies tokens and processes requests
 4. Sessions are created and stored in Supabase with user association
 5. Chat messages trigger gRPC calls to workflow service
-6. Workflow progress is streamed back via SSE
 7. All data is persisted in Supabase PostgreSQL with RLS protection
 
 ## Configuration
