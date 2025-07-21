@@ -144,11 +144,11 @@ export default function PricingPage() {
         </div>
         
         {/* Watermark cover - positioned at bottom right - now allows pointer events to pass through except where needed */}
-        <div className="absolute bottom-0 right-0 w-64 h-32 bg-background z-20 pointer-events-none"></div>
+        <div className="absolute bottom-0 right-0 w-50 h-20 bg-background z-20 pointer-events-none"></div>
       </div>
       
       {/* Pricing section */}
-      <div className="container mx-auto px-4 py-8 relative z-30">
+      <div className="container mx-auto px-4 py-8 relative z-30 -mt-24">
         <PricingSection tiers={pricingTiers} />
       </div>
     </main>
