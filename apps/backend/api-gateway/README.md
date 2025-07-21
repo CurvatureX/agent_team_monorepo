@@ -29,15 +29,10 @@ cp .env.example .env
 # Edit .env with your Supabase credentials
 # SUPABASE_URL=https://your-project-id.supabase.co
 # SUPABASE_SERVICE_KEY=your-service-role-key
+# SUPABASE_ANON_KEY=your-anon-key  # Required for RLS operations
 ```
 
-### 3. Initialize Database
-
-1. Go to your Supabase project dashboard
-2. Open SQL Editor
-3. Run the script from `sql/init_tables.sql`
-
-### 4. Start the Server
+### 3. Start the Server
 
 ```bash
 # Option 1: Use the startup script (recommended)
@@ -54,31 +49,38 @@ pip install -e .
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### 5. Test the API
+### 4. Test the API
 
 ```bash
 # Health check (public endpoint)
 curl http://localhost:8000/health
 
-# Create guest session (no auth required)
+# Create new workflow session (requires JWT token)
 curl -X POST http://localhost:8000/api/v1/session \
   -H "Content-Type: application/json" \
-  -d '{}'
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '{
+    "action": "create"
+  }'
+
+# Edit existing workflow session (requires JWT token)
+curl -X POST http://localhost:8000/api/v1/session \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '{
+    "action": "edit",
+    "workflow_id": "existing-workflow-id"
+  }'
 
 # For authenticated endpoints, you need a Supabase JWT token from your frontend
 # Replace YOUR_JWT_TOKEN with actual token from Supabase Auth
 
-# Send chat message (requires JWT token)
-curl -X POST http://localhost:8000/api/v1/chat \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-  -d '{
-    "session_id": "your-session-id",
-    "message": "Hello!"
-  }'
+# Send chat message with streaming response (requires JWT token)
+curl -N "http://localhost:8000/api/v1/chat/stream?session_id=your-session-id&user_message=Hello!" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
 
-# Listen to workflow progress (requires JWT token)
-curl -N http://localhost:8000/api/v1/workflow?session_id=your-session-id \
+# Listen to workflow generation progress (requires JWT token)
+curl -N "http://localhost:8000/api/v1/workflow_generation?session_id=your-session-id" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
 ```
 
@@ -87,14 +89,16 @@ curl -N http://localhost:8000/api/v1/workflow?session_id=your-session-id \
 - **Swagger UI**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
 - **OpenAPI JSON**: http://localhost:8000/openapi.json
+- **Frontend Integration Guide**: [docs/FRONTEND_INTEGRATION.md](docs/FRONTEND_INTEGRATION.md)
 
 ## Features
 
 ✅ **Implemented:**
 - Frontend authentication with JWT verification
-- Session management (POST /session) with guest support
-- Chat API with SSE streaming (POST /chat)
-- Workflow progress monitoring (GET /workflow)
+- Session management with workflow actions (POST /session)
+- Incremental chat streaming API (GET /chat/stream)
+- Workflow generation status monitoring (GET /workflow_generation)
+- Industry-standard SSE streaming (delta-based)
 - Comprehensive request/response logging
 - Supabase integration with RLS support
 
@@ -115,7 +119,7 @@ This API Gateway follows **frontend authentication** best practices:
 1. **Frontend responsibility**: User registration, login, token refresh handled by frontend Supabase client
 2. **Backend responsibility**: JWT token verification and API request processing
 3. **Token validation**: All authenticated endpoints require `Authorization: Bearer <token>` header
-4. **Guest sessions**: Session creation allows unauthenticated access for demo purposes
+4. **Session actions**: Support for create/edit/copy workflow sessions
 5. **User context**: Authenticated user data available in `request.state.user`
 
 ## Development with uv
@@ -191,10 +195,11 @@ For convenience, you can use the development helper script:
 ### Manual Testing Checklist
 
 - [ ] Health check endpoint works (public)
-- [ ] Guest session creation works (no auth)
+- [ ] Session creation with actions works (requires auth)
 - [ ] JWT token verification works
-- [ ] Authenticated chat streaming works
-- [ ] Authenticated workflow monitoring works
+- [ ] Incremental chat streaming works (GET /chat/stream)
+- [ ] Workflow generation monitoring works (GET /workflow_generation)
+- [ ] SSE delta streaming works correctly
 - [ ] Supabase connection and JWT verification works
 - [ ] Request/response logging appears in console
 
@@ -217,16 +222,26 @@ docker-compose up --build
 apps/backend/api-gateway/
 ├── app/                    # Main application code
 │   ├── api/               # API route handlers
+│   │   ├── session.py     # Session management (create/edit/copy)
+│   │   ├── chat.py        # Chat streaming (GET /chat/stream)
+│   │   └── workflow.py    # Workflow generation (GET /workflow_generation)
 │   ├── services/          # Business logic services
+│   │   ├── auth_service.py # JWT verification
+│   │   └── grpc_client.py # gRPC client (future)
 │   ├── utils/             # Utility functions
+│   │   ├── sse.py         # SSE streaming utilities
+│   │   └── logger.py      # Logging utilities
 │   ├── config.py          # Configuration
-│   ├── database.py        # Supabase connection
-│   ├── models.py          # Data models
-│   └── main.py            # FastAPI app
+│   ├── database.py        # Supabase connection with RLS
+│   ├── models.py          # Pydantic data models
+│   └── main.py            # FastAPI app with JWT middleware
+├── docs/                  # Documentation
+│   ├── API_DOC.md        # API specification
+│   └── FRONTEND_INTEGRATION.md # Frontend integration guide
 ├── sql/                   # Database scripts
 ├── tests/                 # Test files
 ├── Dockerfile             # Container configuration
-├── pyproject.toml         # Python dependencies
+├── pyproject.toml         # Python dependencies with uv
 └── README.md             # This file
 ```
 
@@ -273,8 +288,36 @@ apps/backend/api-gateway/
    uv sync
    ```
 
+## Key Features
+
+### 🔄 Incremental SSE Streaming
+- **Industry Standard**: Follows OpenAI/Claude/Gemini delta-based streaming
+- **Efficient**: Only sends new content in each SSE event
+- **Real-time**: Immediate UI updates as content streams
+
+### 📋 Session Management
+- **Action-based**: Support for `create`, `edit`, and `copy` workflows
+- **RLS Security**: Row-level security ensures user data isolation
+- **JWT Authentication**: Secure token-based authentication
+
+### 🔧 Workflow Generation
+- **Status Tracking**: Real-time workflow generation status via SSE
+- **Stage Monitoring**: `waiting → start → draft → debugging → complete`
+- **Error Handling**: Graceful error reporting and recovery
+
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Health check (public) |
+| `POST` | `/api/v1/session` | Create/edit workflow session |
+| `GET` | `/api/v1/chat/stream` | Incremental chat streaming |
+| `GET` | `/api/v1/workflow_generation` | Workflow status monitoring |
+
 ## Contributing
 
 This API Gateway follows frontend authentication patterns recommended by Supabase. 
 
 Frontend applications should handle user authentication and pass JWT tokens to the backend via Authorization headers.
+
+See [docs/FRONTEND_INTEGRATION.md](docs/FRONTEND_INTEGRATION.md) for complete integration examples.
