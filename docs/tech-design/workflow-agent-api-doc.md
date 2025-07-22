@@ -12,7 +12,7 @@
 创建新会话
 
 **请求**
-action: 
+action:
 - `create` 从头创建新的 workflow
 - `edit` 编辑某个 workflow，可以是从 template，也可以是从自己的 workflow
 

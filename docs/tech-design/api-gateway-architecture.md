@@ -32,6 +32,8 @@ graph TB
 
     subgraph "Internal Services"
         WORKFLOW_AGENT[Workflow Agent]
+        WORKFLOW_RUNTIME[Workflow Runtime]
+        WORKFLOW_ENGINE[Workflow Engine]
     end
 
     subgraph "Infrastructure"
@@ -49,6 +51,8 @@ graph TB
     MIDDLEWARE --> GRPC_CLIENT
 
     GRPC_CLIENT --> WORKFLOW_AGENT
+    GRPC_CLIENT --> WORKFLOW_RUNTIME
+    GRPC_CLIENT --> WORKFLOW_ENGINE
 
     AUTH --> DB
     LOGGING --> DB
@@ -93,26 +97,75 @@ app.add_middleware(
 **API 端点结构**:
 ```
 /api/v1/
+├── session               # 会话管理 (workflow_agent)
+│   └── POST /            # 创建新会话 {action: "create"|"edit", workflow_id?: string}
+├── chat/                 # 对话交互 (workflow_agent)
+│   └── stream            # GET - 流式对话 (SSE) ?session_id=xxx&user_message=yyy
+├── workflow_generation   # 工作流生成 (workflow_agent)
+│   └── GET /             # 监听生成进度 (SSE) ?session_id=xxx
 ├── workflow/
-│   ├── generate      # POST - 生成工作流
-│   ├── refine        # POST - 优化工作流
-│   └── validate      # POST - 验证工作流
-├── health            # GET  - 健康检查
-└── docs              # GET  - API 文档
+│   ├── execute           # POST - 直接执行工作流 (workflow_engine)
+│   └── deployments/      # 部署管理 (workflow_runtime)
+│       ├── POST /        # 部署工作流
+│       ├── GET /         # 列出部署
+│       ├── GET /{id}     # 获取部署状态
+│       ├── PUT /{id}     # 更新部署
+│       └── DELETE /{id}  # 删除部署
+├── executions/           # 执行历史 (workflow_runtime)
+│   ├── GET /             # 获取执行历史
+│   └── GET /{id}         # 获取执行详情
+├── webhooks/             # Webhook 端点 (workflow_runtime)
+│   └── POST /{path}      # 动态 Webhook 触发器
+├── health                # GET - 健康检查
+└── docs                  # GET - API 文档
 ```
 
 **请求/响应模型**:
 ```python
-class WorkflowGenerateRequest(BaseModel):
-    description: str
-    context: Optional[Dict[str, Any]] = None
+# Workflow Agent相关模型
+class SessionCreateRequest(BaseModel):
+    action: str  # "create" or "edit"
+    workflow_id: Optional[str] = None
 
-class WorkflowResponse(BaseModel):
-    success: bool
-    workflow: Optional[Dict[str, Any]] = None
-    suggestions: Optional[List[str]] = None
-    missing_info: Optional[List[str]] = None
-    errors: Optional[List[str]] = None
+class SessionCreateResponse(BaseModel):
+    session_id: str
+    created_at: str
+
+# SSE Chat Stream Response (text/event-stream)
+class ChatStreamEvent(BaseModel):
+    type: str  # "message"
+    content: str
+
+# SSE Workflow Generation Stream Response (text/event-stream)
+class WorkflowGenerationEvent(BaseModel):
+    type: str  # "waiting", "start", "draft", "debugging", "complete", "error"
+    workflow_id: Optional[str] = None
+    data: Optional[Dict[str, Any]] = None
+
+# Workflow Runtime相关模型
+class WorkflowDeploymentRequest(BaseModel):
+    workflow_definition: Dict[str, Any]
+    triggers: List[Dict[str, Any]]
+    name: str
+    description: Optional[str] = None
+
+class DeploymentResponse(BaseModel):
+    deployment_id: str
+    status: str
+    webhook_url: Optional[str] = None
+    created_at: str
+
+class ExecutionHistoryResponse(BaseModel):
+    executions: List[Dict[str, Any]]
+    total_count: int
+    page: int
+    page_size: int
+
+# Webhook触发模型
+class WebhookTriggerData(BaseModel):
+    workflow_id: str
+    trigger_data: Dict[str, Any]
+    timestamp: str
 ```
 
 ### 3. gRPC 客户端
@@ -120,13 +173,19 @@ class WorkflowResponse(BaseModel):
 **文件位置**: `apps/backend/api-gateway/core/grpc_client.py`
 
 **主要功能**:
-- 管理与 Workflow Agent 的 gRPC 连接
+- 管理与多个内部服务的 gRPC 连接
 - 协议缓冲区消息转换
 - 连接池管理
 - 错误处理和重试
 
-**连接管理**:
+**多服务连接管理**:
 ```python
+class GRPCClientManager:
+    def __init__(self):
+        self.workflow_agent_client: Optional[WorkflowAgentClient] = None
+        self.workflow_runtime_client: Optional[WorkflowRuntimeClient] = None
+        self.workflow_engine_client: Optional[WorkflowEngineClient] = None
+
 class WorkflowAgentClient:
     def __init__(self):
         self.channel: Optional[grpc.aio.Channel] = None
@@ -136,6 +195,41 @@ class WorkflowAgentClient:
         server_address = f"{settings.WORKFLOW_AGENT_HOST}:{settings.WORKFLOW_AGENT_PORT}"
         self.channel = grpc.aio.insecure_channel(server_address)
         self.stub = workflow_agent_pb2_grpc.WorkflowAgentStub(self.channel)
+
+    async def create_session(self, action: str, workflow_id: Optional[str] = None) -> dict:
+        """Create new workflow agent session"""
+        # gRPC call to workflow_agent
+        pass
+
+    async def stream_chat(self, session_id: str, user_message: str):
+        """Stream chat responses from workflow_agent"""
+        # gRPC streaming call to workflow_agent
+        pass
+
+    async def stream_workflow_generation(self, session_id: str):
+        """Stream workflow generation progress from workflow_agent"""
+        # gRPC streaming call to workflow_agent
+        pass
+
+class WorkflowRuntimeClient:
+    def __init__(self):
+        self.channel: Optional[grpc.aio.Channel] = None
+        self.stub = None
+
+    async def connect(self):
+        server_address = f"{settings.WORKFLOW_RUNTIME_HOST}:{settings.WORKFLOW_RUNTIME_PORT}"
+        self.channel = grpc.aio.insecure_channel(server_address)
+        self.stub = workflow_runtime_pb2_grpc.WorkflowRuntimeStub(self.channel)
+
+class WorkflowEngineClient:
+    def __init__(self):
+        self.channel: Optional[grpc.aio.Channel] = None
+        self.stub = None
+
+    async def connect(self):
+        server_address = f"{settings.WORKFLOW_ENGINE_HOST}:{settings.WORKFLOW_ENGINE_PORT}"
+        self.channel = grpc.aio.insecure_channel(server_address)
+        self.stub = workflow_engine_pb2_grpc.WorkflowEngineStub(self.channel)
 ```
 
 ### 4. 配置管理
@@ -154,9 +248,15 @@ class Settings(BaseSettings):
     APP_NAME: str = "API Gateway"
     DEBUG: bool = False
 
-    # gRPC 配置
+    # gRPC 服务配置
     WORKFLOW_AGENT_HOST: str = "localhost"
     WORKFLOW_AGENT_PORT: int = 50051
+
+    WORKFLOW_RUNTIME_HOST: str = "localhost"
+    WORKFLOW_RUNTIME_PORT: int = 50052
+
+    WORKFLOW_ENGINE_HOST: str = "localhost"
+    WORKFLOW_ENGINE_PORT: int = 50053
 
     # CORS 配置
     ALLOWED_ORIGINS: List[str] = [
@@ -176,14 +276,35 @@ sequenceDiagram
     participant Middleware
     participant gRPCClient
     participant WorkflowAgent
+    participant WorkflowRuntime
+    participant WorkflowEngine
 
     Client->>Router: HTTP Request
     Router->>Middleware: Process Request
     Middleware->>Middleware: 认证检查
     Middleware->>Middleware: 请求验证
-    Middleware->>gRPCClient: 转换并调用
-    gRPCClient->>WorkflowAgent: gRPC Request
-    WorkflowAgent->>gRPCClient: gRPC Response
+    Middleware->>gRPCClient: 路由到对应服务
+
+    alt Session Management
+        gRPCClient->>WorkflowAgent: CreateSession gRPC
+        WorkflowAgent->>gRPCClient: Session Response
+    else Chat Stream
+        gRPCClient->>WorkflowAgent: StreamChat gRPC
+        WorkflowAgent->>gRPCClient: SSE Chat Stream
+    else Workflow Generation Stream
+        gRPCClient->>WorkflowAgent: StreamWorkflowGeneration gRPC
+        WorkflowAgent->>gRPCClient: SSE Generation Stream
+    else Workflow Deployment/Monitoring
+        gRPCClient->>WorkflowRuntime: gRPC Request
+        WorkflowRuntime->>gRPCClient: gRPC Response
+    else Workflow Execution
+        gRPCClient->>WorkflowEngine: gRPC Request
+        WorkflowEngine->>gRPCClient: gRPC Response
+    else Webhook Trigger
+        gRPCClient->>WorkflowRuntime: TriggerWorkflow RPC
+        WorkflowRuntime->>gRPCClient: Execution Status
+    end
+
     gRPCClient->>Middleware: 转换响应
     Middleware->>Router: HTTP Response
     Router->>Client: JSON Response
@@ -228,14 +349,20 @@ sequenceDiagram
 # 应用生命周期管理
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 启动时初始化 gRPC 连接
-    app.state.workflow_client = WorkflowAgentClient()
-    await app.state.workflow_client.connect()
+    # 启动时初始化所有 gRPC 连接
+    app.state.grpc_manager = GRPCClientManager()
+
+    # 连接到所有内部服务
+    await app.state.grpc_manager.workflow_agent_client.connect()
+    await app.state.grpc_manager.workflow_runtime_client.connect()
+    await app.state.grpc_manager.workflow_engine_client.connect()
 
     yield
 
-    # 关闭时清理连接
-    await app.state.workflow_client.close()
+    # 关闭时清理所有连接
+    await app.state.grpc_manager.workflow_agent_client.close()
+    await app.state.grpc_manager.workflow_runtime_client.close()
+    await app.state.grpc_manager.workflow_engine_client.close()
 ```
 
 ### 3. 缓存策略
@@ -338,12 +465,113 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 DEBUG=false
 SECRET_KEY=your-secret-key
 
-# gRPC 配置
+# gRPC 服务配置
 WORKFLOW_AGENT_HOST=workflow-agent
 WORKFLOW_AGENT_PORT=50051
 
+WORKFLOW_RUNTIME_HOST=workflow-runtime
+WORKFLOW_RUNTIME_PORT=50052
+
+WORKFLOW_ENGINE_HOST=workflow-engine
+WORKFLOW_ENGINE_PORT=50053
+
 # 数据库配置
 DATABASE_URL=postgresql://user:pass@localhost/db
+```
+
+## 服务路由策略
+
+### 1. API 端点到服务的映射
+
+```python
+# 路由配置
+SERVICE_ROUTES = {
+    "/api/v1/session": "workflow_agent",
+    "/api/v1/chat/stream": "workflow_agent",
+    "/api/v1/workflow_generation": "workflow_agent",
+    "/api/v1/workflow/execute": "workflow_engine",
+    "/api/v1/workflow/deployments": "workflow_runtime",
+    "/api/v1/executions": "workflow_runtime",
+    "/api/v1/webhooks": "workflow_runtime"
+}
+
+class ServiceRouter:
+    def __init__(self, grpc_manager: GRPCClientManager):
+        self.grpc_manager = grpc_manager
+
+    def route_request(self, path: str) -> str:
+        """根据请求路径确定目标服务"""
+        for route_prefix, service_name in SERVICE_ROUTES.items():
+            if path.startswith(route_prefix):
+                return service_name
+        return "workflow_agent"  # 默认服务
+
+    async def call_service(self, service_name: str, method: str, request_data: dict):
+        """调用指定服务的方法"""
+        if service_name == "workflow_agent":
+            return await self.grpc_manager.workflow_agent_client.call_method(method, request_data)
+        elif service_name == "workflow_runtime":
+            return await self.grpc_manager.workflow_runtime_client.call_method(method, request_data)
+        elif service_name == "workflow_engine":
+            return await self.grpc_manager.workflow_engine_client.call_method(method, request_data)
+        else:
+            raise ValueError(f"Unknown service: {service_name}")
+```
+
+### 2. 动态 Webhook 路由
+
+```python
+class WebhookRouter:
+    def __init__(self, workflow_runtime_client):
+        self.runtime_client = workflow_runtime_client
+        self._webhook_cache = {}  # 缓存 webhook 路径映射
+
+    async def handle_webhook(self, webhook_path: str, request_data: dict):
+        """处理动态 webhook 请求"""
+        # 1. 从缓存或服务查找 workflow_id
+        workflow_id = await self._resolve_webhook_path(webhook_path)
+        if not workflow_id:
+            raise HTTPException(404, "Webhook path not found")
+
+        # 2. 调用 workflow_runtime 触发执行
+        trigger_request = {
+            "workflow_id": workflow_id,
+            "trigger_data": request_data,
+            "trigger_type": "webhook"
+        }
+
+        return await self.runtime_client.trigger_workflow(trigger_request)
+
+    async def _resolve_webhook_path(self, webhook_path: str) -> Optional[str]:
+        # 实现 webhook 路径到 workflow_id 的映射逻辑
+        pass
+```
+
+### 3. 错误处理和重试
+
+```python
+class ServiceCallHandler:
+    async def call_with_retry(self, service_name: str, method: str, request_data: dict, max_retries: int = 3):
+        """带重试的服务调用"""
+        for attempt in range(max_retries):
+            try:
+                return await self.call_service(service_name, method, request_data)
+            except grpc.RpcError as e:
+                if attempt == max_retries - 1:
+                    # 最后一次重试失败，抛出 HTTP 异常
+                    self._handle_grpc_error(e)
+                await asyncio.sleep(2 ** attempt)  # 指数退避
+
+    def _handle_grpc_error(self, error: grpc.RpcError):
+        """将 gRPC 错误转换为 HTTP 错误"""
+        if error.code() == grpc.StatusCode.NOT_FOUND:
+            raise HTTPException(404, "Resource not found")
+        elif error.code() == grpc.StatusCode.INVALID_ARGUMENT:
+            raise HTTPException(400, "Invalid request")
+        elif error.code() == grpc.StatusCode.UNAVAILABLE:
+            raise HTTPException(502, "Service unavailable")
+        else:
+            raise HTTPException(500, "Internal server error")
 ```
 
 ## 扩展性设计
