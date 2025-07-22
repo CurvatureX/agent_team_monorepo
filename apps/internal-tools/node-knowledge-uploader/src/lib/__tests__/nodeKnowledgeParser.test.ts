@@ -1,3 +1,7 @@
+/**
+ * @jest-environment node
+ */
+
 import { parseNodeKnowledge, parseNodeKnowledgePreview } from '../nodeKnowledgeParser';
 
 // Mock OpenAI
@@ -169,7 +173,7 @@ Subtypes:
     it('should throw error when OpenAI API key is missing', async () => {
       delete process.env.OPENAI_API_KEY;
 
-      await expect(parseNodeKnowledge('test content')).rejects.toThrow();
+      await expect(parseNodeKnowledge('test content')).rejects.toThrow('OpenAI API key is not configured');
     });
 
     it('should handle OpenAI API errors', async () => {
