@@ -23,8 +23,8 @@ Based on [workflow-runtime-architecture.md](../tech-design/workflow-runtime-arch
 **Goal**: Create workflow_runtime project foundation
 
 **Tasks**:
-- Create `apps/workflow-runtime/` directory structure
-- Configure Python project dependencies (requirements.txt / pyproject.toml)
+- Create `apps/backend/workflow_runtime/` directory structure
+- Configure Python project dependencies using uv (pyproject.toml)
 - Setup configuration management (settings.py)
 - Configure logging system
 - Setup environment variable management
@@ -50,7 +50,7 @@ alembic >= 1.12.0
 - [ ] Can connect to PostgreSQL and Redis
 - [ ] Unit tests run with `make test-runtime`
 
-**Estimated Time**: 1 day
+**Estimated Time**: 0.5 day
 
 ---
 
@@ -118,7 +118,7 @@ class DistributedLockManager:
 - [ ] Redis operation error handling is comprehensive
 - [ ] Redis operation unit tests pass
 
-**Estimated Time**: 1 day
+**Estimated Time**: 0.5 day
 
 ---
 
@@ -159,7 +159,7 @@ service WorkflowRuntimeService {
 - [ ] gRPC reflection is supported for debugging
 - [ ] Integration tests with API Gateway pass
 
-**Estimated Time**: 2 days
+**Estimated Time**: 1 day
 
 ---
 
@@ -194,7 +194,7 @@ class DeploymentService:
 - [ ] Exception rollback mechanism works
 - [ ] Deployment service integration tests pass
 
-**Estimated Time**: 2 days
+**Estimated Time**: 1 day
 
 ---
 
@@ -232,7 +232,7 @@ class CronScheduler:
 - [ ] Scheduling execution logs are recorded
 - [ ] Scheduler unit and integration tests pass
 
-**Estimated Time**: 2 days
+**Estimated Time**: 0.5 day
 
 ---
 
@@ -279,7 +279,7 @@ async def TriggerWorkflow(self, request, context):
 - [ ] Error handling between API Gateway and workflow_runtime
 - [ ] Integration tests with API Gateway pass
 
-**Estimated Time**: 1.5 days
+**Estimated Time**: 0.5 day
 
 ---
 
@@ -314,7 +314,7 @@ class ExecutionCoordinatorService:
 - [ ] Execution timeout detection and handling
 - [ ] Execution coordination integration tests pass
 
-**Estimated Time**: 2 days
+**Estimated Time**: 0.5 day
 
 ---
 
@@ -351,7 +351,7 @@ class MonitoringService:
 - [ ] Supports time range filtering
 - [ ] Monitoring service tests pass
 
-**Estimated Time**: 1.5 days
+**Estimated Time**: 0.5 day
 
 ---
 
@@ -395,7 +395,7 @@ class DeploymentValidationError(WorkflowRuntimeError):
 - [ ] Supports log rotation and archiving
 - [ ] Log format validation passes
 
-**Estimated Time**: 1 day
+**Estimated Time**: 0.5 day
 
 ---
 
@@ -438,7 +438,7 @@ async def graceful_shutdown():
 - [ ] Shutdown process logs are clear
 - [ ] Health check and shutdown process tests pass
 
-**Estimated Time**: 1 day
+**Estimated Time**: 0.5 day
 
 ---
 
@@ -469,7 +469,7 @@ async def graceful_shutdown():
 - [ ] Test execution time < 30 seconds
 - [ ] Tests run with `make test-runtime`
 
-**Estimated Time**: 2 days
+**Estimated Time**: 0.5 day
 
 ---
 
@@ -499,7 +499,7 @@ async def graceful_shutdown():
 - [ ] Performance tests meet requirements (QPS >= 100)
 - [ ] Tests run with `make test-integration-runtime`
 
-**Estimated Time**: 2 days
+**Estimated Time**: 0.5 day
 
 ---
 
@@ -529,7 +529,7 @@ async def graceful_shutdown():
 - [ ] Deployment documentation steps are clear
 - [ ] Service can be successfully deployed following documentation
 
-**Estimated Time**: 1.5 days
+**Estimated Time**: 0.5 day
 
 ---
 
@@ -537,31 +537,31 @@ async def graceful_shutdown():
 
 | Phase | Task Count | Estimated Time |
 |-------|------------|----------------|
-| Phase 1: Infrastructure | 3 tasks | 2.5 days |
-| Phase 2: Core Services | 5 tasks | 9.5 days |
-| Phase 3: Monitoring Ops | 3 tasks | 3.5 days |
-| Phase 4: Testing Deployment | 3 tasks | 5.5 days |
-| **Total** | **14 tasks** | **21 days** |
+| Phase 1: Infrastructure | 3 tasks | 1.5 days |
+| Phase 2: Core Services | 5 tasks | 3.5 days |
+| Phase 3: Monitoring Ops | 3 tasks | 1.5 days |
+| Phase 4: Testing Deployment | 3 tasks | 1.5 days |
+| **Total** | **14 tasks** | **7.5 days** |
 
 ## Milestone Checkpoints
 
-### 🎯 Milestone 1: Infrastructure Ready (Day 3)
+### 🎯 Milestone 1: Infrastructure Ready (Day 2)
 - [ ] Project can start, connects to database and Redis
 - [ ] Database model extension complete
 - [ ] Distributed lock works normally
 
-### 🎯 Milestone 2: Core Features Complete (Day 13)
+### 🎯 Milestone 2: Core Features Complete (Day 5)
 - [ ] gRPC API can be called normally
 - [ ] Workflow deployment functionality works
 - [ ] Cron and Webhook triggers work normally
 - [ ] Execution coordination functionality works
 
-### 🎯 Milestone 3: Monitoring Operations Complete (Day 17)
+### 🎯 Milestone 3: Monitoring Operations Complete (Day 6.5)
 - [ ] Monitoring metrics collected normally
 - [ ] Logging and error handling improved
 - [ ] Health check works normally
 
-### 🎯 Milestone 4: Production Ready (Day 21)
+### 🎯 Milestone 4: Production Ready (Day 7.5)
 - [ ] All tests pass
 - [ ] Deployment configuration and documentation complete
 - [ ] Can be deployed and run in production environment
