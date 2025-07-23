@@ -29,52 +29,24 @@ def fix_import_statements(output_dir):
             with open(filepath, 'r') as f:
                 content = f.read()
             
-            # Fix various import statement patterns
-            # Fix "from . from . from ." patterns (multiple levels)
+            # 1. 强力修复所有多余的 from . 前缀
             content = re.sub(
-                r'from \. from \. from \. import',
+                r'(from\s+(?:\.\s*)+)+import',
                 'from . import',
-                content
+                content,
+                flags=re.MULTILINE
             )
-            
-            # Fix "from . from ." patterns (double levels)
+            # 2. 再修复 from(\s+from\s+\.)+import
             content = re.sub(
-                r'from \. from \. import',
+                r'from(\s+from\s+\.)+import',
                 'from . import',
-                content
+                content,
+                flags=re.MULTILINE
             )
-            
-            # Fix direct imports to relative imports
+            # 3. 修复 direct import
             content = re.sub(
-                r'import workflow_pb2 as workflow__pb2',
-                'from . import workflow_pb2 as workflow__pb2',
-                content
-            )
-            content = re.sub(
-                r'import execution_pb2 as execution__pb2',
-                'from . import execution_pb2 as execution__pb2',
-                content
-            )
-            content = re.sub(
-                r'import ai_system_pb2 as ai__system__pb2',
-                'from . import ai_system_pb2 as ai__system__pb2',
-                content
-            )
-            content = re.sub(
-                r'import integration_pb2 as integration__pb2',
-                'from . import integration_pb2 as integration__pb2',
-                content
-            )
-            content = re.sub(
-                r'import workflow_service_pb2 as workflow__service__pb2',
-                'from . import workflow_service_pb2 as workflow__service__pb2',
-                content
-            )
-            
-            # Fix any remaining malformed imports
-            content = re.sub(
-                r'from \. import \. import',
-                'from . import',
+                r'import (\w+_pb2) as (\w+__pb2)',
+                r'from . import \1 as \2',
                 content
             )
             
@@ -89,11 +61,14 @@ def generate_proto_files():
     # Get the current directory
     current_dir = os.path.dirname(os.path.abspath(__file__))
     
-    # Path to shared proto files
-    shared_proto_dir = os.path.join(current_dir, "..", "shared", "proto", "engine")
+    # Path to shared proto files (allow override via environment variable)
+    shared_proto_dir = os.environ.get(
+        "SHARED_PROTO_DIR",
+        os.path.join(current_dir, "..", "shared", "proto", "engine")
+    )
     
     # Path to output directory
-    output_dir = os.path.join(current_dir, "workflow_engine", "proto")
+    output_dir = os.path.join(current_dir, "proto")
     
     # Ensure output directory exists
     os.makedirs(output_dir, exist_ok=True)

@@ -62,11 +62,11 @@ start_server() {
     fi
     
     # Check if Python environment is activated
-    if [[ "$VIRTUAL_ENV" == "" ]]; then
-        print_warning "Virtual environment not detected. Please activate your virtual environment."
-        print_status "Example: source .venv/bin/activate"
-        return 1
-    fi
+    # if [[ "$VIRTUAL_ENV" == "" ]]; then
+    #     print_warning "Virtual environment not detected. Please activate your virtual environment."
+    #     print_status "Example: source .venv/bin/activate"
+    #     return 1
+    # fi
     
     # Check if required files exist
     if [ ! -f "$SERVER_SCRIPT" ]; then
@@ -78,29 +78,28 @@ start_server() {
     print_status "Generating protobuf files..."
     python generate_proto.py
     
-    # Start server in background
+    # Start server in foreground (for Docker)
     print_status "Starting server on port $PORT..."
-    nohup python "$SERVER_SCRIPT" > "$LOG_FILE" 2>&1 &
-    local pid=$!
+    exec python "$SERVER_SCRIPT"
     
     # Save PID
-    echo $pid > "$PID_FILE"
+    # echo $pid > "$PID_FILE" # This line is no longer needed as exec replaces the process
     
     # Wait a moment for server to start
-    sleep 3
+    # sleep 3 # This line is no longer needed as exec replaces the process
     
     # Check if server started successfully
-    if is_server_running; then
-        print_status "✅ Server started successfully!"
-        print_status "📊 PID: $pid"
-        print_status "📝 Log file: $LOG_FILE"
-        print_status "🌐 Server URL: localhost:$PORT"
-        print_status "🔍 Health check: curl http://localhost:$PORT/health"
-    else
-        print_error "❌ Server failed to start"
-        print_status "Check log file: $LOG_FILE"
-        return 1
-    fi
+    # if is_server_running; then # This line is no longer needed as exec replaces the process
+    #     print_status "✅ Server started successfully!"
+    #     print_status "📊 PID: $pid"
+    #     print_status "📝 Log file: $LOG_FILE"
+    #     print_status "🌐 Server URL: localhost:$PORT"
+    #     print_status "🔍 Health check: curl http://localhost:$PORT/health"
+    # else # This line is no longer needed as exec replaces the process
+    #     print_error "❌ Server failed to start"
+    #     print_status "Check log file: $LOG_FILE"
+    #     return 1
+    # fi
 }
 
 # Function to stop server

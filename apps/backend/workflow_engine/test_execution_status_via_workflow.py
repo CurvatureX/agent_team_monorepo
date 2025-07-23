@@ -10,9 +10,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 import grpc
-from workflow_engine.proto import workflow_service_pb2
-from workflow_engine.proto import workflow_service_pb2_grpc
-from workflow_engine.proto import execution_pb2
+from proto import workflow_service_pb2
+from proto import workflow_service_pb2_grpc
+from proto import execution_pb2
 
 def test_execution_status_via_workflow():
     """Test execution status via workflow service"""

@@ -11,7 +11,7 @@ from datetime import datetime
 import grpc
 from sqlalchemy.orm import Session
 
-from workflow_engine.proto import execution_pb2
+from proto import execution_pb2
 from workflow_engine.models.database import get_db
 from workflow_engine.models.execution import WorkflowExecution as ExecutionModel
 from workflow_engine.execution_engine import WorkflowExecutionEngine

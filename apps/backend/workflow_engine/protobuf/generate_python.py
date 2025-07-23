@@ -203,8 +203,8 @@ def main():
     
     print("\nDone! You can now import the generated modules in your Python code.")
     print("Example:")
-    print("  from workflow_engine.proto import workflow_pb2")
-    print("  from workflow_engine.proto import workflow_service_pb2_grpc")
+    print("  from proto import workflow_pb2")
+    print("  from proto import workflow_service_pb2_grpc")
 
 
 if __name__ == "__main__":

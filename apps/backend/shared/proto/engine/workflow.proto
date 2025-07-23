@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package workflow_engine;
+package proto;
 
 option go_package = "github.com/agent-team/workflow_engine/proto";
 
@@ -23,6 +23,7 @@ message Workflow {
   int64 updated_at = 11;
   string version = 12;
   repeated string tags = 13;
+  string session_id = 14;  // 新增：会话ID，关联到sessions表
 }
 
 // 工作流设置
