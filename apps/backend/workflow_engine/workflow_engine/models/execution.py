@@ -1,13 +1,11 @@
 """
-Execution database model.
+Workflow execution database model.
 """
 
-from sqlalchemy import Column, String, BigInteger, Text, DateTime, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy import Column, String, Boolean, Integer, DateTime, JSON, Text
 from sqlalchemy.sql import func
-import uuid
 
-from .database import Base
+from workflow_engine.models.database import Base
 
 
 class WorkflowExecution(Base):
@@ -15,32 +13,42 @@ class WorkflowExecution(Base):
     
     __tablename__ = "workflow_executions"
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    execution_id = Column(String(255), unique=True, nullable=False)
-    workflow_id = Column(UUID(as_uuid=True), nullable=False)
+    # Primary key
+    execution_id = Column(String(36), primary_key=True, index=True)
     
-    # Execution status and mode
-    status = Column(String(50), nullable=False, default="NEW")
-    mode = Column(String(50), nullable=False, default="MANUAL")
+    # Workflow reference
+    workflow_id = Column(String(36), nullable=False, index=True)
     
-    # Execution context
-    triggered_by = Column(String(255))
-    parent_execution_id = Column(String(255))
+    # Execution information
+    status = Column(String(50), nullable=False, default="NEW")  # NEW, RUNNING, COMPLETED, FAILED, CANCELED
+    mode = Column(String(50), nullable=False, default="SYNC")  # SYNC, ASYNC
     
-    # Timing
-    start_time = Column(BigInteger)
-    end_time = Column(BigInteger)
+    # Execution metadata
+    triggered_by = Column(String(255), nullable=True)
+    start_time = Column(Integer, nullable=True)  # Unix timestamp
+    end_time = Column(Integer, nullable=True)    # Unix timestamp
+    execution_metadata = Column(JSON, default=dict)  # Additional metadata (avoid SQLAlchemy reserved word)
     
-    # Execution data
-    run_data = Column(JSONB)
-    metadata = Column(JSONB, default={})
-    
-    # Error information
-    error_message = Column(Text)
-    error_details = Column(JSONB)
-    
-    # Timestamps
-    created_at = Column(DateTime, server_default=func.now())
+    # Execution results
+    run_data = Column(JSON, nullable=True)       # Runtime data
+    error_message = Column(Text, nullable=True)  # Error message
+    error_details = Column(JSON, nullable=True)  # Error details
     
     def __repr__(self):
-        return f"<WorkflowExecution(id={self.execution_id}, status={self.status})>" 
+        return f"<WorkflowExecution(execution_id='{self.execution_id}', workflow_id='{self.workflow_id}', status='{self.status}')>"
+    
+    def to_dict(self):
+        """Convert model to dictionary."""
+        return {
+            'execution_id': self.execution_id,
+            'workflow_id': self.workflow_id,
+            'status': self.status,
+            'mode': self.mode,
+            'triggered_by': self.triggered_by,
+            'start_time': self.start_time,
+            'end_time': self.end_time,
+            'metadata': self.execution_metadata,
+            'run_data': self.run_data,
+            'error_message': self.error_message,
+            'error_details': self.error_details
+        }

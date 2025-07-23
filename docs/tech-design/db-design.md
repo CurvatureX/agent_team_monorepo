@@ -10,28 +10,21 @@
 ```sql
 CREATE TABLE sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    session_id UUID UNIQUE NOT NULL DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL,
-    metadata JSONB DEFAULT '{}',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    expires_at TIMESTAMP WITH TIME ZONE,
-    status VARCHAR(20) DEFAULT 'active'
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 CREATE INDEX idx_sessions_user_id ON sessions(user_id);
-CREATE INDEX idx_sessions_user_status ON sessions(user_id, status);
 ```
 
-### 2. Messages 表
+### 2. Chats 表
 ```sql
-CREATE TABLE messages (
+CREATE TABLE chats (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     session_id UUID NOT NULL REFERENCES sessions(session_id) ON DELETE CASCADE,
     user_id UUID NOT NULL,
     message_type VARCHAR(20) NOT NULL, -- user, assistant, system
     content TEXT NOT NULL,
-    metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     sequence_number INTEGER NOT NULL
 );
@@ -41,67 +34,7 @@ CREATE INDEX idx_messages_user_id ON messages(user_id);
 CREATE INDEX idx_messages_session_sequence ON messages(session_id, sequence_number);
 ```
 
-### 3. Workflows 表
-```sql
-CREATE TABLE workflows (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    workflow_id VARCHAR(50) UNIQUE NOT NULL,
-    session_id UUID NOT NULL REFERENCES sessions(session_id) ON DELETE CASCADE,
-    user_id UUID NOT NULL,
 
-    -- 版本管理
-    sequence_number INTEGER NOT NULL,
-    parent_workflow_id VARCHAR(50) REFERENCES workflows(workflow_id),
-    is_current BOOLEAN DEFAULT false,
-
-    -- 源追踪
-    source_type VARCHAR(20), -- 'template', 'user_workflow', 'scratch'
-    source_template_id VARCHAR(50) REFERENCES workflow_templates(template_id),
-    source_workflow_id VARCHAR(50) REFERENCES workflows(workflow_id),
-    source_user_id UUID,
-
-    -- 工作流数据
-    status VARCHAR(20) NOT NULL DEFAULT 'waiting',
-    workflow_data JSONB,
-    error_message TEXT,
-
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    completed_at TIMESTAMP WITH TIME ZONE
-);
-
-CREATE INDEX idx_workflows_user_session ON workflows(user_id, session_id);
-CREATE INDEX idx_workflows_session_sequence ON workflows(session_id, sequence_number);
-CREATE INDEX idx_workflows_source_template ON workflows(source_template_id);
-CREATE UNIQUE INDEX idx_workflows_session_current ON workflows(session_id) WHERE is_current = true;
-```
-
-### 4. Workflow Templates 表
-```sql
-CREATE TABLE workflow_templates (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    template_id VARCHAR(50) UNIQUE NOT NULL,
-    template_name VARCHAR(255) NOT NULL,
-    description TEXT,
-    category VARCHAR(100),
-    tags TEXT[],
-
-    created_by_user_id UUID,
-    is_public BOOLEAN DEFAULT false,
-    is_official BOOLEAN DEFAULT false,
-
-    template_data JSONB NOT NULL,
-    usage_count INTEGER DEFAULT 0,
-    version VARCHAR(20) DEFAULT '1.0.0',
-
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE INDEX idx_workflow_templates_public ON workflow_templates(is_public, is_official);
-CREATE INDEX idx_workflow_templates_category ON workflow_templates(category);
-CREATE INDEX idx_workflow_templates_usage ON workflow_templates(usage_count DESC);
-```
 
 ## 数据关系
 
