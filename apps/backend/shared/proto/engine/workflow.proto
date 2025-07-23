@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package workflow_engine;
+package proto;
 
 option go_package = "github.com/agent-team/workflow_engine/proto";
 

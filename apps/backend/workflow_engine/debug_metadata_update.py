@@ -9,7 +9,7 @@ from pathlib import Path
 # Add the current directory to the path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from workflow_engine.proto import execution_pb2
+from proto import execution_pb2
 
 def debug_metadata_update():
     """Debug metadata.update() issue"""

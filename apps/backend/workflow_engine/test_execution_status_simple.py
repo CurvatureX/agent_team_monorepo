@@ -10,8 +10,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 import grpc
-from workflow_engine.proto import execution_pb2
-from workflow_engine.proto import execution_pb2_grpc
+from proto import execution_pb2
+from proto import execution_pb2_grpc
 
 def test_execution_status_simple():
     """Simple execution status test"""

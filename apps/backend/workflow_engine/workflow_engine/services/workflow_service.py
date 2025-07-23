@@ -12,8 +12,8 @@ from datetime import datetime
 import grpc
 from sqlalchemy.orm import Session
 
-from workflow_engine.proto import workflow_service_pb2
-from workflow_engine.proto import workflow_pb2
+from proto import workflow_service_pb2
+from proto import workflow_pb2
 from workflow_engine.models.database import get_db
 from workflow_engine.models.workflow import Workflow as WorkflowModel
 from workflow_engine.core.config import get_settings

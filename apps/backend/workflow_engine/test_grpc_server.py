@@ -35,7 +35,7 @@ def test_grpc_connection():
     """Test gRPC connection."""
     try:
         import grpc
-        from workflow_engine.proto import workflow_service_pb2_grpc
+        from proto import workflow_service_pb2_grpc
         
         # Create channel
         channel = grpc.insecure_channel("localhost:50051")

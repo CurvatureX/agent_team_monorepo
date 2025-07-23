@@ -13,9 +13,9 @@ import grpc
 from google.protobuf.json_format import MessageToDict
 
 # Import protobuf modules
-from workflow_engine.proto import workflow_service_pb2
-from workflow_engine.proto import workflow_service_pb2_grpc
-from workflow_engine.proto import workflow_pb2
+from proto import workflow_service_pb2
+from proto import workflow_service_pb2_grpc
+from proto import workflow_pb2
 
 # Configure logging
 logging.basicConfig(

@@ -46,7 +46,7 @@ class GRPCServer:
         )
         
         # Add services
-        from workflow_engine.proto import workflow_service_pb2_grpc
+        from proto import workflow_service_pb2_grpc
         workflow_service_pb2_grpc.add_WorkflowServiceServicer_to_server(
             MainWorkflowService(), server
         )

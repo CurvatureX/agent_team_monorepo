@@ -53,7 +53,7 @@ class UnifiedGRPCServer:
         
         # Add Main Workflow Service (includes all sub-services)
         logger.info("Adding Main Workflow Service...")
-        from workflow_engine.proto import workflow_service_pb2_grpc
+        from proto import workflow_service_pb2_grpc
         main_service = MainWorkflowService()
         workflow_service_pb2_grpc.add_WorkflowServiceServicer_to_server(
             main_service, server

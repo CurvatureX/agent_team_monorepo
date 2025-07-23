@@ -13,10 +13,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 import grpc
-from workflow_engine.proto import workflow_service_pb2
-from workflow_engine.proto import workflow_service_pb2_grpc
-from workflow_engine.proto import workflow_pb2
-from workflow_engine.proto import execution_pb2
+from proto import workflow_service_pb2
+from proto import workflow_service_pb2_grpc
+from proto import workflow_pb2
+from proto import execution_pb2
 
 def test_enhanced_execution_features():
     """Test enhanced execution features for agent debugging"""
