@@ -21,7 +21,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Import protobuf files
-from workflow_engine.proto import workflow_service_pb2_grpc, workflow_service_pb2
+from proto import workflow_service_pb2_grpc, workflow_service_pb2
 
 class SimpleWorkflowService(workflow_service_pb2_grpc.WorkflowServiceServicer):
     """Simple workflow service for testing."""
@@ -41,7 +41,7 @@ class SimpleWorkflowService(workflow_service_pb2_grpc.WorkflowServiceServicer):
         response.message = "Workflow created successfully"
         
         # Create a workflow object with all the data
-        from workflow_engine.proto import workflow_pb2
+        from proto import workflow_pb2
         workflow = workflow_pb2.Workflow()
         workflow.id = f"workflow-{int(time.time())}"
         workflow.name = request.name
@@ -115,7 +115,7 @@ class SimpleWorkflowService(workflow_service_pb2_grpc.WorkflowServiceServicer):
         """Execute a workflow."""
         logger.info(f"ExecuteWorkflow called with ID: {request.workflow_id}")
         
-        from workflow_engine.proto import execution_pb2
+        from proto import execution_pb2
         response = execution_pb2.ExecuteWorkflowResponse()
         
         # Check if workflow exists
@@ -160,7 +160,7 @@ class SimpleWorkflowService(workflow_service_pb2_grpc.WorkflowServiceServicer):
         """Get execution status."""
         logger.info(f"GetExecutionStatus called with ID: {request.execution_id}")
         
-        from workflow_engine.proto import execution_pb2
+        from proto import execution_pb2
         response = execution_pb2.GetExecutionStatusResponse()
         
         if request.execution_id in self.executions:

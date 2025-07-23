@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from workflow_engine.proto import workflow_pb2
+from proto import workflow_pb2
 
 def test_proto_session_id():
     """Test protobuf session_id field"""

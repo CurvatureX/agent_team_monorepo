@@ -53,7 +53,7 @@ def debug_db_metadata():
                     print(f"    ✅ Parsed metadata: {parsed_metadata} (type: {type(parsed_metadata)})")
                     
                     # Test protobuf update
-                    from workflow_engine.proto import execution_pb2
+                    from proto import execution_pb2
                     test_execution = execution_pb2.ExecutionData()
                     test_execution.metadata.update(parsed_metadata)
                     print(f"    ✅ Protobuf update successful: {dict(test_execution.metadata)}")

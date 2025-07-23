@@ -42,7 +42,7 @@ def debug_workflow_id_type():
         print(f"  - str(workflow_id): {workflow_id_str} (type: {type(workflow_id_str)})")
         
         # Test protobuf assignment
-        from workflow_engine.proto import execution_pb2
+        from proto import execution_pb2
         execution = execution_pb2.ExecutionData()
         
         try:

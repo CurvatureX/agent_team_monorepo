@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from workflow_engine.models.database import get_db
 from workflow_engine.models.execution import WorkflowExecution as ExecutionModel
-from workflow_engine.proto import execution_pb2
+from proto import execution_pb2
 
 def debug_execution_service_step_by_step():
     """Debug execution service step by step"""

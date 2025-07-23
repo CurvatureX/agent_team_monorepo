@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Union
 from datetime import datetime
 
 try:
-    from workflow_engine.proto import workflow_pb2
+    from proto import workflow_pb2
 except ImportError:
     # Fallback for when proto files are not generated
     workflow_pb2 = None

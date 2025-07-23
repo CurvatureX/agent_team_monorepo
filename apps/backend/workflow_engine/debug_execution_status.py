@@ -40,7 +40,7 @@ def debug_execution_status():
         print("\n📋 Testing protobuf enum conversion:")
         
         # Import protobuf modules
-        from workflow_engine.proto import execution_pb2
+        from proto import execution_pb2
         
         # Test with actual database values
         if executions:

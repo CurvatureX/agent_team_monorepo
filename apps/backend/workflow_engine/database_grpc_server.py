@@ -21,7 +21,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Import protobuf files
-from workflow_engine.proto import workflow_service_pb2_grpc, workflow_service_pb2
+from proto import workflow_service_pb2_grpc, workflow_service_pb2
 from database_service import DatabaseService
 
 class DatabaseWorkflowService(workflow_service_pb2_grpc.WorkflowServiceServicer):
@@ -75,7 +75,7 @@ class DatabaseWorkflowService(workflow_service_pb2_grpc.WorkflowServiceServicer)
             response.message = "Workflow created successfully"
             
             # Create workflow object for response
-            from workflow_engine.proto import workflow_pb2
+            from proto import workflow_pb2
             workflow = workflow_pb2.Workflow()
             workflow.id = workflow_id
             workflow.name = request.name
@@ -121,7 +121,7 @@ class DatabaseWorkflowService(workflow_service_pb2_grpc.WorkflowServiceServicer)
                 response.message = "Workflow found"
                 
                 # Create workflow object
-                from workflow_engine.proto import workflow_pb2
+                from proto import workflow_pb2
                 workflow = workflow_pb2.Workflow()
                 workflow.id = workflow_data['id']
                 workflow.name = workflow_data['name']
@@ -221,7 +221,7 @@ class DatabaseWorkflowService(workflow_service_pb2_grpc.WorkflowServiceServicer)
             # Check if workflow exists
             workflow_data = self.db_service.get_workflow(request.workflow_id)
             if not workflow_data:
-                from workflow_engine.proto import execution_pb2
+                from proto import execution_pb2
                 response = execution_pb2.ExecuteWorkflowResponse()
                 response.execution_id = ""
                 response.status = execution_pb2.ExecutionStatus.ERROR
@@ -240,7 +240,7 @@ class DatabaseWorkflowService(workflow_service_pb2_grpc.WorkflowServiceServicer)
             
             execution_id = self.db_service.create_execution(execution_data)
             
-            from workflow_engine.proto import execution_pb2
+            from proto import execution_pb2
             response = execution_pb2.ExecuteWorkflowResponse()
             response.execution_id = execution_id
             response.status = execution_pb2.ExecutionStatus.RUNNING
@@ -251,7 +251,7 @@ class DatabaseWorkflowService(workflow_service_pb2_grpc.WorkflowServiceServicer)
             
         except Exception as e:
             logger.error(f"Failed to execute workflow: {e}")
-            from workflow_engine.proto import execution_pb2
+            from proto import execution_pb2
             response = execution_pb2.ExecuteWorkflowResponse()
             response.execution_id = ""
             response.status = execution_pb2.ExecutionStatus.ERROR
@@ -265,7 +265,7 @@ class DatabaseWorkflowService(workflow_service_pb2_grpc.WorkflowServiceServicer)
         try:
             execution_data = self.db_service.get_execution(request.execution_id)
             
-            from workflow_engine.proto import execution_pb2
+            from proto import execution_pb2
             response = execution_pb2.GetExecutionStatusResponse()
             
             if execution_data:
@@ -297,7 +297,7 @@ class DatabaseWorkflowService(workflow_service_pb2_grpc.WorkflowServiceServicer)
             
         except Exception as e:
             logger.error(f"Failed to get execution status: {e}")
-            from workflow_engine.proto import execution_pb2
+            from proto import execution_pb2
             response = execution_pb2.GetExecutionStatusResponse()
             response.found = False
             response.message = f"Failed to get execution status: {str(e)}"

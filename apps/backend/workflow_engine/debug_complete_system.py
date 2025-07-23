@@ -29,8 +29,8 @@ logger = logging.getLogger(__name__)
 
 def create_test_workflow():
     """Create a comprehensive test workflow with various node types and error scenarios."""
-    from workflow_engine.proto import workflow_pb2
-    from workflow_engine.proto import workflow_service_pb2
+    from proto import workflow_pb2
+    from proto import workflow_service_pb2
     
     # Create workflow
     workflow = workflow_service_pb2.CreateWorkflowRequest()
@@ -213,7 +213,7 @@ def test_workflow_execution(stub, workflow_id):
     logger.info("=== TESTING WORKFLOW EXECUTION ===")
     
     try:
-        from workflow_engine.proto import execution_pb2
+        from proto import execution_pb2
         
         # Create execution request
         request = execution_pb2.ExecuteWorkflowRequest()
@@ -241,7 +241,7 @@ def test_execution_status(stub, execution_id):
     logger.info("=== TESTING EXECUTION STATUS ===")
     
     try:
-        from workflow_engine.proto import execution_pb2
+        from proto import execution_pb2
         
         # Get execution status
         request = execution_pb2.GetExecutionStatusRequest()
@@ -285,7 +285,7 @@ def test_workflow_operations(stub, workflow_id):
     logger.info("=== TESTING WORKFLOW OPERATIONS ===")
     
     try:
-        from workflow_engine.proto import workflow_service_pb2
+        from proto import workflow_service_pb2
         
         # Test GetWorkflow
         get_request = workflow_service_pb2.GetWorkflowRequest()
@@ -323,7 +323,7 @@ def main():
     
     try:
         # Import protobuf modules
-        from workflow_engine.proto import workflow_service_pb2_grpc, workflow_service_pb2
+        from proto import workflow_service_pb2_grpc, workflow_service_pb2
         
         # Create gRPC channel
         channel = grpc.insecure_channel("localhost:50051")

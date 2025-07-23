@@ -23,7 +23,7 @@ from google.protobuf.json_format import MessageToDict
 # Add the project root to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from workflow_engine.proto import (
+from proto import (
     workflow_service_pb2,
     workflow_service_pb2_grpc,
     workflow_pb2,

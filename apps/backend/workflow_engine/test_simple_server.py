@@ -33,7 +33,7 @@ def test_simple_grpc_server():
     try:
         # Test basic connection
         import grpc
-        from workflow_engine.proto import workflow_service_pb2_grpc, workflow_service_pb2
+        from proto import workflow_service_pb2_grpc, workflow_service_pb2
         
         # Create channel
         channel = grpc.insecure_channel("localhost:50051")
@@ -71,7 +71,7 @@ def test_simple_grpc_server():
         logger.info(f"ListWorkflows response: {response.total_count} workflows")
         
         # Test ExecuteWorkflow
-        from workflow_engine.proto import execution_pb2
+        from proto import execution_pb2
         request = execution_pb2.ExecuteWorkflowRequest()
         request.workflow_id = "test-workflow-123"
         

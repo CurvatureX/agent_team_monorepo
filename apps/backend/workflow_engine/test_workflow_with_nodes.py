@@ -8,8 +8,8 @@ import sys
 import time
 import logging
 import grpc
-from workflow_engine.proto import workflow_service_pb2_grpc, workflow_service_pb2, workflow_pb2
-from workflow_engine.proto import execution_pb2
+from proto import workflow_service_pb2_grpc, workflow_service_pb2, workflow_pb2
+from proto import execution_pb2
 
 # Configure logging
 logging.basicConfig(
