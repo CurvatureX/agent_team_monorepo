@@ -8,9 +8,9 @@ import logging
 
 import grpc
 
-from workflow_engine.proto import workflow_service_pb2_grpc
-from workflow_engine.proto import workflow_service_pb2
-from workflow_engine.proto import execution_pb2
+from proto import workflow_service_pb2_grpc
+from proto import workflow_service_pb2
+from proto import execution_pb2
 from workflow_engine.services.workflow_service import WorkflowService
 from workflow_engine.services.execution_service import ExecutionService
 # from workflow_engine.services.validation_service import ValidationService  # 暂时注释掉

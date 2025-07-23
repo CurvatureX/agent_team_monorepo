@@ -40,22 +40,22 @@ class ExecutionServiceStub(object):
             channel: A grpc.Channel.
         """
         self.ExecuteWorkflow = channel.unary_unary(
-                '/workflow_engine.ExecutionService/ExecuteWorkflow',
+                '/proto.ExecutionService/ExecuteWorkflow',
                 request_serializer=execution__pb2.ExecuteWorkflowRequest.SerializeToString,
                 response_deserializer=execution__pb2.ExecuteWorkflowResponse.FromString,
                 _registered_method=True)
         self.GetExecutionStatus = channel.unary_unary(
-                '/workflow_engine.ExecutionService/GetExecutionStatus',
+                '/proto.ExecutionService/GetExecutionStatus',
                 request_serializer=execution__pb2.GetExecutionStatusRequest.SerializeToString,
                 response_deserializer=execution__pb2.GetExecutionStatusResponse.FromString,
                 _registered_method=True)
         self.CancelExecution = channel.unary_unary(
-                '/workflow_engine.ExecutionService/CancelExecution',
+                '/proto.ExecutionService/CancelExecution',
                 request_serializer=execution__pb2.CancelExecutionRequest.SerializeToString,
                 response_deserializer=execution__pb2.CancelExecutionResponse.FromString,
                 _registered_method=True)
         self.GetExecutionHistory = channel.unary_unary(
-                '/workflow_engine.ExecutionService/GetExecutionHistory',
+                '/proto.ExecutionService/GetExecutionHistory',
                 request_serializer=execution__pb2.GetExecutionHistoryRequest.SerializeToString,
                 response_deserializer=execution__pb2.GetExecutionHistoryResponse.FromString,
                 _registered_method=True)
@@ -122,9 +122,9 @@ def add_ExecutionServiceServicer_to_server(servicer, server):
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'workflow_engine.ExecutionService', rpc_method_handlers)
+            'proto.ExecutionService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('workflow_engine.ExecutionService', rpc_method_handlers)
+    server.add_registered_method_handlers('proto.ExecutionService', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
@@ -150,7 +150,7 @@ class ExecutionService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.ExecutionService/ExecuteWorkflow',
+            '/proto.ExecutionService/ExecuteWorkflow',
             execution__pb2.ExecuteWorkflowRequest.SerializeToString,
             execution__pb2.ExecuteWorkflowResponse.FromString,
             options,
@@ -177,7 +177,7 @@ class ExecutionService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.ExecutionService/GetExecutionStatus',
+            '/proto.ExecutionService/GetExecutionStatus',
             execution__pb2.GetExecutionStatusRequest.SerializeToString,
             execution__pb2.GetExecutionStatusResponse.FromString,
             options,
@@ -204,7 +204,7 @@ class ExecutionService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.ExecutionService/CancelExecution',
+            '/proto.ExecutionService/CancelExecution',
             execution__pb2.CancelExecutionRequest.SerializeToString,
             execution__pb2.CancelExecutionResponse.FromString,
             options,
@@ -231,7 +231,7 @@ class ExecutionService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.ExecutionService/GetExecutionHistory',
+            '/proto.ExecutionService/GetExecutionHistory',
             execution__pb2.GetExecutionHistoryRequest.SerializeToString,
             execution__pb2.GetExecutionHistoryResponse.FromString,
             options,

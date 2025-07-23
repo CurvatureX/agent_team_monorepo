@@ -17,7 +17,7 @@ from collections import defaultdict, deque
 
 from .nodes.factory import get_node_executor_factory, register_default_executors
 from .nodes.base import NodeExecutionContext, NodeExecutionResult, ExecutionStatus
-from .proto import workflow_pb2
+from proto import workflow_pb2
 
 
 class EnhancedWorkflowExecutionEngine:
