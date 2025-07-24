@@ -28,51 +28,30 @@ def fix_proto_imports():
             with open(filepath, 'r') as f:
                 content = f.read()
             
-            # Fix various import statement patterns
-            # Fix "from . from . from ." patterns (multiple levels)
+            # 1. 强力修复所有多余的 from . 前缀
             content = re.sub(
-                r'from \. from \. from \. import',
+                r'(from\s+(?:\.\s*)+)+import',
                 'from . import',
-                content
+                content,
+                flags=re.MULTILINE
             )
-            
-            # Fix "from . from ." patterns (double levels)
+            # 2. 再修复 from(\s+from\s+\.)+import
             content = re.sub(
-                r'from \. from \. import',
+                r'from(\s+from\s+\.)+import',
                 'from . import',
+                content,
+                flags=re.MULTILINE
+            )
+            # 3. 修复 direct import
+            content = re.sub(
+                r'import (\w+_pb2) as (\w+__pb2)',
+                r'from . import \1 as \2',
                 content
             )
             
-            # Fix direct imports to relative imports
+            # 终极修复方案
             content = re.sub(
-                r'import workflow_pb2 as workflow__pb2',
-                'from . import workflow_pb2 as workflow__pb2',
-                content
-            )
-            content = re.sub(
-                r'import execution_pb2 as execution__pb2',
-                'from . import execution_pb2 as execution__pb2',
-                content
-            )
-            content = re.sub(
-                r'import ai_system_pb2 as ai__system__pb2',
-                'from . import ai_system_pb2 as ai__system__pb2',
-                content
-            )
-            content = re.sub(
-                r'import integration_pb2 as integration__pb2',
-                'from . import integration_pb2 as integration__pb2',
-                content
-            )
-            content = re.sub(
-                r'import workflow_service_pb2 as workflow__service__pb2',
-                'from . import workflow_service_pb2 as workflow__service__pb2',
-                content
-            )
-            
-            # Fix any remaining malformed imports
-            content = re.sub(
-                r'from \. import \. import',
+                r'from(\s+from\s+\.)+import',
                 'from . import',
                 content
             )

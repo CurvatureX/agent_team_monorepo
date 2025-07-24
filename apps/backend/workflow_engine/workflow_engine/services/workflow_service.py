@@ -12,8 +12,8 @@ from datetime import datetime
 import grpc
 from sqlalchemy.orm import Session
 
-from workflow_engine.proto import workflow_service_pb2
-from workflow_engine.proto import workflow_pb2
+from proto import workflow_service_pb2
+from proto import workflow_pb2
 from workflow_engine.models.database import get_db
 from workflow_engine.models.workflow import Workflow as WorkflowModel
 from workflow_engine.core.config import get_settings
@@ -46,6 +46,8 @@ class WorkflowService:
             workflow.created_at = int(datetime.now().timestamp())
             workflow.updated_at = int(datetime.now().timestamp())
             workflow.version = "1.0.0"
+            if request.session_id:  # 新增：设置session_id
+                workflow.session_id = request.session_id
             
             # Copy nodes and connections
             workflow.nodes.extend(request.nodes)
@@ -73,7 +75,8 @@ class WorkflowService:
                     created_at=workflow.created_at,
                     updated_at=workflow.updated_at,
                     version=workflow.version,
-                    tags=list(workflow.tags)  # Direct array, not JSON
+                    tags=list(workflow.tags),  # Direct array, not JSON
+                    session_id=request.session_id if request.session_id else None  # 新增：session_id支持
                 )
                 db.add(db_workflow)
                 db.commit()
@@ -113,8 +116,8 @@ class WorkflowService:
             db = next(get_db())
             try:
                 db_workflow = db.query(WorkflowModel).filter(
-                    WorkflowModel.id == request.workflow_id,
-                    WorkflowModel.user_id == request.user_id
+                    WorkflowModel.id == str(request.workflow_id),  # 确保是字符串
+                    WorkflowModel.user_id == str(request.user_id)  # 确保是字符串
                 ).first()
                 
                 if not db_workflow:
@@ -128,6 +131,20 @@ class WorkflowService:
                 workflow = workflow_pb2.Workflow()
                 ParseDict(db_workflow.workflow_data, workflow)
                 
+                # 设置基本字段（这些字段在数据库中单独存储）
+                workflow.id = str(db_workflow.id)  # 确保是字符串
+                workflow.name = str(db_workflow.name) if db_workflow.name else ""
+                workflow.description = str(db_workflow.description) if db_workflow.description else ""
+                workflow.active = bool(db_workflow.active) if db_workflow.active is not None else True
+                workflow.created_at = int(db_workflow.created_at) if db_workflow.created_at else 0
+                workflow.updated_at = int(db_workflow.updated_at) if db_workflow.updated_at else 0
+                if db_workflow.tags:
+                    workflow.tags.extend([str(tag) for tag in db_workflow.tags])
+                
+                # 新增：确保session_id正确设置
+                if db_workflow.session_id:
+                    workflow.session_id = str(db_workflow.session_id)  # 转换为字符串
+                
                 return workflow_service_pb2.GetWorkflowResponse(
                     workflow=workflow,
                     found=True,
@@ -139,6 +156,8 @@ class WorkflowService:
                 
         except Exception as e:
             self.logger.error(f"Error getting workflow: {str(e)}")
+            import traceback
+            self.logger.error(f"Full traceback: {traceback.format_exc()}")
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(f"Failed to get workflow: {str(e)}")
             return workflow_service_pb2.GetWorkflowResponse(
@@ -206,6 +225,8 @@ class WorkflowService:
                 db_workflow.workflow_data = workflow_json
                 db_workflow.updated_at = workflow.updated_at
                 db_workflow.tags = list(workflow.tags)
+                if request.session_id:  # 新增：更新session_id
+                    db_workflow.session_id = request.session_id
                 
                 db.commit()
                 
@@ -292,7 +313,7 @@ class WorkflowService:
             db = next(get_db())
             try:
                 query = db.query(WorkflowModel).filter(
-                    WorkflowModel.user_id == request.user_id
+                    WorkflowModel.user_id == str(request.user_id)  # 确保是字符串
                 )
                 
                 # Apply filters
@@ -320,6 +341,20 @@ class WorkflowService:
                 for db_workflow in db_workflows:
                     workflow = workflow_pb2.Workflow()
                     ParseDict(db_workflow.workflow_data, workflow)
+                    
+                    # 设置基本字段（这些字段在数据库中单独存储）
+                    workflow.id = str(db_workflow.id)  # 确保是字符串
+                    workflow.name = str(db_workflow.name) if db_workflow.name else ""
+                    workflow.description = str(db_workflow.description) if db_workflow.description else ""
+                    workflow.active = bool(db_workflow.active) if db_workflow.active is not None else True
+                    workflow.created_at = int(db_workflow.created_at) if db_workflow.created_at else 0
+                    workflow.updated_at = int(db_workflow.updated_at) if db_workflow.updated_at else 0
+                    if db_workflow.tags:
+                        workflow.tags.extend([str(tag) for tag in db_workflow.tags])
+                    
+                    # 新增：确保session_id正确设置
+                    if db_workflow.session_id:
+                        workflow.session_id = str(db_workflow.session_id)  # 转换为字符串
                     workflows.append(workflow)
                 
                 return workflow_service_pb2.ListWorkflowsResponse(

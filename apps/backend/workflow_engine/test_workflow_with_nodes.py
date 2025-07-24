@@ -8,8 +8,8 @@ import sys
 import time
 import logging
 import grpc
-from workflow_engine.proto import workflow_service_pb2_grpc, workflow_service_pb2, workflow_pb2
-from workflow_engine.proto import execution_pb2
+from proto import workflow_service_pb2_grpc, workflow_service_pb2, workflow_pb2
+from proto import execution_pb2
 
 # Configure logging
 logging.basicConfig(
@@ -26,7 +26,7 @@ def create_workflow_with_nodes():
     workflow_request = workflow_service_pb2.CreateWorkflowRequest()
     workflow_request.name = "Test Workflow with Nodes"
     workflow_request.description = "A comprehensive test workflow with various node types"
-    workflow_request.user_id = "test-user-123"
+    workflow_request.user_id = "00000000-0000-0000-0000-000000000123"
     
     # Add nodes
     nodes = []
@@ -185,7 +185,7 @@ def test_workflow_with_nodes():
             # Test GetWorkflow
             get_request = workflow_service_pb2.GetWorkflowRequest()
             get_request.workflow_id = workflow_id
-            get_request.user_id = "test-user-123"
+            get_request.user_id = "00000000-0000-0000-0000-000000000123"
             
             get_response = stub.GetWorkflow(get_request)
             if get_response.found:
@@ -198,7 +198,7 @@ def test_workflow_with_nodes():
             
             # Test ListWorkflows
             list_request = workflow_service_pb2.ListWorkflowsRequest()
-            list_request.user_id = "test-user-123"
+            list_request.user_id = "00000000-0000-0000-0000-000000000123"
             list_request.active_only = True
             list_request.limit = 10
             list_request.offset = 0
@@ -213,9 +213,9 @@ def test_workflow_with_nodes():
             exec_request = execution_pb2.ExecuteWorkflowRequest()
             exec_request.workflow_id = workflow_id
             exec_request.mode = execution_pb2.ExecutionMode.MANUAL
-            exec_request.triggered_by = "test-user-123"
+            exec_request.triggered_by = "00000000-0000-0000-0000-000000000123"
             exec_request.input_data["test_input"] = "test_value"
-            exec_request.input_data["user_id"] = "test-user-123"
+            exec_request.input_data["user_id"] = "00000000-0000-0000-0000-000000000123"
             exec_request.metadata["debug_mode"] = "true"
             exec_request.metadata["test_run"] = "true"
             

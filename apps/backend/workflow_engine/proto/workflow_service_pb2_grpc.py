@@ -43,57 +43,57 @@ class WorkflowServiceStub(object):
             channel: A grpc.Channel.
         """
         self.CreateWorkflow = channel.unary_unary(
-                '/workflow_engine.WorkflowService/CreateWorkflow',
+                '/proto.WorkflowService/CreateWorkflow',
                 request_serializer=workflow__service__pb2.CreateWorkflowRequest.SerializeToString,
                 response_deserializer=workflow__service__pb2.CreateWorkflowResponse.FromString,
                 _registered_method=True)
         self.GetWorkflow = channel.unary_unary(
-                '/workflow_engine.WorkflowService/GetWorkflow',
+                '/proto.WorkflowService/GetWorkflow',
                 request_serializer=workflow__service__pb2.GetWorkflowRequest.SerializeToString,
                 response_deserializer=workflow__service__pb2.GetWorkflowResponse.FromString,
                 _registered_method=True)
         self.UpdateWorkflow = channel.unary_unary(
-                '/workflow_engine.WorkflowService/UpdateWorkflow',
+                '/proto.WorkflowService/UpdateWorkflow',
                 request_serializer=workflow__service__pb2.UpdateWorkflowRequest.SerializeToString,
                 response_deserializer=workflow__service__pb2.UpdateWorkflowResponse.FromString,
                 _registered_method=True)
         self.DeleteWorkflow = channel.unary_unary(
-                '/workflow_engine.WorkflowService/DeleteWorkflow',
+                '/proto.WorkflowService/DeleteWorkflow',
                 request_serializer=workflow__service__pb2.DeleteWorkflowRequest.SerializeToString,
                 response_deserializer=workflow__service__pb2.DeleteWorkflowResponse.FromString,
                 _registered_method=True)
         self.ListWorkflows = channel.unary_unary(
-                '/workflow_engine.WorkflowService/ListWorkflows',
+                '/proto.WorkflowService/ListWorkflows',
                 request_serializer=workflow__service__pb2.ListWorkflowsRequest.SerializeToString,
                 response_deserializer=workflow__service__pb2.ListWorkflowsResponse.FromString,
                 _registered_method=True)
         self.ExecuteWorkflow = channel.unary_unary(
-                '/workflow_engine.WorkflowService/ExecuteWorkflow',
+                '/proto.WorkflowService/ExecuteWorkflow',
                 request_serializer=execution__pb2.ExecuteWorkflowRequest.SerializeToString,
                 response_deserializer=execution__pb2.ExecuteWorkflowResponse.FromString,
                 _registered_method=True)
         self.GetExecutionStatus = channel.unary_unary(
-                '/workflow_engine.WorkflowService/GetExecutionStatus',
+                '/proto.WorkflowService/GetExecutionStatus',
                 request_serializer=execution__pb2.GetExecutionStatusRequest.SerializeToString,
                 response_deserializer=execution__pb2.GetExecutionStatusResponse.FromString,
                 _registered_method=True)
         self.CancelExecution = channel.unary_unary(
-                '/workflow_engine.WorkflowService/CancelExecution',
+                '/proto.WorkflowService/CancelExecution',
                 request_serializer=execution__pb2.CancelExecutionRequest.SerializeToString,
                 response_deserializer=execution__pb2.CancelExecutionResponse.FromString,
                 _registered_method=True)
         self.GetExecutionHistory = channel.unary_unary(
-                '/workflow_engine.WorkflowService/GetExecutionHistory',
+                '/proto.WorkflowService/GetExecutionHistory',
                 request_serializer=execution__pb2.GetExecutionHistoryRequest.SerializeToString,
                 response_deserializer=execution__pb2.GetExecutionHistoryResponse.FromString,
                 _registered_method=True)
         self.ValidateWorkflow = channel.unary_unary(
-                '/workflow_engine.WorkflowService/ValidateWorkflow',
+                '/proto.WorkflowService/ValidateWorkflow',
                 request_serializer=ai__system__pb2.ValidateWorkflowRequest.SerializeToString,
                 response_deserializer=ai__system__pb2.ValidateWorkflowResponse.FromString,
                 _registered_method=True)
         self.TestNode = channel.unary_unary(
-                '/workflow_engine.WorkflowService/TestNode',
+                '/proto.WorkflowService/TestNode',
                 request_serializer=ai__system__pb2.TestNodeRequest.SerializeToString,
                 response_deserializer=ai__system__pb2.TestNodeResponse.FromString,
                 _registered_method=True)
@@ -236,9 +236,9 @@ def add_WorkflowServiceServicer_to_server(servicer, server):
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'workflow_engine.WorkflowService', rpc_method_handlers)
+            'proto.WorkflowService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('workflow_engine.WorkflowService', rpc_method_handlers)
+    server.add_registered_method_handlers('proto.WorkflowService', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
@@ -264,7 +264,7 @@ class WorkflowService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.WorkflowService/CreateWorkflow',
+            '/proto.WorkflowService/CreateWorkflow',
             workflow__service__pb2.CreateWorkflowRequest.SerializeToString,
             workflow__service__pb2.CreateWorkflowResponse.FromString,
             options,
@@ -291,7 +291,7 @@ class WorkflowService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.WorkflowService/GetWorkflow',
+            '/proto.WorkflowService/GetWorkflow',
             workflow__service__pb2.GetWorkflowRequest.SerializeToString,
             workflow__service__pb2.GetWorkflowResponse.FromString,
             options,
@@ -318,7 +318,7 @@ class WorkflowService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.WorkflowService/UpdateWorkflow',
+            '/proto.WorkflowService/UpdateWorkflow',
             workflow__service__pb2.UpdateWorkflowRequest.SerializeToString,
             workflow__service__pb2.UpdateWorkflowResponse.FromString,
             options,
@@ -345,7 +345,7 @@ class WorkflowService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.WorkflowService/DeleteWorkflow',
+            '/proto.WorkflowService/DeleteWorkflow',
             workflow__service__pb2.DeleteWorkflowRequest.SerializeToString,
             workflow__service__pb2.DeleteWorkflowResponse.FromString,
             options,
@@ -372,7 +372,7 @@ class WorkflowService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.WorkflowService/ListWorkflows',
+            '/proto.WorkflowService/ListWorkflows',
             workflow__service__pb2.ListWorkflowsRequest.SerializeToString,
             workflow__service__pb2.ListWorkflowsResponse.FromString,
             options,
@@ -399,7 +399,7 @@ class WorkflowService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.WorkflowService/ExecuteWorkflow',
+            '/proto.WorkflowService/ExecuteWorkflow',
             execution__pb2.ExecuteWorkflowRequest.SerializeToString,
             execution__pb2.ExecuteWorkflowResponse.FromString,
             options,
@@ -426,7 +426,7 @@ class WorkflowService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.WorkflowService/GetExecutionStatus',
+            '/proto.WorkflowService/GetExecutionStatus',
             execution__pb2.GetExecutionStatusRequest.SerializeToString,
             execution__pb2.GetExecutionStatusResponse.FromString,
             options,
@@ -453,7 +453,7 @@ class WorkflowService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.WorkflowService/CancelExecution',
+            '/proto.WorkflowService/CancelExecution',
             execution__pb2.CancelExecutionRequest.SerializeToString,
             execution__pb2.CancelExecutionResponse.FromString,
             options,
@@ -480,7 +480,7 @@ class WorkflowService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.WorkflowService/GetExecutionHistory',
+            '/proto.WorkflowService/GetExecutionHistory',
             execution__pb2.GetExecutionHistoryRequest.SerializeToString,
             execution__pb2.GetExecutionHistoryResponse.FromString,
             options,
@@ -507,7 +507,7 @@ class WorkflowService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.WorkflowService/ValidateWorkflow',
+            '/proto.WorkflowService/ValidateWorkflow',
             ai__system__pb2.ValidateWorkflowRequest.SerializeToString,
             ai__system__pb2.ValidateWorkflowResponse.FromString,
             options,
@@ -534,7 +534,7 @@ class WorkflowService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.WorkflowService/TestNode',
+            '/proto.WorkflowService/TestNode',
             ai__system__pb2.TestNodeRequest.SerializeToString,
             ai__system__pb2.TestNodeResponse.FromString,
             options,
@@ -559,22 +559,22 @@ class AIAgentServiceStub(object):
             channel: A grpc.Channel.
         """
         self.GenerateWorkflow = channel.unary_unary(
-                '/workflow_engine.AIAgentService/GenerateWorkflow',
+                '/proto.AIAgentService/GenerateWorkflow',
                 request_serializer=ai__system__pb2.GenerateWorkflowRequest.SerializeToString,
                 response_deserializer=ai__system__pb2.GenerateWorkflowResponse.FromString,
                 _registered_method=True)
         self.RefineWorkflow = channel.unary_unary(
-                '/workflow_engine.AIAgentService/RefineWorkflow',
+                '/proto.AIAgentService/RefineWorkflow',
                 request_serializer=ai__system__pb2.RefineWorkflowRequest.SerializeToString,
                 response_deserializer=ai__system__pb2.RefineWorkflowResponse.FromString,
                 _registered_method=True)
         self.ChatWithAgent = channel.unary_unary(
-                '/workflow_engine.AIAgentService/ChatWithAgent',
+                '/proto.AIAgentService/ChatWithAgent',
                 request_serializer=ai__system__pb2.AIAgentRequest.SerializeToString,
                 response_deserializer=ai__system__pb2.AIAgentResponse.FromString,
                 _registered_method=True)
         self.StreamChatWithAgent = channel.unary_stream(
-                '/workflow_engine.AIAgentService/StreamChatWithAgent',
+                '/proto.AIAgentService/StreamChatWithAgent',
                 request_serializer=ai__system__pb2.AIAgentRequest.SerializeToString,
                 response_deserializer=ai__system__pb2.AIAgentResponse.FromString,
                 _registered_method=True)
@@ -635,9 +635,9 @@ def add_AIAgentServiceServicer_to_server(servicer, server):
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'workflow_engine.AIAgentService', rpc_method_handlers)
+            'proto.AIAgentService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('workflow_engine.AIAgentService', rpc_method_handlers)
+    server.add_registered_method_handlers('proto.AIAgentService', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
@@ -659,7 +659,7 @@ class AIAgentService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.AIAgentService/GenerateWorkflow',
+            '/proto.AIAgentService/GenerateWorkflow',
             ai__system__pb2.GenerateWorkflowRequest.SerializeToString,
             ai__system__pb2.GenerateWorkflowResponse.FromString,
             options,
@@ -686,7 +686,7 @@ class AIAgentService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.AIAgentService/RefineWorkflow',
+            '/proto.AIAgentService/RefineWorkflow',
             ai__system__pb2.RefineWorkflowRequest.SerializeToString,
             ai__system__pb2.RefineWorkflowResponse.FromString,
             options,
@@ -713,7 +713,7 @@ class AIAgentService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.AIAgentService/ChatWithAgent',
+            '/proto.AIAgentService/ChatWithAgent',
             ai__system__pb2.AIAgentRequest.SerializeToString,
             ai__system__pb2.AIAgentResponse.FromString,
             options,
@@ -740,7 +740,7 @@ class AIAgentService(object):
         return grpc.experimental.unary_stream(
             request,
             target,
-            '/workflow_engine.AIAgentService/StreamChatWithAgent',
+            '/proto.AIAgentService/StreamChatWithAgent',
             ai__system__pb2.AIAgentRequest.SerializeToString,
             ai__system__pb2.AIAgentResponse.FromString,
             options,
@@ -765,32 +765,32 @@ class IntegrationServiceStub(object):
             channel: A grpc.Channel.
         """
         self.GetIntegrations = channel.unary_unary(
-                '/workflow_engine.IntegrationService/GetIntegrations',
+                '/proto.IntegrationService/GetIntegrations',
                 request_serializer=integration__pb2.GetIntegrationsRequest.SerializeToString,
                 response_deserializer=integration__pb2.GetIntegrationsResponse.FromString,
                 _registered_method=True)
         self.CreateIntegration = channel.unary_unary(
-                '/workflow_engine.IntegrationService/CreateIntegration',
+                '/proto.IntegrationService/CreateIntegration',
                 request_serializer=integration__pb2.CreateIntegrationRequest.SerializeToString,
                 response_deserializer=integration__pb2.CreateIntegrationResponse.FromString,
                 _registered_method=True)
         self.UpdateIntegration = channel.unary_unary(
-                '/workflow_engine.IntegrationService/UpdateIntegration',
+                '/proto.IntegrationService/UpdateIntegration',
                 request_serializer=integration__pb2.UpdateIntegrationRequest.SerializeToString,
                 response_deserializer=integration__pb2.UpdateIntegrationResponse.FromString,
                 _registered_method=True)
         self.DeleteIntegration = channel.unary_unary(
-                '/workflow_engine.IntegrationService/DeleteIntegration',
+                '/proto.IntegrationService/DeleteIntegration',
                 request_serializer=integration__pb2.DeleteIntegrationRequest.SerializeToString,
                 response_deserializer=integration__pb2.DeleteIntegrationResponse.FromString,
                 _registered_method=True)
         self.TestIntegration = channel.unary_unary(
-                '/workflow_engine.IntegrationService/TestIntegration',
+                '/proto.IntegrationService/TestIntegration',
                 request_serializer=integration__pb2.TestIntegrationRequest.SerializeToString,
                 response_deserializer=integration__pb2.TestIntegrationResponse.FromString,
                 _registered_method=True)
         self.ExecuteTool = channel.unary_unary(
-                '/workflow_engine.IntegrationService/ExecuteTool',
+                '/proto.IntegrationService/ExecuteTool',
                 request_serializer=integration__pb2.ToolExecutionRequest.SerializeToString,
                 response_deserializer=integration__pb2.ToolExecutionResponse.FromString,
                 _registered_method=True)
@@ -873,9 +873,9 @@ def add_IntegrationServiceServicer_to_server(servicer, server):
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'workflow_engine.IntegrationService', rpc_method_handlers)
+            'proto.IntegrationService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('workflow_engine.IntegrationService', rpc_method_handlers)
+    server.add_registered_method_handlers('proto.IntegrationService', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
@@ -897,7 +897,7 @@ class IntegrationService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.IntegrationService/GetIntegrations',
+            '/proto.IntegrationService/GetIntegrations',
             integration__pb2.GetIntegrationsRequest.SerializeToString,
             integration__pb2.GetIntegrationsResponse.FromString,
             options,
@@ -924,7 +924,7 @@ class IntegrationService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.IntegrationService/CreateIntegration',
+            '/proto.IntegrationService/CreateIntegration',
             integration__pb2.CreateIntegrationRequest.SerializeToString,
             integration__pb2.CreateIntegrationResponse.FromString,
             options,
@@ -951,7 +951,7 @@ class IntegrationService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.IntegrationService/UpdateIntegration',
+            '/proto.IntegrationService/UpdateIntegration',
             integration__pb2.UpdateIntegrationRequest.SerializeToString,
             integration__pb2.UpdateIntegrationResponse.FromString,
             options,
@@ -978,7 +978,7 @@ class IntegrationService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.IntegrationService/DeleteIntegration',
+            '/proto.IntegrationService/DeleteIntegration',
             integration__pb2.DeleteIntegrationRequest.SerializeToString,
             integration__pb2.DeleteIntegrationResponse.FromString,
             options,
@@ -1005,7 +1005,7 @@ class IntegrationService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.IntegrationService/TestIntegration',
+            '/proto.IntegrationService/TestIntegration',
             integration__pb2.TestIntegrationRequest.SerializeToString,
             integration__pb2.TestIntegrationResponse.FromString,
             options,
@@ -1032,7 +1032,7 @@ class IntegrationService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.IntegrationService/ExecuteTool',
+            '/proto.IntegrationService/ExecuteTool',
             integration__pb2.ToolExecutionRequest.SerializeToString,
             integration__pb2.ToolExecutionResponse.FromString,
             options,
@@ -1057,37 +1057,37 @@ class TriggerServiceStub(object):
             channel: A grpc.Channel.
         """
         self.CreateTrigger = channel.unary_unary(
-                '/workflow_engine.TriggerService/CreateTrigger',
+                '/proto.TriggerService/CreateTrigger',
                 request_serializer=workflow__service__pb2.CreateTriggerRequest.SerializeToString,
                 response_deserializer=workflow__service__pb2.CreateTriggerResponse.FromString,
                 _registered_method=True)
         self.GetTrigger = channel.unary_unary(
-                '/workflow_engine.TriggerService/GetTrigger',
+                '/proto.TriggerService/GetTrigger',
                 request_serializer=workflow__service__pb2.GetTriggerRequest.SerializeToString,
                 response_deserializer=workflow__service__pb2.GetTriggerResponse.FromString,
                 _registered_method=True)
         self.UpdateTrigger = channel.unary_unary(
-                '/workflow_engine.TriggerService/UpdateTrigger',
+                '/proto.TriggerService/UpdateTrigger',
                 request_serializer=workflow__service__pb2.UpdateTriggerRequest.SerializeToString,
                 response_deserializer=workflow__service__pb2.UpdateTriggerResponse.FromString,
                 _registered_method=True)
         self.DeleteTrigger = channel.unary_unary(
-                '/workflow_engine.TriggerService/DeleteTrigger',
+                '/proto.TriggerService/DeleteTrigger',
                 request_serializer=workflow__service__pb2.DeleteTriggerRequest.SerializeToString,
                 response_deserializer=workflow__service__pb2.DeleteTriggerResponse.FromString,
                 _registered_method=True)
         self.ListTriggers = channel.unary_unary(
-                '/workflow_engine.TriggerService/ListTriggers',
+                '/proto.TriggerService/ListTriggers',
                 request_serializer=workflow__service__pb2.ListTriggersRequest.SerializeToString,
                 response_deserializer=workflow__service__pb2.ListTriggersResponse.FromString,
                 _registered_method=True)
         self.FireTrigger = channel.unary_unary(
-                '/workflow_engine.TriggerService/FireTrigger',
+                '/proto.TriggerService/FireTrigger',
                 request_serializer=workflow__service__pb2.FireTriggerRequest.SerializeToString,
                 response_deserializer=workflow__service__pb2.FireTriggerResponse.FromString,
                 _registered_method=True)
         self.GetTriggerEvents = channel.unary_unary(
-                '/workflow_engine.TriggerService/GetTriggerEvents',
+                '/proto.TriggerService/GetTriggerEvents',
                 request_serializer=workflow__service__pb2.GetTriggerEventsRequest.SerializeToString,
                 response_deserializer=workflow__service__pb2.GetTriggerEventsResponse.FromString,
                 _registered_method=True)
@@ -1181,9 +1181,9 @@ def add_TriggerServiceServicer_to_server(servicer, server):
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'workflow_engine.TriggerService', rpc_method_handlers)
+            'proto.TriggerService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('workflow_engine.TriggerService', rpc_method_handlers)
+    server.add_registered_method_handlers('proto.TriggerService', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
@@ -1205,7 +1205,7 @@ class TriggerService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.TriggerService/CreateTrigger',
+            '/proto.TriggerService/CreateTrigger',
             workflow__service__pb2.CreateTriggerRequest.SerializeToString,
             workflow__service__pb2.CreateTriggerResponse.FromString,
             options,
@@ -1232,7 +1232,7 @@ class TriggerService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.TriggerService/GetTrigger',
+            '/proto.TriggerService/GetTrigger',
             workflow__service__pb2.GetTriggerRequest.SerializeToString,
             workflow__service__pb2.GetTriggerResponse.FromString,
             options,
@@ -1259,7 +1259,7 @@ class TriggerService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.TriggerService/UpdateTrigger',
+            '/proto.TriggerService/UpdateTrigger',
             workflow__service__pb2.UpdateTriggerRequest.SerializeToString,
             workflow__service__pb2.UpdateTriggerResponse.FromString,
             options,
@@ -1286,7 +1286,7 @@ class TriggerService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.TriggerService/DeleteTrigger',
+            '/proto.TriggerService/DeleteTrigger',
             workflow__service__pb2.DeleteTriggerRequest.SerializeToString,
             workflow__service__pb2.DeleteTriggerResponse.FromString,
             options,
@@ -1313,7 +1313,7 @@ class TriggerService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.TriggerService/ListTriggers',
+            '/proto.TriggerService/ListTriggers',
             workflow__service__pb2.ListTriggersRequest.SerializeToString,
             workflow__service__pb2.ListTriggersResponse.FromString,
             options,
@@ -1340,7 +1340,7 @@ class TriggerService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.TriggerService/FireTrigger',
+            '/proto.TriggerService/FireTrigger',
             workflow__service__pb2.FireTriggerRequest.SerializeToString,
             workflow__service__pb2.FireTriggerResponse.FromString,
             options,
@@ -1367,7 +1367,7 @@ class TriggerService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.TriggerService/GetTriggerEvents',
+            '/proto.TriggerService/GetTriggerEvents',
             workflow__service__pb2.GetTriggerEventsRequest.SerializeToString,
             workflow__service__pb2.GetTriggerEventsResponse.FromString,
             options,
@@ -1396,7 +1396,7 @@ class HealthServiceStub(object):
             channel: A grpc.Channel.
         """
         self.Check = channel.unary_unary(
-                '/workflow_engine.HealthService/Check',
+                '/proto.HealthService/Check',
                 request_serializer=workflow__service__pb2.HealthCheckRequest.SerializeToString,
                 response_deserializer=workflow__service__pb2.HealthCheckResponse.FromString,
                 _registered_method=True)
@@ -1426,9 +1426,9 @@ def add_HealthServiceServicer_to_server(servicer, server):
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'workflow_engine.HealthService', rpc_method_handlers)
+            'proto.HealthService', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('workflow_engine.HealthService', rpc_method_handlers)
+    server.add_registered_method_handlers('proto.HealthService', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
@@ -1454,7 +1454,7 @@ class HealthService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/workflow_engine.HealthService/Check',
+            '/proto.HealthService/Check',
             workflow__service__pb2.HealthCheckRequest.SerializeToString,
             workflow__service__pb2.HealthCheckResponse.FromString,
             options,
