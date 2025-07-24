@@ -1,15 +1,14 @@
 """
 Memory Node Executor.
 
-Handles various memory and storage operations including simple storage, buffers, 
-knowledge graphs, vector stores, document storage, and embeddings.
+Handles memory operations like vector database, key-value storage, document storage, etc.
 """
 
 import json
-import random
 import time
-from typing import Any, Dict, List, Optional
 from datetime import datetime
+from typing import Any, Dict, List, Optional
+import hashlib
 
 from .base import BaseNodeExecutor, NodeExecutionContext, NodeExecutionResult, ExecutionStatus
 
@@ -17,15 +16,19 @@ from .base import BaseNodeExecutor, NodeExecutionContext, NodeExecutionResult, E
 class MemoryNodeExecutor(BaseNodeExecutor):
     """Executor for MEMORY_NODE type."""
     
+    def __init__(self):
+        super().__init__()
+        # Mock memory storage
+        self._vector_db = {}
+        self._key_value_store = {}
+        self._document_store = {}
+    
     def get_supported_subtypes(self) -> List[str]:
         """Get supported memory subtypes."""
         return [
-            "SIMPLE_STORAGE",
-            "BUFFER",
-            "KNOWLEDGE_GRAPH",
-            "VECTOR_STORE",
-            "DOCUMENT_STORAGE",
-            "EMBEDDINGS"
+            "VECTOR_DB",
+            "KEY_VALUE", 
+            "DOCUMENT"
         ]
     
     def validate(self, node: Any) -> List[str]:
@@ -38,23 +41,23 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         
         subtype = node.subtype
         
-        if subtype == "SIMPLE_STORAGE":
-            errors.extend(self._validate_required_parameters(node, ["operation", "key"]))
-        
-        elif subtype == "BUFFER":
-            errors.extend(self._validate_required_parameters(node, ["operation", "buffer_name"]))
-        
-        elif subtype == "KNOWLEDGE_GRAPH":
-            errors.extend(self._validate_required_parameters(node, ["operation"]))
-        
-        elif subtype == "VECTOR_STORE":
+        if subtype == "VECTOR_DB":
             errors.extend(self._validate_required_parameters(node, ["operation", "collection_name"]))
+            operation = node.parameters.get("operation", "")
+            if operation not in ["store", "search", "delete", "update"]:
+                errors.append(f"Invalid vector DB operation: {operation}")
         
-        elif subtype == "DOCUMENT_STORAGE":
+        elif subtype == "KEY_VALUE":
+            errors.extend(self._validate_required_parameters(node, ["operation", "key"]))
+            operation = node.parameters.get("operation", "")
+            if operation not in ["get", "set", "delete", "exists"]:
+                errors.append(f"Invalid key-value operation: {operation}")
+        
+        elif subtype == "DOCUMENT":
             errors.extend(self._validate_required_parameters(node, ["operation", "document_id"]))
-        
-        elif subtype == "EMBEDDINGS":
-            errors.extend(self._validate_required_parameters(node, ["operation", "model_name"]))
+            operation = node.parameters.get("operation", "")
+            if operation not in ["store", "retrieve", "update", "delete", "search"]:
+                errors.append(f"Invalid document operation: {operation}")
         
         return errors
     
@@ -67,18 +70,12 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             subtype = context.node.subtype
             logs.append(f"Executing memory node with subtype: {subtype}")
             
-            if subtype == "SIMPLE_STORAGE":
-                return self._execute_simple_storage(context, logs, start_time)
-            elif subtype == "BUFFER":
-                return self._execute_buffer(context, logs, start_time)
-            elif subtype == "KNOWLEDGE_GRAPH":
-                return self._execute_knowledge_graph(context, logs, start_time)
-            elif subtype == "VECTOR_STORE":
-                return self._execute_vector_store(context, logs, start_time)
-            elif subtype == "DOCUMENT_STORAGE":
-                return self._execute_document_storage(context, logs, start_time)
-            elif subtype == "EMBEDDINGS":
-                return self._execute_embeddings(context, logs, start_time)
+            if subtype == "VECTOR_DB":
+                return self._execute_vector_db(context, logs, start_time)
+            elif subtype == "KEY_VALUE":
+                return self._execute_key_value(context, logs, start_time)
+            elif subtype == "DOCUMENT":
+                return self._execute_document(context, logs, start_time)
             else:
                 return self._create_error_result(
                     f"Unsupported memory subtype: {subtype}",
@@ -88,444 +85,306 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         
         except Exception as e:
             return self._create_error_result(
-                f"Error executing memory operation: {str(e)}",
+                f"Error executing memory: {str(e)}",
                 error_details={"exception": str(e)},
                 execution_time=time.time() - start_time,
                 logs=logs
             )
     
-    def _execute_simple_storage(self, context: NodeExecutionContext, logs: List[str], start_time: float) -> NodeExecutionResult:
-        """Execute simple storage operation."""
-        operation = context.get_parameter("operation")
-        key = context.get_parameter("key")
+    def _execute_vector_db(self, context: NodeExecutionContext, logs: List[str], start_time: float) -> NodeExecutionResult:
+        """Execute vector database operations."""
+        operation = context.get_parameter("operation", "store")
+        collection_name = context.get_parameter("collection_name", "default")
         
-        logs.append(f"Simple storage operation: {operation} for key: {key}")
+        logs.append(f"Vector DB: {operation} on collection {collection_name}")
         
-        if operation == "store":
-            value = context.input_data.get("value", "")
-            ttl = context.get_parameter("ttl", None)  # Time to live in seconds
+        try:
+            if operation == "store":
+                vector_data = context.get_parameter("vector_data", {})
+                metadata = context.get_parameter("metadata", {})
+                result = self._store_vector(collection_name, vector_data, metadata)
+            elif operation == "search":
+                query_vector = context.get_parameter("query_vector", [])
+                top_k = context.get_parameter("top_k", 5)
+                result = self._search_vectors(collection_name, query_vector, top_k)
+            elif operation == "delete":
+                vector_id = context.get_parameter("vector_id", "")
+                result = self._delete_vector(collection_name, vector_id)
+            elif operation == "update":
+                vector_id = context.get_parameter("vector_id", "")
+                vector_data = context.get_parameter("vector_data", {})
+                metadata = context.get_parameter("metadata", {})
+                result = self._update_vector(collection_name, vector_id, vector_data, metadata)
+            else:
+                result = {"error": f"Unknown operation: {operation}"}
             
-            result = {
-                "operation": "store",
-                "key": key,
-                "value": value,
-                "ttl": ttl,
-                "stored_at": datetime.now().isoformat(),
-                "success": True
-            }
-            
-        elif operation == "retrieve":
-            # Simulate retrieval
-            result = {
-                "operation": "retrieve",
-                "key": key,
-                "value": "Simulated stored value",
-                "retrieved_at": datetime.now().isoformat(),
-                "success": True
-            }
-            
-        elif operation == "delete":
-            result = {
-                "operation": "delete",
-                "key": key,
-                "deleted_at": datetime.now().isoformat(),
-                "success": True
-            }
-            
-        elif operation == "exists":
-            result = {
-                "operation": "exists",
-                "key": key,
-                "exists": True,
-                "checked_at": datetime.now().isoformat(),
-                "success": True
-            }
-            
-        else:
-            result = {"operation": operation, "success": False, "error": "Unknown storage operation"}
-        
-        output_data = {
-            "memory_type": "simple_storage",
-            "operation": operation,
-            "key": key,
-            "result": result,
-            "executed_at": datetime.now().isoformat()
-        }
-        
-        return self._create_success_result(
-            output_data=output_data,
-            execution_time=time.time() - start_time,
-            logs=logs
-        )
-    
-    def _execute_buffer(self, context: NodeExecutionContext, logs: List[str], start_time: float) -> NodeExecutionResult:
-        """Execute buffer operation."""
-        operation = context.get_parameter("operation")
-        buffer_name = context.get_parameter("buffer_name")
-        buffer_size = context.get_parameter("buffer_size", 100)
-        
-        logs.append(f"Buffer operation: {operation} on buffer: {buffer_name}")
-        
-        if operation == "push":
-            item = context.input_data.get("item", "")
-            result = {
-                "operation": "push",
-                "buffer_name": buffer_name,
-                "item": item,
-                "buffer_size": buffer_size,
-                "current_size": 5,  # Simulated
-                "pushed_at": datetime.now().isoformat(),
-                "success": True
-            }
-            
-        elif operation == "pop":
-            result = {
-                "operation": "pop",
-                "buffer_name": buffer_name,
-                "item": "Simulated popped item",
-                "current_size": 4,  # Simulated
-                "popped_at": datetime.now().isoformat(),
-                "success": True
-            }
-            
-        elif operation == "peek":
-            result = {
-                "operation": "peek",
-                "buffer_name": buffer_name,
-                "item": "Simulated top item",
-                "current_size": 5,  # Simulated
-                "peeked_at": datetime.now().isoformat(),
-                "success": True
-            }
-            
-        elif operation == "clear":
-            result = {
-                "operation": "clear",
-                "buffer_name": buffer_name,
-                "items_removed": 5,  # Simulated
-                "cleared_at": datetime.now().isoformat(),
-                "success": True
-            }
-            
-        else:
-            result = {"operation": operation, "success": False, "error": "Unknown buffer operation"}
-        
-        output_data = {
-            "memory_type": "buffer",
-            "operation": operation,
-            "buffer_name": buffer_name,
-            "result": result,
-            "executed_at": datetime.now().isoformat()
-        }
-        
-        return self._create_success_result(
-            output_data=output_data,
-            execution_time=time.time() - start_time,
-            logs=logs
-        )
-    
-    def _execute_knowledge_graph(self, context: NodeExecutionContext, logs: List[str], start_time: float) -> NodeExecutionResult:
-        """Execute knowledge graph operation."""
-        operation = context.get_parameter("operation")
-        
-        logs.append(f"Knowledge graph operation: {operation}")
-        
-        if operation == "add_node":
-            node_id = context.input_data.get("node_id", "")
-            node_type = context.input_data.get("node_type", "")
-            properties = context.input_data.get("properties", {})
-            
-            result = {
-                "operation": "add_node",
-                "node_id": node_id,
-                "node_type": node_type,
-                "properties": properties,
-                "added_at": datetime.now().isoformat(),
-                "success": True
-            }
-            
-        elif operation == "add_edge":
-            from_node = context.input_data.get("from_node", "")
-            to_node = context.input_data.get("to_node", "")
-            edge_type = context.input_data.get("edge_type", "")
-            
-            result = {
-                "operation": "add_edge",
-                "from_node": from_node,
-                "to_node": to_node,
-                "edge_type": edge_type,
-                "added_at": datetime.now().isoformat(),
-                "success": True
-            }
-            
-        elif operation == "query":
-            query = context.input_data.get("query", "")
-            result = {
-                "operation": "query",
-                "query": query,
-                "results": [
-                    {"node_id": "node1", "type": "person", "properties": {"name": "John"}},
-                    {"node_id": "node2", "type": "company", "properties": {"name": "Acme Corp"}}
-                ],
-                "count": 2,
-                "queried_at": datetime.now().isoformat(),
-                "success": True
-            }
-            
-        elif operation == "find_path":
-            start_node = context.input_data.get("start_node", "")
-            end_node = context.input_data.get("end_node", "")
-            
-            result = {
-                "operation": "find_path",
-                "start_node": start_node,
-                "end_node": end_node,
-                "path": ["node1", "node2", "node3"],
-                "path_length": 3,
-                "found_at": datetime.now().isoformat(),
-                "success": True
-            }
-            
-        else:
-            result = {"operation": operation, "success": False, "error": "Unknown knowledge graph operation"}
-        
-        output_data = {
-            "memory_type": "knowledge_graph",
-            "operation": operation,
-            "result": result,
-            "executed_at": datetime.now().isoformat()
-        }
-        
-        return self._create_success_result(
-            output_data=output_data,
-            execution_time=time.time() - start_time,
-            logs=logs
-        )
-    
-    def _execute_vector_store(self, context: NodeExecutionContext, logs: List[str], start_time: float) -> NodeExecutionResult:
-        """Execute vector store operation."""
-        operation = context.get_parameter("operation")
-        collection_name = context.get_parameter("collection_name")
-        
-        logs.append(f"Vector store operation: {operation} on collection: {collection_name}")
-        
-        if operation == "store":
-            vector_id = context.input_data.get("vector_id", "")
-            vector = context.input_data.get("vector", [])
-            metadata = context.input_data.get("metadata", {})
-            
-            result = {
-                "operation": "store",
+            output_data = {
+                "memory_type": "vector_db",
+                "operation": operation,
                 "collection_name": collection_name,
-                "vector_id": vector_id,
-                "vector_dimension": len(vector),
-                "metadata": metadata,
-                "stored_at": datetime.now().isoformat(),
-                "success": True
+                "result": result,
+                "success": "error" not in result,
+                "executed_at": datetime.now().isoformat()
             }
             
-        elif operation == "search":
-            query_vector = context.input_data.get("query_vector", [])
-            top_k = context.input_data.get("top_k", 10)
+            return self._create_success_result(
+                output_data=output_data,
+                execution_time=time.time() - start_time,
+                logs=logs
+            )
             
-            result = {
-                "operation": "search",
-                "collection_name": collection_name,
-                "query_vector_dimension": len(query_vector),
-                "top_k": top_k,
-                "results": [
-                    {"vector_id": "vec1", "score": 0.95, "metadata": {"text": "Similar item 1"}},
-                    {"vector_id": "vec2", "score": 0.87, "metadata": {"text": "Similar item 2"}},
-                    {"vector_id": "vec3", "score": 0.82, "metadata": {"text": "Similar item 3"}}
-                ],
-                "searched_at": datetime.now().isoformat(),
-                "success": True
-            }
-            
-        elif operation == "delete":
-            vector_id = context.input_data.get("vector_id", "")
-            
-            result = {
-                "operation": "delete",
-                "collection_name": collection_name,
-                "vector_id": vector_id,
-                "deleted_at": datetime.now().isoformat(),
-                "success": True
-            }
-            
-        else:
-            result = {"operation": operation, "success": False, "error": "Unknown vector store operation"}
-        
-        output_data = {
-            "memory_type": "vector_store",
-            "operation": operation,
-            "collection_name": collection_name,
-            "result": result,
-            "executed_at": datetime.now().isoformat()
-        }
-        
-        return self._create_success_result(
-            output_data=output_data,
-            execution_time=time.time() - start_time,
-            logs=logs
-        )
+        except Exception as e:
+            return self._create_error_result(
+                f"Error in vector DB operation: {str(e)}",
+                error_details={"exception": str(e)},
+                execution_time=time.time() - start_time,
+                logs=logs
+            )
     
-    def _execute_document_storage(self, context: NodeExecutionContext, logs: List[str], start_time: float) -> NodeExecutionResult:
-        """Execute document storage operation."""
-        operation = context.get_parameter("operation")
-        document_id = context.get_parameter("document_id")
+    def _execute_key_value(self, context: NodeExecutionContext, logs: List[str], start_time: float) -> NodeExecutionResult:
+        """Execute key-value operations."""
+        operation = context.get_parameter("operation", "get")
+        key = context.get_parameter("key", "")
         
-        logs.append(f"Document storage operation: {operation} for document: {document_id}")
+        logs.append(f"Key-Value: {operation} for key {key}")
         
-        if operation == "store":
-            content = context.input_data.get("content", "")
-            document_type = context.input_data.get("document_type", "text")
-            metadata = context.input_data.get("metadata", {})
+        try:
+            if operation == "get":
+                result = self._get_key_value(key)
+            elif operation == "set":
+                value = context.get_parameter("value", "")
+                ttl = context.get_parameter("ttl", None)
+                result = self._set_key_value(key, value, ttl)
+            elif operation == "delete":
+                result = self._delete_key_value(key)
+            elif operation == "exists":
+                result = self._exists_key_value(key)
+            else:
+                result = {"error": f"Unknown operation: {operation}"}
             
-            result = {
-                "operation": "store",
-                "document_id": document_id,
-                "document_type": document_type,
-                "content_length": len(content),
-                "metadata": metadata,
-                "stored_at": datetime.now().isoformat(),
-                "success": True
+            output_data = {
+                "memory_type": "key_value",
+                "operation": operation,
+                "key": key,
+                "result": result,
+                "success": "error" not in result,
+                "executed_at": datetime.now().isoformat()
             }
             
-        elif operation == "retrieve":
-            result = {
-                "operation": "retrieve",
-                "document_id": document_id,
-                "content": "Simulated document content",
-                "document_type": "text",
-                "metadata": {"author": "system", "created": "2024-01-15"},
-                "retrieved_at": datetime.now().isoformat(),
-                "success": True
-            }
+            return self._create_success_result(
+                output_data=output_data,
+                execution_time=time.time() - start_time,
+                logs=logs
+            )
             
-        elif operation == "search":
-            query = context.input_data.get("query", "")
-            
-            result = {
-                "operation": "search",
-                "query": query,
-                "results": [
-                    {
-                        "document_id": "doc1",
-                        "title": "Document 1",
-                        "snippet": "This document contains relevant information...",
-                        "score": 0.95
-                    },
-                    {
-                        "document_id": "doc2",
-                        "title": "Document 2",
-                        "snippet": "Another relevant document...",
-                        "score": 0.87
-                    }
-                ],
-                "count": 2,
-                "searched_at": datetime.now().isoformat(),
-                "success": True
-            }
-            
-        elif operation == "delete":
-            result = {
-                "operation": "delete",
-                "document_id": document_id,
-                "deleted_at": datetime.now().isoformat(),
-                "success": True
-            }
-            
-        else:
-            result = {"operation": operation, "success": False, "error": "Unknown document storage operation"}
-        
-        output_data = {
-            "memory_type": "document_storage",
-            "operation": operation,
-            "document_id": document_id,
-            "result": result,
-            "executed_at": datetime.now().isoformat()
-        }
-        
-        return self._create_success_result(
-            output_data=output_data,
-            execution_time=time.time() - start_time,
-            logs=logs
-        )
+        except Exception as e:
+            return self._create_error_result(
+                f"Error in key-value operation: {str(e)}",
+                error_details={"exception": str(e)},
+                execution_time=time.time() - start_time,
+                logs=logs
+            )
     
-    def _execute_embeddings(self, context: NodeExecutionContext, logs: List[str], start_time: float) -> NodeExecutionResult:
-        """Execute embeddings operation."""
-        operation = context.get_parameter("operation")
-        model_name = context.get_parameter("model_name")
+    def _execute_document(self, context: NodeExecutionContext, logs: List[str], start_time: float) -> NodeExecutionResult:
+        """Execute document operations."""
+        operation = context.get_parameter("operation", "store")
+        document_id = context.get_parameter("document_id", "")
         
-        logs.append(f"Embeddings operation: {operation} using model: {model_name}")
+        logs.append(f"Document: {operation} for document {document_id}")
         
-        if operation == "generate":
-            text = context.input_data.get("text", "")
+        try:
+            if operation == "store":
+                document_data = context.get_parameter("document_data", {})
+                result = self._store_document(document_id, document_data)
+            elif operation == "retrieve":
+                result = self._retrieve_document(document_id)
+            elif operation == "update":
+                document_data = context.get_parameter("document_data", {})
+                result = self._update_document(document_id, document_data)
+            elif operation == "delete":
+                result = self._delete_document(document_id)
+            elif operation == "search":
+                query = context.get_parameter("query", "")
+                result = self._search_documents(query)
+            else:
+                result = {"error": f"Unknown operation: {operation}"}
             
-            # Simulate embedding generation
-            import random
-            embedding = [random.random() for _ in range(384)]  # Simulated 384-dimensional embedding
-            
-            result = {
-                "operation": "generate",
-                "model_name": model_name,
-                "text": text,
-                "embedding": embedding,
-                "embedding_dimension": len(embedding),
-                "generated_at": datetime.now().isoformat(),
-                "success": True
+            output_data = {
+                "memory_type": "document",
+                "operation": operation,
+                "document_id": document_id,
+                "result": result,
+                "success": "error" not in result,
+                "executed_at": datetime.now().isoformat()
             }
             
-        elif operation == "similarity":
-            text1 = context.input_data.get("text1", "")
-            text2 = context.input_data.get("text2", "")
+            return self._create_success_result(
+                output_data=output_data,
+                execution_time=time.time() - start_time,
+                logs=logs
+            )
             
-            # Simulate similarity calculation
-            similarity_score = random.uniform(0.5, 0.99)
-            
-            result = {
-                "operation": "similarity",
-                "model_name": model_name,
-                "text1": text1,
-                "text2": text2,
-                "similarity_score": similarity_score,
-                "calculated_at": datetime.now().isoformat(),
-                "success": True
-            }
-            
-        elif operation == "batch_generate":
-            texts = context.input_data.get("texts", [])
-            
-            # Simulate batch embedding generation
-            embeddings = []
-            for text in texts:
-                embedding = [random.random() for _ in range(384)]
-                embeddings.append({"text": text, "embedding": embedding})
-            
-            result = {
-                "operation": "batch_generate",
-                "model_name": model_name,
-                "batch_size": len(texts),
-                "embeddings": embeddings,
-                "embedding_dimension": 384,
-                "generated_at": datetime.now().isoformat(),
-                "success": True
-            }
-            
-        else:
-            result = {"operation": operation, "success": False, "error": "Unknown embeddings operation"}
+        except Exception as e:
+            return self._create_error_result(
+                f"Error in document operation: {str(e)}",
+                error_details={"exception": str(e)},
+                execution_time=time.time() - start_time,
+                logs=logs
+            )
+    
+    def _store_vector(self, collection_name: str, vector_data: Dict[str, Any], metadata: Dict[str, Any]) -> Dict[str, Any]:
+        """Store vector in collection."""
+        if collection_name not in self._vector_db:
+            self._vector_db[collection_name] = []
         
-        output_data = {
-            "memory_type": "embeddings",
-            "operation": operation,
-            "model_name": model_name,
-            "result": result,
-            "executed_at": datetime.now().isoformat()
+        vector_id = f"vec_{len(self._vector_db[collection_name]) + 1}"
+        vector_entry = {
+            "id": vector_id,
+            "vector": vector_data.get("vector", []),
+            "metadata": metadata,
+            "created_at": datetime.now().isoformat()
         }
         
-        return self._create_success_result(
-            output_data=output_data,
-            execution_time=time.time() - start_time,
-            logs=logs
-        ) 
+        self._vector_db[collection_name].append(vector_entry)
+        
+        return {
+            "vector_id": vector_id,
+            "stored": True,
+            "collection_size": len(self._vector_db[collection_name])
+        }
+    
+    def _search_vectors(self, collection_name: str, query_vector: List[float], top_k: int) -> Dict[str, Any]:
+        """Search vectors in collection."""
+        if collection_name not in self._vector_db:
+            return {"results": [], "count": 0}
+        
+        # Mock similarity search
+        results = []
+        for vector_entry in self._vector_db[collection_name][:top_k]:
+            similarity = self._calculate_similarity(query_vector, vector_entry["vector"])
+            results.append({
+                "id": vector_entry["id"],
+                "similarity": similarity,
+                "metadata": vector_entry["metadata"]
+            })
+        
+        return {
+            "results": results,
+            "count": len(results),
+            "query_vector": query_vector
+        }
+    
+    def _delete_vector(self, collection_name: str, vector_id: str) -> Dict[str, Any]:
+        """Delete vector from collection."""
+        if collection_name not in self._vector_db:
+            return {"error": "Collection not found"}
+        
+        for i, vector_entry in enumerate(self._vector_db[collection_name]):
+            if vector_entry["id"] == vector_id:
+                del self._vector_db[collection_name][i]
+                return {"deleted": True, "vector_id": vector_id}
+        
+        return {"error": "Vector not found"}
+    
+    def _update_vector(self, collection_name: str, vector_id: str, vector_data: Dict[str, Any], metadata: Dict[str, Any]) -> Dict[str, Any]:
+        """Update vector in collection."""
+        if collection_name not in self._vector_db:
+            return {"error": "Collection not found"}
+        
+        for vector_entry in self._vector_db[collection_name]:
+            if vector_entry["id"] == vector_id:
+                vector_entry["vector"] = vector_data.get("vector", vector_entry["vector"])
+                vector_entry["metadata"] = metadata
+                vector_entry["updated_at"] = datetime.now().isoformat()
+                return {"updated": True, "vector_id": vector_id}
+        
+        return {"error": "Vector not found"}
+    
+    def _get_key_value(self, key: str) -> Dict[str, Any]:
+        """Get value by key."""
+        if key in self._key_value_store:
+            return {"value": self._key_value_store[key]["value"], "found": True}
+        return {"error": "Key not found"}
+    
+    def _set_key_value(self, key: str, value: Any, ttl: Optional[int] = None) -> Dict[str, Any]:
+        """Set key-value pair."""
+        self._key_value_store[key] = {
+            "value": value,
+            "created_at": datetime.now().isoformat(),
+            "ttl": ttl
+        }
+        return {"set": True, "key": key}
+    
+    def _delete_key_value(self, key: str) -> Dict[str, Any]:
+        """Delete key-value pair."""
+        if key in self._key_value_store:
+            del self._key_value_store[key]
+            return {"deleted": True, "key": key}
+        return {"error": "Key not found"}
+    
+    def _exists_key_value(self, key: str) -> Dict[str, Any]:
+        """Check if key exists."""
+        return {"exists": key in self._key_value_store}
+    
+    def _store_document(self, document_id: str, document_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Store document."""
+        self._document_store[document_id] = {
+            "data": document_data,
+            "created_at": datetime.now().isoformat()
+        }
+        return {"stored": True, "document_id": document_id}
+    
+    def _retrieve_document(self, document_id: str) -> Dict[str, Any]:
+        """Retrieve document."""
+        if document_id in self._document_store:
+            return {
+                "data": self._document_store[document_id]["data"],
+                "found": True,
+                "document_id": document_id
+            }
+        return {"error": "Document not found"}
+    
+    def _update_document(self, document_id: str, document_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update document."""
+        if document_id in self._document_store:
+            self._document_store[document_id]["data"] = document_data
+            self._document_store[document_id]["updated_at"] = datetime.now().isoformat()
+            return {"updated": True, "document_id": document_id}
+        return {"error": "Document not found"}
+    
+    def _delete_document(self, document_id: str) -> Dict[str, Any]:
+        """Delete document."""
+        if document_id in self._document_store:
+            del self._document_store[document_id]
+            return {"deleted": True, "document_id": document_id}
+        return {"error": "Document not found"}
+    
+    def _search_documents(self, query: str) -> Dict[str, Any]:
+        """Search documents."""
+        results = []
+        for doc_id, doc_data in self._document_store.items():
+            if query.lower() in str(doc_data["data"]).lower():
+                results.append({
+                    "document_id": doc_id,
+                    "data": doc_data["data"]
+                })
+        
+        return {
+            "results": results,
+            "count": len(results),
+            "query": query
+        }
+    
+    def _calculate_similarity(self, vector1: List[float], vector2: List[float]) -> float:
+        """Calculate cosine similarity between two vectors."""
+        if not vector1 or not vector2 or len(vector1) != len(vector2):
+            return 0.0
+        
+        dot_product = sum(a * b for a, b in zip(vector1, vector2))
+        magnitude1 = sum(a * a for a in vector1) ** 0.5
+        magnitude2 = sum(b * b for b in vector2) ** 0.5
+        
+        if magnitude1 == 0 or magnitude2 == 0:
+            return 0.0
+        
+        return dot_product / (magnitude1 * magnitude2)

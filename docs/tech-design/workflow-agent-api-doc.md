@@ -2,7 +2,7 @@
 
 ## 基础信息
 
-- **Base URL**: `https://api.example.com/v1`
+- **Base URL**: `https://api.example.com/v1/api`
 - **认证方式**: Cookie认证
 - **Content-Type**: `application/json`（除SSE接口外）
 
@@ -12,9 +12,14 @@
 创建新会话
 
 **请求**
+action:
+- `create` 从头创建新的 workflow
+- `edit` 编辑某个 workflow，可以是从 template，也可以是从自己的 workflow
+
 ```json
 {
-  "metadata": {}  // 可选，会话元数据
+  "action": "",
+  "workflow_id": ""
 }
 ```
 
@@ -26,16 +31,9 @@
 }
 ```
 
-### 2. POST /chat
+### 2. GET /chat/stream?session_id=xxxx&user_message=yyy
 发送聊天消息，返回AI流式响应
 
-**请求**
-```json
-{
-  "session_id": "550e8400-e29b-41d4-a716-446655440000",
-  "message": "帮我抢购一张5090，有货时通知我"
-}
-```
 
 **响应（SSE流）**
 ```
@@ -49,12 +47,12 @@ data: {"type": "message", "content": "2. 发现有货后我会通过邮件通知
 **事件类型**
 - `type: "message"` - AI回复消息
 
-### 3. GET /workflow
+### 3. GET /workflow_generation
 监听工作流生成进度
 
 **请求**
 ```
-GET /workflow?session_id=550e8400-e29b-41d4-a716-446655440000
+GET /workflow?session_id=xxx
 ```
 
 **响应（SSE流）**
@@ -109,11 +107,11 @@ sequenceDiagram
     Client->>Session: POST /session
     Session-->>Client: {session_id}
 
-    Client->>Workflow: GET /workflow?session_id=xxx
+    Client->>Workflow: GET /workflow_generation?session_id=xxx
     Note over Client,Workflow: SSE连接建立，保持等待状态
 
     loop 多轮对话
-        Client->>Chat: POST /chat {message}
+        Client->>Chat: GET /chat?session_id=xxx&user_message={message}
         Chat->>Agent: 分析用户意图
 
         alt Agent需要更多信息
