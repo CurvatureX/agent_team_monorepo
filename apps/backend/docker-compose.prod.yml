@@ -1,0 +1,70 @@
+version: "3.8"
+
+services:
+  # API Gateway Service - Production
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+      target: production
+    environment:
+      - DEBUG=false
+      - WORKFLOW_SERVICE_HOST=workflow-engine
+      - WORKFLOW_SERVICE_PORT=8000
+      - PORT=8000
+    env_file:
+      - ./api-gateway/.env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - workflow-engine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+        reservations:
+          memory: 256M
+          cpus: "0.25"
+
+  # Workflow Engine Service - Production
+  workflow-engine:
+    build:
+      context: ./workflow_engine
+      dockerfile: Dockerfile
+      target: production
+    environment:
+      - DEBUG=false
+      - GRPC_HOST=0.0.0.0
+      - GRPC_PORT=8000
+      - PORT=8000
+    env_file:
+      - ./workflow_engine/.env
+    ports:
+      - "8001:8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1.0"
+        reservations:
+          memory: 512M
+          cpus: "0.5"
+
+networks:
+  default:
+    driver: bridge

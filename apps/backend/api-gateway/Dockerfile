@@ -1,11 +1,12 @@
-# MVP Dockerfile for API Gateway with uv
-FROM python:3.11-slim
+# Production Dockerfile for API Gateway with uv
+FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies for building
 RUN apt-get update && apt-get install -y \
     gcc \
+    g++ \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -14,24 +15,43 @@ RUN pip install uv
 
 # Copy dependency files
 COPY pyproject.toml ./
-# Copy .python-version if it exists
 COPY .python-version* ./
 
 # Install Python dependencies with uv
 RUN uv sync --frozen
 
+# Production stage
+FROM python:3.11-slim AS production
+
+WORKDIR /app
+
+# Install runtime dependencies only
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Copy uv and dependencies from builder
+COPY --from=builder /app/.venv /app/.venv
+
 # Copy application code
 COPY app/ ./app/
-COPY sql/ ./sql/
+COPY clients/ ./clients/
+COPY core/ ./core/
+COPY models/ ./models/
+COPY routers/ ./routers/
+COPY services/ ./services/
+COPY proto/ ./proto/
 
 # Create non-root user
-RUN useradd --create-home --shell /bin/bash app && \
+RUN useradd --create-home --shell /bin/bash --uid 1000 app && \
     chown -R app:app /app
 USER app
 
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+ENV PATH="/app/.venv/bin:$PATH"
 
 # Expose port
 EXPOSE 8000
@@ -40,5 +60,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Run application with uv
-CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run application
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
