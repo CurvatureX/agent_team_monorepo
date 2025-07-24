@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "rag-comparison-demo"
+version = "0.1.0"
+description = "LangGraph demo comparing RAG vs non-RAG responses for workflow nodes"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "langgraph>=0.2.0",
+    "langchain>=0.2.0",
+    "langchain-openai>=0.1.0",
+    "supabase>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "vecs>=0.4.0",
+    "openai>=1.0.0",
+]
+
+[project.scripts]
+demo = "demo:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "isort>=5.0.0",
+    "flake8>=6.0.0",
+]

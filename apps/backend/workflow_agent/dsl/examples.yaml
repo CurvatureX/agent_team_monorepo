@@ -1,0 +1,286 @@
+# Workflow DSL Examples
+# Demonstrating practical usage of the DSL syntax
+
+examples:
+  # Example 1: Simple Chat-to-Email Workflow
+  - workflow:
+      name: "Chat to Email Forwarder"
+      description: "Forward chat messages to email with AI categorization"
+      version: "1.0.0"
+      tags: ["communication", "automation"]
+
+      settings:
+        timezone: "UTC"
+        timeout: 300
+        error_policy: CONTINUE_REGULAR_OUTPUT
+
+      nodes:
+        - name: "chat_trigger"
+          type: TRIGGER_NODE
+          subtype: TRIGGER_CHAT
+          role: "Listen for incoming chat messages"
+
+        - name: "message_analyzer"
+          type: AI_AGENT_NODE
+          subtype: AI_TASK_ANALYZER
+          role: "Analyze message content and priority"
+          parameters:
+            model: "gpt-4"
+            prompt: "Analyze this message for urgency and category"
+
+        - name: "email_sender"
+          type: EXTERNAL_ACTION_NODE
+          subtype: EXTERNAL_EMAIL
+          role: "Send processed message via email"
+          parameters:
+            smtp_server: "smtp.gmail.com"
+            template: "chat_forward_template"
+
+      connections:
+        - from: "chat_trigger"
+          to: "message_analyzer"
+          type: MAIN
+          index: 0
+
+        - from: "message_analyzer"
+          to: "email_sender"
+          type: MAIN
+          index: 0
+
+  # Example 2: Complex Data Processing Pipeline
+  - workflow:
+      name: "Weekly Report Generator"
+      description: "Generate weekly reports from multiple data sources"
+      version: "2.1.0"
+      tags: ["reporting", "analytics", "automation"]
+
+      settings:
+        timezone: "America/New_York"
+        timeout: 1800
+        error_policy: STOP_WORKFLOW
+        save_execution_progress: true
+
+      nodes:
+        - name: "weekly_trigger"
+          type: TRIGGER_NODE
+          subtype: TRIGGER_CRON
+          role: "Trigger weekly report generation"
+          parameters:
+            schedule: "0 9 * * 1"  # Every Monday at 9 AM
+
+        - name: "data_collector"
+          type: AI_AGENT_NODE
+          subtype: AI_DATA_INTEGRATOR
+          role: "Collect data from multiple sources"
+          parameters:
+            sources: ["github", "slack", "calendar"]
+            date_range: "7_days"
+
+        - name: "github_api"
+          type: EXTERNAL_ACTION_NODE
+          subtype: EXTERNAL_GITHUB
+          role: "Fetch GitHub activity data"
+          parameters:
+            endpoint: "repos/activity"
+            auth_token: "${GITHUB_TOKEN}"
+
+        - name: "slack_data"
+          type: EXTERNAL_ACTION_NODE
+          subtype: EXTERNAL_SLACK
+          role: "Retrieve Slack conversation metrics"
+          parameters:
+            channels: ["#general", "#dev", "#support"]
+
+        - name: "calendar_events"
+          type: TOOL_NODE
+          subtype: TOOL_GOOGLE_CALENDAR_MCP
+          role: "Get calendar events and meetings"
+          parameters:
+            calendar_id: "primary"
+
+        - name: "data_merger"
+          type: FLOW_NODE
+          subtype: FLOW_MERGE
+          role: "Combine all data sources"
+
+        - name: "report_generator"
+          type: AI_AGENT_NODE
+          subtype: AI_REPORT_GENERATOR
+          role: "Generate comprehensive weekly report"
+          parameters:
+            model: "gpt-4"
+            template: "weekly_report_template"
+            format: "markdown"
+
+        - name: "quality_check"
+          type: FLOW_NODE
+          subtype: FLOW_IF
+          role: "Check report quality before sending"
+          parameters:
+            condition: "word_count > 500 && contains_metrics"
+
+        - name: "email_report"
+          type: EXTERNAL_ACTION_NODE
+          subtype: EXTERNAL_EMAIL
+          role: "Send report to stakeholders"
+          parameters:
+            recipients: ["manager@company.com", "team@company.com"]
+            subject: "Weekly Team Report - ${date}"
+
+        - name: "slack_notification"
+          type: EXTERNAL_ACTION_NODE
+          subtype: EXTERNAL_SLACK
+          role: "Notify team that report is ready"
+          parameters:
+            channel: "#general"
+            message: "📊 Weekly report generated and sent!"
+
+      connections:
+        - from: "weekly_trigger"
+          to: "data_collector"
+          type: MAIN
+          index: 0
+
+        - from: "data_collector"
+          to: "github_api"
+          type: MAIN
+          index: 0
+
+        - from: "data_collector"
+          to: "slack_data"
+          type: MAIN
+          index: 1
+
+        - from: "data_collector"
+          to: "calendar_events"
+          type: MAIN
+          index: 2
+
+        - from: "github_api"
+          to: "data_merger"
+          type: MAIN
+          index: 0
+
+        - from: "slack_data"
+          to: "data_merger"
+          type: MAIN
+          index: 1
+
+        - from: "calendar_events"
+          to: "data_merger"
+          type: MAIN
+          index: 2
+
+        - from: "data_merger"
+          to: "report_generator"
+          type: MAIN
+          index: 0
+
+        - from: "report_generator"
+          to: "quality_check"
+          type: MAIN
+          index: 0
+
+        - from: "quality_check"
+          to: "email_report"
+          type: MAIN
+          index: 0
+
+        - from: "email_report"
+          to: "slack_notification"
+          type: MAIN
+          index: 0
+
+  # Example 3: Human-in-the-Loop Approval Workflow
+  - workflow:
+      name: "Document Approval Process"
+      description: "AI-assisted document review with human approval"
+      version: "1.2.0"
+      tags: ["approval", "human-in-loop", "documents"]
+
+      nodes:
+        - name: "document_upload"
+          type: TRIGGER_NODE
+          subtype: TRIGGER_WEBHOOK
+          role: "Receive document upload notification"
+
+        - name: "document_analyzer"
+          type: AI_AGENT_NODE
+          subtype: AI_TASK_ANALYZER
+          role: "Analyze document content and compliance"
+          parameters:
+            model: "gpt-4"
+            check_compliance: true
+            extract_metadata: true
+
+        - name: "compliance_check"
+          type: FLOW_NODE
+          subtype: FLOW_IF
+          role: "Route based on compliance status"
+          parameters:
+            condition: "compliance_score > 0.8"
+
+        - name: "auto_approve"
+          type: ACTION_NODE
+          subtype: ACTION_DATABASE_OPERATION
+          role: "Auto-approve compliant documents"
+          parameters:
+            operation: "update"
+            table: "documents"
+            status: "approved"
+
+        - name: "human_review"
+          type: HUMAN_IN_THE_LOOP_NODE
+          subtype: HUMAN_APP
+          role: "Request human review for flagged documents"
+          parameters:
+            notification_type: "approval_request"
+            timeout: 86400  # 24 hours
+
+        - name: "final_decision"
+          type: FLOW_NODE
+          subtype: FLOW_SWITCH
+          role: "Handle human decision"
+          parameters:
+            cases: ["approved", "rejected", "needs_revision"]
+
+        - name: "notification_sender"
+          type: EXTERNAL_ACTION_NODE
+          subtype: EXTERNAL_EMAIL
+          role: "Send status notification to submitter"
+
+      connections:
+        - from: "document_upload"
+          to: "document_analyzer"
+          type: MAIN
+          index: 0
+
+        - from: "document_analyzer"
+          to: "compliance_check"
+          type: MAIN
+          index: 0
+
+        - from: "compliance_check"
+          to: "auto_approve"
+          type: MAIN
+          index: 0  # true branch
+
+        - from: "compliance_check"
+          to: "human_review"
+          type: MAIN
+          index: 1  # false branch
+
+        - from: "human_review"
+          to: "final_decision"
+          type: MAIN
+          index: 0
+
+        - from: "auto_approve"
+          to: "notification_sender"
+          type: MAIN
+          index: 0
+
+        - from: "final_decision"
+          to: "notification_sender"
+          type: MAIN
+          index: 0
