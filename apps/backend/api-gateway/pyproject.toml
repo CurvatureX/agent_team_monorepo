@@ -10,22 +10,26 @@ requires-python = ">=3.11"
 
 dependencies = [
     # Core FastAPI stack
-    "fastapi>=0.104.0",
-    "uvicorn[standard]>=0.24.0",
-    "pydantic>=2.5.0", 
-    "pydantic-settings>=2.0.0",
+    "fastapi>=0.104.1",
+    "uvicorn[standard]>=0.26.0",
+    "pydantic>=2.7.4",
+    "pydantic-settings==2.1.0",
     "python-multipart>=0.0.6",
-    
+
     # Email validation for Pydantic EmailStr
     "email-validator>=2.0.0",
-    
+
     # Database and Auth
     "supabase>=2.9.0",  # Supabase client with auth support
-    
-    # gRPC dependencies - commented out for MVP
-    # "grpcio>=1.60.0",
-    # "grpcio-tools>=1.60.0", 
-    # "protobuf>=4.25.0",
+    "python-jose[cryptography]==3.3.0",
+    "passlib[bcrypt]==1.7.4",
+    "python-dotenv==1.0.0",
+    "structlog>=23.2.0",
+
+    # gRPC dependencies
+    "grpcio>=1.68.0",
+    "grpcio-tools>=1.68.0",
+    "protobuf>=5.26.1,<6.0.0",
 ]
 
 [project.optional-dependencies]

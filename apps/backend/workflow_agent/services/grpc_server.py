@@ -121,7 +121,7 @@ class WorkflowAgentServicer(workflow_agent_pb2_grpc.WorkflowAgentServicer):
 
             # Call the LangGraph agent
             result = await self.workflow_agent.generate_workflow(
-                description=request.description,
+                user_input=request.description,
                 context=context_dict,
                 user_preferences=user_preferences_dict,
             )

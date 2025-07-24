@@ -1,5 +1,6 @@
 """
 LangGraph graph definition for LangGraph Studio
+Simplified 6-node architecture implementation
 """
 
 import os
@@ -10,8 +11,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from agents.workflow_agent import WorkflowAgent
 
-# Create the workflow agent instance
+# Create the simplified workflow agent instance
 agent = WorkflowAgent()
 
 # Export the compiled graph for LangGraph Studio
+# The graph now implements the 6-node architecture:
+# Clarification -> Negotiation -> Gap Analysis -> Alternative Generation -> Workflow Generation -> Debug
 graph = agent.graph

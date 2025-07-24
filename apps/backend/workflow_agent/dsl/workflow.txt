@@ -1,0 +1,96 @@
+workflow_definition = {
+    "id": "string",                    # 工作流唯一标识
+    "name": "string",                  # 工作流名称
+    "description": "string",           # 工作流描述 (可选)
+    "nodes": [...],                    # 节点列表
+    "connections": {...},              # 连接映射 (ConnectionsMap格式)
+}
+
+nodes 数据格式
+"nodes": [
+    {
+        "id": "string",                    # 节点唯一ID
+        "name": "string",                  # 节点名称 (用于连接引用)
+        "type": "NODE_TYPE",               # 节点类型枚举
+        "subtype": "NODE_SUBTYPE",         # 节点子类型枚举
+        "position": {                      # 节点位置 (可选)
+            "x": float,
+            "y": float
+        },
+         "parameters": {                    # 节点参数
+            "key": "value",                # 字符串键值对
+            ...
+        }
+    }
+]
+
+# 主要节点类型
+NODE_TYPES = {
+    "TRIGGER_NODE": [
+        "TRIGGER_CHAT", "TRIGGER_WEBHOOK", "TRIGGER_CRON",
+        "TRIGGER_MANUAL", "TRIGGER_EMAIL", "TRIGGER_FORM", "TRIGGER_CALENDAR"
+    ],
+    "AI_AGENT_NODE": [
+        "AI_AGENT"
+    ],
+    "ACTION_NODE": [
+        "ACTION_RUN_CODE", "ACTION_SEND_HTTP_REQUEST", "ACTION_PARSE_IMAGE",
+        "ACTION_WEB_SEARCH", "ACTION_DATABASE_OPERATION", "ACTION_FILE_OPERATION",
+        "ACTION_DATA_TRANSFORMATION"
+    ],
+    "FLOW_NODE": [
+        "FLOW_IF", "FLOW_FILTER", "FLOW_LOOP", "FLOW_MERGE",
+        "FLOW_SWITCH", "FLOW_WAIT"
+    ],
+    "TOOL_NODE": [
+        "TOOL_GOOGLE_CALENDAR_MCP", "TOOL_NOTION_MCP", "TOOL_CALENDAR",
+        "TOOL_EMAIL", "TOOL_HTTP", "TOOL_CODE_EXECUTION"
+    ],
+    "MEMORY_NODE": [
+        "MEMORY_SIMPLE", "MEMORY_BUFFER", "MEMORY_KNOWLEDGE",
+        "MEMORY_VECTOR_STORE", "MEMORY_DOCUMENT", "MEMORY_EMBEDDING"
+    ],
+    "EXTERNAL_ACTION_NODE": [
+        "EXTERNAL_GITHUB", "EXTERNAL_GOOGLE_CALENDAR", "EXTERNAL_TRELLO",
+        "EXTERNAL_EMAIL", "EXTERNAL_SLACK", "EXTERNAL_API_CALL"
+    ],
+    "HUMAN_IN_THE_LOOP_NODE": [
+        "HUMAN_GMAIL", "HUMAN_SLACK", "HUMAN_DISCORD",
+        "HUMAN_TELEGRAM", "HUMAN_APP"
+    ]
+}
+
+
+connections 数据格式
+"connections": {
+    "节点名称": {                        # 源节点名称
+        "connection_types": {
+            "连接类型": {                  # 连接类型名称
+                "connections": [
+                    {
+                        "node": "目标节点名称",    # 目标节点名称
+                        "type": "CONNECTION_TYPE", # 连接类型枚举
+                        "index": int              # 端口索引
+                    }
+                ]
+            }
+        }
+    }
+}
+
+支持的连接类型：
+CONNECTION_TYPES = [
+    "MAIN",                   # 主要连接 (一般我们都用MAIN来连接)
+    "AI_AGENT",               # AI代理连接
+    "AI_CHAIN",               # AI链连接
+    "AI_DOCUMENT",            # AI文档连接
+    "AI_EMBEDDING",           # AI嵌入连接
+    "AI_LANGUAGE_MODEL",      # AI语言模型连接
+    "AI_MEMORY",              # AI记忆连接
+    "AI_OUTPUT_PARSER",       # AI输出解析器连接
+    "AI_RETRIEVER",           # AI检索器连接
+    "AI_RERANKER",            # AI重排序器连接
+    "AI_TEXT_SPLITTER",       # AI文本分割器连接
+    "AI_TOOL",                # AI工具连接
+    "AI_VECTOR_STORE"         # AI向量存储连接
+]
