@@ -1,22 +1,32 @@
 """
-Main LangGraph-based Workflow Agent
+Simplified Workflow Agent based on new architecture
+Implements 6 core nodes: Clarification, Negotiation, Gap Analysis,
+Alternative Solution Generation, Workflow Generation, and Debug
 """
 
 import asyncio
-from typing import Any, Dict, List
+import time
+from typing import Any, Dict, Optional
 
 import structlog
-from agents.nodes import WorkflowAgentNodes
-from agents.state import AgentState
 from langgraph.graph import END, StateGraph
 
-from core.config import settings
+from agents.nodes import WorkflowAgentNodes
+from agents.state import (
+    ClarificationContext,
+    Conversation,
+    WorkflowOrigin,
+    WorkflowStage,
+    WorkflowState,
+)
 
 logger = structlog.get_logger()
 
 
 class WorkflowAgent:
-    """LangGraph-based Workflow Agent for generating workflows"""
+    """
+    Simplified Workflow Agent based on the 6-node architecture
+    """
 
     def __init__(self):
         self.nodes = WorkflowAgentNodes()
@@ -24,105 +34,178 @@ class WorkflowAgent:
         self._setup_graph()
 
     def _setup_graph(self):
-        """Setup the LangGraph workflow"""
+        """Setup the simplified LangGraph workflow with 6 nodes"""
 
-        # Create the StateGraph
-        workflow = StateGraph(AgentState)
+        # Create the StateGraph with simplified state
+        workflow = StateGraph(WorkflowState)
 
-        # Add nodes
-        workflow.add_node("analyze_requirement", self.nodes.analyze_requirement)
-        workflow.add_node("generate_plan", self.nodes.generate_plan)
-        workflow.add_node("check_knowledge", self.nodes.check_knowledge)
-        workflow.add_node("generate_workflow", self.nodes.generate_workflow)
-        workflow.add_node("validate_workflow", self.nodes.validate_workflow)
+        # Add the 6 core nodes
+        workflow.add_node("clarification", self.nodes.clarification_node)
+        workflow.add_node("negotiation", self.nodes.negotiation_node)
+        workflow.add_node("gap_analysis", self.nodes.gap_analysis_node)
+        workflow.add_node("alternative_generation", self.nodes.alternative_solution_generation_node)
+        workflow.add_node("workflow_generation", self.nodes.workflow_generation_node)
+        workflow.add_node("debug", self.nodes.debug_node)
 
-        # Add edges
-        workflow.set_entry_point("analyze_requirement")
+        # Set entry point
+        workflow.set_entry_point("clarification")
 
-        workflow.add_edge("analyze_requirement", "generate_plan")
-        workflow.add_edge("generate_plan", "check_knowledge")
-
-        # Conditional edges
+        # Add conditional edges based on the architecture flow
         workflow.add_conditional_edges(
-            "check_knowledge",
+            "clarification",
             self.nodes.should_continue,
             {
-                "ask_questions": END,  # For now, end if questions needed
-                "generate_workflow": "generate_workflow",
-                "complete": END,
+                "negotiation": "negotiation",
+                "gap_analysis": "gap_analysis",
+                "END": END,
             },
         )
 
-        workflow.add_edge("generate_workflow", "validate_workflow")
+        workflow.add_conditional_edges(
+            "negotiation",
+            self.nodes.should_continue,
+            {
+                "clarification": "clarification",
+                "END": END,
+            },
+        )
 
         workflow.add_conditional_edges(
-            "validate_workflow", self.nodes.should_continue, {"complete": END, "error": END}
+            "gap_analysis",
+            self.nodes.should_continue,
+            {
+                "alternative_generation": "alternative_generation",
+                "workflow_generation": "workflow_generation",
+                "END": END,
+            },
+        )
+
+        workflow.add_conditional_edges(
+            "alternative_generation",
+            self.nodes.should_continue,
+            {
+                "negotiation": "negotiation",
+                "END": END,
+            },
+        )
+
+        workflow.add_conditional_edges(
+            "workflow_generation",
+            self.nodes.should_continue,
+            {
+                "debug": "debug",
+                "END": END,
+            },
+        )
+
+        workflow.add_conditional_edges(
+            "debug",
+            self.nodes.should_continue,
+            {
+                "workflow_generation": "workflow_generation",
+                "clarification": "clarification",
+                "END": END,
+            },
         )
 
         # Compile the graph
         self.graph = workflow.compile()
 
-        logger.info("LangGraph workflow compiled successfully")
+        logger.info("Simplified LangGraph workflow compiled successfully with 6-node architecture")
+
+    def _create_initial_state(
+        self, user_input: str, session_id: Optional[str] = None
+    ) -> WorkflowState:
+        """Create initial workflow state"""
+        current_time = time.time()
+        session_id = session_id or f"session_{int(current_time)}"
+
+        return {
+            "metadata": {
+                "session_id": session_id,
+                "user_id": "anonymous",
+                "created_at": current_time,
+                "updated_at": current_time,
+            },
+            "stage": WorkflowStage.CLARIFICATION,
+            "execution_history": [],
+            "clarification_context": {
+                "origin": WorkflowOrigin.NEW_WORKFLOW,
+                "pending_questions": [],
+            },
+            "conversations": [{"role": "user", "text": user_input}],
+            "intent_summary": "",
+            "gaps": [],
+            "alternatives": [],
+            "current_workflow": {},
+            "debug_result": "",
+            "debug_loop_count": 0,
+        }
 
     async def generate_workflow(
         self,
         user_input: str,
-        context: Dict[str, Any] = None,
-        user_preferences: Dict[str, Any] = None,
-        thread_id: str = None,
+        context: Optional[Dict[str, Any]] = None,
+        user_preferences: Optional[Dict[str, Any]] = None,
+        thread_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Generate a workflow from natural language description"""
-        logger.info("Starting workflow generation", description=user_input)
+        """
+        Generate a workflow using the simplified 6-node process
+        """
+        logger.info("Starting simplified workflow generation", description=user_input)
 
         try:
             # Initialize state
-            initial_state = AgentState(
-                user_input=user_input,
-                context=context or {},
-                user_preferences=user_preferences or {},
-                requirements={},
-                parsed_intent={},
-                current_plan=None,
-                collected_info={},
-                missing_info=[],
-                questions_asked=[],
-                messages=[],
-                conversation_history=[],
-                workflow=None,
-                workflow_suggestions=[],
-                workflow_errors=[],
-                debug_results=None,
-                validation_results=None,
-                current_step="analyze_requirement",
-                iteration_count=0,
-                max_iterations=10,
-                should_continue=True,
-                final_result=None,
-                feedback=None,
-                changes_made=[],
-            )
+            initial_state = self._create_initial_state(user_input, session_id)
+
+            # Update metadata if provided
+            if user_id:
+                initial_state["metadata"]["user_id"] = user_id
 
             # Run the graph
             config = {"configurable": {"thread_id": thread_id or "default"}}
             final_state = await self.graph.ainvoke(initial_state, config=config)
 
-            # Prepare response
-            workflow = final_state.get("workflow")
-            suggestions = final_state.get("workflow_suggestions", [])
-            missing_info = final_state.get("missing_info", [])
-            errors = final_state.get("workflow_errors", [])
+            # Extract results
+            current_workflow = final_state.get("current_workflow", {})
+            errors = []
+            if final_state.get("debug_result"):
+                try:
+                    import json
 
-            success = workflow is not None and len(errors) == 0
+                    debug_info = json.loads(final_state["debug_result"])
+                    if not debug_info.get("success", False):
+                        errors = debug_info.get("errors", [])
+                except (json.JSONDecodeError, TypeError):
+                    if "error" in final_state.get("debug_result", "").lower():
+                        errors = [final_state["debug_result"]]
 
+            success = final_state.get("stage") == "completed" and len(errors) == 0
+
+            # Prepare response in expected format
             result = {
                 "success": success,
-                "workflow": workflow,
-                "suggestions": suggestions,
-                "missing_info": missing_info,
+                "workflow": current_workflow if success else None,
+                "suggestions": [],
+                "missing_info": [],
                 "errors": errors,
+                "session_id": final_state["metadata"]["session_id"],
+                "stage": final_state.get("stage"),
+                "conversations": final_state.get("conversations", []),
+                "intent_summary": final_state.get("intent_summary", ""),
+                "gaps": final_state.get("gaps", []),
+                "alternatives": final_state.get("alternatives", []),
             }
 
-            logger.info("Workflow generation completed", success=success, errors=len(errors))
+            logger.info(
+                "Simplified workflow generation completed",
+                success=success,
+                stage=final_state.get("stage"),
+                errors=len(errors),
+            )
+
             return result
 
         except Exception as e:
@@ -133,129 +216,163 @@ class WorkflowAgent:
                 "suggestions": [],
                 "missing_info": [],
                 "errors": [f"Internal error: {str(e)}"],
+                "session_id": session_id,
+                "stage": "error",
+                "conversations": [],
+                "intent_summary": "",
+                "gaps": [],
+                "alternatives": [],
             }
 
-    async def refine_workflow(
+    async def continue_conversation(
         self,
-        workflow_id: str,
-        feedback: str,
-        original_workflow: Dict[str, Any],
-        thread_id: str = None,
+        session_id: str,
+        user_response: str,
+        thread_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Refine an existing workflow based on feedback"""
-        logger.info("Starting workflow refinement", workflow_id=workflow_id)
+        """
+        Continue the conversation by adding user response and running the graph
+        """
+        logger.info("Continuing conversation", session_id=session_id)
 
         try:
-            # For now, implement a simple refinement logic
-            # In a full implementation, this would use another LangGraph workflow
+            # For this simplified version, we'll create a new state with the conversation
+            # In a full implementation, you'd retrieve the previous state
 
-            changes = []
-            updated_workflow = original_workflow.copy()
-
-            # Simple feedback processing
-            if "error handling" in feedback.lower():
-                # Add error handling suggestions
-                changes.append("Added error handling recommendations")
-                if "settings" in updated_workflow:
-                    updated_workflow["settings"]["error_policy"] = "CONTINUE_REGULAR_OUTPUT"
-                else:
-                    updated_workflow["settings"] = {"error_policy": "CONTINUE_REGULAR_OUTPUT"}
-
-            if "logging" in feedback.lower():
-                changes.append("Added logging recommendations")
-                # Add logging to workflow tags
-                if "tags" not in updated_workflow:
-                    updated_workflow["tags"] = []
-                if "logging" not in updated_workflow["tags"]:
-                    updated_workflow["tags"].append("logging")
-
-            if "notification" in feedback.lower():
-                changes.append("Added notification suggestions")
-                # This would add notification nodes in a full implementation
-
-            if not changes:
-                changes.append("Applied general improvements based on feedback")
-
-            result = {
-                "success": True,
-                "updated_workflow": updated_workflow,
-                "changes": changes,
-                "errors": [],
+            # Create a state with the user response
+            current_state = {
+                "metadata": {
+                    "session_id": session_id,
+                    "user_id": "anonymous",
+                    "created_at": time.time(),
+                    "updated_at": time.time(),
+                },
+                "stage": WorkflowStage.CLARIFICATION,  # Start from clarification with new input
+                "execution_history": [],
+                "clarification_context": {
+                    "origin": WorkflowOrigin.NEW_WORKFLOW,
+                    "pending_questions": [],
+                },
+                "conversations": [{"role": "user", "text": user_response}],
+                "intent_summary": "",
+                "gaps": [],
+                "alternatives": [],
+                "current_workflow": {},
+                "debug_result": "",
+                "debug_loop_count": 0,
             }
 
-            logger.info("Workflow refinement completed", changes=len(changes))
-            return result
+            # Run the graph
+            config = {"configurable": {"thread_id": thread_id or session_id}}
+            final_state = await self.graph.ainvoke(current_state, config=config)
+
+            # Extract results similar to generate_workflow
+            current_workflow = final_state.get("current_workflow", {})
+            errors = []
+            if final_state.get("debug_result"):
+                try:
+                    import json
+
+                    debug_info = json.loads(final_state["debug_result"])
+                    if not debug_info.get("success", False):
+                        errors = debug_info.get("errors", [])
+                except (json.JSONDecodeError, TypeError):
+                    if "error" in final_state.get("debug_result", "").lower():
+                        errors = [final_state["debug_result"]]
+
+            success = final_state.get("stage") == "completed" and len(errors) == 0
+
+            response = {
+                "success": success,
+                "session_id": session_id,
+                "stage": final_state.get("stage"),
+                "errors": errors,
+                "conversations": final_state.get("conversations", []),
+                "intent_summary": final_state.get("intent_summary", ""),
+                "gaps": final_state.get("gaps", []),
+                "alternatives": final_state.get("alternatives", []),
+            }
+
+            # Add workflow if completed
+            if success and current_workflow:
+                response["workflow"] = current_workflow
+
+            logger.info(
+                "Conversation continued",
+                session_id=session_id,
+                stage=response["stage"],
+                success=success,
+            )
+
+            return response
 
         except Exception as e:
-            logger.error("Failed to refine workflow", error=str(e))
+            logger.error("Failed to continue conversation", session_id=session_id, error=str(e))
             return {
                 "success": False,
-                "updated_workflow": None,
-                "changes": [],
+                "session_id": session_id,
                 "errors": [f"Internal error: {str(e)}"],
+                "stage": "error",
+                "conversations": [],
+                "intent_summary": "",
+                "gaps": [],
+                "alternatives": [],
             }
 
-    async def validate_workflow(self, workflow_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate a workflow structure"""
-        logger.info("Validating workflow structure")
+    def get_session_state(self, session_id: str) -> Dict[str, Any]:
+        """Get current session state (placeholder for simplified version)"""
+        return {}
 
+    async def validate_workflow_dsl(self, workflow_dsl: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate workflow DSL (placeholder for simplified version)"""
         try:
+            # Basic validation
+            if not workflow_dsl:
+                return {
+                    "success": False,
+                    "validation_results": {
+                        "syntax_valid": False,
+                        "logic_valid": False,
+                        "overall_valid": False,
+                        "completeness_score": 0.0,
+                        "errors": ["Empty workflow"],
+                        "warnings": [],
+                    },
+                    "errors": [],
+                }
+
+            nodes = workflow_dsl.get("nodes", [])
+            connections = workflow_dsl.get("connections", [])
+
             errors = []
             warnings = []
 
-            # Basic structure validation
-            if not isinstance(workflow_data, dict):
-                errors.append("Workflow data must be a dictionary")
-                return {"valid": False, "errors": errors, "warnings": warnings}
+            if not nodes:
+                errors.append("No nodes in workflow")
 
-            # Check required fields
-            required_fields = ["id", "name", "nodes"]
-            for field in required_fields:
-                if field not in workflow_data:
-                    errors.append(f"Missing required field: {field}")
+            if len(nodes) > 1 and not connections:
+                warnings.append("Multi-node workflow without connections")
 
-            # Validate nodes
-            nodes = workflow_data.get("nodes", [])
-            if not isinstance(nodes, list):
-                errors.append("Nodes must be a list")
-            elif len(nodes) == 0:
-                errors.append("Workflow must have at least one node")
-            else:
-                # Validate each node
-                for i, node in enumerate(nodes):
-                    if not isinstance(node, dict):
-                        errors.append(f"Node {i} must be a dictionary")
-                        continue
+            is_valid = len(errors) == 0
+            completeness_score = 0.8 if is_valid else 0.2
 
-                    node_required = ["id", "name", "type"]
-                    for field in node_required:
-                        if field not in node:
-                            errors.append(f"Node {i} missing required field: {field}")
-
-            # Validate connections
-            connections = workflow_data.get("connections", {})
-            if len(nodes) > 1 and not connections.get("connections"):
-                warnings.append("Multi-node workflow should have connections between nodes")
-
-            # Check for orphaned nodes (nodes with no connections)
-            if connections.get("connections"):
-                connected_nodes = set()
-                for source, targets in connections["connections"].items():
-                    connected_nodes.add(source)
-                    for connection_type, connection_list in targets.items():
-                        for conn in connection_list.get("connections", []):
-                            connected_nodes.add(conn.get("node"))
-
-                all_node_names = {node.get("name") for node in nodes if isinstance(node, dict)}
-                orphaned = all_node_names - connected_nodes
-                if orphaned and len(nodes) > 1:
-                    warnings.append(f"Nodes with no connections: {', '.join(orphaned)}")
-
-            result = {"valid": len(errors) == 0, "errors": errors, "warnings": warnings}
-
-            logger.info("Workflow validation completed", valid=result["valid"], errors=len(errors))
-            return result
+            return {
+                "success": True,
+                "validation_results": {
+                    "syntax_valid": is_valid,
+                    "logic_valid": is_valid,
+                    "overall_valid": is_valid,
+                    "completeness_score": completeness_score,
+                    "errors": errors,
+                    "warnings": warnings,
+                },
+                "errors": [],
+            }
 
         except Exception as e:
-            logger.error("Failed to validate workflow", error=str(e))
-            return {"valid": False, "errors": [f"Validation error: {str(e)}"], "warnings": []}
+            logger.error("Failed to validate workflow DSL", error=str(e))
+            return {
+                "success": False,
+                "validation_results": {},
+                "errors": [f"Validation error: {str(e)}"],
+            }

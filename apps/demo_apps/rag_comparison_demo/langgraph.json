@@ -1,0 +1,7 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "rag_comparison": "./studio_workflow.py:graph"
+  },
+  "env": ".env"
+}
