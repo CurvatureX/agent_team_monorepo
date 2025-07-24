@@ -13,167 +13,55 @@ Origin: The user want to create a workflow from scratch
 User input: 我每天事情特别多，经常同时处理好几件事，有时候忙得连重要的任务都忘了做。真的很希望有个像秘书一样的助手，能帮我把那些不开会的时间都规划好，把该做的事安排进日程里。我只要按着日程表一步步来，就不会漏掉重要的事情了。
 
 Here is all the nodes available, if user's workflow involves other integrations outside of supported nodes, ask for clarifications:
-Node Type: TRIGGER_NODE
-Description: A node that initiates a workflow based on an event or schedule.
+Node Categories
+TRIGGER_NODE – Starts workflows based on events or schedules.
+Subtypes:
+TRIGGER_CHAT, TRIGGER_WEBHOOK, TRIGGER_CRON, TRIGGER_MANUAL, TRIGGER_EMAIL, TRIGGER_FORM, TRIGGER_CALENDAR.
+
+AI_AGENT_NODE – Runs AI-driven tasks.
+Subtypes:
+AI_ROUTER_AGENT, AI_TASK_ANALYZER, AI_DATA_INTEGRATOR, AI_REPORT_GENERATOR.
+
+EXTERNAL_ACTION_NODE – Integrates with external platforms.
 Subtypes:
 
-TRIGGER_CHAT: Triggered by chat input from users.
-TRIGGER_WEBHOOK: Triggered by an incoming HTTP webhook.
-TRIGGER_CRON: Triggered by a scheduled cron job.
-TRIGGER_MANUAL: Triggered manually by a user action.
-TRIGGER_EMAIL: Triggered when a specific email is received.
-TRIGGER_FORM: Triggered when a form is submitted.
-TRIGGER_CALENDAR: Triggered by a calendar event.
+EXTERNAL_GITHUB: Repos, PRs, issues, Actions, GraphQL/REST.
 
-Node Type: AI_AGENT_NODE
-Description: A node that runs an intelligent AI-driven task.
+EXTERNAL_GOOGLE_CALENDAR: Manage calendars/events.
+
+EXTERNAL_TRELLO: Boards, lists, cards, checklists.
+
+EXTERNAL_EMAIL: Send/receive/parse emails.
+
+EXTERNAL_SLACK: Messages, bots, events, search.
+
+EXTERNAL_API_CALL: Generic HTTP API requests.
+
+EXTERNAL_WEBHOOK: Send custom webhooks.
+
+EXTERNAL_NOTIFICATION: Push, SMS, in-app alerts.
+
+ACTION_NODE – Self-contained workflow actions.
 Subtypes:
+ACTION_RUN_CODE, ACTION_SEND_HTTP_REQUEST, ACTION_PARSE_IMAGE, ACTION_WEB_SEARCH,
+ACTION_DATABASE_OPERATION, ACTION_FILE_OPERATION, ACTION_DATA_TRANSFORMATION.
 
-AI_ROUTER_AGENT: Routes tasks to the most suitable agent.
-AI_TASK_ANALYZER: Breaks down user requests into structured tasks.
-AI_DATA_INTEGRATOR: Integrates and summarizes information from multiple sources.
-AI_REPORT_GENERATOR: Automatically creates structured reports.
-
-Node Type: EXTERNAL_ACTION_NODE
-Description: A node that interacts with external systems and platforms.
+FLOW_NODE – Controls workflow logic and paths.
 Subtypes:
+FLOW_IF, FLOW_FILTER, FLOW_LOOP, FLOW_MERGE, FLOW_SWITCH, FLOW_WAIT.
 
-EXTERNAL_GITHUB
-
-Description: Performs actions using the GitHub API.
-Capabilities:
-
-Create, update, delete repositories, branches, tags, and files.
-Manage issues, pull requests, comments, labels, and milestones.
-Trigger and manage GitHub Actions workflows.
-Access organization/team settings and members.
-Use GraphQL or REST APIs; subscribe to webhook events.
-
-EXTERNAL_GOOGLE_CALENDAR
-
-Description: Interacts with Google Calendar.
-Capabilities:
-
-Create, update, and delete calendars and events.
-Manage attendees, reminders, timezones, and recurrence.
-Access free/busy status and user settings like working location.
-Use push notifications/webhooks for real-time sync.
-
-EXTERNAL_TRELLO
-
-Description: Sends actions to or reads data from Trello.
-Capabilities:
-
-Create, update, delete boards, lists, cards, and checklists.
-Manage labels, attachments, comments, and due dates.
-Search across boards and cards.
-Extend with Power-Ups or webhooks.
-
-EXTERNAL_EMAIL
-
-Description: Sends or receives emails.
-Capabilities:
-
-Send emails via SMTP or email APIs (e.g., Gmail, Outlook).
-Receive and parse emails via IMAP or webhook forwarding.
-Trigger workflows based on email content.
-Attach files or HTML content.
-
-EXTERNAL_SLACK
-
-Description: Sends messages or reads data from Slack.
-Capabilities:
-
-Send, update, and delete messages in channels or threads.
-Upload and attach files.
-Interact with users via bots, modals, and slash commands.
-Subscribe to workspace events and channel activity.
-Search messages and users.
-
-EXTERNAL_API_CALL
-
-Description: Makes a generic HTTP API call.
-Capabilities:
-
-Make HTTP requests (GET, POST, PUT, DELETE, etc.) to any REST API.
-Set custom headers, body (JSON/XML), and query params.
-Handle responses, errors, and authentication.
-Chain API responses into subsequent workflow steps.
-
-EXTERNAL_WEBHOOK
-
-Description: Sends a webhook to an external service.
-Capabilities:
-
-Send HTTP POST (or other method) to external endpoint.
-Customize payloads, headers, and retry logic.
-Trigger integrations with third-party systems.
-Log response or continue workflow conditionally.
-
-EXTERNAL_NOTIFICATION
-
-Description: Sends a notification to a user or system.
-Capabilities:
-
-Send push notifications (APNs, FCM), SMS, or in-app alerts.
-Customize message content and target.
-Integrate with services like OneSignal, Twilio, or Amazon SNS.
-Track delivery status and user interaction.
-
-Node Type: ACTION_NODE
-Description: A node that performs a self-contained action within the workflow.
+HUMAN_IN_THE_LOOP_NODE – Pauses workflow for human interaction.
 Subtypes:
+HUMAN_GMAIL, HUMAN_SLACK, HUMAN_DISCORD, HUMAN_TELEGRAM, HUMAN_APP.
 
-ACTION_RUN_CODE: Runs a script or code block.
-ACTION_SEND_HTTP_REQUEST: Sends a standard HTTP request.
-ACTION_PARSE_IMAGE: Processes and analyzes image data.
-ACTION_WEB_SEARCH: Performs a web search to find information.
-ACTION_DATABASE_OPERATION: Executes CRUD operations on a database.
-ACTION_FILE_OPERATION: Reads, writes, or moves files.
-ACTION_DATA_TRANSFORMATION: Transforms input data into a new format.
-
-Node Type: FLOW_NODE
-Description: A node used to control the flow of the workflow.
+TOOL_NODE – Utility tools accessible to AI nodes.
 Subtypes:
+TOOL_GOOGLE_CALENDAR_MCP, TOOL_NOTION_MCP, TOOL_CALENDAR, TOOL_EMAIL, TOOL_HTTP, TOOL_CODE_EXECUTION.
 
-FLOW_IF: Evaluates an input condition and directs the workflow to either the "true" or "false" branch based on the result, determining which path is executed.
-FLOW_FILTER: Applies specified conditions to filter elements in a collection, passing only those that meet criteria to subsequent nodes.
-FLOW_LOOP: Repeatedly executes a connected node for each item in a collection or until a specified condition is met, processing data iteratively and passing results back to the workflow.
-FLOW_MERGE: Combines multiple incoming flows or data streams into a single unified path, synchronizing parallel branches.
-FLOW_SWITCH: Directs workflow execution down one of several paths based on a key or selector value, functioning like a multi-way branch or switch-case.
-FLOW_WAIT: Waits for a specified amount of time or event, can connect with a Trigger node.
-
-Node Type: HUMAN_IN_THE_LOOP_NODE
-Description: A node that waits for manual human interaction to continue.
+MEMORY_NODE – Stores or retrieves data for AI tasks.
 Subtypes:
-
-HUMAN_GMAIL: Sends message through email and wait for a human's reply.
-HUMAN_SLACK: Invokes Slack interaction with a human.
-HUMAN_DISCORD: Requires human interaction via Discord.
-HUMAN_TELEGRAM: Engages a human via Telegram.
-HUMAN_APP: Interfaces with a human in our mobile app.
-
-Node Type: TOOL_NODE
-Description: A utility node that provides a MCP tool to AI Node.
-Subtypes:
-
-TOOL_GOOGLE_CALENDAR_MCP: Manages calendar operations through MCP.
-TOOL_NOTION_MCP: Integrates Notion functionality via MCP.
-TOOL_CALENDAR: General calendar utilities.
-TOOL_EMAIL: Email utility tools.
-TOOL_HTTP: Sends or receives data over HTTP.
-TOOL_CODE_EXECUTION: Executes code as a utility function.
-
-Node Type: MEMORY_NODE
-Description: A node that stores or retrieves memory for AI Node.
-Subtypes:
-
-MEMORY_SIMPLE: Stores simple key-value memory.
-MEMORY_BUFFER: Stores recent history or conversation buffer.
-MEMORY_KNOWLEDGE: Saves structured knowledge for later retrieval.
-MEMORY_VECTOR_STORE: Embeds and stores vectors for semantic search.
-MEMORY_DOCUMENT: Stores and retrieves full documents.
-MEMORY_EMBEDDING: Embeds content into vector space for AI tasks.
+MEMORY_SIMPLE, MEMORY_BUFFER, MEMORY_KNOWLEDGE, MEMORY_VECTOR_STORE,
+MEMORY_DOCUMENT, MEMORY_EMBEDDING.
 
 Current SCENARIO: Initial Conversation
 Goal: Understand the user's workflow automation needs and capture all essential requirements, generate a summary of the user's intent, identify potential triggers, and a list of questions to ask the user to gather more information if needed.
@@ -221,6 +109,45 @@ json{
 "Specific question 2"
 ]
 }
+
+This is the format of intent summary:
+
+1. High-Level Goal
+   The user wants to [BUSINESS OBJECTIVE] by building a workflow that [OVERALL FUNCTION].
+   Key success metrics: [WHAT SUCCESS LOOKS LIKE].
+2. Workflow Overview
+   Workflow Type: [Integration / Automation / Data Pipeline / Multi-Agent Orchestration / AI Generation / etc.]
+   Trigger(s): [Event-based, schedule-based, user-initiated, API call, etc.]
+   Final Outcome(s): [What the workflow must produce or achieve.]
+3. Tasks (Nodes)
+   Each task is a node in the workflow DAG.
+   For each task:
+   Task ID: [Unique name]
+   Purpose: [What this task achieves in human-readable terms]
+   Inputs: [Data or trigger conditions]
+   Process Logic: [Rules, algorithms, AI prompts, or business logic]
+   Outputs: [Resulting data or state change]
+   Transitions: [Which task(s) to run next, under what conditions]
+   Human/AI Interaction: [If approvals, chat, or manual review are required]
+   Error Handling: [Retries, fallbacks, alerts]
+4. Branching & Decision Points
+   List all decision nodes explicitly:
+   Condition: [Criteria for branching]
+   Paths: [Path A → do X, Path B → do Y]
+   Fallback: [What to do if no conditions match]
+5. Data & Systems Map
+   External Systems: [All services, APIs, and DBs involved]
+   Data Flow: [What data moves where, in what format]
+   State Tracking: [What’s persisted where for later use]
+6. Interaction Model
+   User Interactions: [Prompts, confirmations, overrides]
+   Notifications: [Who gets updated, how (email, Slack, webhook, etc.)]
+   Agent Roles (if multi-agent): [Who does what?]
+7. Constraints & Policies
+   Business Rules: [Compliance, prioritization, SLAs]
+   Scalability: [Expected load, performance constraints]
+   Schedules: [Time windows, rate limits]
+
 Decision Guidelines
 Request Clarification When:
 

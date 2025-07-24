@@ -70,6 +70,7 @@ interface SearchState {
   retryCount: number;
   nodeTypeFilter: string;
   similarityThreshold: number;
+  resultLimit: number;
   showRefinementSuggestions: boolean;
 }
 
@@ -100,6 +101,14 @@ const DEFAULT_SIMILARITY_THRESHOLD = 0.3;
 const MIN_SIMILARITY_THRESHOLD = 0.1;
 const MAX_SIMILARITY_THRESHOLD = 0.9;
 
+const RESULT_LIMIT_OPTIONS = [
+  { value: 10, label: "10 results" },
+  { value: 20, label: "20 results" },
+  { value: 30, label: "30 results" },
+  { value: 50, label: "50 results" },
+];
+const DEFAULT_RESULT_LIMIT = 50;
+
 export default function SearchInterface({
   initialQuery = "",
   onResultsChange,
@@ -117,6 +126,7 @@ export default function SearchInterface({
     retryCount: 0,
     nodeTypeFilter: "",
     similarityThreshold: DEFAULT_SIMILARITY_THRESHOLD,
+    resultLimit: DEFAULT_RESULT_LIMIT,
     showRefinementSuggestions: false,
   });
 
@@ -436,6 +446,7 @@ export default function SearchInterface({
           query: query.trim(),
           nodeTypeFilter: searchState.nodeTypeFilter || undefined,
           threshold: searchState.similarityThreshold,
+          limit: searchState.resultLimit,
         };
 
         const response = await fetch("/api/query", {
@@ -520,6 +531,7 @@ export default function SearchInterface({
       classifyError,
       searchState.nodeTypeFilter,
       searchState.similarityThreshold,
+      searchState.resultLimit,
       searchState.error?.retryAfter,
       searchState.error?.lastRetry,
     ]
@@ -653,6 +665,13 @@ export default function SearchInterface({
     }));
   }, []);
 
+  const handleResultLimitChange = useCallback((limit: number) => {
+    setSearchState((prev) => ({
+      ...prev,
+      resultLimit: limit,
+    }));
+  }, []);
+
   const clearResults = useCallback(() => {
     setSearchState((prev) => ({
       ...prev,
@@ -664,6 +683,7 @@ export default function SearchInterface({
       retryCount: 0,
       nodeTypeFilter: "",
       similarityThreshold: DEFAULT_SIMILARITY_THRESHOLD,
+      resultLimit: DEFAULT_RESULT_LIMIT,
       showRefinementSuggestions: false,
     }));
     onResultsChange?.(0);
@@ -752,6 +772,62 @@ export default function SearchInterface({
 
     return formatted;
   }, []);
+
+  const formatResultsForRAG = useCallback(() => {
+    if (searchState.filteredResults.length === 0) return "";
+
+    let ragText = `# Node Knowledge Search Results\n`;
+    ragText += `Query: "${searchState.query}"\n`;
+    ragText += `Results: ${searchState.filteredResults.length} nodes\n\n`;
+
+    groupedResults.forEach(([nodeType, results]) => {
+      ragText += `## ${nodeType} Nodes (${results.length})\n\n`;
+
+      results.forEach((result, index) => {
+        ragText += `### ${index + 1}. ${result.title}\n`;
+        ragText += `**Type:** ${result.node_type}${result.node_subtype ? ` - ${result.node_subtype}` : ''}\n`;
+        ragText += `**Similarity:** ${formatSimilarityScore(result.similarity)}\n\n`;
+        ragText += `**Description:**\n${result.description}\n\n`;
+        ragText += `**Detailed Content:**\n${result.content}\n\n`;
+
+        if (result.metadata && Object.keys(result.metadata).length > 0) {
+          ragText += `**Additional Information:**\n`;
+          const formattedMeta = formatMetadata(result.metadata);
+          Object.entries(formattedMeta).forEach(([key, value]) => {
+            ragText += `- ${key.replace(/_/g, ' ')}: `;
+            if (Array.isArray(value)) {
+              ragText += `\n  ${value.map(item => `• ${item}`).join('\n  ')}\n`;
+            } else {
+              ragText += `${value}\n`;
+            }
+          });
+          ragText += '\n';
+        }
+
+        ragText += '---\n\n';
+      });
+    });
+
+    return ragText;
+  }, [searchState.filteredResults, searchState.query, groupedResults, formatSimilarityScore, formatMetadata]);
+
+  const copyRAGText = useCallback(async () => {
+    const ragText = formatResultsForRAG();
+    try {
+      await navigator.clipboard.writeText(ragText);
+      // Simple success indication - could be enhanced with a toast notification
+      const button = document.getElementById('copy-rag-button');
+      if (button) {
+        const originalText = button.textContent;
+        button.textContent = 'Copied!';
+        setTimeout(() => {
+          button.textContent = originalText;
+        }, 2000);
+      }
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+    }
+  }, [formatResultsForRAG]);
 
   const generateRefinementSuggestions = useCallback(() => {
     if (searchState.filteredResults.length === 0) return [];
@@ -1135,7 +1211,7 @@ export default function SearchInterface({
       </div>
 
       <div className="bg-gray-50 p-4 rounded-lg mb-4 border border-gray-200">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
           <div>
             <label
               htmlFor="nodeTypeFilter"
@@ -1154,6 +1230,29 @@ export default function SearchInterface({
               {getAvailableNodeTypes().map((type) => (
                 <option key={type.value} value={type.value}>
                   {type.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label
+              htmlFor="resultLimit"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
+              Results per Search
+            </label>
+            <select
+              id="resultLimit"
+              value={searchState.resultLimit}
+              onChange={(e) => handleResultLimitChange(parseInt(e.target.value))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+              disabled={searchState.filterLoading}
+              aria-label="Select number of results per search"
+            >
+              {RESULT_LIMIT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </select>
@@ -1370,6 +1469,61 @@ export default function SearchInterface({
               </span>
             )}
           </div>
+
+          {/* RAG Text Container */}
+          {searchState.filteredResults.length > 0 && (
+            <div className="mb-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-md font-semibold text-gray-900 flex items-center gap-2">
+                  <svg
+                    className="w-5 h-5 text-blue-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
+                  RAG Context Text
+                </h4>
+                <button
+                  id="copy-rag-button"
+                  onClick={copyRAGText}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors flex items-center gap-2 text-sm"
+                  aria-label="Copy RAG context to clipboard"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                    />
+                  </svg>
+                  Copy to Clipboard
+                </button>
+              </div>
+              <p className="text-sm text-gray-600 mb-3">
+                Copy this formatted text to paste into LLM prompts as RAG context:
+              </p>
+              <div className="bg-white border border-gray-300 rounded-md p-3 max-h-64 overflow-y-auto">
+                <pre className="text-xs text-gray-800 whitespace-pre-wrap font-mono">
+                  {formatResultsForRAG()}
+                </pre>
+              </div>
+            </div>
+          )}
 
           <div className="space-y-6">
             {groupedResults.map(([nodeType, results]) => (

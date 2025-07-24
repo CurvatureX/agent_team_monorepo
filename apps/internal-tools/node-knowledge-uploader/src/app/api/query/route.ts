@@ -185,7 +185,7 @@ function validateQueryRequest(body: any): { isValid: boolean; error?: string; da
   }
 
   // Validate optional parameters
-  const limit = body.limit ? parseInt(body.limit) : 10;
+  const limit = body.limit ? parseInt(body.limit) : 50;
   if (isNaN(limit) || limit < 1 || limit > 50) {
     return { isValid: false, error: 'Limit must be a number between 1 and 50' };
   }

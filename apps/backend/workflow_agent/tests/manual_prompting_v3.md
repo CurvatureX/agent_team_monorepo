@@ -33,3 +33,5 @@
    Business Rules: [Compliance, prioritization, SLAs]
    Scalability: [Expected load, performance constraints]
    Schedules: [Time windows, rate limits]
+
+一个好的 Intent Summary 会长成什么样子？
