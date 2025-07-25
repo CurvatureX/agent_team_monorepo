@@ -1,0 +1,300 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = "github.com/agent-team/workflow_engine/proto";
+
+// Import workflow.proto to use NodeType and NodeSubtype enums
+import "workflow.proto";
+
+// ============================================================================
+// 执行系统模块 (Execution System Module)
+// ============================================================================
+
+// 执行数据
+message ExecutionData {
+  string execution_id = 1;
+  string workflow_id = 2;
+  ExecutionStatus status = 3;
+  int64 start_time = 4;
+  int64 end_time = 5;
+  RunData run_data = 6;
+  ExecutionMode mode = 7;
+  string triggered_by = 8;
+  map<string, string> metadata = 9;
+}
+
+// 执行状态
+enum ExecutionStatus {
+  NEW = 0;
+  RUNNING = 1;
+  SUCCESS = 2;
+  ERROR = 3;
+  CANCELED = 4;
+  WAITING = 5;
+  PAUSED = 6;
+}
+
+// 执行模式
+enum ExecutionMode {
+  MANUAL = 0;
+  TRIGGER = 1;
+  WEBHOOK = 2;
+  RETRY = 3;
+  SCHEDULED = 4;
+}
+
+// 运行数据 - 扩展版本
+message RunData {
+  map<string, NodeRunData> node_data = 1;
+  ExecutionPath execution_path = 2;  // 新增：执行路径信息
+  map<string, NodeInputData> node_inputs = 3;  // 新增：节点入参信息
+  ExecutionContext execution_context = 4;  // 新增：执行上下文
+}
+
+// 新增：执行路径信息
+message ExecutionPath {
+  repeated PathStep steps = 1;
+  map<string, BranchDecision> branch_decisions = 2;
+  repeated LoopInfo loop_info = 3;
+  repeated string skipped_nodes = 4;  // 跳过的节点
+  map<string, int32> node_execution_counts = 5;  // 节点执行次数
+}
+
+// 执行步骤
+message PathStep {
+  string node_id = 1;
+  string node_name = 2;
+  NodeType node_type = 3;
+  NodeSubtype node_subtype = 4;
+  int64 start_time = 5;
+  int64 end_time = 6;
+  int64 execution_time = 7;
+  ExecutionStatus status = 8;
+  repeated string input_sources = 9;  // 输入来源节点
+  repeated string output_targets = 10; // 输出目标节点
+  repeated ConnectionInfo connections = 11;  // 连接信息
+  map<string, string> context_variables = 12;  // 上下文变量
+  ErrorData error = 13;  // 错误信息（如果有）
+}
+
+// 连接信息
+message ConnectionInfo {
+  string source_node = 1;
+  string target_node = 2;
+  string connection_type = 3;
+  int32 port_index = 4;
+  bool active = 5;  // 是否实际传递了数据
+}
+
+// 分支决策
+message BranchDecision {
+  string node_id = 1;
+  string condition = 2;
+  bool result = 3;
+  string selected_branch = 4;
+  string condition_value = 5;  // 条件的具体值
+  int64 decision_time = 6;
+}
+
+// 循环信息
+message LoopInfo {
+  string node_id = 1;
+  int32 iteration_count = 2;
+  repeated int64 iteration_times = 3;  // 每次迭代的时间
+  repeated IterationData iteration_data = 4;  // 每次迭代的数据
+  string loop_condition = 5;
+  bool loop_completed = 6;
+}
+
+// 迭代数据
+message IterationData {
+  int32 iteration_index = 1;
+  map<string, string> data = 2;
+  int64 timestamp = 3;
+}
+
+// 新增：节点入参信息
+message NodeInputData {
+  string node_id = 1;
+  string node_name = 2;
+  map<string, DataItem> input_data = 3;  // 实际输入数据
+  repeated ConnectionData connections = 4;  // 连接数据
+  map<string, string> parameters = 5;  // 节点参数
+  map<string, string> credentials = 6;  // 凭证信息
+  map<string, string> static_data = 7;  // 静态数据
+  int64 timestamp = 8;  // 记录时间戳
+}
+
+// 连接数据
+message ConnectionData {
+  string source_node = 1;
+  string source_node_name = 2;
+  string connection_type = 3;
+  int32 port_index = 4;
+  DataItem data = 5;
+  bool data_present = 6;  // 是否有数据传递
+}
+
+// 新增：执行上下文
+message ExecutionContext {
+  map<string, string> environment_variables = 1;  // 环境变量
+  map<string, string> global_parameters = 2;  // 全局参数
+  map<string, string> workflow_variables = 3;  // 工作流变量
+  int64 execution_start_time = 4;
+  string execution_mode = 5;
+  string triggered_by = 6;
+  map<string, string> metadata = 7;
+}
+
+// 节点运行数据 - 扩展版本
+message NodeRunData {
+  repeated TaskData tasks = 1;
+  NodeInputData input_data = 2;  // 新增：输入数据
+  repeated PathStep execution_steps = 3;  // 新增：执行步骤
+  map<string, string> performance_metrics = 4;  // 新增：性能指标
+}
+
+// 任务数据 - 扩展版本
+message TaskData {
+  int64 start_time = 1;
+  int64 execution_time = 2;
+  string source = 3;
+  repeated NodeExecutionData data = 4;
+  map<string, string> execution_status = 5;
+  ErrorData error = 6;
+  // 新增字段
+  NodeInputData input_data = 7;  // 实际输入数据
+  repeated string execution_path = 8;  // 执行路径
+  map<string, string> context_variables = 9;  // 上下文变量
+  map<string, string> performance_metrics = 10;  // 性能指标
+  repeated string dependencies = 11;  // 依赖节点
+}
+
+// 节点执行数据
+message NodeExecutionData {
+  repeated DataItem data = 1;
+  map<string, string> metadata = 2;
+  // 新增字段
+  string data_type = 3;  // 数据类型
+  int64 timestamp = 4;  // 时间戳
+  map<string, string> data_metadata = 5;  // 数据元数据
+}
+
+// 数据项 - 扩展版本
+message DataItem {
+  map<string, string> json_data = 1;
+  repeated BinaryData binary_data = 2;
+  bool paused = 3;
+  map<string, string> metadata = 4;
+  // 新增字段
+  string data_source = 5;  // 数据来源
+  string data_format = 6;  // 数据格式
+  int64 data_size = 7;  // 数据大小
+  bool is_modified = 8;  // 是否被修改
+}
+
+// 二进制数据
+message BinaryData {
+  string property_name = 1;
+  bytes data = 2;
+  string mime_type = 3;
+  string file_name = 4;
+  int64 file_size = 5;
+}
+
+// 错误数据 - 扩展版本
+message ErrorData {
+  string message = 1;
+  string stack = 2;
+  string name = 3;
+  int32 line_number = 4;
+  map<string, string> context = 5;
+  // 新增字段
+  string error_type = 6;  // 错误类型
+  string error_code = 7;  // 错误代码
+  int64 error_time = 8;  // 错误时间
+  repeated string suggestions = 9;  // 修复建议
+  map<string, string> debug_info = 10;  // 调试信息
+}
+
+// 使用workflow.proto中定义的枚举类型
+
+// ============================================================================
+// 执行请求和响应消息
+// ============================================================================
+
+// 执行工作流请求
+message ExecuteWorkflowRequest {
+  string workflow_id = 1;
+  ExecutionMode mode = 2;
+  string triggered_by = 3;
+  map<string, string> input_data = 4;
+  map<string, string> metadata = 5;
+}
+
+// 执行工作流响应
+message ExecuteWorkflowResponse {
+  string execution_id = 1;
+  ExecutionStatus status = 2;
+  string message = 3;
+  ErrorData error = 4;
+}
+
+// 获取执行状态请求
+message GetExecutionStatusRequest {
+  string execution_id = 1;
+}
+
+// 获取执行状态响应
+message GetExecutionStatusResponse {
+  ExecutionData execution = 1;
+  bool found = 2;
+  string message = 3;
+}
+
+// 取消执行请求
+message CancelExecutionRequest {
+  string execution_id = 1;
+  string reason = 2;
+}
+
+// 取消执行响应
+message CancelExecutionResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// 获取执行历史请求
+message GetExecutionHistoryRequest {
+  string workflow_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+  ExecutionStatus status_filter = 4;
+}
+
+// 获取执行历史响应
+message GetExecutionHistoryResponse {
+  repeated ExecutionData executions = 1;
+  int32 total_count = 2;
+  bool has_more = 3;
+}
+
+// ============================================================================
+// 执行服务 (Execution Service)
+// ============================================================================
+
+// 执行服务定义
+service ExecutionService {
+  // 执行工作流
+  rpc ExecuteWorkflow(ExecuteWorkflowRequest) returns (ExecuteWorkflowResponse);
+  
+  // 获取执行状态
+  rpc GetExecutionStatus(GetExecutionStatusRequest) returns (GetExecutionStatusResponse);
+  
+  // 取消执行
+  rpc CancelExecution(CancelExecutionRequest) returns (CancelExecutionResponse);
+  
+  // 获取执行历史
+  rpc GetExecutionHistory(GetExecutionHistoryRequest) returns (GetExecutionHistoryResponse);
+} 
