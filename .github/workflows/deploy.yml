@@ -62,10 +62,10 @@ jobs:
         service:
           - name: api-gateway
             context: apps/backend/api-gateway
-            repository: ${{ env.ECR_REPOSITORY_API_GATEWAY }}
+            repository: agent-team/api-gateway
           - name: workflow-engine
             context: apps/backend/workflow_engine
-            repository: ${{ env.ECR_REPOSITORY_WORKFLOW_ENGINE }}
+            repository: agent-team/workflow-engine
 
     steps:
       - name: Checkout code
