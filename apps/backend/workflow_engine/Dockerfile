@@ -10,13 +10,15 @@ RUN apt-get update && apt-get install -y \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency files
-COPY pyproject.toml ./
-COPY requirements.txt* ./
+# Copy workflow engine and shared files
+COPY workflow_engine/ ./workflow_engine/
+COPY shared/ ./shared/
+COPY workflow_engine/pyproject.toml ./
+COPY workflow_engine/requirements.txt* ./
 
 # Install dependencies
 RUN pip install --upgrade pip && \
-    pip install --prefix=/install -r pyproject.toml || \
+    pip install --prefix=/install -e ./workflow_engine || \
     pip install --prefix=/install \
         fastapi>=0.104.0 \
         uvicorn[standard]>=0.24.0 \
@@ -44,9 +46,9 @@ RUN apt-get update && apt-get install -y \
 # Copy installed packages from builder
 COPY --from=builder /install /usr/local
 
-# Copy application code
-COPY workflow_engine/ ./
-COPY shared/ ./shared/
+# Copy application code from builder
+COPY --from=builder /app/workflow_engine ./
+COPY --from=builder /app/shared ./shared
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash --uid 1000 app && \

@@ -37,7 +37,8 @@ jobs:
         run: |
           pip install uv
           uv sync
-          uv run pytest tests/ -v --cov=app --cov-report=xml
+          export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+          uv run python -m pytest tests/ -v --cov=app --cov-report=xml
 
       - name: Install dependencies and test Workflow Engine
         working-directory: apps/backend/workflow_engine
@@ -62,9 +63,11 @@ jobs:
         service:
           - name: api-gateway
             context: apps/backend/api-gateway
+            dockerfile: apps/backend/api-gateway/Dockerfile
             repository: agent-team/api-gateway
           - name: workflow-engine
-            context: apps/backend/workflow_engine
+            context: apps/backend
+            dockerfile: apps/backend/workflow_engine/Dockerfile
             repository: agent-team/workflow-engine
 
     steps:
@@ -94,6 +97,7 @@ jobs:
           docker buildx build \
             --platform linux/amd64 \
             --target production \
+            --file ${{ matrix.service.dockerfile }} \
             --tag $ECR_REGISTRY/${{ matrix.service.repository }}:$IMAGE_TAG \
             --tag $ECR_REGISTRY/${{ matrix.service.repository }}:latest \
             --push \

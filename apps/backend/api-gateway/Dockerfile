@@ -35,13 +35,7 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /app/.venv /app/.venv
 
 # Copy application code
-COPY app/ ./app/
-COPY clients/ ./clients/
-COPY core/ ./core/
-COPY models/ ./models/
-COPY routers/ ./routers/
-COPY services/ ./services/
-COPY proto/ ./proto/
+COPY . ./
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash --uid 1000 app && \

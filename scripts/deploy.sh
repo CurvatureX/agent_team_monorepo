@@ -55,11 +55,11 @@ build_and_push() {
 
     # Build and push Workflow Engine
     echo -e "${YELLOW}Building Workflow Engine...${NC}"
-    cd apps/backend/workflow_engine
-    docker build --target production -t $PROJECT_NAME/workflow-engine:latest .
+    cd apps/backend
+    docker build --target production -f workflow_engine/Dockerfile -t $PROJECT_NAME/workflow-engine:latest .
     docker tag $PROJECT_NAME/workflow-engine:latest $(aws sts get-caller-identity --query Account --output text).dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT_NAME/workflow-engine:latest
     docker push $(aws sts get-caller-identity --query Account --output text).dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT_NAME/workflow-engine:latest
-    cd ../../..
+    cd ../..
 
     echo -e "${GREEN}✅ Images built and pushed successfully${NC}"
 }
