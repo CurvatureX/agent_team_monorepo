@@ -30,6 +30,9 @@ dependencies = [
     "grpcio>=1.68.0",
     "grpcio-tools>=1.68.0",
     "protobuf>=5.26.1,<6.0.0",
+    
+    # JSON Schema validation
+    "jsonschema>=4.0.0",
 ]
 
 [project.optional-dependencies]

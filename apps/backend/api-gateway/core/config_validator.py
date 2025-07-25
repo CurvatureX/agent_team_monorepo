@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 import structlog
 from pydantic import ValidationError
 
-from .config import settings
+from app.config import settings
 from .mcp_exceptions import MCPError, MCPErrorType
 
 logger = structlog.get_logger()

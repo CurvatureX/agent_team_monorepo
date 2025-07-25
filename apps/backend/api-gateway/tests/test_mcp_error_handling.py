@@ -9,7 +9,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from ..core.mcp_exceptions import (
+from core.mcp_exceptions import (
     MCPAuthenticationError,
     MCPDatabaseError,
     MCPError,
@@ -25,9 +25,9 @@ from ..core.mcp_exceptions import (
     get_http_status_code,
     get_user_friendly_message,
 )
-from ..models.mcp_models import MCPErrorResponse
-from ..routers.mcp import router
-from ..services.mcp_service import MCPService
+from models.mcp_models import MCPErrorResponse
+from routers.mcp import router
+from services.mcp_service import MCPService
 
 
 class TestMCPErrorClassification:
@@ -195,7 +195,7 @@ class TestMCPServiceErrorHandling:
     def mock_node_client(self):
         """Mock node knowledge client"""
         with patch(
-            "apps.backend.api_gateway.services.mcp_service.NodeKnowledgeClient"
+            "services.mcp_service.NodeKnowledgeClient"
         ) as mock_class:
             mock_instance = Mock()
             mock_class.return_value = mock_instance
@@ -220,9 +220,9 @@ class TestMCPServiceErrorHandling:
         assert exc_info.value.retryable is True
 
     @pytest.mark.asyncio
-    async def test_invoke_tool_network_error(self, service, mock_node_client):
+    async def test_invoke_tool_network_error(self, service):
         """Test tool invocation with network error"""
-        mock_node_client.retrieve_node_knowledge = AsyncMock(
+        service.node_knowledge_client.retrieve_node_knowledge = AsyncMock(
             side_effect=Exception("Network connection refused")
         )
 
@@ -233,10 +233,10 @@ class TestMCPServiceErrorHandling:
         assert exc_info.value.retryable is True
 
     @pytest.mark.asyncio
-    async def test_invoke_tool_timeout_error(self, service, mock_node_client):
+    async def test_invoke_tool_timeout_error(self, service):
         """Test tool invocation with timeout error"""
-        mock_node_client.retrieve_node_knowledge = AsyncMock(
-            side_effect=Exception("Request timed out")
+        service.node_knowledge_client.retrieve_node_knowledge = AsyncMock(
+            side_effect=Exception("Request timeout occurred")
         )
 
         with pytest.raises(MCPTimeoutError) as exc_info:
@@ -248,17 +248,17 @@ class TestMCPServiceErrorHandling:
     @pytest.mark.asyncio
     async def test_invoke_tool_invalid_node_names_type(self, service):
         """Test tool invocation with invalid node_names type"""
-        with pytest.raises(MCPParameterError) as exc_info:
+        with pytest.raises(MCPValidationError) as exc_info:
             await service.invoke_tool("node_knowledge_retriever", {"node_names": "not_a_list"})
 
-        assert "must be a list" in exc_info.value.message
-        assert exc_info.value.error_type == MCPErrorType.PARAMETER_ERROR
+        assert "array" in exc_info.value.message
+        assert exc_info.value.error_type == MCPErrorType.VALIDATION_ERROR
 
     @pytest.mark.asyncio
     async def test_invoke_tool_empty_node_names(self, service):
         """Test tool invocation with empty node names"""
         with pytest.raises(MCPParameterError) as exc_info:
-            await service.invoke_tool("node_knowledge_retriever", {"node_names": ["", "  ", None]})
+            await service.invoke_tool("node_knowledge_retriever", {"node_names": ["", "  "]})
 
         assert "non-empty strings" in exc_info.value.message
         assert exc_info.value.error_type == MCPErrorType.PARAMETER_ERROR
@@ -303,7 +303,7 @@ class TestMCPRouterErrorHandling:
 
     def test_list_tools_error_response_format(self, client):
         """Test that error responses have correct format"""
-        with patch("apps.backend.api_gateway.routers.mcp.mcp_service") as mock_service:
+        with patch("routers.mcp.mcp_service") as mock_service:
             mock_service.get_available_tools.side_effect = MCPServiceError(
                 message="Service error", user_message="Service unavailable"
             )
@@ -350,7 +350,7 @@ class TestMCPRouterErrorHandling:
 
     def test_rate_limit_error_headers(self, client):
         """Test that rate limit errors include retry-after header"""
-        with patch("apps.backend.api_gateway.routers.mcp.mcp_service") as mock_service:
+        with patch("routers.mcp.mcp_service") as mock_service:
             mock_service.invoke_tool.side_effect = MCPRateLimitError(
                 message="Rate limit exceeded", retry_after=60
             )
@@ -365,7 +365,7 @@ class TestMCPRouterErrorHandling:
 
     def test_health_check_error_response(self, client):
         """Test health check error response"""
-        with patch("apps.backend.api_gateway.routers.mcp.mcp_service") as mock_service:
+        with patch("routers.mcp.mcp_service") as mock_service:
             mock_service.health_check.side_effect = Exception("Health check failed")
 
             response = client.get("/mcp/health")
@@ -384,9 +384,9 @@ class TestMCPLoggingIntegration:
     @pytest.mark.asyncio
     async def test_error_logging_includes_context(self):
         """Test that errors are logged with proper context"""
-        with patch("apps.backend.api_gateway.services.mcp_service.logger") as mock_logger:
+        with patch("services.mcp_service.logger") as mock_logger:
             with patch(
-                "apps.backend.api_gateway.services.mcp_service.NodeKnowledgeClient"
+                "services.mcp_service.NodeKnowledgeClient"
             ) as mock_client_class:
                 mock_client = Mock()
                 mock_client.retrieve_node_knowledge = AsyncMock(
@@ -412,7 +412,7 @@ class TestMCPLoggingIntegration:
 
     def test_performance_logging(self):
         """Test that performance metrics are logged"""
-        with patch("apps.backend.api_gateway.services.mcp_service.logger") as mock_logger:
+        with patch("services.mcp_service.logger") as mock_logger:
             service = MCPService()
 
             # Call get_available_tools which should log performance

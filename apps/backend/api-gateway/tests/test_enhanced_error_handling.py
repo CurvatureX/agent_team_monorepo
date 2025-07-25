@@ -10,7 +10,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from ..core.mcp_exceptions import (
+from core.mcp_exceptions import (
     MCPAuthenticationError,
     MCPDatabaseError,
     MCPError,
@@ -28,7 +28,7 @@ from ..core.mcp_exceptions import (
     get_support_info,
     get_user_friendly_message,
 )
-from ..models.mcp_models import MCPErrorResponse
+from models.mcp_models import MCPErrorResponse
 
 
 class TestEnhancedErrorHandling:
@@ -152,8 +152,9 @@ class TestErrorClassificationEnhancements:
         postgres_error = Exception("PostgreSQL: connection refused")
         classified = classify_error(postgres_error)
 
-        assert isinstance(classified, MCPDatabaseError)
-        assert classified.error_type == MCPErrorType.DATABASE_ERROR
+        # Connection refused should be classified as network error, not database error
+        assert isinstance(classified, MCPNetworkError)
+        assert classified.error_type == MCPErrorType.NETWORK_ERROR
 
     def test_classify_dns_error(self):
         """Test classification of DNS errors"""
@@ -186,23 +187,25 @@ class TestLoggingEnhancements:
     @pytest.mark.asyncio
     async def test_request_logging_includes_mcp_context(self):
         """Test that MCP requests are properly categorized in logs"""
-        from ..core.logging_middleware import MCPLoggingMiddleware
+        from core.logging_middleware import MCPLoggingMiddleware
 
         # Mock request
         mock_request = Mock()
         mock_request.method = "POST"
-        mock_request.url.path = "/mcp/invoke"
         mock_request.url = Mock()
+        mock_request.url.path = "/mcp/invoke"
         mock_request.url.__str__ = Mock(return_value="http://test.com/mcp/invoke")
         mock_request.query_params = {}
-        mock_request.headers = {"content-type": "application/json"}
+        mock_request.headers = Mock()
+        mock_request.headers.get = Mock(side_effect=lambda k, default=None: {"content-type": "application/json"}.get(k, default))
+        mock_request.client = Mock()
         mock_request.client.host = "127.0.0.1"
         mock_request.body = AsyncMock(return_value=b'{"tool_name": "test"}')
         mock_request.state = Mock()
 
         middleware = MCPLoggingMiddleware(Mock())
 
-        with patch("apps.backend.api_gateway.core.logging_middleware.logger") as mock_logger:
+        with patch("core.logging_middleware.logger") as mock_logger:
             await middleware._log_request(mock_request, "test-request-id")
 
             # Verify MCP context was logged
@@ -216,13 +219,13 @@ class TestLoggingEnhancements:
     @pytest.mark.asyncio
     async def test_response_logging_includes_performance_category(self):
         """Test that response logging includes performance categorization"""
-        from ..core.logging_middleware import MCPLoggingMiddleware
+        from core.logging_middleware import MCPLoggingMiddleware
 
         # Mock request and response
         mock_request = Mock()
         mock_request.method = "GET"
-        mock_request.url.path = "/mcp/tools"
         mock_request.url = Mock()
+        mock_request.url.path = "/mcp/tools"
         mock_request.url.__str__ = Mock(return_value="http://test.com/mcp/tools")
 
         mock_response = Mock()
@@ -232,7 +235,7 @@ class TestLoggingEnhancements:
 
         middleware = MCPLoggingMiddleware(Mock())
 
-        with patch("apps.backend.api_gateway.core.logging_middleware.logger") as mock_logger:
+        with patch("core.logging_middleware.logger") as mock_logger:
             # Test slow response (> 2 seconds)
             await middleware._log_response(mock_request, mock_response, "test-id", 3.5)
 
