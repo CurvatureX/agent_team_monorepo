@@ -2,12 +2,12 @@
 Tests for startup health checks
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
-from ..core.config_validator import ConfigurationError
-from ..core.startup_checks import (
+from core.config_validator import ConfigurationError
+from core.startup_checks import (
     StartupCheckError,
     StartupHealthChecker,
     log_startup_status,
@@ -30,7 +30,7 @@ class TestStartupHealthChecker:
             patch.object(checker, "_check_configuration") as mock_config,
             patch.object(checker, "_check_supabase_connection") as mock_supabase,
             patch.object(checker, "_check_node_knowledge_service") as mock_node_knowledge,
-            patch("api_gateway.core.startup_checks.settings") as mock_settings,
+            patch("core.startup_checks.settings") as mock_settings,
         ):
             mock_settings.MCP_ENABLED = True
 
@@ -64,7 +64,7 @@ class TestStartupHealthChecker:
         """Test startup checks when MCP is disabled"""
         with (
             patch.object(checker, "_check_configuration") as mock_config,
-            patch("api_gateway.core.startup_checks.settings") as mock_settings,
+            patch("core.startup_checks.settings") as mock_settings,
         ):
             mock_settings.MCP_ENABLED = False
 
@@ -84,7 +84,7 @@ class TestStartupHealthChecker:
     async def test_check_configuration_success(self, checker):
         """Test successful configuration check"""
         with patch(
-            "api_gateway.core.startup_checks.validate_environment_variables"
+            "core.startup_checks.validate_environment_variables"
         ) as mock_validate:
             mock_validate.return_value = {
                 "valid": True,
@@ -102,7 +102,7 @@ class TestStartupHealthChecker:
     async def test_check_configuration_failure(self, checker):
         """Test configuration check failure"""
         with patch(
-            "api_gateway.core.startup_checks.validate_environment_variables"
+            "core.startup_checks.validate_environment_variables"
         ) as mock_validate:
             mock_validate.side_effect = ConfigurationError("Config error", ["TEST_VAR"])
 
@@ -117,8 +117,8 @@ class TestStartupHealthChecker:
     async def test_check_supabase_connection_success(self, checker):
         """Test successful Supabase connection check"""
         with (
-            patch("api_gateway.core.startup_checks.create_client") as mock_create_client,
-            patch("api_gateway.core.startup_checks.settings") as mock_settings,
+            patch("core.startup_checks.create_client") as mock_create_client,
+            patch("core.startup_checks.settings") as mock_settings,
         ):
             mock_settings.NODE_KNOWLEDGE_SUPABASE_URL = "https://test.supabase.co"
             mock_settings.NODE_KNOWLEDGE_SUPABASE_KEY = "test-key"
@@ -140,13 +140,15 @@ class TestStartupHealthChecker:
     @pytest.mark.asyncio
     async def test_check_node_knowledge_service_success(self, checker):
         """Test successful Node Knowledge service check"""
-        with patch("api_gateway.core.startup_checks.NodeKnowledgeClient") as mock_client_class:
+        with patch("core.startup_checks.get_node_knowledge_client") as mock_get_client:
             mock_client = MagicMock()
             mock_client.health_check.return_value = {
                 "healthy": True,
                 "total_records": 10,
             }
+            mock_client_class = Mock()
             mock_client_class.return_value = mock_client
+            mock_get_client.return_value = mock_client_class
 
             result = await checker._check_node_knowledge_service()
 
@@ -161,7 +163,7 @@ class TestUtilityFunctions:
     @pytest.mark.asyncio
     async def test_run_startup_checks_success(self):
         """Test successful startup checks function"""
-        with patch("api_gateway.core.startup_checks.StartupHealthChecker") as mock_checker_class:
+        with patch("core.startup_checks.StartupHealthChecker") as mock_checker_class:
             mock_checker = MagicMock()
             mock_checker.run_all_checks = AsyncMock(return_value={"healthy": True})
             mock_checker_class.return_value = mock_checker
@@ -182,8 +184,8 @@ class TestUtilityFunctions:
         }
 
         with (
-            patch("api_gateway.core.startup_checks.logger") as mock_logger,
-            patch("api_gateway.core.startup_checks.settings") as mock_settings,
+            patch("core.startup_checks.logger") as mock_logger,
+            patch("core.startup_checks.settings") as mock_settings,
         ):
             mock_settings.MCP_ENABLED = True
 

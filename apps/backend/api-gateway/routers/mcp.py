@@ -9,7 +9,7 @@ import structlog
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from ..core.mcp_exceptions import (
+from core.mcp_exceptions import (
     MCPError,
     MCPParameterError,
     MCPToolNotFoundError,
@@ -20,13 +20,13 @@ from ..core.mcp_exceptions import (
     get_support_info,
     get_user_friendly_message,
 )
-from ..models.mcp_models import (
+from models.mcp_models import (
     MCPErrorResponse,
     MCPInvokeRequest,
     MCPInvokeResponse,
     MCPToolsResponse,
 )
-from ..services.mcp_service import MCPService
+from services.mcp_service import MCPService
 
 logger = structlog.get_logger()
 

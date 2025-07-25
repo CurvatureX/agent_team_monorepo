@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ..core.config_validator import (
+from core.config_validator import (
     ConfigurationError,
     ConfigValidator,
     get_missing_env_vars_message,
@@ -20,7 +20,7 @@ class TestConfigValidator:
 
     def test_validate_all_success(self):
         """Test successful validation with all required settings"""
-        with patch("api_gateway.core.config_validator.settings") as mock_settings:
+        with patch("core.config_validator.settings") as mock_settings:
             # Mock valid settings
             mock_settings.APP_NAME = "Test API Gateway"
             mock_settings.MCP_ENABLED = True
@@ -44,7 +44,7 @@ class TestConfigValidator:
 
     def test_validate_mcp_disabled(self):
         """Test validation when MCP is disabled"""
-        with patch("api_gateway.core.config_validator.settings") as mock_settings:
+        with patch("core.config_validator.settings") as mock_settings:
             # Mock settings with MCP disabled
             mock_settings.APP_NAME = "Test API Gateway"
             mock_settings.MCP_ENABLED = False
@@ -68,7 +68,7 @@ class TestConfigValidator:
 
     def test_missing_supabase_credentials(self):
         """Test validation failure when Supabase credentials are missing"""
-        with patch("api_gateway.core.config_validator.settings") as mock_settings:
+        with patch("core.config_validator.settings") as mock_settings:
             mock_settings.APP_NAME = "Test API Gateway"
             mock_settings.MCP_ENABLED = True
             mock_settings.NODE_KNOWLEDGE_SUPABASE_URL = ""
@@ -93,7 +93,7 @@ class TestConfigValidator:
 
     def test_default_secret_key(self):
         """Test validation failure with default secret key"""
-        with patch("api_gateway.core.config_validator.settings") as mock_settings:
+        with patch("core.config_validator.settings") as mock_settings:
             mock_settings.APP_NAME = "Test API Gateway"
             mock_settings.MCP_ENABLED = False
             mock_settings.NODE_KNOWLEDGE_DEFAULT_THRESHOLD = 0.5
@@ -113,7 +113,7 @@ class TestConfigValidator:
 
             assert "SECRET_KEY must be set to a secure value" in str(exc_info.value)
 
-    @patch("api_gateway.core.config_validator.ConfigValidator.validate_all")
+    @patch("core.config_validator.ConfigValidator.validate_all")
     def test_validate_environment_variables_success(self, mock_validate):
         """Test successful environment variables validation"""
         mock_validate.return_value = {"valid": True, "errors": [], "warnings": []}
