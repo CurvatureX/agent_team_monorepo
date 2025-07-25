@@ -6,8 +6,8 @@ from typing import Any, Dict, List
 
 import structlog
 
-from ..core.config import settings
-from ..core.mcp_exceptions import MCPParameterError, MCPServiceError
+from app.config import settings
+from core.mcp_exceptions import MCPParameterError, MCPServiceError
 
 logger = structlog.get_logger()
 
