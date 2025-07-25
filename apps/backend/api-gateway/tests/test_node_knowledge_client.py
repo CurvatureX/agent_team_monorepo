@@ -7,9 +7,9 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from ..clients.node_knowledge_client import NodeKnowledgeClient
-from ..core.mcp_exceptions import MCPDatabaseError, MCPParameterError
-from ..models.mcp_models import NodeKnowledgeResponse, NodeKnowledgeResult
+from clients.node_knowledge_client import NodeKnowledgeClient
+from core.mcp_exceptions import MCPDatabaseError, MCPParameterError
+from models.mcp_models import NodeKnowledgeResponse, NodeKnowledgeResult
 
 
 class TestNodeKnowledgeClient:
@@ -28,12 +28,10 @@ class TestNodeKnowledgeClient:
         """Create NodeKnowledgeClient with mocked Supabase"""
         mock_client, _ = mock_supabase_client
 
-        with patch(
-            "apps.backend.api_gateway.clients.node_knowledge_client.create_client"
-        ) as mock_create:
-            mock_create.return_value = mock_client
-            client = NodeKnowledgeClient()
-            return client
+        # Create client and manually set supabase for testing
+        client = NodeKnowledgeClient()
+        client.supabase = mock_client
+        return client
 
     @pytest.mark.asyncio
     async def test_retrieve_node_knowledge_success(self, client, mock_supabase_client):
@@ -226,7 +224,7 @@ class TestNodeKnowledgeClient:
 
     def test_initialization_without_credentials(self):
         """Test client initialization without Supabase credentials"""
-        with patch("apps.backend.api_gateway.core.config.settings") as mock_settings:
+        with patch("app.config.settings") as mock_settings:
             mock_settings.NODE_KNOWLEDGE_SUPABASE_URL = ""
             mock_settings.NODE_KNOWLEDGE_SUPABASE_KEY = ""
 

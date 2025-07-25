@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from ..core.mcp_exceptions import MCPParameterError
-from ..models.mcp_models import NodeKnowledgeResponse, NodeKnowledgeResult
-from ..services.mcp_service import MCPService
+from core.mcp_exceptions import MCPParameterError
+from models.mcp_models import NodeKnowledgeResponse, NodeKnowledgeResult
+from services.mcp_service import MCPService
 
 
 class TestNodeKnowledgeRetrieverTool:

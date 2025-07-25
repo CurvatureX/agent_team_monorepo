@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 import structlog
 from supabase import Client, create_client
 
-from core.config import settings
+from app.config import settings
 from core.mcp_exceptions import MCPDatabaseError, MCPParameterError
 from models.mcp_models import NodeKnowledgeResponse, NodeKnowledgeResult
 

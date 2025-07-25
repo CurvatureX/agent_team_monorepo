@@ -9,9 +9,9 @@ import jsonschema
 import structlog
 from jsonschema import ValidationError
 
-from ..clients.elasticsearch_client import ElasticsearchClient
-from ..clients.node_knowledge_client import NodeKnowledgeClient
-from ..core.mcp_exceptions import (
+from clients.elasticsearch_client import ElasticsearchClient
+from clients.node_knowledge_client import NodeKnowledgeClient
+from core.mcp_exceptions import (
     MCPDatabaseError,
     MCPNetworkError,
     MCPParameterError,
@@ -21,7 +21,7 @@ from ..core.mcp_exceptions import (
     MCPValidationError,
     classify_error,
 )
-from ..models.mcp_models import TOOL_REGISTRY, MCPInvokeResponse, MCPToolSchema, MCPToolsResponse
+from models.mcp_models import TOOL_REGISTRY, MCPInvokeResponse, MCPToolSchema, MCPToolsResponse
 
 logger = structlog.get_logger()
 

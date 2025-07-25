@@ -45,6 +45,19 @@ class Settings(BaseSettings):
     # Rate Limiting (for future implementation)
     RATE_LIMIT_PER_MINUTE: int = 60
     
+    # MCP Configuration
+    MCP_ENABLED: bool = True
+    NODE_KNOWLEDGE_SUPABASE_URL: str = ""
+    NODE_KNOWLEDGE_SUPABASE_KEY: str = ""
+    NODE_KNOWLEDGE_DEFAULT_THRESHOLD: float = 0.5
+    MCP_MAX_RESULTS_PER_TOOL: int = 100
+    SECRET_KEY: str = "your-secret-key-here"
+    ELASTICSEARCH_HOST: str = "localhost"
+    ELASTICSEARCH_PORT: int = 9200
+    
+    # Application Information
+    APP_NAME: str = "API Gateway MVP"
+    
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

@@ -6,32 +6,22 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from ..core.mcp_exceptions import MCPParameterError, MCPToolNotFoundError, MCPValidationError
-from ..models.mcp_models import (
+from core.mcp_exceptions import MCPParameterError, MCPToolNotFoundError, MCPValidationError
+from models.mcp_models import (
     MCPInvokeResponse,
     MCPToolsResponse,
     NodeKnowledgeResponse,
     NodeKnowledgeResult,
 )
-from ..services.mcp_service import MCPService
+from services.mcp_service import MCPService
 
 
 class TestMCPService:
     """Test cases for MCPService"""
 
     @pytest.fixture
-    def mock_node_client(self):
-        """Mock node knowledge client"""
-        with patch(
-            "apps.backend.api_gateway.services.mcp_service.NodeKnowledgeClient"
-        ) as mock_class:
-            mock_instance = Mock()
-            mock_class.return_value = mock_instance
-            return mock_instance
-
-    @pytest.fixture
-    def service(self, mock_node_client):
-        """Create MCPService with mocked dependencies"""
+    def service(self):
+        """Create MCPService with real client but we'll mock it per test"""
         return MCPService()
 
     def test_get_available_tools(self, service):
@@ -62,7 +52,7 @@ class TestMCPService:
         assert exc_info.value.user_message == "unknown tool"
 
     @pytest.mark.asyncio
-    async def test_invoke_node_knowledge_retriever_success(self, service, mock_node_client):
+    async def test_invoke_node_knowledge_retriever_success(self, service):
         """Test successful node knowledge retriever invocation"""
         # Mock successful response
         mock_response = NodeKnowledgeResponse(
@@ -79,7 +69,8 @@ class TestMCPService:
             processing_time_ms=100,
         )
 
-        mock_node_client.retrieve_node_knowledge = AsyncMock(return_value=mock_response)
+        # Mock the service's node knowledge client method
+        service.node_knowledge_client.retrieve_node_knowledge = AsyncMock(return_value=mock_response)
 
         # Test invocation
         result = await service.invoke_tool(
@@ -164,9 +155,9 @@ class TestMCPService:
         with pytest.raises(MCPToolNotFoundError):
             service.get_tool_info("nonexistent_tool")
 
-    def test_health_check_success(self, service, mock_node_client):
+    def test_health_check_success(self, service):
         """Test successful health check"""
-        mock_node_client.health_check.return_value = {"healthy": True}
+        service.node_knowledge_client.health_check = Mock(return_value={"healthy": True})
 
         result = service.health_check()
 
@@ -176,9 +167,9 @@ class TestMCPService:
         assert "node_knowledge_client" in result
         assert len(result["available_tools"]) >= 2
 
-    def test_health_check_failure(self, service, mock_node_client):
+    def test_health_check_failure(self, service):
         """Test health check with client failure"""
-        mock_node_client.health_check.side_effect = Exception("Client error")
+        service.node_knowledge_client.health_check = Mock(side_effect=Exception("Client error"))
 
         result = service.health_check()
 
@@ -187,9 +178,9 @@ class TestMCPService:
         assert "available_tools" in result  # Should still return tool info
 
     @pytest.mark.asyncio
-    async def test_invoke_tool_client_error(self, service, mock_node_client):
+    async def test_invoke_tool_client_error(self, service):
         """Test tool invocation with client error"""
-        mock_node_client.retrieve_node_knowledge = AsyncMock(
+        service.node_knowledge_client.retrieve_node_knowledge = AsyncMock(
             side_effect=Exception("Database connection failed")
         )
 
