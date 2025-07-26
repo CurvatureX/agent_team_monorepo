@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from app.config import settings
 from app.database import init_supabase
 from app.models import HealthResponse
-from app.api import session, chat, workflow
+from app.api import session, chat
 from app.services.grpc_client import workflow_client
 from app.utils import log_info, log_warning, log_error, log_exception
 
@@ -71,7 +71,8 @@ app.add_middleware(
 # Include API routers - Frontend handles auth, backend verifies tokens
 app.include_router(session.router, prefix="/api/v1", tags=["session"])
 app.include_router(chat.router, prefix="/api/v1", tags=["chat"])
-app.include_router(workflow.router, prefix="/api/v1", tags=["workflow"])
+# Workflow endpoints removed - workflow generation now integrated into chat stream
+# app.include_router(workflow.router, prefix="/api/v1", tags=["workflow"])
 
 
 # Basic health check
@@ -97,14 +98,13 @@ async def root():
             "JWT Token Verification",
             "Session Management with Actions", 
             "Chat API with SSE Streaming",
-            "Workflow Generation Progress Tracking"
+            "Integrated Workflow Generation in Chat"
         ],
         "endpoints": {
             "docs": "/docs",
             "health": "/health",
             "sessions": "/api/v1/session",
-            "chat": "/api/v1/chat/stream",
-            "workflow": "/api/v1/workflow_generation"
+            "chat": "/api/v1/chat/stream"
         }
     }
 
