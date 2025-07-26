@@ -13,12 +13,14 @@ RUN apt-get update && apt-get install -y \
 # Install uv
 RUN pip install uv
 
-# Copy dependency files
+# Copy workspace files from parent directory (context should be apps/backend)
 COPY pyproject.toml ./
-COPY .python-version* ./
+COPY uv.lock ./
+COPY api-gateway/pyproject.toml ./api-gateway/
+COPY api-gateway/.python-version* ./api-gateway/
 
 # Install Python dependencies with uv
-RUN uv sync --frozen
+RUN uv sync --frozen --package api-gateway-mvp
 
 # Production stage
 FROM python:3.11-slim AS production
@@ -35,7 +37,7 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /app/.venv /app/.venv
 
 # Copy application code
-COPY . ./
+COPY api-gateway/ ./
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash --uid 1000 app && \

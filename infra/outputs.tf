@@ -33,6 +33,11 @@ output "workflow_engine_service_name" {
   value       = aws_ecs_service.workflow_engine.name
 }
 
+output "workflow_agent_service_name" {
+  description = "Name of the Workflow Agent ECS service"
+  value       = aws_ecs_service.workflow_agent.name
+}
+
 output "load_balancer_dns_name" {
   description = "DNS name of the load balancer"
   value       = aws_lb.main.dns_name
@@ -53,14 +58,10 @@ output "ecr_repository_urls" {
   value = {
     api_gateway     = aws_ecr_repository.api_gateway.repository_url
     workflow_engine = aws_ecr_repository.workflow_engine.repository_url
+    workflow_agent  = aws_ecr_repository.workflow_agent.repository_url
   }
 }
 
-output "rds_endpoint" {
-  description = "RDS instance endpoint"
-  value       = aws_db_instance.main.endpoint
-  sensitive   = true
-}
 
 output "redis_endpoint" {
   description = "ElastiCache Redis endpoint"
