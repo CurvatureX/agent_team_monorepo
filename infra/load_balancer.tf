@@ -15,7 +15,7 @@ resource "aws_lb" "main" {
 
 # Target Group for API Gateway
 resource "aws_lb_target_group" "api_gateway" {
-  name        = "${local.name_prefix}-api-gateway-tg"
+  name        = "${local.name_prefix}-api-tg"
   port        = 8000
   protocol    = "HTTP"
   vpc_id      = aws_vpc.main.id
