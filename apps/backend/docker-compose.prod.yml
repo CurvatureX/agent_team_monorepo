@@ -4,8 +4,8 @@ services:
   # API Gateway Service - Production
   api-gateway:
     build:
-      context: ./api-gateway
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./api-gateway/Dockerfile
       target: production
     environment:
       - DEBUG=false

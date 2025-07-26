@@ -50,6 +50,17 @@ COPY --from=builder /install /usr/local
 COPY --from=builder /app/workflow_engine ./
 COPY --from=builder /app/shared ./shared
 
+# Generate protobuf files
+RUN python -m grpc_tools.protoc \
+    --python_out=proto \
+    --grpc_python_out=proto \
+    --proto_path=shared/proto/engine \
+    shared/proto/engine/*.proto || echo "Proto generation failed, continuing anyway"
+
+# Fix protobuf imports
+RUN find proto -name "*_pb2_grpc.py" -exec sed -i 's/^import \([a-zA-Z_][a-zA-Z0-9_]*_pb2\) as /from . import \1 as /g' {} \; || true
+RUN find proto -name "*_pb2.py" -exec sed -i 's/^import \([a-zA-Z_][a-zA-Z0-9_]*_pb2\) as /from . import \1 as /g' {} \; || true
+
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash --uid 1000 app && \
     chown -R app:app /app && \

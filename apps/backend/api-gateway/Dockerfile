@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y \
 # Install uv
 RUN pip install uv
 
-# Copy workspace files
+# Copy workspace files from parent directory (context should be apps/backend)
 COPY pyproject.toml ./
 COPY uv.lock ./
 COPY api-gateway/pyproject.toml ./api-gateway/

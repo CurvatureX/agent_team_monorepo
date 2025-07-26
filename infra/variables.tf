@@ -66,6 +66,18 @@ variable "workflow_engine_memory" {
   default     = 2048
 }
 
+variable "workflow_agent_cpu" {
+  description = "CPU units for Workflow Agent service"
+  type        = number
+  default     = 512
+}
+
+variable "workflow_agent_memory" {
+  description = "Memory for Workflow Agent service"
+  type        = number
+  default     = 1024
+}
+
 variable "desired_count" {
   description = "Desired number of tasks"
   type        = number
@@ -85,51 +97,28 @@ variable "certificate_arn" {
   default     = ""
 }
 
-# Database Configuration
-variable "db_instance_class" {
-  description = "RDS instance class"
-  type        = string
-  default     = "db.t3.micro"
-}
-
-variable "db_allocated_storage" {
-  description = "RDS allocated storage"
-  type        = number
-  default     = 20
-}
 
 # Environment Variables
 variable "supabase_url" {
   description = "Supabase URL"
   type        = string
   sensitive   = true
-  default     = ""
 }
 
-variable "supabase_anon_key" {
-  description = "Supabase anonymous key"
+variable "supabase_secret_key" {
+  description = "Supabase secret key (service role key)"
   type        = string
   sensitive   = true
-  default     = ""
-}
-
-variable "supabase_service_role_key" {
-  description = "Supabase service role key"
-  type        = string
-  sensitive   = true
-  default     = ""
 }
 
 variable "openai_api_key" {
   description = "OpenAI API key"
   type        = string
   sensitive   = true
-  default     = ""
 }
 
 variable "anthropic_api_key" {
   description = "Anthropic API key"
   type        = string
   sensitive   = true
-  default     = ""
 }
