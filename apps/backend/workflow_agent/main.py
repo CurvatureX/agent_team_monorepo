@@ -9,8 +9,8 @@ import sys
 import structlog
 from dotenv import load_dotenv
 
-from .core.config import settings
-from .services.grpc_server import WorkflowAgentServer
+from core.config import settings
+from services.grpc_server import WorkflowAgentServer
 
 # Load environment variables
 load_dotenv()
