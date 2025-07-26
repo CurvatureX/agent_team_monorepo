@@ -103,10 +103,6 @@ resource "aws_ecs_task_definition" "api_gateway" {
           value = "8000"
         },
         {
-          name  = "DATABASE_URL"
-          value = "postgresql://postgres:${random_password.db_password.result}@${aws_db_instance.main.endpoint}/agent_team"
-        },
-        {
           name  = "REDIS_URL"
           value = "redis://${aws_elasticache_cluster.redis.cache_nodes[0].address}:6379/0"
         }
@@ -118,12 +114,8 @@ resource "aws_ecs_task_definition" "api_gateway" {
           valueFrom = aws_ssm_parameter.supabase_url.arn
         },
         {
-          name      = "SUPABASE_ANON_KEY"
-          valueFrom = aws_ssm_parameter.supabase_anon_key.arn
-        },
-        {
-          name      = "SUPABASE_SERVICE_ROLE_KEY"
-          valueFrom = aws_ssm_parameter.supabase_service_role_key.arn
+          name      = "SUPABASE_SERVICE_KEY"
+          valueFrom = aws_ssm_parameter.supabase_secret_key.arn
         }
       ]
 
@@ -183,10 +175,6 @@ resource "aws_ecs_task_definition" "workflow_engine" {
         {
           name  = "GRPC_PORT"
           value = "8000"
-        },
-        {
-          name  = "DATABASE_URL"
-          value = "postgresql://postgres:${random_password.db_password.result}@${aws_db_instance.main.endpoint}/agent_team"
         },
         {
           name  = "REDIS_URL"
@@ -256,6 +244,72 @@ resource "aws_ecs_service" "api_gateway" {
   tags = local.common_tags
 }
 
+# Workflow Agent Task Definition
+resource "aws_ecs_task_definition" "workflow_agent" {
+  family                   = "${local.name_prefix}-workflow-agent"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = var.workflow_agent_cpu
+  memory                   = var.workflow_agent_memory
+  execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
+  task_role_arn           = aws_iam_role.ecs_task_role.arn
+
+  container_definitions = jsonencode([
+    {
+      name  = "workflow-agent"
+      image = "${aws_ecr_repository.workflow_agent.repository_url}:${var.image_tag}"
+
+      portMappings = [
+        {
+          containerPort = 8000
+          protocol      = "tcp"
+        }
+      ]
+
+      environment = [
+        {
+          name  = "DEBUG"
+          value = "false"
+        },
+        {
+          name  = "REDIS_URL"
+          value = "redis://${aws_elasticache_cluster.redis.cache_nodes[0].address}:6379/0"
+        }
+      ]
+
+      secrets = [
+        {
+          name      = "OPENAI_API_KEY"
+          valueFrom = aws_ssm_parameter.openai_api_key.arn
+        },
+        {
+          name      = "ANTHROPIC_API_KEY"
+          valueFrom = aws_ssm_parameter.anthropic_api_key.arn
+        }
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.ecs.name
+          awslogs-region        = var.aws_region
+          awslogs-stream-prefix = "workflow-agent"
+        }
+      }
+
+      healthCheck = {
+        command     = ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+        interval    = 30
+        timeout     = 5
+        retries     = 3
+        startPeriod = 60
+      }
+    }
+  ])
+
+  tags = local.common_tags
+}
+
 # ECS Service for Workflow Engine
 resource "aws_ecs_service" "workflow_engine" {
   name            = "workflow-engine-service"
@@ -272,6 +326,27 @@ resource "aws_ecs_service" "workflow_engine" {
 
   service_registries {
     registry_arn = aws_service_discovery_service.workflow_engine.arn
+  }
+
+  tags = local.common_tags
+}
+
+# ECS Service for Workflow Agent
+resource "aws_ecs_service" "workflow_agent" {
+  name            = "workflow-agent-service"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.workflow_agent.arn
+  desired_count   = var.desired_count
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    security_groups  = [aws_security_group.ecs_tasks.id]
+    subnets          = aws_subnet.private[*].id
+    assign_public_ip = false
+  }
+
+  service_registries {
+    registry_arn = aws_service_discovery_service.workflow_agent.arn
   }
 
   tags = local.common_tags
