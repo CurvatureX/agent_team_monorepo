@@ -33,20 +33,20 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy the application code
-COPY workflow_agent/ .
+# Copy the application code maintaining package structure
+COPY workflow_agent/ ./workflow_agent/
 COPY shared/ ./shared/
 
 # Create proto directory and generate protobuf files
-RUN mkdir -p proto && \
+RUN mkdir -p workflow_agent/proto && \
     python -m grpc_tools.protoc \
-    --python_out=proto \
-    --grpc_python_out=proto \
+    --python_out=workflow_agent/proto \
+    --grpc_python_out=workflow_agent/proto \
     --proto_path=shared/proto \
     shared/proto/workflow_agent.proto || echo "Proto generation failed, continuing anyway"
 
 # Fix protobuf imports
-RUN find proto -name "*_pb2_grpc.py" -exec sed -i 's/^import \([a-zA-Z_][a-zA-Z0-9_]*_pb2\) as /from . import \1 as /g' {} \; || true
+RUN find workflow_agent/proto -name "*_pb2_grpc.py" -exec sed -i 's/^import \([a-zA-Z_][a-zA-Z0-9_]*_pb2\) as /from . import \1 as /g' {} \; || true
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash --uid 1000 app && \
@@ -60,5 +60,5 @@ ENV PYTHONUNBUFFERED=1
 # Expose the gRPC port
 EXPOSE 50051
 
-# Run the application
-CMD ["python", "main.py"]
+# Run the application as a module
+CMD ["python", "-m", "workflow_agent.main"]

@@ -12,7 +12,7 @@ from langchain_openai import OpenAIEmbeddings
 from supabase import Client, create_client
 from supabase.client import ClientOptions
 
-from core.config import settings
+from .config import settings
 
 logger = structlog.get_logger()
 
