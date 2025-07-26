@@ -18,19 +18,7 @@ COPY workflow_engine/requirements.txt* ./
 
 # Install dependencies
 RUN pip install --upgrade pip && \
-    pip install --prefix=/install -e ./workflow_engine || \
-    pip install --prefix=/install \
-        fastapi>=0.104.0 \
-        uvicorn[standard]>=0.24.0 \
-        pydantic>=2.5.0 \
-        pydantic-settings>=2.0.0 \
-        sqlalchemy>=2.0.0 \
-        alembic>=1.12.0 \
-        psycopg2-binary>=2.9.0 \
-        redis>=5.0.0 \
-        grpcio>=1.68.0 \
-        grpcio-tools>=1.68.0 \
-        protobuf>=5.26.1,\<6.0.0
+    pip install --prefix=/install -r requirements.txt
 
 # Production stage
 FROM python:3.10-slim AS production

@@ -11,14 +11,8 @@ from typing import Any, Dict, Optional
 import structlog
 from langgraph.graph import END, StateGraph
 
-from agents.nodes import WorkflowAgentNodes
-from agents.state import (
-    ClarificationContext,
-    Conversation,
-    WorkflowOrigin,
-    WorkflowStage,
-    WorkflowState,
-)
+from .nodes import WorkflowAgentNodes
+from .state import ClarificationContext, Conversation, WorkflowOrigin, WorkflowStage, WorkflowState
 
 logger = structlog.get_logger()
 
