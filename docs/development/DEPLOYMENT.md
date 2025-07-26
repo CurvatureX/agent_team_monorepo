@@ -1,11 +1,12 @@
 # Deployment Guide
 
-This guide covers deploying the Agent Team services (API Gateway and Workflow Engine) to AWS ECS using Terraform and GitHub Actions.
+This guide covers deploying the Agent Team services (API Gateway, Workflow Agent, and Workflow Engine) to AWS ECS using Terraform and GitHub Actions.
 
 ## Architecture Overview
 
-- **API Gateway**: FastAPI service running on ECS Fargate
-- **Workflow Engine**: gRPC service running on ECS Fargate
+- **API Gateway**: FastAPI service running on ECS Fargate (HTTP/REST API)
+- **Workflow Agent**: LangGraph-based AI workflow consultant running on ECS Fargate (gRPC service)
+- **Workflow Engine**: Workflow execution engine running on ECS Fargate (gRPC service)
 - **Database**: RDS PostgreSQL
 - **Cache**: ElastiCache Redis
 - **Load Balancer**: Application Load Balancer
@@ -20,6 +21,31 @@ This guide covers deploying the Agent Team services (API Gateway and Workflow En
 3. **Terraform** >= 1.0
 4. **Docker** for local building
 5. **GitHub repository** with Actions enabled
+
+## Monorepo Build Strategy
+
+All backend services use a unified build context (`apps/backend`) for consistent dependency management:
+
+- **Build Context**: `apps/backend` (contains workspace-level `pyproject.toml` and `uv.lock`)
+- **Dockerfiles**: Each service has its own Dockerfile but shares the backend build context
+- **Shared Resources**: Proto definitions and prompts in `apps/backend/shared/`
+- **CI/CD Pipeline**: Tests and builds all three services in parallel
+
+### Service Build Contexts
+
+```yaml
+# GitHub Actions Matrix Strategy
+services:
+  - name: api-gateway
+    context: apps/backend
+    dockerfile: apps/backend/api-gateway/Dockerfile
+  - name: workflow-agent  
+    context: apps/backend
+    dockerfile: apps/backend/workflow_agent/Dockerfile
+  - name: workflow-engine
+    context: apps/backend
+    dockerfile: apps/backend/workflow_engine/Dockerfile
+```
 
 ## Setup Instructions
 
@@ -90,11 +116,14 @@ In your GitHub repository, add these secrets:
 
 1. Push changes to the `main` branch
 2. GitHub Actions will automatically:
-   - Run tests
-   - Build Docker images
-   - Push to ECR
-   - Deploy infrastructure
-   - Update ECS services
+   - Run tests for all three services (api-gateway, workflow-agent, workflow-engine)
+   - Build Docker images using unified build context
+   - Push to ECR repositories:
+     - `agent-team/api-gateway`
+     - `agent-team/workflow-agent`
+     - `agent-team/workflow-engine`
+   - Deploy infrastructure via Terraform
+   - Update all ECS services
 
 ### Method 2: Manual Deployment
 
@@ -135,8 +164,28 @@ Set in `apps/backend/api-gateway/.env`:
 
 ```env
 DEBUG=false
-WORKFLOW_SERVICE_HOST=workflow-engine.agent-team-production.local
-WORKFLOW_SERVICE_PORT=8000
+WORKFLOW_SERVICE_HOST=workflow-agent.agent-team-production.local
+WORKFLOW_SERVICE_PORT=50051
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+```
+
+### Workflow Agent Environment Variables
+
+Set in `apps/backend/workflow_agent/.env`:
+
+```env
+DEBUG=false
+GRPC_HOST=0.0.0.0
+GRPC_PORT=50051
+DATABASE_URL=postgresql://workflow_user:workflow_password@postgres:5432/workflow_agent
+REDIS_URL=redis://redis:6379/0
+OPENAI_API_KEY=your-openai-api-key
+ANTHROPIC_API_KEY=your-anthropic-api-key
+DEFAULT_MODEL_PROVIDER=openai
+DEFAULT_MODEL_NAME=gpt-4
+LANGGRAPH_CHECKPOINT_BACKEND=redis
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
@@ -165,7 +214,7 @@ ANTHROPIC_API_KEY=your-anthropic-api-key
 # Check ECS services
 aws ecs describe-services \
     --cluster agent-team-production-cluster \
-    --services api-gateway-service workflow-engine-service
+    --services api-gateway-service workflow-agent-service workflow-engine-service
 
 # Check service logs
 aws logs tail /ecs/agent-team-production --follow
@@ -203,14 +252,44 @@ aws ecs update-service \
 3. **Reserved Instances**: Use RDS reserved instances for production
 4. **Spot Instances**: Consider Fargate Spot for non-critical workloads
 
+## Service Architecture Details
+
+### Service Communication Flow
+
+```
+Internet → ALB → API Gateway (HTTP/8000) 
+                     ↓ gRPC
+           Workflow Agent (gRPC/50051)
+                     ↓ gRPC  
+           Workflow Engine (gRPC/8000)
+```
+
+### Container Specifications
+
+| Service | Port | Protocol | CPU | Memory | Health Check |
+|---------|------|----------|-----|--------|--------------|
+| API Gateway | 8000 | HTTP | 512 | 1024MB | `/health` |
+| Workflow Agent | 50051 | gRPC | 1024 | 2048MB | gRPC health check |
+| Workflow Engine | 8000 | gRPC | 512 | 1024MB | `/health` |
+
 ## Rollback Procedure
 
 ```bash
-# Rollback to previous task definition
+# Rollback individual services to previous task definition
 aws ecs update-service \
     --cluster agent-team-production-cluster \
     --service api-gateway-service \
     --task-definition agent-team-production-api-gateway:PREVIOUS_REVISION
+
+aws ecs update-service \
+    --cluster agent-team-production-cluster \
+    --service workflow-agent-service \
+    --task-definition agent-team-production-workflow-agent:PREVIOUS_REVISION
+
+aws ecs update-service \
+    --cluster agent-team-production-cluster \
+    --service workflow-engine-service \
+    --task-definition agent-team-production-workflow-engine:PREVIOUS_REVISION
 
 # Or use Terraform to rollback infrastructure
 terraform plan -target=aws_ecs_service.api_gateway

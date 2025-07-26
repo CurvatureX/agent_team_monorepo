@@ -2,80 +2,40 @@
 resource "aws_ssm_parameter" "supabase_url" {
   name  = "/${local.name_prefix}/supabase/url"
   type  = "SecureString"
-  value = var.supabase_url != "" ? var.supabase_url : "placeholder"
+  value = var.supabase_url
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-supabase-url"
   })
-
-  lifecycle {
-    ignore_changes = [value]
-  }
 }
 
-resource "aws_ssm_parameter" "supabase_anon_key" {
-  name  = "/${local.name_prefix}/supabase/anon-key"
+resource "aws_ssm_parameter" "supabase_secret_key" {
+  name  = "/${local.name_prefix}/supabase/secret-key"
   type  = "SecureString"
-  value = var.supabase_anon_key != "" ? var.supabase_anon_key : "placeholder"
+  value = var.supabase_secret_key
 
   tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-supabase-anon-key"
+    Name = "${local.name_prefix}-supabase-secret-key"
   })
-
-  lifecycle {
-    ignore_changes = [value]
-  }
-}
-
-resource "aws_ssm_parameter" "supabase_service_role_key" {
-  name  = "/${local.name_prefix}/supabase/service-role-key"
-  type  = "SecureString"
-  value = var.supabase_service_role_key != "" ? var.supabase_service_role_key : "placeholder"
-
-  tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-supabase-service-role-key"
-  })
-
-  lifecycle {
-    ignore_changes = [value]
-  }
 }
 
 resource "aws_ssm_parameter" "openai_api_key" {
   name  = "/${local.name_prefix}/openai/api-key"
   type  = "SecureString"
-  value = var.openai_api_key != "" ? var.openai_api_key : "placeholder"
+  value = var.openai_api_key
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-openai-api-key"
   })
-
-  lifecycle {
-    ignore_changes = [value]
-  }
 }
 
 resource "aws_ssm_parameter" "anthropic_api_key" {
-  name  = "/${local.name_prefix}/anthropic/api-key"
+  name  = "/${local.name_prefix}/anthropic/api-key"  
   type  = "SecureString"
-  value = var.anthropic_api_key != "" ? var.anthropic_api_key : "placeholder"
+  value = var.anthropic_api_key
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-anthropic-api-key"
-  })
-
-  lifecycle {
-    ignore_changes = [value]
-  }
-}
-
-resource "aws_ssm_parameter" "db_password" {
-  name  = "/${local.name_prefix}/database/password"
-  type  = "SecureString"
-  value = random_password.db_password.result
-
-  tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-db-password"
   })
 }
 
