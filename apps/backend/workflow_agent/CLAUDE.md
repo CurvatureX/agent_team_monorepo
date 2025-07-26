@@ -5,7 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Development Commands
 
 ### Core Development
+- **Project uses uv package manager** - backend directory has existing venv
 - **Install dependencies:** `uv sync --group dev` (uses uv package manager, requires Python 3.13 compatible versions)
+- **Activate environment:** `source venv/bin/activate` (or use uv commands directly)
 - **Run tests:** `pytest` or `pytest tests/` (uses pytest with asyncio support)
 - **Run single test:** `pytest tests/test_specific.py::test_function`
 - **Code formatting:** `black .` (line length 100)
