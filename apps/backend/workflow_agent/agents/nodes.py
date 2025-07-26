@@ -18,6 +18,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from agents.state import (
+    AlternativeOption,
     ClarificationContext,
     Conversation,
     WorkflowOrigin,
@@ -49,16 +50,18 @@ class WorkflowAgentNodes:
             )
         elif settings.DEFAULT_MODEL_PROVIDER == "anthropic":
             return ChatAnthropic(
-                model=settings.DEFAULT_MODEL_NAME,
+                model_name=settings.DEFAULT_MODEL_NAME,
                 api_key=settings.ANTHROPIC_API_KEY,
                 temperature=0.1,
+                timeout=10,
+                stop=["\n\n"],
             )
         else:
             raise ValueError(f"Unsupported model provider: {settings.DEFAULT_MODEL_PROVIDER}")
 
     def _get_session_id(self, state: WorkflowState) -> str:
-        """Get session ID from state metadata"""
-        return state.get("metadata", {}).get("session_id", "")
+        """Get session ID from state"""
+        return state.get("session_id", "")
 
     def _update_conversations(self, state: WorkflowState, role: str, text: str) -> None:
         """Update conversations list in state"""
@@ -96,7 +99,7 @@ class WorkflowAgentNodes:
             # Analyze user input and generate intent summary using proper prompt engine
             prompt_text = await self.prompt_engine.render_prompt(
                 "clarification",
-                origin=origin.value,
+                origin=origin,
                 user_input=user_input,
                 conversations=state.get("conversations", []),
                 rag_context=state.get("rag"),
@@ -236,10 +239,10 @@ class WorkflowAgentNodes:
 
             if gaps:
                 # Capability gaps found - generate alternatives
-                return {**state, "stage": WorkflowStage.GENERATION}
+                return {**state, "stage": WorkflowStage.ALTERNATIVE_GENERATION}
             else:
                 # No gaps - proceed to workflow generation
-                return {**state, "stage": WorkflowStage.GENERATION}
+                return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
 
         except Exception as e:
             logger.error("Gap analysis node failed", error=str(e))
@@ -281,7 +284,24 @@ class WorkflowAgentNodes:
                 alternatives = analysis.get("alternatives", [])
             except json.JSONDecodeError:
                 # Fallback alternatives
-                alternatives = [f"简化版本实现（跳过{gap}）" for gap in gaps[:2]] + ["手动配置替代方案"]
+                alternatives: List[AlternativeOption] = [
+                    AlternativeOption(
+                        id=f"alt_{i+1}",
+                        title=f"简化版本实现（跳过{gap}）",
+                        description=f"跳过{gap}相关功能的简化实现",
+                        approach="简化实现",
+                        trade_offs=[f"不包含{gap}功能"],
+                        complexity="simple"
+                    )
+                    for i, gap in enumerate(gaps[:2])
+                ] + [AlternativeOption(
+                    id="alt_manual",
+                    title="手动配置替代方案",
+                    description="通过手动配置实现所需功能",
+                    approach="手动配置",
+                    trade_offs=["需要手动设置"],
+                    complexity="medium"
+                )]
 
             state["alternatives"] = alternatives
 
@@ -294,7 +314,7 @@ class WorkflowAgentNodes:
             # Set up clarification context for gap resolution
             state["clarification_context"] = ClarificationContext(
                 origin=state.get("clarification_context", {}).get(
-                    "origin", WorkflowOrigin.NEW_WORKFLOW
+                    "origin", WorkflowOrigin.CREATE
                 ),
                 pending_questions=[f"请选择您希望采用的方案（1-{len(alternatives)}）"],
             )
@@ -305,7 +325,7 @@ class WorkflowAgentNodes:
             logger.error("Alternative solution generation node failed", error=str(e))
             return {
                 **state,
-                "stage": WorkflowStage.GENERATION,
+                "stage": WorkflowStage.WORKFLOW_GENERATION,
                 "debug_result": f"Alternative generation error: {str(e)}",
             }
 
@@ -358,13 +378,13 @@ class WorkflowAgentNodes:
                 }
 
             state["current_workflow"] = workflow
-            return {**state, "stage": WorkflowStage.DEBUGGING}
+            return {**state, "stage": WorkflowStage.DEBUG}
 
         except Exception as e:
             logger.error("Workflow generation node failed", error=str(e))
             return {
                 **state,
-                "stage": WorkflowStage.GENERATION,
+                "stage": WorkflowStage.WORKFLOW_GENERATION,
                 "debug_result": f"Workflow generation error: {str(e)}",
             }
 
@@ -477,13 +497,13 @@ class WorkflowAgentNodes:
                 ):
                     # Implementation issues - back to workflow generation
                     logger.info("Debug found implementation issues, returning to generation")
-                    return {**state, "stage": WorkflowStage.GENERATION}
+                    return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
                 else:
                     # Requirement understanding issues - back to clarification
                     logger.info("Debug found requirement issues, returning to clarification")
                     state["clarification_context"] = ClarificationContext(
                         origin=state.get("clarification_context", {}).get(
-                            "origin", WorkflowOrigin.NEW_WORKFLOW
+                            "origin", WorkflowOrigin.CREATE
                         ),
                         pending_questions=[f"工作流验证失败：{'; '.join(errors)}。请提供更多信息以修复这些问题。"],
                     )
@@ -500,7 +520,7 @@ class WorkflowAgentNodes:
             logger.error("Debug node failed", error=str(e))
             return {
                 **state,
-                "stage": WorkflowStage.DEBUGGING,
+                "stage": WorkflowStage.DEBUG,
                 "debug_result": f"Debug error: {str(e)}",
             }
 
@@ -513,8 +533,8 @@ class WorkflowAgentNodes:
             WorkflowStage.CLARIFICATION: "clarification",
             WorkflowStage.NEGOTIATION: "negotiation",
             WorkflowStage.GAP_ANALYSIS: "gap_analysis",
-            WorkflowStage.GENERATION: "workflow_generation",
-            WorkflowStage.DEBUGGING: "debug",
+            WorkflowStage.WORKFLOW_GENERATION: "workflow_generation",
+            WorkflowStage.DEBUG: "debug",
             "completed": "END",
         }
 

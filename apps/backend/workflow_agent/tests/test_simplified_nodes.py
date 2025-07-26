@@ -30,11 +30,11 @@ class TestWorkflowAgentNodes:
     def sample_state(self):
         """Sample workflow state for testing"""
         return {
-            "metadata": {"session_id": "test_session"},
+            "session_id": "test_session",
             "stage": WorkflowStage.CLARIFICATION,
             "execution_history": [],
             "clarification_context": {
-                "origin": WorkflowOrigin.NEW_WORKFLOW,
+                "origin": WorkflowOrigin.CREATE,
                 "pending_questions": [],
             },
             "conversations": [{"role": "user", "text": "我需要邮件自动化系统"}],
@@ -92,7 +92,7 @@ class TestWorkflowAgentNodes:
         # Set up state with pending questions
         sample_state["stage"] = WorkflowStage.NEGOTIATION
         sample_state["clarification_context"] = {
-            "origin": WorkflowOrigin.NEW_WORKFLOW,
+            "origin": WorkflowOrigin.CREATE,
             "pending_questions": ["请详细描述您的需求"],
         }
 
@@ -121,7 +121,7 @@ class TestWorkflowAgentNodes:
         result = await workflow_nodes.gap_analysis_node(sample_state)
 
         # Verify results
-        assert result["stage"] == WorkflowStage.GENERATION
+        assert result["stage"] == WorkflowStage.WORKFLOW_GENERATION
         assert len(result["gaps"]) == 2
         assert "email_authentication" in result["gaps"]
         assert "ai_integration" in result["gaps"]
@@ -141,7 +141,7 @@ class TestWorkflowAgentNodes:
         result = await workflow_nodes.gap_analysis_node(sample_state)
 
         # Should proceed to generation
-        assert result["stage"] == WorkflowStage.GENERATION
+        assert result["stage"] == WorkflowStage.WORKFLOW_GENERATION
         assert len(result["gaps"]) == 0
 
     @pytest.mark.asyncio
@@ -196,7 +196,7 @@ class TestWorkflowAgentNodes:
         result = await workflow_nodes.workflow_generation_node(sample_state)
 
         # Verify results
-        assert result["stage"] == WorkflowStage.DEBUGGING
+        assert result["stage"] == WorkflowStage.DEBUG
         assert "current_workflow" in result
         assert result["current_workflow"]["id"] == "workflow-12345"
         assert len(result["current_workflow"]["nodes"]) == 2
@@ -215,7 +215,7 @@ class TestWorkflowAgentNodes:
         result = await workflow_nodes.workflow_generation_node(sample_state)
 
         # Should create fallback workflow
-        assert result["stage"] == WorkflowStage.DEBUGGING
+        assert result["stage"] == WorkflowStage.DEBUG
         assert "current_workflow" in result
         assert "workflow-" in result["current_workflow"]["id"]
         assert len(result["current_workflow"]["nodes"]) == 2  # start and process nodes
@@ -249,7 +249,7 @@ class TestWorkflowAgentNodes:
         result = await workflow_nodes.debug_node(sample_state)
 
         # Should detect errors and return to generation
-        assert result["stage"] == WorkflowStage.GENERATION
+        assert result["stage"] == WorkflowStage.WORKFLOW_GENERATION
         assert '"success": false' in result["debug_result"]
         assert "Empty workflow" in result["debug_result"]
 
@@ -278,8 +278,8 @@ class TestWorkflowAgentNodes:
             (WorkflowStage.CLARIFICATION, "clarification"),
             (WorkflowStage.NEGOTIATION, "negotiation"),
             (WorkflowStage.GAP_ANALYSIS, "gap_analysis"),
-            (WorkflowStage.GENERATION, "workflow_generation"),
-            (WorkflowStage.DEBUGGING, "debug"),
+            (WorkflowStage.WORKFLOW_GENERATION, "workflow_generation"),
+            (WorkflowStage.DEBUG, "debug"),
             (WorkflowStage.COMPLETED, "END"),
         ]
 

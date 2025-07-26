@@ -43,19 +43,17 @@ class RAGTool:
                 id=entry.id,
                 content=entry.content,
                 metadata=entry.metadata,
-                score=entry.similarity,
+                similarity=entry.similarity,
             )
             for entry in retrieved_entries
         ]
 
         # 3. Update the WorkflowState
         if "rag" not in state or state["rag"] is None:
-            state["rag"] = RAGContext(last_query="", retrieved=[], selected=[])
+            state["rag"] = RAGContext(query="", results=[])
 
-        state["rag"]["last_query"] = query
-        state["rag"]["retrieved"] = retrieved_docs
-        # Initially, all retrieved documents are selected
-        state["rag"]["selected"] = [doc["id"] for doc in retrieved_docs]
+        state["rag"]["query"] = query
+        state["rag"]["results"] = retrieved_docs
 
         logger.info("Updated state with RAG context", num_retrieved=len(retrieved_docs))
 

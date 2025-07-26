@@ -5,12 +5,16 @@ Workflow Agent Service - LangGraph-based AI Agent for workflow generation
 import asyncio
 import signal
 import sys
+from pathlib import Path
+
+# Add the current directory to Python path to enable absolute imports
+sys.path.insert(0, str(Path(__file__).parent))
 
 import structlog
 from dotenv import load_dotenv
 
-from .core.config import settings
-from .services.grpc_server import WorkflowAgentServer
+from core.config import settings
+from services.grpc_server import WorkflowAgentServer
 
 # Load environment variables
 load_dotenv()

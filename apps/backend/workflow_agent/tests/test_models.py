@@ -25,16 +25,17 @@ class TestEnums:
         assert WorkflowStage.CLARIFICATION == "clarification"
         assert WorkflowStage.NEGOTIATION == "negotiation"
         assert WorkflowStage.GAP_ANALYSIS == "gap_analysis"
-        assert WorkflowStage.GENERATION == "generation"
-        assert WorkflowStage.DEBUGGING == "debugging"
+        assert WorkflowStage.WORKFLOW_GENERATION == "workflow_generation"
+        assert WorkflowStage.DEBUG == "debug"
         assert WorkflowStage.COMPLETED == "completed"
 
     # Removed ClarificationPurpose enum - purpose field is no longer used
 
     def test_workflow_origin_enum(self):
         """Test WorkflowOrigin enum values"""
-        assert WorkflowOrigin.NEW_WORKFLOW == "new_workflow"
-        assert WorkflowOrigin.FROM_TEMPLATE == "from_template"
+        assert WorkflowOrigin.CREATE == "create"
+        assert WorkflowOrigin.EDIT == "edit"
+        assert WorkflowOrigin.COPY == "copy"
 
 
 class TestTypedDictModels:
@@ -50,11 +51,11 @@ class TestTypedDictModels:
     def test_clarification_context_creation(self):
         """Test ClarificationContext TypedDict creation"""
         context: ClarificationContext = {
-            "origin": WorkflowOrigin.NEW_WORKFLOW,
+            "origin": WorkflowOrigin.CREATE,
             "pending_questions": ["请问您希望如何识别客户邮件？", "您希望使用哪种回复方式？"],
         }
 
-        assert context["origin"] == WorkflowOrigin.NEW_WORKFLOW
+        assert context["origin"] == WorkflowOrigin.CREATE
         assert len(context["pending_questions"]) == 2
         assert context["pending_questions"][0] == "请问您希望如何识别客户邮件？"
 
@@ -63,19 +64,15 @@ class TestTypedDictModels:
         now = datetime.now()
 
         state = {
-            "metadata": {
-                "session_id": "test_session_123",
-                "user_id": "test_user",
-                "created_at": now,
-                "updated_at": now,
-                "version": "2.0.0",
-                "interaction_count": 1,
-            },
+            "session_id": "test_session_123",
+            "user_id": "test_user",
+            "created_at": int(now.timestamp() * 1000),
+            "updated_at": int(now.timestamp() * 1000),
             "stage": WorkflowStage.CLARIFICATION,
             "previous_stage": None,
             "execution_history": [],
             "clarification_context": {
-                "origin": WorkflowOrigin.NEW_WORKFLOW,
+                "origin": WorkflowOrigin.CREATE,
                 "pending_questions": ["请详细描述您的需求"],
             },
             "conversations": [
@@ -96,7 +93,7 @@ class TestTypedDictModels:
         }
 
         # Verify all required fields are present
-        assert state["metadata"]["session_id"] == "test_session_123"
+        assert state["session_id"] == "test_session_123"
         assert state["stage"] == WorkflowStage.CLARIFICATION
         assert "clarification_context" in state
         assert len(state["conversations"]) == 2
@@ -111,12 +108,12 @@ class TestWorkflowStateStructure:
     def test_minimal_workflow_state(self):
         """Test minimal required WorkflowState fields"""
         state = {
-            "metadata": {"session_id": "test"},
+            "session_id": "test",
             "stage": WorkflowStage.CLARIFICATION,
             "previous_stage": None,
             "execution_history": [],
             "clarification_context": {
-                "origin": WorkflowOrigin.NEW_WORKFLOW,
+                "origin": WorkflowOrigin.CREATE,
                 "pending_questions": [],
             },
             "conversations": [],
@@ -142,12 +139,12 @@ class TestWorkflowStateStructure:
     def test_clarification_stage_state(self):
         """Test state structure in clarification stage"""
         state = {
-            "metadata": {"session_id": "test_clarification"},
+            "session_id": "test_clarification",
             "stage": WorkflowStage.CLARIFICATION,
             "previous_stage": None,
             "execution_history": [],
             "clarification_context": {
-                "origin": WorkflowOrigin.NEW_WORKFLOW,
+                "origin": WorkflowOrigin.CREATE,
                 "pending_questions": ["需要更多信息"],
             },
             "conversations": [
@@ -165,18 +162,18 @@ class TestWorkflowStateStructure:
         # Verify clarification-specific fields
         assert state["stage"] == WorkflowStage.CLARIFICATION
         assert "clarification_context" in state
-        assert state["clarification_context"]["origin"] == WorkflowOrigin.NEW_WORKFLOW
+        assert state["clarification_context"]["origin"] == WorkflowOrigin.CREATE
         assert len(state["clarification_context"]["pending_questions"]) == 1
 
     def test_gap_analysis_stage_state(self):
         """Test state structure in gap analysis stage"""
         state = {
-            "metadata": {"session_id": "test_gap_analysis"},
+            "session_id": "test_gap_analysis",
             "stage": WorkflowStage.GAP_ANALYSIS,
             "previous_stage": None,
             "execution_history": [],
             "clarification_context": {
-                "origin": WorkflowOrigin.NEW_WORKFLOW,
+                "origin": WorkflowOrigin.CREATE,
                 "pending_questions": [],
             },
             "conversations": [
@@ -211,12 +208,12 @@ class TestWorkflowStateStructure:
         }
 
         state = {
-            "metadata": {"session_id": "test_generation"},
-            "stage": WorkflowStage.GENERATION,
+            "session_id": "test_generation",
+            "stage": WorkflowStage.WORKFLOW_GENERATION,
             "previous_stage": None,
             "execution_history": [],
             "clarification_context": {
-                "origin": WorkflowOrigin.NEW_WORKFLOW,
+                "origin": WorkflowOrigin.CREATE,
                 "pending_questions": [],
             },
             "conversations": [
@@ -232,7 +229,7 @@ class TestWorkflowStateStructure:
         }
 
         # Verify generation stage
-        assert state["stage"] == WorkflowStage.GENERATION
+        assert state["stage"] == WorkflowStage.WORKFLOW_GENERATION
         assert "current_workflow" in state
         assert state["current_workflow"]["id"] == "workflow-456"
         assert len(state["current_workflow"]["nodes"]) == 2
@@ -248,12 +245,12 @@ class TestWorkflowStateStructure:
         }
 
         state = {
-            "metadata": {"session_id": "test_debugging"},
-            "stage": WorkflowStage.DEBUGGING,
+            "session_id": "test_debugging",
+            "stage": WorkflowStage.DEBUG,
             "previous_stage": None,
             "execution_history": [],
             "clarification_context": {
-                "origin": WorkflowOrigin.NEW_WORKFLOW,
+                "origin": WorkflowOrigin.CREATE,
                 "pending_questions": [],
             },
             "conversations": [
@@ -269,7 +266,7 @@ class TestWorkflowStateStructure:
         }
 
         # Verify debugging stage
-        assert state["stage"] == WorkflowStage.DEBUGGING
+        assert state["stage"] == WorkflowStage.DEBUG
         assert state["debug_loop_count"] == 1
         assert "Missing email credentials" in state["debug_result"]
 
@@ -290,12 +287,12 @@ class TestWorkflowStateStructure:
         }
 
         state = {
-            "metadata": {"session_id": "test_completed"},
+            "session_id": "test_completed",
             "stage": WorkflowStage.COMPLETED,
             "previous_stage": None,
             "execution_history": [],
             "clarification_context": {
-                "origin": WorkflowOrigin.NEW_WORKFLOW,
+                "origin": WorkflowOrigin.CREATE,
                 "pending_questions": [],
             },
             "conversations": [
@@ -326,8 +323,8 @@ class TestStateTransitions:
             WorkflowStage.CLARIFICATION,
             WorkflowStage.NEGOTIATION,
             WorkflowStage.GAP_ANALYSIS,
-            WorkflowStage.GENERATION,
-            WorkflowStage.DEBUGGING,
+            WorkflowStage.WORKFLOW_GENERATION,
+            WorkflowStage.DEBUG,
             WorkflowStage.COMPLETED,
         ]
 
@@ -339,12 +336,12 @@ class TestStateTransitions:
     def test_state_history_tracking(self):
         """Test previous_stage and execution_history tracking"""
         state = {
-            "metadata": {"session_id": "test_history"},
+            "session_id": "test_history",
             "stage": WorkflowStage.GAP_ANALYSIS,
             "previous_stage": "clarification",
             "execution_history": ["clarification", "negotiation", "gap_analysis"],
             "clarification_context": {
-                "origin": WorkflowOrigin.NEW_WORKFLOW,
+                "origin": WorkflowOrigin.CREATE,
                 "pending_questions": [],
             },
             "conversations": [],
@@ -362,7 +359,7 @@ class TestStateTransitions:
 
     def test_workflow_origins(self):
         """Test different workflow origins"""
-        origins = [WorkflowOrigin.NEW_WORKFLOW, WorkflowOrigin.FROM_TEMPLATE]
+        origins = [WorkflowOrigin.CREATE, WorkflowOrigin.EDIT, WorkflowOrigin.COPY]
 
         for origin in origins:
             context: ClarificationContext = {"origin": origin, "pending_questions": []}
