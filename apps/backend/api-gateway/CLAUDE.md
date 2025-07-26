@@ -32,7 +32,7 @@ uv run pytest tests/ -v
 uv run black app/ tests/
 uv run isort app/ tests/
 
-# Run linting  
+# Run linting
 uv run flake8 app/ tests/
 # Note: mypy is configured in pyproject.toml but not in dev dependencies
 
@@ -90,7 +90,7 @@ Required environment variables in `.env`:
 ```
 # Supabase Configuration
 SUPABASE_URL=https://your-project-id.supabase.co
-SUPABASE_SERVICE_KEY=your-service-role-key
+SUPABASE_SECRET_KEY=your-service-role-key
 SUPABASE_ANON_KEY=your-anon-key  # Required for RLS operations
 
 # Workflow Service Configuration

@@ -147,7 +147,7 @@ ANTHROPIC_API_KEY="sk-ant-..."
 
 # Supabase RAG system
 SUPABASE_URL="https://your-project.supabase.co"
-SUPABASE_SERVICE_ROLE_KEY="eyJ..."
+SUPABASE_SECRET_KEY="sb_secret_..."
 
 # State management
 REDIS_URL="redis://localhost:6379/0"

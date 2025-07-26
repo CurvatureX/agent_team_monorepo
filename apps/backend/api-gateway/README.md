@@ -28,7 +28,7 @@ cp .env.example .env
 
 # Edit .env with your Supabase credentials
 # SUPABASE_URL=https://your-project-id.supabase.co
-# SUPABASE_SERVICE_KEY=your-service-role-key
+# SUPABASE_SECRET_KEY=your-service-role-key
 # SUPABASE_ANON_KEY=your-anon-key  # Required for RLS operations
 ```
 
@@ -261,7 +261,7 @@ apps/backend/api-gateway/
    ```bash
    # Check environment variables
    echo $SUPABASE_URL
-   echo $SUPABASE_SERVICE_KEY
+   echo $SUPABASE_SECRET_KEY
    ```
 
 3. **Database tables not found**
@@ -316,7 +316,7 @@ apps/backend/api-gateway/
 
 ## Contributing
 
-This API Gateway follows frontend authentication patterns recommended by Supabase. 
+This API Gateway follows frontend authentication patterns recommended by Supabase.
 
 Frontend applications should handle user authentication and pass JWT tokens to the backend via Authorization headers.
 
