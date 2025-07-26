@@ -83,9 +83,7 @@ class SupabaseVectorStore:
         if not settings.OPENAI_API_KEY:
             raise ValueError("OPENAI_API_KEY must be configured for embeddings")
 
-        return OpenAIEmbeddings(
-            model=settings.EMBEDDING_MODEL, openai_api_key=settings.OPENAI_API_KEY
-        )
+        return OpenAIEmbeddings(model=settings.EMBEDDING_MODEL, api_key=settings.OPENAI_API_KEY)
 
     async def similarity_search(
         self,

@@ -33,10 +33,12 @@ action:
 ```
 
 ### 2. GET /chat/stream?session_id=xxxx&user_message=yyy
-发送聊天消息，返回AI流式响应
+发送聊天消息，返回AI流式响应（包含集成的工作流生成）
 
 **响应（SSE流）**
 使用业界标准增量模式 (OpenAI/Claude风格):
+
+**常规聊天响应**
 ```
 Content-Type: text/event-stream
 
@@ -45,40 +47,58 @@ data: {"type": "message", "delta": " BestBuy, Amazon"}
 data: {"type": "message", "delta": " 的实时货源"}
 ```
 
-**事件类型**
-- `type: "message"` - AI回复消息
-- `delta`: 增量内容，前端需要累积拼接
-
-### 3. GET /workflow_generation
-监听工作流生成进度
-
-**请求**
-```
-GET /workflow?session_id=xxx
-```
-
-**响应（SSE流）**
+**工作流生成响应**（当消息包含workflow相关关键词时）
 ```
 Content-Type: text/event-stream
 
-data: {"type": "waiting"}
+data: {"type": "message", "delta": "I understand you want to create a workflow..."}
 
-data: {"type": "start", "workflow_id": "wf_abc123"}
+data: {"type": "workflow_generation_started", "workflow_id": "wf_abc123", "data": {"message": "Starting workflow generation...", "session_id": "xxx"}, "timestamp": "1703001234567"}
 
-data: {"type": "draft", "workflow_id": "wf_abc123", "data": {...}}
+data: {"type": "workflow_draft", "workflow_id": "wf_abc123", "data": {"message": "Generating workflow draft...", "session_id": "xxx"}, "timestamp": "1703001235567"}
 
-data: {"type": "debugging", "workflow_id": "wf_abc123", "data": {...}}
+data: {"type": "workflow_debugging", "workflow_id": "wf_abc123", "data": {"message": "Debugging and optimizing workflow...", "session_id": "xxx"}, "timestamp": "1703001236567"}
 
-data: {"type": "complete", "workflow_id": "wf_abc123", "data": {...}}
+data: {"type": "workflow_complete", "workflow_id": "wf_abc123", "data": {"message": "Workflow generation completed!", "session_id": "xxx"}, "timestamp": "1703001237567"}
+
+data: {"type": "message", "delta": "Your workflow has been successfully created!", "workflow_id": "wf_abc123"}
 ```
 
 **事件类型**
-- `type: "waiting"` - 等待开始
-- `type: "start"` - 开始生成
-- `type: "draft"` - 生成草稿
-- `type: "debugging"` - 系统自动调试中
-- `type: "complete"` - 生成完成，包含workflow数据
-- `type: "error"` - 生成失败
+- `type: "message"` - AI回复消息或工作流相关文本
+  - `delta`: 增量内容，前端需要累积拼接
+  - `workflow_id`: (可选) 关联的工作流ID
+- `type: "workflow_generation_started"` - 开始生成工作流
+- `type: "workflow_draft"` - 生成工作流草稿
+- `type: "workflow_debugging"` - 调试优化工作流
+- `type: "workflow_complete"` - 工作流生成完成
+
+### 3. GET /chat/{session_id}/messages
+获取会话的聊天历史
+
+**响应**
+```json
+{
+  "session_id": "550e8400-e29b-41d4-a716-446655440000",
+  "messages": [
+    {
+      "id": "msg_123",
+      "message_type": "user",
+      "content": "Create a workflow for email monitoring",
+      "sequence_number": 1,
+      "created_at": "2024-01-20T10:30:00Z"
+    },
+    {
+      "id": "msg_124", 
+      "message_type": "assistant",
+      "content": "I'll help you create an email monitoring workflow...",
+      "sequence_number": 2,
+      "created_at": "2024-01-20T10:30:05Z"
+    }
+  ],
+  "total_count": 2
+}
+```
 
 ## 错误响应
 
@@ -102,31 +122,44 @@ data: {"type": "complete", "workflow_id": "wf_abc123", "data": {...}}
 sequenceDiagram
     participant Client
     participant Session as /session
-    participant Chat as /chat
-    participant Workflow as /workflow
+    participant Chat as /chat/stream
     participant Agent as AI Agent
 
     Client->>Session: POST /session
     Session-->>Client: {session_id}
 
-    Client->>Workflow: GET /workflow_generation?session_id=xxx
-    Note over Client,Workflow: SSE连接建立，保持等待状态
-
     loop 多轮对话
-        Client->>Chat: GET /chat?session_id=xxx&user_message={message}
+        Client->>Chat: GET /chat/stream?session_id=xxx&user_message={message}
         Chat->>Agent: 分析用户意图
 
-        alt Agent需要更多信息
-            Chat-->>Client: SSE: "请问使用什么数据库？"
+        alt 常规对话
+            Chat-->>Client: SSE: {type: "message", delta: "AI response"}
             Note over Client,Chat: 继续对话循环
-        else Agent判断信息充足
-
-                Agent->>Workflow: 触发工作流生成
-                Workflow-->>Client: SSE: {type: "start"}
-                Workflow-->>Client: SSE: {type: "draft", data: {...}}
-                Workflow-->>Client: SSE: {type: "debugging", data: {...}}
-                Workflow-->>Client: SSE: {type: "complete", data: {...}}
+        else 工作流生成请求
+            Chat-->>Client: SSE: {type: "message", delta: "I understand..."}
+            Chat-->>Client: SSE: {type: "workflow_generation_started"}
+            Chat-->>Client: SSE: {type: "workflow_draft"}
+            Chat-->>Client: SSE: {type: "workflow_debugging"}
+            Chat-->>Client: SSE: {type: "workflow_complete"}
+            Chat-->>Client: SSE: {type: "message", delta: "Workflow created!", workflow_id: "xxx"}
         end
     end
-
 ```
+
+## 工作流生成触发条件
+
+以下关键词会触发工作流生成流程：
+- `workflow`
+- `automation`
+- `create`
+- `generate`
+- `build`
+
+当用户消息包含这些关键词时，系统会自动进入工作流生成模式，在聊天流中返回相应的进度事件。
+
+## 前端集成建议
+
+1. **监听事件类型**: 根据 `type` 字段处理不同类型的事件
+2. **累积消息内容**: 对于 `type: "message"` 事件，累积 `delta` 字段构建完整消息
+3. **进度显示**: 对于工作流相关事件，显示相应的进度指示器
+4. **工作流ID**: 保存 `workflow_id` 用于后续操作

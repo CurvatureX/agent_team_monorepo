@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from . import workflow_agent_pb2 as workflow__agent__pb2
+from proto import workflow_agent_pb2 as proto_dot_workflow__agent__pb2
 
 GRPC_GENERATED_VERSION = '1.74.0'
 GRPC_VERSION = grpc.__version__
@@ -37,8 +37,8 @@ class WorkflowAgentStub(object):
         """
         self.ProcessConversation = channel.unary_stream(
                 '/workflow_agent.WorkflowAgent/ProcessConversation',
-                request_serializer=workflow__agent__pb2.ConversationRequest.SerializeToString,
-                response_deserializer=workflow__agent__pb2.ConversationResponse.FromString,
+                request_serializer=proto_dot_workflow__agent__pb2.ConversationRequest.SerializeToString,
+                response_deserializer=proto_dot_workflow__agent__pb2.ConversationResponse.FromString,
                 _registered_method=True)
 
 
@@ -57,8 +57,8 @@ def add_WorkflowAgentServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'ProcessConversation': grpc.unary_stream_rpc_method_handler(
                     servicer.ProcessConversation,
-                    request_deserializer=workflow__agent__pb2.ConversationRequest.FromString,
-                    response_serializer=workflow__agent__pb2.ConversationResponse.SerializeToString,
+                    request_deserializer=proto_dot_workflow__agent__pb2.ConversationRequest.FromString,
+                    response_serializer=proto_dot_workflow__agent__pb2.ConversationResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -87,8 +87,8 @@ class WorkflowAgent(object):
             request,
             target,
             '/workflow_agent.WorkflowAgent/ProcessConversation',
-            workflow__agent__pb2.ConversationRequest.SerializeToString,
-            workflow__agent__pb2.ConversationResponse.FromString,
+            proto_dot_workflow__agent__pb2.ConversationRequest.SerializeToString,
+            proto_dot_workflow__agent__pb2.ConversationResponse.FromString,
             options,
             channel_credentials,
             insecure,
