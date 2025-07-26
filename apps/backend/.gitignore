@@ -52,7 +52,6 @@ venv.bak/
 
 # uv
 .venv/
-uv.lock
 .python-version
 
 # IDEs

@@ -22,8 +22,6 @@ resource "aws_service_discovery_service" "api_gateway" {
     routing_policy = "MULTIVALUE"
   }
 
-  health_check_grace_period_seconds = 30
-
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-api-gateway-discovery"
   })
@@ -44,9 +42,27 @@ resource "aws_service_discovery_service" "workflow_engine" {
     routing_policy = "MULTIVALUE"
   }
 
-  health_check_grace_period_seconds = 30
-
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-workflow-engine-discovery"
+  })
+}
+
+# Service Discovery Service for Workflow Agent
+resource "aws_service_discovery_service" "workflow_agent" {
+  name = "workflow-agent"
+
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.main.id
+
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+
+    routing_policy = "MULTIVALUE"
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-workflow-agent-discovery"
   })
 }
