@@ -1,1 +1,1 @@
-# Generated protobuf files
+"""Generated protobuf modules."""

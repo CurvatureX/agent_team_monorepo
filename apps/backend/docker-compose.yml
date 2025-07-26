@@ -35,8 +35,8 @@ services:
   # Workflow Agent Service
   workflow-agent:
     build:
-      context: ./workflow_agent
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./workflow_agent/Dockerfile
     environment:
       - DEBUG=false
       - GRPC_HOST=0.0.0.0
@@ -62,8 +62,8 @@ services:
   # API Gateway Service - FastAPI MVP
   api-gateway:
     build:
-      context: ./api-gateway
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./api-gateway/Dockerfile
     environment:
       - DEBUG=true
       - WORKFLOW_SERVICE_HOST=workflow-agent
