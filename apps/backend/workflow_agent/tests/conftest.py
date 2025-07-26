@@ -54,7 +54,7 @@ def sample_conversations():
 def sample_clarification_context():
     """Sample clarification context for testing"""
     return {
-        "origin": WorkflowOrigin.NEW_WORKFLOW,
+        "origin": WorkflowOrigin.CREATE,
         "pending_questions": ["请问您希望如何识别客户邮件？", "您希望使用哪种回复方式？"],
     }
 
@@ -129,7 +129,7 @@ def sample_simplified_workflow_state():
         "stage": WorkflowStage.CLARIFICATION,
         "execution_history": [],
         "clarification_context": {
-            "origin": WorkflowOrigin.NEW_WORKFLOW,
+            "origin": WorkflowOrigin.CREATE,
             "pending_questions": ["请问您希望如何识别客户邮件？"],
         },
         "conversations": [

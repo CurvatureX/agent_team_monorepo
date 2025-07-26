@@ -21,7 +21,6 @@ async def create_session(request: SessionCreateRequest, http_request: Request):
         # Get user from request state (already validated by jwt_auth_middleware)
         user = getattr(http_request.state, 'user', None)
         user_id = user.get("sub") if user else None
-        access_token = getattr(http_request.state, 'access_token', None)
         
         # Validate action parameter
         if request.action not in ["create", "edit", "copy"]:
@@ -39,10 +38,11 @@ async def create_session(request: SessionCreateRequest, http_request: Request):
 
         # TODO: if copy, create a new workflow from the workflow_id
         
-        # Prepare session data (simplified according to db-design.md)
+        # Prepare session data according to tech design
         session_data = {
             "user_id": user_id,
-            "current_workflow_id": request.workflow_id if request.workflow_id else None
+            "action_type": request.action,
+            "source_workflow_id": request.workflow_id if request.workflow_id else None,
         }
         result = sessions_rls_repo.create(session_data)
         
