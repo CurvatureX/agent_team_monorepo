@@ -13,81 +13,111 @@ class WorkflowStage(str, Enum):
     CLARIFICATION = "clarification"
     NEGOTIATION = "negotiation"
     GAP_ANALYSIS = "gap_analysis"
-    GENERATION = "generation"
-    DEBUGGING = "debugging"
+    ALTERNATIVE_GENERATION = "alternative_generation"
+    WORKFLOW_GENERATION = "workflow_generation"
+    DEBUG = "debug"
     COMPLETED = "completed"
 
 
 class WorkflowOrigin(str, Enum):
-    """Workflow origin types"""
+    """Workflow origin types - 对应proto的origin字段值"""
+    CREATE = "create"
+    EDIT = "edit"
+    COPY = "copy"
 
-    NEW_WORKFLOW = "new_workflow"
-    FROM_TEMPLATE = "from_template"
+
+class ClarificationPurpose(str, Enum):
+    """澄清目的类型 - 对应proto的purpose字段值"""
+    
+    INITIAL_INTENT = "initial_intent"
+    TEMPLATE_MODIFICATION = "template_modification"
+    GAP_RESOLUTION = "gap_resolution"
 
 
 class Conversation(TypedDict):
-    """Conversation message"""
+    """Conversation message - 完全对应proto.Conversation"""
 
-    role: str
+    role: str  # user, assistant, system
     text: str
+    timestamp: NotRequired[int]  # timestamp in milliseconds
+    metadata: NotRequired[Dict[str, str]]  # additional metadata
 
 
 class ClarificationContext(TypedDict):
-    """Context for clarification stage"""
+    """Context for clarification stage - 完全对应proto.ClarificationContext"""
 
-    origin: WorkflowOrigin
-    pending_questions: List[str]  # 当前 Clarification 阶段待确认的问题
-
-
-class TemplateWorkflow(TypedDict):
-    """Template workflow information"""
-
-    id: str  # 模板 ID
-    original_workflow: object  # 模板的原始内容
-    description: str  # 模板的描述
+    purpose: NotRequired[ClarificationPurpose]  # 对应proto.purpose
+    collected_info: NotRequired[Dict[str, str]]  # 对应proto.collected_info
+    pending_questions: List[str]  # 对应proto.pending_questions
+    origin: WorkflowOrigin  # 对应proto.origin
 
 
 class RetrievedDocument(TypedDict):
-    id: str  # Vector store ID or URL
-    content: str  # Document content or snippet
-    metadata: Dict[str, Any]  # Source info (title, date, etc.)
-    score: float  # Relevance score
+    """RAG检索结果 - 对应proto.RAGResult"""
+    
+    id: str  # 对应proto.id
+    node_type: NotRequired[str]  # 对应proto.node_type
+    title: NotRequired[str]  # 对应proto.title
+    description: NotRequired[str]  # 对应proto.description
+    content: str  # 对应proto.content
+    similarity: float  # 对应proto.similarity
+    metadata: NotRequired[Dict[str, str]]  # 对应proto.metadata
 
 
 class RAGContext(TypedDict):
-    last_query: str  # The query that triggered retrieval
-    retrieved: List[RetrievedDocument]  # Raw retrieval results
-    selected: List[str]  # IDs of docs chosen for generation
-    summary: NotRequired[str]  # Optional summary of selected docs
+    """RAG上下文 - 完全对应proto.RAGContext"""
+    
+    results: List[RetrievedDocument]  # 对应proto.results
+    query: str  # 对应proto.query
+    timestamp: NotRequired[int]  # 对应proto.timestamp
+    metadata: NotRequired[Dict[str, str]]  # 对应proto.metadata
+
+
+class AlternativeOption(TypedDict):
+    """Alternative solution option - 对应proto.AlternativeOption"""
+    
+    id: str
+    title: str
+    description: str
+    approach: str  # 技术方案描述
+    trade_offs: List[str]  # 权衡说明
+    complexity: str  # simple, medium, complex
 
 
 class WorkflowState(TypedDict):
-    """Simplified workflow state based on new architecture"""
+    """Workflow state - 完全对应proto.AgentState结构"""
 
-    # 元数据
-    metadata: Dict[str, Any]
+    # 元数据 (对应proto: session_id, user_id, created_at, updated_at)
+    session_id: str
+    user_id: str
+    created_at: int  # timestamp in milliseconds
+    updated_at: int  # timestamp in milliseconds
 
-    # 当前阶段
+    # 当前阶段 (对应proto: stage, previous_stage)
     stage: WorkflowStage
-    # 前一个阶段
-    previous_stage: NotRequired[str]
+    previous_stage: NotRequired[WorkflowStage]
 
-    # 执行历史记录
+    # 执行历史 (对应proto: execution_history)
     execution_history: NotRequired[List[str]]
-    # 澄清阶段上下文
+
+    # 澄清上下文 (对应proto: clarification_context)
     clarification_context: ClarificationContext
 
-    conversations: List[Conversation]  # 用户和AI Agent的全部对话
-    intent_summary: str  # AI根据对话总结的用户意图
-    gaps: List[str]  # 能力差距分析结果
-    alternatives: List[str]  # 提供的替代方案
+    # 对话历史和意图 (对应proto: conversations, intent_summary)
+    conversations: List[Conversation]
+    intent_summary: str
 
-    # 模板工作流支持
-    template_workflow: NotRequired[TemplateWorkflow]
+    # 分析结果 (对应proto: gaps, alternatives)
+    gaps: List[str]
+    alternatives: List[AlternativeOption]  # 改为对象列表而非字符串
 
-    current_workflow: object  # 当前生成的workflow
-    debug_result: str  # 调试结果
+    # 工作流数据 (对应proto: current_workflow_json, debug_result, debug_loop_count)
+    current_workflow: object  # 将序列化为current_workflow_json
+    debug_result: str
     debug_loop_count: int
 
-    # RAG-specific context
+    # 上下文信息 (对应proto: workflow_context)
+    workflow_context: NotRequired[Dict[str, Any]]  # 将映射到WorkflowContext
+
+    # RAG上下文 (对应proto: rag_context)
     rag: NotRequired[RAGContext]

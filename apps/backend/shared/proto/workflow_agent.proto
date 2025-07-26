@@ -2,123 +2,186 @@ syntax = "proto3";
 
 package workflow_agent;
 
-// Service definition
+// 唯一的核心接口 - 处理所有6阶段的对话流程和workflow生成
 service WorkflowAgent {
-  // Generate workflow from natural language description
-  rpc GenerateWorkflow(WorkflowGenerationRequest) returns (WorkflowGenerationResponse);
-
-  // Refine existing workflow based on feedback
-  rpc RefineWorkflow(WorkflowRefinementRequest) returns (WorkflowRefinementResponse);
-
-  // Validate workflow structure and configuration
-  rpc ValidateWorkflow(WorkflowValidationRequest) returns (WorkflowValidationResponse);
+  rpc ProcessConversation(ConversationRequest) returns (stream ConversationResponse);
 }
 
-// Request/Response messages for workflow generation
-message WorkflowGenerationRequest {
-  string description = 1;
-  map<string, string> context = 2;
-  map<string, string> user_preferences = 3;
+// 对话请求
+message ConversationRequest {
+  string session_id = 1;
+  string user_id = 2;
+  string user_message = 3;
+  AgentState current_state = 4;           // 状态恢复
+  WorkflowContext workflow_context = 5;   // edit/copy时需要
+  ConversationConfig config = 6;          // 对话配置
 }
 
-message WorkflowGenerationResponse {
-  bool success = 1;
-  WorkflowData workflow = 2;
-  repeated string suggestions = 3;
-  repeated string missing_info = 4;
-  repeated string errors = 5;
+// 对话响应流
+message ConversationResponse {
+  string session_id = 1;
+  ResponseType type = 2;
+  
+  oneof content {
+    MessageContent message = 3;           // 消息内容（包括问题、选项等）
+    StatusContent status = 4;             // 状态更新
+    ErrorContent error = 5;               // 错误信息
+  }
+  
+  AgentState updated_state = 8;           // 更新后的状态
+  int64 timestamp = 9;
+  bool is_final = 10;                     // 是否为最终响应
 }
 
-// Request/Response messages for workflow refinement
-message WorkflowRefinementRequest {
-  string workflow_id = 1;
-  string feedback = 2;
-  WorkflowData original_workflow = 3;
+enum ResponseType {
+  RESPONSE_MESSAGE = 0;           // 消息（包括普通消息、问题、选项等）
+  RESPONSE_STATUS = 1;            // 状态更新
+  RESPONSE_ERROR = 2;             // 错误信息
 }
 
-message WorkflowRefinementResponse {
-  bool success = 1;
-  WorkflowData updated_workflow = 2;
-  repeated string changes = 3;
-  repeated string errors = 4;
+// Agent状态 - 与WorkflowState完全对应
+message AgentState {
+  // 元数据 (对应WorkflowState.metadata)
+  string session_id = 1;
+  string user_id = 2;
+  int64 created_at = 12;
+  int64 updated_at = 13;
+  
+  // 当前阶段 (对应WorkflowState.stage)
+  WorkflowStage stage = 3;
+  WorkflowStage previous_stage = 14;
+  
+  // 执行历史 (对应WorkflowState.execution_history)
+  repeated string execution_history = 15;
+  
+  // 澄清上下文 (对应WorkflowState.clarification_context)
+  ClarificationContext clarification_context = 10;
+  
+  // 对话历史和意图 (对应WorkflowState.conversations, intent_summary)
+  repeated Conversation conversations = 4;
+  string intent_summary = 5;
+  
+  // 分析结果 (对应WorkflowState.gaps, alternatives)
+  repeated string gaps = 6;
+  repeated AlternativeOption alternatives = 7;
+  
+  // 工作流数据 (对应WorkflowState.current_workflow, debug_result, debug_loop_count)
+  string current_workflow_json = 8;  // JSON序列化的workflow对象
+  string debug_result = 16;
+  int32 debug_loop_count = 9;
+  
+  // 上下文信息
+  WorkflowContext workflow_context = 11;
+  
+  // RAG上下文 (对应WorkflowState.rag)
+  RAGContext rag_context = 17;
 }
 
-// Request/Response messages for workflow validation
-message WorkflowValidationRequest {
-  map<string, string> workflow_data = 1;
+enum WorkflowStage {
+  STAGE_CLARIFICATION = 0;
+  STAGE_NEGOTIATION = 1;
+  STAGE_GAP_ANALYSIS = 2;
+  STAGE_ALTERNATIVE_GENERATION = 3;
+  STAGE_WORKFLOW_GENERATION = 4;
+  STAGE_DEBUG = 5;
+  STAGE_COMPLETED = 6;
+  STAGE_ERROR = 7;
 }
 
-message WorkflowValidationResponse {
-  bool valid = 1;
-  repeated string errors = 2;
-  repeated string warnings = 3;
+// 对话记录
+message Conversation {
+  string role = 1;      // user, assistant, system
+  string text = 2;
+  int64 timestamp = 3;
+  map<string, string> metadata = 4;
 }
 
-// Core data structures
-message WorkflowData {
+// 澄清问题
+message ClarificationQuestion {
   string id = 1;
-  string name = 2;
-  bool active = 3;
-  repeated NodeData nodes = 4;
-  ConnectionsMapData connections = 5;
-  WorkflowSettingsData settings = 6;
-  map<string, string> static_data = 7;
-  map<string, string> pin_data = 8;
-  int64 created_at = 9;
-  int64 updated_at = 10;
-  string version = 11;
-  repeated string tags = 12;
+  string question = 2;
+  string category = 3;    // input, output, trigger, logic
+  bool is_required = 4;
+  repeated string options = 5;  // 预设选项
 }
 
-message NodeData {
+// 替代方案选项
+message AlternativeOption {
   string id = 1;
-  string name = 2;
-  string type = 3;
-  string subtype = 4;
-  int32 type_version = 5;
-  PositionData position = 6;
-  bool disabled = 7;
-  map<string, string> parameters = 8;
-  map<string, string> credentials = 9;
-  string on_error = 10;
-  RetryPolicyData retry_policy = 11;
-  map<string, string> notes = 12;
-  repeated string webhooks = 13;
+  string title = 2;
+  string description = 3;
+  string approach = 4;        // 技术方案描述
+  repeated string trade_offs = 5;  // 权衡说明
+  string complexity = 6;      // simple, medium, complex
 }
 
-message PositionData {
-  float x = 1;
-  float y = 2;
+// 澄清上下文
+message ClarificationContext {
+  string purpose = 1;         // initial_intent, template_modification, gap_resolution
+  map<string, string> collected_info = 2;
+  repeated string pending_questions = 3;
+  string origin = 4;          // create, edit, copy
 }
 
-message RetryPolicyData {
-  int32 max_tries = 1;
-  int32 wait_between_tries = 2;
+// 工作流上下文
+message WorkflowContext {
+  string origin = 1;          // create, edit, copy
+  string source_workflow_id = 2;
+  string modification_intent = 3;
 }
 
-message ConnectionsMapData {
-  map<string, NodeConnectionsData> connections = 1;
+// 对话配置
+message ConversationConfig {
+  bool enable_streaming = 1;
+  int32 max_turns = 2;
+  int32 timeout_seconds = 3;
+  string language = 4;          // zh, en
+  bool enable_rag = 5;
+  map<string, string> preferences = 6;
 }
 
-message NodeConnectionsData {
-  map<string, ConnectionArrayData> connection_types = 1;
+// 响应内容类型
+message MessageContent {
+  string text = 1;
+  string role = 2;  // assistant, system  
+  string message_type = 3;  // "text", "question", "options"
+  map<string, string> metadata = 4;
+  
+  // 可选字段：当message_type为"question"时使用
+  repeated ClarificationQuestion questions = 5;
+  
+  // 可选字段：当message_type为"options"时使用  
+  repeated AlternativeOption alternatives = 6;
 }
 
-message ConnectionArrayData {
-  repeated ConnectionData connections = 1;
+message StatusContent {
+  WorkflowStage new_stage = 1;
+  WorkflowStage previous_stage = 2;
+  string stage_description = 3;
+  repeated string pending_actions = 4;
 }
 
-message ConnectionData {
-  string node = 1;
-  string type = 2;
-  int32 index = 3;
+message ErrorContent {
+  string error_code = 1;
+  string message = 2;
+  string details = 3;
+  bool is_recoverable = 4;
 }
 
-message WorkflowSettingsData {
-  map<string, string> timezone = 1;
-  bool save_execution_progress = 2;
-  bool save_manual_executions = 3;
-  int32 timeout = 4;
-  string error_policy = 5;
-  string caller_policy = 6;
+// RAG上下文 (对应WorkflowState.rag)
+message RAGContext {
+  repeated RAGResult results = 1;
+  string query = 2;
+  int64 timestamp = 3;
+  map<string, string> metadata = 4;
+}
+
+message RAGResult {
+  string id = 1;
+  string node_type = 2;
+  string title = 3;
+  string description = 4;
+  string content = 5;
+  float similarity = 6;
+  map<string, string> metadata = 7;
 }
