@@ -45,20 +45,29 @@ build_and_push() {
     # Get ECR login token
     aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $(aws sts get-caller-identity --query Account --output text).dkr.ecr.$AWS_REGION.amazonaws.com
 
+    cd apps/backend
+    
+    # Get AWS account ID
+    AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+    
     # Build and push API Gateway
     echo -e "${YELLOW}Building API Gateway...${NC}"
-    cd apps/backend/api-gateway
-    docker build --target production -t $PROJECT_NAME/api-gateway:latest .
-    docker tag $PROJECT_NAME/api-gateway:latest $(aws sts get-caller-identity --query Account --output text).dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT_NAME/api-gateway:latest
-    docker push $(aws sts get-caller-identity --query Account --output text).dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT_NAME/api-gateway:latest
-    cd ../../..
+    docker build --target production -f api-gateway/Dockerfile -t $PROJECT_NAME/api-gateway:latest .
+    docker tag $PROJECT_NAME/api-gateway:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT_NAME/api-gateway:latest
+    docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT_NAME/api-gateway:latest
+
+    # Build and push Workflow Agent
+    echo -e "${YELLOW}Building Workflow Agent...${NC}"
+    docker build -f workflow_agent/Dockerfile -t $PROJECT_NAME/workflow-agent:latest .
+    docker tag $PROJECT_NAME/workflow-agent:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT_NAME/workflow-agent:latest
+    docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT_NAME/workflow-agent:latest
 
     # Build and push Workflow Engine
     echo -e "${YELLOW}Building Workflow Engine...${NC}"
-    cd apps/backend
     docker build --target production -f workflow_engine/Dockerfile -t $PROJECT_NAME/workflow-engine:latest .
-    docker tag $PROJECT_NAME/workflow-engine:latest $(aws sts get-caller-identity --query Account --output text).dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT_NAME/workflow-engine:latest
-    docker push $(aws sts get-caller-identity --query Account --output text).dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT_NAME/workflow-engine:latest
+    docker tag $PROJECT_NAME/workflow-engine:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT_NAME/workflow-engine:latest
+    docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT_NAME/workflow-engine:latest
+    
     cd ../..
 
     echo -e "${GREEN}✅ Images built and pushed successfully${NC}"
@@ -95,6 +104,13 @@ update_services() {
         --force-new-deployment \
         --region $AWS_REGION
 
+    # Update Workflow Agent service
+    aws ecs update-service \
+        --cluster $PROJECT_NAME-$ENVIRONMENT-cluster \
+        --service workflow-agent-service \
+        --force-new-deployment \
+        --region $AWS_REGION
+
     # Update Workflow Engine service
     aws ecs update-service \
         --cluster $PROJECT_NAME-$ENVIRONMENT-cluster \
@@ -106,7 +122,7 @@ update_services() {
     echo -e "${YELLOW}⏳ Waiting for services to stabilize...${NC}"
     aws ecs wait services-stable \
         --cluster $PROJECT_NAME-$ENVIRONMENT-cluster \
-        --services api-gateway-service workflow-engine-service \
+        --services api-gateway-service workflow-agent-service workflow-engine-service \
         --region $AWS_REGION
 
     echo -e "${GREEN}✅ Services updated successfully${NC}"
@@ -128,7 +144,7 @@ get_status() {
     # Get service status
     aws ecs describe-services \
         --cluster $PROJECT_NAME-$ENVIRONMENT-cluster \
-        --services api-gateway-service workflow-engine-service \
+        --services api-gateway-service workflow-agent-service workflow-engine-service \
         --query 'services[*].{Name:serviceName,Status:status,Running:runningCount,Desired:desiredCount}' \
         --output table \
         --region $AWS_REGION
