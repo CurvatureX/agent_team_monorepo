@@ -1,224 +1,309 @@
 """
-gRPC server for Workflow Agent service
+gRPC server for Workflow Agent service - New unified ProcessConversation interface
 """
 
 import asyncio
+import time
 from concurrent import futures
-from typing import Optional
+from typing import AsyncGenerator, Optional
 
 import grpc
 import structlog
 
+from workflow_agent.proto import workflow_agent_pb2, workflow_agent_pb2_grpc
+
+from ..agents.state import WorkflowOrigin, WorkflowStage
+from ..agents.state_converter import StateConverter
 from ..agents.workflow_agent import WorkflowAgent
 from ..core.config import settings
-from ..proto import workflow_agent_pb2, workflow_agent_pb2_grpc
 
 logger = structlog.get_logger()
 
 
 class WorkflowAgentServicer(workflow_agent_pb2_grpc.WorkflowAgentServicer):
-    """Implementation of the WorkflowAgent gRPC service"""
+    """Implementation of the unified WorkflowAgent gRPC service"""
 
     def __init__(self):
         # Initialize the LangGraph agent
         self.workflow_agent = WorkflowAgent()
-        logger.info("WorkflowAgent initialized")
+        logger.info("WorkflowAgent initialized with new ProcessConversation interface")
 
-    def _dict_to_workflow_data(self, data: dict) -> workflow_agent_pb2.WorkflowData:
-        """Convert dictionary to WorkflowData protobuf message"""
-        if not data:
-            return workflow_agent_pb2.WorkflowData()
-
-        # Convert nodes
-        nodes = []
-        for node_data in data.get("nodes", []):
-            position = workflow_agent_pb2.PositionData(
-                x=node_data.get("position", {}).get("x", 0),
-                y=node_data.get("position", {}).get("y", 0),
-            )
-
-            retry_policy = workflow_agent_pb2.RetryPolicyData(
-                max_tries=node_data.get("retry_policy", {}).get("max_tries", 1),
-                wait_between_tries=node_data.get("retry_policy", {}).get("wait_between_tries", 0),
-            )
-
-            node = workflow_agent_pb2.NodeData(
-                id=node_data.get("id", ""),
-                name=node_data.get("name", ""),
-                type=node_data.get("type", ""),
-                subtype=node_data.get("subtype", ""),
-                type_version=node_data.get("type_version", 1),
-                position=position,
-                disabled=node_data.get("disabled", False),
-                parameters=node_data.get("parameters", {}),
-                credentials=node_data.get("credentials", {}),
-                on_error=node_data.get("on_error", ""),
-                retry_policy=retry_policy,
-                notes=node_data.get("notes", {}),
-                webhooks=node_data.get("webhooks", []),
-            )
-            nodes.append(node)
-
-        # Convert connections
-        connections_map = workflow_agent_pb2.ConnectionsMapData()
-        connections_data = data.get("connections", {}).get("connections", {})
-
-        for node_name, node_connections in connections_data.items():
-            node_conn_data = workflow_agent_pb2.NodeConnectionsData()
-
-            for conn_type, conn_array in node_connections.items():
-                connections = []
-                for conn in conn_array.get("connections", []):
-                    connection = workflow_agent_pb2.ConnectionData(
-                        node=conn.get("node", ""),
-                        type=conn.get("type", ""),
-                        index=conn.get("index", 0),
-                    )
-                    connections.append(connection)
-
-                conn_array_data = workflow_agent_pb2.ConnectionArrayData(connections=connections)
-                node_conn_data.connection_types[conn_type].CopyFrom(conn_array_data)
-
-            connections_map.connections[node_name].CopyFrom(node_conn_data)
-
-        # Convert settings
-        settings_data = data.get("settings", {})
-        workflow_settings = workflow_agent_pb2.WorkflowSettingsData(
-            timezone=settings_data.get("timezone", {}),
-            save_execution_progress=settings_data.get("save_execution_progress", True),
-            save_manual_executions=settings_data.get("save_manual_executions", True),
-            timeout=settings_data.get("timeout", 300),
-            error_policy=settings_data.get("error_policy", ""),
-            caller_policy=settings_data.get("caller_policy", ""),
-        )
-
-        # Create the main WorkflowData message
-        workflow_data = workflow_agent_pb2.WorkflowData(
-            id=data.get("id", ""),
-            name=data.get("name", ""),
-            active=data.get("active", True),
-            nodes=nodes,
-            connections=connections_map,
-            settings=workflow_settings,
-            static_data=data.get("static_data", {}),
-            pin_data=data.get("pin_data", {}),
-            created_at=data.get("created_at", 0),
-            updated_at=data.get("updated_at", 0),
-            version=data.get("version", ""),
-            tags=data.get("tags", []),
-        )
-
-        return workflow_data
-
-    async def GenerateWorkflow(self, request, context):
-        """Generate workflow from natural language description"""
+    async def ProcessConversation(
+        self, request: workflow_agent_pb2.ConversationRequest, context: grpc.aio.ServicerContext
+    ) -> AsyncGenerator[workflow_agent_pb2.ConversationResponse, None]:
+        """
+        Unified interface for processing all 6-stage workflow conversations
+        """
         try:
-            logger.info("Generating workflow", description=request.description)
-
-            # Convert request to dictionary
-            context_dict = dict(request.context)
-            user_preferences_dict = dict(request.user_preferences)
-
-            # Call the LangGraph agent
-            result = await self.workflow_agent.generate_workflow(
-                user_input=request.description,
-                context=context_dict,
-                user_preferences=user_preferences_dict,
+            logger.info(
+                "Processing conversation",
+                session_id=request.session_id,
+                stage=request.current_state.stage if request.current_state else "NEW",
+                user_message_length=len(request.user_message),
             )
 
-            # Convert response to protobuf
-            workflow_data = None
-            if result.get("workflow"):
-                workflow_data = self._dict_to_workflow_data(result["workflow"])
+            # Convert protobuf state to internal format
+            if request.current_state:
+                current_state = StateConverter.proto_to_workflow_state(request.current_state)
+            else:
+                # Initialize new state using WorkflowState structure
+                current_state = {
+                    "session_id": request.session_id,
+                    "user_id": request.user_id,
+                    "created_at": int(time.time() * 1000),
+                    "updated_at": int(time.time() * 1000),
+                    "stage": WorkflowStage.CLARIFICATION,
+                    "execution_history": [],
+                    "clarification_context": {
+                        "origin": WorkflowOrigin(request.workflow_context.origin)
+                        if request.workflow_context
+                        else WorkflowOrigin.CREATE,
+                        "collected_info": {},
+                        "pending_questions": [],
+                    },
+                    "conversations": [],
+                    "intent_summary": "",
+                    "gaps": [],
+                    "alternatives": [],
+                    "current_workflow": {},
+                    "debug_result": "",
+                    "debug_loop_count": 0,
+                    "workflow_context": {
+                        "origin": request.workflow_context.origin
+                        if request.workflow_context
+                        else "create",
+                        "source_workflow_id": request.workflow_context.source_workflow_id
+                        if request.workflow_context
+                        else "",
+                        "modification_intent": request.workflow_context.modification_intent
+                        if request.workflow_context
+                        else "",
+                    },
+                }
 
-            response = workflow_agent_pb2.WorkflowGenerationResponse(
-                success=result["success"],
-                workflow=workflow_data,
-                suggestions=result["suggestions"],
-                missing_info=result["missing_info"],
-                errors=result["errors"],
+            # Add user message to conversation history
+            if request.user_message:
+                current_state["conversations"].append(
+                    {
+                        "role": "user",
+                        "text": request.user_message,
+                        "timestamp": int(time.time() * 1000),
+                        "metadata": {},
+                    }
+                )
+
+            # Process through LangGraph - use astream for streaming
+            previous_stage = current_state["stage"]
+
+            async for chunk in self.workflow_agent.graph.astream(current_state):
+                for node_name, node_output in chunk.items():
+                    logger.info(f"Processing node: {node_name}", stage=node_output.get("stage"))
+
+                    # Detect stage changes
+                    current_stage = node_output.get("stage", previous_stage)
+                    if current_stage != previous_stage:
+                        # Stage transition detected
+                        stage_response = workflow_agent_pb2.ConversationResponse(
+                            session_id=request.session_id,
+                            type=workflow_agent_pb2.RESPONSE_STATUS,
+                            status=workflow_agent_pb2.StatusContent(
+                                new_stage=StateConverter._internal_stage_to_proto(current_stage),
+                                previous_stage=StateConverter._internal_stage_to_proto(
+                                    previous_stage
+                                ),
+                                stage_description=f"Entering {current_stage} stage",
+                                pending_actions=[],
+                            ),
+                            updated_state=StateConverter.workflow_state_to_proto(node_output),
+                            timestamp=int(time.time() * 1000),
+                            is_final=False,
+                        )
+                        yield stage_response
+                        previous_stage = current_stage
+
+                    # Handle different node types
+                    if node_name == "clarification":
+                        # Clarification node completed
+                        if current_stage == WorkflowStage.NEGOTIATION:
+                            # Moving to negotiation - will generate questions
+                            continue
+                        elif current_stage == WorkflowStage.GAP_ANALYSIS:
+                            # Intent is clear, moving forward
+                            message_response = workflow_agent_pb2.ConversationResponse(
+                                session_id=request.session_id,
+                                type=workflow_agent_pb2.RESPONSE_MESSAGE,
+                                message=workflow_agent_pb2.MessageContent(
+                                    text="Great! I understand your requirements. Let me analyze what we can implement.",
+                                    role="assistant",
+                                    message_type="text",
+                                    metadata={},
+                                ),
+                                updated_state=StateConverter.workflow_state_to_proto(node_output),
+                                timestamp=int(time.time() * 1000),
+                                is_final=False,
+                            )
+                            yield message_response
+
+                    elif node_name == "negotiation":
+                        # Negotiation node - return questions to user
+                        pending_questions = node_output.get("clarification_context", {}).get(
+                            "pending_questions", []
+                        )
+
+                        if pending_questions:
+                            # Generate clarification questions
+                            questions = []
+                            for i, q in enumerate(pending_questions[:3]):  # Limit to 3 questions
+                                question = workflow_agent_pb2.ClarificationQuestion(
+                                    id=f"q_{i+1}",
+                                    question=q,
+                                    category="general",
+                                    is_required=True,
+                                    options=[],
+                                )
+                                questions.append(question)
+
+                            question_response = workflow_agent_pb2.ConversationResponse(
+                                session_id=request.session_id,
+                                type=workflow_agent_pb2.RESPONSE_MESSAGE,
+                                message=workflow_agent_pb2.MessageContent(
+                                    text="I need some clarification to better understand your requirements:",
+                                    role="assistant",
+                                    message_type="question",
+                                    metadata={},
+                                    questions=questions,
+                                ),
+                                updated_state=StateConverter.workflow_state_to_proto(node_output),
+                                timestamp=int(time.time() * 1000),
+                                is_final=True,  # Wait for user input
+                            )
+                            yield question_response
+                            return  # Exit and wait for user input
+
+                    elif node_name == "gap_analysis":
+                        # Gap analysis completed
+                        gaps = node_output.get("gaps", [])
+                        if gaps:
+                            gap_message_response = workflow_agent_pb2.ConversationResponse(
+                                session_id=request.session_id,
+                                type=workflow_agent_pb2.RESPONSE_MESSAGE,
+                                message=workflow_agent_pb2.MessageContent(
+                                    text=f"I've identified some areas that need alternatives: {', '.join(gaps)}",
+                                    role="assistant",
+                                    message_type="text",
+                                    metadata={},
+                                ),
+                                updated_state=StateConverter.workflow_state_to_proto(node_output),
+                                timestamp=int(time.time() * 1000),
+                                is_final=False,
+                            )
+                            yield gap_message_response
+
+                    elif node_name == "alternative_generation":
+                        # Alternative generation completed
+                        alternatives = node_output.get("alternatives", [])
+                        if alternatives:
+                            alt_options = []
+                            for alt in alternatives:
+                                option = workflow_agent_pb2.AlternativeOption(
+                                    id=alt.get("id", ""),
+                                    title=alt.get("title", ""),
+                                    description=alt.get("description", ""),
+                                    approach=alt.get("approach", ""),
+                                    trade_offs=alt.get("trade_offs", []),
+                                    complexity=alt.get("complexity", "medium"),
+                                )
+                                alt_options.append(option)
+
+                            alternatives_response = workflow_agent_pb2.ConversationResponse(
+                                session_id=request.session_id,
+                                type=workflow_agent_pb2.RESPONSE_MESSAGE,
+                                message=workflow_agent_pb2.MessageContent(
+                                    text="Here are some alternative approaches for your workflow:",
+                                    role="assistant",
+                                    message_type="options",
+                                    metadata={},
+                                    alternatives=alt_options,
+                                ),
+                                updated_state=StateConverter.workflow_state_to_proto(node_output),
+                                timestamp=int(time.time() * 1000),
+                                is_final=True,  # Wait for user selection
+                            )
+                            yield alternatives_response
+                            return
+
+                    elif node_name == "workflow_generation":
+                        # Workflow generation in progress
+                        generation_response = workflow_agent_pb2.ConversationResponse(
+                            session_id=request.session_id,
+                            type=workflow_agent_pb2.RESPONSE_MESSAGE,
+                            message=workflow_agent_pb2.MessageContent(
+                                text="Generating your workflow...",
+                                role="assistant",
+                                message_type="text",
+                                metadata={"workflow_id": node_output.get("workflow_id", "")},
+                            ),
+                            updated_state=StateConverter.workflow_state_to_proto(node_output),
+                            timestamp=int(time.time() * 1000),
+                            is_final=False,
+                        )
+                        yield generation_response
+
+                    elif node_name == "debug":
+                        # Debug/validation stage
+                        debug_response = workflow_agent_pb2.ConversationResponse(
+                            session_id=request.session_id,
+                            type=workflow_agent_pb2.RESPONSE_MESSAGE,
+                            message=workflow_agent_pb2.MessageContent(
+                                text="Validating and optimizing your workflow...",
+                                role="assistant",
+                                message_type="text",
+                                metadata={},
+                            ),
+                            updated_state=StateConverter.workflow_state_to_proto(node_output),
+                            timestamp=int(time.time() * 1000),
+                            is_final=False,
+                        )
+                        yield debug_response
+
+            # Final completion response
+            final_response = workflow_agent_pb2.ConversationResponse(
+                session_id=request.session_id,
+                type=workflow_agent_pb2.RESPONSE_MESSAGE,
+                message=workflow_agent_pb2.MessageContent(
+                    text="Workflow processing completed!",
+                    role="assistant",
+                    message_type="text",
+                    metadata={"workflow_id": current_state.get("workflow_id", "")},
+                ),
+                updated_state=StateConverter.workflow_state_to_proto(current_state),
+                timestamp=int(time.time() * 1000),
+                is_final=True,
             )
-
-            return response
+            yield final_response
 
         except Exception as e:
-            logger.error("Failed to generate workflow", error=str(e))
-            context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details(f"Failed to generate workflow: {str(e)}")
-            return workflow_agent_pb2.WorkflowGenerationResponse(
-                success=False, errors=[f"Internal error: {str(e)}"]
+            logger.error(
+                "Failed to process conversation", error=str(e), session_id=request.session_id
             )
 
-    async def RefineWorkflow(self, request, context):
-        """Refine existing workflow based on feedback"""
-        try:
-            logger.info("Refining workflow", workflow_id=request.workflow_id)
-
-            # Convert original workflow protobuf to dict
-            original_workflow_dict = {
-                "id": request.original_workflow.id,
-                "name": request.original_workflow.name,
-                "active": request.original_workflow.active,
-                # Add more fields as needed
-            }
-
-            # Call the LangGraph agent
-            result = await self.workflow_agent.refine_workflow(
-                workflow_id=request.workflow_id,
-                feedback=request.feedback,
-                original_workflow=original_workflow_dict,
+            error_response = workflow_agent_pb2.ConversationResponse(
+                session_id=request.session_id,
+                type=workflow_agent_pb2.RESPONSE_ERROR,
+                error=workflow_agent_pb2.ErrorContent(
+                    error_code="INTERNAL_ERROR",
+                    message=f"Failed to process conversation: {str(e)}",
+                    details=str(e),
+                    is_recoverable=True,
+                ),
+                timestamp=int(time.time() * 1000),
+                is_final=True,
             )
-
-            # Convert response to protobuf
-            updated_workflow = None
-            if result.get("updated_workflow"):
-                updated_workflow = self._dict_to_workflow_data(result["updated_workflow"])
-
-            response = workflow_agent_pb2.WorkflowRefinementResponse(
-                success=result["success"],
-                updated_workflow=updated_workflow,
-                changes=result["changes"],
-                errors=result["errors"],
-            )
-
-            return response
-
-        except Exception as e:
-            logger.error("Failed to refine workflow", error=str(e))
-            context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details(f"Failed to refine workflow: {str(e)}")
-            return workflow_agent_pb2.WorkflowRefinementResponse(
-                success=False, errors=[f"Internal error: {str(e)}"]
-            )
-
-    async def ValidateWorkflow(self, request, context):
-        """Validate workflow structure and configuration"""
-        try:
-            logger.info("Validating workflow")
-
-            # Convert request workflow_data to dict
-            workflow_data_dict = dict(request.workflow_data)
-
-            # Call the LangGraph agent
-            result = await self.workflow_agent.validate_workflow(workflow_data_dict)
-
-            response = workflow_agent_pb2.WorkflowValidationResponse(
-                valid=result["valid"], errors=result["errors"], warnings=result["warnings"]
-            )
-
-            return response
-
-        except Exception as e:
-            logger.error("Failed to validate workflow", error=str(e))
-            context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details(f"Failed to validate workflow: {str(e)}")
-            return workflow_agent_pb2.WorkflowValidationResponse(
-                valid=False, errors=[f"Internal error: {str(e)}"]
-            )
+            yield error_response
 
 
 class WorkflowAgentServer:
-    """gRPC server for Workflow Agent"""
+    """gRPC server for Workflow Agent with unified ProcessConversation interface"""
 
     def __init__(self):
         self.server: Optional[grpc.aio.Server] = None
@@ -240,7 +325,9 @@ class WorkflowAgentServer:
 
             # Start the server
             await self.server.start()
-            logger.info("gRPC server started", address=listen_addr)
+            logger.info(
+                "gRPC server started with ProcessConversation interface", address=listen_addr
+            )
 
         except Exception as e:
             logger.error("Failed to start gRPC server", error=str(e))
