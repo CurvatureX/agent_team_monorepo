@@ -96,8 +96,48 @@ Internet → API Gateway → Load Balancer → ECS Services → Database/Cache
 ### Prerequisites
 1. AWS CLI configured with appropriate permissions
 2. Terraform >= 1.0 installed
-3. S3 bucket for Terraform state storage
-4. Docker images pushed to ECR repositories
+3. Docker images pushed to ECR repositories
+
+### Bootstrap Backend Infrastructure
+
+**IMPORTANT**: Before running the main Terraform configuration, you must first create the S3 bucket and DynamoDB table for Terraform state management.
+
+#### Option 1: Manual Bootstrap (Recommended for first-time setup)
+```bash
+# Create S3 bucket for Terraform state
+aws s3 mb s3://agent-team-terraform-state --region us-east-1
+
+# Enable versioning
+aws s3api put-bucket-versioning \
+  --bucket agent-team-terraform-state \
+  --versioning-configuration Status=Enabled
+
+# Enable server-side encryption
+aws s3api put-bucket-encryption \
+  --bucket agent-team-terraform-state \
+  --server-side-encryption-configuration '{
+    "Rules": [{
+      "ApplyServerSideEncryptionByDefault": {
+        "SSEAlgorithm": "AES256"
+      }
+    }]
+  }'
+
+# Create DynamoDB table for state locking
+aws dynamodb create-table \
+  --table-name agent-team-terraform-locks \
+  --attribute-definitions AttributeName=LockID,AttributeType=S \
+  --key-schema AttributeName=LockID,KeyType=HASH \
+  --provisioned-throughput ReadCapacityUnits=1,WriteCapacityUnits=1 \
+  --region us-east-1
+```
+
+#### Option 2: Terraform Bootstrap (Alternative)
+```bash
+# Comment out the backend configuration in main.tf temporarily
+# Run: terraform apply -target=aws_s3_bucket.terraform_state -target=aws_dynamodb_table.terraform_locks
+# Then uncomment the backend and run: terraform init -migrate-state
+```
 
 ### Configuration
 1. Copy `terraform.tfvars.example` to `terraform.tfvars`
@@ -111,7 +151,7 @@ Internet → API Gateway → Load Balancer → ECS Services → Database/Cache
 
 ### Deploy Infrastructure
 ```bash
-# Initialize Terraform
+# Initialize Terraform (after bootstrap is complete)
 terraform init
 
 # Plan deployment
