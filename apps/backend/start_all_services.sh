@@ -18,7 +18,7 @@ fi
 
 # 检查环境变量
 echo "🔍 检查环境变量..."
-required_vars=("SUPABASE_URL" "SUPABASE_SERVICE_KEY" "SUPABASE_ANON_KEY" "OPENAI_API_KEY")
+required_vars=("SUPABASE_URL" "SUPABASE_SECRET_KEY" "SUPABASE_ANON_KEY" "OPENAI_API_KEY")
 missing_vars=()
 
 for var in "${required_vars[@]}"; do
@@ -44,24 +44,24 @@ start_service() {
     local service_dir=$2
     local start_command=$3
     local port=$4
-    
+
     echo "🚀 启动 $service_name..."
-    
+
     cd "$service_dir" || exit 1
-    
+
     # 检查端口是否被占用
     if lsof -i :$port >/dev/null 2>&1; then
         echo "⚠️ 端口 $port 已被占用，尝试停止现有进程..."
         pkill -f ":$port" || true
         sleep 2
     fi
-    
+
     # 启动服务
     eval "$start_command" > "../logs/${service_name}.log" 2>&1 &
     local pid=$!
     echo "✅ $service_name 已启动 (PID: $pid, 端口: $port)"
     echo "$pid" > "../logs/${service_name}.pid"
-    
+
     # 等待服务启动
     echo "⏳ 等待 $service_name 启动..."
     for i in {1..30}; do
@@ -84,7 +84,7 @@ start_service() {
             return 1
         fi
     done
-    
+
     cd - >/dev/null
 }
 

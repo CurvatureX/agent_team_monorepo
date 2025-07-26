@@ -285,7 +285,7 @@ async def insert_node_knowledge():
     """Insert sample node knowledge data into Supabase"""
 
     # Initialize clients
-    supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_KEY)
+    supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_SECRET_KEY)
     embeddings = OpenAIEmbeddings(
         model=settings.EMBEDDING_MODEL, openai_api_key=settings.OPENAI_API_KEY
     )

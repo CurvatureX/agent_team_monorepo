@@ -22,9 +22,9 @@ fi
 source .env
 
 # Check required environment variables
-if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ]; then
+if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SECRET_KEY" ]; then
     echo "❌ Missing required environment variables:"
-    echo "   SUPABASE_URL and SUPABASE_SERVICE_KEY are required"
+    echo "   SUPABASE_URL and SUPABASE_SECRET_KEY are required"
     exit 1
 fi
 

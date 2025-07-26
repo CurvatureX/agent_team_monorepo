@@ -106,7 +106,7 @@ variable "supabase_url" {
 }
 
 variable "supabase_secret_key" {
-  description = "Supabase secret key (service role key)"
+  description = "Supabase secret key (sb_secret_...)"
   type        = string
   sensitive   = true
 }
