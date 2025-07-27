@@ -67,6 +67,44 @@ resource "aws_iam_role" "ecs_task_role" {
   tags = local.common_tags
 }
 
+# IAM Policy for Service Discovery
+resource "aws_iam_policy" "service_discovery" {
+  name        = "${local.name_prefix}-service-discovery"
+  description = "Policy for ECS tasks to access service discovery"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "servicediscovery:DiscoverInstances",
+          "servicediscovery:GetService",
+          "servicediscovery:ListServices"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ecs:DescribeServices",
+          "ecs:DescribeTasks",
+          "ecs:ListTasks"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+
+  tags = local.common_tags
+}
+
+# Attach Service Discovery policy to ECS task role
+resource "aws_iam_role_policy_attachment" "ecs_task_service_discovery" {
+  role       = aws_iam_role.ecs_task_role.name
+  policy_arn = aws_iam_policy.service_discovery.arn
+}
+
 # API Gateway Task Definition
 resource "aws_ecs_task_definition" "api_gateway" {
   family                   = "${local.name_prefix}-api-gateway"
@@ -95,12 +133,16 @@ resource "aws_ecs_task_definition" "api_gateway" {
           value = "false"
         },
         {
-          name  = "WORKFLOW_SERVICE_HOST"
-          value = "workflow-engine.${local.name_prefix}.local"
+          name  = "WORKFLOW_SERVICE_DNS_NAME"
+          value = "workflow-agent.${local.name_prefix}.local"
         },
         {
-          name  = "WORKFLOW_SERVICE_PORT"
-          value = "8000"
+          name  = "WORKFLOW_SERVICE_LB_ENDPOINT"
+          value = "${aws_lb.grpc_internal.dns_name}:50051"
+        },
+        {
+          name  = "AWS_REGION"
+          value = var.aws_region
         },
         {
           name  = "REDIS_URL"
@@ -244,7 +286,7 @@ resource "aws_ecs_service" "api_gateway" {
   tags = local.common_tags
 }
 
-# Workflow Agent Task Definition
+# Workflow Agent Task Definition (gRPC service)
 resource "aws_ecs_task_definition" "workflow_agent" {
   family                   = "${local.name_prefix}-workflow-agent"
   network_mode             = "awsvpc"
@@ -261,7 +303,7 @@ resource "aws_ecs_task_definition" "workflow_agent" {
 
       portMappings = [
         {
-          containerPort = 8000
+          containerPort = 50051
           protocol      = "tcp"
         }
       ]
@@ -270,6 +312,14 @@ resource "aws_ecs_task_definition" "workflow_agent" {
         {
           name  = "DEBUG"
           value = "false"
+        },
+        {
+          name  = "GRPC_HOST"
+          value = "0.0.0.0"
+        },
+        {
+          name  = "GRPC_PORT"
+          value = "50051"
         },
         {
           name  = "REDIS_URL"
@@ -285,6 +335,14 @@ resource "aws_ecs_task_definition" "workflow_agent" {
         {
           name      = "ANTHROPIC_API_KEY"
           valueFrom = aws_ssm_parameter.anthropic_api_key.arn
+        },
+        {
+          name      = "SUPABASE_URL"
+          valueFrom = aws_ssm_parameter.supabase_url.arn
+        },
+        {
+          name      = "SUPABASE_SERVICE_KEY"
+          valueFrom = aws_ssm_parameter.supabase_service_key.arn
         }
       ]
 
@@ -298,9 +356,9 @@ resource "aws_ecs_task_definition" "workflow_agent" {
       }
 
       healthCheck = {
-        command     = ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+        command     = ["CMD-SHELL", "grpc_health_probe -addr=localhost:50051 || exit 1"]
         interval    = 30
-        timeout     = 5
+        timeout     = 10
         retries     = 3
         startPeriod = 60
       }
@@ -331,7 +389,7 @@ resource "aws_ecs_service" "workflow_engine" {
   tags = local.common_tags
 }
 
-# ECS Service for Workflow Agent
+# ECS Service for Workflow Agent (gRPC)
 resource "aws_ecs_service" "workflow_agent" {
   name            = "workflow-agent-service"
   cluster         = aws_ecs_cluster.main.id
@@ -345,9 +403,17 @@ resource "aws_ecs_service" "workflow_agent" {
     assign_public_ip = false
   }
 
+  load_balancer {
+    target_group_arn = aws_lb_target_group.workflow_agent_grpc.arn
+    container_name   = "workflow-agent"
+    container_port   = 50051
+  }
+
   service_registries {
     registry_arn = aws_service_discovery_service.workflow_agent.arn
   }
+
+  depends_on = [aws_lb_listener.grpc]
 
   tags = local.common_tags
 }

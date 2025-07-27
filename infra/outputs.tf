@@ -68,3 +68,29 @@ output "redis_endpoint" {
   value       = aws_elasticache_cluster.redis.cache_nodes[0].address
   sensitive   = true
 }
+
+# Service Discovery Outputs
+output "service_discovery_namespace_id" {
+  description = "ID of the service discovery namespace"
+  value       = aws_service_discovery_private_dns_namespace.main.id
+}
+
+output "service_discovery_namespace_name" {
+  description = "Name of the service discovery namespace"
+  value       = aws_service_discovery_private_dns_namespace.main.name
+}
+
+output "grpc_load_balancer_dns_name" {
+  description = "DNS name of the gRPC load balancer"
+  value       = aws_lb.grpc_internal.dns_name
+}
+
+output "grpc_load_balancer_endpoint" {
+  description = "Full endpoint of the gRPC load balancer"
+  value       = "${aws_lb.grpc_internal.dns_name}:50051"
+}
+
+output "workflow_agent_service_discovery_dns" {
+  description = "Service discovery DNS name for workflow agent"
+  value       = "workflow-agent.${local.name_prefix}.local"
+}
