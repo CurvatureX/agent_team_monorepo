@@ -2766,6 +2766,8 @@ dev = [
 dev = [
     { name = "langgraph-api" },
     { name = "langgraph-cli", extra = ["inmem"] },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
     { name = "workflow-agent" },
 ]
 
@@ -2800,6 +2802,8 @@ provides-extras = ["dev"]
 dev = [
     { name = "langgraph-api" },
     { name = "langgraph-cli", extras = ["inmem"], specifier = ">=0.3.4" },
+    { name = "pytest", specifier = ">=7.4.0" },
+    { name = "pytest-asyncio", specifier = ">=0.21.0" },
     { name = "workflow-agent", editable = "workflow_agent" },
 ]
 
@@ -2897,6 +2901,8 @@ dependencies = [
     { name = "psycopg2-binary" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "pytest" },
+    { name = "pytest-cov" },
     { name = "python-dotenv" },
     { name = "python-jose", extra = ["cryptography"] },
     { name = "python-multipart" },
@@ -2923,6 +2929,8 @@ requires-dist = [
     { name = "psycopg2-binary", specifier = ">=2.9.0" },
     { name = "pydantic", specifier = ">=2.5.0" },
     { name = "pydantic-settings", specifier = ">=2.0.0" },
+    { name = "pytest", specifier = ">=7.4.3" },
+    { name = "pytest-cov", specifier = ">=4.1.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "python-jose", extras = ["cryptography"], specifier = ">=3.3.0" },
     { name = "python-multipart", specifier = ">=0.0.6" },

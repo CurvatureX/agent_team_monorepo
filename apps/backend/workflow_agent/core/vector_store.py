@@ -7,12 +7,11 @@ import asyncio
 from typing import Any, Dict, List, Optional, Tuple
 
 import structlog
+from core.config import settings
 from langchain_core.embeddings import Embeddings
 from langchain_openai import OpenAIEmbeddings
 from supabase import Client, create_client
 from supabase.client import ClientOptions
-
-from core.config import settings
 
 logger = structlog.get_logger()
 
@@ -65,8 +64,19 @@ class SupabaseVectorStore:
 
     def _create_supabase_client(self) -> Client:
         """Create Supabase client with proper configuration"""
-        if not settings.SUPABASE_URL or not settings.SUPABASE_SECRET_KEY:
-            raise ValueError("SUPABASE_URL and SUPABASE_SECRET_KEY must be configured")
+        if (
+            not settings.SUPABASE_URL
+            or not settings.SUPABASE_SECRET_KEY
+            or settings.SUPABASE_URL == "placeholder"
+            or settings.SUPABASE_SECRET_KEY == "placeholder"
+        ):
+            raise ValueError(
+                "SUPABASE_URL and SUPABASE_SECRET_KEY must be properly configured (not placeholder values)"
+            )
+
+        # Validate URL format
+        if not settings.SUPABASE_URL.startswith("https://"):
+            raise ValueError(f"Invalid SUPABASE_URL format: {settings.SUPABASE_URL}")
 
         # Use service role key for full access to vector operations
         client = create_client(
@@ -83,9 +93,7 @@ class SupabaseVectorStore:
         if not settings.OPENAI_API_KEY:
             raise ValueError("OPENAI_API_KEY must be configured for embeddings")
 
-        return OpenAIEmbeddings(
-            model=settings.EMBEDDING_MODEL, api_key=settings.OPENAI_API_KEY
-        )
+        return OpenAIEmbeddings(model=settings.EMBEDDING_MODEL, api_key=settings.OPENAI_API_KEY)
 
     async def similarity_search(
         self,

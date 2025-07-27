@@ -6,7 +6,6 @@ build-backend = "hatchling.build"
 name = "workflow-engine"
 version = "0.1.0"
 description = "Workflow Engine for AI Agent Team Monorepo"
-readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
@@ -46,6 +45,8 @@ dependencies = [
     "grpcio>=1.68.0",
     "grpcio-tools>=1.68.0",
     "protobuf>=6.0.0",
+    "pytest>=7.4.3",
+    "pytest-cov>=4.1.0",
 ]
 
 [project.optional-dependencies]
@@ -67,4 +68,4 @@ asyncio_mode = "auto"
 
 # Service-specific isort configuration
 [tool.isort]
-known_first_party = ["workflow_engine"] 
+known_first_party = ["workflow_engine"]

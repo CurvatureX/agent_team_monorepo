@@ -43,15 +43,22 @@ This checklist must be completed before any AWS ECS deployment to prevent servic
 ### Package Structure
 - [ ] **Python package hierarchy preserved**
   ```dockerfile
-  # Correct structure
-  COPY service_name/ ./service_name/
+  # CORRECT: Preserve nested package structure
+  COPY workflow_engine/workflow_engine ./workflow_engine
   COPY shared/ ./shared/
 
-  # Run as module
-  CMD ["python", "-m", "service_name.main"]
+  # Run as proper Python module
+  CMD ["python", "-m", "workflow_engine"]
+  ```
+- [ ] **Test module imports work in container**
+  ```bash
+  # CRITICAL: Test this before deployment
+  docker run --rm your-image python -c "import workflow_engine.server"
+  docker run --rm your-image python -c "import workflow_agent.main"
   ```
 - [ ] **No relative imports at module level**
 - [ ] **All dependencies in requirements.txt**
+- [ ] **File path operations work in both dev and container environments**
 
 ## 🔧 Service-Specific Checks
 
@@ -89,7 +96,13 @@ This checklist must be completed before any AWS ECS deployment to prevent servic
   - [ ] `/agent-team-production/supabase/url`
   - [ ] `/agent-team-production/supabase/secret-key`
 - [ ] **No placeholder values** (e.g., "placeholder", "your-key-here")
+  ```bash
+  # CRITICAL: Verify no placeholder values
+  aws ssm get-parameter --name "/agent-team-production/supabase/url" --with-decryption --query 'Parameter.Value'
+  # Should return actual URL, NOT "placeholder"
+  ```
 - [ ] **Values are valid and current**
+- [ ] **Services have graceful fallback for missing/invalid configuration**
 
 ### Environment Variables
 - [ ] **Service configuration correct**
@@ -195,9 +208,67 @@ aws ecs wait services-stable --cluster agent-team-production-cluster --services 
 
 **Remember**: Every deployment failure costs time and potentially affects users. Take the extra 10 minutes to validate everything rather than debugging failed deployments for hours.
 
-**Last Updated**: January 2025 after health check timeout and deployment stability incident.
+**Last Updated**: July 2025 after Docker module import and SSM parameter incident.
 
-## 🚨 Recent Incident: Health Check Timeouts (Jan 2025)
+## 🚨 Critical Incident: Module Import & SSM Configuration Failures (July 2025)
+
+**Issue**: Services failing `aws ecs wait services-stable` with continuous task restarts and import errors
+
+**Root Causes**:
+1. **Docker Module Import Failures**:
+   - workflow-engine: `python: can't open file '/app/workflow_engine/server.py': [Errno 2] No such file or directory`
+   - Later: `/usr/local/bin/python: No module named workflow_engine.server`
+   - **Cause**: Incorrect Dockerfile CMD path and Python package structure
+
+2. **SSM Parameter Placeholder Values**:
+   - workflow-agent: `supabase._sync.client.SupabaseException: Invalid URL`
+   - **Cause**: SSM parameters contained "placeholder" instead of real values
+   - Services crashed on startup when trying to initialize with placeholder URLs
+
+3. **Missing Directory Structure**:
+   - workflow-agent: `Template folder not found at: /shared/prompts`
+   - **Cause**: Dockerfile didn't create correct `/shared/prompts` directory structure
+
+**Critical Fix Applied**:
+1. **Fixed Docker Module Structure**:
+   ```dockerfile
+   # WRONG: Flattened structure
+   COPY workflow_engine/ .
+   CMD ["python", "server.py"]
+
+   # CORRECT: Preserved package hierarchy
+   COPY workflow_engine/workflow_engine ./workflow_engine
+   CMD ["python", "-m", "workflow_engine"]
+   ```
+
+2. **Updated SSM Parameters**:
+   - Replaced all "placeholder" values with actual API keys and URLs
+   - Added validation in code to detect placeholder values
+
+3. **Enhanced Error Handling**:
+   - Added graceful fallback when Supabase is misconfigured
+   - Services now start with warnings instead of crashes
+
+**Services Affected & Resolution**:
+- ✅ **workflow-agent**: Fixed SSM + graceful RAG fallback → 2/2 tasks running
+- 🔧 **workflow-engine**: Fixed module imports → Running (protobuf imports remaining)
+
+**Prevention Checklist**:
+- [ ] **Verify Docker package structure preserves Python imports**
+  ```bash
+  # Test module imports in container
+  docker run --rm your-image python -c "import service_name.main"
+  ```
+- [ ] **Validate ALL SSM parameters contain real values**
+  ```bash
+  # Check for placeholder values
+  aws ssm get-parameter --name "/path/to/param" --with-decryption --query 'Parameter.Value'
+  ```
+- [ ] **Test container startup locally with production-like environment**
+- [ ] **Add graceful error handling for external service dependencies**
+- [ ] **Use relative path detection for file system operations in containers**
+
+## 🚨 Previous Incident: Health Check Timeouts (Jan 2025)
 
 **Issue**: Services failing `aws ecs wait services-stable` due to premature health check failures
 
