@@ -35,6 +35,35 @@ resource "aws_security_group" "alb" {
   }
 }
 
+# Security Group for gRPC Network Load Balancer
+resource "aws_security_group" "grpc_nlb" {
+  name_prefix = "${local.name_prefix}-grpc-nlb-"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description = "gRPC from VPC"
+    from_port   = 50051
+    to_port     = 50051
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-grpc-nlb-sg"
+  })
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
 # Security Group for ECS Tasks
 resource "aws_security_group" "ecs_tasks" {
   name_prefix = "${local.name_prefix}-ecs-tasks-"
@@ -46,6 +75,22 @@ resource "aws_security_group" "ecs_tasks" {
     to_port         = 8000
     protocol        = "tcp"
     security_groups = [aws_security_group.alb.id]
+  }
+
+  ingress {
+    description     = "gRPC from NLB"
+    from_port       = 50051
+    to_port         = 50051
+    protocol        = "tcp"
+    security_groups = [aws_security_group.grpc_nlb.id]
+  }
+
+  ingress {
+    description = "gRPC inter-service communication"
+    from_port   = 50051
+    to_port     = 50051
+    protocol    = "tcp"
+    self        = true
   }
 
   ingress {

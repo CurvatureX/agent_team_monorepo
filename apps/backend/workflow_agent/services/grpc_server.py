@@ -194,7 +194,12 @@ class WorkflowAgentServicer(workflow_agent_pb2_grpc.WorkflowAgentServicer):
                     elif node_name == "alternative_generation":
                         # Alternative generation completed
                         alternatives = node_output.get("alternatives", [])
-                        if alternatives:
+                        
+                        # Check if this node is transitioning to NEGOTIATION (user input needed)
+                        current_stage = node_output.get("stage", previous_stage)
+                        needs_user_input = (current_stage == WorkflowStage.NEGOTIATION)
+                        
+                        if alternatives and needs_user_input:
                             alt_options = []
                             for alt in alternatives:
                                 option = workflow_agent_pb2.AlternativeOption(
@@ -222,7 +227,23 @@ class WorkflowAgentServicer(workflow_agent_pb2_grpc.WorkflowAgentServicer):
                                 is_final=True  # Wait for user selection
                             )
                             yield alternatives_response
-                            return
+                            return  # Only return if transitioning to negotiation
+                        else:
+                            # Alternative generation completed without user input needed
+                            alt_message_response = workflow_agent_pb2.ConversationResponse(
+                                session_id=request.session_id,
+                                type=workflow_agent_pb2.RESPONSE_MESSAGE,
+                                message=workflow_agent_pb2.MessageContent(
+                                    text="I've analyzed the requirements and identified suitable approaches.",
+                                    role="assistant",
+                                    message_type="text",
+                                    metadata={}
+                                ),
+                                updated_state=StateConverter.workflow_state_to_proto(node_output),
+                                timestamp=int(time.time() * 1000),
+                                is_final=False
+                            )
+                            yield alt_message_response
 
                     elif node_name == "workflow_generation":
                         # Workflow generation in progress

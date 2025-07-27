@@ -1,15 +1,29 @@
 # Agent Team Infrastructure
 
-This directory contains Terraform configurations for deploying the Agent Team application on AWS. The infrastructure follows a modern, scalable microservices architecture using containerized services on AWS ECS Fargate.
+This directory contains Terraform configurations for deploying the Agent Team application on AWS. The infrastructure follows a modern, scalable microservices architecture using containerized services on AWS ECS Fargate with gRPC service discovery.
 
 ## 🏗️ Architecture Overview
 
 ```
-Internet → API Gateway → Load Balancer → ECS Services → Database/Cache
-                                      │
-                                      ├─ API Gateway (FastAPI)
-                                      └─ Workflow Engine (gRPC)
+Internet → ALB → API Gateway ═══════════════════════════════════╗
+                     ║                                          ║
+                     ║  gRPC Service Discovery                   ║
+                     ║  ┌─────────────────────────────────────┐  ║
+                     ║  │ AWS Cloud Map + DNS Resolution      │  ║
+                     ╚══│ Network Load Balancer (Internal)    │══╝
+                        │ Multiple Discovery Strategies       │
+                        └─────────────────────────────────────┘
+                                          │
+                                          ▼
+                                   Workflow Agent
+                                    (gRPC Server)
 ```
+
+## 📚 Documentation
+
+- **[gRPC Service Discovery Guide](./GRPC_SERVICE_DISCOVERY.md)**: Complete guide for gRPC service discovery architecture
+- **[Deployment Guide](#deployment)**: Step-by-step deployment instructions
+- **[Troubleshooting](#troubleshooting)**: Common issues and solutions
 
 ## 📁 File Structure
 
