@@ -90,15 +90,17 @@ CMD ["python", "main.py"]  # Causes import errors
 
 ### Workflow Agent (gRPC Service)
 - **Port**: 50051 (gRPC)
-- **Protocol**: gRPC with health checks via `netstat`
+- **Protocol**: gRPC with TCP health checks
 - **Dependencies**: OpenAI, Anthropic APIs, Supabase (for RAG), Redis
-- **Health Check**: `netstat -ln | grep :50051 || exit 1`
+- **Health Check**: `nc -z localhost 50051 || exit 1` (TCP connection test)
+- **Start Period**: 120s (service takes time to initialize)
 
-### Workflow Engine (FastAPI Service)
-- **Port**: 8000 (HTTP)
-- **Protocol**: FastAPI with HTTP health endpoint
+### Workflow Engine (gRPC Service)
+- **Port**: 8000 (gRPC)
+- **Protocol**: gRPC server with TCP health checks
 - **Dependencies**: croniter, Redis, PostgreSQL, gRPC tools
-- **Health Check**: `curl -f http://localhost:8000/health || exit 1`
+- **Health Check**: `nc -z localhost 8000 || exit 1` (TCP connection test)
+- **Start Period**: 90s (database initialization required)
 
 ## Development Commands
 
@@ -190,11 +192,16 @@ REDIS_URL="redis://localhost:6379/0"
 1. Build with platform flag: `docker build --platform linux/amd64`
 2. ECS Fargate requires AMD64 architecture
 
-### Port Configuration
-**Issue**: Health checks failing due to wrong ports
-**Solution**:
-- workflow-agent: Use port 50051 with `netstat` health check
-- workflow-engine: Use port 8000 with `curl` health check
+### Health Check Configuration Issues
+**Issue**: Health checks failing due to protocol/command mismatch
+**Critical Solutions**:
+- **NEVER use HTTP health checks on gRPC services**: `curl` will always fail on gRPC ports
+- **Use TCP connection tests**: `nc -z localhost PORT` works for all service types
+- **Match health check to service type**:
+  - HTTP/REST API → `curl -f http://localhost:PORT/health`
+  - gRPC Server → `nc -z localhost PORT` or `grpc_health_probe -addr=localhost:PORT`
+  - TCP Service → `nc -z localhost PORT`
+- **Set appropriate grace periods**: gRPC services need 90-120s start periods
 
 ### Supabase Connection
 **Issue**: "Invalid URL" errors from Supabase client
@@ -243,8 +250,22 @@ Before deploying to AWS ECS:
 1. **Package Structure is Critical**: Python import system requires proper package hierarchy preservation in Docker
 2. **Platform Consistency**: Local development (ARM64) vs production (AMD64) platform differences cause deployment failures
 3. **Dependency Management**: All dependencies must be explicitly declared and installed correctly
-4. **Port Configuration**: Service discovery and health checks must use correct ports for each service type
-5. **Environment Variables**: Placeholder values in configuration cause runtime failures
+4. **Health Check Protocol Matching**: CRITICAL - Health checks must match service protocol (HTTP vs gRPC)
+5. **Grace Period Configuration**: gRPC services need longer startup times than HTTP services
+6. **Environment Variables**: Placeholder values in configuration cause runtime failures
+
+### Health Check Protocol Matrix
+| Service Type | Port | Protocol | Health Check Command |
+|-------------|------|----------|---------------------|
+| workflow-agent | 50051 | gRPC | `nc -z localhost 50051` |
+| workflow-engine | 8000 | gRPC | `nc -z localhost 8000` |
+| api-gateway | 8000 | HTTP | `curl -f http://localhost:8000/health` |
+
+### Critical Health Check Rules
+- ❌ **NEVER**: `curl` on gRPC ports → Always fails
+- ✅ **ALWAYS**: Use `nc -z` for gRPC services
+- ✅ **ALWAYS**: Set startPeriod ≥ 90s for gRPC services
+- ✅ **ALWAYS**: Test health check command locally before deployment
 
 ## RAG System Integration
 
