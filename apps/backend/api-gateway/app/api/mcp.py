@@ -79,6 +79,7 @@ async def list_tools(request: Request):
         )
 
         error_response = MCPErrorResponse(
+            success=False,
             error=e.user_message,
             error_type=e.error_type.value,
             details={**e.details, "error_id": e.error_id, "request_id": request_id},
@@ -109,6 +110,7 @@ async def list_tools(request: Request):
         )
 
         error_response = MCPErrorResponse(
+            success=False,
             error=get_user_friendly_message(classified_error.error_type),
             error_type=classified_error.error_type.value,
             details={
@@ -188,6 +190,7 @@ async def invoke_tool(invoke_request: MCPInvokeRequest, request: Request):
 
         # Create enhanced error response
         error_response = MCPErrorResponse(
+            success=False,
             error=e.user_message,
             error_type=e.error_type.value,
             details={
@@ -234,6 +237,7 @@ async def invoke_tool(invoke_request: MCPInvokeRequest, request: Request):
 
         # Enhanced generic error response
         error_response = MCPErrorResponse(
+            success=False,
             error=get_user_friendly_message(classified_error.error_type),
             error_type=classified_error.error_type.value,
             details={
@@ -305,6 +309,7 @@ async def get_tool_info(tool_name: str, request: Request):
         )
 
         error_response = MCPErrorResponse(
+            success=False,
             error=e.user_message,
             error_type=e.error_type.value,
             details={
@@ -341,6 +346,7 @@ async def get_tool_info(tool_name: str, request: Request):
         )
 
         error_response = MCPErrorResponse(
+            success=False,
             error=get_user_friendly_message(classified_error.error_type),
             error_type=classified_error.error_type.value,
             details={

@@ -50,6 +50,8 @@ allow-direct-references = true
 [tool.uv]
 dev-dependencies = [
     "httpx>=0.24.0",              # For testing FastAPI
+    "pytest>=7.4.0",             # Test framework
+    "pytest-cov>=4.1.0",         # Coverage reporting
 ]
 
 [tool.uv.sources]
