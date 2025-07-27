@@ -28,6 +28,7 @@ WORKDIR /app
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     curl \
+    netcat-traditional \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -35,24 +36,18 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /install /usr/local
 
 # Copy application code from builder
-COPY --from=builder /app/workflow_engine ./
+COPY --from=builder /app/workflow_engine ./workflow_engine
 COPY --from=builder /app/shared ./shared
 
-# Generate protobuf files
-RUN python -m grpc_tools.protoc \
-    --python_out=proto \
-    --grpc_python_out=proto \
-    --proto_path=shared/proto/engine \
-    shared/proto/engine/*.proto || echo "Proto generation failed, continuing anyway"
+# Generate protobuf files using the existing script
+RUN python -c "import sys, os; sys.path.insert(0, '.'); from workflow_engine.generate_proto import generate_proto_files; generate_proto_files()" || echo "Proto generation failed, continuing anyway"
 
-# Fix protobuf imports
-RUN find proto -name "*_pb2_grpc.py" -exec sed -i 's/^import \([a-zA-Z_][a-zA-Z0-9_]*_pb2\) as /from . import \1 as /g' {} \; || true
-RUN find proto -name "*_pb2.py" -exec sed -i 's/^import \([a-zA-Z_][a-zA-Z0-9_]*_pb2\) as /from . import \1 as /g' {} \; || true
+# Create top-level proto symlink for imports
+RUN ln -sf workflow_engine/proto proto
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash --uid 1000 app && \
-    chown -R app:app /app && \
-    chmod +x start_server.sh
+    chown -R app:app /app
 USER app
 
 # Set environment variables
@@ -63,9 +58,9 @@ ENV PYTHONUNBUFFERED=1 \
 # Expose port
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+# Health check - use TCP connection test for gRPC
+HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
+    CMD nc -z localhost 8000 || exit 1
 
-# Run application
-CMD ["python", "server.py"]
+# Run application as module
+CMD ["python", "-m", "workflow_engine.server"]
