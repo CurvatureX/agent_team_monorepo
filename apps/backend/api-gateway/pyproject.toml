@@ -51,6 +51,7 @@ allow-direct-references = true
 dev-dependencies = [
     "httpx>=0.24.0",              # For testing FastAPI
     "pytest>=7.4.0",             # Test framework
+    "pytest-asyncio>=0.21.0",    # Async test support
     "pytest-cov>=4.1.0",         # Coverage reporting
 ]
 
@@ -58,3 +59,14 @@ dev-dependencies = [
 # Add any local package sources here if needed
 
 # Tool configurations inherited from workspace root
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "asyncio: mark test as async",
+]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--cov-report=term-missing",
+]
