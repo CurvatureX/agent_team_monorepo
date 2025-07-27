@@ -1,14 +1,16 @@
 """
-MVP Configuration Management with Supabase Auth support
+Three-Layer API Architecture Configuration Management
+支持Public API、App API、MCP API的分层配置
 """
 
 import os
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    """Application settings for MVP version with Supabase Auth"""
+    """Three-layer API Gateway configuration"""
     
     # Supabase Configuration
     SUPABASE_URL: str = "https://your-project-id.supabase.co"  # Default placeholder
@@ -34,16 +36,49 @@ class Settings(BaseSettings):
     ]
     
     # Application Configuration
+    APP_NAME: str = "Workflow Agent API Gateway"
+    VERSION: str = "2.0.0"
     DEBUG: bool = os.getenv("DEBUG", "true").lower() == "true"
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "DEBUG" if os.getenv("DEBUG", "true").lower() == "true" else "INFO")
     LOG_FORMAT: str = os.getenv("LOG_FORMAT", "standard")  # standard, json, simple
     
-    # Security Configuration
+    # Server Configuration
+    HOST: str = "0.0.0.0"
+    PORT: int = 8000
+    RELOAD: bool = True
+    
+    # Redis Configuration
+    REDIS_URL: str = "redis://localhost:6379/0"
+    CACHE_TTL: int = 3600  # 缓存过期时间（秒）
+    
+    # Public API Configuration
+    PUBLIC_API_ENABLED: bool = True
+    PUBLIC_RATE_LIMIT_ENABLED: bool = True
+    
+    # App API Configuration
+    APP_API_ENABLED: bool = True
+    SUPABASE_AUTH_ENABLED: bool = True
+    RLS_ENABLED: bool = True
     ENABLE_AUTH: bool = True  # Set to False to disable authentication for testing
     REQUIRE_EMAIL_VERIFICATION: bool = False  # MVP: Disable email verification for simplicity
     
-    # Rate Limiting (for future implementation)
-    RATE_LIMIT_PER_MINUTE: int = 60
+    # MCP API Configuration
+    MCP_API_ENABLED: bool = True
+    MCP_API_KEY_REQUIRED: bool = True
+    
+    # API Key Management
+    MCP_API_KEYS: Dict[str, Dict[str, Any]] = Field(default_factory=lambda: {
+        "dev_default": {
+            "client_name": "Development Client",
+            "scopes": ["tools:read", "tools:execute", "health:check"],
+            "rate_limit_tier": "development",
+            "active": True
+        }
+    })
+    
+    # Rate Limiting Configuration
+    RATE_LIMIT_STORAGE: str = "redis"  # redis, memory
+    RATE_LIMIT_STRATEGY: str = "sliding_window"  # fixed_window, sliding_window
     
     # MCP Configuration
     MCP_ENABLED: bool = True
@@ -55,8 +90,14 @@ class Settings(BaseSettings):
     ELASTICSEARCH_HOST: str = "localhost"
     ELASTICSEARCH_PORT: int = 9200
     
-    # Application Information
-    APP_NAME: str = "API Gateway MVP"
+    # Security Configuration
+    API_SECRET_KEY: str = Field(default="your-secret-key-change-in-production", description="API 签名密钥")
+    JWT_SECRET_KEY: str = Field(default="jwt-secret-key-change-in-production", description="JWT 签名密钥")
+    ENCRYPTION_KEY: str = Field(default="encryption-key-change-in-production", description="数据加密密钥")
+    
+    # Monitoring Configuration
+    METRICS_ENABLED: bool = True
+    HEALTH_CHECK_ENABLED: bool = True
     
     class Config:
         env_file = ".env"

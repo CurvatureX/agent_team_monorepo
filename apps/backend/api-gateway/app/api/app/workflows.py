@@ -61,7 +61,7 @@ class ExecutionHistoryResponse(BaseModel):
 @router.post("/", response_model=WorkflowResponse, status_code=status.HTTP_201_CREATED)
 async def create_workflow(
     workflow_data: WorkflowCreate,
-    client = Depends(get_grpc_client),
+    client=Depends(get_grpc_client),
 ):
     """
     Create a new workflow.
@@ -76,7 +76,7 @@ async def create_workflow(
 @router.get("/{workflow_id}", response_model=WorkflowResponse)
 async def get_workflow(
     workflow_id: str,
-    client = Depends(get_grpc_client),
+    client=Depends(get_grpc_client),
 ):
     """
     Get a workflow by its ID.
@@ -94,7 +94,7 @@ async def get_workflow(
 async def update_workflow(
     workflow_id: str,
     workflow_data: WorkflowUpdate,
-    client = Depends(get_grpc_client),
+    client=Depends(get_grpc_client),
 ):
     """
     Update an existing workflow.
@@ -115,7 +115,7 @@ async def update_workflow(
 @router.delete("/{workflow_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_workflow(
     workflow_id: str,
-    client = Depends(get_grpc_client),
+    client=Depends(get_grpc_client),
 ):
     """
     Delete a workflow.
@@ -129,7 +129,7 @@ async def delete_workflow(
 @router.get("/", response_model=List[WorkflowResponse])
 async def list_workflows(
     user_id: str,  # Assuming user_id is passed as a query parameter for now
-    client = Depends(get_grpc_client),
+    client=Depends(get_grpc_client),
 ):
     """
     List all workflows for a user.
@@ -145,7 +145,7 @@ async def list_workflows(
 async def execute_workflow(
     workflow_id: str,
     execution_request: WorkflowExecutionRequest,
-    client = Depends(get_grpc_client),
+    client=Depends(get_grpc_client),
 ):
     """
     Execute a workflow.
@@ -160,7 +160,7 @@ async def execute_workflow(
 @router.get("/executions/{execution_id}", response_model=ExecutionStatusResponse)
 async def get_execution_status(
     execution_id: str,
-    client = Depends(get_grpc_client),
+    client=Depends(get_grpc_client),
 ):
     """
     Get the status of a workflow execution.
@@ -175,7 +175,7 @@ async def get_execution_status(
 @router.post("/executions/{execution_id}/cancel")
 async def cancel_execution(
     execution_id: str,
-    client = Depends(get_grpc_client),
+    client=Depends(get_grpc_client),
 ):
     """
     Cancel a running workflow execution.
@@ -183,7 +183,9 @@ async def cancel_execution(
     try:
         result = await client.cancel_execution(execution_id)
         if not result.get("success"):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=result.get("message"))
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=result.get("message")
+            )
         return result
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
@@ -192,7 +194,7 @@ async def cancel_execution(
 @router.get("/{workflow_id}/history", response_model=ExecutionHistoryResponse)
 async def get_execution_history(
     workflow_id: str,
-    client = Depends(get_grpc_client),
+    client=Depends(get_grpc_client),
 ):
     """
     Get the execution history for a workflow.
@@ -201,4 +203,4 @@ async def get_execution_history(
         history_result = await client.get_execution_history(workflow_id)
         return ExecutionHistoryResponse(executions=history_result)
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)) 
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
