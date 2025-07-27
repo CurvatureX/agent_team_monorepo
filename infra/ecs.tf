@@ -219,11 +219,11 @@ resource "aws_ecs_task_definition" "workflow_engine" {
       }
 
       healthCheck = {
-        command     = ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+        command     = ["CMD-SHELL", "nc -z localhost 8000 || exit 1"]
         interval    = 30
         timeout     = 5
         retries     = 3
-        startPeriod = 60
+        startPeriod = 90
       }
     }
   ])
@@ -330,11 +330,11 @@ resource "aws_ecs_task_definition" "workflow_agent" {
       }
 
       healthCheck = {
-        command     = ["CMD-SHELL", "netstat -ln | grep :50051 || exit 1"]
+        command     = ["CMD-SHELL", "nc -z localhost 50051 || exit 1"]
         interval    = 30
         timeout     = 5
         retries     = 3
-        startPeriod = 60
+        startPeriod = 120
       }
     }
   ])
