@@ -4,7 +4,7 @@ MVP Data Models including Supabase Auth models
 
 from typing import Optional, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field
 from enum import Enum
 
 
@@ -28,14 +28,14 @@ class WorkflowEventType(str, Enum):
 # Authentication Request Models
 class RegisterRequest(BaseModel):
     """Request model for user registration"""
-    email: EmailStr = Field(..., description="User email address")
+    email: str = Field(..., description="User email address")
     password: str = Field(..., min_length=6, description="User password (minimum 6 characters)")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Optional user metadata")
 
 
 class LoginRequest(BaseModel):
     """Request model for user login"""
-    email: EmailStr = Field(..., description="User email address")
+    email: str = Field(..., description="User email address")
     password: str = Field(..., description="User password")
 
 

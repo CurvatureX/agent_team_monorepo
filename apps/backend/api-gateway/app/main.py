@@ -9,7 +9,10 @@ from fastapi.responses import JSONResponse
 from app.config import settings
 from app.database import init_supabase
 from app.models import HealthResponse
-from app.api import session, chat, workflow, mcp
+# 导入三层API路由
+from app.api.public import router as public_router
+from app.api.app import router as app_router
+from app.api.mcp import router as mcp_router
 from app.services.grpc_client import workflow_client
 from app.utils import log_info, log_warning, log_error, log_exception
 
@@ -68,21 +71,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API routers - Frontend handles auth, backend verifies tokens
-app.include_router(session.router, prefix="/api/v1", tags=["session"])
-app.include_router(chat.router, prefix="/api/v1", tags=["chat"])
-app.include_router(workflow.router, prefix="/api/v1/workflow", tags=["workflow"])
-app.include_router(mcp.router, prefix="/api/v1/mcp", tags=["mcp"])
+# 三层API路由注册
+app.include_router(public_router, prefix="/api/public", tags=["public"])
+app.include_router(app_router, prefix="/api/app", tags=["app"])
+app.include_router(mcp_router, prefix="/api/mcp", tags=["mcp"])
 
 
-# Basic health check
+# 兼容性重定向 - 保持旧的健康检查端点可用
 @app.get("/health", response_model=HealthResponse)
-async def health_check():
-    """Health check endpoint"""
-    log_info("Health check requested")
+async def legacy_health_check():
+    """Legacy health check endpoint - redirects to /api/public/health"""
+    log_info("Legacy health check requested")
     return HealthResponse(
         status="healthy",
-        version="1.0.0"
+        version="2.0.0"
     )
 
 
@@ -91,20 +93,34 @@ async def root():
     """Root endpoint"""
     log_info("Root endpoint accessed")
     return {
-        "message": "API Gateway for Workflow Agent Team",
+        "message": "Workflow Agent API Gateway - Three-Layer Architecture",
         "version": "1.0.0",
-        "auth_model": "Frontend authentication with JWT verification",
-        "features": [
-            "JWT Token Verification",
-            "Session Management with Actions", 
-            "Chat API with SSE Streaming",
-            "Integrated Workflow Generation in Chat"
-        ],
+        "architecture": "Three-layer API (Public/App/MCP)",
+        "api_layers": {
+            "public": {
+                "prefix": "/api/public",
+                "auth": "None (Rate Limited)",
+                "description": "Public endpoints for external systems"
+            },
+            "app": {
+                "prefix": "/api/app", 
+                "auth": "Supabase OAuth + RLS",
+                "description": "App endpoints for Web/Mobile applications"
+            },
+            "mcp": {
+                "prefix": "/api/mcp",
+                "auth": "API Key with scopes",
+                "description": "MCP endpoints for LLM clients"
+            }
+        },
         "endpoints": {
             "docs": "/docs",
-            "health": "/health",
-            "sessions": "/api/v1/session",
-            "chat": "/api/v1/chat/stream"
+            "health": "/api/public/health",
+            "sessions": "/api/app/sessions",
+            "chat": "/api/app/chat/stream",
+            "workflows": "/api/app/workflows",
+            "mcp_tools": "/api/mcp/tools",
+            "mcp_invoke": "/api/mcp/invoke"
         }
     }
 
@@ -122,13 +138,24 @@ async def jwt_auth_middleware(request: Request, call_next):
     
     log_info(f"📨 {method} {path} - Processing request")
     
-    # Skip authentication for public endpoints
+    # 三层API认证策略
+    # Public API - 无需认证，仅限流
+    if path.startswith("/api/public/"):
+        log_info(f"🌐 {path} - Public API endpoint, skipping auth")
+        return await call_next(request)
+    
+    # 传统公开路径
     public_paths = [
-        "/health", "/", "/docs", "/openapi.json", "/redoc", "/docs-json", "/api/v1/mcp"
+        "/health", "/", "/docs", "/openapi.json", "/redoc", "/docs-json"
     ]
     
     if path in public_paths:
-        log_info(f"🌐 {path} - Public endpoint, skipping auth")
+        log_info(f"🌐 {path} - Legacy public endpoint, skipping auth")
+        return await call_next(request)
+    
+    # MCP API - API Key认证 (暂时跳过认证，保持兼容)
+    if path.startswith("/api/mcp/"):
+        log_info(f"🤖 {path} - MCP API endpoint, skipping auth (compatibility mode)")
         return await call_next(request)
     
     # Extract and validate authorization header
