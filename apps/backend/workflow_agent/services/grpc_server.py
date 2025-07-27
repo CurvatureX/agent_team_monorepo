@@ -10,11 +10,12 @@ from typing import Optional, AsyncGenerator
 import grpc
 import structlog
 
-from agents.workflow_agent import WorkflowAgent
-from core.config import settings
-from proto import workflow_agent_pb2, workflow_agent_pb2_grpc
+from agents.workflow_agent import WorkflowAgent 
+from core.config import settings  
+from proto import workflow_agent_pb2  
+from proto import workflow_agent_pb2_grpc 
 from agents.state import WorkflowStage, WorkflowOrigin
-from agents.state_converter import StateConverter
+from agents.state_converter import StateConverter 
 
 logger = structlog.get_logger()
 
@@ -23,7 +24,9 @@ class WorkflowAgentServicer(workflow_agent_pb2_grpc.WorkflowAgentServicer):
     """Implementation of the unified WorkflowAgent gRPC service"""
 
     def __init__(self):
+        logger.info("Initializing WorkflowAgentServicer")
         # Initialize the LangGraph agent
+        logger.info("Creating WorkflowAgent instance")
         self.workflow_agent = WorkflowAgent()
         logger.info("WorkflowAgent initialized with new ProcessConversation interface")
 
@@ -272,7 +275,12 @@ class WorkflowAgentServicer(workflow_agent_pb2_grpc.WorkflowAgentServicer):
             yield final_response
 
         except Exception as e:
-            logger.error("Failed to process conversation", error=str(e), session_id=request.session_id)
+            import traceback
+            error_traceback = traceback.format_exc()
+            logger.error("Failed to process conversation", 
+                        error=str(e), 
+                        session_id=request.session_id,
+                        traceback=error_traceback)
             
             error_response = workflow_agent_pb2.ConversationResponse(
                 session_id=request.session_id,
@@ -293,24 +301,34 @@ class WorkflowAgentServer:
     """gRPC server for Workflow Agent with unified ProcessConversation interface"""
 
     def __init__(self):
+        logger.info("Initializing WorkflowAgentServer")
         self.server: Optional[grpc.aio.Server] = None
+        logger.info("Creating WorkflowAgentServicer")
         self.servicer = WorkflowAgentServicer()
+        logger.info("WorkflowAgentServer initialization complete")
 
     async def start(self):
         """Start the gRPC server"""
         try:
+            logger.info("Creating gRPC server instance")
             self.server = grpc.aio.server(
                 futures.ThreadPoolExecutor(max_workers=settings.MAX_WORKERS)
             )
+            logger.info("gRPC server instance created")
 
             # Add the servicer to the server
+            logger.info("Adding servicer to server")
             workflow_agent_pb2_grpc.add_WorkflowAgentServicer_to_server(self.servicer, self.server)
+            logger.info("Servicer added to server")
 
             # Configure server address
             listen_addr = f"{settings.GRPC_HOST}:{settings.GRPC_PORT}"
+            logger.info("Configuring server address", address=listen_addr)
             self.server.add_insecure_port(listen_addr)
+            logger.info("Server port configured")
 
             # Start the server
+            logger.info("Starting gRPC server...")
             await self.server.start()
             logger.info("gRPC server started with ProcessConversation interface", address=listen_addr)
 
