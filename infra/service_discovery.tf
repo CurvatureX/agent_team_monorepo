@@ -22,6 +22,12 @@ resource "aws_service_discovery_service" "api_gateway" {
     routing_policy = "MULTIVALUE"
   }
 
+  health_check_grace_period_seconds = 30
+  
+  health_check_custom_config {
+    failure_threshold = 1
+  }
+
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-api-gateway-discovery"
   })
@@ -42,12 +48,18 @@ resource "aws_service_discovery_service" "workflow_engine" {
     routing_policy = "MULTIVALUE"
   }
 
+  health_check_grace_period_seconds = 30
+  
+  health_check_custom_config {
+    failure_threshold = 1
+  }
+
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-workflow-engine-discovery"
   })
 }
 
-# Service Discovery Service for Workflow Agent
+# Service Discovery Service for Workflow Agent (gRPC)
 resource "aws_service_discovery_service" "workflow_agent" {
   name = "workflow-agent"
 
@@ -60,6 +72,12 @@ resource "aws_service_discovery_service" "workflow_agent" {
     }
 
     routing_policy = "MULTIVALUE"
+  }
+
+  health_check_grace_period_seconds = 30
+  
+  health_check_custom_config {
+    failure_threshold = 1
   }
 
   tags = merge(local.common_tags, {

@@ -3,7 +3,7 @@ import uvicorn
 from agents.workflow_agent import WorkflowAgent
 from dotenv import load_dotenv
 from fastapi import FastAPI
-from langgraph.server import add_routes
+# from langgraph.server import add_routes  # Not available in current LangGraph version
 
 # Load environment variables
 load_dotenv()
@@ -41,14 +41,9 @@ try:
     graph = workflow_agent.graph
     logger.info("WorkflowAgent and graph initialized successfully.")
 
-    # Add LangGraph routes
-    add_routes(
-        app,
-        graph,
-        path="/workflow",
-        config_keys=["configurable"],
-    )
-    logger.info("LangGraph routes added to FastAPI app.")
+    # Note: add_routes is not available in current LangGraph version
+    # For debugging, use the main gRPC server instead
+    logger.info("Debug server initialized. Use main gRPC server for actual testing.")
 
 except Exception as e:
     logger.error("Failed to initialize and set up the debug server", error=str(e))
