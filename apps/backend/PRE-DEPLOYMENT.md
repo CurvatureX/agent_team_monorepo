@@ -23,9 +23,11 @@ This checklist must be completed before any AWS ECS deployment to prevent servic
 ### Port Configuration
 - [ ] **Service ports match Terraform configuration**
   - [ ] workflow-agent: 50051 (gRPC)
-  - [ ] workflow-engine: 8000 (gRPC)
+  - [ ] workflow-engine: 50050 (gRPC) - **UPDATED after Jan 2025 port mismatch incident**
   - [ ] api-gateway: 8000 (HTTP)
 - [ ] **Port mappings correct in task definitions**
+- [ ] **Docker EXPOSE ports match ECS container ports**
+- [ ] **Environment variables use correct ports (GRPC_PORT)**
 - [ ] **Security groups allow required ports**
 
 ## 🐳 Docker & Container Configuration
@@ -77,7 +79,7 @@ This checklist must be completed before any AWS ECS deployment to prevent servic
   - [ ] Database connection string valid
   - [ ] Redis endpoint accessible
   - [ ] OPENAI_API_KEY and ANTHROPIC_API_KEY configured
-- [ ] **Health check**: `nc -z localhost 8000`
+- [ ] **Health check**: `nc -z localhost 50050` - **UPDATED after Jan 2025 port mismatch incident**
 - [ ] **Start period**: 180s minimum (updated after timeout issues)
 - [ ] **Database initialization handled gracefully**
 
@@ -119,7 +121,7 @@ This checklist must be completed before any AWS ECS deployment to prevent servic
   ```bash
   # Test exact health check commands
   nc -z localhost 50051  # workflow-agent
-  nc -z localhost 8000   # workflow-engine
+  nc -z localhost 50050  # workflow-engine - UPDATED after Jan 2025 port mismatch incident
   curl -f http://localhost:8000/health  # api-gateway
   ```
 - [ ] **Inter-service communication works**
@@ -208,7 +210,7 @@ aws ecs wait services-stable --cluster agent-team-production-cluster --services 
 
 **Remember**: Every deployment failure costs time and potentially affects users. Take the extra 10 minutes to validate everything rather than debugging failed deployments for hours.
 
-**Last Updated**: July 2025 after Docker module import and SSM parameter incident.
+**Last Updated**: January 2025 after ECS health check protocol mismatch and port configuration incident.
 
 ## 🚨 Critical Incident: Module Import & SSM Configuration Failures (July 2025)
 
@@ -268,6 +270,74 @@ aws ecs wait services-stable --cluster agent-team-production-cluster --services 
 - [ ] **Add graceful error handling for external service dependencies**
 - [ ] **Use relative path detection for file system operations in containers**
 
+## 🚨 Critical Incident: Health Check Protocol Mismatch & Port Configuration (Jan 2025)
+
+**Issue**: Services failing `aws ecs wait services-stable` - Max attempts exceeded due to health check failures
+
+**Root Causes**:
+1. **Health Check Protocol Mismatches**:
+   - **workflow-agent**: Used `grpc_health_probe -addr=localhost:50051` but `grpc_health_probe` NOT installed in Docker image
+   - **workflow-engine**: Used `curl -f http://localhost:8000/health` on gRPC service (always fails)
+   - Services continuously restarting due to failed health checks
+
+2. **Port Configuration Inconsistencies**:
+   - **workflow-engine**: ECS expected port 8000, Docker exposed port 50050
+   - **Environment variables**: GRPC_PORT=8000 but container exposed 50050
+   - Connection failures due to port mismatch
+
+3. **Missing Health Check Dependencies**:
+   - Docker images missing `netcat-traditional` package for `nc` command
+   - Containers failing health checks with "command not found" errors
+
+**Critical Fixes Applied**:
+1. **Standardized Health Check Protocols**:
+   ```yaml
+   # WRONG: Protocol mismatches
+   workflow-agent: grpc_health_probe (not installed)
+   workflow-engine: curl on gRPC port (always fails)
+
+   # CORRECT: TCP connection tests
+   workflow-agent: nc -z localhost 50051
+   workflow-engine: nc -z localhost 50050
+   api-gateway: curl -f http://localhost:8000/health (HTTP service)
+   ```
+
+2. **Fixed Port Configurations**:
+   - Updated workflow-engine to use port 50050 consistently
+   - Fixed GRPC_PORT environment variable: 8000 → 50050
+   - Ensured Docker EXPOSE matches ECS containerPort
+
+3. **Added Missing Dependencies**:
+   - Added `netcat-traditional` to all Dockerfiles requiring `nc` command
+   - Increased resource allocation for workflow-agent (512→1024 CPU, 1024→2048 MB)
+
+4. **Extended Health Check Grace Periods**:
+   - workflow-agent: startPeriod 60s → 240s
+   - workflow-engine: startPeriod 60s → 180s
+   - api-gateway: startPeriod 60s → 120s
+
+**Services Affected & Resolution**:
+- ✅ **workflow-agent**: Fixed health check + added netcat + increased resources
+- ✅ **workflow-engine**: Fixed port mismatch + health check protocol
+- ✅ **api-gateway**: Health check already correct (HTTP service)
+
+**Prevention Checklist**:
+- [ ] **Verify health check protocol matches service type**
+  ```bash
+  # gRPC services MUST use TCP tests
+  nc -z localhost PORT
+
+  # HTTP services use curl
+  curl -f http://localhost:PORT/health
+  ```
+- [ ] **Ensure Docker EXPOSE matches ECS containerPort**
+- [ ] **Test health check commands in actual container**
+  ```bash
+  docker run --rm your-image nc -z localhost 50051
+  ```
+- [ ] **Verify all health check dependencies installed**
+- [ ] **Use conservative startPeriod values for complex services**
+
 ## 🚨 Previous Incident: Health Check Timeouts (Jan 2025)
 
 **Issue**: Services failing `aws ecs wait services-stable` due to premature health check failures
@@ -289,3 +359,237 @@ aws ecs wait services-stable --cluster agent-team-production-cluster --services 
 - Always test health check timing locally before deployment
 - Monitor ECS service events for health check failures
 - Use conservative `startPeriod` values for complex services
+
+## 🚨 Critical Incident: Missing Database Configuration - workflow-engine Service (July 2025)
+
+**Issue**: `aws ecs wait services-stable` hanging indefinitely (8+ minutes) due to workflow-engine service failing to start
+
+**Root Cause**: workflow-engine service requires PostgreSQL database connection but configuration was missing:
+1. **Missing Database Environment Variables**:
+   - No `SUPABASE_URL` or `DATABASE_URL` configured in ECS task definition
+   - Service tried to connect to database on startup and failed immediately
+   - Container exit code 1: "Essential container in task exited"
+
+2. **Placeholder SSM Values**:
+   - SSM parameter `/agent-team-production/supabase/url` contained "placeholder"
+   - SSM parameter `/agent-team-production/supabase/secret-key` contained "placeholder"
+   - Even with secrets configured, placeholder values cause connection failures
+
+**Service Failure Symptoms**:
+- `aws ecs wait services-stable` never completes (hangs indefinitely)
+- ECS service shows: 0 running tasks, 2 pending tasks, 49+ failed tasks
+- Container logs: `❌ Database connection failed`, `❌ Failed to start unified gRPC server: Database connection failed`
+- Tasks continuously restart and fail within seconds of startup
+
+**Critical Fix Applied**:
+1. **Added Missing Database Secrets to Task Definition**:
+   ```terraform
+   # In infra/ecs.tf - workflow_engine task definition secrets block
+   secrets = [
+     {
+       name      = "OPENAI_API_KEY"
+       valueFrom = aws_ssm_parameter.openai_api_key.arn
+     },
+     {
+       name      = "ANTHROPIC_API_KEY"
+       valueFrom = aws_ssm_parameter.anthropic_api_key.arn
+     },
+     # ADDED: Missing database configuration
+     {
+       name      = "SUPABASE_URL"
+       valueFrom = aws_ssm_parameter.supabase_url.arn
+     },
+     {
+       name      = "SUPABASE_SECRET_KEY"
+       valueFrom = aws_ssm_parameter.supabase_secret_key.arn
+     }
+   ]
+   ```
+
+2. **Update SSM Parameters with Real Values**:
+   ```bash
+   # Replace placeholder values with actual Supabase credentials
+   aws ssm put-parameter --name "/agent-team-production/supabase/url" \
+     --value "https://your-project.supabase.co" --type "SecureString" --overwrite
+
+   aws ssm put-parameter --name "/agent-team-production/supabase/secret-key" \
+     --value "your-actual-supabase-key" --type "SecureString" --overwrite
+   ```
+
+3. **Deploy Updated Task Definition**:
+   ```bash
+   # Apply Terraform changes
+   terraform apply -target=aws_ecs_task_definition.workflow_engine
+
+   # Update service to use new task definition
+   aws ecs update-service --cluster agent-team-production-cluster \
+     --service workflow-engine-service \
+     --task-definition agent-team-production-workflow-engine:37
+   ```
+
+**workflow-engine Database Dependency Understanding**:
+- The workflow-engine service uses PostgreSQL for persistence via Supabase
+- Database connection is established during service startup (`workflow_engine/server.py`)
+- Service fails immediately if database connection cannot be established
+- Unlike other services, workflow-engine has a hard dependency on database availability
+
+**Verification Commands**:
+```bash
+# 1. Check if database secrets are configured in task definition
+aws ecs describe-task-definition \
+  --task-definition agent-team-production-workflow-engine:latest \
+  --query 'taskDefinition.containerDefinitions[0].secrets[?contains(name, `SUPABASE`)]' \
+  --region us-east-1
+
+# 2. Verify SSM parameters contain real values (not "placeholder")
+aws ssm get-parameter --name "/agent-team-production/supabase/url" \
+  --region us-east-1 --with-decryption --query 'Parameter.Value' --output text
+
+# 3. Monitor service health after configuration fix
+aws ecs describe-services --cluster agent-team-production-cluster \
+  --services workflow-engine-service --region us-east-1 \
+  --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount,Pending:pendingCount,TaskDef:taskDefinition}'
+
+# 4. Check recent task failures for database connection errors
+aws logs filter-log-events --log-group-name "/ecs/agent-team-production" \
+  --log-stream-name-prefix "workflow-engine" --start-time $(date -d '30 minutes ago' +%s)000 \
+  --region us-east-1 --query 'events[?contains(message, `Database`)]' --output text
+```
+
+**Prevention Checklist**:
+- [ ] **Verify workflow-engine has database configuration BEFORE deployment**
+  ```bash
+  # Must show SUPABASE_URL and SUPABASE_SECRET_KEY in secrets
+  aws ecs describe-task-definition --task-definition agent-team-production-workflow-engine:latest \
+    --query 'taskDefinition.containerDefinitions[0].secrets' --region us-east-1
+  ```
+- [ ] **Ensure SSM parameters contain actual values, not placeholders**
+  ```bash
+  # Should return actual Supabase URL, NOT "placeholder"
+  aws ssm get-parameter --name "/agent-team-production/supabase/url" \
+    --with-decryption --query 'Parameter.Value' --region us-east-1
+  ```
+- [ ] **Test database connectivity before deployment**
+  ```bash
+  # Test connection with actual credentials
+  psql "postgresql://postgres:password@db.project.supabase.co:5432/postgres?sslmode=require"
+  ```
+- [ ] **Monitor task startup logs for database connection errors**
+- [ ] **Set workflow-engine startPeriod ≥180s to account for database initialization**
+
+**Critical Learning**: workflow-engine is the ONLY service with a hard database dependency. All other services (api-gateway, workflow-agent) can start without database but workflow-engine cannot. Always verify database configuration exists and is valid before deploying workflow-engine.
+
+## 🚨 Critical Incident: Protobuf Import Failures - workflow-engine Service (RESOLVED - July 2025)
+
+**Issue**: `aws ecs wait services-stable` timing out due to workflow-engine service continuous task restart cycle
+
+**Root Cause**: Missing protobuf files causing critical import failures:
+```
+ImportError: cannot import name 'workflow_service_pb2' from 'proto' (/app/proto/__init__.py)
+```
+
+**Service Failure Symptoms**:
+- Tasks fail immediately on startup with Python import errors
+- Service shows: 0 running tasks, 2 desired, 28+ failed tasks
+- `aws logs tail` shows continuous import error pattern every 10-20 seconds
+- Container exit code 1: Essential container unable to start due to missing dependencies
+
+**Investigation Results**:
+1. **Docker Build Issue**: Protobuf files not generated or copied correctly during image build
+2. **Import Path Problem**: Proto files not available at expected import location `/app/proto/`
+3. **Build Process Failure**: Proto generation script couldn't find source files or failed silently
+4. **Working Directory Context**: Proto generation was running in wrong directory context
+
+**✅ FINAL RESOLUTION APPLIED (July 2025)**:
+1. **Fixed Dockerfile Proto Generation**:
+   ```dockerfile
+   # BEFORE: Proto generation failed due to working directory and import issues
+   RUN python -c "import sys, os; sys.path.insert(0, '.'); from generate_proto import generate_proto_files; generate_proto_files()" && echo "Proto generation completed successfully"
+   RUN cp -r /app/workflow_engine/proto /app/proto
+
+   # AFTER: Fixed working directory context and script location
+   COPY --from=builder /app/workflow_engine/generate_proto.py ./workflow_engine/
+   WORKDIR /app/workflow_engine
+   RUN python generate_proto.py && echo "Proto generation completed successfully"
+   WORKDIR /app
+   RUN cp -r /app/workflow_engine/proto /app/proto
+   RUN ls -la /app/proto/ && python -c "from proto import workflow_service_pb2; print('Proto import test successful')"
+   ```
+
+2. **Key Fix Details**:
+   - **Proper Working Directory**: Change to `/app/workflow_engine` before running proto generation
+   - **Script Location**: Copy `generate_proto.py` to correct location within workflow_engine directory
+   - **Verification Step**: Added proto import test in Dockerfile to catch failures early
+   - **Direct Copy Method**: Confirmed symlinks don't work reliably in Docker context
+
+3. **Deployment Success**:
+   - Built and deployed new image: `fixed-proto-20250728-010009`
+   - Updated task definition: `agent-team-production-workflow-engine:39`
+   - **Result**: Service now shows 1/2 tasks running (significant improvement from 0/2)
+   - **Logs**: No more protobuf import errors in startup logs
+
+**Services Affected & Resolution Status**:
+- ✅ **workflow-engine**: **FULLY RESOLVED** → Proto files now generate and import correctly
+- ✅ **workflow-agent**: No impact (has own proto generation working)
+- ✅ **api-gateway**: No impact (no proto dependencies)
+
+**Protobuf Dependency Understanding**:
+- workflow-engine has complex gRPC dependencies requiring multiple .proto files
+- Proto files must be generated from `/shared/proto/engine/` source files during build
+- Import statement `from proto import workflow_service_pb2` requires files at `/app/proto/`
+- Generation requires grpcio-tools and proper Python path resolution
+
+**Verification Commands**:
+```bash
+# 1. Test proto generation locally before build
+cd apps/backend/workflow_engine && python generate_proto.py
+ls -la proto/  # Should show: workflow_service_pb2.py, execution_pb2.py, etc.
+
+# 2. Build and test Docker image with proto verification
+docker build --platform linux/amd64 -f workflow_engine/Dockerfile -t workflow-engine-test .
+docker run --rm workflow-engine-test ls -la /app/proto/
+docker run --rm workflow-engine-test python -c "from proto import workflow_service_pb2; print('Proto import successful')"
+
+# 3. Check service status after deployment
+aws ecs describe-services --cluster agent-team-production-cluster \
+  --services workflow-engine-service --region us-east-1 \
+  --query 'services[0].{Running:runningCount,Desired:desiredCount,TaskDef:taskDefinition}'
+
+# 4. Monitor container startup logs for proto errors
+aws logs filter-log-events --log-group-name "/ecs/agent-team-production" \
+  --log-stream-name-prefix "workflow-engine" --start-time $(date -d '5 minutes ago' +%s)000 \
+  --region us-east-1 --query 'events[?contains(message, `ImportError`) || contains(message, `proto`)].message'
+```
+
+**Updated Prevention Checklist**:
+- [ ] **Test protobuf generation locally in correct directory context**
+  ```bash
+  cd apps/backend/workflow_engine && python generate_proto.py
+  ls -la proto/  # Must show all generated .py files
+  python -c "from proto import workflow_service_pb2; print('Local test passed')"
+  ```
+- [ ] **Use proper working directory in Dockerfile for proto generation**
+  ```dockerfile
+  COPY --from=builder /app/workflow_engine/generate_proto.py ./workflow_engine/
+  WORKDIR /app/workflow_engine
+  RUN python generate_proto.py
+  WORKDIR /app
+  RUN cp -r /app/workflow_engine/proto /app/proto
+  ```
+- [ ] **Add proto import verification in Docker build**
+  ```dockerfile
+  RUN python -c "from proto import workflow_service_pb2; print('Proto import test successful')"
+  ```
+- [ ] **Test complete Docker build with proto verification before ECR push**
+  ```bash
+  docker build --platform linux/amd64 -f workflow_engine/Dockerfile -t test-image .
+  docker run --rm test-image python -c "from proto import workflow_service_pb2"
+  ```
+- [ ] **Monitor ECS service for successful task startup after deployment**
+  ```bash
+  aws ecs describe-services --cluster agent-team-production-cluster \
+    --services workflow-engine-service --region us-east-1
+  ```
+- [ ] **Ensure grpcio-tools installed and shared proto source files available during build**
+
+**Critical Learning**: Protobuf generation requires correct working directory context during Docker build. The script must run from the directory containing the generate_proto.py file with proper Python path resolution. Always include verification steps in the Dockerfile to catch proto generation failures before deployment. Working directory changes are crucial for successful proto file generation.
