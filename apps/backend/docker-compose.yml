@@ -59,6 +59,24 @@ services:
       - ./shared/proto:/app/shared/proto:ro
     restart: unless-stopped
 
+  # Workflow Engine Service
+  workflow-engine:
+    build:
+      context: ./workflow_engine
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://workflow_user:workflow_password@postgres:5432/workflow_agent
+      - GRPC_HOST=0.0.0.0
+      - GRPC_PORT=50052
+    ports:
+      - "50052:50052"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./shared/proto:/app/shared/proto:ro
+    restart: unless-stopped
+
   # API Gateway Service - FastAPI MVP
   api-gateway:
     build:
@@ -66,15 +84,15 @@ services:
       dockerfile: ./api-gateway/Dockerfile
     environment:
       - DEBUG=true
-      - WORKFLOW_SERVICE_HOST=workflow-agent
-      - WORKFLOW_SERVICE_PORT=50051
+      - WORKFLOW_SERVICE_HOST=workflow-engine
+      - WORKFLOW_SERVICE_PORT=50052
       # Supabase configuration from .env file
     env_file:
       - ./api-gateway/.env
     ports:
       - "8000:8000"
     depends_on:
-      workflow-agent:
+      workflow-engine:
         condition: service_started
     volumes:
       - ./shared/proto:/app/shared/proto:ro
