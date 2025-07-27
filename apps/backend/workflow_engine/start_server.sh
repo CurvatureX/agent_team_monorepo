@@ -74,10 +74,6 @@ start_server() {
         return 1
     fi
     
-    # Generate protobuf files
-    print_status "Generating protobuf files..."
-    python generate_proto.py
-    
     # Start server in foreground (for Docker)
     print_status "Starting server on port $PORT..."
     exec python "$SERVER_SCRIPT"
