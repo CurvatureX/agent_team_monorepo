@@ -21,7 +21,7 @@ def init_database():
         cursor = conn.cursor()
         
         # Read schema file
-        with open('database/schema.sql', 'r') as f:
+        with open('../database/schema.sql', 'r') as f:
             schema_sql = f.read()
         
         logger.info("Creating database schema...")
