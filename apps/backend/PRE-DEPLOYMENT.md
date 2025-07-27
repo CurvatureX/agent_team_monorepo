@@ -10,9 +10,9 @@ This checklist must be completed before any AWS ECS deployment to prevent servic
   - [ ] gRPC services use: `nc -z localhost PORT`
   - [ ] TCP services use: `nc -z localhost PORT`
 - [ ] **Health check timing configured appropriately**
-  - [ ] HTTP services: `startPeriod: 60s`
-  - [ ] gRPC services: `startPeriod: 90-120s`
-  - [ ] Database-dependent services: `startPeriod: ≥90s`
+  - [ ] HTTP services: `startPeriod: 120s` (increased from 60s)
+  - [ ] gRPC services: `startPeriod: 180-240s` (increased for reliability)
+  - [ ] Database-dependent services: `startPeriod: ≥180s`
 - [ ] **Test health check command locally**
   ```bash
   # Test the exact command in container
@@ -62,7 +62,7 @@ This checklist must be completed before any AWS ECS deployment to prevent servic
   - [ ] SUPABASE_URL and SUPABASE_SECRET_KEY configured
   - [ ] Redis endpoint accessible
 - [ ] **Health check**: `nc -z localhost 50051`
-- [ ] **Start period**: 120s minimum
+- [ ] **Start period**: 240s minimum (updated after timeout issues)
 - [ ] **gRPC server binds to `[::]`**
 
 ### Workflow Engine (gRPC Service)
@@ -71,14 +71,14 @@ This checklist must be completed before any AWS ECS deployment to prevent servic
   - [ ] Redis endpoint accessible
   - [ ] OPENAI_API_KEY and ANTHROPIC_API_KEY configured
 - [ ] **Health check**: `nc -z localhost 8000`
-- [ ] **Start period**: 90s minimum
+- [ ] **Start period**: 180s minimum (updated after timeout issues)
 - [ ] **Database initialization handled gracefully**
 
 ### API Gateway (HTTP Service)
 - [ ] **Health endpoint implemented**: `/health`
 - [ ] **Load balancer target group configured**
 - [ ] **Health check**: `curl -f http://localhost:8000/health`
-- [ ] **Start period**: 60s sufficient
+- [ ] **Start period**: 120s minimum (updated for consistency)
 
 ## 🌐 Environment & Secrets
 
@@ -132,6 +132,7 @@ This checklist must be completed before any AWS ECS deployment to prevent servic
 - [ ] **Resource limits appropriate**
   - [ ] CPU: 512 units minimum for gRPC services
   - [ ] Memory: 1024 MB minimum
+  - [ ] Initial desired_count: 1 (scale up after stability)
 - [ ] **Network configuration correct**
   - [ ] Private subnets for services
   - [ ] Security groups allow required traffic
@@ -194,4 +195,26 @@ aws ecs wait services-stable --cluster agent-team-production-cluster --services 
 
 **Remember**: Every deployment failure costs time and potentially affects users. Take the extra 10 minutes to validate everything rather than debugging failed deployments for hours.
 
-**Last Updated**: January 2025 after health check protocol mismatch incident.
+**Last Updated**: January 2025 after health check timeout and deployment stability incident.
+
+## 🚨 Recent Incident: Health Check Timeouts (Jan 2025)
+
+**Issue**: Services failing `aws ecs wait services-stable` due to premature health check failures
+
+**Root Cause**:
+- Health check `startPeriod` values too low for service initialization
+- Services restarting before full startup, causing deployment instability
+- Multiple task instances running (3 vs 2 desired) due to failed health checks
+
+**Solution Applied**:
+- Increased all health check `startPeriod` values significantly:
+  - API Gateway: 60s → 120s
+  - Workflow Engine: 90s → 180s
+  - Workflow Agent: 120s → 240s
+- Reduced initial `desired_count` from 2 to 1 for deployment stability
+- Enhanced monitoring of task health status during deployments
+
+**Prevention**:
+- Always test health check timing locally before deployment
+- Monitor ECS service events for health check failures
+- Use conservative `startPeriod` values for complex services
