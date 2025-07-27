@@ -1,22 +1,22 @@
 """
 API Gateway for Workflow Agent Team
 """
+# Test comment for pre-commit hook
 
 import logging
 import sys
 from contextlib import asynccontextmanager
 
 import structlog
-from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-
+from app.api import mcp, workflow
 from core.config import settings
 from core.config_validator import ConfigurationError, get_missing_env_vars_message
 from core.grpc_client import WorkflowAgentClient
 from core.logging_middleware import setup_logging_middleware
 from core.startup_checks import StartupCheckError, log_startup_status, run_startup_checks
-from app.api import mcp, workflow
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 # Load environment variables
 load_dotenv()
