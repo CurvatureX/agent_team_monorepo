@@ -10,7 +10,7 @@ from typing import Dict, List
 from langchain_openai import OpenAIEmbeddings
 from supabase import create_client
 
-from ..core.config import settings
+from core.config import settings
 
 # Sample node knowledge data
 SAMPLE_NODE_KNOWLEDGE = [

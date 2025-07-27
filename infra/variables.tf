@@ -81,7 +81,7 @@ variable "workflow_agent_memory" {
 variable "desired_count" {
   description = "Desired number of tasks"
   type        = number
-  default     = 1
+  default     = 2
 }
 
 # Domain Configuration
@@ -106,7 +106,7 @@ variable "supabase_url" {
 }
 
 variable "supabase_secret_key" {
-  description = "Supabase secret key (sb_secret_...)"
+  description = "Supabase secret key (service role key)"
   type        = string
   sensitive   = true
 }

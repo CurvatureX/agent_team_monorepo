@@ -106,7 +106,7 @@ In your GitHub repository, add these secrets:
 - `AWS_SECRET_ACCESS_KEY`
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_SECRET_KEY`
 - `OPENAI_API_KEY`
 - `ANTHROPIC_API_KEY`
 
@@ -168,7 +168,7 @@ WORKFLOW_SERVICE_HOST=workflow-agent.agent-team-production.local
 WORKFLOW_SERVICE_PORT=50051
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+SUPABASE_SECRET_KEY=your-service-role-key
 ```
 
 ### Workflow Agent Environment Variables
@@ -188,7 +188,7 @@ DEFAULT_MODEL_NAME=gpt-4
 LANGGRAPH_CHECKPOINT_BACKEND=redis
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+SUPABASE_SECRET_KEY=your-service-role-key
 ```
 
 ### Workflow Engine Environment Variables

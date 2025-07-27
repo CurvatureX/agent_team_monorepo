@@ -9,22 +9,24 @@ from app.config import settings
 from app.utils import log_info, log_warning, log_error, log_debug
 from app.services.state_manager import get_state_manager
 
-# Import gRPC modules - using the protobuf files from shared/proto
+# Import gRPC modules
+import grpc
 try:
-    import grpc
+    # Import proto modules from proto package
     import sys
     import os
-    # Add shared proto directory to path
-    shared_proto_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "shared", "proto")
-    if shared_proto_path not in sys.path:
-        sys.path.append(shared_proto_path)
-    
-    import workflow_agent_pb2
-    import workflow_agent_pb2_grpc
+    # Add the api-gateway root to path so we can import proto as a package
+    api_gateway_root = os.path.join(os.path.dirname(__file__), '../..')
+    sys.path.insert(0, api_gateway_root)
+    from proto import workflow_agent_pb2
+    from proto import workflow_agent_pb2_grpc
     GRPC_AVAILABLE = True
-    log_debug("gRPC modules loaded successfully")
+    log_info("✅ gRPC modules loaded successfully")
 except ImportError as e:
-    log_warning(f"gRPC not available: {e}. Using mock client.")
+    # Fallback: proto modules not available
+    log_error(f"❌ gRPC proto modules not available: {e}. Using mock client.")
+    workflow_agent_pb2 = None
+    workflow_agent_pb2_grpc = None
     GRPC_AVAILABLE = False
 
 
@@ -47,14 +49,27 @@ class WorkflowGRPCClient:
         try:
             if GRPC_AVAILABLE:
                 # Create gRPC channel and stub
-                self.channel = grpc.aio.insecure_channel(f"{self.host}:{self.port}")
+                self.channel = grpc.aio.insecure_channel(f"{self.host}:{self.port}")  # type: ignore
                 self.stub = workflow_agent_pb2_grpc.WorkflowAgentStub(self.channel)
                 
-                # Test connection
-                await asyncio.wait_for(
-                    grpc.aio.channel_ready_future(self.channel), 
-                    timeout=5.0
-                )
+                # Test connection with the newer API
+                try:
+                    # Try the newer method first
+                    await asyncio.wait_for(
+                        self.channel.channel_ready(), 
+                        timeout=5.0
+                    )
+                except AttributeError:
+                    # Fallback to the older method for compatibility
+                    try:
+                        import grpc.experimental as grpc_experimental
+                        await asyncio.wait_for(
+                            grpc_experimental.aio.channel_ready(self.channel),
+                            timeout=5.0
+                        )
+                    except (AttributeError, ImportError):
+                        # If all else fails, just connect without verification
+                        await asyncio.sleep(0.1)
                 
                 self.connected = True
                 log_info(f"Connected to workflow service at {self.host}:{self.port}")
@@ -245,7 +260,7 @@ class WorkflowGRPCClient:
             yield stage
             await asyncio.sleep(0.8)
     
-    def _db_state_to_proto(self, db_state: Dict[str, Any]) -> 'workflow_agent_pb2.AgentState':
+    def _db_state_to_proto(self, db_state: Dict[str, Any]):
         """Convert database state to protobuf AgentState"""
         if not GRPC_AVAILABLE:
             return None
@@ -259,11 +274,11 @@ class WorkflowGRPCClient:
             updated_at=db_state.get("updated_at", int(time.time() * 1000)),
             stage=self._stage_to_proto_enum(db_state.get("stage", "clarification")),
             intent_summary=db_state.get("intent_summary", ""),
-            gaps=db_state.get("gaps", []),
+            gaps=[str(gap) for gap in db_state.get("gaps", [])],
             current_workflow_json=db_state.get("current_workflow_json", ""),
             debug_result=db_state.get("debug_result", ""),
             debug_loop_count=db_state.get("debug_loop_count", 0),
-            execution_history=db_state.get("execution_history", [])
+            execution_history=[str(item) for item in db_state.get("execution_history", [])]
         )
         
         # Add conversations if available
@@ -276,14 +291,18 @@ class WorkflowGRPCClient:
             conversation = workflow_agent_pb2.Conversation(
                 role=conv.get("role", "user"),
                 text=conv.get("text", ""),
-                timestamp=conv.get("timestamp", int(time.time() * 1000)),
-                metadata=conv.get("metadata", {})
+                timestamp=conv.get("timestamp", int(time.time() * 1000))
             )
+            # Handle metadata separately to ensure string values
+            metadata = conv.get("metadata", {})
+            if isinstance(metadata, dict):
+                for key, value in metadata.items():
+                    conversation.metadata[str(key)] = str(value)
             agent_state.conversations.append(conversation)
         
         return agent_state
     
-    def _proto_response_to_dict(self, response: 'workflow_agent_pb2.ConversationResponse') -> Dict[str, Any]:
+    def _proto_response_to_dict(self, response) -> Dict[str, Any]:
         """Convert protobuf ConversationResponse to dictionary"""
         result = {
             "session_id": response.session_id,
@@ -346,7 +365,7 @@ class WorkflowGRPCClient:
         
         return result
     
-    def _proto_state_to_dict(self, agent_state: 'workflow_agent_pb2.AgentState') -> Dict[str, Any]:
+    def _proto_state_to_dict(self, agent_state) -> Dict[str, Any]:
         """Convert protobuf AgentState to dictionary for state manager"""
         state_dict = {
             "session_id": agent_state.session_id,

@@ -316,7 +316,7 @@ apps/backend/api-gateway/
 
 ## Contributing
 
-This API Gateway follows frontend authentication patterns recommended by Supabase.
+This API Gateway follows frontend authentication patterns recommended by Supabase. 
 
 Frontend applications should handle user authentication and pass JWT tokens to the backend via Authorization headers.
 
