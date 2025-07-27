@@ -1,163 +1,253 @@
 """
-API Gateway - Simplified with Frontend Auth
+API Gateway - Three-Layer Architecture with FastAPI Best Practices
+三层API架构：Public API, App API, MCP API
 """
 
-from contextlib import asynccontextmanager
+import time
+from datetime import datetime, timezone
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from app.config import settings
-from app.database import init_supabase
-from app.models import HealthResponse
 
-# 导入三层API路由
-from app.api.public import router as public_router
-from app.api.app import router as app_router
-from app.api.mcp import router as mcp_router
+# 核心组件
+from app.core.config import get_settings
+from app.core.events import lifespan, health_check
+from app.core.logging import setup_logging
+from app.exceptions import register_exception_handlers
 
-# 导入中间件
+# 中间件
 from app.middleware.auth import unified_auth_middleware
 from app.middleware.rate_limit import rate_limit_middleware
 
-from app.services.grpc_client import workflow_client
-from app.utils import log_info, log_warning, log_error, log_exception
+# API路由
+from app.api.public.router import router as public_router
+from app.api.app.router import router as app_router
+from app.api.mcp.router import router as mcp_router
+
+# 工具
+from app.utils.logger import get_logger
+
+# 在应用启动前设置日志
+setup_logging()
+logger = get_logger(__name__)
+
+# 获取配置
+settings = get_settings()
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan events - replaces deprecated on_event"""
-    # Startup
-    try:
-        log_info("🚀 Starting API Gateway with Frontend Auth...")
+def create_application() -> FastAPI:
+    """
+    创建FastAPI应用实例
+    使用工厂模式，遵循FastAPI最佳实践
+    """
 
-        # Initialize Supabase connection
-        init_supabase()
-        log_info("✅ Supabase client initialized")
+    # 创建应用实例
+    app = FastAPI(
+        title=settings.APP_NAME,
+        description="""
+        三层API架构的工作流代理网关
 
-        # Initialize gRPC client connection
-        await workflow_client.connect()
-        log_info("✅ gRPC client connected")
+        ## API层级
 
-        log_info("🚀 API Gateway started successfully!")
-        log_info(f"📖 API Documentation: http://localhost:8000/docs")
-        log_info(f"🏥 Health Check: http://localhost:8000/health")
-        log_info(f"🔐 Auth: Frontend handles authentication, backend verifies JWT tokens")
+        - **Public API** (`/api/public/*`) - 无需认证的公开接口
+        - **App API** (`/api/app/*`) - 需要Supabase OAuth认证的应用接口
+        - **MCP API** (`/api/mcp/*`) - 需要API Key认证的LLM客户端接口
 
-    except Exception as e:
-        log_exception(f"❌ Failed to start API Gateway: {e}")
-        raise
+        ## 认证方式
 
-    yield
+        - **App API**: 使用 `Authorization: Bearer <supabase_jwt_token>`
+        - **MCP API**: 使用 `X-API-Key: <api_key>` 或 `Authorization: Bearer <api_key>`
+        """,
+        version=settings.VERSION,
+        lifespan=lifespan,
+        debug=settings.DEBUG,
+        docs_url="/docs" if settings.DEBUG else None,
+        redoc_url="/redoc" if settings.DEBUG else None,
+    )
 
-    # Shutdown
-    try:
-        # Close gRPC connections
-        await workflow_client.close()
+    # 配置CORS
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.ALLOWED_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        expose_headers=[
+            "X-Request-ID",
+            "X-RateLimit-Limit",
+            "X-RateLimit-Remaining",
+            "X-RateLimit-Reset",
+        ],
+    )
 
-        log_info("👋 API Gateway stopped")
+    # 注册中间件（顺序很重要）
+    # 1. 限流中间件（最外层，先限流再认证）
+    app.middleware("http")(rate_limit_middleware)
 
-    except Exception as e:
-        log_exception(f"⚠️  Error during shutdown: {e}")
+    # 2. 认证中间件
+    app.middleware("http")(unified_auth_middleware)
 
+    # 3. 请求日志中间件
+    app.middleware("http")(request_logging_middleware)
 
-# FastAPI application with lifespan
-app = FastAPI(
-    title=settings.APP_NAME,
-    description="Three-Layer API Architecture: Public/App/MCP",
-    version=settings.VERSION,
-    lifespan=lifespan,
-)
+    # 注册异常处理器
+    register_exception_handlers(app)
 
-# 中间件栈配置（顺序很重要）
-# 1. CORS 中间件（最外层）
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    # 注册API路由
+    register_routes(app)
 
-# 2. 限流中间件
-app.middleware("http")(rate_limit_middleware)
+    # 注册通用路由
+    register_common_routes(app)
 
-# 3. 认证中间件
-app.middleware("http")(unified_auth_middleware)
-
-# 三层API路由注册
-app.include_router(public_router, prefix="/api/public", tags=["public"])
-app.include_router(app_router, prefix="/api/app", tags=["app"])
-app.include_router(mcp_router, prefix="/api/mcp", tags=["mcp"])
-
-
-# 兼容性重定向 - 保持旧的健康检查端点可用
-@app.get("/health", response_model=HealthResponse)
-async def legacy_health_check():
-    """Legacy health check endpoint - redirects to /api/public/health"""
-    log_info("Legacy health check requested")
-    return HealthResponse(status="healthy", version="2.0.0")
+    return app
 
 
-@app.get("/")
-async def root():
-    """Root endpoint"""
-    log_info("Root endpoint accessed")
-    return {
-        "message": "Workflow Agent API Gateway - Three-Layer Architecture",
-        "version": "1.0.0",
-        "architecture": "Three-layer API (Public/App/MCP)",
-        "api_layers": {
-            "public": {
-                "prefix": "/api/public",
-                "auth": "None (Rate Limited)",
-                "description": "Public endpoints for external systems",
-            },
-            "app": {
-                "prefix": "/api/app",
-                "auth": "Supabase OAuth + RLS",
-                "description": "App endpoints for Web/Mobile applications",
-            },
-            "mcp": {
-                "prefix": "/api/mcp",
-                "auth": "API Key with scopes",
-                "description": "MCP endpoints for LLM clients",
-            },
-        },
-        "endpoints": {
-            "docs": "/docs",
-            "health": "/api/public/health",
-            "sessions": "/api/app/sessions",
-            "chat": "/api/app/chat/stream",
-            "workflows": "/api/app/workflows",
-            "mcp_tools": "/api/mcp/tools",
-            "mcp_invoke": "/api/mcp/invoke",
-        },
-    }
+async def request_logging_middleware(request: Request, call_next):
+    """请求日志中间件"""
+    start_time = time.time()
 
+    # 生成请求ID
+    request_id = f"{int(time.time() * 1000)}-{hash(str(request.url)) % 10000:04d}"
+    request.state.request_id = request_id
 
-# 旧的认证中间件已被新的统一认证中间件替代
-
-
-# Global exception handler
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc):
-    """Global exception handler with enhanced logging"""
-    path = request.url.path
-    method = request.method
-
-    log_exception(f"💥 {method} {path} - Unhandled exception: {type(exc).__name__}: {str(exc)}")
-
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": "internal_server_error",
-            "message": "Internal server error occurred",
-            "path": path,
+    # 记录请求开始
+    logger.info(
+        f"📨 {request.method} {request.url.path}",
+        extra={
+            "request_id": request_id,
+            "method": request.method,
+            "path": request.url.path,
+            "client_ip": request.headers.get("X-Forwarded-For")
+            or request.headers.get("X-Real-IP")
+            or str(request.client.host)
+            if request.client
+            else "unknown",
+            "user_agent": request.headers.get("User-Agent"),
         },
     )
+
+    # 处理请求
+    response = await call_next(request)
+
+    # 计算处理时间
+    process_time = time.time() - start_time
+
+    # 添加响应头
+    response.headers["X-Request-ID"] = request_id
+    response.headers["X-Process-Time"] = str(round(process_time * 1000, 2))
+
+    # 记录响应
+    logger.info(
+        f"📤 {request.method} {request.url.path} -> {response.status_code}",
+        extra={
+            "request_id": request_id,
+            "status_code": response.status_code,
+            "process_time_ms": round(process_time * 1000, 2),
+        },
+    )
+
+    return response
+
+
+def register_routes(app: FastAPI) -> None:
+    """注册API路由"""
+
+    # 注册三层API路由
+    app.include_router(
+        public_router,
+        prefix="/api/public",
+        tags=["Public API"],
+        responses={
+            429: {"description": "Rate limit exceeded"},
+            500: {"description": "Internal server error"},
+        },
+    )
+
+    app.include_router(
+        app_router,
+        prefix="/api/app",
+        tags=["App API"],
+        responses={
+            401: {"description": "Authentication required"},
+            403: {"description": "Insufficient permissions"},
+            429: {"description": "Rate limit exceeded"},
+            500: {"description": "Internal server error"},
+        },
+    )
+
+    app.include_router(
+        mcp_router,
+        prefix="/api/mcp",
+        tags=["MCP API"],
+        responses={
+            401: {"description": "API key required"},
+            403: {"description": "Insufficient API key permissions"},
+            429: {"description": "Rate limit exceeded"},
+            500: {"description": "Internal server error"},
+        },
+    )
+
+    logger.info("✅ API routes registered")
+
+
+def register_common_routes(app: FastAPI) -> None:
+    """注册通用路由"""
+
+    @app.get("/", include_in_schema=False)
+    async def root():
+        """根路径，重定向到文档"""
+        return {
+            "service": settings.APP_NAME,
+            "version": settings.VERSION,
+            "environment": settings.ENVIRONMENT,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "documentation": "/docs",
+            "health_check": "/health",
+            "api_layers": {"public": "/api/public/", "app": "/api/app/", "mcp": "/api/mcp/"},
+        }
+
+    @app.get("/health", include_in_schema=False)
+    async def health_endpoint(request: Request):
+        """健康检查端点"""
+        health_info = await health_check()
+        health_info["timestamp"] = datetime.now(timezone.utc).isoformat()
+        health_info["request_id"] = getattr(request.state, "request_id", None)
+
+        status_code = 200 if health_info.get("status") == "healthy" else 503
+        return JSONResponse(status_code=status_code, content=health_info)
+
+    @app.get("/version", include_in_schema=False)
+    async def version_endpoint():
+        """版本信息端点"""
+        return {
+            "service": settings.APP_NAME,
+            "version": settings.VERSION,
+            "environment": settings.ENVIRONMENT,
+            "debug": settings.DEBUG,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+    logger.info("✅ Common routes registered")
+
+
+# 创建应用实例
+app = create_application()
 
 
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True, log_level="info")
+    logger.info(f"🚀 Starting {settings.APP_NAME} v{settings.VERSION}")
+    logger.info(f"🌍 Environment: {settings.ENVIRONMENT}")
+    logger.info(f"🐛 Debug mode: {settings.DEBUG}")
+
+    uvicorn.run(
+        "app.main:app",
+        host=settings.HOST,
+        port=settings.PORT,
+        reload=settings.RELOAD and settings.DEBUG,
+        log_level=settings.LOG_LEVEL.lower(),
+        access_log=False,  # 我们使用自己的请求日志中间件
+        server_header=False,
+        date_header=False,
+    )

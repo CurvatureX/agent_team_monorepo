@@ -1,144 +1,215 @@
 """
 Session API endpoints with Supabase Auth integration
+支持RLS的会话管理端点
 """
 
 from fastapi import APIRouter, HTTPException, Request, Depends
-from app.models import SessionCreateRequest, SessionResponse, ErrorResponse
+from typing import Optional, List
+from app.models.session import (
+    SessionCreate,
+    SessionUpdate,
+    Session,
+    SessionResponse,
+    SessionListResponse,
+)
+from app.models.base import ResponseModel
+from app.dependencies import AuthenticatedDeps, get_session_id
+from app.exceptions import ValidationError, NotFoundError
 from app.database import sessions_rls_repo
-from app.config import settings
-from app.utils import log_error, log_info
-from typing import Optional
+from app.utils.logger import get_logger
 
-
+logger = get_logger(__name__)
 router = APIRouter()
 
 
 @router.post("/session", response_model=SessionResponse)
-async def create_session(request: SessionCreateRequest, http_request: Request):
+async def create_session(request: SessionCreate, deps: AuthenticatedDeps = Depends()):
     """
     Create a new session
+    创建新的会话
     """
     try:
-        # Get user from request state (already validated by jwt_auth_middleware)
-        user = getattr(http_request.state, "user", None)
-        user_id = user.get("sub") if user else None
+        logger.info(f"📝 Creating session for user {deps.current_user.sub}")
 
         # Validate action parameter
-        if request.action not in ["create", "edit", "copy"]:
-            raise HTTPException(
-                status_code=400, detail="Invalid action. Must be 'create' or 'edit'"
+        valid_actions = ["chat", "workflow_generation", "workflow_execution", "tool_invocation"]
+        if request.action and request.action not in valid_actions:
+            raise ValidationError(
+                f"Invalid action. Must be one of: {valid_actions}",
+                details={"valid_actions": valid_actions},
             )
 
-        # For edit action, workflow_id is required
-        if request.action in ["edit", "copy"] and not request.workflow_id:
-            raise HTTPException(status_code=400, detail="workflow_id is required for edit action")
+        # For workflow actions, workflow_id might be required
+        if request.action in ["workflow_execution"] and not request.workflow_id:
+            raise ValidationError(
+                "workflow_id is required for workflow execution", details={"action": request.action}
+            )
 
-        # TODO: if copy, create a new workflow from the workflow_id
-
-        # Prepare session data according to tech design
+        # Prepare session data
         session_data = {
-            "user_id": user_id,
-            "action_type": request.action,
-            "source_workflow_id": request.workflow_id if request.workflow_id else None,
+            "user_id": deps.current_user.sub,
+            "session_type": request.session_type,
+            "action": request.action,
+            "workflow_id": request.workflow_id,
+            "metadata": request.metadata,
+            "status": "active",
         }
+
+        # Create session using RLS repository
         result = sessions_rls_repo.create(session_data)
 
         if not result:
             raise HTTPException(status_code=500, detail="Failed to create session")
 
-        return SessionResponse(session_id=result["id"], created_at=result["created_at"])
+        logger.info(f"✅ Session created: {result['id']}")
 
-    except HTTPException:
+        # Create session object
+        session = Session(**result)
+
+        return SessionResponse(session=session, message="Session created successfully")
+
+    except (ValidationError, HTTPException):
         raise
     except Exception as e:
-        if settings.DEBUG:
-            log_error(f"Error creating session: {e}")
-
+        logger.error(f"❌ Error creating session: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/session/{session_id}")
-async def get_session(session_id: str, http_request: Request):
+@router.get("/session/{session_id}", response_model=SessionResponse)
+async def get_session(
+    session_id: str = Depends(get_session_id), deps: AuthenticatedDeps = Depends()
+):
     """
     Get session by ID with RLS
+    通过ID获取会话（支持RLS）
     """
     try:
-        # Get access token (user already validated by jwt_auth_middleware)
-        access_token = getattr(http_request.state, "access_token", None)
+        logger.info(f"🔍 Getting session {session_id} for user {deps.current_user.sub}")
 
-        # Get session from database with RLS (RLS ensures user can only access their own sessions)
-        result = sessions_rls_repo.get_by_id(session_id, access_token=access_token)
+        # Get session from database with RLS
+        result = sessions_rls_repo.get_by_id(session_id, access_token=deps.current_user.token)
 
         if not result:
-            raise HTTPException(status_code=404, detail="Session not found")
+            raise NotFoundError("Session")
 
-        return {
-            "id": result["id"],
-            "user_id": result.get("user_id"),
-            "created_at": result["created_at"],
-        }
+        # Create session object
+        session = Session(**result)
 
-    except HTTPException:
+        logger.info(f"✅ Session retrieved: {session_id}")
+
+        return SessionResponse(session=session, message="Session retrieved successfully")
+
+    except (NotFoundError, HTTPException):
         raise
     except Exception as e:
-        if settings.DEBUG:
-            log_error(f"Error getting session: {e}")
-
+        logger.error(f"❌ Error getting session {session_id}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/sessions")
-async def list_user_sessions(http_request: Request):
+@router.get("/sessions", response_model=SessionListResponse)
+async def list_user_sessions(
+    page: int = 1, page_size: int = 20, deps: AuthenticatedDeps = Depends()
+):
     """
     List all sessions for the current authenticated user
+    列出当前认证用户的所有会话
     """
     try:
-        # Get user and access token (already validated by jwt_auth_middleware)
-        user = getattr(http_request.state, "user", None)
-        user_id = user.get("sub") if user else None
-        access_token = getattr(http_request.state, "access_token", None)
+        logger.info(f"📋 Listing sessions for user {deps.current_user.sub}")
 
-        # Get all sessions for this user with RLS (RLS ensures user can only access their own sessions)
-        sessions = sessions_rls_repo.get_by_user_id(user_id, access_token=access_token)
+        # Get all sessions for this user with RLS
+        sessions_data = sessions_rls_repo.get_by_user_id(
+            deps.current_user.sub, access_token=deps.current_user.token
+        )
 
         # Sort by created_at (most recent first)
-        sessions.sort(key=lambda x: x["created_at"], reverse=True)
+        sessions_data.sort(key=lambda x: x.get("created_at", ""), reverse=True)
 
-        return {"user_id": user_id, "sessions": sessions, "total_count": len(sessions)}
+        # Apply pagination
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        paginated_sessions = sessions_data[start_idx:end_idx]
+
+        # Convert to Session objects
+        sessions = [Session(**session_data) for session_data in paginated_sessions]
+
+        logger.info(f"✅ Retrieved {len(sessions)} sessions for user {deps.current_user.sub}")
+
+        return SessionListResponse(
+            sessions=sessions, total_count=len(sessions_data), page=page, page_size=page_size
+        )
 
     except HTTPException:
         raise
     except Exception as e:
-        if settings.DEBUG:
-            log_error(f"Error listing user sessions: {e}")
-
+        logger.error(f"❌ Error listing sessions for user {deps.current_user.sub}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.delete("/session/{session_id}")
-async def delete_session(session_id: str, http_request: Request):
+@router.delete("/session/{session_id}", response_model=ResponseModel)
+async def delete_session(
+    session_id: str = Depends(get_session_id), deps: AuthenticatedDeps = Depends()
+):
     """
     Delete a session with RLS
+    删除会话（支持RLS）
     """
     try:
-        access_token = getattr(http_request.state, "access_token", None)
+        logger.info(f"🗑️ Deleting session {session_id} for user {deps.current_user.sub}")
 
-        # Delete session with RLS (RLS ensures user can only delete their own sessions)
-        success = sessions_rls_repo.delete(session_id, access_token=access_token)
+        # Delete session with RLS (ensures user can only delete their own sessions)
+        success = sessions_rls_repo.delete(session_id, access_token=deps.current_user.token)
 
         if not success:
-            raise HTTPException(status_code=404, detail="Session not found or could not be deleted")
+            raise NotFoundError("Session")
 
-        return {
-            "success": True,
-            "message": "Session deleted successfully",
-            "session_id": session_id,
-        }
+        logger.info(f"✅ Session deleted: {session_id}")
 
-    except HTTPException:
+        return ResponseModel(success=True, message="Session deleted successfully")
+
+    except (NotFoundError, HTTPException):
         raise
     except Exception as e:
-        if settings.DEBUG:
-            log_error(f"Error deleting session: {e}")
+        logger.error(f"❌ Error deleting session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
+
+@router.put("/session/{session_id}", response_model=SessionResponse)
+async def update_session(
+    session_update: SessionUpdate,
+    session_id: str = Depends(get_session_id),
+    deps: AuthenticatedDeps = Depends(),
+):
+    """
+    Update a session with RLS
+    更新会话（支持RLS）
+    """
+    try:
+        logger.info(f"📝 Updating session {session_id} for user {deps.current_user.sub}")
+
+        # Prepare update data (only include non-None fields)
+        update_data = session_update.dict(exclude_none=True)
+
+        if not update_data:
+            raise ValidationError("No update data provided")
+
+        # Update session with RLS
+        result = sessions_rls_repo.update(
+            session_id, update_data, access_token=deps.current_user.token
+        )
+
+        if not result:
+            raise NotFoundError("Session")
+
+        # Create session object
+        session = Session(**result)
+
+        logger.info(f"✅ Session updated: {session_id}")
+
+        return SessionResponse(session=session, message="Session updated successfully")
+
+    except (ValidationError, NotFoundError, HTTPException):
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error updating session {session_id}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
