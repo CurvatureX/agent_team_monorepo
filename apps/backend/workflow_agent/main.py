@@ -5,37 +5,18 @@ Workflow Agent Service - LangGraph-based AI Agent for workflow generation
 import asyncio
 import signal
 import sys
+import os
 from pathlib import Path
 
-# Add the current directory to Python path to enable absolute imports
-sys.path.insert(0, str(Path(__file__).parent))
-
-import structlog
+# Load environment variables early
 from dotenv import load_dotenv
-
-from workflow_agent.core.config import settings
-from workflow_agent.services.grpc_server import WorkflowAgentServer
-
-# Load environment variables
 load_dotenv()
 
-# Configure structured logging
-structlog.configure(
-    processors=[
-        structlog.stdlib.filter_by_level,
-        structlog.stdlib.add_logger_name,
-        structlog.stdlib.add_log_level,
-        structlog.stdlib.PositionalArgumentsFormatter(),
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
-        structlog.processors.UnicodeDecoder(),
-        structlog.processors.JSONRenderer(),
-    ],
-    context_class=dict,
-    logger_factory=structlog.stdlib.LoggerFactory(),
-    cache_logger_on_first_use=True,
-)
+# Import logging first
+import structlog
+# Import our modules - these work when run from workflow_agent directory
+from core.config import settings
+from services.grpc_server import WorkflowAgentServer
 
 logger = structlog.get_logger()
 
@@ -45,7 +26,9 @@ async def main():
     logger.info("Starting Workflow Agent Service")
 
     # Create and start the gRPC server
+    logger.info("Creating WorkflowAgentServer instance")
     server = WorkflowAgentServer()
+    logger.info("WorkflowAgentServer instance created successfully")
 
     # Setup graceful shutdown
     def signal_handler(signum, frame):
@@ -54,20 +37,26 @@ async def main():
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
+    logger.info("Signal handlers registered")
 
     try:
+        logger.info("Starting gRPC server...")
         await server.start()
         logger.info("Workflow Agent Service started successfully", port=settings.GRPC_PORT)
 
         # Keep the server running
+        logger.info("Waiting for server termination...")
         await server.wait_for_termination()
 
     except Exception as e:
         logger.error("Failed to start Workflow Agent Service", error=str(e))
+        import traceback
+        logger.error("Traceback:", traceback=traceback.format_exc())
         sys.exit(1)
     finally:
         logger.info("Workflow Agent Service stopped")
 
 
 if __name__ == "__main__":
+    logger.info("Starting main execution")
     asyncio.run(main())

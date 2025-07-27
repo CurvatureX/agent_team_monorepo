@@ -56,7 +56,7 @@
    ```bash
    # 开发模式 (支持热重载)
    ./start-all.sh dev
-
+   
    # 或生产模式 (后台运行)
    ./start-all.sh prod
    ```
@@ -287,80 +287,19 @@ grpcurl -plaintext localhost:50051 list
 - Workflow Agent支持多实例部署
 - Redis和PostgreSQL可以配置集群
 
-## ⚠️ 重要部署注意事项
-
-### 关键修复和最佳实践
-
-在进行任何开发或部署之前，请仔细阅读 **[CLAUDE.md](./CLAUDE.md)** 文件以了解：
-
-- 🔧 **正确的导入模式** - 避免"attempted relative import with no known parent package"错误
-- 🐳 **Docker配置要求** - 确保包结构和平台兼容性
-- 🚀 **AWS ECS部署要求** - 平台架构、端口配置、健康检查
-- 📋 **环境变量配置** - 所有必需的配置项和格式要求
-
-### 部署前检查清单
-
-- [ ] ✅ 导入语句使用正确的绝对/相对路径模式
-- [ ] ✅ Docker镜像使用 `--platform linux/amd64` 构建（ECS部署必需）
-- [ ] ✅ 所有依赖项已添加到 requirements.txt
-- [ ] ✅ 健康检查配置了正确的端口
-  - workflow-agent: 50051 (gRPC)
-  - workflow-engine: 8000 (HTTP)
-- [ ] ✅ 环境变量在ECS任务定义中正确配置
-- [ ] ✅ Supabase URL格式正确（非占位符值）
-
 ## 故障排除
-
-### 🚨 关键部署问题
-
-#### 1. **ImportError: attempted relative import with no known parent package**
-```bash
-# 原因：Docker包结构不正确或运行方式错误
-# 解决方案：
-# 1. 确保Dockerfile保持包结构：
-COPY workflow_agent/ ./workflow_agent/
-
-# 2. 作为模块运行：
-CMD ["python", "-m", "workflow_agent.main"]
-```
-
-#### 2. **ModuleNotFoundError: No module named 'croniter'**
-```bash
-# 原因：依赖未正确安装
-# 解决方案：
-# 1. 在requirements.txt中添加：croniter>=1.3.0
-# 2. 更新Dockerfile：
-RUN pip install -r requirements.txt
-```
-
-#### 3. **Docker平台不匹配错误**
-```bash
-# 错误：image Manifest does not contain descriptor matching platform 'linux/amd64'
-# 解决方案：为ECS构建AMD64镜像
-docker build --platform linux/amd64 -f workflow_agent/Dockerfile -t workflow-agent .
-```
-
-#### 4. **Supabase连接错误**
-```bash
-# 错误：Invalid URL
-# 解决方案：确保SSM参数包含有效URL格式
-# 正确：https://your-project.supabase.co
-# 错误：placeholder
-```
 
 ### 常见问题
 
-1. **gRPC连接失败**: 检查workflow-agent服务是否启动并监听50051端口
+1. **gRPC连接失败**: 检查workflow-agent服务是否启动
 2. **API密钥错误**: 确认.env文件中的密钥正确
 3. **端口冲突**: 修改docker-compose.yml中的端口映射
-4. **AWS ECS任务失败**: 检查CloudWatch日志和任务定义配置
 
 ### 性能优化
 
 - 调整LangGraph的checkpoint后端设置
 - 优化Redis和PostgreSQL配置
 - 监控内存和CPU使用情况
-- 使用正确的Docker多阶段构建优化镜像大小
 
 ## 贡献
 

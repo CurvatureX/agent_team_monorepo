@@ -311,7 +311,7 @@ class StateConverter:
             workflow_agent_pb2.STAGE_CLARIFICATION: WorkflowStage.CLARIFICATION,
             workflow_agent_pb2.STAGE_NEGOTIATION: WorkflowStage.NEGOTIATION,
             workflow_agent_pb2.STAGE_GAP_ANALYSIS: WorkflowStage.GAP_ANALYSIS,
-            workflow_agent_pb2.STAGE_ALTERNATIVE_GENERATION: WorkflowStage.GAP_ANALYSIS,  # Map to existing stage
+            workflow_agent_pb2.STAGE_ALTERNATIVE_GENERATION: WorkflowStage.ALTERNATIVE_GENERATION,
             workflow_agent_pb2.STAGE_WORKFLOW_GENERATION: WorkflowStage.WORKFLOW_GENERATION,
             workflow_agent_pb2.STAGE_DEBUG: WorkflowStage.DEBUG,
             workflow_agent_pb2.STAGE_COMPLETED: WorkflowStage.COMPLETED,
@@ -326,6 +326,7 @@ class StateConverter:
             WorkflowStage.CLARIFICATION: workflow_agent_pb2.STAGE_CLARIFICATION,
             WorkflowStage.NEGOTIATION: workflow_agent_pb2.STAGE_NEGOTIATION,
             WorkflowStage.GAP_ANALYSIS: workflow_agent_pb2.STAGE_GAP_ANALYSIS,
+            WorkflowStage.ALTERNATIVE_GENERATION: workflow_agent_pb2.STAGE_ALTERNATIVE_GENERATION,
             WorkflowStage.WORKFLOW_GENERATION: workflow_agent_pb2.STAGE_WORKFLOW_GENERATION,
             WorkflowStage.DEBUG: workflow_agent_pb2.STAGE_DEBUG,
             WorkflowStage.COMPLETED: workflow_agent_pb2.STAGE_COMPLETED,

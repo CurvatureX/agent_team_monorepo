@@ -3,11 +3,11 @@ Database connection and session management.
 """
 
 from typing import Generator
-
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import QueuePool
+
 from workflow_engine.core.config import get_settings
 
 # Get settings
@@ -32,13 +32,11 @@ engine = create_engine(
     connect_args={
         "sslmode": settings.database_ssl_mode,
         "application_name": "workflow_engine",
-        "connect_timeout": 60,
-    }
-    if settings.database_ssl_mode != "disable"
-    else {
+        "connect_timeout": 30,
+    } if settings.database_ssl_mode != "disable" else {
         "application_name": "workflow_engine",
-        "connect_timeout": 60,
-    },
+        "connect_timeout": 30,
+    }
 )
 
 # Create session factory
@@ -69,11 +67,11 @@ def init_db():
         with engine.connect() as conn:
             result = conn.execute(text("SELECT 1"))
             print(f"Database connection successful: {result.fetchone()}")
-
+        
         # Create all tables
         Base.metadata.create_all(bind=engine)
         print("Database tables created successfully")
-
+        
     except Exception as e:
         print(f"Database initialization failed: {e}")
         raise
@@ -95,4 +93,4 @@ def test_db_connection():
 def close_db():
     """Close database connections."""
     engine.dispose()
-    print("Database connections closed")
+    print("Database connections closed") 

@@ -6,11 +6,12 @@ Alternative Solution Generation, Workflow Generation, and Debug
 import structlog
 from langgraph.graph import END, StateGraph
 
-from .nodes import WorkflowAgentNodes
-from .state import WorkflowState
+from agents.nodes import WorkflowAgentNodes
+from agents.state import (
+    WorkflowState,
+)
 
 logger = structlog.get_logger()
-
 
 class WorkflowAgent:
     """

@@ -133,7 +133,7 @@ resource "aws_ecs_task_definition" "api_gateway" {
         interval    = 30
         timeout     = 5
         retries     = 3
-        startPeriod = 120
+        startPeriod = 60
       }
     }
   ])
@@ -179,10 +179,6 @@ resource "aws_ecs_task_definition" "workflow_engine" {
         {
           name  = "REDIS_URL"
           value = "redis://${aws_elasticache_cluster.redis.cache_nodes[0].address}:6379/0"
-        },
-        {
-          name  = "DATABASE_URL"
-          value = "postgresql://postgres.mkrczzgjeduruwxpanbj:Starmates2025%40@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres?sslmode=require&connect_timeout=60"
         }
       ]
 
@@ -194,18 +190,6 @@ resource "aws_ecs_task_definition" "workflow_engine" {
         {
           name      = "ANTHROPIC_API_KEY"
           valueFrom = aws_ssm_parameter.anthropic_api_key.arn
-        },
-        {
-          name      = "SUPABASE_URL"
-          valueFrom = aws_ssm_parameter.supabase_url.arn
-        },
-        {
-          name      = "SUPABASE_SECRET_KEY"
-          valueFrom = aws_ssm_parameter.supabase_secret_key.arn
-        },
-        {
-          name      = "DB_PASSWORD"
-          valueFrom = aws_ssm_parameter.supabase_secret_key.arn
         }
       ]
 
@@ -219,11 +203,11 @@ resource "aws_ecs_task_definition" "workflow_engine" {
       }
 
       healthCheck = {
-        command     = ["CMD-SHELL", "nc -z localhost 8000 || exit 1"]
+        command     = ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
         interval    = 30
         timeout     = 5
         retries     = 3
-        startPeriod = 180
+        startPeriod = 60
       }
     }
   ])
@@ -277,7 +261,7 @@ resource "aws_ecs_task_definition" "workflow_agent" {
 
       portMappings = [
         {
-          containerPort = 50051
+          containerPort = 8000
           protocol      = "tcp"
         }
       ]
@@ -286,14 +270,6 @@ resource "aws_ecs_task_definition" "workflow_agent" {
         {
           name  = "DEBUG"
           value = "false"
-        },
-        {
-          name  = "GRPC_HOST"
-          value = "[::]"
-        },
-        {
-          name  = "GRPC_PORT"
-          value = "50051"
         },
         {
           name  = "REDIS_URL"
@@ -309,14 +285,6 @@ resource "aws_ecs_task_definition" "workflow_agent" {
         {
           name      = "ANTHROPIC_API_KEY"
           valueFrom = aws_ssm_parameter.anthropic_api_key.arn
-        },
-        {
-          name      = "SUPABASE_URL"
-          valueFrom = aws_ssm_parameter.supabase_url.arn
-        },
-        {
-          name      = "SUPABASE_SECRET_KEY"
-          valueFrom = aws_ssm_parameter.supabase_secret_key.arn
         }
       ]
 
@@ -330,11 +298,11 @@ resource "aws_ecs_task_definition" "workflow_agent" {
       }
 
       healthCheck = {
-        command     = ["CMD-SHELL", "nc -z localhost 50051 || exit 1"]
+        command     = ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
         interval    = 30
         timeout     = 5
         retries     = 3
-        startPeriod = 240
+        startPeriod = 60
       }
     }
   ])

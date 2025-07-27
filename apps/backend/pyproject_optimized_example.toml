@@ -1,0 +1,87 @@
+# 优化后的 backend/pyproject.toml 示例
+[project]
+name = "workflow-agent-backend"
+version = "1.0.0"
+description = "Backend services for Workflow Agent Team"
+authors = [
+    {name = "Workflow Agent Team", email = "team@example.com"}
+]
+requires-python = ">=3.11"
+
+# 只放真正共享的基础依赖
+dependencies = [
+    # gRPC 基础设施 - 所有服务都需要
+    "grpcio>=1.68.0",
+    "grpcio-tools>=1.68.0", 
+    "protobuf>=6.0.0",
+    
+    # 日志系统 - 统一日志格式
+    "structlog>=23.2.0",
+    
+    # 配置管理 - 统一配置方式
+    "pydantic-settings>=2.1.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+# 开发工具 - 所有服务统一使用
+dev = [
+    "pytest>=7.4.3",
+    "pytest-asyncio>=0.21.1",
+    "black>=23.11.0",
+    "isort>=5.12.0", 
+    "flake8>=6.1.0",
+    "mypy>=1.7.1",
+    "pre-commit>=3.6.0",
+]
+
+# 生产部署相关
+prod = [
+    "uvicorn[standard]>=0.26.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# UV Workspace 配置
+[tool.uv.workspace]
+members = ["api-gateway", "workflow_agent", "workflow_engine"]
+
+# 共享工具配置
+[tool.black]
+line-length = 100
+target-version = ['py311']
+
+[tool.isort]
+profile = "black"
+line-length = 100
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+# 依赖分组 - 按功能组织
+[dependency-groups]
+shared-infra = [
+    "grpcio>=1.68.0",
+    "grpcio-tools>=1.68.0", 
+    "protobuf>=6.0.0",
+    "structlog>=23.2.0",
+]
+
+shared-config = [
+    "pydantic-settings>=2.1.0",
+    "python-dotenv>=1.0.0",
+]
+
+dev-tools = [
+    "pytest>=7.4.3",
+    "pytest-asyncio>=0.21.1", 
+    "black>=23.11.0",
+    "isort>=5.12.0",
+    "flake8>=6.1.0",
+    "mypy>=1.7.1",
+] 

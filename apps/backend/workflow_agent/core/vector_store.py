@@ -12,7 +12,7 @@ from langchain_openai import OpenAIEmbeddings
 from supabase import Client, create_client
 from supabase.client import ClientOptions
 
-from .config import settings
+from core.config import settings
 
 logger = structlog.get_logger()
 
@@ -68,7 +68,7 @@ class SupabaseVectorStore:
         if not settings.SUPABASE_URL or not settings.SUPABASE_SECRET_KEY:
             raise ValueError("SUPABASE_URL and SUPABASE_SECRET_KEY must be configured")
 
-        # Use secret key for full access to vector operations
+        # Use service role key for full access to vector operations
         client = create_client(
             settings.SUPABASE_URL,
             settings.SUPABASE_SECRET_KEY,
@@ -83,7 +83,9 @@ class SupabaseVectorStore:
         if not settings.OPENAI_API_KEY:
             raise ValueError("OPENAI_API_KEY must be configured for embeddings")
 
-        return OpenAIEmbeddings(model=settings.EMBEDDING_MODEL, api_key=settings.OPENAI_API_KEY)
+        return OpenAIEmbeddings(
+            model=settings.EMBEDDING_MODEL, api_key=settings.OPENAI_API_KEY
+        )
 
     async def similarity_search(
         self,
