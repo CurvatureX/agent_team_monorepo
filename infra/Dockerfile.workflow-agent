@@ -1,0 +1,38 @@
+FROM python:3.11-slim
+
+# Install system dependencies including grpc_health_probe
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install grpc_health_probe for health checks
+RUN GRPC_HEALTH_PROBE_VERSION=v0.4.19 && \
+    curl -L https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-amd64 \
+    -o /usr/local/bin/grpc_health_probe && \
+    chmod +x /usr/local/bin/grpc_health_probe
+
+# Set working directory
+WORKDIR /app
+
+# Copy and install Python dependencies
+COPY pyproject.toml uv.lock ./
+RUN pip install uv && \
+    uv sync --frozen --no-cache
+
+# Copy application code
+COPY . .
+
+# Create non-root user
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+RUN chown -R appuser:appuser /app
+USER appuser
+
+# Expose gRPC port
+EXPOSE 50051
+
+# Health check using grpc_health_probe
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD grpc_health_probe -addr=localhost:50051
+
+# Start the gRPC server
+CMD ["python", "-m", "uv", "run", "python", "main.py"] 

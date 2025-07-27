@@ -8,7 +8,7 @@ from typing import Any, Dict, List
 import structlog
 from supabase import create_client
 
-from app.config import settings
+from core.config import settings
 from .config_validator import ConfigurationError, validate_environment_variables
 
 
