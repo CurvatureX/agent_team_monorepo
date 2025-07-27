@@ -6,9 +6,7 @@ import time
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
+from app.api.mcp import router
 from core.mcp_exceptions import (
     MCPAuthenticationError,
     MCPDatabaseError,
@@ -25,8 +23,9 @@ from core.mcp_exceptions import (
     get_http_status_code,
     get_user_friendly_message,
 )
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from models.mcp_models import MCPErrorResponse
-from routers.mcp import router
 from services.mcp_service import MCPService
 
 
@@ -194,9 +193,7 @@ class TestMCPServiceErrorHandling:
     @pytest.fixture
     def mock_node_client(self):
         """Mock node knowledge client"""
-        with patch(
-            "services.mcp_service.NodeKnowledgeClient"
-        ) as mock_class:
+        with patch("services.mcp_service.NodeKnowledgeClient") as mock_class:
             mock_instance = Mock()
             mock_class.return_value = mock_instance
             return mock_instance
@@ -303,7 +300,7 @@ class TestMCPRouterErrorHandling:
 
     def test_list_tools_error_response_format(self, client):
         """Test that error responses have correct format"""
-        with patch("routers.mcp.mcp_service") as mock_service:
+        with patch("app.api.mcp.mcp_service") as mock_service:
             mock_service.get_available_tools.side_effect = MCPServiceError(
                 message="Service error", user_message="Service unavailable"
             )
@@ -350,7 +347,7 @@ class TestMCPRouterErrorHandling:
 
     def test_rate_limit_error_headers(self, client):
         """Test that rate limit errors include retry-after header"""
-        with patch("routers.mcp.mcp_service") as mock_service:
+        with patch("app.api.mcp.mcp_service") as mock_service:
             mock_service.invoke_tool.side_effect = MCPRateLimitError(
                 message="Rate limit exceeded", retry_after=60
             )
@@ -365,7 +362,7 @@ class TestMCPRouterErrorHandling:
 
     def test_health_check_error_response(self, client):
         """Test health check error response"""
-        with patch("routers.mcp.mcp_service") as mock_service:
+        with patch("app.api.mcp.mcp_service") as mock_service:
             mock_service.health_check.side_effect = Exception("Health check failed")
 
             response = client.get("/mcp/health")
@@ -385,9 +382,7 @@ class TestMCPLoggingIntegration:
     async def test_error_logging_includes_context(self):
         """Test that errors are logged with proper context"""
         with patch("services.mcp_service.logger") as mock_logger:
-            with patch(
-                "services.mcp_service.NodeKnowledgeClient"
-            ) as mock_client_class:
+            with patch("services.mcp_service.NodeKnowledgeClient") as mock_client_class:
                 mock_client = Mock()
                 mock_client.retrieve_node_knowledge = AsyncMock(
                     side_effect=Exception("Database error")
