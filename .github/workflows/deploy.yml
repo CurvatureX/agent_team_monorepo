@@ -52,8 +52,11 @@ jobs:
       - name: Install dependencies and test Workflow Engine
         working-directory: apps/backend/workflow_engine
         run: |
-          pip install -e . || pip install pytest grpcio grpcio-tools
-          python -m pytest tests/ -v || echo "Tests not found, skipping"
+          pip install uv
+          uv sync
+          uv add pytest grpcio grpcio-tools
+          export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+          uv run python -m pytest tests/ -v || echo "Tests not found, skipping"
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
