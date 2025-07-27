@@ -32,7 +32,7 @@ uv run pytest tests/ -v
 uv run black app/ tests/
 uv run isort app/ tests/
 
-# Run linting  
+# Run linting
 uv run flake8 app/ tests/
 # Note: mypy is configured in pyproject.toml but not in dev dependencies
 
@@ -48,25 +48,37 @@ uv run pytest tests/ --cov=app
 
 ## Architecture Overview
 
-### Frontend Auth + RLS Architecture
-This FastAPI application serves as an API Gateway with **frontend-managed authentication** and **Supabase Row Level Security (RLS)** following best practices:
+### Three-Layer API Architecture
+This FastAPI application implements a **three-layer API architecture** with distinct authentication and authorization patterns:
 
-1. **FastAPI Application** (`app/main.py`) - Main application with JWT middleware, CORS, and comprehensive logging
-2. **Supabase RLS Integration** (`app/database.py`) - Database client with RLS support, user token forwarding
-3. **JWT Verification** (`app/services/auth_service.py`) - Supabase JWT token verification (backend only)
-4. **gRPC Client** (`app/services/grpc_client.py`) - Client for workflow service communication
-5. **SSE Streaming** (`app/utils/sse.py`) - Server-sent events for real-time data streaming
+1. **Public API** (`/api/public/*`) - No authentication required, rate-limited public endpoints
+2. **App API** (`/api/app/*`) - Supabase OAuth + JWT authentication for web/mobile applications
+3. **MCP API** (`/api/mcp/*`) - API Key authentication with scopes for LLM clients
 
-### RLS Security Model
-- **User Isolation**: Each user can only access their own data via Supabase RLS policies
-- **Guest Sessions**: Anonymous users can create and access guest sessions
-- **Token Forwarding**: Frontend JWT tokens are forwarded to Supabase for RLS enforcement
+### Core Components
+1. **FastAPI Application** (`app/main.py`) - Factory pattern with lifespan events, middleware stack
+2. **Three-Layer API Structure**:
+   - `app/api/public/` - Health checks, service information
+   - `app/api/app/` - Sessions, chat, workflows (requires Supabase auth)
+   - `app/api/mcp/` - Tool discovery and invocation (requires API key)
+3. **Structured Models** (`app/models/`) - Organized Pydantic models with inheritance
+4. **Dependency Injection** (`app/dependencies.py`) - FastAPI dependencies for auth, validation, context
+5. **Middleware Stack** (`app/middleware/`) - Rate limiting, authentication, request logging
+6. **Core Services** (`app/core/`) - Configuration, events, database, logging
+
+### Authentication & Security Model
+- **Public API**: Rate-limited, no authentication required
+- **App API**: Supabase JWT tokens with Row Level Security (RLS) for user data isolation
+- **MCP API**: API Key authentication with granular scopes (tools:read, tools:execute, health:check)
+- **Token Forwarding**: Frontend JWT tokens forwarded to Supabase for RLS enforcement
 - **Admin Override**: Service role key bypasses RLS for administrative operations
 
 ### Key API Endpoints
-- `/api/v1/session` - Session management with action and workflow_id parameters
-- `/api/v1/chat/stream` - Chat with SSE streaming via GET request
-- `/api/v1/workflow_generation` - Workflow generation progress monitoring with SSE
+- `/api/public/health` - Service health check (no auth)
+- `/api/app/sessions` - Session management with RLS (Supabase auth required)
+- `/api/app/chat/stream` - Real-time chat with SSE streaming (Supabase auth required)
+- `/api/mcp/tools` - Tool discovery for LLM clients (API key required)
+- `/api/mcp/invoke` - Tool invocation with parameters (API key required)
 
 ### Authentication Flow
 1. **Frontend handles authentication** - User registration/login via Supabase Auth client
@@ -111,20 +123,27 @@ LOG_FORMAT=standard
 
 ## Key Implementation Details
 
-### JWT Authentication Middleware
-- Verifies Supabase JWT tokens via `Authorization: Bearer <token>` header
-- Public endpoints: `/health`, `/docs`, and documentation endpoints
-- Guest session creation: `POST /api/v1/session` (allows unauthenticated session creation)
-- User data is added to `request.state.user` for authenticated requests
-- Comprehensive request/response logging for debugging
+### Unified Authentication Middleware
+- **Three-Layer Authentication**: Different auth patterns per API layer
+- **Public API**: No auth required, only rate limiting applied
+- **App API**: Supabase JWT verification via `Authorization: Bearer <token>` header
+- **MCP API**: API Key verification via `X-API-Key` header or `Authorization: Bearer <api_key>`
+- **Dependency Injection**: `AuthenticatedDeps`, `MCPDeps`, `CommonDeps` for type-safe auth context
+- **Request Context**: User data and auth info available in `request.state`
+
+### Enhanced Dependency System
+- **`AuthenticatedDeps`**: Provides validated Supabase user context for App API
+- **`MCPDeps`**: Provides API key client context with scopes for MCP API
+- **`CommonDeps`**: Shared dependencies like request ID and processing context
+- **Scope Validation**: Granular permission checking (tools:read, tools:execute, health:check)
+- **Error Handling**: Proper HTTP status codes and error responses per layer
 
 ### Repository Pattern with RLS
-- **`SupabaseRepository`** in `app/database.py` - RLS-enabled repository with user token support
-- **`MVPSupabaseRepository`** - Backwards compatible admin-only repository
-- **RLS Repositories**: `sessions_rls_repo`, `messages_rls_repo` - Use user tokens for RLS
-- **Admin Repositories**: `sessions_repo`, `messages_repo` - Use service role key
-- All operations support both authenticated users and guest sessions
-- User token caching to improve performance
+- **`SupabaseRepository`** in `app/core/database.py` - RLS-enabled repository with user token support
+- **RLS Repositories**: `sessions_rls_repo`, `chats_rls_repo` - Use user tokens for data isolation
+- **Admin Repositories**: Use service role key for administrative operations
+- **Guest Sessions**: Support for unauthenticated session creation
+- **Token Caching**: Performance optimization for repeated database operations
 
 ### SSE Streaming
 - Chat responses use SSE for real-time streaming
@@ -185,10 +204,64 @@ uv run pytest tests/test_basic.py -v
 ```
 
 ### Test Files
-- `quick_test.py` - Basic functionality verification (health, docs, basic endpoints)
-- `tests/test_basic.py` - Basic unit tests with mocking
-- `tests/test_session_quick.py` - Session-specific tests
-- `tests/conftest.py` - Test configuration and fixtures
+- `tests/test_basic.py` - Comprehensive basic tests (12 tests covering all major endpoints)
+  - Root, health, and version endpoints
+  - Authentication requirement verification for App/MCP APIs
+  - Middleware functionality (request ID, process time headers)
+  - Application creation and configuration
+- `quick_test.py` - Basic functionality verification (if available)
+
+### Test Coverage
+Current test suite includes:
+- ✅ 12 comprehensive tests covering core functionality
+- ✅ All three API layers (Public, App, MCP)
+- ✅ Authentication and authorization checks
+- ✅ Middleware verification (CORS, headers, logging)
+- ✅ Error handling and edge cases
+
+## Development Workflow
+
+### Pre-commit Hooks
+This project uses pre-commit hooks for code quality:
+
+```bash
+# Install pre-commit hooks (done automatically in repo)
+pre-commit install
+
+# Run hooks manually
+pre-commit run --all-files
+```
+
+**Configured Hooks:**
+- **Black**: Code formatting (line-length=100)
+- **isort**: Import sorting (profile=black, line-length=100)
+- **Trailing whitespace**: Remove trailing spaces
+- **End of file fixer**: Ensure files end with newline
+- **YAML check**: Validate YAML syntax
+- **Large files check**: Prevent large file commits
+- **Merge conflicts check**: Detect merge conflict markers
+- **Test runner**: Automated test execution on changes
+
+### Code Quality Standards
+- **Line Length**: 100 characters (Black + isort configured)
+- **Import Style**: Black-compatible isort profile
+- **Type Hints**: Comprehensive typing with Pydantic models
+- **Testing**: Minimum viable test coverage with real functionality verification
+- **Documentation**: Inline docstrings and comprehensive CLAUDE.md
+
+### Debugging & Development
+```bash
+# Enable debug mode
+export DEBUG=true
+export LOG_LEVEL=DEBUG
+
+# Start with auto-reload
+uv run uvicorn app.main:app --reload --log-level debug
+
+# View structured logs
+export LOG_FORMAT=json  # For structured logging
+export LOG_FORMAT=simple  # For minimal output
+```
 
 ## Monorepo Context
 
@@ -200,3 +273,30 @@ This API Gateway is part of a larger monorepo structure:
 - **Documentation**: `docs/tech-design/` (Architecture and API documentation)
 
 The API Gateway serves as the HTTP interface that coordinates between the frontend and the workflow agent service, handling authentication via Supabase and streaming responses via SSE.
+
+## Migration History
+
+### Three-Layer Architecture Migration (January 2025)
+The API Gateway was recently migrated from a single-layer architecture to a comprehensive three-layer system:
+
+**Key Changes:**
+- **Architecture**: Migrated to Public/App/MCP three-layer API structure
+- **Authentication**: Implemented layer-specific auth patterns (none/JWT/API-key)
+- **Dependencies**: Replaced manual auth checks with FastAPI dependency injection
+- **Models**: Restructured into organized Pydantic models with inheritance
+- **Middleware**: Enhanced middleware stack with proper ordering and functionality
+- **Testing**: Added comprehensive test suite (12 tests covering all layers)
+- **Code Quality**: Implemented pre-commit hooks with Black, isort, and automated testing
+
+**Migration Benefits:**
+- ✅ **Clear Separation**: Distinct auth patterns for different use cases
+- ✅ **Type Safety**: Comprehensive typing with Pydantic models and dependencies
+- ✅ **Maintainability**: Organized code structure following FastAPI best practices
+- ✅ **Security**: Granular authentication and authorization per API layer
+- ✅ **Testing**: Robust test coverage for continued development
+- ✅ **Developer Experience**: Pre-commit hooks ensure code quality
+- ✅ **Production Ready**: Factory pattern, lifespan events, proper error handling
+
+**Commits:**
+- `73876ba` - Complete API Gateway migration to three-layer FastAPI architecture
+- `53fa4c3` - Fix isort configuration and add basic tests
