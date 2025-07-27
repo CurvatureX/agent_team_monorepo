@@ -70,11 +70,11 @@ ENV PYTHONUNBUFFERED=1 \
     SHARED_PROTO_DIR=/app/shared/proto/engine
 
 # Expose port
-EXPOSE 8000
+EXPOSE 50050
 
 # Health check - use TCP connection test for gRPC
 HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
-    CMD nc -z localhost 8000 || exit 1
+    CMD nc -z localhost 50050 || exit 1
 
 # Run application as module
 CMD ["python", "-m", "workflow_engine.server"]
