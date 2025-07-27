@@ -7,7 +7,6 @@ from datetime import datetime
 from typing import Any, Dict
 
 import pytest
-
 from agents.state import (
     ClarificationContext,
     Conversation,
@@ -109,6 +108,9 @@ class TestWorkflowStateStructure:
         """Test minimal required WorkflowState fields"""
         state = {
             "session_id": "test",
+            "user_id": "test_user",
+            "created_at": 1234567890,
+            "updated_at": 1234567890,
             "stage": WorkflowStage.CLARIFICATION,
             "previous_stage": None,
             "execution_history": [],
@@ -126,7 +128,10 @@ class TestWorkflowStateStructure:
         }
 
         # Verify structure
-        assert "metadata" in state
+        assert "session_id" in state
+        assert "user_id" in state
+        assert "created_at" in state
+        assert "updated_at" in state
         assert "stage" in state
         assert "conversations" in state
         assert "intent_summary" in state

@@ -5,7 +5,6 @@ import asyncio
 from typing import Any, Dict, List
 
 import structlog
-
 from agents.state import RAGContext, RetrievedDocument, WorkflowState
 from core.vector_store import SupabaseVectorStore
 
@@ -16,7 +15,14 @@ class RAGTool:
     """A tool for Retrieval-Augmented Generation that updates the workflow state."""
 
     def __init__(self):
-        self.vector_store = SupabaseVectorStore()
+        try:
+            self.vector_store = SupabaseVectorStore()
+            self.rag_available = True
+            logger.info("RAG system initialized successfully")
+        except Exception as e:
+            logger.warning(f"RAG system unavailable: {e}")
+            self.vector_store = None
+            self.rag_available = False
 
     async def retrieve_knowledge(
         self, state: WorkflowState, query: str, top_k: int = 5
@@ -32,6 +38,15 @@ class RAGTool:
         Returns:
             The updated workflow state.
         """
+        if not self.rag_available:
+            logger.warning("RAG system unavailable, returning empty results", query=query)
+            # Initialize empty RAG context
+            if "rag" not in state or state["rag"] is None:
+                state["rag"] = RAGContext(query="", results=[])
+            state["rag"]["query"] = query
+            state["rag"]["results"] = []
+            return state
+
         logger.info("Retrieving knowledge from Supabase", query=query)
 
         # 1. Call the real vector store function

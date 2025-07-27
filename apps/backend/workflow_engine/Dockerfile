@@ -50,7 +50,7 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /install /usr/local
 
 # Copy application code from builder
-COPY --from=builder /app/workflow_engine ./workflow_engine
+COPY --from=builder /app/workflow_engine/workflow_engine ./workflow_engine
 COPY --from=builder /app/shared ./shared
 
 # Generate protobuf files using the existing script
@@ -66,7 +66,7 @@ USER app
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app:/app/workflow_engine \
+    PYTHONPATH=/app \
     SHARED_PROTO_DIR=/app/shared/proto/engine
 
 # Expose port
@@ -76,5 +76,5 @@ EXPOSE 50050
 HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
     CMD nc -z localhost 50050 || exit 1
 
-# Run application as module
-CMD ["python", "-m", "workflow_engine.server"]
+# Run application directly
+CMD ["python", "-m", "workflow_engine"]
