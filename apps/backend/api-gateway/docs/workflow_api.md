@@ -200,10 +200,90 @@ A `Connection` object has the following structure:
 - `MEMORY_NODE`
 
 ### NodeSubtype Enum
-*A detailed list of all subtypes can be found in the `workflow.proto` file.*
+<details>
+<summary>Click to expand</summary>
+
+- **Trigger Subtypes**
+  - `TRIGGER_CHAT`
+  - `TRIGGER_WEBHOOK`
+  - `TRIGGER_CRON`
+  - `TRIGGER_MANUAL`
+  - `TRIGGER_EMAIL`
+  - `TRIGGER_FORM`
+  - `TRIGGER_CALENDAR`
+- **AI Agent Subtypes**
+  - `AI_ROUTER_AGENT`
+  - `AI_TASK_ANALYZER`
+  - `AI_DATA_INTEGRATOR`
+  - `AI_REPORT_GENERATOR`
+  - `AI_REMINDER_DECISION`
+  - `AI_WEEKLY_REPORT`
+- **External Action Subtypes**
+  - `EXTERNAL_GITHUB`
+  - `EXTERNAL_GOOGLE_CALENDAR`
+  - `EXTERNAL_TRELLO`
+  - `EXTERNAL_EMAIL`
+  - `EXTERNAL_SLACK`
+  - `EXTERNAL_API_CALL`
+  - `EXTERNAL_WEBHOOK`
+  - `EXTERNAL_NOTIFICATION`
+- **Action Subtypes**
+  - `ACTION_RUN_CODE`
+  - `ACTION_SEND_HTTP_REQUEST`
+  - `ACTION_PARSE_IMAGE`
+  - `ACTION_WEB_SEARCH`
+  - `ACTION_DATABASE_OPERATION`
+  - `ACTION_FILE_OPERATION`
+  - `ACTION_DATA_TRANSFORMATION`
+- **Flow Control Subtypes**
+  - `FLOW_IF`
+  - `FLOW_FILTER`
+  - `FLOW_LOOP`
+  - `FLOW_MERGE`
+  - `FLOW_SWITCH`
+  - `FLOW_WAIT`
+- **Human in the Loop Subtypes**
+  - `HUMAN_GMAIL`
+  - `HUMAN_SLACK`
+  - `HUMAN_DISCORD`
+  - `HUMAN_TELEGRAM`
+  - `HUMAN_APP`
+- **Tool Subtypes**
+  - `TOOL_GOOGLE_CALENDAR_MCP`
+  - `TOOL_NOTION_MCP`
+  - `TOOL_CALENDAR`
+  - `TOOL_EMAIL`
+  - `TOOL_HTTP`
+  - `TOOL_CODE_EXECUTION`
+- **Memory Subtypes**
+  - `MEMORY_SIMPLE`
+  - `MEMORY_BUFFER`
+  - `MEMORY_KNOWLEDGE`
+  - `MEMORY_VECTOR_STORE`
+  - `MEMORY_DOCUMENT`
+  - `MEMORY_EMBEDDING`
+
+</details>
 
 ### ConnectionType Enum
-*A detailed list of all connection types can be found in the `workflow.proto` file.*
+<details>
+<summary>Click to expand</summary>
+
+- `MAIN`
+- `AI_AGENT`
+- `AI_CHAIN`
+- `AI_DOCUMENT`
+- `AI_EMBEDDING`
+- `AI_LANGUAGE_MODEL`
+- `AI_MEMORY`
+- `AI_OUTPUT_PARSER`
+- `AI_RETRIEVER`
+- `AI_RERANKER`
+- `AI_TEXT_SPLITTER`
+- `AI_TOOL`
+- `AI_VECTOR_STORE`
+
+</details>
 
 ---
 
