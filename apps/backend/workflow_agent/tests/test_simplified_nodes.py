@@ -8,7 +8,6 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from agents.nodes import WorkflowAgentNodes
 from agents.state import ClarificationContext, Conversation, WorkflowOrigin, WorkflowStage
 
@@ -120,8 +119,8 @@ class TestWorkflowAgentNodes:
         # Test gap analysis node
         result = await workflow_nodes.gap_analysis_node(sample_state)
 
-        # Verify results
-        assert result["stage"] == WorkflowStage.WORKFLOW_GENERATION
+        # Verify results - when gaps are found, should go to alternative generation
+        assert result["stage"] == WorkflowStage.ALTERNATIVE_GENERATION
         assert len(result["gaps"]) == 2
         assert "email_authentication" in result["gaps"]
         assert "ai_integration" in result["gaps"]

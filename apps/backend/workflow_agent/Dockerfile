@@ -37,6 +37,9 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY workflow_agent/ .
 COPY shared/ ./shared/
 
+# Create the prompts directory where the prompt engine expects it
+RUN mkdir -p /shared/prompts && cp -r ./shared/prompts/* /shared/prompts/
+
 # Create proto directory and generate protobuf files
 RUN mkdir -p proto && \
     python -m grpc_tools.protoc \
