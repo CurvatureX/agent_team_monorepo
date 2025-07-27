@@ -6,14 +6,14 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
-from core.workflow_engine_client import WorkflowEngineClient
+from app.services.grpc_client import workflow_client
 
 router = APIRouter()
 
 
 # Dependency to get the gRPC client
-def get_grpc_client(request: Request) -> WorkflowEngineClient:
-    return request.app.state.workflow_client
+def get_grpc_client():
+    return workflow_client
 
 
 # Pydantic Models for API data validation
@@ -61,7 +61,7 @@ class ExecutionHistoryResponse(BaseModel):
 @router.post("/", response_model=WorkflowResponse, status_code=status.HTTP_201_CREATED)
 async def create_workflow(
     workflow_data: WorkflowCreate,
-    client: WorkflowEngineClient = Depends(get_grpc_client),
+    client = Depends(get_grpc_client),
 ):
     """
     Create a new workflow.
@@ -76,7 +76,7 @@ async def create_workflow(
 @router.get("/{workflow_id}", response_model=WorkflowResponse)
 async def get_workflow(
     workflow_id: str,
-    client: WorkflowEngineClient = Depends(get_grpc_client),
+    client = Depends(get_grpc_client),
 ):
     """
     Get a workflow by its ID.
@@ -94,7 +94,7 @@ async def get_workflow(
 async def update_workflow(
     workflow_id: str,
     workflow_data: WorkflowUpdate,
-    client: WorkflowEngineClient = Depends(get_grpc_client),
+    client = Depends(get_grpc_client),
 ):
     """
     Update an existing workflow.
@@ -115,7 +115,7 @@ async def update_workflow(
 @router.delete("/{workflow_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_workflow(
     workflow_id: str,
-    client: WorkflowEngineClient = Depends(get_grpc_client),
+    client = Depends(get_grpc_client),
 ):
     """
     Delete a workflow.
@@ -129,7 +129,7 @@ async def delete_workflow(
 @router.get("/", response_model=List[WorkflowResponse])
 async def list_workflows(
     user_id: str,  # Assuming user_id is passed as a query parameter for now
-    client: WorkflowEngineClient = Depends(get_grpc_client),
+    client = Depends(get_grpc_client),
 ):
     """
     List all workflows for a user.
@@ -145,7 +145,7 @@ async def list_workflows(
 async def execute_workflow(
     workflow_id: str,
     execution_request: WorkflowExecutionRequest,
-    client: WorkflowEngineClient = Depends(get_grpc_client),
+    client = Depends(get_grpc_client),
 ):
     """
     Execute a workflow.
@@ -160,7 +160,7 @@ async def execute_workflow(
 @router.get("/executions/{execution_id}", response_model=ExecutionStatusResponse)
 async def get_execution_status(
     execution_id: str,
-    client: WorkflowEngineClient = Depends(get_grpc_client),
+    client = Depends(get_grpc_client),
 ):
     """
     Get the status of a workflow execution.
@@ -175,7 +175,7 @@ async def get_execution_status(
 @router.post("/executions/{execution_id}/cancel")
 async def cancel_execution(
     execution_id: str,
-    client: WorkflowEngineClient = Depends(get_grpc_client),
+    client = Depends(get_grpc_client),
 ):
     """
     Cancel a running workflow execution.
@@ -192,7 +192,7 @@ async def cancel_execution(
 @router.get("/{workflow_id}/history", response_model=ExecutionHistoryResponse)
 async def get_execution_history(
     workflow_id: str,
-    client: WorkflowEngineClient = Depends(get_grpc_client),
+    client = Depends(get_grpc_client),
 ):
     """
     Get the execution history for a workflow.

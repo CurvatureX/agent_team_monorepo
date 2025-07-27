@@ -13,6 +13,8 @@ api_gateway_cpu = 512
 api_gateway_memory = 1024
 workflow_engine_cpu = 1024
 workflow_engine_memory = 2048
+workflow_agent_cpu = 512
+workflow_agent_memory = 1024
 desired_count = 2
 
 # Database Configuration
@@ -25,7 +27,7 @@ db_allocated_storage = 20
 
 # Environment Variables (set these in GitHub Secrets or via terraform.tfvars)
 # supabase_url = "https://your-project.supabase.co"
-# supabase_anon_key = "your-anon-key"
-# supabase_service_role_key = "your-service-role-key"
+# supabase_secret_key = "your-secret-key"
+# supabase_service_key = "your-service-key"
 # openai_api_key = "your-openai-api-key"
 # anthropic_api_key = "your-anthropic-api-key"

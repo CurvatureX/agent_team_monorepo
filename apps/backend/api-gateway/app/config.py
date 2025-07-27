@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"  # Ignore extra fields that don't match the model
         
     def get_supabase_config(self) -> dict:
         """Get Supabase configuration for client initialization"""
