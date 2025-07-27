@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import settings
 from core.config_validator import ConfigurationError, get_missing_env_vars_message
-from core.grpc_client import WorkflowAgentClient
+from core.workflow_engine_client import WorkflowEngineClient
 from core.logging_middleware import setup_logging_middleware
 from core.startup_checks import StartupCheckError, log_startup_status, run_startup_checks
 from routers import mcp, workflow
@@ -59,7 +59,7 @@ async def lifespan(app: FastAPI):
 
         # Initialize gRPC client
         logger.info("Initializing gRPC client...")
-        app.state.workflow_client = WorkflowAgentClient()
+        app.state.workflow_client = WorkflowEngineClient()
         await app.state.workflow_client.connect()
 
         logger.info("✅ API Gateway startup completed successfully")
