@@ -18,7 +18,7 @@ COPY workflow_engine/requirements.txt* ./
 
 # Install dependencies
 RUN pip install --upgrade pip && \
-    pip install --prefix=/install -e ./workflow_engine || \
+    (pip install --prefix=/install -r requirements.txt || \
     pip install --prefix=/install \
         fastapi>=0.104.0 \
         uvicorn[standard]>=0.24.0 \
@@ -30,7 +30,9 @@ RUN pip install --upgrade pip && \
         redis>=5.0.0 \
         grpcio>=1.68.0 \
         grpcio-tools>=1.68.0 \
-        protobuf>=5.26.1,\<6.0.0
+        protobuf>=5.26.1,<6.0.0 \
+        grpcio-health-checking \
+        croniter)
 
 # Production stage
 FROM python:3.10-slim AS production
@@ -54,8 +56,8 @@ COPY --from=builder /app/shared ./shared
 # Generate protobuf files using the existing script
 RUN python -c "import sys, os; sys.path.insert(0, '.'); from workflow_engine.generate_proto import generate_proto_files; generate_proto_files()" || echo "Proto generation failed, continuing anyway"
 
-# Create top-level proto symlink for imports
-RUN ln -sf workflow_engine/proto proto
+# Create top-level proto symlink for imports to work
+RUN ln -sf /app/workflow_engine/proto /app/proto
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash --uid 1000 app && \
@@ -64,7 +66,7 @@ USER app
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app \
+    PYTHONPATH=/app:/app/workflow_engine \
     SHARED_PROTO_DIR=/app/shared/proto/engine
 
 # Expose port
