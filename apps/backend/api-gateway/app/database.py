@@ -19,12 +19,12 @@ def init_admin_supabase():
     global admin_supabase
     try:
         # Validate API key format
-        if not settings.SUPABASE_SERVICE_KEY:
-            log_warning("SUPABASE_SERVICE_KEY is empty")
+        if not settings.SUPABASE_SECRET_KEY:
+            log_warning("SUPABASE_SECRET_KEY is empty")
             admin_supabase = None
             return
         # Create admin Supabase client
-        admin_supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_KEY)
+        admin_supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_SECRET_KEY)
         if settings.DEBUG:
             log_info(f"🔧 Admin Supabase client initialized: {settings.SUPABASE_URL}")
     except Exception as e:
@@ -53,7 +53,7 @@ def ensure_admin_supabase() -> Client:
     client = get_admin_supabase()
     if client is None:
         raise RuntimeError(
-            "Admin Supabase client not initialized. Check your SUPABASE_URL and SUPABASE_SERVICE_KEY configuration."
+            "Admin Supabase client not initialized. Check your SUPABASE_URL and SUPABASE_SECRET_KEY configuration."
         )
     return client
 
@@ -77,7 +77,7 @@ def get_user_supabase(access_token: str) -> Client:
         # Create user client with anon key and set user token
         if not settings.SUPABASE_ANON_KEY:
             # Fallback to service key if anon key not configured
-            client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_KEY)
+            client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SECRET_KEY)
         else:
             client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
         

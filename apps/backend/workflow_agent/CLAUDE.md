@@ -87,7 +87,7 @@ Required environment variables:
 # Supabase (RAG system)
 SUPABASE_URL=your_supabase_url
 SUPABASE_ANON_KEY=your_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_key
+SUPABASE_SECRET_KEY=your_service_key
 
 # LLM APIs
 OPENAI_API_KEY=your_openai_key

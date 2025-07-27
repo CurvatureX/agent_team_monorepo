@@ -114,7 +114,7 @@ resource "aws_ecs_task_definition" "api_gateway" {
           valueFrom = aws_ssm_parameter.supabase_url.arn
         },
         {
-          name      = "SUPABASE_SERVICE_KEY"
+          name      = "SUPABASE_SECRET_KEY"
           valueFrom = aws_ssm_parameter.supabase_secret_key.arn
         }
       ]

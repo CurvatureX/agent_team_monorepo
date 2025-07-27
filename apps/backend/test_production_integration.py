@@ -70,7 +70,7 @@ class ProductionIntegrationTest:
         
         # 检查环境变量
         required_env_vars = [
-            "SUPABASE_URL", "SUPABASE_SERVICE_KEY", "SUPABASE_ANON_KEY",
+            "SUPABASE_URL", "SUPABASE_SECRET_KEY", "SUPABASE_ANON_KEY",
             "OPENAI_API_KEY"
         ]
         
