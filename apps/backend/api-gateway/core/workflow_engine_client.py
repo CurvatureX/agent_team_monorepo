@@ -7,8 +7,8 @@ import grpc
 import structlog
 from google.protobuf.json_format import MessageToDict
 
-from ..core.config import settings
-from ..proto import (
+from core.config import settings
+from proto import (
     execution_pb2,
     execution_pb2_grpc,
     workflow_service_pb2,
