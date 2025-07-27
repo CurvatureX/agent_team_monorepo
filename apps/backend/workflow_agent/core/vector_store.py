@@ -65,13 +65,13 @@ class SupabaseVectorStore:
 
     def _create_supabase_client(self) -> Client:
         """Create Supabase client with proper configuration"""
-        if not settings.SUPABASE_URL or not settings.SUPABASE_SERVICE_KEY:
-            raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be configured")
+        if not settings.SUPABASE_URL or not settings.SUPABASE_SECRET_KEY:
+            raise ValueError("SUPABASE_URL and SUPABASE_SECRET_KEY must be configured")
 
         # Use service role key for full access to vector operations
         client = create_client(
             settings.SUPABASE_URL,
-            settings.SUPABASE_SERVICE_KEY,
+            settings.SUPABASE_SECRET_KEY,
             options=ClientOptions(schema="public", auto_refresh_token=False, persist_session=False),
         )
 

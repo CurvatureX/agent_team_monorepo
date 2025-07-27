@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     
     # Supabase Configuration
     SUPABASE_URL: str = "https://your-project-id.supabase.co"  # Default placeholder
-    SUPABASE_SERVICE_KEY: str = ""  # Use Service Role key (starts with sb_secret_ or eyJ)
+    SUPABASE_SECRET_KEY: str = ""  # Use Service Role key (starts with sb_secret_ or eyJ)
     SUPABASE_ANON_KEY: str = ""  # Public anon key for RLS operations (required for user tokens)
     
     # gRPC Configuration
@@ -66,7 +66,7 @@ class Settings(BaseSettings):
         """Get Supabase configuration for client initialization"""
         return {
             "url": self.SUPABASE_URL,
-            "service_key": self.SUPABASE_SERVICE_KEY,
+            "service_key": self.SUPABASE_SECRET_KEY,
             "anon_key": self.SUPABASE_ANON_KEY
         }
     

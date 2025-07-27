@@ -12,7 +12,7 @@ try:
     load_dotenv()
     print("✓ Loaded environment variables from .env file")
     print(os.getenv("SUPABASE_URL"))
-    print(os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
+    print(os.getenv("SUPABASE_SECRET_KEY"))
 except ImportError:
     print("⚠ python-dotenv not installed, using environment variables or defaults")
 
