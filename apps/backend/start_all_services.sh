@@ -18,7 +18,7 @@ fi
 
 # 检查环境变量
 echo "🔍 检查环境变量..."
-required_vars=("SUPABASE_URL" "SUPABASE_SERVICE_KEY" "SUPABASE_ANON_KEY" "OPENAI_API_KEY")
+required_vars=("SUPABASE_URL" "SUPABASE_SECRET_KEY" "SUPABASE_ANON_KEY" "OPENAI_API_KEY")
 missing_vars=()
 
 for var in "${required_vars[@]}"; do

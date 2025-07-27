@@ -70,7 +70,7 @@ DELETE /api/v1/session/{id}   # 删除会话(用户授权)
 ```bash
 # Supabase配置
 SUPABASE_URL=https://your-project-id.supabase.co
-SUPABASE_SERVICE_KEY=your-service-role-key
+SUPABASE_SECRET_KEY=your-service-role-key
 SUPABASE_ANON_KEY=your-anon-key
 
 # gRPC配置
@@ -210,7 +210,7 @@ curl -X POST http://localhost:8000/api/v1/chat \
    ```bash
    # 检查环境变量
    echo $SUPABASE_URL
-   echo $SUPABASE_SERVICE_KEY
+   echo $SUPABASE_SECRET_KEY
    ```
 
 2. **JWT验证失败**

@@ -90,7 +90,7 @@ Required environment variables in `.env`:
 ```
 # Supabase Configuration
 SUPABASE_URL=https://your-project-id.supabase.co
-SUPABASE_SERVICE_KEY=your-service-role-key
+SUPABASE_SECRET_KEY=your-service-role-key
 SUPABASE_ANON_KEY=your-anon-key  # Required for RLS operations
 
 # Workflow Service Configuration

@@ -120,7 +120,7 @@
 1. **环境变量设置**:
    ```bash
    SUPABASE_URL=https://your-project.supabase.co
-   SUPABASE_SERVICE_KEY=your-service-key
+   SUPABASE_SECRET_KEY=your-service-key
    SUPABASE_ANON_KEY=your-anon-key
    OPENAI_API_KEY=your-openai-key
    ```
@@ -152,7 +152,7 @@
 ```bash
 # 设置环境变量
 export SUPABASE_URL="your-url"
-export SUPABASE_SERVICE_KEY="your-key"
+export SUPABASE_SECRET_KEY="your-key"
 export SUPABASE_ANON_KEY="your-anon-key"
 export OPENAI_API_KEY="your-openai-key"
 ```
