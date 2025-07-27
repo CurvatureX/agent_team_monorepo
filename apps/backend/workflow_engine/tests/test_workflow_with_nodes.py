@@ -3,34 +3,35 @@
 Test workflow with actual nodes
 """
 
+import logging
 import os
 import sys
 import time
-import logging
+
 import grpc
-from proto import workflow_service_pb2_grpc, workflow_service_pb2, workflow_pb2
-from proto import execution_pb2
+
+from proto import execution_pb2, workflow_pb2, workflow_service_pb2, workflow_service_pb2_grpc
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
 
 def create_workflow_with_nodes():
     """Create a workflow with various node types."""
     logger.info("=== CREATING WORKFLOW WITH NODES ===")
-    
+
     # Create workflow request
     workflow_request = workflow_service_pb2.CreateWorkflowRequest()
     workflow_request.name = "Test Workflow with Nodes"
     workflow_request.description = "A comprehensive test workflow with various node types"
     workflow_request.user_id = "00000000-0000-0000-0000-000000000123"
-    
+
     # Add nodes
     nodes = []
-    
+
     # 1. TRIGGER_NODE - Manual trigger
     trigger_node = workflow_pb2.Node()
     trigger_node.id = "trigger_manual"
@@ -42,7 +43,7 @@ def create_workflow_with_nodes():
     trigger_node.position.x = 100
     trigger_node.position.y = 100
     nodes.append(trigger_node)
-    
+
     # 2. AI_AGENT_NODE - Task analyzer
     ai_agent_node = workflow_pb2.Node()
     ai_agent_node.id = "ai_agent_analyzer"
@@ -56,7 +57,7 @@ def create_workflow_with_nodes():
     ai_agent_node.position.x = 300
     ai_agent_node.position.y = 100
     nodes.append(ai_agent_node)
-    
+
     # 3. ACTION_NODE - HTTP request
     action_node = workflow_pb2.Node()
     action_node.id = "action_http_request"
@@ -70,7 +71,7 @@ def create_workflow_with_nodes():
     action_node.position.x = 500
     action_node.position.y = 100
     nodes.append(action_node)
-    
+
     # 4. FLOW_NODE - If condition
     flow_node = workflow_pb2.Node()
     flow_node.id = "flow_if_condition"
@@ -82,7 +83,7 @@ def create_workflow_with_nodes():
     flow_node.position.x = 700
     flow_node.position.y = 100
     nodes.append(flow_node)
-    
+
     # 5. TOOL_NODE - HTTP tool
     tool_node = workflow_pb2.Node()
     tool_node.id = "tool_http"
@@ -95,7 +96,7 @@ def create_workflow_with_nodes():
     tool_node.position.x = 300
     tool_node.position.y = 250
     nodes.append(tool_node)
-    
+
     # 6. MEMORY_NODE - Buffer memory
     memory_node = workflow_pb2.Node()
     memory_node.id = "memory_buffer"
@@ -107,7 +108,7 @@ def create_workflow_with_nodes():
     memory_node.position.x = 500
     memory_node.position.y = 250
     nodes.append(memory_node)
-    
+
     # 7. HUMAN_IN_THE_LOOP_NODE - Slack approval
     human_node = workflow_pb2.Node()
     human_node.id = "human_slack_approval"
@@ -120,7 +121,7 @@ def create_workflow_with_nodes():
     human_node.position.x = 700
     human_node.position.y = 250
     nodes.append(human_node)
-    
+
     # 8. EXTERNAL_ACTION_NODE - Slack message
     external_node = workflow_pb2.Node()
     external_node.id = "external_slack_message"
@@ -133,60 +134,66 @@ def create_workflow_with_nodes():
     external_node.position.x = 900
     external_node.position.y = 100
     nodes.append(external_node)
-    
+
     # Add nodes to workflow
     workflow_request.nodes.extend(nodes)
-    
+
     # Add static data
     workflow_request.static_data["test_data"] = "This is static test data"
     workflow_request.static_data["config"] = '{"api_timeout": 30, "max_retries": 3}'
-    
+
     # Add tags
     workflow_request.tags.extend(["test", "comprehensive", "nodes"])
-    
+
     return workflow_request
+
 
 def test_workflow_with_nodes():
     """Test workflow with actual nodes."""
     logger.info("=== TESTING WORKFLOW WITH NODES ===")
-    
+
     try:
         # Create gRPC channel
-        channel = grpc.insecure_channel("localhost:50051")
+        grpc_host = os.getenv("GRPC_HOST", "localhost")
+        grpc_port = os.getenv("GRPC_PORT", "50050")
+        channel = grpc.insecure_channel(f"{grpc_host}:{grpc_port}")
         stub = workflow_service_pb2_grpc.WorkflowServiceStub(channel)
-        
+
         # Test health check
-        from grpc_health.v1 import health_pb2_grpc, health_pb2
+        from grpc_health.v1 import health_pb2, health_pb2_grpc
+
         health_stub = health_pb2_grpc.HealthStub(channel)
-        
+
         health_response = health_stub.Check(health_pb2.HealthCheckRequest())
         logger.info(f"✅ Health check: {health_response.status}")
-        
+
         # Create workflow with nodes
         workflow_request = create_workflow_with_nodes()
-        
+
         logger.info(f"Creating workflow with {len(workflow_request.nodes)} nodes...")
         response = stub.CreateWorkflow(workflow_request)
-        
+
         if response.success:
             workflow_id = response.workflow.id
             logger.info(f"✅ Workflow created successfully: {workflow_id}")
             logger.info(f"   Name: {response.workflow.name}")
             logger.info(f"   Nodes: {len(response.workflow.nodes)}")
             logger.info(f"   Message: {response.message}")
-            
+
             # Log node details
             logger.info("   Node details:")
             for i, node in enumerate(response.workflow.nodes):
                 logger.info(f"     {i+1}. {node.name} ({node.type}) - {node.subtype}")
-                logger.info(f"        ID: {node.id}, Position: ({node.position.x}, {node.position.y})")
+                logger.info(
+                    f"        ID: {node.id}, Position: ({node.position.x}, {node.position.y})"
+                )
                 logger.info(f"        Parameters: {len(node.parameters)} items")
-            
+
             # Test GetWorkflow
             get_request = workflow_service_pb2.GetWorkflowRequest()
             get_request.workflow_id = workflow_id
             get_request.user_id = "00000000-0000-0000-0000-000000000123"
-            
+
             get_response = stub.GetWorkflow(get_request)
             if get_response.found:
                 logger.info(f"✅ Workflow retrieved: {get_response.workflow.name}")
@@ -195,21 +202,21 @@ def test_workflow_with_nodes():
                 logger.info(f"   Tags: {list(get_response.workflow.tags)}")
             else:
                 logger.error(f"❌ Workflow not found: {get_response.message}")
-            
+
             # Test ListWorkflows
             list_request = workflow_service_pb2.ListWorkflowsRequest()
             list_request.user_id = "00000000-0000-0000-0000-000000000123"
             list_request.active_only = True
             list_request.limit = 10
             list_request.offset = 0
-            
+
             list_response = stub.ListWorkflows(list_request)
             logger.info(f"✅ Listed {list_response.total_count} workflows")
             logger.info(f"   Has more: {list_response.has_more}")
-            
+
             # Test workflow execution
             logger.info("=== TESTING WORKFLOW EXECUTION ===")
-            
+
             exec_request = execution_pb2.ExecuteWorkflowRequest()
             exec_request.workflow_id = workflow_id
             exec_request.mode = execution_pb2.ExecutionMode.MANUAL
@@ -218,24 +225,24 @@ def test_workflow_with_nodes():
             exec_request.input_data["user_id"] = "00000000-0000-0000-0000-000000000123"
             exec_request.metadata["debug_mode"] = "true"
             exec_request.metadata["test_run"] = "true"
-            
+
             exec_response = stub.ExecuteWorkflow(exec_request)
-            
+
             if exec_response.execution_id:
                 execution_id = exec_response.execution_id
                 logger.info(f"✅ Workflow execution started: {execution_id}")
                 logger.info(f"   Status: {exec_response.status}")
                 logger.info(f"   Message: {exec_response.message}")
-                
+
                 # Wait a bit for execution to progress
                 time.sleep(2)
-                
+
                 # Test execution status
                 status_request = execution_pb2.GetExecutionStatusRequest()
                 status_request.execution_id = execution_id
-                
+
                 status_response = stub.GetExecutionStatus(status_request)
-                
+
                 if status_response.found:
                     execution = status_response.execution
                     logger.info(f"✅ Execution status retrieved: {execution.status}")
@@ -245,18 +252,22 @@ def test_workflow_with_nodes():
                     logger.info(f"   End Time: {execution.end_time}")
                     logger.info(f"   Mode: {execution.mode}")
                     logger.info(f"   Triggered By: {execution.triggered_by}")
-                    
+
                     # Log execution details if available
-                    if execution.HasField('run_data'):
+                    if execution.HasField("run_data"):
                         run_data = execution.run_data
-                        logger.info(f"   Execution Path Steps: {len(run_data.execution_path.steps)}")
+                        logger.info(
+                            f"   Execution Path Steps: {len(run_data.execution_path.steps)}"
+                        )
                         logger.info(f"   Node Data Entries: {len(run_data.node_data)}")
                         logger.info(f"   Node Inputs: {len(run_data.node_inputs)}")
-                        
+
                         # Log execution path details
                         for i, step in enumerate(run_data.execution_path.steps):
-                            logger.info(f"     Step {i+1}: {step.node_name} ({step.node_type}) - {step.status}")
-                            if step.HasField('error'):
+                            logger.info(
+                                f"     Step {i+1}: {step.node_name} ({step.node_type}) - {step.status}"
+                            )
+                            if step.HasField("error"):
                                 logger.error(f"       Error: {step.error.message}")
                 else:
                     logger.error(f"❌ Execution not found: {status_response.message}")
@@ -264,13 +275,15 @@ def test_workflow_with_nodes():
                 logger.error(f"❌ Workflow execution failed: {exec_response.message}")
         else:
             logger.error(f"❌ Failed to create workflow: {response.message}")
-        
+
         logger.info("=== WORKFLOW WITH NODES TEST COMPLETED ===")
-        
+
     except Exception as e:
         logger.error(f"❌ Test failed: {e}")
         import traceback
+
         traceback.print_exc()
 
+
 if __name__ == "__main__":
-    test_workflow_with_nodes() 
+    test_workflow_with_nodes()
