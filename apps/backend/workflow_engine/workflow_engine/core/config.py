@@ -27,7 +27,6 @@ class Settings(BaseSettings):
     # Supabase 特定配置
     supabase_url: Optional[str] = None
     supabase_key: Optional[str] = None
-    supabase_service_key: Optional[str] = None
 
     # 数据库连接配置
     database_echo: bool = False
