@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from app.config import settings
 from app.database import init_supabase
 from app.models import HealthResponse
-from app.api import session, chat, workflow
+from app.api import session, chat, workflow, mcp
 from app.services.grpc_client import workflow_client
 from app.utils import log_info, log_warning, log_error, log_exception
 
@@ -72,6 +72,7 @@ app.add_middleware(
 app.include_router(session.router, prefix="/api/v1", tags=["session"])
 app.include_router(chat.router, prefix="/api/v1", tags=["chat"])
 app.include_router(workflow.router, prefix="/api/v1/workflow", tags=["workflow"])
+app.include_router(mcp.router, prefix="/api/v1/mcp", tags=["mcp"])
 
 
 # Basic health check
@@ -123,7 +124,7 @@ async def jwt_auth_middleware(request: Request, call_next):
     
     # Skip authentication for public endpoints
     public_paths = [
-        "/health", "/", "/docs", "/openapi.json", "/redoc", "/docs-json"
+        "/health", "/", "/docs", "/openapi.json", "/redoc", "/docs-json", "/api/v1/mcp"
     ]
     
     if path in public_paths:
