@@ -412,6 +412,9 @@ terraform.tfstate
 terraform.tfstate.*
 .terraform/
 .terraform.lock.hcl
+# Terraform variable files with secrets (keep the template)
+terraform.tfvars.secret
+*.auto.tfvars
 
 # Kubernetes
 *.kubeconfig
