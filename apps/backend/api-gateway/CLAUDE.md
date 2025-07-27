@@ -32,7 +32,7 @@ uv run pytest tests/ -v
 uv run black app/ tests/
 uv run isort app/ tests/
 
-# Run linting
+# Run linting  
 uv run flake8 app/ tests/
 # Note: mypy is configured in pyproject.toml but not in dev dependencies
 

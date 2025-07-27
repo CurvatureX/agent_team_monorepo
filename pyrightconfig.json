@@ -2,5 +2,24 @@
   "typeCheckingMode": "basic",
   "reportAttributeAccessIssue": false,
   "reportArgumentType": false,
-  "reportOptionalMemberAccess": false
+  "reportOptionalMemberAccess": false,
+  "venvPath": "apps/backend",
+  "venv": ".venv",
+  "extraPaths": [
+    "apps/backend/workflow_agent",
+    "apps/backend/api-gateway",
+    "apps/backend/shared"
+  ],
+  "executionEnvironments": [
+    {
+      "root": "apps/backend/workflow_agent",
+      "pythonPath": "apps/backend/.venv/bin/python",
+      "extraPaths": ["apps/backend/workflow_agent", "apps/backend/shared"]
+    },
+    {
+      "root": "apps/backend/api-gateway",
+      "pythonPath": "apps/backend/.venv/bin/python",
+      "extraPaths": ["apps/backend/api-gateway", "apps/backend/shared"]
+    }
+  ]
 }

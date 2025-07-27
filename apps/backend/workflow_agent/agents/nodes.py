@@ -17,11 +17,7 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
-from workflow_agent.core.config import settings
-
-# Import the proper PromptEngine for production use
-from ..core.prompt_engine import get_prompt_engine
-from .state import (
+from agents.state import (
     AlternativeOption,
     ClarificationContext,
     Conversation,
@@ -29,7 +25,11 @@ from .state import (
     WorkflowStage,
     WorkflowState,
 )
-from .tools import RAGTool
+from agents.tools import RAGTool
+from core.config import settings
+
+# Import the proper PromptEngine for production use
+from core.prompt_engine import get_prompt_engine
 
 logger = structlog.get_logger()
 
@@ -291,19 +291,17 @@ class WorkflowAgentNodes:
                         description=f"跳过{gap}相关功能的简化实现",
                         approach="简化实现",
                         trade_offs=[f"不包含{gap}功能"],
-                        complexity="simple",
+                        complexity="simple"
                     )
                     for i, gap in enumerate(gaps[:2])
-                ] + [
-                    AlternativeOption(
-                        id="alt_manual",
-                        title="手动配置替代方案",
-                        description="通过手动配置实现所需功能",
-                        approach="手动配置",
-                        trade_offs=["需要手动设置"],
-                        complexity="medium",
-                    )
-                ]
+                ] + [AlternativeOption(
+                    id="alt_manual",
+                    title="手动配置替代方案",
+                    description="通过手动配置实现所需功能",
+                    approach="手动配置",
+                    trade_offs=["需要手动设置"],
+                    complexity="medium"
+                )]
 
             state["alternatives"] = alternatives
 
@@ -315,7 +313,9 @@ class WorkflowAgentNodes:
 
             # Set up clarification context for gap resolution
             state["clarification_context"] = ClarificationContext(
-                origin=state.get("clarification_context", {}).get("origin", WorkflowOrigin.CREATE),
+                origin=state.get("clarification_context", {}).get(
+                    "origin", WorkflowOrigin.CREATE
+                ),
                 pending_questions=[f"请选择您希望采用的方案（1-{len(alternatives)}）"],
             )
 

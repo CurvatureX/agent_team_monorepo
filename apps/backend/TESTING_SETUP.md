@@ -21,7 +21,7 @@ cp env.example .env
 ```bash
 # Supabase配置
 SUPABASE_URL=https://your-project-id.supabase.co
-SUPABASE_SERVICE_KEY=your-service-role-key
+SUPABASE_SECRET_KEY=your-service-role-key
 SUPABASE_ANON_KEY=your-anon-public-key
 
 # AI模型配置
@@ -45,7 +45,7 @@ DEBUG=true
 ### 3. 配置说明
 
 - **SUPABASE_URL**: 你的Supabase项目URL
-- **SUPABASE_SERVICE_KEY**: 服务角色密钥（用于RLS绕过）
+- **SUPABASE_SECRET_KEY**: 服务角色密钥（用于RLS绕过）
 - **SUPABASE_ANON_KEY**: 匿名公钥（用于认证API调用）
 - **TEST_USER_EMAIL/PASSWORD**: 测试用户账号，需要在Supabase Auth中存在
 - **OPENAI_API_KEY**: OpenAI API密钥

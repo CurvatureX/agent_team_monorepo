@@ -281,7 +281,7 @@ The workflow_agent includes a sophisticated RAG (Retrieval-Augmented Generation)
 ```python
 # In workflow_agent/core/config.py
 SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
-SUPABASE_SERVICE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+SUPABASE_SECRET_KEY: str = os.getenv("SUPABASE_SECRET_KEY", "")
 EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
 RAG_SIMILARITY_THRESHOLD: float = float(os.getenv("RAG_SIMILARITY_THRESHOLD", "0.3"))
 ```

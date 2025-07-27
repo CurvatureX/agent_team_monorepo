@@ -1,7 +1,7 @@
 [project]
 name = "workflow-agent-backend"
 version = "1.0.0"
-description = "Backend services for Workflow Agent Team - API Gateway and Workflow Agent"
+description = "Backend services for Workflow Agent Team - Workspace Root"
 authors = [
     {name = "Workflow Agent Team", email = "team@example.com"}
 ]
@@ -9,18 +9,25 @@ readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.11"
 
-# Workspace configuration for managing multiple packages
-dependencies = []
+# Shared dependencies across all workspace members
+dependencies = [
+    "grpcio>=1.68.0",
+    "grpcio-tools>=1.68.0",
+    "protobuf>=6.0.0",
+    "structlog>=23.2.0",
+]
 
 [project.optional-dependencies]
 dev = [
-    "pytest==7.4.3",
-    "pytest-asyncio==0.21.1",
-    "black==23.11.0",
-    "isort==5.12.0",
-    "flake8==6.1.0",
-    "mypy==1.7.1",
-    "pre-commit==3.6.0",
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.10.0",
+    "black>=23.11.0",
+    "isort>=5.12.0",
+    "flake8>=6.1.0",
+    "mypy>=1.7.0",
+    "pre-commit>=3.6.0",
 ]
 
 [build-system]
@@ -30,6 +37,7 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["api-gateway", "workflow_agent"]
 
+# Shared tool configurations for all workspace members
 [tool.black]
 line-length = 100
 target-version = ['py311']
@@ -43,10 +51,20 @@ python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--cov-report=term-missing",
+]
 
 # Workspace settings
 [tool.uv.workspace]
-members = ["api-gateway", "workflow_agent"]
+members = ["api-gateway", "workflow_agent", "workflow_engine", "shared/proto"]
 
 [dependency-groups]
 dev = [

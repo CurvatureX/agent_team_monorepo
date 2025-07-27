@@ -3,9 +3,9 @@
 import grpc
 import warnings
 
-import workflow_agent_pb2 as workflow__agent__pb2
+from . import workflow_agent_pb2 as workflow__agent__pb2
 
-GRPC_GENERATED_VERSION = '1.73.1'
+GRPC_GENERATED_VERSION = '1.74.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -26,7 +26,7 @@ if _version_not_supported:
 
 
 class WorkflowAgentStub(object):
-    """Service definition
+    """唯一的核心接口 - 处理所有6阶段的对话流程和workflow生成
     """
 
     def __init__(self, channel):
@@ -35,44 +35,19 @@ class WorkflowAgentStub(object):
         Args:
             channel: A grpc.Channel.
         """
-        self.GenerateWorkflow = channel.unary_unary(
-                '/workflow_agent.WorkflowAgent/GenerateWorkflow',
-                request_serializer=workflow__agent__pb2.WorkflowGenerationRequest.SerializeToString,
-                response_deserializer=workflow__agent__pb2.WorkflowGenerationResponse.FromString,
-                _registered_method=True)
-        self.RefineWorkflow = channel.unary_unary(
-                '/workflow_agent.WorkflowAgent/RefineWorkflow',
-                request_serializer=workflow__agent__pb2.WorkflowRefinementRequest.SerializeToString,
-                response_deserializer=workflow__agent__pb2.WorkflowRefinementResponse.FromString,
-                _registered_method=True)
-        self.ValidateWorkflow = channel.unary_unary(
-                '/workflow_agent.WorkflowAgent/ValidateWorkflow',
-                request_serializer=workflow__agent__pb2.WorkflowValidationRequest.SerializeToString,
-                response_deserializer=workflow__agent__pb2.WorkflowValidationResponse.FromString,
+        self.ProcessConversation = channel.unary_stream(
+                '/workflow_agent.WorkflowAgent/ProcessConversation',
+                request_serializer=workflow__agent__pb2.ConversationRequest.SerializeToString,
+                response_deserializer=workflow__agent__pb2.ConversationResponse.FromString,
                 _registered_method=True)
 
 
 class WorkflowAgentServicer(object):
-    """Service definition
+    """唯一的核心接口 - 处理所有6阶段的对话流程和workflow生成
     """
 
-    def GenerateWorkflow(self, request, context):
-        """Generate workflow from natural language description
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def RefineWorkflow(self, request, context):
-        """Refine existing workflow based on feedback
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def ValidateWorkflow(self, request, context):
-        """Validate workflow structure and configuration
-        """
+    def ProcessConversation(self, request, context):
+        """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -80,20 +55,10 @@ class WorkflowAgentServicer(object):
 
 def add_WorkflowAgentServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'GenerateWorkflow': grpc.unary_unary_rpc_method_handler(
-                    servicer.GenerateWorkflow,
-                    request_deserializer=workflow__agent__pb2.WorkflowGenerationRequest.FromString,
-                    response_serializer=workflow__agent__pb2.WorkflowGenerationResponse.SerializeToString,
-            ),
-            'RefineWorkflow': grpc.unary_unary_rpc_method_handler(
-                    servicer.RefineWorkflow,
-                    request_deserializer=workflow__agent__pb2.WorkflowRefinementRequest.FromString,
-                    response_serializer=workflow__agent__pb2.WorkflowRefinementResponse.SerializeToString,
-            ),
-            'ValidateWorkflow': grpc.unary_unary_rpc_method_handler(
-                    servicer.ValidateWorkflow,
-                    request_deserializer=workflow__agent__pb2.WorkflowValidationRequest.FromString,
-                    response_serializer=workflow__agent__pb2.WorkflowValidationResponse.SerializeToString,
+            'ProcessConversation': grpc.unary_stream_rpc_method_handler(
+                    servicer.ProcessConversation,
+                    request_deserializer=workflow__agent__pb2.ConversationRequest.FromString,
+                    response_serializer=workflow__agent__pb2.ConversationResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -104,11 +69,11 @@ def add_WorkflowAgentServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class WorkflowAgent(object):
-    """Service definition
+    """唯一的核心接口 - 处理所有6阶段的对话流程和workflow生成
     """
 
     @staticmethod
-    def GenerateWorkflow(request,
+    def ProcessConversation(request,
             target,
             options=(),
             channel_credentials=None,
@@ -118,66 +83,12 @@ class WorkflowAgent(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(
+        return grpc.experimental.unary_stream(
             request,
             target,
-            '/workflow_agent.WorkflowAgent/GenerateWorkflow',
-            workflow__agent__pb2.WorkflowGenerationRequest.SerializeToString,
-            workflow__agent__pb2.WorkflowGenerationResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def RefineWorkflow(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/workflow_agent.WorkflowAgent/RefineWorkflow',
-            workflow__agent__pb2.WorkflowRefinementRequest.SerializeToString,
-            workflow__agent__pb2.WorkflowRefinementResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def ValidateWorkflow(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/workflow_agent.WorkflowAgent/ValidateWorkflow',
-            workflow__agent__pb2.WorkflowValidationRequest.SerializeToString,
-            workflow__agent__pb2.WorkflowValidationResponse.FromString,
+            '/workflow_agent.WorkflowAgent/ProcessConversation',
+            workflow__agent__pb2.ConversationRequest.SerializeToString,
+            workflow__agent__pb2.ConversationResponse.FromString,
             options,
             channel_credentials,
             insecure,
