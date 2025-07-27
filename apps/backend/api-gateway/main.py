@@ -16,7 +16,7 @@ from core.config_validator import ConfigurationError, get_missing_env_vars_messa
 from core.grpc_client import WorkflowAgentClient
 from core.logging_middleware import setup_logging_middleware
 from core.startup_checks import StartupCheckError, log_startup_status, run_startup_checks
-from routers import mcp, workflow
+from app.api import mcp, workflow
 
 # Load environment variables
 load_dotenv()
