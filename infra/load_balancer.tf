@@ -1,4 +1,4 @@
-# Application Load Balancer
+# Application Load Balancer for HTTP/HTTPS traffic
 resource "aws_lb" "main" {
   name               = "${local.name_prefix}-alb"
   internal           = false
@@ -13,7 +13,21 @@ resource "aws_lb" "main" {
   })
 }
 
-# Target Group for API Gateway
+# Network Load Balancer for gRPC traffic (internal)
+resource "aws_lb" "grpc_internal" {
+  name               = "${local.name_prefix}-grpc-nlb"
+  internal           = true
+  load_balancer_type = "network"
+  subnets            = aws_subnet.private[*].id
+
+  enable_deletion_protection = false
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-grpc-nlb"
+  })
+}
+
+# Target Group for API Gateway (HTTP)
 resource "aws_lb_target_group" "api_gateway" {
   name        = "${local.name_prefix}-api-tg"
   port        = 8000
@@ -38,7 +52,30 @@ resource "aws_lb_target_group" "api_gateway" {
   })
 }
 
-# ALB Listener
+# Target Group for Workflow Agent (gRPC)
+resource "aws_lb_target_group" "workflow_agent_grpc" {
+  name        = "${local.name_prefix}-grpc-tg"
+  port        = 50051
+  protocol    = "TCP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip"
+
+  health_check {
+    enabled             = true
+    healthy_threshold   = 2
+    interval            = 30
+    port                = "traffic-port"
+    protocol            = "TCP"
+    timeout             = 10
+    unhealthy_threshold = 2
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-workflow-agent-grpc-tg"
+  })
+}
+
+# ALB Listener for HTTP/HTTPS
 resource "aws_lb_listener" "main" {
   load_balancer_arn = aws_lb.main.arn
   port              = var.certificate_arn != "" ? "443" : "80"
@@ -49,6 +86,20 @@ resource "aws_lb_listener" "main" {
   default_action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.api_gateway.arn
+  }
+
+  tags = local.common_tags
+}
+
+# NLB Listener for gRPC
+resource "aws_lb_listener" "grpc" {
+  load_balancer_arn = aws_lb.grpc_internal.arn
+  port              = "50051"
+  protocol          = "TCP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.workflow_agent_grpc.arn
   }
 
   tags = local.common_tags
