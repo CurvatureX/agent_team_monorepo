@@ -111,6 +111,12 @@ variable "supabase_secret_key" {
   sensitive   = true
 }
 
+variable "supabase_service_key" {
+  description = "Supabase service key for workflow agent"
+  type        = string
+  sensitive   = true
+}
+
 variable "openai_api_key" {
   description = "OpenAI API key"
   type        = string
@@ -121,4 +127,11 @@ variable "anthropic_api_key" {
   description = "Anthropic API key"
   type        = string
   sensitive   = true
+}
+
+# Monitoring Configuration
+variable "alert_email" {
+  description = "Email address for CloudWatch alerts"
+  type        = string
+  default     = ""
 }
