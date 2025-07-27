@@ -93,14 +93,14 @@ CMD ["python", "main.py"]  # Causes import errors
 - **Protocol**: gRPC with TCP health checks
 - **Dependencies**: OpenAI, Anthropic APIs, Supabase (for RAG), Redis
 - **Health Check**: `nc -z localhost 50051 || exit 1` (TCP connection test)
-- **Start Period**: 120s (service takes time to initialize)
+- **Start Period**: 240s (updated after deployment timeout issues)
 
 ### Workflow Engine (gRPC Service)
 - **Port**: 8000 (gRPC)
 - **Protocol**: gRPC server with TCP health checks
 - **Dependencies**: croniter, Redis, PostgreSQL, gRPC tools
 - **Health Check**: `nc -z localhost 8000 || exit 1` (TCP connection test)
-- **Start Period**: 90s (database initialization required)
+- **Start Period**: 180s (updated after deployment timeout issues)
 
 ## Development Commands
 
@@ -240,7 +240,7 @@ Before deploying to AWS ECS:
 - [ ] ✅ All imports use correct absolute/relative patterns
 - [ ] ✅ Docker images built with `--platform linux/amd64`
 - [ ] ✅ All required dependencies in requirements.txt
-- [ ] ✅ Health checks configured for correct ports
+- [ ] ✅ Health checks configured for correct ports with adequate startPeriod values
 - [ ] ✅ Environment variables configured in ECS task definition
 - [ ] ✅ ECR images pushed with unique tags
 - [ ] ✅ Task definitions registered and services updated
@@ -253,19 +253,21 @@ Before deploying to AWS ECS:
 4. **Health Check Protocol Matching**: CRITICAL - Health checks must match service protocol (HTTP vs gRPC)
 5. **Grace Period Configuration**: gRPC services need longer startup times than HTTP services
 6. **Environment Variables**: Placeholder values in configuration cause runtime failures
+7. **Health Check Timing**: Conservative startPeriod values prevent deployment timeouts and service instability
 
 ### Health Check Protocol Matrix
 | Service Type | Port | Protocol | Health Check Command |
 |-------------|------|----------|---------------------|
-| workflow-agent | 50051 | gRPC | `nc -z localhost 50051` |
-| workflow-engine | 8000 | gRPC | `nc -z localhost 8000` |
-| api-gateway | 8000 | HTTP | `curl -f http://localhost:8000/health` |
+| workflow-agent | 50051 | gRPC | `nc -z localhost 50051` (startPeriod: 240s) |
+| workflow-engine | 8000 | gRPC | `nc -z localhost 8000` (startPeriod: 180s) |
+| api-gateway | 8000 | HTTP | `curl -f http://localhost:8000/health` (startPeriod: 120s) |
 
 ### Critical Health Check Rules
 - ❌ **NEVER**: `curl` on gRPC ports → Always fails
 - ✅ **ALWAYS**: Use `nc -z` for gRPC services
-- ✅ **ALWAYS**: Set startPeriod ≥ 90s for gRPC services
+- ✅ **ALWAYS**: Set startPeriod ≥ 180s for gRPC services (updated after timeout incidents)
 - ✅ **ALWAYS**: Test health check command locally before deployment
+- ✅ **ALWAYS**: Use conservative timing - services need adequate startup time
 
 ## RAG System Integration
 
@@ -283,5 +285,32 @@ SUPABASE_SERVICE_KEY: str = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
 RAG_SIMILARITY_THRESHOLD: float = float(os.getenv("RAG_SIMILARITY_THRESHOLD", "0.3"))
 ```
+
+## Recent Production Fixes (Jan 2025)
+
+### ECS Deployment Timeout Resolution
+
+**Issue**: `aws ecs wait services-stable` timing out due to health check failures
+
+**Investigation Results**:
+- Services were restarting before completing initialization
+- Multiple task instances running (3 vs 2 desired) due to failed health checks
+- Health check `startPeriod` values were insufficient for service startup
+
+**Applied Fixes**:
+1. **Increased Health Check Grace Periods**:
+   - Workflow Agent: 120s → 240s
+   - Workflow Engine: 90s → 180s
+   - API Gateway: 60s → 120s
+
+2. **Infrastructure Configuration**:
+   - Reduced initial `desired_count` from 2 to 1
+   - Updated Terraform variables for stable deployments
+
+3. **Monitoring Improvements**:
+   - Enhanced ECS service event monitoring
+   - Better health status tracking during deployments
+
+**Key Learning**: Always use conservative health check timing to prevent deployment instability.
 
 This documentation should be updated whenever architectural changes are made to prevent future deployment issues.

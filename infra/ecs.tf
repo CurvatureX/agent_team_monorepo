@@ -133,7 +133,7 @@ resource "aws_ecs_task_definition" "api_gateway" {
         interval    = 30
         timeout     = 5
         retries     = 3
-        startPeriod = 60
+        startPeriod = 120
       }
     }
   ])
@@ -223,7 +223,7 @@ resource "aws_ecs_task_definition" "workflow_engine" {
         interval    = 30
         timeout     = 5
         retries     = 3
-        startPeriod = 90
+        startPeriod = 180
       }
     }
   ])
@@ -334,7 +334,7 @@ resource "aws_ecs_task_definition" "workflow_agent" {
         interval    = 30
         timeout     = 5
         retries     = 3
-        startPeriod = 120
+        startPeriod = 240
       }
     }
   ])
