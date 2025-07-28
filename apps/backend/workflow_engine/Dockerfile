@@ -84,3 +84,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
 
 # Run application directly
 CMD ["python", "-m", "workflow_engine"]
+
