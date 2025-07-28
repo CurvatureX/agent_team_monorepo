@@ -352,6 +352,10 @@ resource "aws_ecs_task_definition" "workflow_agent" {
           name      = "SUPABASE_URL"
           valueFrom = aws_ssm_parameter.supabase_url.arn
         },
+        {
+          name      = "SUPABASE_SECRET_KEY"
+          valueFrom = aws_ssm_parameter.supabase_secret_key.arn
+        }
       ]
 
       logConfiguration = {
