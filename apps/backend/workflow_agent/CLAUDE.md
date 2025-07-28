@@ -84,9 +84,8 @@ The system outputs a custom YAML-like Domain Specific Language located in `dsl/`
 
 Required environment variables:
 ```bash
-# Supabase (RAG system)
+# Supabase (RAG system) - using SECRET_KEY only
 SUPABASE_URL=your_supabase_url
-SUPABASE_ANON_KEY=your_anon_key
 SUPABASE_SECRET_KEY=your_service_key
 
 # LLM APIs
