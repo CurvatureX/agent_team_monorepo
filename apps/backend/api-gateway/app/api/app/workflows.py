@@ -18,15 +18,51 @@ from app.models.workflow import (
     WorkflowUpdate,
     NodeTemplateListResponse
 )
-from app.services.enhanced_grpc_client import get_workflow_client
+from app.services.enhanced_grpc_client import get_workflow_client, GRPC_AVAILABLE
 from app.utils.logger import get_logger
 from fastapi import APIRouter, Depends, HTTPException
+import grpc
 
 logger = get_logger(__name__)
 router = APIRouter()
 
 
-@router.post("/api/v1/app/workflow/", response_model=WorkflowResponse)
+@router.get("/node-templates", response_model=NodeTemplateListResponse)
+async def list_all_node_templates(
+    category: Optional[str] = None,
+    node_type: Optional[str] = None,
+    include_system: bool = True,
+    deps: AuthenticatedDeps = Depends()
+):
+    """
+    List all available node templates.
+    """
+    if not GRPC_AVAILABLE:
+        raise HTTPException(status_code=503, detail="gRPC service is not available")
+    try:
+        logger.info("Listing all node templates")
+        
+        grpc_client = await get_workflow_client()
+        if not grpc_client:
+            raise HTTPException(status_code=500, detail="Workflow service unavailable")
+
+        templates = await grpc_client.ListAllNodeTemplates(
+            category_filter=category,
+            type_filter=node_type,
+            include_system_templates=include_system
+        )
+        
+        return NodeTemplateListResponse(node_templates=templates)
+
+    except grpc.RpcError as e:
+        logger.error(f"gRPC error listing node templates: {e.details()}")
+        raise HTTPException(status_code=500, detail=f"gRPC error: {e.details()}")
+    except Exception as e:
+        logger.error(f"Error listing node templates: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/", response_model=WorkflowResponse)
 async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Depends()):
     """
     Create a new workflow
@@ -69,7 +105,7 @@ async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Dep
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/api/v1/app/{workflow_id}", response_model=WorkflowResponse)
+@router.get("/{workflow_id}", response_model=WorkflowResponse)
 async def get_workflow(workflow_id: str, deps: AuthenticatedDeps = Depends()):
     """
     Get workflow by ID with user access control
@@ -84,7 +120,7 @@ async def get_workflow(workflow_id: str, deps: AuthenticatedDeps = Depends()):
             raise HTTPException(status_code=500, detail="Workflow service unavailable")
 
         # Get workflow with user context
-        result = await grpc_client.get_workflow(workflow_id, user_id=deps.current_user.sub)
+        result = await grpc_client.GetWorkflow(workflow_id, user_id=deps.current_user.sub)
         if not result:
             raise NotFoundError("Workflow")
 
@@ -102,7 +138,7 @@ async def get_workflow(workflow_id: str, deps: AuthenticatedDeps = Depends()):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.put("/api/v1/app/{workflow_id}", response_model=WorkflowResponse)
+@router.put("/{workflow_id}", response_model=WorkflowResponse)
 async def update_workflow(
     workflow_id: str,
     workflow_update: WorkflowUpdate,
@@ -148,7 +184,7 @@ async def update_workflow(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.delete("/api/v1/app/{workflow_id}", response_model=ResponseModel)
+@router.delete("/{workflow_id}", response_model=ResponseModel)
 async def delete_workflow(workflow_id: str, deps: AuthenticatedDeps = Depends()):
     """
     Delete a workflow with user access control
@@ -179,7 +215,7 @@ async def delete_workflow(workflow_id: str, deps: AuthenticatedDeps = Depends())
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/api/v1/app/user_workflow", response_model=WorkflowListResponse)
+@router.get("/user_workflow", response_model=WorkflowListResponse)
 async def list_user_workflows(
     page: int = 1, page_size: int = 20, deps: AuthenticatedDeps = Depends()
 ):
@@ -222,7 +258,7 @@ async def list_user_workflows(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.post("/api/v1/app/{workflow_id}/execute", response_model=WorkflowExecutionResponse)
+@router.post("/{workflow_id}/execute", response_model=WorkflowExecutionResponse)
 async def execute_workflow(
     workflow_id: str,
     execution_request: WorkflowExecutionRequest,
@@ -259,7 +295,7 @@ async def execute_workflow(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/api/v1/app/{workflow_id}/execution_history")
+@router.get("/{workflow_id}/execution_history")
 async def get_execution_history(workflow_id: str, deps: AuthenticatedDeps = Depends()):
     """
     Get the execution history for a workflow
@@ -291,34 +327,4 @@ async def get_execution_history(workflow_id: str, deps: AuthenticatedDeps = Depe
         raise
     except Exception as e:
         logger.error(f"❌ Error getting execution history for workflow {workflow_id}: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-
-@router.get("/api/v1/app/node-templates/", response_model=NodeTemplateListResponse)
-async def list_all_node_templates(
-    category: Optional[str] = None,
-    node_type: Optional[str] = None,
-    include_system: bool = True,
-    deps: AuthenticatedDeps = Depends()
-):
-    """
-    List all available node templates.
-    """
-    try:
-        logger.info("Listing all node templates")
-        
-        grpc_client = await get_workflow_client()
-        if not grpc_client:
-            raise HTTPException(status_code=500, detail="Workflow service unavailable")
-
-        templates = await grpc_client.list_all_node_templates(
-            category_filter=category,
-            type_filter=node_type,
-            include_system_templates=include_system
-        )
-        
-        return NodeTemplateListResponse(node_templates=templates)
-
-    except Exception as e:
-        logger.error(f"Error listing node templates: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
