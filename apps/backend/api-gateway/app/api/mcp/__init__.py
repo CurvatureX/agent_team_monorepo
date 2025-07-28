@@ -1,2 +1,2 @@
 # MCP API Routes Package
-from .tools import router
+from app.api.mcp.router import router

@@ -4,8 +4,8 @@ MCP API路由，需要API Key认证
 专为LLM客户端设计
 """
 
+from app.api.mcp import tools
 from fastapi import APIRouter
-from . import tools
 
 # 创建MCP API总路由器
 router = APIRouter()

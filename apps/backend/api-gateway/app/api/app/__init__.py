@@ -1,2 +1,2 @@
 # App API Routes Package
-from .router import router
+from app.api.app.router import router
