@@ -36,9 +36,8 @@ class Settings(BaseSettings):
     # LangGraph settings
     LANGGRAPH_CHECKPOINT_BACKEND: str = os.getenv("LANGGRAPH_CHECKPOINT_BACKEND", "redis")
 
-    # Supabase settings for vector store
+    # Supabase settings for vector store (using SECRET_KEY only)
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
-    SUPABASE_KEY: str = os.getenv("SUPABASE_ANON_KEY", "")
     SUPABASE_SECRET_KEY: str = os.getenv("SUPABASE_SECRET_KEY", "")
 
     # Vector embedding settings
