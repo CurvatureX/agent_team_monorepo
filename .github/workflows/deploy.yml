@@ -38,20 +38,12 @@ jobs:
         run: |
           pip install uv
           uv sync
+          # Install api-gateway package in workspace environment
+          uv pip install -e api-gateway/
+          # Run tests from workspace root with proper working directory
           cd api-gateway
           rm -rf .pytest_cache __pycache__ **/__pycache__ **/*.pyc
-          # Debug workspace and installation
-          echo "=== Current directory ==="
-          pwd
-          echo "=== Python path ==="
-          uv run python -c "import sys; print('\\n'.join(sys.path))"
-          echo "=== Installing package ==="
-          uv pip install -e . --system
-          echo "=== Checking installation ==="
-          uv run python -c "import sys; sys.path.insert(0, '.'); import app; print('app imported successfully')"
-          uv run python -c "import sys; sys.path.insert(0, '.'); import app.api; print('app.api imported successfully')"
-          uv run python -c "import sys; sys.path.insert(0, '.'); import app.api.public; print('app.api.public imported successfully')"
-          echo "=== Running tests ==="
+          # Run pytest from the workspace virtual environment
           uv run -m pytest tests/ -v --cov=app --cov-report=xml
 
       - name: Install dependencies and test Workflow Agent
