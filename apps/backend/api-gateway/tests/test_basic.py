@@ -2,7 +2,15 @@
 Basic tests for API Gateway
 """
 
+import sys
+from pathlib import Path
+
 import pytest
+
+# Add the api-gateway directory to Python path for imports
+api_gateway_path = Path(__file__).parent.parent
+sys.path.insert(0, str(api_gateway_path))
+
 from app.main import app
 from fastapi.testclient import TestClient
 
