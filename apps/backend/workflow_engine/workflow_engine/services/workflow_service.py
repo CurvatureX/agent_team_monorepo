@@ -17,7 +17,7 @@ from proto import workflow_service_pb2
 from proto import workflow_pb2
 from workflow_engine.models.database import get_db
 from workflow_engine.models.workflow import Workflow as WorkflowModel
-from workflow_engine.models.node_template import NodeTemplate
+from workflow_engine.models.node_template import NodeTemplate as NodeTemplateModel
 from workflow_engine.core.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -377,7 +377,7 @@ class WorkflowService:
                 total_count=0
             )
 
-    def ListAllNodeTemplates(
+    def list_all_node_templates(
         self,
         request: workflow_service_pb2.ListAllNodeTemplatesRequest,
         context: grpc.ServicerContext
@@ -387,16 +387,17 @@ class WorkflowService:
             self.logger.info("Listing all node templates")
             db = next(get_db())
             try:
-                query = db.query(NodeTemplate)
+                query = db.query(NodeTemplateModel)
 
-                # Apply filters from request
                 if request.category_filter:
-                    query = query.filter(NodeTemplate.category == request.category_filter)
-                if request.type_filter != workflow_pb2.NodeType.TRIGGER_NODE: # Proto default is 0 (TRIGGER_NODE)
-                    # Assuming NodeType enum in proto has the same names as strings in the DB
-                    query = query.filter(NodeTemplate.node_type == workflow_pb2.NodeType.Name(request.type_filter))
-                if request.include_system_templates:
-                    query = query.filter(NodeTemplate.is_system_template == True)
+                    query = query.filter(NodeTemplateModel.category == request.category_filter)
+
+                if request.type_filter != 0:
+                    node_type_name = workflow_pb2.NodeType.Name(request.type_filter)
+                    query = query.filter(NodeTemplateModel.node_type == node_type_name)
+                
+                if not request.include_system_templates:
+                    query = query.filter(NodeTemplateModel.is_system_template == False)
 
                 db_node_templates = query.all()
 
@@ -410,11 +411,18 @@ class WorkflowService:
                         node_type=workflow_pb2.NodeType.Value(db_template.node_type),
                         node_subtype=db_template.node_subtype,
                         version=db_template.version or "1.0.0",
-                        is_system_template=db_template.is_system_template,
-                        default_parameters=json.dumps(db_template.default_parameters or {}),
-                        required_parameters=db_template.required_parameters or [],
-                        parameter_schema=json.dumps(db_template.parameter_schema or "{}")
+                        is_system_template=db_template.is_system_template
                     )
+                    
+                    if db_template.default_parameters:
+                        template_pb.default_parameters = json.dumps(db_template.default_parameters)
+                    
+                    if db_template.required_parameters:
+                        template_pb.required_parameters.extend(db_template.required_parameters)
+
+                    if db_template.parameter_schema:
+                        template_pb.parameter_schema = json.dumps(db_template.parameter_schema)
+                        
                     node_templates_pb.append(template_pb)
 
                 return workflow_service_pb2.ListAllNodeTemplatesResponse(node_templates=node_templates_pb)
@@ -426,4 +434,4 @@ class WorkflowService:
             self.logger.error(f"Error listing node templates: {str(e)}")
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(f"Failed to list node templates: {str(e)}")
-            return workflow_service_pb2.ListAllNodeTemplatesResponse() 
+            return workflow_service_pb2.ListAllNodeTemplatesResponse()

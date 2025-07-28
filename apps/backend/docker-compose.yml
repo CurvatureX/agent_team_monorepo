@@ -113,6 +113,8 @@ services:
       dockerfile: ./workflow_engine/Dockerfile
       target: production
     container_name: agent-team-workflow-engine
+    env_file:
+      - ./workflow_engine/.env
     environment:
       # Core service configuration
       DEBUG: "${DEBUG:-false}"
