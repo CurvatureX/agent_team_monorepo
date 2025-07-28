@@ -12,8 +12,8 @@ router = APIRouter()
 
 
 # Dependency to get the gRPC client
-def get_grpc_client():
-    return get_workflow_service_client()
+async def get_grpc_client():
+    return await get_workflow_service_client()
 
 
 # Pydantic Models for API data validation

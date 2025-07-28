@@ -79,10 +79,14 @@ class WorkflowServiceClient:
                 type_filter=node_type_enum,
                 include_system_templates=include_system_templates
             )
+            log_info(f"gRPC request to ListAllNodeTemplates: {request}")
             response = await self.stub.ListAllNodeTemplates(request)
+            log_info(f"gRPC response from ListAllNodeTemplates: {response}")
             
             from google.protobuf.json_format import MessageToDict
-            return [MessageToDict(t) for t in response.node_templates]
+            templates_dict = [MessageToDict(t) for t in response.node_templates]
+            log_info(f"Converted node templates to dict: {templates_dict}")
+            return templates_dict
 
         except grpc.aio.AioRpcError as e:
             log_error(f"gRPC error listing node templates: {e.details()}")

@@ -3,6 +3,8 @@ Database connection and session management.
 """
 
 from typing import Generator
+from urllib.parse import urlparse
+
 from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
@@ -18,16 +20,18 @@ database_url = settings.database_url
 if not database_url:
     raise ValueError("Database URL is required but not configured")
 
-# Default connect_args
+# Parse the database URL to reliably identify the hostname
+parsed_url = urlparse(database_url)
+
+# Default connect_args for remote connections (like Supabase)
 connect_args = {
     "sslmode": settings.database_ssl_mode,
     "application_name": "workflow_engine",
     "connect_timeout": 30,
 }
 
-# In our Docker environment, we connect to the 'postgres' service directly without SSL.
-# We can detect this and disable SSL arguments.
-if "postgres" in database_url:
+# If connecting to the local Docker service, disable SSL.
+if parsed_url.hostname == 'postgres':
     connect_args = {
         "application_name": "workflow_engine",
         "connect_timeout": 30,
