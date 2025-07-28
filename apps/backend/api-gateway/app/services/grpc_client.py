@@ -12,25 +12,18 @@ settings = get_settings()
 # Import gRPC modules
 import grpc
 from app.services.state_manager import get_state_manager
-import structlog
+import logging
 
-logger = structlog.get_logger("grpc_client")
+logger = logging.getLogger("app.services.grpc_client")
 
 try:
-    # Import proto modules from proto package
-    import os
-    import sys
-
-    # Add the api-gateway root to path so we can import proto as a package
-    api_gateway_root = os.path.join(os.path.dirname(__file__), "../..")
-    sys.path.insert(0, api_gateway_root)
     from proto import workflow_agent_pb2, workflow_agent_pb2_grpc
 
     GRPC_AVAILABLE = True
     logger.info("gRPC modules loaded successfully")
 except ImportError as e:
     # Fallback: proto modules not available
-    logger.error("gRPC proto modules not available. Using mock client", error=str(e))
+    logger.error(f"gRPC proto modules not available. Using mock client: {str(e)}")
     workflow_agent_pb2 = None
     workflow_agent_pb2_grpc = None
     GRPC_AVAILABLE = False
@@ -75,15 +68,15 @@ class WorkflowGRPCClient:
                         await asyncio.sleep(0.1)
 
                 self.connected = True
-                logger.info("Connected to workflow service", host=self.host, port=self.port)
+                logger.info(f"Connected to workflow service {self.host}:{self.port}")
             else:
                 # Mock connection for environments without gRPC
                 await asyncio.sleep(0.1)
                 self.connected = True
-                logger.info("Mock connected to workflow service", host=self.host, port=self.port)
+                logger.info(f"Mock connected to workflow service {self.host}:{self.port}")
 
         except Exception as e:
-            logger.error("Failed to connect to workflow service", error=str(e))
+            logger.error(f"Failed to connect to workflow service: {e}")
             self.connected = False
             raise
 
@@ -143,26 +136,23 @@ class WorkflowGRPCClient:
                         )
                         request.workflow_context.CopyFrom(context)
                     except Exception as e:
-                        logger.error("Error setting workflow_context in request", error=str(e))
+                        logger.error(f"Error setting workflow_context in request: {e}")
 
                 # Add current state if exists
                 if current_state_data:
                     try:
-                        logger.debug("About to convert state data", state_data_type=str(type(current_state_data)))
                         # Convert database state to protobuf AgentState
                         agent_state = self._db_state_to_proto(current_state_data)
-                        logger.debug("AgentState created successfully")
                         request.current_state.CopyFrom(agent_state)
-                        logger.debug("State copied to request successfully")
                     except Exception as e:
-                        logger.error("Error converting state to proto", error=str(e))
-                        logger.error("State data details", state_data=current_state_data)
+                        logger.error(f"Error converting state to proto: {e}")
+                        logger.error(f"State data details: {current_state_data}")
                         import traceback
 
-                        logger.error("Traceback details", traceback=traceback.format_exc())
+                        logger.error(f"Traceback details: {traceback.format_exc()}")
                         raise
 
-                logger.debug("About to call ProcessConversation with request")
+                logger.info(f"About to call ProcessConversation with request: {request}")
 
                 # Stream conversation processing
                 try:
@@ -179,21 +169,17 @@ class WorkflowGRPCClient:
 
                         yield response_dict
                 except Exception as grpc_error:
-                    logger.error("gRPC call error", error=str(grpc_error))
+                    logger.error(f"gRPC call error: {grpc_error}")
                     import traceback
 
-                    logger.error("gRPC traceback details", traceback=traceback.format_exc())
+                    logger.error(f"gRPC traceback details: {traceback.format_exc()}")
                     raise
 
             else:
-                # Mock implementation for environments without gRPC
-                async for response in self._mock_process_conversation(
-                    session_id, user_message, user_id
-                ):
-                    yield response
+                logger.error("gRPC is not available")
 
         except Exception as e:
-            logger.error("Error in process_conversation_stream", error=str(e))
+            logger.error(f"Error in process_conversation_stream: {e}")
             # Yield error response
             yield {
                 "type": "error",
@@ -283,7 +269,7 @@ class WorkflowGRPCClient:
 
                     agent_state.clarification_context.CopyFrom(context)
                 except Exception as e:
-                    logger.error("Error setting clarification_context", error=str(e))
+                    logger.error(f"Error setting clarification_context: {e}")
 
             # 处理workflow_context
             workflow_context = db_state.get("workflow_context")
@@ -297,10 +283,10 @@ class WorkflowGRPCClient:
                     )
                     agent_state.workflow_context.CopyFrom(context)
                 except Exception as e:
-                    logger.error("Error setting workflow_context", error=str(e))
+                    logger.error(f"Error setting workflow_context: {e}")
 
         except Exception as e:
-            logger.error("Error creating AgentState", error=str(e))
+            logger.error(f"Error creating AgentState: {e}")
             raise
 
         # Add conversations if available
@@ -311,7 +297,7 @@ class WorkflowGRPCClient:
 
                 conversations = json.loads(conversations)
             except json.JSONDecodeError:
-                logger.error("Failed to parse conversations JSON", conversations=conversations)
+                logger.error(f"Failed to parse conversations JSON: {conversations}")
                 conversations = []
 
         if isinstance(conversations, list):
@@ -331,7 +317,7 @@ class WorkflowGRPCClient:
 
                         agent_state.conversations.append(conversation)
                 except Exception as e:
-                    logger.error("Error converting conversation to proto", error=str(e))
+                    logger.error(f"Error converting conversation to proto: {e}")
                     continue
 
         return agent_state

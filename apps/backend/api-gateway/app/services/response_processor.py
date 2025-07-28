@@ -3,10 +3,10 @@
 处理不同stage的响应格式转换
 """
 
-import structlog
+import logging
 from typing import Dict, Any, Optional, List
 
-logger = structlog.get_logger("response_processor")
+logger = logging.getLogger("app.services.response_processor")
 
 
 class UnifiedResponseProcessor:
@@ -153,7 +153,7 @@ class UnifiedResponseProcessor:
     def _process_workflow_generation(agent_state: Dict[str, Any]) -> Dict[str, Any]:
         """处理工作流生成阶段响应"""
         conversations = agent_state.get("conversations", [])
-        current_workflow = agent_state.get("current_workflow")
+        current_workflow = agent_state.get("current_workflow_json") or agent_state.get("current_workflow")
         
         latest_message = ""
         if conversations:
@@ -197,7 +197,7 @@ class UnifiedResponseProcessor:
         conversations = agent_state.get("conversations", [])
         debug_result = agent_state.get("debug_result", "")
         debug_loop_count = agent_state.get("debug_loop_count", 0)
-        current_workflow = agent_state.get("current_workflow")
+        current_workflow = agent_state.get("current_workflow_json") or agent_state.get("current_workflow")
         
         latest_message = ""
         if conversations:
@@ -242,7 +242,7 @@ class UnifiedResponseProcessor:
     def _process_completed(agent_state: Dict[str, Any]) -> Dict[str, Any]:
         """处理完成阶段响应"""
         conversations = agent_state.get("conversations", [])
-        current_workflow = agent_state.get("current_workflow")
+        current_workflow = agent_state.get("current_workflow_json") or agent_state.get("current_workflow")
         
         latest_message = ""
         if conversations:
