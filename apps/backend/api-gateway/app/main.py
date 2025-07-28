@@ -11,6 +11,7 @@ from app.database import init_supabase
 from app.models import HealthResponse
 from app.api import session, chat, workflow, mcp
 from app.services.grpc_client import workflow_client
+from app.services.workflow_service_client import workflow_service_client
 from app.utils import log_info, log_warning, log_error, log_exception
 
 
@@ -25,9 +26,10 @@ async def lifespan(app: FastAPI):
         init_supabase()
         log_info("✅ Supabase client initialized")
         
-        # Initialize gRPC client connection
+        # Initialize gRPC client connections
         await workflow_client.connect()
-        log_info("✅ gRPC client connected")
+        await workflow_service_client.connect()
+        log_info("✅ gRPC clients connected")
         
         log_info("🚀 API Gateway started successfully!")
         log_info(f"📖 API Documentation: http://localhost:8000/docs")
@@ -44,6 +46,7 @@ async def lifespan(app: FastAPI):
     try:
         # Close gRPC connections
         await workflow_client.close()
+        await workflow_service_client.close()
         
         log_info("👋 API Gateway stopped")
         

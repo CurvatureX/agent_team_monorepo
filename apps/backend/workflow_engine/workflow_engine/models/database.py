@@ -18,7 +18,22 @@ database_url = settings.database_url
 if not database_url:
     raise ValueError("Database URL is required but not configured")
 
-# Create engine with enhanced configuration for Supabase
+# Default connect_args
+connect_args = {
+    "sslmode": settings.database_ssl_mode,
+    "application_name": "workflow_engine",
+    "connect_timeout": 30,
+}
+
+# In our Docker environment, we connect to the 'postgres' service directly without SSL.
+# We can detect this and disable SSL arguments.
+if "postgres" in database_url:
+    connect_args = {
+        "application_name": "workflow_engine",
+        "connect_timeout": 30,
+    }
+
+# Create engine with enhanced configuration
 engine = create_engine(
     database_url,
     poolclass=QueuePool,
@@ -28,15 +43,7 @@ engine = create_engine(
     pool_recycle=settings.database_pool_recycle,
     pool_pre_ping=True,
     echo=settings.database_echo,
-    # Additional SSL and connection options for Supabase
-    connect_args={
-        "sslmode": settings.database_ssl_mode,
-        "application_name": "workflow_engine",
-        "connect_timeout": 30,
-    } if settings.database_ssl_mode != "disable" else {
-        "application_name": "workflow_engine",
-        "connect_timeout": 30,
-    }
+    connect_args=connect_args
 )
 
 # Create session factory

@@ -6,17 +6,31 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
-from app.services.grpc_client import workflow_client
+from app.services.workflow_service_client import get_workflow_service_client, WorkflowServiceClient
 
 router = APIRouter()
 
 
 # Dependency to get the gRPC client
 def get_grpc_client():
-    return workflow_client
+    return get_workflow_service_client()
 
 
 # Pydantic Models for API data validation
+class NodeTemplateResponse(BaseModel):
+    id: str
+    name: str
+    description: Optional[str]
+    category: Optional[str]
+    node_type: str
+    node_subtype: str
+    version: Optional[str]
+    is_system_template: bool
+    default_parameters: Dict[str, Any]
+    required_parameters: List[str]
+    parameter_schema: Dict[str, Any]
+
+
 class WorkflowCreate(BaseModel):
     name: str = Field(..., description="Name of the workflow")
     description: Optional[str] = Field(None, description="Description of the workflow")
@@ -56,6 +70,20 @@ class ExecutionStatusResponse(BaseModel):
 
 class ExecutionHistoryResponse(BaseModel):
     executions: List[Dict[str, Any]]
+
+
+@router.get("/node-templates/", response_model=List[NodeTemplateResponse])
+async def list_node_templates(
+    client: WorkflowServiceClient = Depends(get_grpc_client),
+):
+    """
+    List all available node templates.
+    """
+    try:
+        templates = await client.list_all_node_templates()
+        return [NodeTemplateResponse(**t) for t in templates]
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 @router.post("/", response_model=WorkflowResponse, status_code=status.HTTP_201_CREATED)
