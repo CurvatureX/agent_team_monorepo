@@ -39,6 +39,7 @@ jobs:
           pip install uv
           uv sync
           cd api-gateway
+          rm -rf .pytest_cache __pycache__ **/__pycache__ **/*.pyc
           uv pip install -e . --system
           uv run -m pytest tests/ -v --cov=app --cov-report=xml
 
