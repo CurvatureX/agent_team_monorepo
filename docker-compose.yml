@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:13
+    container_name: postgres_workflow
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: workflow_engine
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+
+  redis:
+    image: redis:6-alpine
+    container_name: redis_workflow
+    ports:
+      - "6379:6379"
+    networks:
+      - app-network
+
+  workflow-engine:
+    build:
+      context: ./apps/backend
+      dockerfile: ./workflow_engine/Dockerfile
+    container_name: workflow_engine_service
+    ports:
+      - "50050:50050"
+    env_file:
+      - ./apps/backend/workflow_engine/.env
+    networks:
+      - app-network
+
+  api-gateway:
+    build:
+      context: ./apps/backend
+      dockerfile: ./api-gateway/Dockerfile
+    container_name: api_gateway_service
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./apps/backend/api-gateway/.env
+    environment:
+      - WORKFLOW_ENGINE_HOST=workflow-engine
+      - WORKFLOW_ENGINE_PORT=50050
+      - SUPABASE_URL=https://your-project-id.supabase.co
+      - SUPABASE_SECRET_KEY=your-secret-key
+      - SUPABASE_ANON_KEY=your-anon-key
+      - WORKFLOW_AGENT_HOST=localhost 
+      - WORKFLOW_AGENT_PORT=50051
+      - ENABLE_AUTH=False
+      - DEBUG=true
+    depends_on:
+      - workflow-engine
+    networks:
+      - app-network
+
+volumes:
+  postgres_data:
+
+networks:
+  app-network:
+    driver: bridge 
