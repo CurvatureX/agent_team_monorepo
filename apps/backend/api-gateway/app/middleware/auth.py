@@ -12,9 +12,9 @@ from app.core.config import get_settings
 
 settings = get_settings()
 from app.services.auth_service import verify_supabase_token
-import structlog
+import logging
 
-logger = structlog.get_logger("auth_middleware")
+logger = logging.getLogger("app.middleware.auth")
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 
@@ -103,10 +103,10 @@ class MCPAuthenticator:
                 self.api_keys["dev_default"] = default_key
                 logger.warning("Using default MCP API key for development")
 
-            logger.info("Loaded MCP API keys", count=len(self.api_keys))
+            logger.info(f"Loaded {len(self.api_keys)} MCP API keys")
 
         except Exception as e:
-            logger.error("Failed to load MCP API keys", error=str(e))
+            logger.error(f"Failed to load MCP API keys: {e}")
 
     def verify_api_key(self, api_key: str) -> Optional[MCPApiKey]:
         """验证API Key"""
@@ -198,7 +198,7 @@ async def authenticate_supabase_user(request: Request) -> AuthResult:
         return AuthResult(success=True, user=user_data, token=token)
 
     except Exception as e:
-        logger.error("Supabase auth error", error=str(e))
+        logger.error(f"Supabase auth error: {e}")
         return AuthResult(success=False, error="auth_failed")
 
 
@@ -251,7 +251,7 @@ async def authenticate_mcp_client(request: Request) -> AuthResult:
         return AuthResult(success=True, client=client_info)
 
     except Exception as e:
-        logger.error("MCP auth error", error=str(e))
+        logger.error(f"MCP auth error: {e}")
         return AuthResult(success=False, error="auth_failed")
 
 
@@ -260,28 +260,28 @@ async def unified_auth_middleware(request: Request, call_next):
     path = request.url.path
     method = request.method
 
-    logger.info("Processing request", method=method, path=path)
+    logger.debug(f"Processing request: {method} {path}")
 
     # Public API - 无需认证，仅限流
     if path.startswith("/api/v1/public/"):
-        logger.info("Public API endpoint, skipping auth", path=path)
+        logger.debug(f"Public API endpoint, skipping auth: {path}")
         return await call_next(request)
 
     # 传统公开路径
     public_paths = ["/health", "/", "/docs", "/openapi.json", "/redoc", "/docs-json"]
     if path in public_paths:
-        logger.info("Legacy public endpoint, skipping auth", path=path)
+        logger.debug(f"Legacy public endpoint, skipping auth: {path}")
         return await call_next(request)
 
     # MCP API - API Key 认证
     if path.startswith("/api/v1/mcp/"):
         if not settings.MCP_API_KEY_REQUIRED:
-            logger.info("MCP API endpoint, auth disabled", path=path)
+            logger.info(f"MCP API endpoint, auth disabled: {path}")
             return await call_next(request)
 
         auth_result = await authenticate_mcp_client(request)
         if not auth_result.success:
-            logger.warning("MCP auth failed", path=path, error=auth_result.error)
+            logger.warning(f"MCP auth failed: {path} - {auth_result.error}")
 
             # 构建错误响应
             error_content = {
@@ -304,17 +304,17 @@ async def unified_auth_middleware(request: Request, call_next):
         request.state.client = auth_result.client
         request.state.auth_type = "mcp_api_key"
 
-        logger.info("MCP auth successful", path=path, client_name=auth_result.client['client_name'])
+        logger.info(f"MCP auth successful: {path} - {auth_result.client['client_name']}")
 
     # App API - Supabase OAuth 认证
     elif path.startswith("/api/v1/"):
         if not settings.SUPABASE_AUTH_ENABLED:
-            logger.info("App API endpoint, auth disabled", path=path)
+            logger.info(f"App API endpoint, auth disabled: {path}")
             return await call_next(request)
 
         auth_result = await authenticate_supabase_user(request)
         if not auth_result.success:
-            logger.warning("Supabase auth failed", path=path, error=auth_result.error)
+            logger.warning(f"Supabase auth failed: {path} - {auth_result.error}")
 
             return JSONResponse(
                 status_code=401,
@@ -331,18 +331,14 @@ async def unified_auth_middleware(request: Request, call_next):
         request.state.access_token = auth_result.token
         request.state.auth_type = "supabase"
 
-        logger.info(
-            "Supabase auth successful",
-            path=path,
-            user_email=auth_result.user.get('email', 'unknown')
-        )
+        logger.info(f"Supabase auth successful: {path} - {auth_result.user.get('email', 'unknown')}")
 
     else:
         # 其他路径使用传统认证（兼容性）
-        logger.info("Using legacy auth for non-layered API", path=path)
+        logger.info(f"Using legacy auth for non-layered API: {path}")
 
     # 继续处理请求
     response = await call_next(request)
-    logger.info("Response sent", method=method, path=path, status_code=response.status_code)
+    logger.debug(f"Response sent: {method} {path} -> {response.status_code}")
 
     return response

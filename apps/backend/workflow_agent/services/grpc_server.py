@@ -355,28 +355,12 @@ class WorkflowAgentServicer(workflow_agent_pb2_grpc.WorkflowAgentServicer):
                             timestamp=int(time.time() * 1000),
                             is_final=False
                         )
-                        yield response
-                        
-                        final_state = node_output
+                        if node_name in ["negotiation", "alternative_generation"]:
+                            response.is_final = True
 
-            # 发送最终响应
-            if final_state:
-                final_response = ConversationResponse(
-                    session_id=request.session_id,
-                    updated_state=StateConverter.workflow_state_to_proto(final_state),
-                    timestamp=int(time.time() * 1000),
-                    is_final=True
-                )
-                yield final_response
-            else:
-                # 如果没有最终状态，返回当前状态
-                final_response = ConversationResponse(
-                    session_id=request.session_id,
-                    updated_state=StateConverter.workflow_state_to_proto(current_state),
-                    timestamp=int(time.time() * 1000),
-                    is_final=True
-                )
-                yield final_response
+                        yield response
+
+            logger.info("WorkflowAgentServicer.ProcessConversation completed")                        
 
         except Exception as e:
             import traceback
@@ -401,8 +385,6 @@ class WorkflowAgentServicer(workflow_agent_pb2_grpc.WorkflowAgentServicer):
 
 
 class WorkflowAgentServer:
-    """新的 gRPC 服务器"""
-
     def __init__(self):
         logger.info("Initializing WorkflowAgentServer")
         self.server: Optional[grpc.aio.Server] = None
