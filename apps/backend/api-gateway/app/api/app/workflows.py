@@ -16,6 +16,7 @@ from app.models.workflow import (
     WorkflowListResponse,
     WorkflowResponse,
     WorkflowUpdate,
+    NodeTemplateListResponse
 )
 from app.services.enhanced_grpc_client import get_workflow_client
 from app.utils.logger import get_logger
@@ -290,4 +291,34 @@ async def get_execution_history(workflow_id: str, deps: AuthenticatedDeps = Depe
         raise
     except Exception as e:
         logger.error(f"❌ Error getting execution history for workflow {workflow_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/node-templates/", response_model=NodeTemplateListResponse)
+async def list_all_node_templates(
+    category: Optional[str] = None,
+    node_type: Optional[str] = None,
+    include_system: bool = True,
+    deps: AuthenticatedDeps = Depends()
+):
+    """
+    List all available node templates.
+    """
+    try:
+        logger.info("Listing all node templates")
+        
+        grpc_client = await get_workflow_client()
+        if not grpc_client:
+            raise HTTPException(status_code=500, detail="Workflow service unavailable")
+
+        templates = await grpc_client.list_all_node_templates(
+            category_filter=category,
+            type_filter=node_type,
+            include_system_templates=include_system
+        )
+        
+        return NodeTemplateListResponse(node_templates=templates)
+
+    except Exception as e:
+        logger.error(f"Error listing node templates: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
