@@ -69,13 +69,13 @@ variable "workflow_engine_memory" {
 variable "workflow_agent_cpu" {
   description = "CPU units for Workflow Agent service"
   type        = number
-  default     = 512
+  default     = 1024
 }
 
 variable "workflow_agent_memory" {
   description = "Memory for Workflow Agent service"
   type        = number
-  default     = 1024
+  default     = 2048
 }
 
 variable "desired_count" {
@@ -111,12 +111,6 @@ variable "supabase_secret_key" {
   sensitive   = true
 }
 
-variable "supabase_service_key" {
-  description = "Supabase service key for workflow agent"
-  type        = string
-  sensitive   = true
-}
-
 variable "openai_api_key" {
   description = "OpenAI API key"
   type        = string
@@ -125,6 +119,12 @@ variable "openai_api_key" {
 
 variable "anthropic_api_key" {
   description = "Anthropic API key"
+  type        = string
+  sensitive   = true
+}
+
+variable "database_url" {
+  description = "Database connection URL"
   type        = string
   sensitive   = true
 }

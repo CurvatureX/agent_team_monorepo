@@ -63,8 +63,6 @@ resource "aws_cloudwatch_dashboard" "grpc_service_dashboard" {
       }
     ]
   })
-
-  tags = local.common_tags
 }
 
 # CloudWatch Alarms for gRPC Service Health
@@ -173,4 +171,4 @@ fields @timestamp, @message
 | sort @timestamp desc
 | limit 100
 EOF
-} 
+}

@@ -15,9 +15,13 @@ class PromptEngine:
     """A Jinja2-based prompt loading and rendering engine."""
 
     def __init__(self, template_folder: str = "shared/prompts"):
-        # Adjust the path to be relative to the backend directory
-        base_path = Path(__file__).parent.parent.parent
-        self.template_path = base_path / template_folder
+        # In Docker, use absolute path; in development, use relative path
+        if Path("/shared/prompts").exists():
+            self.template_path = Path("/shared/prompts")
+        else:
+            # Adjust the path to be relative to the backend directory
+            base_path = Path(__file__).parent.parent.parent
+            self.template_path = base_path / template_folder
 
         if not self.template_path.exists():
             raise FileNotFoundError(f"Template folder not found at: {self.template_path}")

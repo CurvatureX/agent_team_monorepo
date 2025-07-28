@@ -50,14 +50,20 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /install /usr/local
 
 # Copy application code from builder
-COPY --from=builder /app/workflow_engine ./workflow_engine
+COPY --from=builder /app/workflow_engine/workflow_engine ./workflow_engine
+COPY --from=builder /app/workflow_engine/generate_proto.py ./workflow_engine/
 COPY --from=builder /app/shared ./shared
 
-# Generate protobuf files using the existing script
-RUN python -c "import sys, os; sys.path.insert(0, '.'); from workflow_engine.generate_proto import generate_proto_files; generate_proto_files()" || echo "Proto generation failed, continuing anyway"
+# Change to workflow_engine directory and generate protobuf files
+WORKDIR /app/workflow_engine
+RUN python generate_proto.py && echo "Proto generation completed successfully"
 
-# Create top-level proto symlink for imports to work
-RUN ln -sf /app/workflow_engine/proto /app/proto
+# Copy generated proto files to top-level proto directory for imports to work
+WORKDIR /app
+RUN cp -r /app/workflow_engine/proto /app/proto
+
+# Verify proto files were generated correctly
+RUN ls -la /app/proto/ && python -c "from proto import workflow_service_pb2; print('Proto import test successful')"
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash --uid 1000 app && \
@@ -66,7 +72,7 @@ USER app
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app:/app/workflow_engine \
+    PYTHONPATH=/app \
     SHARED_PROTO_DIR=/app/shared/proto/engine
 
 # Expose port
@@ -76,5 +82,5 @@ EXPOSE 50050
 HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
     CMD nc -z localhost 50050 || exit 1
 
-# Run application as module
-CMD ["python", "-m", "workflow_engine.server"]
+# Run application directly
+CMD ["python", "-m", "workflow_engine"]
