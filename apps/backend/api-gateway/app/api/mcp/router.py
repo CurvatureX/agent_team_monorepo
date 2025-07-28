@@ -11,7 +11,7 @@ from fastapi import APIRouter
 router = APIRouter()
 
 # 包含所有MCP API子路由
-router.include_router(tools.router, prefix="", tags=["MCP - Tools"])
+router.include_router(tools.router, prefix="")
 
 # 可以在这里添加其他MCP API路由
 # router.include_router(models.router, prefix="/models", tags=["MCP - Models"])
