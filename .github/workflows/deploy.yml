@@ -38,7 +38,7 @@ jobs:
         run: |
           pip install uv
           uv sync
-          uv run -m pytest api-gateway/tests/ -v --cov=api-gateway/app --cov-report=xml --rootdir=.
+          cd api-gateway && uv run -m pytest tests/ -v --cov=app --cov-report=xml
 
       - name: Install dependencies and test Workflow Agent
         working-directory: apps/backend
