@@ -18,13 +18,14 @@ from app.core.config import settings
 
 # Import proto modules
 try:
-    from proto import workflow_agent_pb2, workflow_agent_pb2_grpc
+    from proto import workflow_service_pb2, workflow_service_pb2_grpc
 
     GRPC_AVAILABLE = True
 except ImportError:
-    workflow_agent_pb2 = None
-    workflow_agent_pb2_grpc = None
+    workflow_service_pb2 = None
+    workflow_service_pb2_grpc = None
     GRPC_AVAILABLE = False
+
 
 logger = logging.getLogger(__name__)
 
@@ -474,7 +475,7 @@ class EnhancedWorkflowGRPCClient:
             await asyncio.wait_for(self.channel.channel_ready(), timeout=self.connection_timeout)
 
             # 创建 stub
-            self.stub = workflow_agent_pb2_grpc.WorkflowAgentStub(self.channel)
+            self.stub = workflow_service_pb2_grpc.WorkflowServiceStub(self.channel)
 
             self.connected = True
             logger.info(f"Successfully connected to {endpoint.host}:{endpoint.port}")
@@ -750,7 +751,7 @@ async def example_usage():
         client = await get_workflow_client()
 
         # 创建请求
-        request = workflow_agent_pb2.ConversationRequest(
+        request = workflow_service_pb2.ConversationRequest(
             session_id="test-session", user_message="Hello, workflow agent!"
         )
 
