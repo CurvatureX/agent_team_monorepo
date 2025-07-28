@@ -43,6 +43,30 @@ def setup_logging() -> None:
 
 def get_standard_logging_config(log_level: int) -> Dict[str, Any]:
     """标准日志格式配置"""
+    settings = get_settings()
+    
+    loggers_handlers = ["console"]
+    handlers_config = {
+        "console": {
+            "class": "logging.StreamHandler",
+            "level": log_level,
+            "formatter": "standard",
+            "stream": sys.stdout,
+        }
+    }
+
+    if settings.is_production():
+        loggers_handlers.append("file")
+        handlers_config["file"] = {
+            "class": "logging.handlers.RotatingFileHandler",
+            "level": log_level,
+            "formatter": "standard",
+            "filename": "logs/api_gateway.log",
+            "maxBytes": 10485760,  # 10MB
+            "backupCount": 5,
+            "encoding": "utf-8",
+        }
+
     return {
         "version": 1,
         "disable_existing_loggers": False,
@@ -52,25 +76,9 @@ def get_standard_logging_config(log_level: int) -> Dict[str, Any]:
                 "datefmt": "%Y-%m-%d %H:%M:%S",
             }
         },
-        "handlers": {
-            "console": {
-                "class": "logging.StreamHandler",
-                "level": log_level,
-                "formatter": "standard",
-                "stream": sys.stdout,
-            },
-            "file": {
-                "class": "logging.handlers.RotatingFileHandler",
-                "level": log_level,
-                "formatter": "standard",
-                "filename": "logs/api_gateway.log",
-                "maxBytes": 10485760,  # 10MB
-                "backupCount": 5,
-                "encoding": "utf-8",
-            },
-        },
+        "handlers": handlers_config,
         "loggers": {
-            "app": {"level": log_level, "handlers": ["console", "file"], "propagate": False},
+            "app": {"level": log_level, "handlers": loggers_handlers, "propagate": False},
             "uvicorn.access": {"level": "INFO", "handlers": ["console"], "propagate": False},
         },
         "root": {"level": log_level, "handlers": ["console"]},
@@ -79,6 +87,30 @@ def get_standard_logging_config(log_level: int) -> Dict[str, Any]:
 
 def get_json_logging_config(log_level: int) -> Dict[str, Any]:
     """JSON格式日志配置（适合生产环境）"""
+    settings = get_settings()
+    
+    loggers_handlers = ["console"]
+    handlers_config = {
+        "console": {
+            "class": "logging.StreamHandler",
+            "level": log_level,
+            "formatter": "json",
+            "stream": sys.stdout,
+        }
+    }
+
+    if settings.is_production():
+        loggers_handlers.append("file")
+        handlers_config["file"] = {
+            "class": "logging.handlers.RotatingFileHandler",
+            "level": log_level,
+            "formatter": "json",
+            "filename": "logs/api_gateway.json",
+            "maxBytes": 10485760,  # 10MB
+            "backupCount": 10,
+            "encoding": "utf-8",
+        }
+
     return {
         "version": 1,
         "disable_existing_loggers": False,
@@ -88,25 +120,9 @@ def get_json_logging_config(log_level: int) -> Dict[str, Any]:
                 "format": "%(asctime)s %(name)s %(levelname)s %(message)s %(pathname)s %(lineno)d %(funcName)s",
             }
         },
-        "handlers": {
-            "console": {
-                "class": "logging.StreamHandler",
-                "level": log_level,
-                "formatter": "json",
-                "stream": sys.stdout,
-            },
-            "file": {
-                "class": "logging.handlers.RotatingFileHandler",
-                "level": log_level,
-                "formatter": "json",
-                "filename": "logs/api_gateway.json",
-                "maxBytes": 10485760,  # 10MB
-                "backupCount": 10,
-                "encoding": "utf-8",
-            },
-        },
+        "handlers": handlers_config,
         "loggers": {
-            "app": {"level": log_level, "handlers": ["console", "file"], "propagate": False}
+            "app": {"level": log_level, "handlers": loggers_handlers, "propagate": False}
         },
         "root": {"level": log_level, "handlers": ["console"]},
     }
