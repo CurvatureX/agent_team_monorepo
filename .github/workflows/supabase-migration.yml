@@ -1,0 +1,56 @@
+name: Supabase Schema Migration
+
+on:
+  push:
+    branches: [main]
+    paths: ['supabase/migrations/**']
+  pull_request:
+    branches: [main]
+    paths: ['supabase/migrations/**']
+  workflow_dispatch:
+
+env:
+  SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+  SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+  SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+jobs:
+  check-migrations:
+    runs-on: ubuntu-latest
+    name: Check Migration Status
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Supabase CLI
+        run: npm install -g supabase
+
+      - name: Check pending migrations
+        run: ./scripts/supabase-migrate.sh check
+
+  apply-migrations:
+    runs-on: ubuntu-latest
+    name: Apply Migrations
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: check-migrations
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Supabase CLI
+        run: npm install -g supabase
+
+      - name: Apply migrations
+        run: ./scripts/supabase-migrate.sh migrate
