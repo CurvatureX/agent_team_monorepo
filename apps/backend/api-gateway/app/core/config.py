@@ -26,7 +26,7 @@ class DatabaseSettings(BaseSettings):
 
     # Redis Configuration
     REDIS_URL: str = Field(
-        default_factory=lambda: os.getenv("REDIS_URL", "redis://localhost:6379/0"),
+        default_factory=lambda: os.getenv("REDIS_URL", "redis://redis:6379/0"),
         description="Redis连接URL",
     )
     REDIS_POOL_SIZE: int = Field(default=20, description="Redis连接池大小")
