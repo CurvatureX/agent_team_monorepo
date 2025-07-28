@@ -1,4 +1,4 @@
-# Production Dockerfile for API Gateway with uv
+# Production Dockerfile for Three-Layer API Gateway with uv
 FROM python:3.11-slim AS builder
 
 WORKDIR /app
@@ -27,9 +27,11 @@ FROM python:3.11-slim AS production
 
 WORKDIR /app
 
-# Install runtime dependencies only
+# Install runtime dependencies including Redis client tools
 RUN apt-get update && apt-get install -y \
     curl \
+    redis-tools \
+    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -44,17 +46,35 @@ RUN useradd --create-home --shell /bin/bash --uid 1000 app && \
     chown -R app:app /app
 USER app
 
-# Set environment variables
+# Set environment variables for three-layer architecture
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/app/.venv/bin:$PATH"
 
+# API Gateway specific environment
+ENV APP_NAME="API Gateway"
+ENV VERSION="1.0.0"
+ENV ENVIRONMENT="production"
+ENV HOST="0.0.0.0"
+ENV PORT="8000"
+ENV DEBUG="false"
+ENV LOG_LEVEL="INFO"
+ENV LOG_FORMAT="json"
+
+# Authentication settings
+ENV SUPABASE_AUTH_ENABLED="true"
+ENV MCP_API_KEY_REQUIRED="true"
+
+# Rate limiting settings
+ENV PUBLIC_RATE_LIMIT_ENABLED="true"
+
 # Expose port
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+# Enhanced health check for three-layer architecture
+# Uses versioned health endpoint and includes Redis connectivity check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD curl -f http://localhost:8000/api/v1/public/health || curl -f http://localhost:8000/health || exit 1
 
-# Run application
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run application with production settings
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--access-log"]
