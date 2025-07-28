@@ -4,8 +4,8 @@ App API Router
 专为Web/Mobile应用设计，支持RLS
 """
 
+from app.api.app import chat, sessions, workflows
 from fastapi import APIRouter
-from . import sessions, chat, workflows
 
 # 创建App API总路由器
 router = APIRouter()
