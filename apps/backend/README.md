@@ -1,53 +1,97 @@
-# Workflow Agent Team Backend
+# Agent Team Backend - Centralized Docker Orchestration
 
-基于技术设计文档实现的通用API Gateway和基于LangGraph的工作流AI Agent。
+Production-ready three-layer API Gateway with AI workflow agent services.
 
-## 架构概览
+## 🏗️ Architecture Overview
 
-### 核心组件
+### **Services Architecture**
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   API Gateway   │    │ Workflow Agent  │    │ Workflow Engine │
+│   (FastAPI)     │◄──►│   (LangGraph)   │◄──►│   (gRPC)       │
+│   Port: 8000    │    │   Port: 50051   │    │   Port: 8001    │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+         │                       │                       │
+         │                       │                       │
+         │                       └───────────────────────┼─────► ☁️ Supabase
+         │                                               │      PostgreSQL + Vector Store
+         │                                               │      Authentication + RLS
+         └─────────────────┐                             │
+                           │                             │
+         ┌─────────────────┴─────────────────┐          │
+         │            Redis                  │          │
+         │        (Local Cache)              │          │
+         │  • Rate Limiting (DB 2)           │          │
+         │  • JWT Caching (DB 2)             │          │
+         │  • LangGraph State (DB 0)         │          │
+         │  • Workflow Engine State (DB 1)   │          │
+         │         Port: 6379                │          │
+         └───────────────────────────────────┘          │
+                                                        │
+         ☁️ External Services ◄─────────────────────────┘
+         • OpenAI/Anthropic APIs
+         • Supabase (Database + Auth + Vector Store)
+```
 
-1. **API Gateway** (`apps/backend/api-gateway/`)
-   - FastAPI RESTful API服务
-   - 通过gRPC与Workflow Agent通信
-   - 提供统一的HTTP API接口
+### **Core Components**
 
-2. **Workflow Agent** (`apps/backend/workflow_agent/`)
-   - 基于LangGraph的AI Agent核心框架
-   - 支持自然语言生成工作流
-   - 提供gRPC服务接口
+1. **🌐 API Gateway** - Three-layer FastAPI service with Redis caching
+   - **Public API** (`/api/v1/public/*`) - No auth, rate-limited
+   - **App API** (`/api/v1/app/*`) - Supabase JWT authentication
+   - **MCP API** (`/api/v1/mcp/*`) - API key authentication
 
-3. **共享组件** (`apps/backend/shared/`)
-   - Protobuf定义和生成的gRPC代码
-   - 通用工具和脚本
+2. **🤖 Workflow Agent** - LangGraph-based AI consultant (gRPC)
+   - Natural language workflow generation
+   - RAG-enhanced with Supabase vector store
+   - Redis-backed state management
 
-### 技术栈
+3. **⚙️ Workflow Engine** - Execution engine (gRPC)
+   - Workflow execution and orchestration
+   - Node-based workflow processing
+   - PostgreSQL persistence
 
-- **API Gateway**: Python + FastAPI + gRPC Client
-- **Workflow Agent**: Python + LangGraph + gRPC Server
-- **通信**: gRPC (内部) + REST API (外部)
-- **数据存储**: PostgreSQL + Redis
-- **容器化**: Docker + Docker Compose
+4. **🗄️ Infrastructure**
+   - **Redis** - Local caching, rate limiting, LangGraph checkpoints
+   - **Supabase** - PostgreSQL database, authentication, vector store, RLS
+   - **Redis Commander** - Redis management UI (development only)
 
-## 快速开始
+### **Technology Stack**
 
-### 前置要求
+- **API Layer**: FastAPI + Pydantic + JWT Authentication
+- **AI Services**: LangGraph + OpenAI/Anthropic + RAG (Supabase)
+- **Communication**: gRPC (internal) + REST API (external)
+- **Data**: Supabase (PostgreSQL + Vector Store + Auth) + Redis (local cache)
+- **Infrastructure**: Docker Compose + AWS ECS (production)
+
+## 🚀 Quick Start
+
+### **Prerequisites**
 
 - Docker & Docker Compose
-- Python 3.11+ (开发模式)
-- OpenAI 或 Anthropic API密钥
+- Python 3.11+ (for development)
+- OpenAI and/or Anthropic API keys
+- Supabase account (for authentication & RAG)
 
-### 使用Docker启动 (推荐)
+### **🐳 Docker Deployment (Recommended)**
 
-1. **克隆项目并进入后端目录**
+1. **Setup Environment**
    ```bash
    cd apps/backend
+   cp .env.example .env
+   # Edit .env with your API keys and Supabase credentials
    ```
 
-2. **配置API Gateway环境变量**
+2. **Start All Services**
    ```bash
-   # 配置API Gateway的Supabase连接
-   cd api-gateway
-   cp .env.example .env  # 如果有的话
+   # Full production stack
+   docker-compose up --build
+
+   # Development with Redis UI
+   docker-compose --profile development up --build
+
+   # Start specific services
+   docker-compose up redis  # Local cache only (services use Supabase for data)
+   ```
    # 编辑 .env 文件，添加Supabase配置
    cd ..
    ```
@@ -56,7 +100,7 @@
    ```bash
    # 开发模式 (支持热重载)
    ./start-all.sh dev
-   
+
    # 或生产模式 (后台运行)
    ./start-all.sh prod
    ```
