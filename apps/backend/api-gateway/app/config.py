@@ -16,8 +16,10 @@ class Settings(BaseSettings):
     SUPABASE_ANON_KEY: str = ""  # Public anon key for RLS operations (required for user tokens)
     
     # gRPC Configuration
-    WORKFLOW_SERVICE_HOST: str = "localhost"
-    WORKFLOW_SERVICE_PORT: int = 50051
+    WORKFLOW_AGENT_HOST: str = "localhost"
+    WORKFLOW_AGENT_PORT: int = 50051
+    WORKFLOW_ENGINE_HOST: str = "localhost"
+    WORKFLOW_ENGINE_PORT: int = 50050
     
     # Authentication Configuration
     JWT_SECRET_KEY: Optional[str] = None  # For additional JWT operations if needed
