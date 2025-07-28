@@ -15,6 +15,39 @@ uv sync
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
+### Docker Development
+This project uses a **centralized docker-compose.yml** in the parent backend directory:
+
+```bash
+# Navigate to backend root for centralized orchestration
+cd ../
+
+# Start full stack (API Gateway + Workflow Agent + Workflow Engine + Infrastructure)
+docker-compose up --build
+
+# Start with development tools (includes Redis Commander UI)
+docker-compose --profile development up --build
+
+# Start only local cache (services use Supabase for data)
+docker-compose up redis
+
+# Build individual service images
+docker build -f api-gateway/Dockerfile -t api-gateway .
+docker build -f workflow_agent/Dockerfile -t workflow-agent .
+docker build -f workflow_engine/Dockerfile -t workflow-engine .
+
+# Build for AWS ECS (AMD64 platform)
+docker build --platform linux/amd64 -f api-gateway/Dockerfile -t api-gateway .
+```
+
+**Key Benefits of Centralized Approach:**
+- ✅ All services share the same Redis cache and connect to Supabase
+- ✅ Proper service discovery and networking
+- ✅ Matches production AWS ECS deployment architecture
+- ✅ Simplified environment management with single .env file
+- ✅ Built-in Redis Commander UI for development
+- ✅ No local PostgreSQL - uses Supabase directly for data persistence
+
 ### Development Commands (Manual)
 Since the helper script doesn't exist yet, use these commands directly:
 

@@ -3,11 +3,12 @@ Workflow Models
 工作流相关的数据模型
 """
 
-from typing import Optional, Dict, Any, List
-from pydantic import Field, validator
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
-from .base import EntityModel, BaseModel
+from pydantic import Field, validator
+
+from .base import BaseModel, EntityModel
 
 
 class WorkflowStatus(str, Enum):
@@ -81,9 +82,11 @@ class WorkflowCreate(BaseModel):
     type: WorkflowType = Field(default=WorkflowType.SEQUENTIAL, description="工作流类型")
     nodes: List[WorkflowNode] = Field(default_factory=list, description="工作流节点列表")
     edges: List[WorkflowEdge] = Field(default_factory=list, description="工作流连接边列表")
+    connections: Optional[Dict[str, Any]] = Field(default_factory=dict, description="节点连接信息（兼容性字段）")
     variables: Dict[str, Any] = Field(default_factory=dict, description="工作流变量")
     settings: Dict[str, Any] = Field(default_factory=dict, description="工作流设置")
     tags: List[str] = Field(default_factory=list, description="工作流标签")
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="工作流元数据")
 
     @validator("nodes")
     def validate_nodes(cls, v):
@@ -197,3 +200,25 @@ class WorkflowListResponse(BaseModel):
     total_count: int = Field(default=0, description="总数量")
     page: int = Field(default=1, description="当前页码")
     page_size: int = Field(default=20, description="每页大小")
+
+
+class WorkflowExecutionRequest(BaseModel):
+    """
+    工作流执行请求模型
+    """
+
+    inputs: Dict[str, Any] = Field(default_factory=dict, description="执行时的输入参数")
+    settings: Optional[Dict[str, Any]] = Field(default=None, description="执行时的特殊设置")
+    metadata: Optional[Dict[str, Any]] = Field(default=None, description="执行元数据")
+
+
+class WorkflowExecutionResponse(BaseModel):
+    """
+    工作流执行响应模型
+    """
+
+    execution_id: str = Field(description="执行ID")
+    workflow_id: str = Field(description="工作流ID")
+    status: str = Field(description="执行状态")
+    message: Optional[str] = Field(default=None, description="响应消息")
+    started_at: Optional[str] = Field(default=None, description="开始执行时间")

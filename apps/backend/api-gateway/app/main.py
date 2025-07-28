@@ -50,9 +50,9 @@ def create_application() -> FastAPI:
 
         ## API层级
 
-        - **Public API** (`/api/public/*`) - 无需认证的公开接口
-        - **App API** (`/api/app/*`) - 需要Supabase OAuth认证的应用接口
-        - **MCP API** (`/api/mcp/*`) - 需要API Key认证的LLM客户端接口
+        - **Public API** (`/api/v1/public/*`) - 无需认证的公开接口
+        - **App API** (`/api/v1/app/*`) - 需要Supabase OAuth认证的应用接口
+        - **MCP API** (`/api/v1/mcp/*`) - 需要API Key认证的LLM客户端接口
 
         ## 认证方式
 
@@ -118,11 +118,13 @@ async def request_logging_middleware(request: Request, call_next):
             "request_id": request_id,
             "method": request.method,
             "path": request.url.path,
-            "client_ip": request.headers.get("X-Forwarded-For")
-            or request.headers.get("X-Real-IP")
-            or str(request.client.host)
-            if request.client
-            else "unknown",
+            "client_ip": (
+                request.headers.get("X-Forwarded-For")
+                or request.headers.get("X-Real-IP")
+                or str(request.client.host)
+                if request.client
+                else "unknown"
+            ),
             "user_agent": request.headers.get("User-Agent"),
         },
     )
@@ -153,10 +155,10 @@ async def request_logging_middleware(request: Request, call_next):
 def register_routes(app: FastAPI) -> None:
     """注册API路由"""
 
-    # 注册三层API路由
+    # 注册三层API路由 (with v1 versioning)
     app.include_router(
         public_router,
-        prefix="/api/public",
+        prefix="/api/v1/public",
         tags=["Public API"],
         responses={
             429: {"description": "Rate limit exceeded"},
@@ -166,7 +168,7 @@ def register_routes(app: FastAPI) -> None:
 
     app.include_router(
         app_router,
-        prefix="/api/app",
+        prefix="/api/v1/app",
         tags=["App API"],
         responses={
             401: {"description": "Authentication required"},
@@ -178,7 +180,7 @@ def register_routes(app: FastAPI) -> None:
 
     app.include_router(
         mcp_router,
-        prefix="/api/mcp",
+        prefix="/api/v1/mcp",
         tags=["MCP API"],
         responses={
             401: {"description": "API key required"},
@@ -204,7 +206,11 @@ def register_common_routes(app: FastAPI) -> None:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "documentation": "/docs",
             "health_check": "/health",
-            "api_layers": {"public": "/api/public/", "app": "/api/app/", "mcp": "/api/mcp/"},
+            "api_layers": {
+                "public": "/api/v1/public/",
+                "app": "/api/v1/app/",
+                "mcp": "/api/v1/mcp/",
+            },
         }
 
     @app.get("/health", include_in_schema=False)

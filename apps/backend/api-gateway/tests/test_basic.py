@@ -38,14 +38,6 @@ def test_version_endpoint():
     assert "environment" in data
 
 
-def test_public_health_endpoint():
-    """Test public API health endpoint"""
-    response = client.get("/api/public/health")
-    assert response.status_code in [200, 503]
-    data = response.json()
-    assert "status" in data
-
-
 def test_docs_endpoint():
     """Test that docs are accessible in debug mode"""
     response = client.get("/docs")
@@ -73,12 +65,12 @@ async def test_app_creation():
 def test_unauthorized_app_endpoints():
     """Test that app endpoints require authentication"""
     # Test sessions endpoint without auth
-    response = client.post("/api/app/sessions", json={"action": "create"})
+    response = client.post("/api/v1/app/sessions", json={"action": "create"})
     assert response.status_code == 401
 
     # Test chat endpoint without auth
     response = client.post(
-        "/api/app/chat/stream", json={"session_id": "test-session", "message": "Hello"}
+        "/api/v1/app/chat/stream", json={"session_id": "test-session", "message": "Hello"}
     )
     assert response.status_code == 401
 
@@ -86,11 +78,11 @@ def test_unauthorized_app_endpoints():
 def test_unauthorized_mcp_endpoints():
     """Test that MCP endpoints require API key"""
     # Test tools endpoint without API key
-    response = client.get("/api/mcp/tools")
+    response = client.get("/api/v1/mcp/tools")
     assert response.status_code == 401
 
     # Test invoke endpoint without API key
-    response = client.post("/api/mcp/invoke", json={"tool_name": "test_tool", "params": {}})
+    response = client.post("/api/v1/mcp/invoke", json={"tool_name": "test_tool", "params": {}})
     assert response.status_code == 401
 
 

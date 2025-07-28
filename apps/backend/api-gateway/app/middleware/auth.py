@@ -5,13 +5,14 @@ Authentication Middleware for Three-Layer API Architecture
 
 import hashlib
 import time
-from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
-from fastapi import Request, HTTPException
-from fastapi.responses import JSONResponse
-from app.utils import log_info, log_warning, log_error
+from typing import Any, Dict, List, Optional
+
 from app.config import settings
 from app.services.auth_service import verify_supabase_token
+from app.utils import log_error, log_info, log_warning
+from fastapi import HTTPException, Request
+from fastapi.responses import JSONResponse
 
 
 class AuthResult:
@@ -258,7 +259,7 @@ async def unified_auth_middleware(request: Request, call_next):
     log_info(f"📨 {method} {path} - Processing request")
 
     # Public API - 无需认证，仅限流
-    if path.startswith("/api/public/"):
+    if path.startswith("/api/v1/public/"):
         log_info(f"🌐 {path} - Public API endpoint, skipping auth")
         return await call_next(request)
 
@@ -269,7 +270,7 @@ async def unified_auth_middleware(request: Request, call_next):
         return await call_next(request)
 
     # MCP API - API Key 认证
-    if path.startswith("/api/mcp/"):
+    if path.startswith("/api/v1/mcp/"):
         if not settings.MCP_API_KEY_REQUIRED:
             log_info(f"🤖 {path} - MCP API endpoint, auth disabled")
             return await call_next(request)
@@ -302,7 +303,7 @@ async def unified_auth_middleware(request: Request, call_next):
         log_info(f"✅ {path} - MCP auth successful for client {auth_result.client['client_name']}")
 
     # App API - Supabase OAuth 认证
-    elif path.startswith("/api/app/"):
+    elif path.startswith("/api/v1/"):
         if not settings.SUPABASE_AUTH_ENABLED:
             log_info(f"📱 {path} - App API endpoint, auth disabled")
             return await call_next(request)

@@ -4,7 +4,8 @@ Authentication Models
 """
 
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
+
 from pydantic import Field, validator
 
 from .base import BaseModel, TimestampedModel
@@ -110,3 +111,55 @@ class APIKeyResponse(BaseModel):
     api_key: str = Field(description="生成的API密钥")
     client: AuthClient = Field(description="客户端信息")
     expires_at: Optional[datetime] = Field(default=None, description="过期时间")
+
+
+class UserProfile(BaseModel):
+    """
+    用户资料模型
+    """
+
+    user_id: str = Field(description="用户唯一标识符")
+    email: Optional[str] = Field(default=None, description="用户邮箱")
+    name: Optional[str] = Field(default=None, description="用户姓名")
+    avatar_url: Optional[str] = Field(default=None, description="头像URL")
+    created_at: Optional[str] = Field(default=None, description="账户创建时间")
+    updated_at: Optional[str] = Field(default=None, description="账户更新时间")
+    email_verified: bool = Field(default=False, description="邮箱验证状态")
+    phone: Optional[str] = Field(default=None, description="电话号码")
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="用户元数据")
+
+
+class UserProfileResponse(BaseModel):
+    """
+    用户资料响应模型
+    """
+
+    user_profile: UserProfile = Field(description="用户资料信息")
+    message: Optional[str] = Field(default=None, description="响应消息")
+
+
+class UserSession(BaseModel):
+    """
+    用户会话模型（认证相关）
+    """
+
+    id: str = Field(description="会话ID")
+    session_type: Optional[str] = Field(default=None, description="会话类型")
+    status: str = Field(description="会话状态")
+    created_at: str = Field(description="创建时间")
+    updated_at: str = Field(description="更新时间")
+    last_activity: Optional[str] = Field(default=None, description="最后活动时间")
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="会话元数据")
+    auth_context: Optional[Dict[str, Any]] = Field(default_factory=dict, description="认证上下文")
+
+
+class UserSessionListResponse(BaseModel):
+    """
+    用户会话列表响应模型
+    """
+
+    sessions: List[UserSession] = Field(default_factory=list, description="会话列表")
+    total_count: int = Field(default=0, description="总数量")
+    page: int = Field(default=1, description="当前页码")
+    page_size: int = Field(default=20, description="每页大小")
+    message: Optional[str] = Field(default=None, description="响应消息")

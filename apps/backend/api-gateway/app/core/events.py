@@ -7,12 +7,11 @@ import asyncio
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
-
 from app.core.config import get_settings
 from app.core.database import get_database_manager
 from app.core.logging import setup_logging
 from app.utils.logger import get_logger
+from fastapi import FastAPI
 
 
 @asynccontextmanager
@@ -79,10 +78,19 @@ async def initialize_database_connections() -> None:
     try:
         db_manager = get_database_manager()
 
+        # Initialize the database manager first
+        await db_manager.initialize()
+
         # 初始化各个数据库连接
         supabase_client = db_manager.supabase
         supabase_admin_client = db_manager.supabase_admin
-        redis_client = db_manager.redis
+
+        # Try to get Redis client to test connection
+        redis_client = None
+        try:
+            redis_client = await db_manager.get_redis_client()
+        except Exception as redis_e:
+            logger.warning(f"⚠️ Redis connection failed: {redis_e}")
 
         # 记录连接状态
         connections_status = []

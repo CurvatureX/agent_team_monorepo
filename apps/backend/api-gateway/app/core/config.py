@@ -5,7 +5,8 @@ Unified Configuration Management for Three-Layer API Gateway
 
 import os
 from functools import lru_cache
-from typing import Optional, List, Dict, Any, Union
+from typing import Any, Dict, List, Optional, Union
+
 from pydantic import Field, validator
 from pydantic_settings import BaseSettings
 
@@ -17,12 +18,22 @@ class DatabaseSettings(BaseSettings):
     SUPABASE_URL: str = Field(
         default="https://your-project-id.supabase.co", description="Supabase项目URL"
     )
-    SUPABASE_SECRET_KEY: str = Field(default="", description="Supabase服务角色密钥 (service role key)")
-    SUPABASE_ANON_KEY: str = Field(default="", description="Supabase匿名密钥 (用于RLS操作)")
+    SUPABASE_SECRET_KEY: str = Field(
+        default="", description="Supabase服务角色密钥 (replaces both service and anon keys)"
+    )
 
     # Redis Configuration
     REDIS_URL: str = Field(default="redis://localhost:6379/0", description="Redis连接URL")
-    CACHE_TTL: int = Field(default=3600, description="缓存过期时间（秒）")
+    REDIS_POOL_SIZE: int = Field(default=20, description="Redis连接池大小")
+    REDIS_CONNECT_TIMEOUT: int = Field(default=5, description="Redis连接超时时间（秒）")
+    REDIS_SOCKET_TIMEOUT: int = Field(default=5, description="Redis套接字超时时间（秒）")
+
+    # Cache TTL Settings (per data type)
+    CACHE_TTL_DEFAULT: int = Field(default=3600, description="默认缓存过期时间（秒）")
+    CACHE_TTL_JWT_TOKEN: int = Field(default=1800, description="JWT令牌缓存过期时间（秒）")
+    CACHE_TTL_USER_INFO: int = Field(default=900, description="用户信息缓存过期时间（秒）")
+    CACHE_TTL_RATE_LIMIT: int = Field(default=3600, description="限流计数器过期时间（秒）")
+    CACHE_TTL_SESSION_STATE: int = Field(default=7200, description="会话状态缓存过期时间（秒）")
 
 
 class AuthSettings(BaseSettings):
@@ -206,7 +217,6 @@ class Settings(
         return {
             "url": self.SUPABASE_URL,
             "service_key": self.SUPABASE_SECRET_KEY,
-            "anon_key": self.SUPABASE_ANON_KEY,
         }
 
     def get_grpc_config(self) -> Dict[str, Union[str, int]]:
@@ -219,6 +229,22 @@ class Settings(
             "workflow_agent": {
                 "host": self.WORKFLOW_AGENT_HOST,
                 "port": self.WORKFLOW_AGENT_PORT,
+            },
+        }
+
+    def get_redis_config(self) -> Dict[str, Union[str, int]]:
+        """获取Redis配置"""
+        return {
+            "url": self.REDIS_URL,
+            "pool_size": self.REDIS_POOL_SIZE,
+            "connect_timeout": self.REDIS_CONNECT_TIMEOUT,
+            "socket_timeout": self.REDIS_SOCKET_TIMEOUT,
+            "ttl": {
+                "default": self.CACHE_TTL_DEFAULT,
+                "jwt_token": self.CACHE_TTL_JWT_TOKEN,
+                "user_info": self.CACHE_TTL_USER_INFO,
+                "rate_limit": self.CACHE_TTL_RATE_LIMIT,
+                "session_state": self.CACHE_TTL_SESSION_STATE,
             },
         }
 

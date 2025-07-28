@@ -4,7 +4,8 @@ Three-Layer API Architecture Configuration Management
 """
 
 import os
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
+
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
@@ -14,8 +15,7 @@ class Settings(BaseSettings):
 
     # Supabase Configuration
     SUPABASE_URL: str = "https://your-project-id.supabase.co"  # Default placeholder
-    SUPABASE_SECRET_KEY: str = ""  # Use Service Role key (starts with sb_secret_ or eyJ)
-    SUPABASE_ANON_KEY: str = ""  # Public anon key for RLS operations (required for user tokens)
+    SUPABASE_SECRET_KEY: str = ""  # Service Role key - used for all Supabase operations
 
     # gRPC Configuration
     WORKFLOW_SERVICE_HOST: str = "localhost"
@@ -117,7 +117,6 @@ class Settings(BaseSettings):
         return {
             "url": self.SUPABASE_URL,
             "service_key": self.SUPABASE_SECRET_KEY,
-            "anon_key": self.SUPABASE_ANON_KEY,
         }
 
     def is_production(self) -> bool:

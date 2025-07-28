@@ -32,9 +32,8 @@ RAG系统通过集成Supabase向量数据库，为工作流生成提供智能的
 ### 环境变量
 
 ```bash
-# Supabase配置
+# Supabase配置 (只需要SECRET_KEY)
 SUPABASE_URL=your_supabase_url
-SUPABASE_ANON_KEY=your_anon_key
 SUPABASE_SECRET_KEY=your_service_key
 
 # OpenAI配置 (用于向量嵌入)

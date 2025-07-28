@@ -3,8 +3,8 @@ Rate Limiting Middleware for Three-Layer API Architecture
 支持按路径前缀、用户ID、IP地址的分层限流策略
 """
 
-import time
 import json
+import time
 
 try:
     import redis
@@ -13,11 +13,12 @@ try:
 except ImportError:
     REDIS_AVAILABLE = False
     redis = None
-from typing import Dict, Optional, Any
-from fastapi import Request, Response, HTTPException
-from fastapi.responses import JSONResponse
-from app.utils import log_warning, log_info, log_error
+from typing import Any, Dict, Optional
+
 from app.config import settings
+from app.utils import log_error, log_info, log_warning
+from fastapi import HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 
 
 class RateLimitConfig:
@@ -26,28 +27,29 @@ class RateLimitConfig:
     # Public API 限流配置 (按IP地址)
     PUBLIC_LIMITS = {
         "global": "1000/hour",  # 全局限制
-        "/api/public/health": "100/minute",  # 健康检查
-        "/api/public/info": "60/minute",  # 系统信息
-        "/api/public/status": "60/minute",  # 服务状态
-        "/api/public/docs": "10/minute",  # 文档访问
+        "/api/v1/public/health": "100/minute",  # 健康检查
+        "/api/v1/public/status": "60/minute",  # 服务状态
+        "/api/v1/public/docs": "10/minute",  # 文档访问
+        "/api/v1/public/validation": "30/minute",  # 验证服务
     }
 
     # App API 用户限流配置 (按用户ID)
     APP_LIMITS = {
         "authenticated_user": "10000/hour",  # 认证用户全局限制
-        "/api/app/chat/stream": "100/hour",  # 聊天流式接口
-        "/api/app/sessions": "1000/hour",  # 会话操作
-        "/api/app/workflows": "500/hour",  # 工作流 CRUD 操作
-        "/api/app/workflows/execute": "100/hour",  # 工作流执行
-        "/api/app/executions": "200/hour",  # 执行状态查询
+        "/api/v1/app/chat/stream": "100/hour",  # 聊天流式接口
+        "/api/v1/app/sessions": "1000/hour",  # 会话操作
+        "/api/v1/app/workflows": "500/hour",  # 工作流 CRUD 操作
+        "/api/v1/app/workflows/execute": "100/hour",  # 工作流执行
+        "/api/v1/app/executions": "200/hour",  # 执行状态查询
+        "/api/v1/app/auth": "200/hour",  # 用户认证相关
     }
 
     # MCP API 客户端限流配置 (按API Key)
     MCP_LIMITS = {
         "api_client": "50000/hour",  # API 客户端全局限制
-        "/api/mcp/invoke": "1000/hour",  # 工具调用
-        "/api/mcp/tools": "5000/hour",  # 工具列表查询
-        "/api/mcp/health": "1000/hour",  # 健康检查
+        "/api/v1/mcp/invoke": "1000/hour",  # 工具调用
+        "/api/v1/mcp/tools": "5000/hour",  # 工具列表查询
+        "/api/v1/mcp/health": "1000/hour",  # 健康检查
     }
 
 
@@ -196,16 +198,16 @@ async def check_rate_limit_for_request(request: Request) -> tuple[bool, Dict[str
     path = request.url.path
 
     # 确定限流配置和标识符前缀
-    if path.startswith("/api/public/"):
+    if path.startswith("/api/v1/public/"):
         limits = RateLimitConfig.PUBLIC_LIMITS
         identifier = f"ip:{get_ip_address(request)}"
         layer = "public"
-    elif path.startswith("/api/app/"):
+    elif path.startswith("/api/v1/app/"):
         limits = RateLimitConfig.APP_LIMITS
         user_id = getattr(request.state, "user", {}).get("sub", "anonymous")
         identifier = f"user:{user_id}"
         layer = "app"
-    elif path.startswith("/api/mcp/"):
+    elif path.startswith("/api/v1/mcp/"):
         limits = RateLimitConfig.MCP_LIMITS
         client_id = getattr(request.state, "client", {}).get("id", "anonymous")
         identifier = f"client:{client_id}"

@@ -7,20 +7,19 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Request, Depends
-from fastapi.responses import JSONResponse
-
+from app.dependencies import MCPDeps, get_tool_name, require_scope
+from app.exceptions import ServiceUnavailableError, ValidationError
 from app.models.mcp import (
-    MCPTool,
-    MCPInvokeRequest,
-    MCPInvokeResponse,
-    MCPToolsResponse,
     MCPErrorResponse,
     MCPHealthCheck,
+    MCPInvokeRequest,
+    MCPInvokeResponse,
+    MCPTool,
+    MCPToolsResponse,
 )
-from app.dependencies import MCPDeps, get_tool_name, require_scope
-from app.exceptions import ValidationError, ServiceUnavailableError
 from app.utils.logger import get_logger
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -210,7 +209,7 @@ class EnhancedMCPService:
 mcp_service = EnhancedMCPService()
 
 
-@router.get("/tools", response_model=MCPToolsResponse)
+@router.get("/mcp/tools", response_model=MCPToolsResponse)
 async def list_tools(
     deps: MCPDeps = Depends(), tools_scope: None = Depends(require_scope("tools:read"))
 ):
@@ -248,7 +247,7 @@ async def list_tools(
         )
 
 
-@router.post("/invoke", response_model=MCPInvokeResponse)
+@router.post("/mcp/invoke", response_model=MCPInvokeResponse)
 async def invoke_tool(
     invoke_request: MCPInvokeRequest,
     deps: MCPDeps = Depends(),
@@ -301,7 +300,7 @@ async def invoke_tool(
         )
 
 
-@router.get("/tools/{tool_name}")
+@router.get("/mcp/tools/{tool_name}")
 async def get_tool_info(
     tool_name: str = Depends(get_tool_name),
     deps: MCPDeps = Depends(),
@@ -356,7 +355,7 @@ async def get_tool_info(
         )
 
 
-@router.get("/health", response_model=MCPHealthCheck)
+@router.get("/mcp/health", response_model=MCPHealthCheck)
 async def mcp_health(
     deps: MCPDeps = Depends(), health_scope: None = Depends(require_scope("health:check"))
 ):

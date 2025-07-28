@@ -5,8 +5,10 @@ Base Models for API Gateway
 
 import uuid
 from datetime import datetime, timezone
-from typing import Optional, Any, Dict, List
-from pydantic import BaseModel as PydanticBaseModel, Field
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import Field
 
 
 class BaseModel(PydanticBaseModel):
@@ -68,6 +70,14 @@ class ResponseModel(BaseModel):
     timestamp: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc), description="响应时间戳"
     )
+
+
+class BaseResponse(ResponseModel):
+    """
+    基础响应模型（ResponseModel的别名，用于向后兼容）
+    """
+
+    pass
 
 
 class ErrorModel(ResponseModel):
