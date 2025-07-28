@@ -6,11 +6,8 @@ API Gateway - Three-Layer Architecture with FastAPI Best Practices
 import time
 from datetime import datetime, timezone
 
-from app.api.app.router import router as app_router
-from app.api.mcp.router import router as mcp_router
-
-# API路由
-from app.api.public.router import router as public_router
+# API路由 - Using lazy imports to avoid circular import issues
+from app.api import get_app_router, get_mcp_router, get_public_router
 
 # 核心组件
 from app.core.config import get_settings
@@ -157,7 +154,7 @@ def register_routes(app: FastAPI) -> None:
 
     # 注册三层API路由 (with v1 versioning)
     app.include_router(
-        public_router,
+        get_public_router(),
         prefix="/api/v1/public",
         tags=["Public API"],
         responses={
@@ -167,7 +164,7 @@ def register_routes(app: FastAPI) -> None:
     )
 
     app.include_router(
-        app_router,
+        get_app_router(),
         prefix="/api/v1/app",
         tags=["App API"],
         responses={
@@ -179,7 +176,7 @@ def register_routes(app: FastAPI) -> None:
     )
 
     app.include_router(
-        mcp_router,
+        get_mcp_router(),
         prefix="/api/v1/mcp",
         tags=["MCP API"],
         responses={
