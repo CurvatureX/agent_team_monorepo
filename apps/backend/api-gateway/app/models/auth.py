@@ -6,7 +6,7 @@ Authentication Models
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from pydantic import Field, validator
+from pydantic import Field, field_validator
 
 from .base import BaseModel, TimestampedModel
 
@@ -45,7 +45,8 @@ class AuthClient(TimestampedModel):
     last_used: Optional[datetime] = Field(default=None, description="最后使用时间")
     expires_at: Optional[datetime] = Field(default=None, description="过期时间")
 
-    @validator("rate_limit_tier")
+    @field_validator("rate_limit_tier")
+    @classmethod
     def validate_rate_limit_tier(cls, v):
         """验证限流级别"""
         valid_tiers = ["development", "standard", "premium", "enterprise"]
@@ -91,7 +92,8 @@ class APIKeyCreate(BaseModel):
     rate_limit_tier: str = Field(default="standard", description="限流级别")
     expires_days: Optional[int] = Field(default=None, description="过期天数（None表示永不过期）")
 
-    @validator("scopes")
+    @field_validator("scopes")
+    @classmethod
     def validate_scopes(cls, v):
         """验证权限范围"""
         valid_scopes = ["tools:read", "tools:execute", "health:check", "admin"]

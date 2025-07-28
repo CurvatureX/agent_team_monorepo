@@ -8,7 +8,9 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from app.config import settings
+from app.core.config import get_settings
+
+settings = get_settings()
 from app.services.auth_service import verify_supabase_token
 from app.utils import log_error, log_info, log_warning
 from fastapi import HTTPException, Request

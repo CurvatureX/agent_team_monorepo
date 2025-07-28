@@ -4,22 +4,26 @@ gRPC Client for Workflow Service - New ProcessConversation Interface
 
 import asyncio
 import time
-from typing import AsyncGenerator, Dict, Any, Optional
-from app.config import settings
-from app.utils import log_info, log_warning, log_error, log_debug
-from app.services.state_manager import get_state_manager
+from typing import Any, AsyncGenerator, Dict, Optional
 
+from app.core.config import get_settings
+
+settings = get_settings()
 # Import gRPC modules
 import grpc
+from app.services.state_manager import get_state_manager
+from app.utils import log_debug, log_error, log_info, log_warning
+
 try:
     # Import proto modules from proto package
-    import sys
     import os
+    import sys
+
     # Add the api-gateway root to path so we can import proto as a package
-    api_gateway_root = os.path.join(os.path.dirname(__file__), '../..')
+    api_gateway_root = os.path.join(os.path.dirname(__file__), "../..")
     sys.path.insert(0, api_gateway_root)
-    from proto import workflow_agent_pb2
-    from proto import workflow_agent_pb2_grpc
+    from proto import workflow_agent_pb2, workflow_agent_pb2_grpc
+
     GRPC_AVAILABLE = True
     log_info("✅ gRPC modules loaded successfully")
 except ImportError as e:
@@ -35,7 +39,7 @@ class WorkflowGRPCClient:
     gRPC client for the unified ProcessConversation interface
     Integrates with StateManager for state persistence
     """
-    
+
     def __init__(self):
         self.host = settings.WORKFLOW_SERVICE_HOST
         self.port = settings.WORKFLOW_SERVICE_PORT
@@ -43,7 +47,7 @@ class WorkflowGRPCClient:
         self.stub = None
         self.connected = False
         self.state_manager = get_state_manager()
-    
+
     async def connect(self):
         """Connect to workflow service"""
         try:
@@ -51,26 +55,23 @@ class WorkflowGRPCClient:
                 # Create gRPC channel and stub
                 self.channel = grpc.aio.insecure_channel(f"{self.host}:{self.port}")  # type: ignore
                 self.stub = workflow_agent_pb2_grpc.WorkflowAgentStub(self.channel)
-                
+
                 # Test connection with the newer API
                 try:
                     # Try the newer method first
-                    await asyncio.wait_for(
-                        self.channel.channel_ready(), 
-                        timeout=5.0
-                    )
+                    await asyncio.wait_for(self.channel.channel_ready(), timeout=5.0)
                 except AttributeError:
                     # Fallback to the older method for compatibility
                     try:
                         import grpc.experimental as grpc_experimental
+
                         await asyncio.wait_for(
-                            grpc_experimental.aio.channel_ready(self.channel),
-                            timeout=5.0
+                            grpc_experimental.aio.channel_ready(self.channel), timeout=5.0
                         )
                     except (AttributeError, ImportError):
                         # If all else fails, just connect without verification
                         await asyncio.sleep(0.1)
-                
+
                 self.connected = True
                 log_info(f"Connected to workflow service at {self.host}:{self.port}")
             else:
@@ -78,66 +79,70 @@ class WorkflowGRPCClient:
                 await asyncio.sleep(0.1)
                 self.connected = True
                 log_info(f"Mock connected to workflow service at {self.host}:{self.port}")
-                
+
         except Exception as e:
             log_error(f"Failed to connect to workflow service: {e}")
             self.connected = False
             raise
-    
+
     async def close(self):
         """Close gRPC connection"""
         if self.channel:
             await self.channel.close()
         self.connected = False
         log_info("Closed workflow service connection")
-    
+
     async def process_conversation_stream(
-        self, 
-        session_id: str, 
-        user_message: str, 
+        self,
+        session_id: str,
+        user_message: str,
         user_id: str = "anonymous",
         workflow_context: Optional[Dict[str, Any]] = None,
-        access_token: Optional[str] = None
+        access_token: Optional[str] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Process conversation using the new ProcessConversation interface
-        
+
         Args:
             session_id: Session identifier
             user_message: User's message
             user_id: User identifier
             workflow_context: Optional workflow context (origin, source_workflow_id, etc.)
             access_token: User's JWT token for state persistence
-            
+
         Yields:
             Streaming responses from the workflow agent
         """
         if not self.connected:
             await self.connect()
-        
+
         try:
             if GRPC_AVAILABLE:
                 # Get current state from database
-                current_state_data = self.state_manager.get_state_by_session(session_id, access_token)
-                
+                current_state_data = self.state_manager.get_state_by_session(
+                    session_id, access_token
+                )
+
                 # Prepare gRPC request
                 request = workflow_agent_pb2.ConversationRequest(
-                    session_id=session_id,
-                    user_id=user_id,
-                    user_message=user_message
+                    session_id=session_id, user_id=user_id, user_message=user_message
                 )
-                
+
                 # Add workflow context if provided
                 if workflow_context and isinstance(workflow_context, dict):
                     try:
                         context = workflow_agent_pb2.WorkflowContext()
                         context.origin = str(workflow_context.get("origin", "create"))
-                        context.source_workflow_id = str(workflow_context.get("source_workflow_id", ""))
-                        context.modification_intent = str(workflow_context.get("modification_intent", ""))
+                        context.source_workflow_id = str(
+                            workflow_context.get("source_workflow_id", "")
+                        )
+                        context.modification_intent = str(
+                            workflow_context.get("modification_intent", "")
+                        )
                         request.workflow_context.CopyFrom(context)
                     except Exception as e:
                         log_error(f"Error setting workflow_context in request: {e}")
-                
+
                 # Add current state if exists
                 if current_state_data:
                     try:
@@ -151,34 +156,40 @@ class WorkflowGRPCClient:
                         log_error(f"Error converting state to proto: {e}")
                         log_error(f"State data: {current_state_data}")
                         import traceback
+
                         log_error(f"Traceback: {traceback.format_exc()}")
                         raise
-                
+
                 log_error(f"Debug: About to call ProcessConversation with request")
-                
+
                 # Stream conversation processing
                 try:
                     async for response in self.stub.ProcessConversation(request):
                         # Convert protobuf response to dict
                         response_dict = self._proto_response_to_dict(response)
-                        
+
                         # Save updated state to database if provided
                         if response.updated_state:
                             updated_state = self._proto_state_to_dict(response.updated_state)
-                            self.state_manager.save_full_state(session_id, updated_state, access_token)
-                        
+                            self.state_manager.save_full_state(
+                                session_id, updated_state, access_token
+                            )
+
                         yield response_dict
                 except Exception as grpc_error:
                     log_error(f"gRPC call error: {grpc_error}")
                     import traceback
+
                     log_error(f"gRPC Traceback: {traceback.format_exc()}")
                     raise
-                    
+
             else:
                 # Mock implementation for environments without gRPC
-                async for response in self._mock_process_conversation(session_id, user_message, user_id):
+                async for response in self._mock_process_conversation(
+                    session_id, user_message, user_id
+                ):
                     yield response
-                    
+
         except Exception as e:
             log_error(f"Error in process_conversation_stream: {e}")
             # Yield error response
@@ -189,20 +200,20 @@ class WorkflowGRPCClient:
                     "error_code": "INTERNAL_ERROR",
                     "message": f"Failed to process conversation: {str(e)}",
                     "details": str(e),
-                    "is_recoverable": True
+                    "is_recoverable": True,
                 },
                 "timestamp": int(time.time() * 1000),
-                "is_final": True
+                "is_final": True,
             }
-    
+
     def _db_state_to_proto(self, db_state: Dict[str, Any]):
         """Convert database state to protobuf AgentState"""
         if not GRPC_AVAILABLE:
             return None
-            
+
         # This would use the StateConverter from workflow_agent service
         # For now, create a basic AgentState with safe type conversions
-        
+
         def safe_timestamp(value, default=None):
             """Safely convert timestamp to integer"""
             if default is None:
@@ -213,8 +224,9 @@ class WorkflowGRPCClient:
                 try:
                     # Try parsing ISO format or timestamp
                     import datetime
-                    if 'T' in value or '-' in value:
-                        dt = datetime.datetime.fromisoformat(value.replace('Z', '+00:00'))
+
+                    if "T" in value or "-" in value:
+                        dt = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
                         return int(dt.timestamp() * 1000)
                     else:
                         return int(float(value))
@@ -222,11 +234,11 @@ class WorkflowGRPCClient:
                     return default
             else:
                 return default
-        
+
         try:
             # 创建基本AgentState对象，不包含复杂嵌套字段
             agent_state = workflow_agent_pb2.AgentState()
-            
+
             # 设置基本字段
             agent_state.session_id = str(db_state.get("session_id", ""))
             agent_state.user_id = str(db_state.get("user_id", ""))
@@ -237,16 +249,16 @@ class WorkflowGRPCClient:
             agent_state.current_workflow_json = str(db_state.get("current_workflow_json", ""))
             agent_state.debug_result = str(db_state.get("debug_result", ""))
             agent_state.debug_loop_count = int(db_state.get("debug_loop_count", 0) or 0)
-            
+
             # 处理简单的repeated字段
             gaps = db_state.get("gaps") or []
             if isinstance(gaps, list):
                 agent_state.gaps[:] = [str(gap) for gap in gaps]
-                
+
             execution_history = db_state.get("execution_history") or []
             if isinstance(execution_history, list):
                 agent_state.execution_history[:] = [str(item) for item in execution_history]
-            
+
             # 处理复杂嵌套对象 - 使用安全的方式
             clarification_context = db_state.get("clarification_context")
             if clarification_context and isinstance(clarification_context, dict):
@@ -255,22 +267,22 @@ class WorkflowGRPCClient:
                     context = workflow_agent_pb2.ClarificationContext()
                     context.purpose = str(clarification_context.get("purpose", ""))
                     context.origin = str(clarification_context.get("origin", ""))
-                    
+
                     # 处理pending_questions
                     pending_questions = clarification_context.get("pending_questions", [])
                     if isinstance(pending_questions, list):
                         context.pending_questions[:] = [str(q) for q in pending_questions]
-                    
+
                     # 处理collected_info (map类型)
                     collected_info = clarification_context.get("collected_info", {})
                     if isinstance(collected_info, dict):
                         for key, value in collected_info.items():
                             context.collected_info[str(key)] = str(value)
-                    
+
                     agent_state.clarification_context.CopyFrom(context)
                 except Exception as e:
                     log_error(f"Error setting clarification_context: {e}")
-            
+
             # 处理workflow_context
             workflow_context = db_state.get("workflow_context")
             if workflow_context and isinstance(workflow_context, dict):
@@ -278,25 +290,28 @@ class WorkflowGRPCClient:
                     context = workflow_agent_pb2.WorkflowContext()
                     context.origin = str(workflow_context.get("origin", ""))
                     context.source_workflow_id = str(workflow_context.get("source_workflow_id", ""))
-                    context.modification_intent = str(workflow_context.get("modification_intent", ""))
+                    context.modification_intent = str(
+                        workflow_context.get("modification_intent", "")
+                    )
                     agent_state.workflow_context.CopyFrom(context)
                 except Exception as e:
                     log_error(f"Error setting workflow_context: {e}")
-                    
+
         except Exception as e:
             log_error(f"Error creating AgentState: {e}")
             raise
-        
+
         # Add conversations if available
         conversations = db_state.get("conversations", [])
         if isinstance(conversations, str):
             try:
                 import json
+
                 conversations = json.loads(conversations)
             except json.JSONDecodeError:
                 log_error(f"Failed to parse conversations JSON: {conversations}")
                 conversations = []
-        
+
         if isinstance(conversations, list):
             for conv in conversations:
                 try:
@@ -305,28 +320,28 @@ class WorkflowGRPCClient:
                         conversation.role = str(conv.get("role", "user"))
                         conversation.text = str(conv.get("text", ""))
                         conversation.timestamp = safe_timestamp(conv.get("timestamp"))
-                        
+
                         # Handle metadata separately to ensure string values
                         metadata = conv.get("metadata", {})
                         if isinstance(metadata, dict):
                             for key, value in metadata.items():
                                 conversation.metadata[str(key)] = str(value)
-                        
+
                         agent_state.conversations.append(conversation)
                 except Exception as e:
                     log_error(f"Error converting conversation to proto: {e}")
                     continue
-        
+
         return agent_state
-    
+
     def _proto_response_to_dict(self, response) -> Dict[str, Any]:
         """Convert protobuf ConversationResponse to dictionary"""
         result = {
             "session_id": response.session_id,
             "timestamp": response.timestamp,
-            "is_final": response.is_final
+            "is_final": response.is_final,
         }
-        
+
         # Handle different response types
         if response.type == workflow_agent_pb2.RESPONSE_MESSAGE:
             result["type"] = "message"
@@ -334,54 +349,58 @@ class WorkflowGRPCClient:
                 "text": response.message.text,
                 "role": response.message.role,
                 "message_type": response.message.message_type,
-                "metadata": dict(response.message.metadata)
+                "metadata": dict(response.message.metadata),
             }
-            
+
             # Add questions if present
             if response.message.questions:
                 result["message"]["questions"] = []
                 for q in response.message.questions:
-                    result["message"]["questions"].append({
-                        "id": q.id,
-                        "question": q.question,
-                        "category": q.category,
-                        "is_required": q.is_required,
-                        "options": list(q.options)
-                    })
-            
-            # Add alternatives if present  
+                    result["message"]["questions"].append(
+                        {
+                            "id": q.id,
+                            "question": q.question,
+                            "category": q.category,
+                            "is_required": q.is_required,
+                            "options": list(q.options),
+                        }
+                    )
+
+            # Add alternatives if present
             if response.message.alternatives:
                 result["message"]["alternatives"] = []
                 for alt in response.message.alternatives:
-                    result["message"]["alternatives"].append({
-                        "id": alt.id,
-                        "title": alt.title,
-                        "description": alt.description,
-                        "approach": alt.approach,
-                        "trade_offs": list(alt.trade_offs),
-                        "complexity": alt.complexity
-                    })
-                    
+                    result["message"]["alternatives"].append(
+                        {
+                            "id": alt.id,
+                            "title": alt.title,
+                            "description": alt.description,
+                            "approach": alt.approach,
+                            "trade_offs": list(alt.trade_offs),
+                            "complexity": alt.complexity,
+                        }
+                    )
+
         elif response.type == workflow_agent_pb2.RESPONSE_STATUS:
             result["type"] = "status"
             result["status"] = {
                 "new_stage": self._proto_enum_to_stage(response.status.new_stage),
                 "previous_stage": self._proto_enum_to_stage(response.status.previous_stage),
                 "stage_description": response.status.stage_description,
-                "pending_actions": list(response.status.pending_actions)
+                "pending_actions": list(response.status.pending_actions),
             }
-            
+
         elif response.type == workflow_agent_pb2.RESPONSE_ERROR:
             result["type"] = "error"
             result["error"] = {
                 "error_code": response.error.error_code,
                 "message": response.error.message,
                 "details": response.error.details,
-                "is_recoverable": response.error.is_recoverable
+                "is_recoverable": response.error.is_recoverable,
             }
-        
+
         return result
-    
+
     def _proto_state_to_dict(self, agent_state) -> Dict[str, Any]:
         """Convert protobuf AgentState to dictionary for state manager"""
         state_dict = {
@@ -395,40 +414,44 @@ class WorkflowGRPCClient:
             "gaps": list(agent_state.gaps),
             "current_workflow": agent_state.current_workflow_json,
             "debug_result": agent_state.debug_result,
-            "debug_loop_count": agent_state.debug_loop_count
+            "debug_loop_count": agent_state.debug_loop_count,
         }
-        
+
         # Add conversations
         conversations = []
         for conv in agent_state.conversations:
-            conversations.append({
-                "role": conv.role,
-                "text": conv.text,
-                "timestamp": conv.timestamp,
-                "metadata": dict(conv.metadata)
-            })
+            conversations.append(
+                {
+                    "role": conv.role,
+                    "text": conv.text,
+                    "timestamp": conv.timestamp,
+                    "metadata": dict(conv.metadata),
+                }
+            )
         state_dict["conversations"] = conversations
-        
+
         # Add alternatives
         alternatives = []
         for alt in agent_state.alternatives:
-            alternatives.append({
-                "id": alt.id,
-                "title": alt.title,
-                "description": alt.description,
-                "approach": alt.approach,
-                "trade_offs": list(alt.trade_offs),
-                "complexity": alt.complexity
-            })
+            alternatives.append(
+                {
+                    "id": alt.id,
+                    "title": alt.title,
+                    "description": alt.description,
+                    "approach": alt.approach,
+                    "trade_offs": list(alt.trade_offs),
+                    "complexity": alt.complexity,
+                }
+            )
         state_dict["alternatives"] = alternatives
-        
+
         return state_dict
-    
+
     def _stage_to_proto_enum(self, stage: str) -> int:
         """Convert stage string to protobuf enum"""
         if not GRPC_AVAILABLE:
             return 0
-            
+
         mapping = {
             "clarification": workflow_agent_pb2.STAGE_CLARIFICATION,
             "negotiation": workflow_agent_pb2.STAGE_NEGOTIATION,
@@ -436,23 +459,23 @@ class WorkflowGRPCClient:
             "alternative_generation": workflow_agent_pb2.STAGE_ALTERNATIVE_GENERATION,
             "workflow_generation": workflow_agent_pb2.STAGE_WORKFLOW_GENERATION,
             "debug": workflow_agent_pb2.STAGE_DEBUG,
-            "completed": workflow_agent_pb2.STAGE_COMPLETED
+            "completed": workflow_agent_pb2.STAGE_COMPLETED,
         }
         return mapping.get(stage, workflow_agent_pb2.STAGE_ERROR)
-    
+
     def _proto_enum_to_stage(self, proto_enum: int) -> str:
         """Convert protobuf enum to stage string"""
         if not GRPC_AVAILABLE:
             return "clarification"
-            
+
         mapping = {
             workflow_agent_pb2.STAGE_CLARIFICATION: "clarification",
-            workflow_agent_pb2.STAGE_NEGOTIATION: "negotiation", 
+            workflow_agent_pb2.STAGE_NEGOTIATION: "negotiation",
             workflow_agent_pb2.STAGE_GAP_ANALYSIS: "gap_analysis",
             workflow_agent_pb2.STAGE_ALTERNATIVE_GENERATION: "alternative_generation",
             workflow_agent_pb2.STAGE_WORKFLOW_GENERATION: "workflow_generation",
             workflow_agent_pb2.STAGE_DEBUG: "debug",
-            workflow_agent_pb2.STAGE_COMPLETED: "completed"
+            workflow_agent_pb2.STAGE_COMPLETED: "completed",
         }
         return mapping.get(proto_enum, "clarification")
 
