@@ -72,13 +72,14 @@ class WorkflowServiceClient:
             return [] # Return empty list if gRPC is not available
 
         try:
-            node_type_enum = workflow_pb2.NodeType.Value(type_filter) if type_filter else workflow_pb2.NodeType.TRIGGER_NODE
-            
             request = workflow_service_pb2.ListAllNodeTemplatesRequest(
-                category_filter=category_filter,
-                type_filter=node_type_enum,
                 include_system_templates=include_system_templates
             )
+            if category_filter:
+                request.category_filter = category_filter
+            if type_filter:
+                request.type_filter = workflow_pb2.NodeType.Value(type_filter)
+
             log_info(f"gRPC request to ListAllNodeTemplates: {request}")
             response = await self.stub.ListAllNodeTemplates(request)
             log_info(f"gRPC response from ListAllNodeTemplates: {response}")
