@@ -6,6 +6,12 @@ API Gateway - Three-Layer Architecture with FastAPI Best Practices
 import time
 from datetime import datetime, timezone
 
+from app.api.app.router import router as app_router
+from app.api.mcp.router import router as mcp_router
+
+# API路由 - Direct absolute imports to bypass package discovery issues
+from app.api.public.router import router as public_router
+
 # 核心组件
 from app.core.config import get_settings
 from app.core.events import health_check, lifespan
@@ -21,12 +27,6 @@ from app.utils.logger import get_logger
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-
-from .api.app.router import router as app_router
-from .api.mcp.router import router as mcp_router
-
-# API路由 - Use relative imports to avoid package discovery issues
-from .api.public.router import router as public_router
 
 # 在应用启动前设置日志
 setup_logging()
