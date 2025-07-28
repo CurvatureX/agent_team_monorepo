@@ -2,10 +2,12 @@
 Supabase Database Connection with RLS Support
 """
 
+import structlog
 from typing import Optional, Dict, Any, List
 from supabase import create_client, Client
 from app.config import settings
-from app.utils import log_info, log_warning, log_error, log_debug
+
+logger = structlog.get_logger("database")
 
 # Global admin Supabase client instance (service role)
 admin_supabase: Optional[Client] = None
@@ -20,23 +22,23 @@ def init_admin_supabase():
     try:
         # Validate API key format
         if not settings.SUPABASE_SECRET_KEY:
-            log_warning("SUPABASE_SECRET_KEY is empty")
+            logger.warning("SUPABASE_SECRET_KEY is empty")
             admin_supabase = None
             return
         # Create admin Supabase client
         admin_supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_SECRET_KEY)
         if settings.DEBUG:
-            log_info(f"🔧 Admin Supabase client initialized: {settings.SUPABASE_URL}")
+            logger.info("🔧 Admin Supabase client initialized", url=settings.SUPABASE_URL)
     except Exception as e:
         error_msg = str(e)
-        log_warning(f"Failed to connect to Supabase: {error_msg}")
+        logger.warning("Failed to connect to Supabase", error=error_msg)
         
         if "Legacy API keys are disabled" in error_msg:
-            log_info("💡 Solution: Use new Secret key (sb_secret_...) from Supabase dashboard")
+            logger.info("💡 Solution: Use new Secret key (sb_secret_...) from Supabase dashboard")
         elif "Invalid API key" in error_msg:
-            log_info("💡 Check: Use Secret key (sb_secret_...) not Publishable key (sb_publishable_...)")
+            logger.info("💡 Check: Use Secret key (sb_secret_...) not Publishable key (sb_publishable_...)")
         else:
-            log_info("💡 Check your .env file configuration")
+            logger.info("💡 Check your .env file configuration")
             
         admin_supabase = None
 
@@ -70,7 +72,7 @@ def get_user_supabase(access_token: str) -> Client:
     """
     # Check cache first
     if access_token in _user_clients:
-        log_debug(f"🔐 Using cached Supabase client for token")
+        logger.debug("🔐 Using cached Supabase client for token")
         return _user_clients[access_token]
     
     try:
@@ -89,15 +91,15 @@ def get_user_supabase(access_token: str) -> Client:
         if len(_user_clients) > 100:
             # Remove oldest entries
             _user_clients.clear()
-            log_debug("🗑️ Cleared user client cache")
+            logger.debug("🗑️ Cleared user client cache")
         
         _user_clients[access_token] = client
-        log_debug(f"🔐 Created new Supabase client for user token")
+        logger.debug("🔐 Created new Supabase client for user token")
         
         return client
         
     except Exception as e:
-        log_error(f"🔥 Failed to create user Supabase client: {str(e)}")
+        logger.error("🔥 Failed to create user Supabase client", error=str(e))
         # Fallback to admin client
         return ensure_admin_supabase()
 
@@ -149,10 +151,10 @@ class SupabaseRepository:
         try:
             client = self._get_client(access_token)
             result = client.table(self.table_name).insert(data).execute()
-            log_debug(f"✅ Created record in {self.table_name} (RLS: {'enabled' if access_token else 'admin'})")
+            logger.debug("✅ Created record", table=self.table_name, rls_mode='enabled' if access_token else 'admin')
             return result.data[0] if result.data else None
         except Exception as e:
-            log_error(f"❌ Error creating record in {self.table_name}: {e}")
+            logger.error("❌ Error creating record", table=self.table_name, error=str(e))
             return None
     
     def get_by_id(self, id: str, access_token: Optional[str] = None):
@@ -166,10 +168,10 @@ class SupabaseRepository:
         try:
             client = self._get_client(access_token)
             result = client.table(self.table_name).select("*").eq("id", id).execute()
-            log_debug(f"🔍 Queried {self.table_name} by ID (RLS: {'enabled' if access_token else 'admin'})")
+            logger.debug("🔍 Queried by ID", table=self.table_name, rls_mode='enabled' if access_token else 'admin')
             return result.data[0] if result.data else None
         except Exception as e:
-            log_error(f"❌ Error getting record from {self.table_name}: {e}")
+            logger.error("❌ Error getting record", table=self.table_name, error=str(e))
             return None
     
     def get_by_session_id(self, session_id: str, access_token: Optional[str] = None):
@@ -183,10 +185,10 @@ class SupabaseRepository:
         try:
             client = self._get_client(access_token)
             result = client.table(self.table_name).select("*").eq("session_id", session_id).execute()
-            log_debug(f"🔍 Queried {self.table_name} by session_id (RLS: {'enabled' if access_token else 'admin'})")
+            logger.debug("🔍 Queried by session_id", table=self.table_name, rls_mode='enabled' if access_token else 'admin')
             return result.data if result.data else []
         except Exception as e:
-            log_error(f"❌ Error getting records from {self.table_name}: {e}")
+            logger.error("❌ Error getting records", table=self.table_name, error=str(e))
             return []
     
     def get_by_user_id(self, user_id: str, access_token: Optional[str] = None):
@@ -200,10 +202,10 @@ class SupabaseRepository:
         try:
             client = self._get_client(access_token)
             result = client.table(self.table_name).select("*").eq("user_id", user_id).execute()
-            log_debug(f"🔍 Queried {self.table_name} by user_id (RLS: {'enabled' if access_token else 'admin'})")
+            logger.debug("🔍 Queried by user_id", table=self.table_name, rls_mode='enabled' if access_token else 'admin')
             return result.data if result.data else []
         except Exception as e:
-            log_error(f"❌ Error getting user records from {self.table_name}: {e}")
+            logger.error("❌ Error getting user records", table=self.table_name, error=str(e))
             return []
     
     def update(self, id: str, data: dict, access_token: Optional[str] = None):
@@ -218,10 +220,10 @@ class SupabaseRepository:
         try:
             client = self._get_client(access_token)
             result = client.table(self.table_name).update(data).eq("id", id).execute()
-            log_debug(f"✏️ Updated record in {self.table_name} (RLS: {'enabled' if access_token else 'admin'})")
+            logger.debug("✏️ Updated record", table=self.table_name, rls_mode='enabled' if access_token else 'admin')
             return result.data[0] if result.data else None
         except Exception as e:
-            log_error(f"❌ Error updating record in {self.table_name}: {e}")
+            logger.error("❌ Error updating record", table=self.table_name, error=str(e))
             return None
     
     def delete(self, id: str, access_token: Optional[str] = None):
@@ -235,10 +237,10 @@ class SupabaseRepository:
         try:
             client = self._get_client(access_token)
             result = client.table(self.table_name).delete().eq("id", id).execute()
-            log_debug(f"🗑️ Deleted record from {self.table_name} (RLS: {'enabled' if access_token else 'admin'})")
+            logger.debug("🗑️ Deleted record", table=self.table_name, rls_mode='enabled' if access_token else 'admin')
             return True
         except Exception as e:
-            log_error(f"❌ Error deleting record from {self.table_name}: {e}")
+            logger.error("❌ Error deleting record", table=self.table_name, error=str(e))
             return False
 
 
@@ -267,7 +269,7 @@ class ChatsRepository(SupabaseRepository):
             else:
                 return 1
         except Exception as e:
-            log_error(f"❌ Error getting next sequence number: {e}")
+            logger.error("❌ Error getting next sequence number", error=str(e))
             return 1
     
     def create(self, data: dict, access_token: Optional[str] = None):
@@ -282,7 +284,7 @@ class ChatsRepository(SupabaseRepository):
             # Get next sequence number
             session_id = data.get("session_id")
             if not session_id:
-                log_error("❌ session_id is required for chat messages")
+                logger.error("❌ session_id is required for chat messages")
                 return None
             
             sequence_number = self.get_next_sequence_number(session_id, access_token)
@@ -294,7 +296,7 @@ class ChatsRepository(SupabaseRepository):
             
             return super().create(data, access_token)
         except Exception as e:
-            log_error(f"❌ Error creating chat message: {e}")
+            logger.error("❌ Error creating chat message", error=str(e))
             return None
 
 
