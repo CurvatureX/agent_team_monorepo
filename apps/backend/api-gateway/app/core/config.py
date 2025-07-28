@@ -16,14 +16,19 @@ class DatabaseSettings(BaseSettings):
 
     # Supabase Configuration
     SUPABASE_URL: str = Field(
-        default="https://your-project-id.supabase.co", description="Supabase项目URL"
+        default_factory=lambda: os.getenv("SUPABASE_URL", "https://your-project-id.supabase.co"),
+        description="Supabase项目URL",
     )
     SUPABASE_SECRET_KEY: str = Field(
-        default="", description="Supabase服务角色密钥 (replaces both service and anon keys)"
+        default_factory=lambda: os.getenv("SUPABASE_SECRET_KEY", ""),
+        description="Supabase服务角色密钥 (replaces both service and anon keys)",
     )
 
     # Redis Configuration
-    REDIS_URL: str = Field(default="redis://localhost:6379/0", description="Redis连接URL")
+    REDIS_URL: str = Field(
+        default_factory=lambda: os.getenv("REDIS_URL", "redis://localhost:6379/0"),
+        description="Redis连接URL",
+    )
     REDIS_POOL_SIZE: int = Field(default=20, description="Redis连接池大小")
     REDIS_CONNECT_TIMEOUT: int = Field(default=5, description="Redis连接超时时间（秒）")
     REDIS_SOCKET_TIMEOUT: int = Field(default=5, description="Redis套接字超时时间（秒）")
@@ -189,7 +194,8 @@ class Settings(
     @validator("SUPABASE_URL")
     def validate_supabase_url(cls, v):
         """验证Supabase URL格式"""
-        if v and v != "https://your-project-id.supabase.co":
+        # Skip validation for placeholder URLs
+        if v and v not in ["https://your-project-id.supabase.co", "placeholder"]:
             if not v.startswith("https://") or not v.endswith(".supabase.co"):
                 raise ValueError(
                     "Supabase URL must be in format: https://your-project-id.supabase.co"

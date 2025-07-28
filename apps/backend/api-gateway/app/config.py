@@ -14,8 +14,12 @@ class Settings(BaseSettings):
     """Three-layer API Gateway configuration"""
 
     # Supabase Configuration
-    SUPABASE_URL: str = "https://your-project-id.supabase.co"  # Default placeholder
-    SUPABASE_SECRET_KEY: str = ""  # Service Role key - used for all Supabase operations
+    SUPABASE_URL: str = Field(
+        default_factory=lambda: os.getenv("SUPABASE_URL", "https://your-project-id.supabase.co")
+    )
+    SUPABASE_SECRET_KEY: str = Field(
+        default_factory=lambda: os.getenv("SUPABASE_SECRET_KEY", "")
+    )  # Service Role key - used for all Supabase operations
 
     # gRPC Configuration
     WORKFLOW_SERVICE_HOST: str = "localhost"
@@ -50,7 +54,9 @@ class Settings(BaseSettings):
     RELOAD: bool = True
 
     # Redis Configuration
-    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_URL: str = Field(
+        default_factory=lambda: os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    )
     CACHE_TTL: int = 3600  # 缓存过期时间（秒）
 
     # Public API Configuration
