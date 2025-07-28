@@ -46,16 +46,9 @@ services:
       - ./apps/backend/api-gateway/.env
     environment:
       - WORKFLOW_ENGINE_HOST=workflow-engine
-      - WORKFLOW_ENGINE_PORT=50050
-      - SUPABASE_URL=https://your-project-id.supabase.co
-      - SUPABASE_SECRET_KEY=your-secret-key
-      - SUPABASE_ANON_KEY=your-anon-key
-      - WORKFLOW_AGENT_HOST=localhost 
-      - WORKFLOW_AGENT_PORT=50051
-      - ENABLE_AUTH=False
-      - DEBUG=true
     depends_on:
-      - workflow-engine
+      workflow-engine:
+        condition: service_healthy
     networks:
       - app-network
 
