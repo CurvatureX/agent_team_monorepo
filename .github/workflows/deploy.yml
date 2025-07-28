@@ -40,17 +40,7 @@ jobs:
           uv sync
           cd api-gateway
           rm -rf .pytest_cache __pycache__ **/__pycache__ **/*.pyc
-          echo "=== DEBUG: Directory structure ==="
-          find . -name "*.py" | head -20
-          echo "=== DEBUG: Python path ==="
-          uv run python -c "import sys; print('\\n'.join(sys.path))"
-          echo "=== DEBUG: Installing package ==="
           uv pip install -e . --system
-          echo "=== DEBUG: Trying imports ==="
-          uv run python -c "import app; print('app imported successfully')"
-          uv run python -c "import app.api; print('app.api imported successfully')" || echo "app.api import failed"
-          uv run python -c "import app.api.public; print('app.api.public imported successfully')" || echo "app.api.public import failed"
-          echo "=== DEBUG: Running tests ==="
           uv run -m pytest tests/ -v --cov=app --cov-report=xml
 
       - name: Install dependencies and test Workflow Agent
