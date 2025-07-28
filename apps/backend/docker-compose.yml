@@ -1,27 +1,63 @@
 version: '3.8'
 
 services:
+  # Redis for LangGraph state management
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # PostgreSQL for data storage
   postgres:
-    image: postgres:13
-    container_name: postgres_workflow
+    image: postgres:15-alpine
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: workflow_engine
+      POSTGRES_DB: workflow_agent
+      POSTGRES_USER: workflow_user
+      POSTGRES_PASSWORD: workflow_password
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    networks:
-      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workflow_user -d workflow_agent"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
 
-  redis:
-    image: redis:6-alpine
-    container_name: redis_workflow
+  # Workflow Agent Service
+  workflow-agent:
+    build:
+      context: .
+      dockerfile: ./workflow_agent/Dockerfile
+    environment:
+      - DEBUG=false
+      - GRPC_HOST=0.0.0.0
+      - GRPC_PORT=50051
+      - DATABASE_URL=postgresql://workflow_user:workflow_password@postgres:5432/workflow_agent
+      - REDIS_URL=redis://redis:6379/0
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - DEFAULT_MODEL_PROVIDER=openai
+      - DEFAULT_MODEL_NAME=gpt-4
+      - LANGGRAPH_CHECKPOINT_BACKEND=redis
     ports:
-      - "6379:6379"
-    networks:
-      - app-network
+      - "50051:50051"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./shared/proto:/app/shared/proto:ro
+    restart: unless-stopped
 
   workflow-engine:
     build:
