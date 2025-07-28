@@ -1,16 +1,22 @@
 """
 State Manager for Workflow Agent States
 Handles persistence and retrieval of workflow agent conversation states
+
+Updated to follow current API Gateway design patterns:
+- Uses direct Supabase client operations instead of repository pattern
+- Supports RLS with create_user_supabase_client for authenticated users
+- Falls back to admin client for unauthenticated operations
+- Consistent error handling and logging patterns
 """
 
 import json
 import time
 from typing import Any, Dict, List, Optional
 
-from app.core.database import SupabaseRepository
-import structlog
+from app.core.database import create_user_supabase_client, get_supabase_admin
+import logging
 
-logger = structlog.get_logger("state_manager")
+logger = logging.getLogger("app.services.state_manager")
 
 
 class WorkflowStateManager:
@@ -20,7 +26,22 @@ class WorkflowStateManager:
     """
 
     def __init__(self):
-        self.repo = SupabaseRepository("workflow_agent_states")
+        self.table_name = "workflow_agent_states"
+    
+    def _get_client(self, access_token: Optional[str] = None):
+        """
+        Get appropriate Supabase client based on access token
+        
+        Args:
+            access_token: User's JWT token for RLS operations
+            
+        Returns:
+            Supabase client or None if failed to create
+        """
+        if access_token:
+            return create_user_supabase_client(access_token)
+        else:
+            return get_supabase_admin()
 
     def create_state(
         self,
@@ -77,16 +98,24 @@ class WorkflowStateManager:
                 "debug_loop_count": 0,
             }
 
-            result = self.repo.create(state_data, access_token)
-            if result:
-                logger.info("Created workflow state for session", session_id=session_id)
-                return result["id"]
+            # Get appropriate client based on access token
+            client = self._get_client(access_token)
+            if not client:
+                logger.error("Failed to create database client")
+                return None
+
+            result = client.table(self.table_name).insert(state_data).execute()
+            
+            if result.data:
+                state_id = result.data[0]["id"]
+                logger.info(f"Created workflow state for session {session_id}: {state_id}")
+                return state_id
             else:
-                logger.error("Failed to create workflow state for session", session_id=session_id)
+                logger.error(f"Failed to create workflow state for session {session_id}")
                 return None
 
         except Exception as e:
-            logger.error("Error creating workflow state", error=str(e))
+            logger.error(f"Error creating workflow state for session {session_id}: {e}")
             return None
 
     def get_state_by_session(
@@ -103,18 +132,26 @@ class WorkflowStateManager:
             State data if found, None if not found or error
         """
         try:
-            states = self.repo.get_by_session_id(session_id, access_token)
-            if states:
+            # Get appropriate client based on access token
+            client = self._get_client(access_token)
+            if not client:
+                logger.error("Failed to create database client")
+                return None
+
+            result = client.table(self.table_name).select("*").eq("session_id", session_id).execute()
+            
+            if result.data:
                 # Return the most recent state for this session
+                states = result.data
                 latest_state = max(states, key=lambda x: x.get("updated_at", 0))
-                logger.debug("Retrieved workflow state for session", session_id=session_id)
+                logger.debug(f"Retrieved workflow state for session {session_id}")
                 return latest_state
             else:
-                logger.debug("No workflow state found for session", session_id=session_id)
+                logger.debug(f"No workflow state found for session {session_id}")
                 return None
 
         except Exception as e:
-            logger.error("Error retrieving workflow state for session", session_id=session_id, error=str(e))
+            logger.error(f"Error retrieving workflow state for session {session_id}: {e}")
             return None
 
     def get_state_by_id(
@@ -131,16 +168,24 @@ class WorkflowStateManager:
             State data if found, None if not found or error
         """
         try:
-            state = self.repo.get_by_id(state_id, access_token)
-            if state:
-                logger.debug("Retrieved workflow state by ID", state_id=state_id)
+            # Get appropriate client based on access token
+            client = self._get_client(access_token)
+            if not client:
+                logger.error("Failed to create database client")
+                return None
+
+            result = client.table(self.table_name).select("*").eq("id", state_id).execute()
+            
+            if result.data:
+                state = result.data[0]
+                logger.debug(f"Retrieved workflow state by ID {state_id}")
                 return state
             else:
-                logger.debug("No workflow state found with ID", state_id=state_id)
+                logger.debug(f"No workflow state found with ID {state_id}")
                 return None
 
         except Exception as e:
-            logger.error("Error retrieving workflow state by ID", state_id=state_id, error=str(e))
+            logger.error(f"Error retrieving workflow state by ID {state_id}: {e}")
             return None
 
     def update_state(
@@ -161,7 +206,7 @@ class WorkflowStateManager:
             # Get current state first
             current_state = self.get_state_by_session(session_id, access_token)
             if not current_state:
-                logger.error("Cannot update - no state found for session", session_id=session_id)
+                logger.error(f"Cannot update - no state found for session {session_id}")
                 return False
 
             state_id = current_state["id"]
@@ -169,34 +214,23 @@ class WorkflowStateManager:
             # Ensure updated_at timestamp is set
             updates["updated_at"] = int(time.time() * 1000)
 
-            # Handle JSON fields properly
-            if "clarification_context" in updates and isinstance(
-                updates["clarification_context"], dict
-            ):
-                updates["clarification_context"] = json.dumps(updates["clarification_context"])
+            # Get appropriate client based on access token
+            client = self._get_client(access_token)
+            if not client:
+                logger.error("Failed to create database client")
+                return False
 
-            if "workflow_context" in updates and isinstance(updates["workflow_context"], dict):
-                updates["workflow_context"] = json.dumps(updates["workflow_context"])
-
-            if "conversations" in updates and isinstance(updates["conversations"], list):
-                updates["conversations"] = json.dumps(updates["conversations"])
-
-            if "alternatives" in updates and isinstance(updates["alternatives"], list):
-                updates["alternatives"] = json.dumps(updates["alternatives"])
-
-            if "rag_context" in updates and isinstance(updates["rag_context"], dict):
-                updates["rag_context"] = json.dumps(updates["rag_context"])
-
-            result = self.repo.update(state_id, updates, access_token)
-            if result:
-                logger.info("Updated workflow state for session", session_id=session_id)
+            result = client.table(self.table_name).update(updates).eq("id", state_id).execute()
+            
+            if result.data:
+                logger.info(f"Updated workflow state for session {session_id}")
                 return True
             else:
-                logger.error("Failed to update workflow state for session", session_id=session_id)
+                logger.error(f"Failed to update workflow state for session {session_id}")
                 return False
 
         except Exception as e:
-            logger.error("Error updating workflow state for session", session_id=session_id, error=str(e))
+            logger.error(f"Error updating workflow state for session {session_id}: {e}")
             return False
 
     def save_full_state(
@@ -241,7 +275,7 @@ class WorkflowStateManager:
                 return False
 
         except Exception as e:
-            logger.error("Error saving full workflow state for session", session_id=session_id, error=str(e))
+            logger.error(f"Error saving full workflow state for session {session_id}: {e}")
             return False
 
     def get_user_states(
@@ -258,12 +292,20 @@ class WorkflowStateManager:
             List of workflow states for the user
         """
         try:
-            states = self.repo.get_by_user_id(user_id, access_token)
-            logger.debug("Retrieved workflow states for user", user_id=user_id, count=len(states))
+            # Get appropriate client based on access token
+            client = self._get_client(access_token)
+            if not client:
+                logger.error("Failed to create database client")
+                return []
+
+            result = client.table(self.table_name).select("*").eq("user_id", user_id).execute()
+            
+            states = result.data if result.data else []
+            logger.debug(f"Retrieved {len(states)} workflow states for user {user_id}")
             return states
 
         except Exception as e:
-            logger.error("Error retrieving workflow states for user", user_id=user_id, error=str(e))
+            logger.error(f"Error retrieving workflow states for user {user_id}: {e}")
             return []
 
     def delete_state(self, session_id: str, access_token: Optional[str] = None) -> bool:
@@ -281,21 +323,26 @@ class WorkflowStateManager:
             # Get current state to find the ID
             current_state = self.get_state_by_session(session_id, access_token)
             if not current_state:
-                logger.error("Cannot delete - no state found for session", session_id=session_id)
+                logger.error(f"Cannot delete - no state found for session {session_id}")
                 return False
 
             state_id = current_state["id"]
-            result = self.repo.delete(state_id, access_token)
 
-            if result:
-                logger.info("Deleted workflow state for session", session_id=session_id)
-                return True
-            else:
-                logger.error("Failed to delete workflow state for session", session_id=session_id)
+            # Get appropriate client based on access token
+            client = self._get_client(access_token)
+            if not client:
+                logger.error("Failed to create database client")
                 return False
 
+            result = client.table(self.table_name).delete().eq("id", state_id).execute()
+
+            # Supabase delete operation is considered successful if it executes without error
+            # The data field may be empty even for successful deletions
+            logger.info(f"Deleted workflow state for session {session_id}")
+            return True
+
         except Exception as e:
-            logger.error("Error deleting workflow state for session", session_id=session_id, error=str(e))
+            logger.error(f"Error deleting workflow state for session {session_id}: {e}")
             return False
 
     def _prepare_state_for_db(self, workflow_state: Dict[str, Any]) -> Dict[str, Any]:

@@ -49,8 +49,6 @@ async def main():
     """Main entry point for the Workflow Agent service"""
     logger.info("Starting Workflow Agent Service")
 
-    # Create and start the gRPC server
-    logger.info("Creating WorkflowAgentServer instance")
     server = WorkflowAgentServer()
     logger.info("WorkflowAgentServer instance created successfully")
 
@@ -61,7 +59,6 @@ async def main():
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-    logger.info("Signal handlers registered")
 
     try:
         logger.info("Starting gRPC server...")

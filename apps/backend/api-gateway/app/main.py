@@ -22,15 +22,15 @@ from app.exceptions import register_exception_handlers
 from app.middleware.auth import unified_auth_middleware
 from app.middleware.rate_limit import rate_limit_middleware
 
-# 工具 - Use structlog directly
-import structlog
+# 工具 - Use custom logging
+import logging
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-# 在应用启动前设置日志 - this will configure structlog
+# 在应用启动前设置日志
 setup_logging()
-logger = structlog.get_logger("api-gateway")
+logger = logging.getLogger("app.main")
 
 # 获取配置
 settings = get_settings()
@@ -112,22 +112,14 @@ async def request_logging_middleware(request: Request, call_next):
     request.state.request_id = request_id
 
     # 记录请求开始
-    logger.info(
-        f"📨 {request.method} {request.url.path}",
-        extra={
-            "request_id": request_id,
-            "method": request.method,
-            "path": request.url.path,
-            "client_ip": (
-                request.headers.get("X-Forwarded-For")
-                or request.headers.get("X-Real-IP")
-                or str(request.client.host)
-                if request.client
-                else "unknown"
-            ),
-            "user_agent": request.headers.get("User-Agent"),
-        },
+    client_ip = (
+        request.headers.get("X-Forwarded-For")
+        or request.headers.get("X-Real-IP")
+        or str(request.client.host)
+        if request.client
+        else "unknown"
     )
+    logger.info(f"📨 {request.method} {request.url.path} [ID:{request_id}] [IP:{client_ip}]")
 
     # 处理请求
     response = await call_next(request)
@@ -140,14 +132,7 @@ async def request_logging_middleware(request: Request, call_next):
     response.headers["X-Process-Time"] = str(round(process_time * 1000, 2))
 
     # 记录响应
-    logger.info(
-        f"📤 {request.method} {request.url.path} -> {response.status_code}",
-        extra={
-            "request_id": request_id,
-            "status_code": response.status_code,
-            "process_time_ms": round(process_time * 1000, 2),
-        },
-    )
+    logger.info(f"📤 {request.method} {request.url.path} -> {response.status_code} [{round(process_time * 1000, 2)}ms]")
 
     return response
 

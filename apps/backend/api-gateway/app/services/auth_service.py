@@ -9,9 +9,9 @@ from typing import Any, Dict, Optional
 
 from app.core.database import get_supabase
 from app.services.cache import cache_service
-import structlog
+import logging
 
-logger = structlog.get_logger("auth_service")
+logger = logging.getLogger("app.services.auth_service")
 
 
 async def verify_supabase_token(token: str, use_cache: bool = True) -> Optional[Dict[str, Any]]:
@@ -34,7 +34,7 @@ async def verify_supabase_token(token: str, use_cache: bool = True) -> Optional[
         if use_cache:
             cached_user_data = await cache_service.get_cached_jwt_validation(token_hash)
             if cached_user_data:
-                logger.info("Cache hit for JWT token", token_hash_prefix=token_hash[:8])
+                logger.info(f"Cache hit for JWT token {token_hash[:8]}...")
                 return cached_user_data
 
         # Token not in cache or cache disabled, verify with Supabase
@@ -63,18 +63,18 @@ async def verify_supabase_token(token: str, use_cache: bool = True) -> Optional[
             if use_cache:
                 cache_success = await cache_service.cache_jwt_validation(token_hash, user_data)
                 if cache_success:
-                    logger.info("JWT validation cached for token", token_hash_prefix=token_hash[:8])
+                    logger.info(f"JWT validation cached for token {token_hash[:8]}...")
                 else:
-                    logger.error("Failed to cache JWT validation for token", token_hash_prefix=token_hash[:8])
+                    logger.error(f"Failed to cache JWT validation for token {token_hash[:8]}...")
 
-            logger.info("Token verified for user", user_email=response.user.email)
+            logger.info(f"Token verified for user: {response.user.email}")
             return user_data
 
         logger.error("Invalid token - no user data returned")
         return None
 
     except Exception as e:
-        logger.exception("Token verification failed", error=str(e))
+        logger.exception(f"Token verification failed: {e}")
         return None
 
 
@@ -94,12 +94,12 @@ async def invalidate_user_token_cache(user_id: str) -> bool:
         invalidation_results = await cache_service.invalidate_user_cache(user_id)
 
         successful_invalidations = sum(1 for success in invalidation_results.values() if success)
-        logger.info("Invalidated cache entries for user", successful_invalidations=successful_invalidations, user_id=user_id)
+        logger.info(f"Invalidated {successful_invalidations} cache entries for user {user_id}")
 
         return successful_invalidations > 0
 
     except Exception as e:
-        logger.exception("Error invalidating user token cache", error=str(e))
+        logger.exception(f"Error invalidating user token cache: {e}")
         return False
 
 
@@ -119,14 +119,14 @@ async def invalidate_token_cache(token: str) -> bool:
         success = await cache_service.invalidate_jwt_cache(token_hash)
 
         if success:
-            logger.info("Invalidated token cache", token_hash_prefix=token_hash[:8])
+            logger.info(f"Invalidated token cache {token_hash[:8]}...")
         else:
-            logger.error("Failed to invalidate token cache", token_hash_prefix=token_hash[:8])
+            logger.error(f"Failed to invalidate token cache {token_hash[:8]}...")
 
         return success
 
     except Exception as e:
-        logger.exception("Error invalidating token cache", error=str(e))
+        logger.exception(f"Error invalidating token cache: {e}")
         return False
 
 
@@ -155,5 +155,5 @@ async def get_auth_cache_stats() -> Dict[str, Any]:
         }
 
     except Exception as e:
-        logger.exception("Error getting auth cache stats", error=str(e))
+        logger.exception(f"Error getting auth cache stats: {e}")
         return {"error": str(e), "cache_enabled": False}
