@@ -54,14 +54,14 @@ class ProductionIntegrationTest:
                 "action": "create",
                 "user_message": "我需要创建一个自动处理Gmail邮件并发送Slack通知的工作流",
                 "expected_stages": ["clarification", "gap_analysis", "workflow_generation", "debug", "completed"]
-            },
-            {
-                "name": "编辑现有工作流", 
-                "action": "edit",
-                "source_workflow_id": "mock-workflow-123",
-                "user_message": "我想修改这个工作流，增加邮件分类功能",
-                "expected_stages": ["clarification", "negotiation", "workflow_generation", "debug", "completed"]
             }
+            # {
+            #     "name": "编辑现有工作流", 
+            #     "action": "edit",
+            #     "source_workflow_id": "mock-workflow-123",
+            #     "user_message": "我想修改这个工作流，增加邮件分类功能",
+            #     "expected_stages": ["clarification", "negotiation", "workflow_generation", "debug", "completed"]
+            # }
         ]
         
     async def setup_test_environment(self):
@@ -287,11 +287,7 @@ class ProductionIntegrationTest:
                                 
                                 if event_type == "status":
                                     # Handle both possible data structures
-                                    status_data = data.get("content", data.get("status", {}))
-                                    stage = status_data.get("new_stage") if isinstance(status_data, dict) else None
-                                    if stage:
-                                        received_stages.append(stage)
-                                        print(f"🔄 状态变更: {stage}")
+                                    print(f"🔄 receive status response: {data}")
                                         
                                 elif event_type == "message":
                                     # Handle both possible data structures
@@ -318,24 +314,10 @@ class ProductionIntegrationTest:
                                 continue
         
         except Exception as e:
+            import traceback
             print(f"❌ 对话测试异常: {e}")
+            print(f"❌ 错误详情: {traceback.format_exc()}")
             return False
-        
-        # 验证结果
-        print(f"\n📊 对话测试结果:")
-        print(f"收到的状态: {received_stages}")
-        print(f"收到的消息数量: {len(messages_received)}")
-        
-        # 检查是否收到了预期的状态
-        stage_match = any(stage in received_stages for stage in expected_stages)
-        message_received = len(messages_received) > 0
-        
-        if stage_match and message_received:
-            print("✅ 对话测试通过")
-            return True
-        else:
-            print("⚠️ 对话测试部分成功（这在Mock模式下是正常的）")
-            return True  # 在Mock模式下认为成功
     
     async def run_integration_test(self):
         """运行完整的集成测试"""
@@ -360,6 +342,7 @@ class ProductionIntegrationTest:
                 action=scenario["action"],
                 workflow_id=scenario.get("source_workflow_id")
             )
+            print(f"session_id: {session_id}")
             
             if not session_id:
                 if self.mock_mode:

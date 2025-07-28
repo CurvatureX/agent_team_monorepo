@@ -14,11 +14,35 @@ load_dotenv()
 
 # Import logging first
 import structlog
+import logging
+
+# Set standard library logging level to INFO
+logging.basicConfig(level=logging.INFO)
+
+# Configure structlog for better output with line numbers
+structlog.configure(
+    processors=[
+        structlog.stdlib.filter_by_level,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.UnicodeDecoder(),
+        # Use JSON renderer for better formatting
+        structlog.processors.JSONRenderer(indent=2),
+    ],
+    context_class=dict,
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    cache_logger_on_first_use=True,
+)
+
 # Import our modules - these work when run from workflow_agent directory
 from core.config import settings
 from services.grpc_server import WorkflowAgentServer
 
-logger = structlog.get_logger()
+logger = structlog.get_logger(__name__)
 
 
 async def main():

@@ -132,6 +132,38 @@ docker push 982081090398.dkr.ecr.us-east-1.amazonaws.com/agent-team/workflow-age
 docker push 982081090398.dkr.ecr.us-east-1.amazonaws.com/agent-team/workflow-engine:latest
 ```
 
+## Testing and Authentication
+
+### Test Authentication Setup
+
+When running tests or development tasks that require authentication:
+
+- **Authentication credentials** are stored in `.env` file
+- **GetToken interface** is available for obtaining JWT tokens programmatically
+- Test files should use the authentication flow from `.env` configuration
+- Example test authentication pattern:
+  ```python
+  # Load from .env
+  supabase_url = os.getenv("SUPABASE_URL")
+  test_email = os.getenv("TEST_USER_EMAIL") 
+  test_password = os.getenv("TEST_USER_PASSWORD")
+  supabase_anon_key = os.getenv("SUPABASE_ANON_KEY")
+  
+  # Use GetToken API for authentication
+  auth_url = f"{supabase_url}/auth/v1/token?grant_type=password"
+  ```
+
+### Test Suite Architecture
+
+The testing system has been upgraded with a modular structure:
+- `tests/auth/` - Authentication functionality tests
+- `tests/session/` - Session management tests  
+- `tests/chat/` - Chat and streaming response tests
+- `tests/integration/` - End-to-end integration tests
+- `tests/utils/` - Shared test utilities and configuration
+
+Run tests using: `python run_tests.py --all` or `python run_tests.py --quick`
+
 ## Environment Configuration
 
 ### Required Environment Variables
