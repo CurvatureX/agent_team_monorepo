@@ -1,2 +1,2 @@
 # MCP API Routes Package
-from app.api.mcp.router import router
+# Router is imported directly in main.py to avoid circular imports
