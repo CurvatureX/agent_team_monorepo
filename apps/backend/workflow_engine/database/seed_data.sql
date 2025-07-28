@@ -28,121 +28,197 @@ INSERT INTO integrations (integration_id, integration_type, name, description, v
  '{"base_url": "https://api.github.com", "auth_type": "oauth2"}',
  ARRAY['create_issue', 'create_pr', 'merge_pr', 'create_repo']);
 
--- Insert node templates for 8 core node types
-INSERT INTO node_templates (template_id, name, description, category, node_type, node_subtype, default_parameters, required_parameters, parameter_schema, is_system_template) VALUES
+-- ==============================================================================
+-- Seed Data for Node Templates
+-- ==============================================================================
 
--- TRIGGER node templates
-('trigger_webhook', 'Webhook Trigger', 'Triggers workflow when webhook is called', 'Triggers', 'TRIGGER', 'WEBHOOK', 
- '{"method": "POST", "path": "/webhook", "authentication": "none"}', 
- ARRAY['path'], 
- '{"type": "object", "properties": {"method": {"type": "string", "enum": ["GET", "POST"]}, "path": {"type": "string"}}}', 
- true),
+-- This script pre-populates the node_templates table with default system nodes
+-- based on the implemented node executors.
 
-('trigger_cron', 'Cron Trigger', 'Triggers workflow on schedule', 'Triggers', 'TRIGGER', 'CRON', 
- '{"cron_expression": "0 9 * * MON", "timezone": "UTC"}', 
- ARRAY['cron_expression'], 
- '{"type": "object", "properties": {"cron_expression": {"type": "string"}, "timezone": {"type": "string"}}}', 
- true),
+-- The `is_system_template` flag is set to true for all these nodes,
+-- indicating they are core components of the workflow engine.
 
-('trigger_manual', 'Manual Trigger', 'Manually triggered workflow', 'Triggers', 'TRIGGER', 'MANUAL', 
- '{"require_confirmation": false}', 
- ARRAY[], 
- '{"type": "object", "properties": {"require_confirmation": {"type": "boolean"}}}', 
- true),
+-- The `template_id` is a unique identifier for each template,
+-- which can be used to reference these templates in workflows.
 
--- AI_AGENT node templates
-('ai_router_agent', 'Router Agent', 'AI agent that routes requests to appropriate handlers', 'AI Agents', 'AI_AGENT', 'ROUTER_AGENT', 
- '{"model": "gpt-4", "temperature": 0.7, "max_tokens": 1000}', 
- ARRAY['model'], 
- '{"type": "object", "properties": {"model": {"type": "string"}, "temperature": {"type": "number"}, "max_tokens": {"type": "integer"}}}', 
- true),
+-- The `default_parameters` and `parameter_schema` fields provide
+-- default configurations and validation rules for each node.
 
-('ai_task_analyzer', 'Task Analyzer', 'AI agent that analyzes and breaks down tasks', 'AI Agents', 'AI_AGENT', 'TASK_ANALYZER', 
- '{"model": "gpt-4", "analysis_depth": "detailed"}', 
- ARRAY['model'], 
- '{"type": "object", "properties": {"model": {"type": "string"}, "analysis_depth": {"type": "string", "enum": ["basic", "detailed"]}}}', 
- true),
+DO $$
+BEGIN
 
--- EXTERNAL_ACTION node templates
-('external_slack', 'Slack Action', 'Send messages to Slack channels', 'External Actions', 'EXTERNAL_ACTION', 'SLACK', 
- '{"action_type": "send_message", "channel": "#general"}', 
- ARRAY['action_type'], 
- '{"type": "object", "properties": {"action_type": {"type": "string", "enum": ["send_message", "create_channel"]}, "channel": {"type": "string"}}}', 
- true),
+-- ==============================================================================
+-- TRIGGER_NODE Templates
+-- ==============================================================================
 
-('external_github', 'GitHub Action', 'Interact with GitHub repositories', 'External Actions', 'EXTERNAL_ACTION', 'GITHUB', 
- '{"action_type": "create_issue", "repository": "owner/repo"}', 
- ARRAY['action_type', 'repository'], 
- '{"type": "object", "properties": {"action_type": {"type": "string", "enum": ["create_issue", "create_pr"]}, "repository": {"type": "string"}}}', 
- true),
+INSERT INTO node_templates (template_id, name, description, category, node_type, node_subtype, is_system_template, default_parameters, parameter_schema)
+VALUES
+  ('trigger-manual', 'Manual Trigger', 'Manually starts a workflow execution.', 'Trigger', 'TRIGGER', 'MANUAL', true,
+  '{"require_confirmation": false}',
+  '{"type": "object", "properties": {"require_confirmation": {"type": "boolean"}}}'),
 
-('external_google_calendar', 'Google Calendar Action', 'Manage Google Calendar events', 'External Actions', 'EXTERNAL_ACTION', 'GOOGLE_CALENDAR', 
- '{"action_type": "create_event", "calendar_id": "primary"}', 
- ARRAY['action_type'], 
- '{"type": "object", "properties": {"action_type": {"type": "string", "enum": ["create_event", "update_event", "delete_event"]}, "calendar_id": {"type": "string"}}}', 
- true),
+  ('trigger-webhook', 'Webhook Trigger', 'Triggers a workflow via an HTTP webhook.', 'Trigger', 'TRIGGER', 'WEBHOOK', true,
+  '{"method": "POST", "path": "/webhook"}',
+  '{"type": "object", "properties": {"method": {"type": "string", "enum": ["GET", "POST", "PUT", "DELETE"]}, "path": {"type": "string"}}}'),
 
--- ACTION node templates
-('action_http_request', 'HTTP Request', 'Send HTTP requests to APIs', 'Actions', 'ACTION', 'SEND_HTTP_REQUEST', 
- '{"method": "GET", "timeout": 30, "follow_redirects": true}', 
- ARRAY['url'], 
- '{"type": "object", "properties": {"method": {"type": "string", "enum": ["GET", "POST", "PUT", "DELETE"]}, "url": {"type": "string"}, "timeout": {"type": "integer"}}}', 
- true),
+  ('trigger-cron', 'Cron Schedule Trigger', 'Triggers a workflow on a recurring schedule.', 'Trigger', 'TRIGGER', 'CRON', true,
+  '{"cron_expression": "0 9 * * MON", "timezone": "UTC"}',
+  '{"type": "object", "properties": {"cron_expression": {"type": "string"}, "timezone": {"type": "string"}}}'),
 
-('action_run_code', 'Run Code', 'Execute code in various languages', 'Actions', 'ACTION', 'RUN_CODE', 
- '{"language": "python", "timeout": 60}', 
- ARRAY['language', 'code'], 
- '{"type": "object", "properties": {"language": {"type": "string", "enum": ["python", "javascript", "bash"]}, "code": {"type": "string"}, "timeout": {"type": "integer"}}}', 
- true),
+  ('trigger-chat', 'Chat Message Trigger', 'Triggers a workflow when a chat message is received.', 'Trigger', 'TRIGGER', 'CHAT', true,
+  '{"chat_platform": "general", "message_filter": ""}',
+  '{"type": "object", "properties": {"chat_platform": {"type": "string"}, "message_filter": {"type": "string"}}}'),
 
--- FLOW node templates
-('flow_if_condition', 'If Condition', 'Conditional branching in workflow', 'Flow Control', 'FLOW', 'IF', 
- '{"condition_type": "javascript"}', 
- ARRAY['condition_expression'], 
- '{"type": "object", "properties": {"condition_type": {"type": "string", "enum": ["javascript", "simple"]}, "condition_expression": {"type": "string"}}}', 
- true),
+  ('trigger-email', 'Email Trigger', 'Triggers a workflow when an email is received.', 'Trigger', 'TRIGGER', 'EMAIL', true,
+  '{"email_provider": "gmail", "email_filter": ""}',
+  '{"type": "object", "properties": {"email_provider": {"type": "string"}, "email_filter": {"type": "string"}}}'),
 
-('flow_loop', 'Loop', 'Loop through data items', 'Flow Control', 'FLOW', 'LOOP', 
- '{"loop_type": "for_each", "max_iterations": 100}', 
- ARRAY['loop_type'], 
- '{"type": "object", "properties": {"loop_type": {"type": "string", "enum": ["for_each", "while", "times"]}, "max_iterations": {"type": "integer"}}}', 
- true),
+  ('trigger-form', 'Form Submission Trigger', 'Triggers a workflow when a form is submitted.', 'Trigger', 'TRIGGER', 'FORM', true,
+  '{"form_id": ""}',
+  '{"type": "object", "properties": {"form_id": {"type": "string"}}}'),
 
--- HUMAN_IN_THE_LOOP node templates
-('human_slack_approval', 'Slack Approval', 'Request approval via Slack', 'Human Interaction', 'HUMAN_IN_THE_LOOP', 'SLACK', 
- '{"timeout_minutes": 60, "auto_approve_after_timeout": false}', 
- ARRAY['approval_channel'], 
- '{"type": "object", "properties": {"approval_channel": {"type": "string"}, "timeout_minutes": {"type": "integer"}}}', 
- true),
+  ('trigger-calendar', 'Calendar Event Trigger', 'Triggers a workflow based on a calendar event.', 'Trigger', 'TRIGGER', 'CALENDAR', true,
+  '{"calendar_id": "primary", "event_filter": ""}',
+  '{"type": "object", "properties": {"calendar_id": {"type": "string"}, "event_filter": {"type": "string"}}}');
 
-('human_email_approval', 'Email Approval', 'Request approval via email', 'Human Interaction', 'HUMAN_IN_THE_LOOP', 'GMAIL', 
- '{"timeout_hours": 24, "auto_approve_after_timeout": false}', 
- ARRAY['approver_emails'], 
- '{"type": "object", "properties": {"approver_emails": {"type": "array", "items": {"type": "string"}}, "timeout_hours": {"type": "integer"}}}', 
- true),
+-- ==============================================================================
+-- FLOW_NODE Templates
+-- ==============================================================================
 
--- TOOL node templates
-('tool_google_calendar_mcp', 'Google Calendar MCP Tool', 'Google Calendar integration via MCP', 'Tools', 'TOOL', 'GOOGLE_CALENDAR_MCP', 
- '{"timezone": "UTC", "max_results": 50}', 
- ARRAY['google_credentials'], 
- '{"type": "object", "properties": {"google_credentials": {"type": "string"}, "timezone": {"type": "string"}, "max_results": {"type": "integer"}}}', 
- true),
+INSERT INTO node_templates (template_id, name, description, category, node_type, node_subtype, is_system_template, default_parameters, parameter_schema)
+VALUES
+  ('flow-if', 'If Condition', 'Executes a branch based on a boolean condition.', 'Flow Control', 'FLOW', 'IF', true,
+  '{"condition": "true"}',
+  '{"type": "object", "properties": {"condition": {"type": "string"}}}'),
 
-('tool_http', 'HTTP Tool', 'Generic HTTP request tool', 'Tools', 'TOOL', 'HTTP', 
- '{"timeout": 30, "verify_ssl": true}', 
- ARRAY[], 
- '{"type": "object", "properties": {"timeout": {"type": "integer"}, "verify_ssl": {"type": "boolean"}}}', 
- true),
+  ('flow-filter', 'Filter Data', 'Filters data based on a specified condition.', 'Flow Control', 'FLOW', 'FILTER', true,
+  '{"filter_condition": {}}',
+  '{"type": "object", "properties": {"filter_condition": {"type": "object"}}}'),
 
--- MEMORY node templates
-('memory_buffer', 'Buffer Memory', 'Short-term conversation memory', 'Memory', 'MEMORY', 'BUFFER', 
- '{"max_token_limit": 2000, "return_messages": true}', 
- ARRAY[], 
- '{"type": "object", "properties": {"max_token_limit": {"type": "integer"}, "return_messages": {"type": "boolean"}}}', 
- true),
+  ('flow-loop', 'Loop', 'Executes a branch multiple times (for-each, while, times).', 'Flow Control', 'FLOW', 'LOOP', true,
+  '{"loop_type": "for_each", "max_iterations": 100}',
+  '{"type": "object", "properties": {"loop_type": {"type": "string", "enum": ["for_each", "while", "times"]}, "max_iterations": {"type": "integer"}}}'),
 
-('memory_vector_store', 'Vector Store Memory', 'Long-term semantic memory with vector search', 'Memory', 'MEMORY', 'VECTOR_STORE', 
- '{"collection_name": "workflow_memory", "similarity_threshold": 0.8}', 
- ARRAY['collection_name'], 
- '{"type": "object", "properties": {"collection_name": {"type": "string"}, "similarity_threshold": {"type": "number"}}}', 
- true);
+  ('flow-merge', 'Merge', 'Merges data from multiple branches.', 'Flow Control', 'FLOW', 'MERGE', true,
+  '{"merge_strategy": "combine"}',
+  '{"type": "object", "properties": {"merge_strategy": {"type": "string", "enum": ["combine", "union", "intersection"]}}}'),
+
+  ('flow-switch', 'Switch', 'Routes execution to a branch based on a value.', 'Flow Control', 'FLOW', 'SWITCH', true,
+  '{"switch_cases": []}',
+  '{"type": "object", "properties": {"switch_cases": {"type": "array"}}}'),
+
+  ('flow-wait', 'Wait', 'Pauses execution for a duration, condition, or event.', 'Flow Control', 'FLOW', 'WAIT', true,
+  '{"wait_type": "time", "duration": 1}',
+  '{"type": "object", "properties": {"wait_type": {"type": "string", "enum": ["time", "condition", "event"]}, "duration": {"type": "integer"}}}');
+
+-- ==============================================================================
+-- HUMAN_IN_THE_LOOP_NODE Templates
+-- ==============================================================================
+
+INSERT INTO node_templates (template_id, name, description, category, node_type, node_subtype, is_system_template, default_parameters, parameter_schema)
+VALUES
+  ('human-gmail', 'Gmail Interaction', 'Sends an email via Gmail and waits for a response.', 'Human Interaction', 'HUMAN_IN_THE_LOOP', 'GMAIL', true,
+  '{"subject": "Action Required", "recipients": []}',
+  '{"type": "object", "properties": {"subject": {"type": "string"}, "recipients": {"type": "array"}}}'),
+
+  ('human-slack', 'Slack Interaction', 'Sends a message to a Slack channel and waits for a response.', 'Human Interaction', 'HUMAN_IN_THE_LOOP', 'SLACK', true,
+  '{"channel": "", "message_template": ""}',
+  '{"type": "object", "properties": {"channel": {"type": "string"}, "message_template": {"type": "string"}}}'),
+
+  ('human-discord', 'Discord Interaction', 'Sends a message to a Discord channel and waits for a response.', 'Human Interaction', 'HUMAN_IN_THE_LOOP', 'DISCORD', true,
+  '{"channel_id": "", "message_template": ""}',
+  '{"type": "object", "properties": {"channel_id": {"type": "string"}, "message_template": {"type": "string"}}}'),
+
+  ('human-telegram', 'Telegram Interaction', 'Sends a message to a Telegram chat and waits for a response.', 'Human Interaction', 'HUMAN_IN_THE_LOOP', 'TELEGRAM', true,
+  '{"chat_id": "", "message_template": ""}',
+  '{"type": "object", "properties": {"chat_id": {"type": "string"}, "message_template": {"type": "string"}}}'),
+
+  ('human-app', 'In-App Interaction', 'Sends an in-app notification and waits for a response.', 'Human Interaction', 'HUMAN_IN_THE_LOOP', 'APP', true,
+  '{"notification_type": "approval", "title": "Action Required"}',
+  '{"type": "object", "properties": {"notification_type": {"type": "string", "enum": ["approval", "input", "review", "confirmation"]}, "title": {"type": "string"}}}');
+
+-- ==============================================================================
+-- MEMORY_NODE Templates
+-- ==============================================================================
+
+INSERT INTO node_templates (template_id, name, description, category, node_type, node_subtype, is_system_template, default_parameters, parameter_schema)
+VALUES
+  ('memory-vector-db', 'Vector Database', 'Performs operations on a vector database.', 'Memory', 'MEMORY', 'VECTOR_DB', true,
+  '{"operation": "search", "collection_name": "default"}',
+  '{"type": "object", "properties": {"operation": {"type": "string", "enum": ["store", "search", "delete", "update"]}, "collection_name": {"type": "string"}}}'),
+
+  ('memory-key-value', 'Key-Value Store', 'Performs operations on a key-value store.', 'Memory', 'MEMORY', 'KEY_VALUE', true,
+  '{"operation": "get", "key": ""}',
+  '{"type": "object", "properties": {"operation": {"type": "string", "enum": ["get", "set", "delete", "exists"]}, "key": {"type": "string"}}}'),
+
+  ('memory-document', 'Document Store', 'Performs operations on a document store.', 'Memory', 'MEMORY', 'DOCUMENT', true,
+  '{"operation": "retrieve", "document_id": ""}',
+  '{"type": "object", "properties": {"operation": {"type": "string", "enum": ["store", "retrieve", "update", "delete", "search"]}, "document_id": {"type": "string"}}}');
+
+-- ==============================================================================
+-- TOOL_NODE Templates
+-- ==============================================================================
+
+INSERT INTO node_templates (template_id, name, description, category, node_type, node_subtype, is_system_template, default_parameters, parameter_schema)
+VALUES
+  ('tool-mcp', 'MCP Tool', 'Executes a registered MCP tool.', 'Tools', 'TOOL', 'MCP', true,
+  '{"tool_name": "", "operation": ""}',
+  '{"type": "object", "properties": {"tool_name": {"type": "string"}, "operation": {"type": "string"}}}'),
+
+  ('tool-calendar', 'Calendar Tool', 'Performs operations on a calendar.', 'Tools', 'TOOL', 'CALENDAR', true,
+  '{"calendar_id": "primary", "operation": "list_events"}',
+  '{"type": "object", "properties": {"calendar_id": {"type": "string"}, "operation": {"type": "string", "enum": ["list_events", "create_event", "update_event", "delete_event"]}}}'),
+
+  ('tool-email', 'Email Tool', 'Performs email operations.', 'Tools', 'TOOL', 'EMAIL', true,
+  '{"operation": "send"}',
+  '{"type": "object", "properties": {"operation": {"type": "string", "enum": ["send", "read", "search", "delete"]}}}'),
+
+  ('tool-http', 'HTTP Request', 'Makes an HTTP request to a URL.', 'Tools', 'TOOL', 'HTTP', true,
+  '{"method": "GET", "url": ""}',
+  '{"type": "object", "properties": {"method": {"type": "string", "enum": ["GET", "POST", "PUT", "DELETE", "PATCH"]}, "url": {"type": "string"}}}');
+
+-- ==============================================================================
+-- ACTION_NODE Templates
+-- ==============================================================================
+
+INSERT INTO node_templates (template_id, name, description, category, node_type, node_subtype, is_system_template, default_parameters, parameter_schema)
+VALUES
+  ('action-run-code', 'Run Code', 'Executes code in Python, JavaScript, Bash, or SQL.', 'Actions', 'ACTION', 'RUN_CODE', true,
+  '{"language": "python", "code": ""}',
+  '{"type": "object", "properties": {"language": {"type": "string", "enum": ["python", "javascript", "bash", "sql"]}, "code": {"type": "string"}}}'),
+
+  ('action-http-request', 'HTTP Request', 'Makes an HTTP request to a specified URL.', 'Actions', 'ACTION', 'HTTP_REQUEST', true,
+  '{"method": "GET", "url": ""}',
+  '{"type": "object", "properties": {"method": {"type": "string", "enum": ["GET", "POST", "PUT", "DELETE", "PATCH"]}, "url": {"type": "string"}}}'),
+
+  ('action-data-transform', 'Data Transformation', 'Transforms data using various methods.', 'Actions', 'ACTION', 'DATA_TRANSFORMATION', true,
+  '{"transformation_type": "filter"}',
+  '{"type": "object", "properties": {"transformation_type": {"type": "string", "enum": ["filter", "map", "reduce", "sort", "group", "join"]}}}'),
+
+  ('action-file-operation', 'File Operation', 'Performs operations on files.', 'Actions', 'ACTION', 'FILE_OPERATION', true,
+  '{"operation_type": "read", "file_path": ""}',
+  '{"type": "object", "properties": {"operation_type": {"type": "string", "enum": ["read", "write", "copy", "move", "delete", "list"]}, "file_path": {"type": "string"}}}');
+
+-- ==============================================================================
+-- AI_AGENT_NODE Templates
+-- ==============================================================================
+
+INSERT INTO node_templates (template_id, name, description, category, node_type, node_subtype, is_system_template, default_parameters, parameter_schema)
+VALUES
+  ('ai-router-agent', 'Router Agent', 'Routes requests to appropriate handlers using an AI model.', 'AI Agents', 'AI_AGENT', 'ROUTER_AGENT', true,
+  '{"model": "gpt-4", "system_prompt": "You are a router agent."}',
+  '{"type": "object", "properties": {"model": {"type": "string"}, "system_prompt": {"type": "string"}}}'),
+
+  ('ai-task-analyzer', 'Task Analyzer', 'Analyzes tasks for requirements, complexity, or dependencies.', 'AI Agents', 'AI_AGENT', 'TASK_ANALYZER', true,
+  '{"model": "gpt-4", "analysis_type": "requirement"}',
+  '{"type": "object", "properties": {"model": {"type": "string"}, "analysis_type": {"type": "string", "enum": ["requirement", "complexity", "dependency", "resource"]}}}'),
+
+  ('ai-data-integrator', 'Data Integrator', 'Integrates data from multiple sources using an AI model.', 'AI Agents', 'AI_AGENT', 'DATA_INTEGRATOR', true,
+  '{"model": "gpt-4", "integration_type": "merge"}',
+  '{"type": "object", "properties": {"model": {"type": "string"}, "integration_type": {"type": "string", "enum": ["merge", "transform", "validate", "enrich"]}}}'),
+
+  ('ai-report-generator', 'Report Generator', 'Generates reports from data using an AI model.', 'AI Agents', 'AI_AGENT', 'REPORT_GENERATOR', true,
+  '{"model": "gpt-4", "report_type": "summary"}',
+  '{"type": "object", "properties": {"model": {"type": "string"}, "report_type": {"type": "string", "enum": ["summary", "detailed", "executive", "technical"]}}}');
+
+END $$;
