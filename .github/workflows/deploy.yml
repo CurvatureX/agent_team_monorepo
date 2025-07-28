@@ -38,16 +38,14 @@ jobs:
         run: |
           pip install uv
           uv sync
-          export PYTHONPATH="${PYTHONPATH}:$(pwd)"
-          uv run python -m pytest tests/ -v --cov=app --cov-report=xml
+          uv run pytest tests/ -v --cov=app --cov-report=xml
 
       - name: Install dependencies and test Workflow Agent
         working-directory: apps/backend/workflow_agent
         run: |
           pip install uv
           uv sync
-          export PYTHONPATH="${PYTHONPATH}:$(pwd)"
-          uv run python -m pytest tests/ -v || echo "Tests not found, skipping"
+          uv run pytest tests/ -v || echo "Tests not found, skipping"
 
       - name: Install dependencies and test Workflow Engine
         working-directory: apps/backend/workflow_engine
@@ -55,8 +53,7 @@ jobs:
           pip install uv
           uv sync
           uv add pytest grpcio grpcio-tools
-          export PYTHONPATH="${PYTHONPATH}:$(pwd)"
-          uv run python -m pytest tests/ -v || echo "Tests not found, skipping"
+          uv run pytest tests/ -v || echo "Tests not found, skipping"
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
