@@ -41,20 +41,6 @@ jobs:
           uv pip install -e api-gateway/
           cd api-gateway
           rm -rf .pytest_cache __pycache__ **/__pycache__ **/*.pyc
-          echo "=== DEBUG: File structure check ==="
-          find app/api -name "*.py" | head -10
-          echo "=== DEBUG: Check __init__.py files ==="
-          cat app/api/__init__.py
-          cat app/api/public/__init__.py || echo "public/__init__.py missing!"
-          echo "=== DEBUG: Direct import test ==="
-          python -c "import sys; sys.path.insert(0, '.'); import app; print('app ok')"
-          python -c "import sys; sys.path.insert(0, '.'); import app.api; print('app.api ok')" || echo "app.api FAILED"
-          python -c "import sys; sys.path.insert(0, '.'); import app.api.public; print('app.api.public ok')" || echo "app.api.public FAILED"
-          echo "=== DEBUG: UV run import test ==="
-          uv run python -c "import app; print('app ok')"
-          uv run python -c "import app.api; print('app.api ok')" || echo "app.api FAILED"
-          uv run python -c "import app.api.public; print('app.api.public ok')" || echo "app.api.public FAILED"
-          echo "=== DEBUG: Running tests ==="
           uv run -m pytest tests/ -v --cov=app --cov-report=xml
 
       - name: Install dependencies and test Workflow Agent
