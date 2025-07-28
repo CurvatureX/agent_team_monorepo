@@ -34,26 +34,27 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies and test API Gateway
-        working-directory: apps/backend
         run: |
+          cd apps/backend
           pip install uv
           uv sync
-          PYTHONPATH=api-gateway:$PYTHONPATH uv run pytest api-gateway/tests/ -v --cov=api-gateway/app --cov-report=xml
+          cd api-gateway
+          ../.venv/bin/python -m pytest tests/ -v --cov=app --cov-report=xml
 
       - name: Install dependencies and test Workflow Agent
-        working-directory: apps/backend
         run: |
-          PYTHONPATH=workflow_agent:$PYTHONPATH uv run pytest workflow_agent/tests/ -v || echo "Tests not found, skipping"
+          cd apps/backend/workflow_agent
+          ../.venv/bin/python -m pytest tests/ -v || echo "Tests not found, skipping"
 
       - name: Install dependencies and test Workflow Engine
-        working-directory: apps/backend
         run: |
-          PYTHONPATH=workflow_engine:$PYTHONPATH uv run pytest workflow_engine/tests/ -v || echo "Tests not found, skipping"
+          cd apps/backend/workflow_engine
+          ../.venv/bin/python -m pytest tests/ -v || echo "Tests not found, skipping"
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
         with:
-          file: apps/backend/coverage.xml
+          file: apps/backend/api-gateway/coverage.xml
           flags: api-gateway
           name: api-gateway-coverage
 
