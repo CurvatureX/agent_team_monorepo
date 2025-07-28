@@ -22,6 +22,22 @@ COPY api-gateway/.python-version* ./api-gateway/
 # Install Python dependencies with uv
 RUN uv sync --frozen --package api-gateway-mvp
 
+# Copy shared proto files and generation script for proto compilation
+COPY shared/proto/ /app/shared/proto/
+COPY shared/scripts/generate_engine_grpc.py /app/shared/scripts/
+
+# Generate proto files from engine directory using the virtual environment
+RUN .venv/bin/python /app/shared/scripts/generate_engine_grpc.py \
+    --proto_path=/app/shared/proto/engine \
+    --output_dir=/app/proto
+
+# Generate workflow_agent proto file separately
+RUN .venv/bin/python -m grpc_tools.protoc \
+    --proto_path=/app/shared/proto \
+    --python_out=/app/proto \
+    --grpc_python_out=/app/proto \
+    /app/shared/proto/workflow_agent.proto
+
 # Production stage
 FROM python:3.11-slim AS production
 
@@ -37,6 +53,9 @@ RUN apt-get update && apt-get install -y \
 
 # Copy uv and dependencies from builder
 COPY --from=builder /app/.venv /app/.venv
+
+# Copy generated proto files from builder
+COPY --from=builder /app/proto /app/proto
 
 # Copy application code
 COPY api-gateway/ ./
