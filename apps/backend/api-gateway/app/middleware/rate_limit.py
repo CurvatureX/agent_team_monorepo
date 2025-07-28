@@ -18,7 +18,9 @@ from typing import Any, Dict, Optional
 from app.core.config import get_settings
 
 settings = get_settings()
-from app.utils import log_error, log_info, log_warning
+import structlog
+
+logger = structlog.get_logger("rate_limit_middleware")
 from fastapi import HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
@@ -74,14 +76,14 @@ class RateLimiter:
                 )
                 # 测试连接
                 self.redis_client.ping()
-                log_info("✅ Rate limiter Redis connected")
+                logger.info("Rate limiter Redis connected")
             else:
                 if not REDIS_AVAILABLE:
-                    log_warning("🚨 Redis module not available, rate limiting disabled")
+                    logger.warning("Redis module not available, rate limiting disabled")
                 else:
-                    log_warning("🚨 Redis URL not configured, rate limiting disabled")
+                    logger.warning("Redis URL not configured, rate limiting disabled")
         except Exception as e:
-            log_error(f"❌ Failed to connect to Redis for rate limiting: {e}")
+            logger.error("Failed to connect to Redis for rate limiting", error=str(e))
             self.redis_client = None
 
     def _parse_limit(self, limit_str: str) -> tuple[int, int]:
@@ -156,7 +158,7 @@ class RateLimiter:
             return allowed, info
 
         except Exception as e:
-            log_error(f"Rate limit check error for key {key}: {e}")
+            logger.error("Rate limit check error", key=key, error=str(e))
             # Redis错误时允许请求
             return True, {"status": "error", "reason": str(e)}
 
@@ -254,10 +256,13 @@ async def rate_limit_middleware(request: Request, call_next):
     allowed, info = await check_rate_limit_for_request(request)
 
     if not allowed:
-        log_warning(
-            f"🚫 Rate limit exceeded: {request.method} {request.url.path} "
-            f"- {info.get('limit_type', 'unknown')} limit "
-            f"({info.get('current_count', 0)}/{info.get('limit', 0)})"
+        logger.warning(
+            "Rate limit exceeded",
+            method=request.method,
+            path=request.url.path,
+            limit_type=info.get('limit_type', 'unknown'),
+            current_count=info.get('current_count', 0),
+            limit=info.get('limit', 0)
         )
 
         # 构建限流响应
