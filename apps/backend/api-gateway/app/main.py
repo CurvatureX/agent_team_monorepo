@@ -62,8 +62,8 @@ def create_application() -> FastAPI:
         version=settings.VERSION,
         lifespan=lifespan,
         debug=settings.DEBUG,
-        docs_url="/docs" if settings.DEBUG else None,
-        redoc_url="/redoc" if settings.DEBUG else None,
+        docs_url="/docs",
+        redoc_url="/redoc",
     )
 
     # 配置CORS

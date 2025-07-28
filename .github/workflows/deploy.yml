@@ -215,4 +215,5 @@ jobs:
           aws ecs wait services-stable \
             --cluster agent-team-production-cluster \
             --services api-gateway-service workflow-agent-service workflow-engine-service \
-            --region ${{ env.AWS_REGION }}
+            --region ${{ env.AWS_REGION }} \
+            --max-attempts 60
