@@ -33,7 +33,7 @@ async def create_session(request: SessionCreate, deps: AuthenticatedDeps = Depen
         logger.info(f"📝 Creating session for user {deps.current_user.sub}")
 
         # Validate action parameter
-        valid_actions = ["chat", "workflow_generation", "workflow_execution", "tool_invocation"]
+        valid_actions = ["create", "edit", "copy"]
         if request.action and request.action not in valid_actions:
             raise ValidationError(
                 f"Invalid action. Must be one of: {valid_actions}",
@@ -41,7 +41,7 @@ async def create_session(request: SessionCreate, deps: AuthenticatedDeps = Depen
             )
 
         # For workflow actions, workflow_id might be required
-        if request.action in ["workflow_execution"] and not request.workflow_id:
+        if request.action in ["edit", "copy"] and not request.workflow_id:
             raise ValidationError(
                 "workflow_id is required for workflow execution", details={"action": request.action}
             )
