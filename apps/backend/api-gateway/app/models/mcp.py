@@ -3,8 +3,9 @@ MCP (Model Context Protocol) Models
 MCP相关的数据模型
 """
 
-from typing import Optional, Dict, Any, List
-from pydantic import Field, validator
+from typing import Any, Dict, List, Optional
+
+from pydantic import Field, field_validator
 
 from .base import BaseModel, EntityModel, ResponseModel
 
@@ -35,7 +36,8 @@ class MCPInvokeRequest(BaseModel):
     timeout: Optional[int] = Field(default=30, ge=1, le=300, description="超时时间（秒，1-300）")
     context: Optional[Dict[str, Any]] = Field(default_factory=dict, description="执行上下文")
 
-    @validator("tool_name")
+    @field_validator("tool_name")
+    @classmethod
     def validate_tool_name(cls, v):
         """验证工具名称"""
         if not v or not v.strip():
@@ -131,7 +133,8 @@ class MCPBatchRequest(BaseModel):
     fail_fast: bool = Field(default=False, description="是否快速失败")
     timeout: Optional[int] = Field(default=60, ge=1, le=600, description="总超时时间（秒）")
 
-    @validator("requests")
+    @field_validator("requests")
+    @classmethod
     def validate_requests(cls, v):
         """验证请求列表"""
         if not v:

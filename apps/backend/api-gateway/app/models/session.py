@@ -3,10 +3,11 @@ Session Models
 会话相关的数据模型
 """
 
-from typing import Optional, Dict, Any
-from pydantic import Field, validator
+from typing import Any, Dict, Optional
 
-from .base import EntityModel, BaseModel
+from pydantic import Field, field_validator
+
+from .base import BaseModel, EntityModel
 
 
 class SessionCreate(BaseModel):
@@ -19,7 +20,8 @@ class SessionCreate(BaseModel):
     session_type: str = Field(default="user", description="会话类型 (user, guest, system)")
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="会话元数据")
 
-    @validator("action")
+    @field_validator("action")
+    @classmethod
     def validate_action(cls, v):
         """验证动作类型"""
         valid_actions = ["chat", "workflow_generation", "workflow_execution", "tool_invocation"]
@@ -27,7 +29,8 @@ class SessionCreate(BaseModel):
             raise ValueError(f"Invalid action. Must be one of: {valid_actions}")
         return v
 
-    @validator("session_type")
+    @field_validator("session_type")
+    @classmethod
     def validate_session_type(cls, v):
         """验证会话类型"""
         valid_types = ["user", "guest", "system"]
@@ -45,7 +48,8 @@ class SessionUpdate(BaseModel):
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="更新的元数据")
     last_activity: Optional[str] = Field(default=None, description="最后活动时间")
 
-    @validator("status")
+    @field_validator("status")
+    @classmethod
     def validate_status(cls, v):
         """验证会话状态"""
         if v is not None:

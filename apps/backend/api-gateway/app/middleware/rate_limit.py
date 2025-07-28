@@ -15,7 +15,9 @@ except ImportError:
     redis = None
 from typing import Any, Dict, Optional
 
-from app.config import settings
+from app.core.config import get_settings
+
+settings = get_settings()
 from app.utils import log_error, log_info, log_warning
 from fastapi import HTTPException, Request, Response
 from fastapi.responses import JSONResponse

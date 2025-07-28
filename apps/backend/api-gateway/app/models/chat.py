@@ -3,11 +3,12 @@ Chat Models
 聊天相关的数据模型
 """
 
-from typing import Optional, Dict, Any, List
-from pydantic import Field, validator
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
-from .base import EntityModel, BaseModel
+from pydantic import Field, field_validator
+
+from .base import BaseModel, EntityModel
 
 
 class MessageType(str, Enum):
@@ -30,7 +31,8 @@ class ChatRequest(BaseModel):
     message_type: MessageType = Field(default=MessageType.USER, description="消息类型")
     context: Optional[Dict[str, Any]] = Field(default_factory=dict, description="上下文信息")
 
-    @validator("message")
+    @field_validator("message")
+    @classmethod
     def validate_message(cls, v):
         """验证消息内容"""
         if not v or not v.strip():
@@ -63,7 +65,8 @@ class ChatSSEEvent(BaseModel):
     session_id: str = Field(description="会话ID")
     timestamp: Optional[str] = Field(default=None, description="时间戳")
 
-    @validator("type")
+    @field_validator("type")
+    @classmethod
     def validate_event_type(cls, v):
         """验证事件类型"""
         valid_types = ["message", "status", "error", "workflow_stage", "tool_call", "completion"]
@@ -107,7 +110,8 @@ class WorkflowGenerationEvent(BaseModel):
     message: str = Field(description="阶段消息")
     workflow_data: Optional[Dict[str, Any]] = Field(default=None, description="工作流数据（完成时提供）")
 
-    @validator("stage")
+    @field_validator("stage")
+    @classmethod
     def validate_stage(cls, v):
         """验证生成阶段"""
         valid_stages = [

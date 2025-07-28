@@ -23,6 +23,7 @@ dependencies = [
     "passlib[bcrypt]==1.7.4",
     "python-dotenv==1.0.0",
     "structlog>=23.2.0",
+    "python-json-logger>=2.0.0",
     # Redis dependencies
     "redis>=5.0.0",
     "redis[hiredis]>=5.0.0",  # Enhanced performance with hiredis
