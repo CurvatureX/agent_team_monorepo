@@ -26,6 +26,7 @@ WORKDIR /app
 # Install runtime dependencies only
 RUN apt-get update && apt-get install -y \
     curl \
+    netcat-traditional \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -36,6 +37,9 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Copy the application code
 COPY workflow_agent/ .
 COPY shared/ ./shared/
+
+# Create the prompts directory where the prompt engine expects it
+RUN mkdir -p /shared/prompts && cp -r ./shared/prompts/* /shared/prompts/
 
 # Create proto directory and generate protobuf files
 RUN mkdir -p proto && \

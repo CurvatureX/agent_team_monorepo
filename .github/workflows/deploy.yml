@@ -157,7 +157,28 @@ jobs:
           TF_VAR_supabase_secret_key: ${{ secrets.SUPABASE_SECRET_KEY }}
           TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          TF_VAR_database_url: ${{ secrets.DATABASE_URL }}
         run: terraform plan -out=tfplan
+
+      - name: Handle Service Discovery cleanup if needed
+        run: |
+          # Check if terraform plan shows service discovery services being recreated
+          if grep -q "aws_service_discovery_service.*must be replaced" tfplan.txt 2>/dev/null || grep -q "Destroying.*service_discovery_service" infra/tfplan 2>/dev/null; then
+            echo "Service Discovery services need cleanup - handling gracefully"
+
+            # Get all service discovery instances that need cleanup
+            SERVICES=$(aws servicediscovery list-services --query "Services[?Name=='api-gateway' || Name=='workflow-agent'].Id" --output text 2>/dev/null || echo "")
+
+            for service_id in $SERVICES; do
+              if [ ! -z "$service_id" ]; then
+                echo "Checking instances for service: $service_id"
+                aws servicediscovery list-instances --service-id "$service_id" --query "Instances[].Id" --output text | xargs -r -n1 -I {} aws servicediscovery deregister-instance --service-id "$service_id" --instance-id {} || true
+                # Wait a moment for deregistration
+                sleep 5
+              fi
+            done
+          fi
+        working-directory: infra
 
       - name: Terraform Apply
         working-directory: infra
@@ -167,6 +188,7 @@ jobs:
           TF_VAR_supabase_secret_key: ${{ secrets.SUPABASE_SECRET_KEY }}
           TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          TF_VAR_database_url: ${{ secrets.DATABASE_URL }}
         run: terraform apply -auto-approve tfplan
 
       - name: Update ECS Service - API Gateway

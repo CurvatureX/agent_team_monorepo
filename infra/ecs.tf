@@ -200,7 +200,7 @@ resource "aws_ecs_task_definition" "workflow_engine" {
 
       portMappings = [
         {
-          containerPort = 8000
+          containerPort = 50050
           protocol      = "tcp"
         }
       ]
@@ -216,7 +216,7 @@ resource "aws_ecs_task_definition" "workflow_engine" {
         },
         {
           name  = "GRPC_PORT"
-          value = "8000"
+          value = "50050"
         },
         {
           name  = "REDIS_URL"
@@ -232,6 +232,18 @@ resource "aws_ecs_task_definition" "workflow_engine" {
         {
           name      = "ANTHROPIC_API_KEY"
           valueFrom = aws_ssm_parameter.anthropic_api_key.arn
+        },
+        {
+          name      = "SUPABASE_URL"
+          valueFrom = aws_ssm_parameter.supabase_url.arn
+        },
+        {
+          name      = "SUPABASE_SECRET_KEY"
+          valueFrom = aws_ssm_parameter.supabase_secret_key.arn
+        },
+        {
+          name      = "DATABASE_URL"
+          valueFrom = aws_ssm_parameter.database_url.arn
         }
       ]
 
@@ -245,11 +257,11 @@ resource "aws_ecs_task_definition" "workflow_engine" {
       }
 
       healthCheck = {
-        command     = ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+        command     = ["CMD-SHELL", "nc -z localhost 50050 || exit 1"]
         interval    = 30
-        timeout     = 5
+        timeout     = 10
         retries     = 3
-        startPeriod = 60
+        startPeriod = 180
       }
     }
   ])
@@ -340,10 +352,6 @@ resource "aws_ecs_task_definition" "workflow_agent" {
           name      = "SUPABASE_URL"
           valueFrom = aws_ssm_parameter.supabase_url.arn
         },
-        {
-          name      = "SUPABASE_SERVICE_KEY"
-          valueFrom = aws_ssm_parameter.supabase_service_key.arn
-        }
       ]
 
       logConfiguration = {
@@ -356,11 +364,11 @@ resource "aws_ecs_task_definition" "workflow_agent" {
       }
 
       healthCheck = {
-        command     = ["CMD-SHELL", "grpc_health_probe -addr=localhost:50051 || exit 1"]
+        command     = ["CMD-SHELL", "nc -z localhost 50051 || exit 1"]
         interval    = 30
         timeout     = 10
         retries     = 3
-        startPeriod = 60
+        startPeriod = 240
       }
     }
   ])
