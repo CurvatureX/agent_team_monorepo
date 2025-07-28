@@ -209,7 +209,7 @@ class EnhancedMCPService:
 mcp_service = EnhancedMCPService()
 
 
-@router.get("/mcp/tools", response_model=MCPToolsResponse)
+@router.get("/tools", response_model=MCPToolsResponse)
 async def list_tools(
     deps: MCPDeps = Depends(), tools_scope: None = Depends(require_scope("tools:read"))
 ):
@@ -247,7 +247,7 @@ async def list_tools(
         )
 
 
-@router.post("/mcp/invoke", response_model=MCPInvokeResponse)
+@router.post("/invoke", response_model=MCPInvokeResponse)
 async def invoke_tool(
     invoke_request: MCPInvokeRequest,
     deps: MCPDeps = Depends(),
@@ -300,7 +300,7 @@ async def invoke_tool(
         )
 
 
-@router.get("/mcp/tools/{tool_name}")
+@router.get("/tools/{tool_name}")
 async def get_tool_info(
     tool_name: str = Depends(get_tool_name),
     deps: MCPDeps = Depends(),
@@ -355,7 +355,7 @@ async def get_tool_info(
         )
 
 
-@router.get("/mcp/health", response_model=MCPHealthCheck)
+@router.get("/health", response_model=MCPHealthCheck)
 async def mcp_health(
     deps: MCPDeps = Depends(), health_scope: None = Depends(require_scope("health:check"))
 ):
