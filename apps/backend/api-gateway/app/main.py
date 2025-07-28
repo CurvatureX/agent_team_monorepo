@@ -2,6 +2,8 @@
 API Gateway - Simplified with Frontend Auth
 """
 
+import logging
+import structlog
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,7 +13,33 @@ from app.database import init_supabase
 from app.models import HealthResponse
 from app.api import session, chat, workflow, mcp
 from app.services.grpc_client import workflow_client
-from app.utils import log_info, log_warning, log_error, log_exception
+
+# Configure structlog for JSON logging with line numbers
+structlog.configure(
+    processors=[
+        structlog.processors.CallsiteParameterAdder(
+            parameters=[
+                structlog.processors.CallsiteParameter.FILENAME,
+                structlog.processors.CallsiteParameter.LINENO,
+                structlog.processors.CallsiteParameter.FUNC_NAME,
+            ]
+        ),
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.stdlib.add_log_level,
+        structlog.processors.JSONRenderer()
+    ],
+    wrapper_class=structlog.stdlib.BoundLogger,
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    cache_logger_on_first_use=True,
+)
+
+# Configure stdlib logging
+logging.basicConfig(
+    format="%(message)s",
+    level=getattr(logging, getattr(settings, 'LOG_LEVEL', 'INFO').upper(), logging.INFO),
+)
+
+logger = structlog.get_logger("api-gateway")
 
 
 @asynccontextmanager
@@ -19,23 +47,23 @@ async def lifespan(app: FastAPI):
     """Application lifespan events - replaces deprecated on_event"""
     # Startup
     try:
-        log_info("🚀 Starting API Gateway with Frontend Auth...")
+        logger.info("🚀 Starting API Gateway with Frontend Auth...")
         
         # Initialize Supabase connection
         init_supabase()
-        log_info("✅ Supabase client initialized")
+        logger.info("✅ Supabase client initialized")
         
         # Initialize gRPC client connection
         await workflow_client.connect()
-        log_info("✅ gRPC client connected")
+        logger.info("✅ gRPC client connected")
         
-        log_info("🚀 API Gateway started successfully!")
-        log_info(f"📖 API Documentation: http://localhost:8000/docs")
-        log_info(f"🏥 Health Check: http://localhost:8000/health")
-        log_info(f"🔐 Auth: Frontend handles authentication, backend verifies JWT tokens")
+        logger.info("🚀 API Gateway started successfully!")
+        logger.info("📖 API Documentation: http://localhost:8000/docs")
+        logger.info("🏥 Health Check: http://localhost:8000/health")
+        logger.info("🔐 Auth: Frontend handles authentication, backend verifies JWT tokens")
         
     except Exception as e:
-        log_exception(f"❌ Failed to start API Gateway: {e}")
+        logger.exception("❌ Failed to start API Gateway", error=str(e))
         raise
     
     yield
@@ -45,10 +73,10 @@ async def lifespan(app: FastAPI):
         # Close gRPC connections
         await workflow_client.close()
         
-        log_info("👋 API Gateway stopped")
+        logger.info("👋 API Gateway stopped")
         
     except Exception as e:
-        log_exception(f"⚠️  Error during shutdown: {e}")
+        logger.exception("⚠️  Error during shutdown", error=str(e))
 
 
 # FastAPI application with lifespan
@@ -79,7 +107,7 @@ app.include_router(mcp.router, prefix="/api/v1/mcp", tags=["mcp"])
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint"""
-    log_info("Health check requested")
+    logger.info("Health check requested")
     return HealthResponse(
         status="healthy",
         version="1.0.0"
@@ -89,7 +117,7 @@ async def health_check():
 @app.get("/")
 async def root():
     """Root endpoint"""
-    log_info("Root endpoint accessed")
+    logger.info("Root endpoint accessed")
     return {
         "message": "API Gateway for Workflow Agent Team",
         "version": "1.0.0",
@@ -120,7 +148,7 @@ async def jwt_auth_middleware(request: Request, call_next):
     path = request.url.path
     method = request.method
     
-    log_info(f"📨 {method} {path} - Processing request")
+    logger.info("📨 Processing request", method=method, path=path)
     
     # Skip authentication for public endpoints
     public_paths = [
@@ -128,13 +156,13 @@ async def jwt_auth_middleware(request: Request, call_next):
     ]
     
     if path in public_paths:
-        log_info(f"🌐 {path} - Public endpoint, skipping auth")
+        logger.info("🌐 Public endpoint, skipping auth", path=path)
         return await call_next(request)
     
     # Extract and validate authorization header
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
-        log_warning(f"🚫 {path} - Missing or invalid Authorization header")
+        logger.warning("🚫 Missing or invalid Authorization header", path=path)
         return JSONResponse(
             status_code=401,
             content={
@@ -144,13 +172,13 @@ async def jwt_auth_middleware(request: Request, call_next):
         )
     
     token = auth_header.replace("Bearer ", "")
-    log_info(f"🔐 {path} - Verifying JWT token (length: {len(token)})")
+    logger.info("🔐 Verifying JWT token", path=path, token_length=len(token))
     
     try:
         # Verify token with Supabase
         user_data = await verify_supabase_token(token)
         if not user_data:
-            log_warning(f"🚫 {path} - Invalid or expired token")
+            logger.warning("🚫 Invalid or expired token", path=path)
             return JSONResponse(
                 status_code=401,
                 content={
@@ -164,14 +192,14 @@ async def jwt_auth_middleware(request: Request, call_next):
         request.state.user_id = user_data.get("sub")
         request.state.access_token = token  # Store for RLS operations
         
-        log_info(f"✅ {path} - Auth successful for user {user_data.get('email', 'unknown')}")
+        logger.info("✅ Auth successful", path=path, user_email=user_data.get('email', 'unknown'))
         
         response = await call_next(request)
-        log_info(f"📤 {method} {path} - Response: {response.status_code}")
+        logger.info("📤 Response sent", method=method, path=path, status_code=response.status_code)
         return response
         
     except Exception as e:
-        log_exception(f"❌ {path} - Authentication error: {str(e)}")
+        logger.exception("❌ Authentication error", path=path, error=str(e))
         
         return JSONResponse(
             status_code=401,
@@ -189,7 +217,7 @@ async def global_exception_handler(request: Request, exc):
     path = request.url.path
     method = request.method
     
-    log_exception(f"💥 {method} {path} - Unhandled exception: {type(exc).__name__}: {str(exc)}")
+    logger.exception("💥 Unhandled exception", method=method, path=path, exception_type=type(exc).__name__, error=str(exc))
     
     return JSONResponse(
         status_code=500,
