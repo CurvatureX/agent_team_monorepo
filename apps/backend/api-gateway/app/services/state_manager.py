@@ -7,7 +7,9 @@ import json
 import time
 from typing import Optional, Dict, Any, List
 from app.database import SupabaseRepository
-from app.utils import log_info, log_error, log_debug
+import structlog
+
+logger = structlog.get_logger("state_manager")
 
 
 class WorkflowStateManager:
@@ -79,14 +81,14 @@ class WorkflowStateManager:
 
             result = self.repo.create(state_data, access_token)
             if result:
-                log_info(f"Created workflow state for session {session_id}")
+                logger.info("Created workflow state for session", session_id=session_id)
                 return result["id"]
             else:
-                log_error(f"Failed to create workflow state for session {session_id}")
+                logger.error("Failed to create workflow state for session", session_id=session_id)
                 return None
 
         except Exception as e:
-            log_error(f"Error creating workflow state: {str(e)}")
+            logger.error("Error creating workflow state", error=str(e))
             return None
 
     def get_state_by_session(self, session_id: str, access_token: Optional[str] = None) -> Optional[Dict[str, Any]]:
@@ -105,14 +107,14 @@ class WorkflowStateManager:
             if states:
                 # Return the most recent state for this session
                 latest_state = max(states, key=lambda x: x.get("updated_at", 0))
-                log_debug(f"Retrieved workflow state for session {session_id}")
+                logger.debug("Retrieved workflow state for session", session_id=session_id)
                 return latest_state
             else:
-                log_debug(f"No workflow state found for session {session_id}")
+                logger.debug("No workflow state found for session", session_id=session_id)
                 return None
 
         except Exception as e:
-            log_error(f"Error retrieving workflow state for session {session_id}: {str(e)}")
+            logger.error("Error retrieving workflow state for session", session_id=session_id, error=str(e))
             return None
 
     def get_state_by_id(self, state_id: str, access_token: Optional[str] = None) -> Optional[Dict[str, Any]]:
@@ -129,14 +131,14 @@ class WorkflowStateManager:
         try:
             state = self.repo.get_by_id(state_id, access_token)
             if state:
-                log_debug(f"Retrieved workflow state by ID {state_id}")
+                logger.debug("Retrieved workflow state by ID", state_id=state_id)
                 return state
             else:
-                log_debug(f"No workflow state found with ID {state_id}")
+                logger.debug("No workflow state found with ID", state_id=state_id)
                 return None
 
         except Exception as e:
-            log_error(f"Error retrieving workflow state by ID {state_id}: {str(e)}")
+            logger.error("Error retrieving workflow state by ID", state_id=state_id, error=str(e))
             return None
 
     def update_state(
@@ -160,7 +162,7 @@ class WorkflowStateManager:
             # Get current state first
             current_state = self.get_state_by_session(session_id, access_token)
             if not current_state:
-                log_error(f"Cannot update - no state found for session {session_id}")
+                logger.error("Cannot update - no state found for session", session_id=session_id)
                 return False
 
             state_id = current_state["id"]
@@ -186,14 +188,14 @@ class WorkflowStateManager:
 
             result = self.repo.update(state_id, updates, access_token)
             if result:
-                log_info(f"Updated workflow state for session {session_id}")
+                logger.info("Updated workflow state for session", session_id=session_id)
                 return True
             else:
-                log_error(f"Failed to update workflow state for session {session_id}")
+                logger.error("Failed to update workflow state for session", session_id=session_id)
                 return False
 
         except Exception as e:
-            log_error(f"Error updating workflow state for session {session_id}: {str(e)}")
+            logger.error("Error updating workflow state for session", session_id=session_id, error=str(e))
             return False
 
     def save_full_state(
@@ -241,7 +243,7 @@ class WorkflowStateManager:
                 return False
 
         except Exception as e:
-            log_error(f"Error saving full workflow state for session {session_id}: {str(e)}")
+            logger.error("Error saving full workflow state for session", session_id=session_id, error=str(e))
             return False
 
     def get_user_states(self, user_id: str, access_token: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -257,11 +259,11 @@ class WorkflowStateManager:
         """
         try:
             states = self.repo.get_by_user_id(user_id, access_token)
-            log_debug(f"Retrieved {len(states)} workflow states for user {user_id}")
+            logger.debug("Retrieved workflow states for user", user_id=user_id, count=len(states))
             return states
 
         except Exception as e:
-            log_error(f"Error retrieving workflow states for user {user_id}: {str(e)}")
+            logger.error("Error retrieving workflow states for user", user_id=user_id, error=str(e))
             return []
 
     def delete_state(self, session_id: str, access_token: Optional[str] = None) -> bool:
@@ -279,21 +281,21 @@ class WorkflowStateManager:
             # Get current state to find the ID
             current_state = self.get_state_by_session(session_id, access_token)
             if not current_state:
-                log_error(f"Cannot delete - no state found for session {session_id}")
+                logger.error("Cannot delete - no state found for session", session_id=session_id)
                 return False
 
             state_id = current_state["id"]
             result = self.repo.delete(state_id, access_token)
             
             if result:
-                log_info(f"Deleted workflow state for session {session_id}")
+                logger.info("Deleted workflow state for session", session_id=session_id)
                 return True
             else:
-                log_error(f"Failed to delete workflow state for session {session_id}")
+                logger.error("Failed to delete workflow state for session", session_id=session_id)
                 return False
 
         except Exception as e:
-            log_error(f"Error deleting workflow state for session {session_id}: {str(e)}")
+            logger.error("Error deleting workflow state for session", session_id=session_id, error=str(e))
             return False
 
     def _prepare_state_for_db(self, workflow_state: Dict[str, Any]) -> Dict[str, Any]:

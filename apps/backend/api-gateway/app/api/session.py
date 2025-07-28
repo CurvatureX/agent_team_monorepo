@@ -6,7 +6,9 @@ from fastapi import APIRouter, HTTPException, Request, Depends
 from app.models import SessionCreateRequest, SessionResponse, ErrorResponse
 from app.database import sessions_rls_repo 
 from app.config import settings
-from app.utils import log_error, log_info
+import structlog
+
+logger = structlog.get_logger("session_api")
 from typing import Optional
 
 
@@ -61,7 +63,7 @@ async def create_session(request: SessionCreateRequest, http_request: Request):
         raise
     except Exception as e:
         if settings.DEBUG:
-            log_error(f"Error creating session: {e}")
+            logger.error("Error creating session", error=str(e))
         
         raise HTTPException(
             status_code=500,
@@ -97,7 +99,7 @@ async def get_session(session_id: str, http_request: Request):
         raise
     except Exception as e:
         if settings.DEBUG:
-            log_error(f"Error getting session: {e}")
+            logger.error("Error getting session", error=str(e))
         
         raise HTTPException(
             status_code=500,
@@ -132,7 +134,7 @@ async def list_user_sessions(http_request: Request):
         raise
     except Exception as e:
         if settings.DEBUG:
-            log_error(f"Error listing user sessions: {e}")
+            logger.error("Error listing user sessions", error=str(e))
         
         raise HTTPException(
             status_code=500,
@@ -167,7 +169,7 @@ async def delete_session(session_id: str, http_request: Request):
         raise
     except Exception as e:
         if settings.DEBUG:
-            log_error(f"Error deleting session: {e}")
+            logger.error("Error deleting session", error=str(e))
         
         raise HTTPException(
             status_code=500,

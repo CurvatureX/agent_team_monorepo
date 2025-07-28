@@ -2,9 +2,11 @@
 JWT Token Verification for Frontend Authentication
 """
 
+import structlog
 from typing import Optional, Dict, Any
 from app.database import get_supabase
-from app.utils import log_error, log_info, log_exception
+
+logger = structlog.get_logger("auth_service")
 
 
 async def verify_supabase_token(token: str) -> Optional[Dict[str, Any]]:
@@ -20,7 +22,7 @@ async def verify_supabase_token(token: str) -> Optional[Dict[str, Any]]:
     try:
         supabase = get_supabase()
         if not supabase:
-            log_error("🔥 Supabase client not initialized")
+            logger.error("🔥 Supabase client not initialized")
             return None
         
         # Get user data from JWT token
@@ -35,12 +37,12 @@ async def verify_supabase_token(token: str) -> Optional[Dict[str, Any]]:
                 "user_metadata": response.user.user_metadata,
                 "app_metadata": response.user.app_metadata
             }
-            log_info(f"🔐 Token verified for user: {response.user.email}")
+            logger.info("🔐 Token verified for user", email=response.user.email)
             return user_data
         
-        log_error("🚫 Invalid token - no user data returned")
+        logger.error("🚫 Invalid token - no user data returned")
         return None
         
     except Exception as e:
-        log_exception(f"🔥 Token verification failed: {str(e)}")
+        logger.exception("🔥 Token verification failed", error=str(e))
         return None

@@ -11,16 +11,19 @@ from typing import AsyncGenerator, Dict, Any, Optional
 import grpc
 from app.config import settings
 from app.services.state_manager import get_state_manager
-from app.utils import log_info, log_warning, log_error, log_debug
+from app.services.response_processor import UnifiedResponseProcessor
+import structlog
+
+logger = structlog.get_logger("grpc_client")
 
 # Import proto modules
 try:
     from proto import workflow_agent_pb2
     from proto import workflow_agent_pb2_grpc
     GRPC_AVAILABLE = True
-    log_info("✅ gRPC modules loaded successfully")
+    logger.info("gRPC modules loaded successfully")
 except ImportError as e:
-    log_error(f"❌ gRPC proto modules not available: {e}. Using mock client.")
+    logger.error("gRPC proto modules not available, using mock client", error=str(e))
     workflow_agent_pb2 = None
     workflow_agent_pb2_grpc = None
     GRPC_AVAILABLE = False
@@ -58,15 +61,15 @@ class WorkflowGRPCClient:
                     await asyncio.sleep(0.1)
                 
                 self.connected = True
-                log_info(f"Connected to workflow service at {self.host}:{self.port}")
+                logger.info("Connected to workflow service", host=self.host, port=self.port)
             else:
                 # Mock 连接
                 await asyncio.sleep(0.1)
                 self.connected = True
-                log_info(f"Mock connected to workflow service at {self.host}:{self.port}")
+                logger.info("Mock connected to workflow service", host=self.host, port=self.port)
                 
         except Exception as e:
-            log_error(f"Failed to connect to workflow service: {e}")
+            logger.error("Failed to connect to workflow service", error=str(e))
             self.connected = False
             raise
     
@@ -75,7 +78,7 @@ class WorkflowGRPCClient:
         if self.channel:
             await self.channel.close()
         self.connected = False
-        log_info("Closed workflow service connection")
+        logger.info("Closed workflow service connection")
     
     async def process_conversation_stream(
         self, 
@@ -122,19 +125,19 @@ class WorkflowGRPCClient:
                         context.modification_intent = str(workflow_context.get("modification_intent", ""))
                         request.workflow_context.CopyFrom(context)
                     except Exception as e:
-                        log_error(f"Error setting workflow_context: {e}")
+                        logger.error("Error setting workflow_context", error=str(e))
                 
                 # 添加当前状态
                 if current_state_data:
                     try:
                         agent_state = self._db_state_to_proto(current_state_data)
                         request.current_state.CopyFrom(agent_state)
-                        log_debug("State successfully added to request")
+                        logger.debug("State successfully added to request")
                     except Exception as e:
-                        log_error(f"Error converting state to proto: {e}")
+                        logger.error("Error converting state to proto", error=str(e))
                         # 继续处理而不是失败
                 
-                log_debug("Calling ProcessConversation")
+                logger.debug("Calling ProcessConversation")
                 
                 # 流式处理
                 async for response in self.stub.ProcessConversation(request):
@@ -146,19 +149,16 @@ class WorkflowGRPCClient:
                         try:
                             updated_state = self._proto_state_to_dict(response.updated_state)
                             self.state_manager.save_full_state(session_id, updated_state, access_token)
-                            log_debug("Final state saved to database")
+                            logger.debug("Final state saved to database")
                         except Exception as e:
-                            log_error(f"Error saving final state: {e}")
+                            logger.error("Error saving final state", error=str(e))
                     
                     yield response_dict
-                    
-            else:
-                # Mock 实现
-                async for response in self._mock_process_conversation(session_id, user_message, user_id):
-                    yield response
+                else:
+                    logger.warning("No response from workflow service")
                     
         except Exception as e:
-            log_error(f"Error in process_conversation_stream: {e}")
+            logger.error("Error in process_conversation_stream", error=str(e))
             yield {
                 "type": "error",
                 "session_id": session_id,
@@ -243,7 +243,7 @@ class WorkflowGRPCClient:
                     
                     agent_state.clarification_context.CopyFrom(context)
                 except Exception as e:
-                    log_error(f"Error setting clarification_context: {e}")
+                    logger.error("Error setting clarification_context", error=str(e))
             
             # 处理 workflow_context
             workflow_context = db_state.get("workflow_context")
@@ -255,7 +255,7 @@ class WorkflowGRPCClient:
                     context.modification_intent = str(workflow_context.get("modification_intent", ""))
                     agent_state.workflow_context.CopyFrom(context)
                 except Exception as e:
-                    log_error(f"Error setting workflow_context: {e}")
+                    logger.error("Error setting workflow_context", error=str(e))
             
             # 处理 rag_context
             rag_context = db_state.get("rag_context")
@@ -291,7 +291,7 @@ class WorkflowGRPCClient:
                     
                     agent_state.rag_context.CopyFrom(context)
                 except Exception as e:
-                    log_error(f"Error setting rag_context: {e}")
+                    logger.error("Error setting rag_context", error=str(e))
             
             # 处理 conversations
             conversations = db_state.get("conversations", [])
@@ -299,7 +299,7 @@ class WorkflowGRPCClient:
                 try:
                     conversations = json.loads(conversations)
                 except json.JSONDecodeError:
-                    log_error(f"Failed to parse conversations JSON")
+                    logger.error("Failed to parse conversations JSON")
                     conversations = []
             
             if isinstance(conversations, list):
@@ -318,7 +318,7 @@ class WorkflowGRPCClient:
                             
                             agent_state.conversations.append(conversation)
                     except Exception as e:
-                        log_error(f"Error converting conversation: {e}")
+                        logger.error("Error converting conversation", error=str(e))
                         continue
             
             # 处理 alternatives
@@ -346,13 +346,13 @@ class WorkflowGRPCClient:
                             
                             agent_state.alternatives.append(alt)
                     except Exception as e:
-                        log_error(f"Error converting alternative: {e}")
+                        logger.error("Error converting alternative", error=str(e))
                         continue
             
             return agent_state
             
         except Exception as e:
-            log_error(f"Error creating AgentState: {e}")
+            logger.error("Error creating AgentState", error=str(e))
             raise
     
     def _proto_response_to_dict(self, response) -> Dict[str, Any]:
@@ -380,150 +380,14 @@ class WorkflowGRPCClient:
                 
                 # 基于 stage 确定响应类型和内容
                 stage = result["agent_state"].get("stage", "clarification")
-                result.update(self._process_stage_response(stage, result["agent_state"]))
+                processed_response = UnifiedResponseProcessor.process_stage_response(stage, result["agent_state"])
+                result.update(processed_response)
             else:
                 result["type"] = "status"
                 result["message"] = "Processing..."
         
         return result
     
-    def _process_stage_response(self, stage: str, agent_state: Dict[str, Any]) -> Dict[str, Any]:
-        """根据 stage 处理响应内容"""
-        if stage == "clarification":
-            return self._process_clarification_response(agent_state)
-        elif stage == "negotiation":
-            return self._process_negotiation_response(agent_state)
-        elif stage == "gap_analysis":
-            return self._process_gap_analysis_response(agent_state)
-        elif stage == "alternative_generation":
-            return self._process_alternative_generation_response(agent_state)
-        elif stage == "workflow_generation":
-            return self._process_workflow_generation_response(agent_state)
-        elif stage == "debug":
-            return self._process_debug_response(agent_state)
-        elif stage == "completed":
-            return self._process_completed_response(agent_state)
-        else:
-            return {"message": {"text": "Processing...", "role": "assistant"}}
-    
-    def _process_clarification_response(self, agent_state: Dict[str, Any]) -> Dict[str, Any]:
-        """处理澄清阶段响应"""
-        conversations = agent_state.get("conversations", [])
-        if conversations:
-            latest_message = conversations[-1].get("text", "")
-            return {
-                "message": {
-                    "text": latest_message,
-                    "role": "assistant",
-                    "type": "clarification"
-                }
-            }
-        return {"message": {"text": "请描述您想要创建的工作流", "role": "assistant", "type": "clarification"}}
-    
-    def _process_negotiation_response(self, agent_state: Dict[str, Any]) -> Dict[str, Any]:
-        """处理协商阶段响应"""
-        conversations = agent_state.get("conversations", [])
-        clarification_context = agent_state.get("clarification_context", {})
-        pending_questions = clarification_context.get("pending_questions", [])
-        
-        if conversations:
-            latest_message = conversations[-1].get("text", "")
-            response = {
-                "message": {
-                    "text": latest_message,
-                    "role": "assistant",
-                    "type": "negotiation"
-                }
-            }
-            if pending_questions:
-                response["message"]["questions"] = pending_questions
-            return response
-        
-        return {"message": {"text": "请提供更多信息", "role": "assistant", "type": "negotiation"}}
-    
-    def _process_gap_analysis_response(self, agent_state: Dict[str, Any]) -> Dict[str, Any]:
-        """处理差距分析阶段响应"""
-        gaps = agent_state.get("gaps", [])
-        return {
-            "message": {
-                "text": f"分析完成，发现了 {len(gaps)} 个能力差距",
-                "role": "assistant",
-                "type": "gap_analysis",
-                "gaps": gaps
-            }
-        }
-    
-    def _process_alternative_generation_response(self, agent_state: Dict[str, Any]) -> Dict[str, Any]:
-        """处理替代方案生成阶段响应"""
-        alternatives = agent_state.get("alternatives", [])
-        conversations = agent_state.get("conversations", [])
-        
-        latest_message = ""
-        if conversations:
-            latest_message = conversations[-1].get("text", "")
-        
-        return {
-            "message": {
-                "text": latest_message,
-                "role": "assistant", 
-                "type": "alternatives",
-                "alternatives": alternatives
-            }
-        }
-    
-    def _process_workflow_generation_response(self, agent_state: Dict[str, Any]) -> Dict[str, Any]:
-        """处理工作流生成阶段响应"""
-        current_workflow_json = agent_state.get("current_workflow_json", "")
-        
-        try:
-            workflow_data = json.loads(current_workflow_json) if current_workflow_json else {}
-        except json.JSONDecodeError:
-            workflow_data = {}
-        
-        return {
-            "message": {
-                "text": "工作流生成完成",
-                "role": "assistant",
-                "type": "workflow"
-            },
-            "workflow": workflow_data
-        }
-    
-    def _process_debug_response(self, agent_state: Dict[str, Any]) -> Dict[str, Any]:
-        """处理调试阶段响应"""
-        debug_result = agent_state.get("debug_result", "")
-        
-        try:
-            debug_data = json.loads(debug_result) if debug_result else {}
-        except json.JSONDecodeError:
-            debug_data = {"success": False, "errors": ["Invalid debug result"]}
-        
-        return {
-            "message": {
-                "text": "调试完成" if debug_data.get("success") else "调试发现问题",
-                "role": "assistant",
-                "type": "debug",
-                "debug_info": debug_data
-            }
-        }
-    
-    def _process_completed_response(self, agent_state: Dict[str, Any]) -> Dict[str, Any]:
-        """处理完成阶段响应"""
-        current_workflow_json = agent_state.get("current_workflow_json", "")
-        
-        try:
-            workflow_data = json.loads(current_workflow_json) if current_workflow_json else {}
-        except json.JSONDecodeError:
-            workflow_data = {}
-        
-        return {
-            "message": {
-                "text": "工作流创建完成！",
-                "role": "assistant",
-                "type": "completed"
-            },
-            "workflow": workflow_data
-        }
     
     def _proto_state_to_dict(self, agent_state) -> Dict[str, Any]:
         """将 protobuf AgentState 转换为字典"""
@@ -641,20 +505,6 @@ class WorkflowGRPCClient:
         }
         return mapping.get(proto_enum, "clarification")
     
-    async def _mock_process_conversation(self, session_id: str, user_message: str, user_id: str):
-        """Mock 实现，用于没有 gRPC 的环境"""
-        yield {
-            "type": "message",
-            "session_id": session_id,
-            "message": {
-                "text": f"Mock response to: {user_message}",
-                "role": "assistant",
-                "type": "clarification"
-            },
-            "timestamp": int(time.time() * 1000),
-            "is_final": True
-        }
-
 
 # 全局客户端实例
 workflow_client = WorkflowGRPCClient()

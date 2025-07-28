@@ -1,7 +1,3 @@
-"""
-新的 gRPC 服务端 - 基于新的 workflow_agent.proto 文件
-"""
-
 import asyncio
 import json
 import time
