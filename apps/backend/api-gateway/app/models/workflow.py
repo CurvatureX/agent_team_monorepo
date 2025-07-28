@@ -6,7 +6,7 @@ Workflow Models
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import Field, validator
+from pydantic import Field, field_validator
 
 from .base import BaseModel, EntityModel
 
@@ -88,7 +88,8 @@ class WorkflowCreate(BaseModel):
     tags: List[str] = Field(default_factory=list, description="工作流标签")
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="工作流元数据")
 
-    @validator("nodes")
+    @field_validator("nodes")
+    @classmethod
     def validate_nodes(cls, v):
         """验证节点列表"""
         if not v:
@@ -101,13 +102,14 @@ class WorkflowCreate(BaseModel):
 
         return v
 
-    @validator("edges")
-    def validate_edges(cls, v, values):
+    @field_validator("edges")
+    @classmethod
+    def validate_edges(cls, v, info):
         """验证连接边"""
-        if not v or "nodes" not in values:
+        if not v or not hasattr(info, "data") or "nodes" not in info.data:
             return v
 
-        node_ids = {node.id for node in values["nodes"]}
+        node_ids = {node.id for node in info.data["nodes"]}
 
         for edge in v:
             if edge.source not in node_ids:

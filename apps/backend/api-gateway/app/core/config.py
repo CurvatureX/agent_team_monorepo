@@ -7,7 +7,7 @@ import os
 from functools import lru_cache
 from typing import Any, Dict, List, Optional, Union
 
-from pydantic import Field, validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -191,7 +191,8 @@ class Settings(
         extra = "ignore"  # 忽略未定义的额外字段
         case_sensitive = True  # 环境变量大小写敏感
 
-    @validator("SUPABASE_URL")
+    @field_validator("SUPABASE_URL")
+    @classmethod
     def validate_supabase_url(cls, v):
         """验证Supabase URL格式"""
         # Skip validation for placeholder URLs
@@ -202,7 +203,8 @@ class Settings(
                 )
         return v
 
-    @validator("LOG_LEVEL")
+    @field_validator("LOG_LEVEL")
+    @classmethod
     def validate_log_level(cls, v):
         """验证日志级别"""
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -210,7 +212,8 @@ class Settings(
             raise ValueError(f"LOG_LEVEL must be one of: {valid_levels}")
         return v.upper()
 
-    @validator("LOG_FORMAT")
+    @field_validator("LOG_FORMAT")
+    @classmethod
     def validate_log_format(cls, v):
         """验证日志格式"""
         valid_formats = ["standard", "json", "simple"]
@@ -225,7 +228,7 @@ class Settings(
             "service_key": self.SUPABASE_SECRET_KEY,
         }
 
-    def get_grpc_config(self) -> Dict[str, Union[str, int]]:
+    def get_grpc_config(self) -> Dict[str, Dict[str, Union[str, int]]]:
         """获取gRPC配置"""
         return {
             "workflow_service": {
@@ -238,7 +241,7 @@ class Settings(
             },
         }
 
-    def get_redis_config(self) -> Dict[str, Union[str, int]]:
+    def get_redis_config(self) -> Dict[str, Union[str, int, Dict[str, int]]]:
         """获取Redis配置"""
         return {
             "url": self.REDIS_URL,
