@@ -1,90 +1,238 @@
-version: '3.8'
+version: "3.8"
 
 services:
-  # Redis for LangGraph state management
+  # ======================
+  # Infrastructure Services
+  # ======================
+
+  # Redis - Shared cache for API Gateway rate limiting, JWT caching, and Workflow Agent state
   redis:
     image: redis:7-alpine
+    container_name: agent-team-redis
     ports:
       - "6379:6379"
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
     volumes:
       - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
-      timeout: 3s
+      timeout: 5s
       retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - agent-team-network
 
-  # PostgreSQL for data storage
-  postgres:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_DB: workflow_agent
-      POSTGRES_USER: workflow_user
-      POSTGRES_PASSWORD: workflow_password
+  # Note: Using Supabase as primary database - no local PostgreSQL needed
+  # All services connect directly to Supabase for data persistence and user management
+
+  # Redis Commander - Redis management UI (development only)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: agent-team-redis-ui
+    profiles: ["dev", "development"]
     ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U workflow_user -d workflow_agent"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
+      - "8081:8081"
+    environment:
+      REDIS_HOSTS: "production:redis:6379"
+      HTTP_USER: "admin"
+      HTTP_PASSWORD: "${REDIS_UI_PASSWORD:-admin123}"
+      HTTP_AUTH: "true"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - agent-team-network
 
-  # Workflow Agent Service
+  # ======================
+  # Backend Services (gRPC)
+  # ======================
+
+  # Workflow Agent - AI workflow consultant (gRPC service on port 50051)
   workflow-agent:
     build:
       context: .
       dockerfile: ./workflow_agent/Dockerfile
+      target: production
+      args:
+        - PYTHON_VERSION=3.11
+    container_name: agent-team-workflow-agent
     environment:
-      - DEBUG=false
-      - GRPC_HOST=0.0.0.0
-      - GRPC_PORT=50051
-      - DATABASE_URL=postgresql://workflow_user:workflow_password@postgres:5432/workflow_agent
-      - REDIS_URL=redis://redis:6379/0
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - DEFAULT_MODEL_PROVIDER=openai
-      - DEFAULT_MODEL_NAME=gpt-4
-      - LANGGRAPH_CHECKPOINT_BACKEND=redis
+      # Core service configuration
+      DEBUG: "${DEBUG:-false}"
+      GRPC_HOST: "${GRPC_HOST:-[::]}"
+      GRPC_PORT: "${GRPC_PORT:-50051}"
+
+      # Database configuration (Supabase)
+      SUPABASE_URL: "${SUPABASE_URL}"
+      SUPABASE_SECRET_KEY: "${SUPABASE_SECRET_KEY}"
+
+      # Redis configuration for LangGraph checkpoints
+      REDIS_URL: "redis://redis:6379/0"
+      LANGGRAPH_CHECKPOINT_BACKEND: "redis"
+
+      # AI API keys
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+
+      # AI model configuration
+      DEFAULT_MODEL_PROVIDER: "${DEFAULT_MODEL_PROVIDER:-openai}"
+      DEFAULT_MODEL_NAME: "${DEFAULT_MODEL_NAME:-gpt-4}"
+
+      # RAG configuration
+      EMBEDDING_MODEL: "${EMBEDDING_MODEL:-text-embedding-ada-002}"
+      RAG_SIMILARITY_THRESHOLD: "${RAG_SIMILARITY_THRESHOLD:-0.3}"
+
+      # Service discovery (matches AWS ECS configuration)
+      SERVICE_NAME: "workflow-agent"
+      ENVIRONMENT: "${ENVIRONMENT:-development}"
     ports:
       - "50051:50051"
     depends_on:
       redis:
         condition: service_healthy
-      postgres:
+    volumes:
+      - ./shared/proto:/app/shared/proto:ro
+      - workflow_agent_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "50051"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 240s # Matches production configuration
+    restart: unless-stopped
+    networks:
+      - agent-team-network
+
+  # Workflow Engine - Workflow execution engine (gRPC service on port 50050)
+  workflow-engine:
+    build:
+      context: .
+      dockerfile: ./workflow_engine/Dockerfile
+      target: production
+    container_name: agent-team-workflow-engine
+    environment:
+      # Core service configuration
+      DEBUG: "${DEBUG:-false}"
+      GRPC_PORT: "50050" # Changed from PORT to GRPC_PORT to match service config
+
+      # Database configuration (Supabase)
+      SUPABASE_URL: "${SUPABASE_URL}"
+      SUPABASE_SECRET_KEY: "${SUPABASE_SECRET_KEY}"
+      DATABASE_URL: "${DATABASE_URL}"
+
+      # Redis configuration
+      REDIS_URL: "redis://redis:6379/1" # Different Redis DB from workflow-agent
+
+      # AI API keys (for workflow execution)
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+
+      # Service discovery (matches AWS ECS configuration)
+      SERVICE_NAME: "workflow-engine"
+      ENVIRONMENT: "${ENVIRONMENT:-development}"
+    ports:
+      - "50050:50050" # Changed to match actual gRPC port
+    depends_on:
+      redis:
         condition: service_healthy
     volumes:
       - ./shared/proto:/app/shared/proto:ro
+      - workflow_engine_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "50050"] # Changed to match actual port
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s # Matches production configuration
     restart: unless-stopped
+    networks:
+      - agent-team-network
 
-  # API Gateway Service - FastAPI MVP
+  # ======================
+  # Frontend Gateway (HTTP)
+  # ======================
+
+  # API Gateway - Three-layer FastAPI service (HTTP on port 8000)
   api-gateway:
     build:
       context: .
       dockerfile: ./api-gateway/Dockerfile
+      target: production
+    container_name: agent-team-api-gateway
     environment:
-      - DEBUG=true
-      - WORKFLOW_SERVICE_HOST=workflow-agent
-      - WORKFLOW_SERVICE_PORT=50051
-      # Supabase configuration from .env file
-    env_file:
-      - ./api-gateway/.env
+      # Core service configuration
+      APP_NAME: "Agent Team API Gateway"
+      VERSION: "1.0.0"
+      ENVIRONMENT: "${ENVIRONMENT:-development}"
+      DEBUG: "${DEBUG:-true}"
+      HOST: "0.0.0.0"
+      PORT: "8000"
+      LOG_LEVEL: "${LOG_LEVEL:-DEBUG}"
+      LOG_FORMAT: "${LOG_FORMAT:-standard}"
+
+      # Redis configuration for caching and rate limiting
+      REDIS_URL: "redis://redis:6379/2" # Different Redis DB from other services
+
+      # Authentication settings
+      SUPABASE_AUTH_ENABLED: "${SUPABASE_AUTH_ENABLED:-true}"
+      MCP_API_KEY_REQUIRED: "${MCP_API_KEY_REQUIRED:-false}" # Disabled for development
+
+      # Rate limiting
+      PUBLIC_RATE_LIMIT_ENABLED: "${PUBLIC_RATE_LIMIT_ENABLED:-true}"
+
+      # Supabase configuration
+      SUPABASE_URL: "${SUPABASE_URL}"
+      SUPABASE_SECRET_KEY: "${SUPABASE_SECRET_KEY}"
+
+      # Backend service connections (internal container networking)
+      WORKFLOW_SERVICE_HOST: "workflow-agent"
+      WORKFLOW_SERVICE_PORT: "50051"
+      WORKFLOW_ENGINE_HOST: "workflow-engine"
+      WORKFLOW_ENGINE_PORT: "50050" # Updated to match actual workflow-engine gRPC port
     ports:
-      - "8000:8000"
+      - "8000:8000" # Main HTTP API
     depends_on:
+      redis:
+        condition: service_healthy
       workflow-agent:
-        condition: service_started
+        condition: service_healthy
+      workflow-engine:
+        condition: service_healthy
     volumes:
       - ./shared/proto:/app/shared/proto:ro
-    restart: unless-stopped
+      - api_gateway_logs:/app/logs
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/public/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 120s # Matches production configuration
+    restart: unless-stopped
+    networks:
+      - agent-team-network
 
+# ======================
+# Volumes
+# ======================
 volumes:
   redis_data:
-  postgres_data:
+    driver: local
+  workflow_agent_logs:
+    driver: local
+  workflow_engine_logs:
+    driver: local
+  api_gateway_logs:
+    driver: local
+
+# ======================
+# Networks
+# ======================
+networks:
+  agent-team-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

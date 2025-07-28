@@ -1,29 +1,36 @@
 """
-新的 gRPC 客户端 - 基于新的 workflow_agent.proto 文件
-支持流式处理和状态管理
+gRPC Client for Workflow Service - New ProcessConversation Interface
 """
 
 import asyncio
-import json
 import time
-from typing import AsyncGenerator, Dict, Any, Optional
+from typing import Any, AsyncGenerator, Dict, Optional
 
+from app.core.config import get_settings
+
+settings = get_settings()
+# Import gRPC modules
 import grpc
-from app.config import settings
 from app.services.state_manager import get_state_manager
-from app.services.response_processor import UnifiedResponseProcessor
 import structlog
 
 logger = structlog.get_logger("grpc_client")
 
-# Import proto modules
 try:
-    from proto import workflow_agent_pb2
-    from proto import workflow_agent_pb2_grpc
+    # Import proto modules from proto package
+    import os
+    import sys
+
+    # Add the api-gateway root to path so we can import proto as a package
+    api_gateway_root = os.path.join(os.path.dirname(__file__), "../..")
+    sys.path.insert(0, api_gateway_root)
+    from proto import workflow_agent_pb2, workflow_agent_pb2_grpc
+
     GRPC_AVAILABLE = True
     logger.info("gRPC modules loaded successfully")
 except ImportError as e:
-    logger.error("gRPC proto modules not available, using mock client", error=str(e))
+    # Fallback: proto modules not available
+    logger.error("gRPC proto modules not available. Using mock client", error=str(e))
     workflow_agent_pb2 = None
     workflow_agent_pb2_grpc = None
     GRPC_AVAILABLE = False
@@ -31,10 +38,10 @@ except ImportError as e:
 
 class WorkflowGRPCClient:
     """
-    新的 gRPC 客户端，基于新的 ProcessConversation 接口
-    集成状态管理和流式响应处理
+    gRPC client for the unified ProcessConversation interface
+    Integrates with StateManager for state persistence
     """
-    
+
     def __init__(self):
         self.host = settings.WORKFLOW_SERVICE_HOST
         self.port = settings.WORKFLOW_SERVICE_PORT
@@ -42,123 +49,152 @@ class WorkflowGRPCClient:
         self.stub = None
         self.connected = False
         self.state_manager = get_state_manager()
-    
+
     async def connect(self):
-        """连接到 workflow service"""
+        """Connect to workflow service"""
         try:
             if GRPC_AVAILABLE:
-                self.channel = grpc.aio.insecure_channel(f"{self.host}:{self.port}")
+                # Create gRPC channel and stub
+                self.channel = grpc.aio.insecure_channel(f"{self.host}:{self.port}")  # type: ignore
                 self.stub = workflow_agent_pb2_grpc.WorkflowAgentStub(self.channel)
-                
-                # 测试连接
+
+                # Test connection with the newer API
                 try:
-                    await asyncio.wait_for(
-                        self.channel.channel_ready(), 
-                        timeout=5.0
-                    )
+                    # Try the newer method first
+                    await asyncio.wait_for(self.channel.channel_ready(), timeout=5.0)
                 except AttributeError:
-                    # 兼容性回退
-                    await asyncio.sleep(0.1)
-                
+                    # Fallback to the older method for compatibility
+                    try:
+                        import grpc.experimental as grpc_experimental
+
+                        await asyncio.wait_for(
+                            grpc_experimental.aio.channel_ready(self.channel), timeout=5.0
+                        )
+                    except (AttributeError, ImportError):
+                        # If all else fails, just connect without verification
+                        await asyncio.sleep(0.1)
+
                 self.connected = True
                 logger.info("Connected to workflow service", host=self.host, port=self.port)
             else:
-                # Mock 连接
+                # Mock connection for environments without gRPC
                 await asyncio.sleep(0.1)
                 self.connected = True
                 logger.info("Mock connected to workflow service", host=self.host, port=self.port)
-                
+
         except Exception as e:
             logger.error("Failed to connect to workflow service", error=str(e))
             self.connected = False
             raise
-    
+
     async def close(self):
-        """关闭 gRPC 连接"""
+        """Close gRPC connection"""
         if self.channel:
             await self.channel.close()
         self.connected = False
         logger.info("Closed workflow service connection")
-    
+
     async def process_conversation_stream(
-        self, 
-        session_id: str, 
-        user_message: str, 
+        self,
+        session_id: str,
+        user_message: str,
         user_id: str = "anonymous",
         workflow_context: Optional[Dict[str, Any]] = None,
-        access_token: Optional[str] = None
+        access_token: Optional[str] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
-        处理对话流式请求
-        
+        Process conversation using the new ProcessConversation interface
+
         Args:
-            session_id: 会话 ID
-            user_message: 用户消息
-            user_id: 用户 ID
-            workflow_context: 工作流上下文
-            access_token: JWT token
-            
+            session_id: Session identifier
+            user_message: User's message
+            user_id: User identifier
+            workflow_context: Optional workflow context (origin, source_workflow_id, etc.)
+            access_token: User's JWT token for state persistence
+
         Yields:
-            流式响应数据
+            Streaming responses from the workflow agent
         """
         if not self.connected:
             await self.connect()
-        
+
         try:
             if GRPC_AVAILABLE:
-                # 获取当前状态
-                current_state_data = self.state_manager.get_state_by_session(session_id, access_token)
-                
-                # 构建 gRPC 请求
-                request = workflow_agent_pb2.ConversationRequest(
-                    session_id=session_id,
-                    user_id=user_id,
-                    user_message=user_message
+                # Get current state from database
+                current_state_data = self.state_manager.get_state_by_session(
+                    session_id, access_token
                 )
-                
-                # 添加工作流上下文
+
+                # Prepare gRPC request
+                request = workflow_agent_pb2.ConversationRequest(
+                    session_id=session_id, user_id=user_id, user_message=user_message
+                )
+
+                # Add workflow context if provided
                 if workflow_context and isinstance(workflow_context, dict):
                     try:
                         context = workflow_agent_pb2.WorkflowContext()
                         context.origin = str(workflow_context.get("origin", "create"))
-                        context.source_workflow_id = str(workflow_context.get("source_workflow_id", ""))
-                        context.modification_intent = str(workflow_context.get("modification_intent", ""))
+                        context.source_workflow_id = str(
+                            workflow_context.get("source_workflow_id", "")
+                        )
+                        context.modification_intent = str(
+                            workflow_context.get("modification_intent", "")
+                        )
                         request.workflow_context.CopyFrom(context)
                     except Exception as e:
-                        logger.error("Error setting workflow_context", error=str(e))
-                
-                # 添加当前状态
+                        logger.error("Error setting workflow_context in request", error=str(e))
+
+                # Add current state if exists
                 if current_state_data:
                     try:
+                        logger.debug("About to convert state data", state_data_type=str(type(current_state_data)))
+                        # Convert database state to protobuf AgentState
                         agent_state = self._db_state_to_proto(current_state_data)
+                        logger.debug("AgentState created successfully")
                         request.current_state.CopyFrom(agent_state)
-                        logger.debug("State successfully added to request")
+                        logger.debug("State copied to request successfully")
                     except Exception as e:
                         logger.error("Error converting state to proto", error=str(e))
-                        # 继续处理而不是失败
-                
-                logger.debug("Calling ProcessConversation")
-                
-                # 流式处理
-                async for response in self.stub.ProcessConversation(request):
-                    # 转换响应
-                    response_dict = self._proto_response_to_dict(response)
-                    
-                    # 保存最终状态到数据库
-                    if response.is_final and response.updated_state:
-                        try:
+                        logger.error("State data details", state_data=current_state_data)
+                        import traceback
+
+                        logger.error("Traceback details", traceback=traceback.format_exc())
+                        raise
+
+                logger.debug("About to call ProcessConversation with request")
+
+                # Stream conversation processing
+                try:
+                    async for response in self.stub.ProcessConversation(request):
+                        # Convert protobuf response to dict
+                        response_dict = self._proto_response_to_dict(response)
+
+                        # Save updated state to database if provided
+                        if response.updated_state:
                             updated_state = self._proto_state_to_dict(response.updated_state)
-                            self.state_manager.save_full_state(session_id, updated_state, access_token)
-                            logger.debug("Final state saved to database")
-                        except Exception as e:
-                            logger.error("Error saving final state", error=str(e))
-                    
-                    yield response_dict
-                else:
-                    logger.warning("No response from workflow service")
-                    
+                            self.state_manager.save_full_state(
+                                session_id, updated_state, access_token
+                            )
+
+                        yield response_dict
+                except Exception as grpc_error:
+                    logger.error("gRPC call error", error=str(grpc_error))
+                    import traceback
+
+                    logger.error("gRPC traceback details", traceback=traceback.format_exc())
+                    raise
+
+            else:
+                # Mock implementation for environments without gRPC
+                async for response in self._mock_process_conversation(
+                    session_id, user_message, user_id
+                ):
+                    yield response
+
         except Exception as e:
             logger.error("Error in process_conversation_stream", error=str(e))
+            # Yield error response
             yield {
                 "type": "error",
                 "session_id": session_id,
@@ -166,28 +202,33 @@ class WorkflowGRPCClient:
                     "error_code": "INTERNAL_ERROR",
                     "message": f"Failed to process conversation: {str(e)}",
                     "details": str(e),
-                    "is_recoverable": True
+                    "is_recoverable": True,
                 },
                 "timestamp": int(time.time() * 1000),
-                "is_final": True
+                "is_final": True,
             }
-    
+
     def _db_state_to_proto(self, db_state: Dict[str, Any]):
-        """将数据库状态转换为 protobuf AgentState"""
+        """Convert database state to protobuf AgentState"""
         if not GRPC_AVAILABLE:
             return None
-        
+
+        # This would use the StateConverter from workflow_agent service
+        # For now, create a basic AgentState with safe type conversions
+
         def safe_timestamp(value, default=None):
-            """安全的时间戳转换"""
+            """Safely convert timestamp to integer"""
             if default is None:
                 default = int(time.time() * 1000)
             if isinstance(value, (int, float)):
                 return int(value)
             elif isinstance(value, str):
                 try:
+                    # Try parsing ISO format or timestamp
                     import datetime
-                    if 'T' in value or '-' in value:
-                        dt = datetime.datetime.fromisoformat(value.replace('Z', '+00:00'))
+
+                    if "T" in value or "-" in value:
+                        dt = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
                         return int(dt.timestamp() * 1000)
                     else:
                         return int(float(value))
@@ -195,11 +236,12 @@ class WorkflowGRPCClient:
                     return default
             else:
                 return default
-        
+
         try:
+            # 创建基本AgentState对象，不包含复杂嵌套字段
             agent_state = workflow_agent_pb2.AgentState()
-            
-            # 基本字段
+
+            # 设置基本字段
             agent_state.session_id = str(db_state.get("session_id", ""))
             agent_state.user_id = str(db_state.get("user_id", ""))
             agent_state.created_at = safe_timestamp(db_state.get("created_at"))
@@ -209,188 +251,160 @@ class WorkflowGRPCClient:
             agent_state.current_workflow_json = str(db_state.get("current_workflow_json", ""))
             agent_state.debug_result = str(db_state.get("debug_result", ""))
             agent_state.debug_loop_count = int(db_state.get("debug_loop_count", 0) or 0)
-            
-            # 处理 previous_stage
-            previous_stage = db_state.get("previous_stage")
-            if previous_stage:
-                agent_state.previous_stage = self._stage_to_proto_enum(previous_stage)
-            
-            # 处理数组字段
+
+            # 处理简单的repeated字段
             gaps = db_state.get("gaps") or []
             if isinstance(gaps, list):
                 agent_state.gaps[:] = [str(gap) for gap in gaps]
-                
+
             execution_history = db_state.get("execution_history") or []
             if isinstance(execution_history, list):
                 agent_state.execution_history[:] = [str(item) for item in execution_history]
-            
-            # 处理 clarification_context
+
+            # 处理复杂嵌套对象 - 使用安全的方式
             clarification_context = db_state.get("clarification_context")
             if clarification_context and isinstance(clarification_context, dict):
                 try:
+                    # 创建ClarificationContext对象
                     context = workflow_agent_pb2.ClarificationContext()
                     context.purpose = str(clarification_context.get("purpose", ""))
                     context.origin = str(clarification_context.get("origin", ""))
-                    
+
+                    # 处理pending_questions
                     pending_questions = clarification_context.get("pending_questions", [])
                     if isinstance(pending_questions, list):
                         context.pending_questions[:] = [str(q) for q in pending_questions]
-                    
+
+                    # 处理collected_info (map类型)
                     collected_info = clarification_context.get("collected_info", {})
                     if isinstance(collected_info, dict):
                         for key, value in collected_info.items():
                             context.collected_info[str(key)] = str(value)
-                    
+
                     agent_state.clarification_context.CopyFrom(context)
                 except Exception as e:
                     logger.error("Error setting clarification_context", error=str(e))
-            
-            # 处理 workflow_context
+
+            # 处理workflow_context
             workflow_context = db_state.get("workflow_context")
             if workflow_context and isinstance(workflow_context, dict):
                 try:
                     context = workflow_agent_pb2.WorkflowContext()
                     context.origin = str(workflow_context.get("origin", ""))
                     context.source_workflow_id = str(workflow_context.get("source_workflow_id", ""))
-                    context.modification_intent = str(workflow_context.get("modification_intent", ""))
+                    context.modification_intent = str(
+                        workflow_context.get("modification_intent", "")
+                    )
                     agent_state.workflow_context.CopyFrom(context)
                 except Exception as e:
                     logger.error("Error setting workflow_context", error=str(e))
-            
-            # 处理 rag_context
-            rag_context = db_state.get("rag_context")
-            if rag_context and isinstance(rag_context, dict):
-                try:
-                    context = workflow_agent_pb2.RAGContext()
-                    context.query = str(rag_context.get("query", ""))
-                    context.timestamp = safe_timestamp(rag_context.get("timestamp"))
-                    
-                    metadata = rag_context.get("metadata", {})
-                    if isinstance(metadata, dict):
-                        for key, value in metadata.items():
-                            context.metadata[str(key)] = str(value)
-                    
-                    results = rag_context.get("results", [])
-                    if isinstance(results, list):
-                        for result_data in results:
-                            if isinstance(result_data, dict):
-                                result = workflow_agent_pb2.RAGResult()
-                                result.id = str(result_data.get("id", ""))
-                                result.node_type = str(result_data.get("node_type", ""))
-                                result.title = str(result_data.get("title", ""))
-                                result.description = str(result_data.get("description", ""))
-                                result.content = str(result_data.get("content", ""))
-                                result.similarity = float(result_data.get("similarity", 0.0))
-                                
-                                result_metadata = result_data.get("metadata", {})
-                                if isinstance(result_metadata, dict):
-                                    for key, value in result_metadata.items():
-                                        result.metadata[str(key)] = str(value)
-                                
-                                context.results.append(result)
-                    
-                    agent_state.rag_context.CopyFrom(context)
-                except Exception as e:
-                    logger.error("Error setting rag_context", error=str(e))
-            
-            # 处理 conversations
-            conversations = db_state.get("conversations", [])
-            if isinstance(conversations, str):
-                try:
-                    conversations = json.loads(conversations)
-                except json.JSONDecodeError:
-                    logger.error("Failed to parse conversations JSON")
-                    conversations = []
-            
-            if isinstance(conversations, list):
-                for conv in conversations:
-                    try:
-                        if isinstance(conv, dict):
-                            conversation = workflow_agent_pb2.Conversation()
-                            conversation.role = str(conv.get("role", "user"))
-                            conversation.text = str(conv.get("text", ""))
-                            conversation.timestamp = safe_timestamp(conv.get("timestamp"))
-                            
-                            metadata = conv.get("metadata", {})
-                            if isinstance(metadata, dict):
-                                for key, value in metadata.items():
-                                    conversation.metadata[str(key)] = str(value)
-                            
-                            agent_state.conversations.append(conversation)
-                    except Exception as e:
-                        logger.error("Error converting conversation", error=str(e))
-                        continue
-            
-            # 处理 alternatives
-            alternatives = db_state.get("alternatives", [])
-            if isinstance(alternatives, str):
-                try:
-                    alternatives = json.loads(alternatives)
-                except json.JSONDecodeError:
-                    alternatives = []
-            
-            if isinstance(alternatives, list):
-                for alt_data in alternatives:
-                    try:
-                        if isinstance(alt_data, dict):
-                            alt = workflow_agent_pb2.AlternativeOption()
-                            alt.id = str(alt_data.get("id", ""))
-                            alt.title = str(alt_data.get("title", ""))
-                            alt.description = str(alt_data.get("description", ""))
-                            alt.approach = str(alt_data.get("approach", ""))
-                            alt.complexity = str(alt_data.get("complexity", ""))
-                            
-                            trade_offs = alt_data.get("trade_offs", [])
-                            if isinstance(trade_offs, list):
-                                alt.trade_offs[:] = [str(t) for t in trade_offs]
-                            
-                            agent_state.alternatives.append(alt)
-                    except Exception as e:
-                        logger.error("Error converting alternative", error=str(e))
-                        continue
-            
-            return agent_state
-            
+
         except Exception as e:
             logger.error("Error creating AgentState", error=str(e))
             raise
-    
+
+        # Add conversations if available
+        conversations = db_state.get("conversations", [])
+        if isinstance(conversations, str):
+            try:
+                import json
+
+                conversations = json.loads(conversations)
+            except json.JSONDecodeError:
+                logger.error("Failed to parse conversations JSON", conversations=conversations)
+                conversations = []
+
+        if isinstance(conversations, list):
+            for conv in conversations:
+                try:
+                    if isinstance(conv, dict):
+                        conversation = workflow_agent_pb2.Conversation()
+                        conversation.role = str(conv.get("role", "user"))
+                        conversation.text = str(conv.get("text", ""))
+                        conversation.timestamp = safe_timestamp(conv.get("timestamp"))
+
+                        # Handle metadata separately to ensure string values
+                        metadata = conv.get("metadata", {})
+                        if isinstance(metadata, dict):
+                            for key, value in metadata.items():
+                                conversation.metadata[str(key)] = str(value)
+
+                        agent_state.conversations.append(conversation)
+                except Exception as e:
+                    logger.error("Error converting conversation to proto", error=str(e))
+                    continue
+
+        return agent_state
+
     def _proto_response_to_dict(self, response) -> Dict[str, Any]:
-        """将 protobuf ConversationResponse 转换为字典"""
+        """Convert protobuf ConversationResponse to dictionary"""
         result = {
             "session_id": response.session_id,
             "timestamp": response.timestamp,
-            "is_final": response.is_final
+            "is_final": response.is_final,
         }
-        
-        # 处理错误
-        if response.error and response.error.error_code:
+
+        # Handle different response types
+        if response.type == workflow_agent_pb2.RESPONSE_MESSAGE:
+            result["type"] = "message"
+            result["message"] = {
+                "text": response.message.text,
+                "role": response.message.role,
+                "message_type": response.message.message_type,
+                "metadata": dict(response.message.metadata),
+            }
+
+            # Add questions if present
+            if response.message.questions:
+                result["message"]["questions"] = []
+                for q in response.message.questions:
+                    result["message"]["questions"].append(
+                        {
+                            "id": q.id,
+                            "question": q.question,
+                            "category": q.category,
+                            "is_required": q.is_required,
+                            "options": list(q.options),
+                        }
+                    )
+
+            # Add alternatives if present
+            if response.message.alternatives:
+                result["message"]["alternatives"] = []
+                for alt in response.message.alternatives:
+                    result["message"]["alternatives"].append(
+                        {
+                            "id": alt.id,
+                            "title": alt.title,
+                            "description": alt.description,
+                            "approach": alt.approach,
+                            "trade_offs": list(alt.trade_offs),
+                            "complexity": alt.complexity,
+                        }
+                    )
+
+        elif response.type == workflow_agent_pb2.RESPONSE_STATUS:
+            result["type"] = "status"
+            result["status"] = {
+                "new_stage": self._proto_enum_to_stage(response.status.new_stage),
+                "previous_stage": self._proto_enum_to_stage(response.status.previous_stage),
+                "stage_description": response.status.stage_description,
+                "pending_actions": list(response.status.pending_actions),
+            }
+
+        elif response.type == workflow_agent_pb2.RESPONSE_ERROR:
             result["type"] = "error"
             result["error"] = {
                 "error_code": response.error.error_code,
                 "message": response.error.message,
                 "details": response.error.details,
-                "is_recoverable": response.error.is_recoverable
+                "is_recoverable": response.error.is_recoverable,
             }
-        else:
-            # 处理正常响应
-            if response.updated_state:
-                result["type"] = "message"
-                result["agent_state"] = self._proto_state_to_dict(response.updated_state)
-                
-                # 基于 stage 确定响应类型和内容
-                stage = result["agent_state"].get("stage", "clarification")
-                processed_response = UnifiedResponseProcessor.process_stage_response(stage, result["agent_state"])
-                result.update(processed_response)
-            else:
-                result["type"] = "status"
-                result["message"] = "Processing..."
-        
+
         return result
-    
-    
+
     def _proto_state_to_dict(self, agent_state) -> Dict[str, Any]:
-        """将 protobuf AgentState 转换为字典"""
+        """Convert protobuf AgentState to dictionary for state manager"""
         state_dict = {
             "session_id": agent_state.session_id,
             "user_id": agent_state.user_id,
@@ -400,84 +414,46 @@ class WorkflowGRPCClient:
             "execution_history": list(agent_state.execution_history),
             "intent_summary": agent_state.intent_summary,
             "gaps": list(agent_state.gaps),
-            "current_workflow_json": agent_state.current_workflow_json,
+            "current_workflow": agent_state.current_workflow_json,
             "debug_result": agent_state.debug_result,
-            "debug_loop_count": agent_state.debug_loop_count
+            "debug_loop_count": agent_state.debug_loop_count,
         }
-        
-        # 处理 previous_stage
-        if agent_state.previous_stage:
-            state_dict["previous_stage"] = self._proto_enum_to_stage(agent_state.previous_stage)
-        
-        # 处理 conversations
+
+        # Add conversations
         conversations = []
         for conv in agent_state.conversations:
-            conversations.append({
-                "role": conv.role,
-                "text": conv.text,
-                "timestamp": conv.timestamp,
-                "metadata": dict(conv.metadata)
-            })
+            conversations.append(
+                {
+                    "role": conv.role,
+                    "text": conv.text,
+                    "timestamp": conv.timestamp,
+                    "metadata": dict(conv.metadata),
+                }
+            )
         state_dict["conversations"] = conversations
-        
-        # 处理 alternatives
+
+        # Add alternatives
         alternatives = []
         for alt in agent_state.alternatives:
-            alternatives.append({
-                "id": alt.id,
-                "title": alt.title,
-                "description": alt.description,
-                "approach": alt.approach,
-                "trade_offs": list(alt.trade_offs),
-                "complexity": alt.complexity
-            })
+            alternatives.append(
+                {
+                    "id": alt.id,
+                    "title": alt.title,
+                    "description": alt.description,
+                    "approach": alt.approach,
+                    "trade_offs": list(alt.trade_offs),
+                    "complexity": alt.complexity,
+                }
+            )
         state_dict["alternatives"] = alternatives
-        
-        # 处理 clarification_context
-        if agent_state.clarification_context:
-            state_dict["clarification_context"] = {
-                "purpose": agent_state.clarification_context.purpose,
-                "origin": agent_state.clarification_context.origin,
-                "collected_info": dict(agent_state.clarification_context.collected_info),
-                "pending_questions": list(agent_state.clarification_context.pending_questions)
-            }
-        
-        # 处理 workflow_context
-        if agent_state.workflow_context:
-            state_dict["workflow_context"] = {
-                "origin": agent_state.workflow_context.origin,
-                "source_workflow_id": agent_state.workflow_context.source_workflow_id,
-                "modification_intent": agent_state.workflow_context.modification_intent
-            }
-        
-        # 处理 rag_context
-        if agent_state.rag_context:
-            rag_results = []
-            for result in agent_state.rag_context.results:
-                rag_results.append({
-                    "id": result.id,
-                    "node_type": result.node_type,
-                    "title": result.title,
-                    "description": result.description,
-                    "content": result.content,
-                    "similarity": result.similarity,
-                    "metadata": dict(result.metadata)
-                })
-            
-            state_dict["rag_context"] = {
-                "query": agent_state.rag_context.query,
-                "timestamp": agent_state.rag_context.timestamp,
-                "metadata": dict(agent_state.rag_context.metadata),
-                "results": rag_results
-            }
-        
+
         return state_dict
-    
+
     def _stage_to_proto_enum(self, stage: str) -> int:
-        """将 stage 字符串转换为 protobuf 枚举"""
+        """Convert stage string to protobuf enum"""
         if not GRPC_AVAILABLE:
             return 0
-            
+
         mapping = {
             "clarification": workflow_agent_pb2.STAGE_CLARIFICATION,
             "negotiation": workflow_agent_pb2.STAGE_NEGOTIATION,
@@ -485,31 +461,31 @@ class WorkflowGRPCClient:
             "alternative_generation": workflow_agent_pb2.STAGE_ALTERNATIVE_GENERATION,
             "workflow_generation": workflow_agent_pb2.STAGE_WORKFLOW_GENERATION,
             "debug": workflow_agent_pb2.STAGE_DEBUG,
-            "completed": workflow_agent_pb2.STAGE_COMPLETED
+            "completed": workflow_agent_pb2.STAGE_COMPLETED,
         }
         return mapping.get(stage, workflow_agent_pb2.STAGE_ERROR)
-    
+
     def _proto_enum_to_stage(self, proto_enum: int) -> str:
-        """将 protobuf 枚举转换为 stage 字符串"""
+        """Convert protobuf enum to stage string"""
         if not GRPC_AVAILABLE:
             return "clarification"
-            
+
         mapping = {
             workflow_agent_pb2.STAGE_CLARIFICATION: "clarification",
-            workflow_agent_pb2.STAGE_NEGOTIATION: "negotiation", 
+            workflow_agent_pb2.STAGE_NEGOTIATION: "negotiation",
             workflow_agent_pb2.STAGE_GAP_ANALYSIS: "gap_analysis",
             workflow_agent_pb2.STAGE_ALTERNATIVE_GENERATION: "alternative_generation",
             workflow_agent_pb2.STAGE_WORKFLOW_GENERATION: "workflow_generation",
             workflow_agent_pb2.STAGE_DEBUG: "debug",
-            workflow_agent_pb2.STAGE_COMPLETED: "completed"
+            workflow_agent_pb2.STAGE_COMPLETED: "completed",
         }
         return mapping.get(proto_enum, "clarification")
-    
 
-# 全局客户端实例
+
+# Global gRPC client instance (MVP simplified)
 workflow_client = WorkflowGRPCClient()
 
 
 async def get_workflow_client() -> WorkflowGRPCClient:
-    """获取 workflow gRPC 客户端实例"""
+    """Get workflow gRPC client instance"""
     return workflow_client

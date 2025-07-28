@@ -1,7 +1,3 @@
-# Placeholder values for importing existing resources
-# These will be overridden by environment variables in CI/CD
-
-supabase_url = "placeholder"
-supabase_secret_key = "placeholder"
-openai_api_key = "placeholder"
-anthropic_api_key = "placeholder"
+# Sensitive values are set via environment variables in CI/CD (TF_VAR_*)
+# Do not set supabase_url, supabase_secret_key, openai_api_key, anthropic_api_key here
+# as they would override the GitHub Actions environment variables
