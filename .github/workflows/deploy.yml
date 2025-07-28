@@ -216,4 +216,4 @@ jobs:
             --cluster agent-team-production-cluster \
             --services api-gateway-service workflow-agent-service workflow-engine-service \
             --region ${{ env.AWS_REGION }} \
-            --max-attempts 60
+            --cli-read-timeout 1200
