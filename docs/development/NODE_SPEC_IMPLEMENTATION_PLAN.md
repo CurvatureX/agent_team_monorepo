@@ -19,25 +19,25 @@
 
 ```mermaid
 graph TB
-    subgraph "核心层 - 节点规范系统"
+    subgraph core["核心层 - 节点规范系统"]
         NS[NodeSpec Registry]
         NV[NodeSpec Validator]
         PB[Protocol Buffer Schema]
     end
 
-    subgraph "数据层 - 数据映射系统"
+    subgraph data["数据层 - 数据映射系统"]
         DM[DataMappingProcessor]
         CE[ConnectionExecutor]
         FM[FieldMapping]
     end
 
-    subgraph "执行层 - 工作流引擎"
+    subgraph execution["执行层 - 工作流引擎"]
         WE[Workflow Engine]
         NE[Node Executors]
         WV[Workflow Validator]
     end
 
-    subgraph "接口层 - API Gateway"
+    subgraph interface["接口层 - API Gateway"]
         API[REST API]
         UI[Frontend UI]
     end
@@ -498,7 +498,7 @@ git checkout -b feature/api-endpoints
 - [ ] 核心API端点可以正常工作
 - [ ] 工作流验证包含新的端口和数据映射检查
 - [ ] 现有工作流保持兼容性
-- [ ] 性能满足基本要求 (<500ms验证时间)
+- [ ] 性能满足基本要求 (少于500ms验证时间)
 
 ### Day 4 完成标准
 - [ ] 所有核心功能端到端测试通过
@@ -549,9 +549,9 @@ class WorkflowMigrationTool:
 
 ### 技术指标
 - [ ] 100% 覆盖所有现有节点类型的规范定义
-- [ ] <100ms 节点规范查询性能
-- [ ] <500ms 数据映射处理性能
-- [ ] >95% 向后兼容性测试通过率
+- [ ] 少于100ms 节点规范查询性能
+- [ ] 少于500ms 数据映射处理性能
+- [ ] 大于95% 向后兼容性测试通过率
 
 ### 用户体验指标
 - [ ] 节点配置错误减少80%+
