@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-@router.post("/", response_model=WorkflowResponse)
+@router.post("/api/v1/app/workflow/", response_model=WorkflowResponse)
 async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Depends()):
     """
     Create a new workflow
@@ -69,7 +69,7 @@ async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Dep
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/{workflow_id}", response_model=WorkflowResponse)
+@router.get("/api/v1/app/{workflow_id}", response_model=WorkflowResponse)
 async def get_workflow(workflow_id: str, deps: AuthenticatedDeps = Depends()):
     """
     Get workflow by ID with user access control
@@ -102,7 +102,7 @@ async def get_workflow(workflow_id: str, deps: AuthenticatedDeps = Depends()):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.put("/{workflow_id}", response_model=WorkflowResponse)
+@router.put("/api/v1/app/{workflow_id}", response_model=WorkflowResponse)
 async def update_workflow(
     workflow_id: str,
     workflow_update: WorkflowUpdate,
@@ -148,7 +148,7 @@ async def update_workflow(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.delete("/{workflow_id}", response_model=ResponseModel)
+@router.delete("/api/v1/app/{workflow_id}", response_model=ResponseModel)
 async def delete_workflow(workflow_id: str, deps: AuthenticatedDeps = Depends()):
     """
     Delete a workflow with user access control
@@ -179,7 +179,7 @@ async def delete_workflow(workflow_id: str, deps: AuthenticatedDeps = Depends())
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/", response_model=WorkflowListResponse)
+@router.get("/api/v1/app/user_workflow", response_model=WorkflowListResponse)
 async def list_user_workflows(
     page: int = 1, page_size: int = 20, deps: AuthenticatedDeps = Depends()
 ):
@@ -222,7 +222,7 @@ async def list_user_workflows(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.post("/{workflow_id}/execute", response_model=WorkflowExecutionResponse)
+@router.post("/api/v1/app/{workflow_id}/execute", response_model=WorkflowExecutionResponse)
 async def execute_workflow(
     workflow_id: str,
     execution_request: WorkflowExecutionRequest,
@@ -259,7 +259,7 @@ async def execute_workflow(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/{workflow_id}/execution_history")
+@router.get("/api/v1/app/{workflow_id}/execution_history")
 async def get_execution_history(workflow_id: str, deps: AuthenticatedDeps = Depends()):
     """
     Get the execution history for a workflow
@@ -294,7 +294,7 @@ async def get_execution_history(workflow_id: str, deps: AuthenticatedDeps = Depe
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/node-templates/", response_model=NodeTemplateListResponse)
+@router.get("/api/v1/app/node-templates/", response_model=NodeTemplateListResponse)
 async def list_all_node_templates(
     category: Optional[str] = None,
     node_type: Optional[str] = None,
