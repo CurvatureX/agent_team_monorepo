@@ -24,9 +24,6 @@ class Settings(BaseSettings):
         "DATABASE_URL", "postgresql://user:password@localhost/workflow_agent"
     )
 
-    # Redis settings (for state management)
-    REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-
     # AI Model settings
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
@@ -34,7 +31,6 @@ class Settings(BaseSettings):
     DEFAULT_MODEL_NAME: str = os.getenv("DEFAULT_MODEL_NAME", "gpt-4")
 
     # LangGraph settings
-    LANGGRAPH_CHECKPOINT_BACKEND: str = os.getenv("LANGGRAPH_CHECKPOINT_BACKEND", "redis")
 
     # Supabase settings for vector store (using SECRET_KEY only)
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")

@@ -5,11 +5,12 @@ Execution management API endpoints with authentication
 
 from typing import Any, Dict, Optional
 
+from app.core.config import get_settings
 from app.dependencies import AuthenticatedDeps
 from app.exceptions import NotFoundError, ValidationError
 from app.models.base import ResponseModel
 from app.models.execution import ExecutionCancelResponse, ExecutionStatusResponse
-from app.services.enhanced_grpc_client import get_workflow_client
+from app.services.workflow_engine_http_client import get_workflow_engine_client
 from app.utils.logger import get_logger
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -26,14 +27,16 @@ async def get_execution_status(execution_id: str, deps: AuthenticatedDeps = Depe
     try:
         logger.info(f"📊 Getting execution status {execution_id} for user {deps.current_user.sub}")
 
-        # Get gRPC client
-        grpc_client = await get_workflow_client()
-        if not grpc_client:
-            raise HTTPException(status_code=500, detail="Workflow service unavailable")
+        # Get HTTP client
+        settings = get_settings()
+        if not settings.USE_HTTP_CLIENT:
+            raise HTTPException(status_code=503, detail="HTTP client is disabled")
 
-        # Get execution status with user context
-        result = await grpc_client.get_execution_status(execution_id, user_id=deps.current_user.sub)
-        if not result:
+        http_client = await get_workflow_engine_client()
+
+        # Get execution status via HTTP
+        result = await http_client.get_execution_status(execution_id)
+        if not result or result.get("error"):
             raise NotFoundError("Execution")
 
         logger.info(f"✅ Execution status retrieved: {execution_id}")
@@ -56,14 +59,16 @@ async def cancel_execution(execution_id: str, deps: AuthenticatedDeps = Depends(
     try:
         logger.info(f"🛑 Cancelling execution {execution_id} for user {deps.current_user.sub}")
 
-        # Get gRPC client
-        grpc_client = await get_workflow_client()
-        if not grpc_client:
-            raise HTTPException(status_code=500, detail="Workflow service unavailable")
+        # Get HTTP client
+        settings = get_settings()
+        if not settings.USE_HTTP_CLIENT:
+            raise HTTPException(status_code=503, detail="HTTP client is disabled")
 
-        # Cancel execution with user context
-        result = await grpc_client.cancel_execution(execution_id, user_id=deps.current_user.sub)
-        if not result:
+        http_client = await get_workflow_engine_client()
+
+        # Cancel execution via HTTP
+        result = await http_client.cancel_execution(execution_id)
+        if not result or result.get("error"):
             raise NotFoundError("Execution")
 
         # Check if cancellation was successful
@@ -79,4 +84,42 @@ async def cancel_execution(execution_id: str, deps: AuthenticatedDeps = Depends(
         raise
     except Exception as e:
         logger.error(f"❌ Error cancelling execution {execution_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/workflows/{workflow_id}/executions")
+async def get_workflow_execution_history(
+    workflow_id: str, limit: int = 50, deps: AuthenticatedDeps = Depends()
+):
+    """
+    Get execution history for a workflow
+    获取工作流的执行历史
+    """
+    try:
+        logger.info(
+            f"📜 Getting execution history for workflow {workflow_id} (user: {deps.current_user.sub})"
+        )
+
+        # Get HTTP client
+        settings = get_settings()
+        if not settings.USE_HTTP_CLIENT:
+            raise HTTPException(status_code=503, detail="HTTP client is disabled")
+
+        http_client = await get_workflow_engine_client()
+
+        # Get execution history via HTTP
+        executions = await http_client.get_execution_history(workflow_id, limit)
+
+        logger.info(f"✅ Retrieved {len(executions)} executions for workflow {workflow_id}")
+
+        return {
+            "workflow_id": workflow_id,
+            "executions": executions,
+            "total_count": len(executions),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error getting execution history for workflow {workflow_id}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
