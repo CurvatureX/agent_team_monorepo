@@ -16,7 +16,8 @@ from typing import Any, Dict
 from app.core.config import settings
 from app.core.database import get_database_manager
 from app.models.base import ResponseModel
-from app.services.grpc_client import get_workflow_client
+
+# HTTP client status checks
 from fastapi import APIRouter, Depends
 
 router = APIRouter()
@@ -50,18 +51,24 @@ async def get_system_status():
     # Perform health checks
     db_health = await db_manager.health_check()
 
-    # Check gRPC client health
-    grpc_health = {"healthy": False, "error": "Not implemented"}
+    # Check HTTP client health
+    http_health = {"healthy": False, "error": "Not implemented"}
     try:
-        from app.services.enhanced_grpc_client import get_workflow_client
+        from app.core.config import get_settings
+        from app.services.workflow_agent_http_client import get_workflow_agent_client
 
-        grpc_client = await get_workflow_client()
-        grpc_health = await grpc_client.health_check()
+        app_settings = get_settings()
+        if app_settings.USE_HTTP_CLIENT:
+            http_client = await get_workflow_agent_client()
+            await http_client.connect()  # Test connection
+            http_health = {"healthy": True, "service": "workflow_agent_http"}
+        else:
+            http_health = {"healthy": False, "error": "HTTP client disabled"}
     except Exception as e:
-        grpc_health = {"healthy": False, "error": str(e)}
+        http_health = {"healthy": False, "error": str(e)}
 
     # Determine overall system health
-    overall_healthy = db_health.get("overall", False) and grpc_health.get("healthy", False)
+    overall_healthy = db_health.get("overall", False) and http_health.get("healthy", False)
 
     # System information
     system_info = {
@@ -79,9 +86,9 @@ async def get_system_status():
             "status": "healthy" if db_health.get("overall") else "unhealthy",
             "details": db_health,
         },
-        "grpc_client": {
-            "status": "healthy" if grpc_health.get("healthy") else "unhealthy",
-            "details": grpc_health,
+        "http_client": {
+            "status": "healthy" if http_health.get("healthy") else "unhealthy",
+            "details": http_health,
         },
         "redis": {
             "status": "healthy" if db_health.get("redis") else "unhealthy",
