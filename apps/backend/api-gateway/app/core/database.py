@@ -110,6 +110,8 @@ class RedisManager:
         """Get Redis client directly (for dependency injection)."""
         if not await self._health_check():
             raise ConnectionError("Redis connection unavailable")
+        if self._client is None:
+            raise ConnectionError("Redis client is not initialized")
         return self._client
 
     async def close(self) -> None:

@@ -5,7 +5,7 @@ Session Models
 
 from typing import Any, Dict, Optional
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from .base import BaseModel, EntityModel
 
@@ -15,28 +15,22 @@ class SessionCreate(BaseModel):
     会话创建请求模型
     """
 
-    action: Optional[str] = Field(default="chat", description="会话动作类型")
+    action: Optional[str] = Field(default="create", description="会话动作类型 (create, edit, copy)")
     workflow_id: Optional[str] = Field(default=None, description="关联的工作流ID")
-    session_type: str = Field(default="user", description="会话类型 (user, guest, system)")
-    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="会话元数据")
 
-    @field_validator("action")
-    @classmethod
-    def validate_action(cls, v):
-        """验证动作类型"""
-        valid_actions = ["chat", "workflow_generation", "workflow_execution", "tool_invocation"]
-        if v and v not in valid_actions:
+    @model_validator(mode='after')
+    def validate_session_data(self):
+        """验证会话数据的完整性和一致性"""
+        # 验证 action 类型
+        valid_actions = ["create", "edit", "copy"]
+        if self.action and self.action not in valid_actions:
             raise ValueError(f"Invalid action. Must be one of: {valid_actions}")
-        return v
-
-    @field_validator("session_type")
-    @classmethod
-    def validate_session_type(cls, v):
-        """验证会话类型"""
-        valid_types = ["user", "guest", "system"]
-        if v not in valid_types:
-            raise ValueError(f"Invalid session type. Must be one of: {valid_types}")
-        return v
+        
+        # 验证 edit/copy 动作需要 workflow_id
+        if self.action in ["edit", "copy"] and not self.workflow_id:
+            raise ValueError(f"workflow_id is required for {self.action} actions")
+        
+        return self
 
 
 class SessionUpdate(BaseModel):
@@ -67,7 +61,7 @@ class Session(EntityModel):
 
     user_id: Optional[str] = Field(default=None, description="用户ID（None表示游客会话）")
     session_type: str = Field(default="user", description="会话类型")
-    action: Optional[str] = Field(default="chat", description="会话动作类型")
+    action: Optional[str] = Field(default="create", description="会话动作类型 (create, edit, copy)")
     workflow_id: Optional[str] = Field(default=None, description="关联的工作流ID")
     status: str = Field(default="active", description="会话状态")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="会话元数据")

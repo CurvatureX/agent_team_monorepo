@@ -15,12 +15,10 @@ dependencies = [
     "langchain-openai>=0.2.0",
     "langchain-anthropic>=0.2.0",
     "langchain-core>=0.3.0,<1.0.0",
-    "grpcio>=1.68.0",
-    "grpcio-tools>=1.68.0",
-    "protobuf>=6.0.0",
+    # gRPC 依赖已移除，使用 FastAPI + Pydantic
     "fastapi>=0.104.1",
     "uvicorn[standard]>=0.26.0",
-    "pydantic>=2.7.4",
+    "pydantic[email]>=2.7.4",
     "pydantic-settings==2.1.0",
     "python-dotenv==1.0.0",
     "structlog>=23.2.0",
@@ -34,8 +32,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "grpcio-status>=1.68.0",
+    # gRPC 开发依赖已移除
     "langgraph-cli>=0.1.0",
+    "httpx>=0.24.0",  # 用于测试 FastAPI 客户端
 ]
 
 [build-system]

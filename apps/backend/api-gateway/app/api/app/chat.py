@@ -4,23 +4,14 @@ Chat API endpoints with integrated workflow agent
 """
 
 import json
-import time
 from datetime import datetime, timezone
 
 from app.core.database import create_user_supabase_client
 from app.dependencies import AuthenticatedDeps, get_session_id
 from app.exceptions import NotFoundError, ValidationError
-from app.models.chat import (
-    ChatHistory,
-    ChatMessage,
-    ChatRequest,
-    ChatResponse,
-    ChatSSEEvent,
-    MessageType,
-    WorkflowGenerationEvent,
-)
+from app.models.chat import ChatHistory, ChatMessage, ChatRequest, MessageType
 from app.utils.logger import get_logger
-from app.utils.sse import create_mock_chat_stream, create_sse_response
+from app.utils.sse import create_mock_chat_stream, format_sse_event
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
@@ -58,13 +49,30 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
         if not session:
             raise NotFoundError("Session")
 
+        # Get the next sequence number for this session
+        try:
+            sequence_result = (
+                user_client.table("chats")
+                .select("sequence_number")
+                .eq("session_id", chat_request.session_id)
+                .order("sequence_number", desc=True)
+                .limit(1)
+                .execute()
+            )
+            next_sequence = 1
+            if sequence_result.data:
+                last_sequence = sequence_result.data[0].get("sequence_number", 0)
+                next_sequence = (last_sequence or 0) + 1
+        except Exception:
+            next_sequence = 1
+
         # Store user message with RLS
         user_message_data = {
             "session_id": chat_request.session_id,
             "user_id": deps.current_user.sub,
+            "content": chat_request.user_message,
             "message_type": MessageType.USER.value,
-            "content": chat_request.message,
-            "metadata": chat_request.context,
+            "sequence_number": next_sequence,
         }
 
         # Store user message with RLS
@@ -75,46 +83,157 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
             logger.warning(f"Failed to store user message: {e}")
             stored_user_message = None
 
-        # Create SSE stream generator
+        # Create SSE stream generator with actual gRPC integration
         async def generate_chat_stream():
-            """生成聊天流式响应"""
-            start_time = time.time()
+            """根据新 proto 定义生成聊天流式响应"""
+            sequence_counter = next_sequence  # 从用户消息序号开始继续递增
 
             try:
+                # Import HTTP client (替换 gRPC)
+                from app.core.config import get_settings
+                from app.services.workflow_agent_http_client import get_workflow_agent_client
+
+                settings = get_settings()
+                if not settings.USE_HTTP_CLIENT:
+                    raise HTTPException(status_code=503, detail="HTTP client is disabled")
+
+                workflow_client = await get_workflow_agent_client()
+
                 # Send initial status
-                yield create_sse_response(
+                yield format_sse_event(
                     {
-                        "type": "status",
-                        "data": {"status": "processing", "message": "Processing your request..."},
-                        "session_id": chat_request.session_id,
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    }
-                )
-
-                # Use mock chat stream for now (replace with actual gRPC call)
-                async for event in create_mock_chat_stream(
-                    chat_request.message, chat_request.session_id
-                ):
-                    yield event
-
-                # Send completion status
-                processing_time = time.time() - start_time
-                yield create_sse_response(
-                    {
-                        "type": "completion",
+                        "type": "message",
                         "data": {
-                            "status": "completed",
-                            "processing_time_ms": round(processing_time * 1000, 2),
-                            "session_id": chat_request.session_id,
+                            "status": "processing",
+                            "message": "Connecting to workflow agent...",
                         },
                         "session_id": chat_request.session_id,
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
                 )
 
+                # 构建 workflow_context - 根据 session 的 action 字段
+                workflow_context = None
+                if session.get("action") and session["action"] != "create":
+                    workflow_context = {
+                        "origin": session["action"],  # edit 或 copy
+                        "source_workflow_id": session.get("workflow_id", ""),
+                    }
+
+                # Process conversation stream with workflow agent
+                async for response in workflow_client.process_conversation_stream(
+                    session_id=chat_request.session_id,
+                    user_message=chat_request.user_message,
+                    user_id=deps.current_user.sub,
+                    workflow_context=workflow_context,
+                    access_token=deps.current_user.token,
+                ):
+                    logger.info(f"🔄 Received response: {response}")
+
+                    # Handle error responses
+                    if response.get("response_type") == "error":
+                        yield format_sse_event(
+                            {
+                                "type": "error",
+                                "data": response.get("error", {"message": "Unknown error"}),
+                                "session_id": chat_request.session_id,
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            }
+                        )
+                        return
+
+                    # Handle message responses - 根据新 proto
+                    if response.get("response_type") == "message":
+                        message_content = response.get("message", "")
+
+                        # Store AI message in database immediately - 符合要求
+                        if message_content.strip():
+                            sequence_counter += 1
+                            ai_message_data = {
+                                "session_id": chat_request.session_id,
+                                "user_id": deps.current_user.sub,
+                                "message_type": MessageType.ASSISTANT.value,
+                                "content": message_content.strip(),
+                                "sequence_number": sequence_counter,
+                            }
+
+                            try:
+                                ai_result = (
+                                    user_client.table("chats").insert(ai_message_data).execute()
+                                )
+                                if ai_result.data:
+                                    logger.info(
+                                        f"📝 Stored AI message: {ai_result.data[0]['id']} (seq: {sequence_counter})"
+                                    )
+                            except Exception as e:
+                                logger.warning(f"Failed to store AI message: {e}")
+
+                        # Build SSE response
+                        sse_data = {
+                            "type": "message",
+                            "session_id": chat_request.session_id,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "is_final": response.get("is_final", False),
+                            "data": {"text": message_content, "role": "assistant"},
+                        }
+
+                        yield format_sse_event(sse_data)
+
+                        # If this is the final response, break
+                        if response.get("is_final", False):
+                            break
+
+                    # Handle workflow responses - 根据新 proto
+                    elif response.get("response_type") == "workflow":
+                        workflow_content = response.get("workflow", "")
+
+                        # Parse workflow JSON if it's a string
+                        try:
+                            if isinstance(workflow_content, str):
+                                workflow_data = json.loads(workflow_content)
+                            else:
+                                workflow_data = workflow_content
+                        except (json.JSONDecodeError, TypeError) as e:
+                            logger.warning(f"Failed to parse workflow data: {e}")
+                            workflow_data = {"raw": workflow_content}
+
+                        # Store workflow message in database immediately
+                        workflow_message = "Workflow generated successfully!"
+                        sequence_counter += 1
+                        ai_message_data = {
+                            "session_id": chat_request.session_id,
+                            "user_id": deps.current_user.sub,
+                            "message_type": MessageType.ASSISTANT.value,
+                            "content": workflow_message,
+                            "sequence_number": sequence_counter,
+                        }
+
+                        try:
+                            ai_result = user_client.table("chats").insert(ai_message_data).execute()
+                            if ai_result.data:
+                                logger.info(
+                                    f"📝 Stored workflow message: {ai_result.data[0]['id']} (seq: {sequence_counter})"
+                                )
+                        except Exception as e:
+                            logger.warning(f"Failed to store workflow message: {e}")
+
+                        # Build SSE response
+                        sse_data = {
+                            "type": "workflow",
+                            "session_id": chat_request.session_id,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "is_final": response.get("is_final", True),
+                            "data": {"text": workflow_message, "workflow": workflow_data},
+                        }
+
+                        yield format_sse_event(sse_data)
+
+                        if response.get("is_final", True):
+                            break
+
             except Exception as e:
                 logger.error(f"❌ Error in chat stream: {e}")
-                yield create_sse_response(
+                yield format_sse_event(
                     {
                         "type": "error",
                         "data": {"error": str(e), "error_type": "STREAM_ERROR"},
