@@ -1,90 +1,39 @@
-# Production Dockerfile for Workflow Engine
-FROM python:3.10-slim AS builder
+# Dockerfile for workflow_engine using FastAPI
 
+# Use an official Python runtime as a parent image
+FROM python:3.11-slim as base
+
+# Set the working directory in the container
 WORKDIR /app
 
-# Install build dependencies
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
-    build-essential \
     gcc \
-    g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy workflow engine and shared files
-COPY workflow_engine/ ./workflow_engine/
-COPY shared/ ./shared/
-COPY workflow_engine/pyproject.toml ./
-COPY workflow_engine/requirements.txt* ./
+# Copy the requirements file into the container at /app
+COPY ./apps/backend/workflow_engine/requirements.txt /app/requirements.txt
 
-# Install dependencies
-RUN pip install --upgrade pip && \
-    (pip install --prefix=/install -r requirements.txt || \
-    pip install --prefix=/install \
-        fastapi>=0.104.0 \
-        uvicorn[standard]>=0.24.0 \
-        pydantic>=2.5.0 \
-        pydantic-settings>=2.0.0 \
-        sqlalchemy>=2.0.0 \
-        alembic>=1.12.0 \
-        psycopg2-binary>=2.9.0 \
-        redis>=5.0.0 \
-        grpcio>=1.68.0 \
-        grpcio-tools>=1.68.0 \
-        protobuf>=5.26.1,<6.0.0 \
-        grpcio-health-checking \
-        croniter)
+# Install any needed packages specified in requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the application code into the container
+COPY ./apps/backend/workflow_engine/workflow_engine /app/workflow_engine
+COPY ./apps/backend/shared /app/shared
 
 # Production stage
-FROM python:3.10-slim AS production
+FROM base as production
 
-WORKDIR /app
-
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    netcat-traditional \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
-
-# Copy installed packages from builder
-COPY --from=builder /install /usr/local
-
-# Copy application code from builder
-COPY --from=builder /app/workflow_engine/workflow_engine ./workflow_engine
-COPY --from=builder /app/workflow_engine/generate_proto.py ./workflow_engine/
-COPY --from=builder /app/shared ./shared
-
-# Change to workflow_engine directory and generate protobuf files
-WORKDIR /app/workflow_engine
-RUN python generate_proto.py && echo "Proto generation completed successfully"
-
-# Create a clean /app/proto directory and move the generated files, then create package initializers
-WORKDIR /app
-RUN mkdir -p /app/proto
-RUN mv /app/workflow_engine/proto/engine /app/proto/engine
-RUN touch /app/proto/__init__.py
-RUN touch /app/proto/engine/__init__.py
-
-# Verify proto files were generated correctly using the proper import path
-RUN ls -la /app/proto/engine/ && python -c "from proto.engine import workflow_service_pb2; print('Proto import test successful')"
-
-# Create non-root user
-RUN useradd --create-home --shell /bin/bash --uid 1000 app && \
-    chown -R app:app /app
+# Create a non-root user
+RUN useradd --create-home --shell /bin/bash app
 USER app
 
-# Set environment variables
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app \
-    SHARED_PROTO_DIR=/app/shared/proto/engine
+# Expose port 8000 to the outside world
+EXPOSE 8002
 
-# Expose port
-EXPOSE 50050
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:8002/health || exit 1
 
-# Health check - use TCP connection test for gRPC
-HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
-    CMD nc -z localhost 50050 || exit 1
-
-# Run application directly
-CMD ["python", "-m", "workflow_engine"]
-
+# Command to run the application using uvicorn
+CMD ["uvicorn", "workflow_engine.main:app", "--host", "0.0.0.0", "--port", "8002"] 
