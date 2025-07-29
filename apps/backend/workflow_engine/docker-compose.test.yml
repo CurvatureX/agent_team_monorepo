@@ -1,0 +1,84 @@
+version: '3.8'
+
+services:
+  # Test database (PostgreSQL)
+  test-db:
+    image: postgres:15-alpine
+    container_name: workflow-engine-test-db
+    environment:
+      POSTGRES_DB: workflow_engine_test
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - test_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_user -d workflow_engine_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Test Redis
+  test-redis:
+    image: redis:7-alpine
+    container_name: workflow-engine-test-redis
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Workflow Engine FastAPI service
+  workflow-engine-fastapi:
+    build:
+      context: .
+      dockerfile: Dockerfile.fastapi
+      target: development
+    container_name: workflow-engine-fastapi-test
+    ports:
+      - "8000:8000"
+    environment:
+      # Service configuration
+      PORT: "8000"
+      DEBUG: "true"
+
+      # Database configuration
+      DATABASE_URL: "postgresql://test_user:test_password@test-db:5432/workflow_engine_test"
+
+      # Redis configuration
+      REDIS_URL: "redis://test-redis:6379/0"
+
+      # AI API keys (optional for testing)
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-dummy_key_for_testing}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-dummy_key_for_testing}"
+
+      # Disable external dependencies for testing
+      SKIP_EXTERNAL_DEPS: "true"
+
+    depends_on:
+      test-db:
+        condition: service_healthy
+      test-redis:
+        condition: service_healthy
+
+    volumes:
+      # Mount source code for development
+      - ./workflow_engine:/app/workflow_engine
+      - ./shared:/app/shared
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  test_db_data:
+
+networks:
+  default:
+    name: workflow-engine-test-network

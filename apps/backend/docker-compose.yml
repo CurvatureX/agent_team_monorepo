@@ -105,22 +105,45 @@ services:
     networks:
       - agent-team-network
 
-  # Workflow Engine - Workflow execution engine (gRPC service on port 50050)
+  # Workflow Engine - Workflow execution engine (FastAPI service on port 8000)
   workflow-engine:
     build:
       context: .
       dockerfile: ./workflow_engine/Dockerfile
       target: production
     container_name: agent-team-workflow-engine
-    env_file:
-      - ./workflow_engine/.env
+    ports:
+      - "8002:8000"  # External port 8002 to avoid conflict with API Gateway
+    environment:
+      # FastAPI configuration
+      PORT: "8000"
+      DEBUG: "${DEBUG:-false}"
+
+      # Database configuration
+      DATABASE_URL: "${DATABASE_URL}"
+
+      # Redis configuration
+      REDIS_URL: "redis://redis:6379/0"
+
+      # AI API keys
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+
+      # Service configuration
+      SERVICE_NAME: "workflow-engine"
+      ENVIRONMENT: "${ENVIRONMENT:-development}"
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - workflow_engine_logs:/app/logs
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "50050"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 180s
-
+      start_period: 60s  # Reduced from 180s due to faster HTTP startup
+    restart: unless-stopped
     networks:
       - agent-team-network
 
@@ -138,10 +161,16 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - ./api-gateway/.env
+      - ./.env
     environment:
-      - WORKFLOW_SERVICE_HOST=workflow-engine
-      - WORKFLOW_SERVICE_PORT=50050
+      # Workflow Agent (gRPC)
+      - WORKFLOW_AGENT_HOST=workflow-agent
+      - WORKFLOW_AGENT_PORT=50051
+
+      # Workflow Engine (HTTP/FastAPI)
+      - WORKFLOW_ENGINE_HOST=workflow-engine
+      - WORKFLOW_ENGINE_PORT=50050  # Legacy gRPC port (unused)
+      - WORKFLOW_ENGINE_HTTP_PORT=8000  # New FastAPI HTTP port
     depends_on:
       redis:
         condition: service_healthy

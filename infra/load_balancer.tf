@@ -52,6 +52,31 @@ resource "aws_lb_target_group" "api_gateway" {
   })
 }
 
+# Target Group for Workflow Engine (HTTP)
+resource "aws_lb_target_group" "workflow_engine" {
+  name        = "${local.name_prefix}-engine-tg"
+  port        = 8000
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip"
+
+  health_check {
+    enabled             = true
+    healthy_threshold   = 2
+    interval            = 30
+    matcher             = "200"
+    path                = "/health"
+    port                = "traffic-port"
+    protocol            = "HTTP"
+    timeout             = 5
+    unhealthy_threshold = 2
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-workflow-engine-tg"
+  })
+}
+
 # Target Group for Workflow Agent (gRPC)
 resource "aws_lb_target_group" "workflow_agent_grpc" {
   name        = "${local.name_prefix}-grpc-tg"

@@ -21,14 +21,16 @@ class Settings(BaseSettings):
         default_factory=lambda: os.getenv("SUPABASE_SECRET_KEY", "")
     )  # Service Role key - used for all Supabase operations
 
-    # gRPC Configuration
+    # Service Configuration (gRPC + HTTP)
 
+    # Workflow Agent (still gRPC)
     WORKFLOW_AGENT_HOST: str = "localhost"
     WORKFLOW_AGENT_PORT: int = 50051
-    WORKFLOW_ENGINE_HOST: str = "localhost"
-    WORKFLOW_ENGINE_PORT: int = 50050
-    
 
+    # Workflow Engine (migrated to HTTP/FastAPI)
+    WORKFLOW_ENGINE_HOST: str = "localhost"
+    WORKFLOW_ENGINE_PORT: int = 50050  # Legacy gRPC port (kept for compatibility)
+    WORKFLOW_ENGINE_HTTP_PORT: int = 8000  # New FastAPI HTTP port
 
     # Authentication Configuration
     JWT_SECRET_KEY: Optional[str] = None  # For additional JWT operations if needed
