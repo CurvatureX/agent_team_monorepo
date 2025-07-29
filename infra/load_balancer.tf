@@ -56,7 +56,7 @@ resource "aws_lb_target_group" "api_gateway" {
 # Target Group for Workflow Agent (HTTP)
 resource "aws_lb_target_group" "workflow_agent_http" {
   name        = "${local.name_prefix}-agent-tg"
-  port        = 8000
+  port        = 8001
   protocol    = "HTTP"
   vpc_id      = aws_vpc.main.id
   target_type = "ip"
@@ -81,7 +81,7 @@ resource "aws_lb_target_group" "workflow_agent_http" {
 # Target Group for Workflow Engine (HTTP)
 resource "aws_lb_target_group" "workflow_engine_http" {
   name        = "${local.name_prefix}-engine-tg"
-  port        = 8000
+  port        = 8002
   protocol    = "HTTP"
   vpc_id      = aws_vpc.main.id
   target_type = "ip"
