@@ -751,7 +751,9 @@ async def example_usage():
 
         # 创建请求
         request = workflow_agent_pb2.ConversationRequest(
-            session_id="test-session", user_message="Hello, workflow agent!"
+            session_id="test-session", 
+            user_id="test-user",
+            user_message="Hello, workflow agent!"
         )
 
         # 处理请求
