@@ -22,11 +22,10 @@ dependencies = [
     "python-jose[cryptography]==3.3.0",
     "passlib[bcrypt]==1.7.4",
     "python-dotenv==1.0.0",
-    "structlog>=23.2.0",
     "python-json-logger>=2.0.0",
     # Redis dependencies
     "redis>=5.0.0",
-    "redis[hiredis]>=5.0.0",  # Enhanced performance with hiredis
+    "redis[hiredis]>=5.0.0", # Enhanced performance with hiredis
     # gRPC dependencies
     "grpcio>=1.68.0",
     "grpcio-tools>=1.68.0",
@@ -34,7 +33,7 @@ dependencies = [
     # JSON Schema validation
     "jsonschema>=4.0.0",
     # Security and validation
-    "bleach>=6.0.0",  # HTML sanitization
+    "bleach>=6.0.0", # HTML sanitization
 ]
 
 [project.optional-dependencies]

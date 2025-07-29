@@ -11,154 +11,36 @@ service WorkflowAgent {
 message ConversationRequest {
   string session_id = 1;
   string user_id = 2;
-  string user_message = 3;
-  AgentState current_state = 4;           // 状态恢复
+  string access_token = 3;
+  string user_message = 4;
   WorkflowContext workflow_context = 5;   // edit/copy时需要
-  ConversationConfig config = 6;          // 对话配置
 }
 
 // 对话响应流
 message ConversationResponse {
   string session_id = 1;
-  ResponseType type = 2;
-  
-  oneof content {
-    MessageContent message = 3;           // 消息内容（包括问题、选项等）
-    StatusContent status = 4;             // 状态更新
-    ErrorContent error = 5;               // 错误信息
+  ResponseType response_type = 2;
+  oneof response {
+    string message = 3;
+    string workflow = 4; // workflow json string
+    ErrorContent error = 5;
   }
-  
-  AgentState updated_state = 8;           // 更新后的状态
-  int64 timestamp = 9;
-  bool is_final = 10;                     // 是否为最终响应
+  bool is_final = 11;
 }
+
 
 enum ResponseType {
-  RESPONSE_MESSAGE = 0;           // 消息（包括普通消息、问题、选项等）
-  RESPONSE_STATUS = 1;            // 状态更新
-  RESPONSE_ERROR = 2;             // 错误信息
+  RESPONSE_TYPE_UNKNOWN = 0;
+  RESPONSE_TYPE_MESSAGE = 1;
+  RESPONSE_TYPE_WORKFLOW = 2;
+  RESPONSE_TYPE_ERROR = 3;
 }
 
-// Agent状态 - 与WorkflowState完全对应
-message AgentState {
-  // 元数据 (对应WorkflowState.metadata)
-  string session_id = 1;
-  string user_id = 2;
-  int64 created_at = 12;
-  int64 updated_at = 13;
-  
-  // 当前阶段 (对应WorkflowState.stage)
-  WorkflowStage stage = 3;
-  WorkflowStage previous_stage = 14;
-  
-  // 执行历史 (对应WorkflowState.execution_history)
-  repeated string execution_history = 15;
-  
-  // 澄清上下文 (对应WorkflowState.clarification_context)
-  ClarificationContext clarification_context = 10;
-  
-  // 对话历史和意图 (对应WorkflowState.conversations, intent_summary)
-  repeated Conversation conversations = 4;
-  string intent_summary = 5;
-  
-  // 分析结果 (对应WorkflowState.gaps, alternatives)
-  repeated string gaps = 6;
-  repeated AlternativeOption alternatives = 7;
-  
-  // 工作流数据 (对应WorkflowState.current_workflow, debug_result, debug_loop_count)
-  string current_workflow_json = 8;  // JSON序列化的workflow对象
-  string debug_result = 16;
-  int32 debug_loop_count = 9;
-  
-  // 上下文信息
-  WorkflowContext workflow_context = 11;
-  
-  // RAG上下文 (对应WorkflowState.rag)
-  RAGContext rag_context = 17;
-}
-
-enum WorkflowStage {
-  STAGE_CLARIFICATION = 0;
-  STAGE_NEGOTIATION = 1;
-  STAGE_GAP_ANALYSIS = 2;
-  STAGE_ALTERNATIVE_GENERATION = 3;
-  STAGE_WORKFLOW_GENERATION = 4;
-  STAGE_DEBUG = 5;
-  STAGE_COMPLETED = 6;
-  STAGE_ERROR = 7;
-}
-
-// 对话记录
-message Conversation {
-  string role = 1;      // user, assistant, system
-  string text = 2;
-  int64 timestamp = 3;
-  map<string, string> metadata = 4;
-}
-
-// 澄清问题
-message ClarificationQuestion {
-  string id = 1;
-  string question = 2;
-  string category = 3;    // input, output, trigger, logic
-  bool is_required = 4;
-  repeated string options = 5;  // 预设选项
-}
-
-// 替代方案选项
-message AlternativeOption {
-  string id = 1;
-  string title = 2;
-  string description = 3;
-  string approach = 4;        // 技术方案描述
-  repeated string trade_offs = 5;  // 权衡说明
-  string complexity = 6;      // simple, medium, complex
-}
-
-// 澄清上下文
-message ClarificationContext {
-  string purpose = 1;         // initial_intent, template_modification, gap_resolution
-  map<string, string> collected_info = 2;
-  repeated string pending_questions = 3;
-  string origin = 4;          // create, edit, copy
-}
 
 // 工作流上下文
 message WorkflowContext {
   string origin = 1;          // create, edit, copy
   string source_workflow_id = 2;
-  string modification_intent = 3;
-}
-
-// 对话配置
-message ConversationConfig {
-  bool enable_streaming = 1;
-  int32 max_turns = 2;
-  int32 timeout_seconds = 3;
-  string language = 4;          // zh, en
-  bool enable_rag = 5;
-  map<string, string> preferences = 6;
-}
-
-// 响应内容类型
-message MessageContent {
-  string text = 1;
-  string role = 2;  // assistant, system  
-  string message_type = 3;  // "text", "question", "options"
-  map<string, string> metadata = 4;
-  
-  // 可选字段：当message_type为"question"时使用
-  repeated ClarificationQuestion questions = 5;
-  
-  // 可选字段：当message_type为"options"时使用  
-  repeated AlternativeOption alternatives = 6;
-}
-
-message StatusContent {
-  WorkflowStage new_stage = 1;
-  WorkflowStage previous_stage = 2;
-  string stage_description = 3;
-  repeated string pending_actions = 4;
 }
 
 message ErrorContent {
@@ -166,22 +48,4 @@ message ErrorContent {
   string message = 2;
   string details = 3;
   bool is_recoverable = 4;
-}
-
-// RAG上下文 (对应WorkflowState.rag)
-message RAGContext {
-  repeated RAGResult results = 1;
-  string query = 2;
-  int64 timestamp = 3;
-  map<string, string> metadata = 4;
-}
-
-message RAGResult {
-  string id = 1;
-  string node_type = 2;
-  string title = 3;
-  string description = 4;
-  string content = 5;
-  float similarity = 6;
-  map<string, string> metadata = 7;
 }

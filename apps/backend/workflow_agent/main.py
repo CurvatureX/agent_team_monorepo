@@ -14,19 +14,40 @@ load_dotenv()
 
 # Import logging first
 import structlog
-# Import our modules - these work when run from workflow_agent directory
+import logging
+
+# Set standard library logging level to INFO
+logging.basicConfig(level=logging.INFO)
+
+# Configure structlog for better output with line numbers
+structlog.configure(
+    processors=[
+        structlog.stdlib.filter_by_level,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.UnicodeDecoder(),
+        # Use JSON renderer for better formatting
+        structlog.processors.JSONRenderer(indent=2),
+    ],
+    context_class=dict,
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    cache_logger_on_first_use=True,
+)
+
 from core.config import settings
 from services.grpc_server import WorkflowAgentServer
 
-logger = structlog.get_logger()
+logger = structlog.get_logger(__name__)
 
 
 async def main():
     """Main entry point for the Workflow Agent service"""
     logger.info("Starting Workflow Agent Service")
 
-    # Create and start the gRPC server
-    logger.info("Creating WorkflowAgentServer instance")
     server = WorkflowAgentServer()
     logger.info("WorkflowAgentServer instance created successfully")
 
@@ -37,7 +58,6 @@ async def main():
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-    logger.info("Signal handlers registered")
 
     try:
         logger.info("Starting gRPC server...")

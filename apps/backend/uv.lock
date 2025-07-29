@@ -116,7 +116,6 @@ dependencies = [
     { name = "python-json-logger" },
     { name = "python-multipart" },
     { name = "redis", extra = ["hiredis"] },
-    { name = "structlog" },
     { name = "supabase" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -153,7 +152,6 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.6" },
     { name = "redis", specifier = ">=5.0.0" },
     { name = "redis", extras = ["hiredis"], specifier = ">=5.0.0" },
-    { name = "structlog", specifier = ">=23.2.0" },
     { name = "supabase", specifier = ">=2.9.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.26.0" },
 ]
@@ -2810,7 +2808,7 @@ dependencies = [
     { name = "langgraph" },
     { name = "protobuf" },
     { name = "psycopg2-binary" },
-    { name = "pydantic" },
+    { name = "pydantic", extra = ["email"] },
     { name = "pydantic-settings" },
     { name = "python-dotenv" },
     { name = "redis" },
@@ -2851,7 +2849,7 @@ requires-dist = [
     { name = "langgraph-cli", marker = "extra == 'dev'", specifier = ">=0.1.0" },
     { name = "protobuf", specifier = ">=6.0.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.10" },
-    { name = "pydantic", specifier = ">=2.7.4" },
+    { name = "pydantic", extras = ["email"], specifier = ">=2.7.4" },
     { name = "pydantic-settings", specifier = "==2.1.0" },
     { name = "python-dotenv", specifier = "==1.0.0" },
     { name = "redis", specifier = "==5.0.1" },
