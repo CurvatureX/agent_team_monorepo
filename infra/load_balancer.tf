@@ -125,10 +125,10 @@ resource "aws_lb_listener" "internal" {
   port              = "80"
   protocol          = "HTTP"
 
-  # Default action - forward to API Gateway (can be changed as needed)
+  # Default action - forward to Workflow Agent
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.api_gateway.arn
+    target_group_arn = aws_lb_target_group.workflow_agent_http.arn
   }
 
   tags = local.common_tags
