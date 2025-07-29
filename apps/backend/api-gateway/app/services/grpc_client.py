@@ -36,8 +36,8 @@ class WorkflowGRPCClient:
     """
 
     def __init__(self):
-        self.host = settings.WORKFLOW_SERVICE_HOST
-        self.port = settings.WORKFLOW_SERVICE_PORT
+        self.host = settings.WORKFLOW_AGENT_HOST
+        self.port = settings.WORKFLOW_AGENT_PORT
         self.channel = None
         self.stub = None
         self.connected = False

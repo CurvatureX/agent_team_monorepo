@@ -224,3 +224,27 @@ class WorkflowExecutionResponse(BaseModel):
     status: str = Field(description="执行状态")
     message: Optional[str] = Field(default=None, description="响应消息")
     started_at: Optional[str] = Field(default=None, description="开始执行时间")
+
+
+class NodeTemplate(BaseModel):
+    """
+    Node Template Model
+    """
+    id: str
+    name: str
+    description: Optional[str] = None
+    category: Optional[str] = None
+    node_type: str
+    node_subtype: str
+    version: Optional[str] = "1.0.0"
+    is_system_template: bool = False
+    default_parameters: Optional[Dict[str, Any]] = None
+    required_parameters: Optional[List[str]] = None
+    parameter_schema: Optional[Dict[str, Any]] = None
+
+
+class NodeTemplateListResponse(BaseModel):
+    """
+    Response model for a list of node templates.
+    """
+    node_templates: List[NodeTemplate] = Field(default_factory=list)
