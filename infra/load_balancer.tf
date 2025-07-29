@@ -15,7 +15,7 @@ resource "aws_lb" "main" {
 
 # Internal Application Load Balancer for backend services (HTTP)
 resource "aws_lb" "internal" {
-  name               = "${local.name_prefix}-internal-alb"
+  name               = "${local.name_prefix}-int-alb"
   internal           = true
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb_internal.id]
@@ -56,7 +56,7 @@ resource "aws_lb_target_group" "api_gateway" {
 # Target Group for Workflow Agent (HTTP)
 resource "aws_lb_target_group" "workflow_agent_http" {
   name        = "${local.name_prefix}-agent-tg"
-  port        = 8000
+  port        = 8001
   protocol    = "HTTP"
   vpc_id      = aws_vpc.main.id
   target_type = "ip"
@@ -76,12 +76,16 @@ resource "aws_lb_target_group" "workflow_agent_http" {
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-workflow-agent-tg"
   })
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # Target Group for Workflow Engine (HTTP)
 resource "aws_lb_target_group" "workflow_engine_http" {
   name        = "${local.name_prefix}-engine-tg"
-  port        = 8000
+  port        = 8002
   protocol    = "HTTP"
   vpc_id      = aws_vpc.main.id
   target_type = "ip"
@@ -101,6 +105,10 @@ resource "aws_lb_target_group" "workflow_engine_http" {
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-workflow-engine-tg"
   })
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # ALB Listener for HTTP/HTTPS
@@ -125,10 +133,10 @@ resource "aws_lb_listener" "internal" {
   port              = "80"
   protocol          = "HTTP"
 
-  # Default action - forward to API Gateway (can be changed as needed)
+  # Default action - forward to Workflow Agent
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.api_gateway.arn
+    target_group_arn = aws_lb_target_group.workflow_agent_http.arn
   }
 
   tags = local.common_tags
