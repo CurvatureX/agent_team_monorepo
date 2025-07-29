@@ -38,7 +38,6 @@ structlog.configure(
     cache_logger_on_first_use=True,
 )
 
-# Import our modules - these work when run from workflow_agent directory
 from core.config import settings
 from services.grpc_server import WorkflowAgentServer
 

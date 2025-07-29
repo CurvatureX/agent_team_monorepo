@@ -7,296 +7,35 @@ from typing import Optional, AsyncGenerator
 import grpc
 import structlog
 
+# 导入 agents 和核心组件
 from agents.workflow_agent import WorkflowAgent 
 from core.config import settings  
-from workflow_agent_pb2 import (
-    ConversationRequest, ConversationResponse, AgentState, 
-    ErrorContent, Conversation, AlternativeOption,
-    ClarificationContext, WorkflowContext, RAGContext, RAGResult,
-    STAGE_CLARIFICATION, STAGE_NEGOTIATION, STAGE_GAP_ANALYSIS,
-    STAGE_ALTERNATIVE_GENERATION, STAGE_WORKFLOW_GENERATION, 
-    STAGE_DEBUG, STAGE_COMPLETED, STAGE_ERROR
+from services.state_manager import get_workflow_agent_state_manager
+from agents.state import WorkflowState, WorkflowStage
+
+# 导入新的 proto 定义
+from proto.workflow_agent_pb2 import (
+    ConversationRequest, ConversationResponse, WorkflowContext,
+    ErrorContent, ResponseType,
+    RESPONSE_TYPE_MESSAGE, RESPONSE_TYPE_WORKFLOW, RESPONSE_TYPE_ERROR
 )
-import workflow_agent_pb2_grpc
-from workflow_agent_pb2_grpc import add_WorkflowAgentServicer_to_server
-from agents.state import WorkflowState, WorkflowStage, WorkflowOrigin, ClarificationPurpose
+import proto.workflow_agent_pb2_grpc as workflow_agent_pb2_grpc
 
 logger = structlog.get_logger()
 
 
-class StateConverter:
-    """状态转换器 - 处理 protobuf 和内部状态之间的转换"""
-    
-    @staticmethod
-    def proto_to_workflow_state(proto_state: AgentState) -> WorkflowState:
-        """将 protobuf AgentState 转换为内部 WorkflowState"""
-        # 解析 current_workflow_json 为对象
-        current_workflow = {}
-        if proto_state.current_workflow_json:
-            try:
-                import json
-                current_workflow = json.loads(proto_state.current_workflow_json)
-            except (json.JSONDecodeError, TypeError):
-                current_workflow = {}
-        
-        # 构建 WorkflowState
-        state: WorkflowState = {
-            "session_id": proto_state.session_id,
-            "user_id": proto_state.user_id,
-            "created_at": proto_state.created_at,
-            "updated_at": proto_state.updated_at,
-            "stage": WorkflowStage(StateConverter._proto_enum_to_stage(proto_state.stage)),
-            "intent_summary": proto_state.intent_summary,
-            "current_workflow": current_workflow,
-            "debug_result": proto_state.debug_result,
-            "debug_loop_count": proto_state.debug_loop_count,
-            "execution_history": list(proto_state.execution_history),
-            "gaps": list(proto_state.gaps),
-            "clarification_context": {
-                "origin": WorkflowOrigin.CREATE,
-                "purpose": ClarificationPurpose.INITIAL_INTENT,
-                "collected_info": {},
-                "pending_questions": []
-            },
-            "conversations": [],
-            "alternatives": []
-        }
-        
-        # 处理 previous_stage
-        if proto_state.previous_stage:
-            state["previous_stage"] = WorkflowStage(StateConverter._proto_enum_to_stage(proto_state.previous_stage))
-        
-        # 转换 conversations
-        conversations = []
-        for conv in proto_state.conversations:
-            conversations.append({
-                "role": conv.role,
-                "text": conv.text,
-                "timestamp": conv.timestamp,
-                "metadata": dict(conv.metadata)
-            })
-        state["conversations"] = conversations
-        
-        # 转换 alternatives
-        alternatives = []
-        for alt in proto_state.alternatives:
-            alternatives.append({
-                "id": alt.id,
-                "title": alt.title,
-                "description": alt.description,
-                "approach": alt.approach,
-                "trade_offs": list(alt.trade_offs),
-                "complexity": alt.complexity
-            })
-        state["alternatives"] = alternatives
-        
-        # 转换 clarification_context
-        if proto_state.clarification_context:
-            state["clarification_context"] = {
-                "purpose": proto_state.clarification_context.purpose,
-                "origin": proto_state.clarification_context.origin,
-                "collected_info": dict(proto_state.clarification_context.collected_info),
-                "pending_questions": list(proto_state.clarification_context.pending_questions)
-            }
-        
-        # 转换 workflow_context
-        if proto_state.workflow_context:
-            state["workflow_context"] = {
-                "origin": proto_state.workflow_context.origin,
-                "source_workflow_id": proto_state.workflow_context.source_workflow_id,
-                "modification_intent": proto_state.workflow_context.modification_intent
-            }
-        
-        # 转换 rag_context
-        if proto_state.rag_context:
-            rag_results = []
-            for result in proto_state.rag_context.results:
-                rag_results.append({
-                    "id": result.id,
-                    "node_type": result.node_type,
-                    "title": result.title,
-                    "description": result.description,
-                    "content": result.content,
-                    "similarity": result.similarity,
-                    "metadata": dict(result.metadata)
-                })
-            
-            state["rag"] = {
-                "query": proto_state.rag_context.query,
-                "timestamp": proto_state.rag_context.timestamp,
-                "metadata": dict(proto_state.rag_context.metadata),
-                "results": rag_results
-            }
-        
-        return state
-    
-    @staticmethod
-    def workflow_state_to_proto(state: WorkflowState) -> AgentState:
-        """将内部 WorkflowState 转换为 protobuf AgentState"""
-        agent_state = AgentState()
-        
-        # 基本字段
-        agent_state.session_id = str(state.get("session_id", ""))
-        agent_state.user_id = str(state.get("user_id", ""))
-        agent_state.created_at = int(state.get("created_at", time.time() * 1000))
-        agent_state.updated_at = int(time.time() * 1000)
-        agent_state.stage = StateConverter._stage_to_proto_enum(state.get("stage", "clarification"))
-        agent_state.intent_summary = str(state.get("intent_summary", ""))
-        agent_state.debug_result = str(state.get("debug_result", ""))
-        agent_state.debug_loop_count = int(state.get("debug_loop_count", 0))
-        
-        # 处理 current_workflow
-        current_workflow = state.get("current_workflow")
-        if current_workflow:
-            if isinstance(current_workflow, dict):
-                agent_state.current_workflow_json = json.dumps(current_workflow)
-            else:
-                agent_state.current_workflow_json = str(current_workflow)
-        
-        # 处理 previous_stage
-        previous_stage = state.get("previous_stage")
-        if previous_stage:
-            agent_state.previous_stage = StateConverter._stage_to_proto_enum(previous_stage)
-        
-        # 处理数组字段
-        execution_history = state.get("execution_history", [])
-        if isinstance(execution_history, list):
-            agent_state.execution_history[:] = [str(item) for item in execution_history]
-        
-        gaps = state.get("gaps", [])
-        if isinstance(gaps, list):
-            agent_state.gaps[:] = [str(gap) for gap in gaps]
-        
-        # 转换 conversations
-        conversations = state.get("conversations", [])
-        for conv in conversations:
-            if isinstance(conv, dict):
-                conversation = Conversation()
-                conversation.role = str(conv.get("role", "user"))
-                conversation.text = str(conv.get("text", ""))
-                conversation.timestamp = int(conv.get("timestamp", time.time() * 1000))
-                
-                metadata = conv.get("metadata", {})
-                if isinstance(metadata, dict):
-                    for key, value in metadata.items():
-                        conversation.metadata[str(key)] = str(value)
-                
-                agent_state.conversations.append(conversation)
-        
-        # 转换 alternatives
-        alternatives = state.get("alternatives", [])
-        for alt_data in alternatives:
-            if isinstance(alt_data, dict):
-                alt = AlternativeOption()
-                alt.id = str(alt_data.get("id", ""))
-                alt.title = str(alt_data.get("title", ""))
-                alt.description = str(alt_data.get("description", ""))
-                alt.approach = str(alt_data.get("approach", ""))
-                alt.complexity = str(alt_data.get("complexity", ""))
-                
-                trade_offs = alt_data.get("trade_offs", [])
-                if isinstance(trade_offs, list):
-                    alt.trade_offs[:] = [str(t) for t in trade_offs]
-                
-                agent_state.alternatives.append(alt)
-        
-        # 转换 clarification_context
-        clarification_context = state.get("clarification_context", {})
-        if clarification_context:
-            context = ClarificationContext()
-            context.purpose = str(clarification_context.get("purpose", ""))
-            context.origin = str(clarification_context.get("origin", ""))
-            
-            pending_questions = clarification_context.get("pending_questions", [])
-            if isinstance(pending_questions, list):
-                context.pending_questions[:] = [str(q) for q in pending_questions]
-            
-            collected_info = clarification_context.get("collected_info", {})
-            if isinstance(collected_info, dict):
-                for key, value in collected_info.items():
-                    context.collected_info[str(key)] = str(value)
-            
-            agent_state.clarification_context.CopyFrom(context)
-        
-        # 转换 workflow_context
-        workflow_context = state.get("workflow_context", {})
-        if workflow_context:
-            context = WorkflowContext()
-            context.origin = str(workflow_context.get("origin", ""))
-            context.source_workflow_id = str(workflow_context.get("source_workflow_id", ""))
-            context.modification_intent = str(workflow_context.get("modification_intent", ""))
-            agent_state.workflow_context.CopyFrom(context)
-        
-        # 转换 rag_context
-        rag_context = state.get("rag", {})
-        if rag_context:
-            context = RAGContext()
-            context.query = str(rag_context.get("query", ""))
-            context.timestamp = int(rag_context.get("timestamp", time.time() * 1000))
-            
-            metadata = rag_context.get("metadata", {})
-            if isinstance(metadata, dict):
-                for key, value in metadata.items():
-                    context.metadata[str(key)] = str(value)
-            
-            results = rag_context.get("results", [])
-            for result_data in results:
-                if isinstance(result_data, dict):
-                    result = RAGResult()
-                    result.id = str(result_data.get("id", ""))
-                    result.node_type = str(result_data.get("node_type", ""))
-                    result.title = str(result_data.get("title", ""))
-                    result.description = str(result_data.get("description", ""))
-                    result.content = str(result_data.get("content", ""))
-                    result.similarity = float(result_data.get("similarity", 0.0))
-                    
-                    result_metadata = result_data.get("metadata", {})
-                    if isinstance(result_metadata, dict):
-                        for key, value in result_metadata.items():
-                            result.metadata[str(key)] = str(value)
-                    
-                    context.results.append(result)
-            
-            agent_state.rag_context.CopyFrom(context)
-        
-        return agent_state
-    
-    @staticmethod
-    def _stage_to_proto_enum(stage: str) -> int:
-        """将 stage 字符串转换为 protobuf 枚举"""
-        mapping = {
-            "clarification": STAGE_CLARIFICATION,
-            "negotiation": STAGE_NEGOTIATION,
-            "gap_analysis": STAGE_GAP_ANALYSIS,
-            "alternative_generation": STAGE_ALTERNATIVE_GENERATION,
-            "workflow_generation": STAGE_WORKFLOW_GENERATION,
-            "debug": STAGE_DEBUG,
-            "completed": STAGE_COMPLETED
-        }
-        return mapping.get(stage, STAGE_ERROR)
-    
-    @staticmethod
-    def _proto_enum_to_stage(proto_enum: int) -> str:
-        """将 protobuf 枚举转换为 stage 字符串"""
-        mapping = {
-            STAGE_CLARIFICATION: "clarification",
-            STAGE_NEGOTIATION: "negotiation",
-            STAGE_GAP_ANALYSIS: "gap_analysis",
-            STAGE_ALTERNATIVE_GENERATION: "alternative_generation",
-            STAGE_WORKFLOW_GENERATION: "workflow_generation",
-            STAGE_DEBUG: "debug",
-            STAGE_COMPLETED: "completed"
-        }
-        return mapping.get(proto_enum, "clarification")
-
-
 class WorkflowAgentServicer(workflow_agent_pb2_grpc.WorkflowAgentServicer):
-    """新的 WorkflowAgent gRPC 服务实现"""
+    """
+    新的 WorkflowAgent gRPC 服务实现
+    根据最新 proto 定义实现统一的 ProcessConversation 接口
+    内部管理 workflow_agent_state，对外提供简洁的对话接口
+    """
 
     def __init__(self):
         logger.info("Initializing WorkflowAgentServicer")
         self.workflow_agent = WorkflowAgent()
-        logger.info("WorkflowAgent initialized")
+        self.state_manager = get_workflow_agent_state_manager()
+        logger.info("WorkflowAgentServicer initialized with database state management")
 
     async def ProcessConversation(
         self, 
@@ -304,63 +43,103 @@ class WorkflowAgentServicer(workflow_agent_pb2_grpc.WorkflowAgentServicer):
         context: grpc.aio.ServicerContext
     ) -> AsyncGenerator[ConversationResponse, None]:
         """
-        处理对话的统一接口 - 支持所有 6 个阶段的工作流
+        处理对话的统一接口 - 支持所有工作流生成阶段
+        内部管理 workflow_agent_state，对外提供流式响应
         """
         try:
-            logger.info(f"Processing conversation for session: {request.session_id}")
-
-            # 转换 protobuf 状态为内部格式
-            current_state = StateConverter.proto_to_workflow_state(request.current_state)
+            logger.info(f"Request: {request}")
+            session_id = request.session_id
+            current_state = self.state_manager.get_state_by_session(session_id, request.access_token)
             
-            # 更新基本信息
-            current_state["session_id"] = request.session_id
-            current_state["user_id"] = request.user_id
-            current_state["updated_at"] = int(time.time() * 1000)
-
+            if not current_state:
+                # 创建新的 workflow_agent_state 记录
+                workflow_context = None
+                if request.workflow_context:
+                    workflow_context = {
+                        "origin": request.workflow_context.origin,
+                        "source_workflow_id": request.workflow_context.source_workflow_id
+                    }
+                state_id = self.state_manager.create_state(
+                    session_id=session_id,
+                    user_id=request.user_id or "anonymous",
+                    initial_stage="clarification",
+                    workflow_context=workflow_context,
+                    access_token=request.access_token
+                )
+                
+                if not state_id:
+                    raise Exception("Failed to create workflow_agent_state")
+                
+                # 重新获取创建的状态
+                current_state = self.state_manager.get_state_by_session(session_id, request.access_token)
+                logger.info(f"Created new workflow_agent_state for session {session_id}")
+            else:
+                logger.info(f"Retrieved existing workflow_agent_state for session {session_id}")
+            
             # 添加用户消息到对话历史
+            conversations = current_state.get("conversations", [])
             if request.user_message:
-                current_state["conversations"].append({
+                conversations.append({
                     "role": "user",
                     "text": request.user_message,
-                    "timestamp": int(time.time() * 1000),
-                    "metadata": {}
+                    "timestamp": int(time.time() * 1000)
                 })
+                current_state["conversations"] = conversations
 
-            # 处理工作流上下文
-            if request.workflow_context:
-                current_state["workflow_context"] = {
-                    "origin": request.workflow_context.origin,
-                    "source_workflow_id": request.workflow_context.source_workflow_id,
-                    "modification_intent": request.workflow_context.modification_intent
-                }
+            # 更新时间戳
+            current_state["updated_at"] = int(time.time() * 1000)
 
             logger.info(f"Current stage: {current_state.get('stage', 'unknown')}")
 
-            # 通过 LangGraph 处理状态
-            final_state = None
-            step_count = 0
-            
-            async for chunk in self.workflow_agent.graph.astream(current_state):
-                step_count += 1
-                logger.info(f"Processing step {step_count}: {list(chunk.keys())}")
+            # 通过 LangGraph 处理状态 - 使用真正的 workflow_agent
+            try:
+                # 转换状态格式为 LangGraph WorkflowState
+                workflow_state = self._convert_to_workflow_state(current_state)
                 
-                for node_name, node_output in chunk.items():
-                    if node_name != "router":  # 跳过路由器节点
-                        logger.info(f"Node {node_name} completed, stage: {node_output.get('stage')}")
+                # 使用 LangGraph 流式处理
+                async for step_state in self.workflow_agent.graph.astream(workflow_state):
+                    logger.info(f"LangGraph step completed: {step_state}")
+                    
+                    # 获取最新的状态
+                    if step_state:
+                        # step_state 是字典，包含节点名和状态
+                        node_name, updated_state = next(iter(step_state.items()))
                         
-                        # 发送中间状态响应
-                        response = ConversationResponse(
-                            session_id=request.session_id,
-                            updated_state=StateConverter.workflow_state_to_proto(node_output),
-                            timestamp=int(time.time() * 1000),
-                            is_final=False
-                        )
-                        if node_name in ["negotiation", "alternative_generation"]:
-                            response.is_final = True
+                        # 为每个节点生成相应的 gRPC 响应
+                        async for response in self._generate_node_response(node_name, updated_state, session_id):
+                            yield response
+                            
+                        # 更新当前状态
+                        current_state = self._convert_from_workflow_state(updated_state)
+                        
+                        # 如果到达完成状态，退出循环
+                        if updated_state.get("stage") == WorkflowStage.COMPLETED:
+                            break
 
-                        yield response
+                # 保存更新后的状态到数据库 - 符合 req2.md 要求
+                success = self.state_manager.save_full_state(
+                    session_id=session_id,
+                    workflow_state=current_state,
+                    access_token=request.access_token
+                )
+                if success:
+                    logger.info(f"Saved updated workflow_agent_state for session {session_id}")
+                else:
+                    logger.error(f"Failed to save workflow_agent_state for session {session_id}")
 
-            logger.info("WorkflowAgentServicer.ProcessConversation completed")                        
+            except Exception as processing_error:
+                logger.error(f"Error in workflow processing: {processing_error}")
+                yield ConversationResponse(
+                    session_id=session_id,
+                    response_type=RESPONSE_TYPE_ERROR,
+                    error=ErrorContent(
+                        error_code="PROCESSING_ERROR",
+                        message=f"Error processing workflow: {str(processing_error)}",
+                        details=str(processing_error),
+                        is_recoverable=True
+                    ),
+                    is_final=True
+                )
 
         except Exception as e:
             import traceback
@@ -370,21 +149,261 @@ class WorkflowAgentServicer(workflow_agent_pb2_grpc.WorkflowAgentServicer):
                         traceback=error_traceback)
             
             # 发送错误响应
-            error_response = ConversationResponse(
+            yield ConversationResponse(
                 session_id=request.session_id,
+                response_type=RESPONSE_TYPE_ERROR,
                 error=ErrorContent(
                     error_code="INTERNAL_ERROR",
                     message=f"Failed to process conversation: {str(e)}",
                     details=str(e),
                     is_recoverable=True
                 ),
-                timestamp=int(time.time() * 1000),
                 is_final=True
             )
-            yield error_response
+
+    def _convert_to_workflow_state(self, db_state: dict) -> WorkflowState:
+        """将数据库状态转换为 LangGraph WorkflowState"""
+        workflow_state: WorkflowState = {
+            "session_id": db_state.get("session_id", ""),
+            "user_id": db_state.get("user_id", "anonymous"),
+            "created_at": db_state.get("created_at", int(time.time() * 1000)),
+            "updated_at": db_state.get("updated_at", int(time.time() * 1000)),
+            "stage": WorkflowStage(db_state.get("stage", "clarification")),
+            "intent_summary": db_state.get("intent_summary", ""),
+            "execution_history": db_state.get("execution_history", []),
+            "clarification_context": db_state.get("clarification_context", {
+                "origin": "create",
+                "pending_questions": []
+            }),
+            "conversations": db_state.get("conversations", []),
+            "gaps": db_state.get("gaps", []),
+            "alternatives": db_state.get("alternatives", []),
+            "current_workflow": {},
+            "debug_result": db_state.get("debug_result", ""),
+            "debug_loop_count": db_state.get("debug_loop_count", 0),
+        }
+        
+        # 处理 current_workflow
+        current_workflow = db_state.get("current_workflow")
+        if isinstance(current_workflow, str) and current_workflow:
+            try:
+                workflow_state["current_workflow"] = json.loads(current_workflow)
+            except json.JSONDecodeError:
+                workflow_state["current_workflow"] = {}
+        elif isinstance(current_workflow, dict):
+            workflow_state["current_workflow"] = current_workflow
+        else:
+            workflow_state["current_workflow"] = {}
+            
+        return workflow_state
+        
+    def _convert_from_workflow_state(self, workflow_state: WorkflowState) -> dict:
+        """将 LangGraph WorkflowState 转换为数据库状态"""
+        db_state = dict(workflow_state)
+        
+        # 确保stage 是字符串
+        if isinstance(db_state.get("stage"), WorkflowStage):
+            db_state["stage"] = db_state["stage"].value
+            
+        return db_state
+        
+    async def _generate_node_response(self, node_name: str, state: WorkflowState, session_id: str) -> AsyncGenerator[ConversationResponse, None]:
+        """为每个节点生成相应的 gRPC 响应"""
+        stage = state.get("stage", WorkflowStage.CLARIFICATION)
+        
+        if stage == WorkflowStage.CLARIFICATION:
+            yield await self._handle_clarification_response(state, session_id)
+            
+        elif stage == WorkflowStage.NEGOTIATION:
+            yield await self._handle_negotiation_response(state, session_id)
+            
+        elif stage == WorkflowStage.GAP_ANALYSIS:
+            yield await self._handle_gap_analysis_response(state, session_id)
+            
+        elif stage == WorkflowStage.ALTERNATIVE_GENERATION:
+            yield await self._handle_alternative_generation_response(state, session_id)
+            
+        elif stage == WorkflowStage.WORKFLOW_GENERATION:
+            yield await self._handle_workflow_generation_response(state, session_id)
+            
+        elif stage == WorkflowStage.DEBUG:
+            yield await self._handle_debug_response(state, session_id)
+            
+        elif stage == WorkflowStage.COMPLETED:
+            yield await self._handle_completion_response(state, session_id)
+    
+    async def _handle_clarification_response(self, state: WorkflowState, session_id: str) -> ConversationResponse:
+        """处理澄清阶段响应"""
+        conversations = state.get("conversations", [])
+        if conversations:
+            # 获取最新的助手消息
+            for conv in reversed(conversations):
+                if conv.get("role") == "assistant":
+                    return ConversationResponse(
+                        session_id=session_id,
+                        response_type=RESPONSE_TYPE_MESSAGE,
+                        message=conv.get("text", "正在处理您的请求..."),
+                        is_final=False
+                    )
+        
+        return ConversationResponse(
+            session_id=session_id,
+            response_type=RESPONSE_TYPE_MESSAGE,
+            message="正在澄清您的需求...",
+            is_final=False
+        )
+    
+    async def _handle_negotiation_response(self, state: WorkflowState, session_id: str) -> ConversationResponse:
+        """处理协商阶段响应"""
+        clarification_context = state.get("clarification_context", {})
+        pending_questions = clarification_context.get("pending_questions", [])
+        
+        if pending_questions:
+            questions_text = "\n".join(pending_questions)
+            return ConversationResponse(
+                session_id=session_id,
+                response_type=RESPONSE_TYPE_MESSAGE,
+                message=questions_text,
+                is_final=False
+            )
+        
+        return ConversationResponse(
+            session_id=session_id,
+            response_type=RESPONSE_TYPE_MESSAGE,
+            message="正在处理您的回复...",
+            is_final=False
+        )
+    
+    async def _handle_gap_analysis_response(self, state: WorkflowState, session_id: str) -> ConversationResponse:
+        """处理能力差距分析阶段响应"""
+        gaps = state.get("gaps", [])
+        
+        if gaps:
+            gap_message = f"分析发现以下能力差距: {', '.join(gaps)}。正在生成替代方案..."
+        else:
+            gap_message = "能力分析完成，没有发现重大差距。准备生成工作流..."
+            
+        return ConversationResponse(
+            session_id=session_id,
+            response_type=RESPONSE_TYPE_MESSAGE,
+            message=gap_message,
+            is_final=False
+        )
+    
+    async def _handle_alternative_generation_response(self, state: WorkflowState, session_id: str) -> ConversationResponse:
+        """处理替代方案生成阶段响应"""
+        alternatives = state.get("alternatives", [])
+        
+        if alternatives:
+            alt_messages = []
+            for i, alt in enumerate(alternatives, 1):
+                if isinstance(alt, dict):
+                    title = alt.get("title", f"方案 {i}")
+                    description = alt.get("description", "")
+                    alt_messages.append(f"{i}. {title}: {description}")
+                else:
+                    alt_messages.append(f"{i}. {alt}")
+            
+            message = "已生成以下替代方案：\n" + "\n".join(alt_messages) + "\n\n请选择您希望采用的方案编号。"
+        else:
+            message = "正在生成替代方案..."
+            
+        return ConversationResponse(
+            session_id=session_id,
+            response_type=RESPONSE_TYPE_MESSAGE,
+            message=message,
+            is_final=False
+        )
+    
+    async def _handle_workflow_generation_response(self, state: WorkflowState, session_id: str) -> ConversationResponse:
+        """处理工作流生成阶段响应"""
+        current_workflow = state.get("current_workflow", {})
+        
+        if current_workflow and isinstance(current_workflow, dict) and current_workflow.get("nodes"):
+            # 工作流已生成
+            workflow_json = json.dumps(current_workflow) if isinstance(current_workflow, dict) else str(current_workflow)
+            
+            return ConversationResponse(
+                session_id=session_id,
+                response_type=RESPONSE_TYPE_WORKFLOW,
+                workflow=workflow_json,
+                is_final=False  # 还需要debug验证
+            )
+        else:
+            return ConversationResponse(
+                session_id=session_id,
+                response_type=RESPONSE_TYPE_MESSAGE,
+                message="正在生成工作流...",
+                is_final=False
+            )
+    
+    async def _handle_debug_response(self, state: WorkflowState, session_id: str) -> ConversationResponse:
+        """处理调试阶段响应"""
+        debug_result = state.get("debug_result", "")
+        
+        if debug_result:
+            try:
+                debug_data = json.loads(debug_result) if isinstance(debug_result, str) else debug_result
+                
+                if debug_data.get("success"):
+                    return ConversationResponse(
+                        session_id=session_id,
+                        response_type=RESPONSE_TYPE_MESSAGE,
+                        message="工作流验证成功！",
+                        is_final=False
+                    )
+                else:
+                    errors = debug_data.get("errors", [])
+                    error_msg = "工作流验证发现问题：\n" + "\n".join(errors) + "\n正在修复..."
+                    return ConversationResponse(
+                        session_id=session_id,
+                        response_type=RESPONSE_TYPE_MESSAGE,
+                        message=error_msg,
+                        is_final=False
+                    )
+            except (json.JSONDecodeError, TypeError):
+                pass
+        
+        return ConversationResponse(
+            session_id=session_id,
+            response_type=RESPONSE_TYPE_MESSAGE,
+            message="正在验证工作流...",
+            is_final=False
+        )
+    
+    async def _handle_completion_response(self, state: WorkflowState, session_id: str) -> ConversationResponse:
+        """处理完成阶段响应"""
+        current_workflow = state.get("current_workflow", {})
+        
+        if current_workflow and isinstance(current_workflow, dict):
+            workflow_json = json.dumps(current_workflow)
+            node_count = len(current_workflow.get("nodes", []))
+            
+            # 先发送成功消息
+            return ConversationResponse(
+                session_id=session_id,
+                response_type=RESPONSE_TYPE_WORKFLOW,
+                workflow=workflow_json,
+                message=f"工作流生成完成！包含 {node_count} 个节点。",
+                is_final=True
+            )
+        else:
+            return ConversationResponse(
+                session_id=session_id,
+                response_type=RESPONSE_TYPE_ERROR,
+                error=ErrorContent(
+                    error_code="WORKFLOW_GENERATION_FAILED",
+                    message="工作流生成失败",
+                    details="无法生成有效的工作流",
+                    is_recoverable=True
+                ),
+                is_final=True
+            )
 
 
 class WorkflowAgentServer:
+    """WorkflowAgent gRPC 服务器"""
+    
     def __init__(self):
         logger.info("Initializing WorkflowAgentServer")
         self.server: Optional[grpc.aio.Server] = None
@@ -401,7 +420,7 @@ class WorkflowAgentServer:
 
             # 添加服务到服务器
             logger.info("Adding servicer to server")
-            add_WorkflowAgentServicer_to_server(self.servicer, self.server)
+            workflow_agent_pb2_grpc.add_WorkflowAgentServicer_to_server(self.servicer, self.server)
 
             # 配置服务器地址
             listen_addr = f"{settings.GRPC_HOST}:{settings.GRPC_PORT}"

@@ -108,6 +108,9 @@ services:
 
   # Workflow Engine - Workflow execution engine (gRPC service on port 50050)
   workflow-engine:
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     build:
       context: .
       dockerfile: ./workflow_engine/Dockerfile

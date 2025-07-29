@@ -13,9 +13,7 @@ from .chat import (
     ChatRequest,
     ChatMessage,
     ChatSSEEvent,
-    ChatResponse,
     ChatHistory,
-    WorkflowGenerationEvent,
 )
 
 # 向后兼容别名
@@ -56,7 +54,5 @@ __all__ = [
     "ChatRequest",
     "ChatMessage",
     "ChatSSEEvent",
-    "ChatResponse",
     "ChatHistory",
-    "WorkflowGenerationEvent",
 ]
