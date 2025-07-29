@@ -76,6 +76,10 @@ resource "aws_lb_target_group" "workflow_agent_http" {
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-workflow-agent-tg"
   })
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # Target Group for Workflow Engine (HTTP)
@@ -101,6 +105,10 @@ resource "aws_lb_target_group" "workflow_engine_http" {
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-workflow-engine-tg"
   })
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # ALB Listener for HTTP/HTTPS
@@ -131,8 +139,6 @@ resource "aws_lb_listener" "internal" {
     target_group_arn = aws_lb_target_group.workflow_agent_http.arn
   }
 
-  depends_on = [aws_lb_target_group.workflow_agent_http]
-
   tags = local.common_tags
 }
 
@@ -153,8 +159,6 @@ resource "aws_lb_listener_rule" "workflow_agent" {
   }
 
   tags = local.common_tags
-
-  depends_on = [aws_lb_target_group.workflow_agent_http]
 }
 
 resource "aws_lb_listener_rule" "workflow_engine" {
@@ -173,8 +177,6 @@ resource "aws_lb_listener_rule" "workflow_engine" {
   }
 
   tags = local.common_tags
-
-  depends_on = [aws_lb_target_group.workflow_engine_http]
 }
 
 # HTTP to HTTPS redirect (if certificate is provided)
