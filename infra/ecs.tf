@@ -204,7 +204,7 @@ resource "aws_ecs_task_definition" "workflow_engine" {
 
       portMappings = [
         {
-          containerPort = 8000
+          containerPort = 8002
           protocol      = "tcp"
         }
       ]
@@ -220,7 +220,7 @@ resource "aws_ecs_task_definition" "workflow_engine" {
         },
         {
           name  = "PORT"
-          value = "8000"
+          value = "8002"
         },
         {
           name  = "REDIS_URL"
@@ -261,7 +261,7 @@ resource "aws_ecs_task_definition" "workflow_engine" {
       }
 
       healthCheck = {
-        command     = ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+        command     = ["CMD-SHELL", "curl -f http://localhost:8002/health || exit 1"]
         interval    = 30
         timeout     = 5
         retries     = 3
@@ -319,7 +319,7 @@ resource "aws_ecs_task_definition" "workflow_agent" {
 
       portMappings = [
         {
-          containerPort = 8000
+          containerPort = 8001
           protocol      = "tcp"
         }
       ]
@@ -335,11 +335,11 @@ resource "aws_ecs_task_definition" "workflow_agent" {
         },
         {
           name  = "PORT"
-          value = "8000"
+          value = "8001"
         },
         {
           name  = "FASTAPI_PORT"
-          value = "8000"
+          value = "8001"
         },
         {
           name  = "REDIS_URL"
@@ -376,7 +376,7 @@ resource "aws_ecs_task_definition" "workflow_agent" {
       }
 
       healthCheck = {
-        command     = ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+        command     = ["CMD-SHELL", "curl -f http://localhost:8001/health || exit 1"]
         interval    = 30
         timeout     = 5
         retries     = 3
@@ -405,7 +405,7 @@ resource "aws_ecs_service" "workflow_engine" {
   load_balancer {
     target_group_arn = aws_lb_target_group.workflow_engine_http.arn
     container_name   = "workflow-engine"
-    container_port   = 8000
+    container_port   = 8002
   }
 
   service_registries {
@@ -434,7 +434,7 @@ resource "aws_ecs_service" "workflow_agent" {
   load_balancer {
     target_group_arn = aws_lb_target_group.workflow_agent_http.arn
     container_name   = "workflow-agent"
-    container_port   = 8000
+    container_port   = 8001
   }
 
   service_registries {
