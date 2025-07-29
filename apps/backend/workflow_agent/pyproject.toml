@@ -20,7 +20,7 @@ dependencies = [
     "protobuf>=6.0.0",
     "fastapi>=0.104.1",
     "uvicorn[standard]>=0.26.0",
-    "pydantic>=2.7.4",
+    "pydantic[email]>=2.7.4",
     "pydantic-settings==2.1.0",
     "python-dotenv==1.0.0",
     "structlog>=23.2.0",

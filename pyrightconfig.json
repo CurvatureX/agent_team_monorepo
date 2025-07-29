@@ -3,6 +3,7 @@
   "reportAttributeAccessIssue": false,
   "reportArgumentType": false,
   "reportOptionalMemberAccess": false,
+  "reportOptionalSubscript": false,
   "venvPath": "apps/backend",
   "venv": ".venv",
   "extraPaths": [

@@ -91,6 +91,8 @@ ENV MCP_API_KEY_REQUIRED="true"
 # Rate limiting settings
 ENV PUBLIC_RATE_LIMIT_ENABLED="true"
 
+ENV UV_HTTP_TIMEOUT=120
+
 # Expose port
 EXPOSE 8000
 
