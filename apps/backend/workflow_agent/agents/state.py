@@ -65,12 +65,10 @@ class RetrievedDocument(TypedDict):
 
 
 class RAGContext(TypedDict):
-    """RAG上下文 - 完全对应proto.RAGContext"""
-    
-    results: List[RetrievedDocument]  # 对应proto.results
-    query: str  # 对应proto.query
-    timestamp: NotRequired[int]  # 对应proto.timestamp
-    metadata: NotRequired[Dict[str, str]]  # 对应proto.metadata
+    results: List[RetrievedDocument] 
+    query: str  
+    timestamp: NotRequired[int]
+    metadata: NotRequired[Dict[str, str]] 
 
 
 class AlternativeOption(TypedDict):
@@ -85,9 +83,6 @@ class AlternativeOption(TypedDict):
 
 
 class WorkflowState(TypedDict):
-    """Workflow state - 完全对应proto.AgentState结构"""
-
-    # 元数据 (对应proto: session_id, user_id, created_at, updated_at)
     session_id: str
     user_id: str
     created_at: int  # timestamp in milliseconds
@@ -96,27 +91,20 @@ class WorkflowState(TypedDict):
     # 当前阶段 (对应proto: stage, previous_stage)
     stage: WorkflowStage
     previous_stage: NotRequired[WorkflowStage]
-
-    # 执行历史 (对应proto: execution_history)
-    execution_history: NotRequired[List[str]]
-
-    # 澄清上下文 (对应proto: clarification_context)
-    clarification_context: ClarificationContext
-
-    # 对话历史和意图 (对应proto: conversations, intent_summary)
-    conversations: List[Conversation]
     intent_summary: str
 
-    # 分析结果 (对应proto: gaps, alternatives)
+    execution_history: NotRequired[List[str]]
+    clarification_context: ClarificationContext
+
+    conversations: List[Conversation]
+
     gaps: List[str]
     alternatives: List[AlternativeOption]  # 改为对象列表而非字符串
 
-    # 工作流数据 (对应proto: current_workflow_json, debug_result, debug_loop_count)
     current_workflow: object  # 将序列化为current_workflow_json
     debug_result: str
     debug_loop_count: int
 
-    # 上下文信息 (对应proto: workflow_context)
     workflow_context: NotRequired[Dict[str, Any]]  # 将映射到WorkflowContext
 
     # RAG上下文 (对应proto: rag_context)

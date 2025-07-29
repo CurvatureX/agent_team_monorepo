@@ -4,13 +4,10 @@ Implements the 6 core nodes: Clarification, Negotiation, Gap Analysis,
 Alternative Solution Generation, Workflow Generation, and Debug
 """
 
-import asyncio
 import json
-import sys
 import time
 import uuid
-from pathlib import Path
-from typing import Any, Dict, List
+from typing import List
 
 import structlog
 from langchain_anthropic import ChatAnthropic
@@ -27,8 +24,6 @@ from agents.state import (
 )
 from agents.tools import RAGTool
 from core.config import settings
-
-# Import the proper PromptEngine for production use
 from core.prompt_engine import get_prompt_engine
 
 logger = structlog.get_logger()
@@ -534,6 +529,7 @@ class WorkflowAgentNodes:
             WorkflowStage.NEGOTIATION: "negotiation",
             WorkflowStage.GAP_ANALYSIS: "gap_analysis",
             WorkflowStage.WORKFLOW_GENERATION: "workflow_generation",
+            WorkflowStage.ALTERNATIVE_GENERATION: "alternative_generation",
             WorkflowStage.DEBUG: "debug",
             "completed": "END",
         }

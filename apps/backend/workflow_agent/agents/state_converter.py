@@ -6,8 +6,8 @@ import json
 import time
 from typing import Dict, Any, List
 
-from proto import workflow_agent_pb2
-from agents.state import (
+from workflow_agent.proto import workflow_agent_pb2
+from workflow_agent.agents.state import (
     WorkflowState, WorkflowStage, AlternativeOption, Conversation, 
     ClarificationContext, RAGContext, RetrievedDocument, 
     WorkflowOrigin, ClarificationPurpose
