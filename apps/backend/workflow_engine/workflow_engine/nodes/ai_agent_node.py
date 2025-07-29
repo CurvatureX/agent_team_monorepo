@@ -13,6 +13,13 @@ from typing import Any, Dict, List, Optional
 
 from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
 
+try:
+    from shared.node_specs import node_spec_registry
+    from shared.node_specs.base import NodeSpec
+except ImportError:
+    node_spec_registry = None
+    NodeSpec = None
+
 
 class AIAgentNodeExecutor(BaseNodeExecutor):
     """Executor for AI_AGENT_NODE type with provider-based architecture."""
@@ -21,6 +28,13 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         super().__init__()
         self.ai_clients = {}
         self._init_ai_clients()
+
+    def _get_node_spec(self) -> Optional[NodeSpec]:
+        """Get the node specification for AI agent nodes."""
+        if node_spec_registry:
+            # Return the OpenAI spec as default (all AI agent specs are similar)
+            return node_spec_registry.get_spec("AI_AGENT_NODE", "OPENAI_NODE")
+        return None
 
     def _init_ai_clients(self):
         """Initialize AI provider clients."""
