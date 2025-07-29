@@ -1,4 +1,3 @@
-version: "3.8"
 
 services:
   # ======================
@@ -116,41 +115,15 @@ services:
       dockerfile: ./workflow_engine/Dockerfile
       target: production
     container_name: agent-team-workflow-engine
-    environment:
-      # Core service configuration
-      DEBUG: "${DEBUG:-false}"
-      GRPC_PORT: "50050" # Changed from PORT to GRPC_PORT to match service config
-
-      # Database configuration (Supabase)
-      SUPABASE_URL: "${SUPABASE_URL}"
-      SUPABASE_SECRET_KEY: "${SUPABASE_SECRET_KEY}"
-      DATABASE_URL: "${DATABASE_URL}"
-
-      # Redis configuration
-      REDIS_URL: "redis://redis:6379/1" # Different Redis DB from workflow-agent
-
-      # AI API keys (for workflow execution)
-      OPENAI_API_KEY: "${OPENAI_API_KEY}"
-      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
-
-      # Service discovery (matches AWS ECS configuration)
-      SERVICE_NAME: "workflow-engine"
-      ENVIRONMENT: "${ENVIRONMENT:-development}"
-    ports:
-      - "50050:50050" # Changed to match actual gRPC port
-    depends_on:
-      redis:
-        condition: service_healthy
-    volumes:
-      - ./shared/proto:/app/shared/proto:ro
-      - workflow_engine_logs:/app/logs
+    env_file:
+      - ./workflow_engine/.env
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "50050"] # Changed to match actual port
+      test: ["CMD", "nc", "-z", "localhost", "50050"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 180s # Matches production configuration
-    restart: unless-stopped
+      start_period: 180s
+
     networks:
       - agent-team-network
 
@@ -163,40 +136,15 @@ services:
     build:
       context: .
       dockerfile: ./api-gateway/Dockerfile
-      target: production
-    container_name: agent-team-api-gateway
-    environment:
-      # Core service configuration
-      APP_NAME: "Agent Team API Gateway"
-      VERSION: "1.0.0"
-      ENVIRONMENT: "${ENVIRONMENT:-development}"
-      DEBUG: "${DEBUG:-true}"
-      HOST: "0.0.0.0"
-      PORT: "8000"
-      LOG_LEVEL: "${LOG_LEVEL:-DEBUG}"
-      LOG_FORMAT: "${LOG_FORMAT:-standard}"
-
-      # Redis configuration for caching and rate limiting
-      REDIS_URL: "redis://redis:6379/2" # Different Redis DB from other services
-
-      # Authentication settings
-      SUPABASE_AUTH_ENABLED: "${SUPABASE_AUTH_ENABLED:-true}"
-      MCP_API_KEY_REQUIRED: "${MCP_API_KEY_REQUIRED:-false}" # Disabled for development
-
-      # Rate limiting
-      PUBLIC_RATE_LIMIT_ENABLED: "${PUBLIC_RATE_LIMIT_ENABLED:-true}"
-
-      # Supabase configuration
-      SUPABASE_URL: "${SUPABASE_URL}"
-      SUPABASE_SECRET_KEY: "${SUPABASE_SECRET_KEY}"
-
-      # Backend service connections (internal container networking)
-      WORKFLOW_SERVICE_HOST: "workflow-agent"
-      WORKFLOW_SERVICE_PORT: "50051"
-      WORKFLOW_ENGINE_HOST: "workflow-engine"
-      WORKFLOW_ENGINE_PORT: "50050" # Updated to match actual workflow-engine gRPC port
+    container_name: api_gateway_service
+    user: "1000:1000"
     ports:
-      - "8000:8000" # Main HTTP API
+      - "8000:8000"
+    env_file:
+      - ./api-gateway/.env
+    environment:
+      - WORKFLOW_SERVICE_HOST=workflow-engine
+      - WORKFLOW_SERVICE_PORT=50050
     depends_on:
       redis:
         condition: service_healthy
@@ -236,6 +184,3 @@ volumes:
 networks:
   agent-team-network:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
