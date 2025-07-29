@@ -49,7 +49,7 @@ services:
   # Backend Services (gRPC)
   # ======================
 
-  # Workflow Agent - AI workflow consultant (gRPC service on port 50051)
+  # Workflow Agent - AI workflow consultant (FastAPI service on port 8001)
   workflow-agent:
     build:
       context: .
@@ -59,10 +59,11 @@ services:
         - PYTHON_VERSION=3.11
     container_name: agent-team-workflow-agent
     environment:
-      # Core service configuration
+      # Core service configuration (FastAPI 替换 gRPC)
       DEBUG: "${DEBUG:-false}"
-      GRPC_HOST: "${GRPC_HOST:-[::]}"
-      GRPC_PORT: "${GRPC_PORT:-50051}"
+      FASTAPI_PORT: "8001"
+      PYTHONPATH: "/app"
+      PYTHONUNBUFFERED: "1"
 
       # Database configuration (Supabase)
       SUPABASE_URL: "${SUPABASE_URL}"
@@ -70,7 +71,6 @@ services:
 
       # Redis configuration for LangGraph checkpoints
       REDIS_URL: "redis://redis:6379/0"
-      LANGGRAPH_CHECKPOINT_BACKEND: "redis"
 
       # AI API keys
       OPENAI_API_KEY: "${OPENAI_API_KEY}"
@@ -88,7 +88,7 @@ services:
       SERVICE_NAME: "workflow-agent"
       ENVIRONMENT: "${ENVIRONMENT:-development}"
     ports:
-      - "50051:50051"
+      - "8001:8001"  # FastAPI 端口替换 gRPC 端口
     depends_on:
       redis:
         condition: service_healthy
@@ -96,11 +96,11 @@ services:
       - ./shared/proto:/app/shared/proto:ro
       - workflow_agent_logs:/app/logs
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "50051"]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]  # HTTP 健康检查替换 TCP
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 240s # Matches production configuration
+      start_period: 60s  # FastAPI 启动比 gRPC 快
     restart: unless-stopped
     networks:
       - agent-team-network
@@ -145,6 +145,10 @@ services:
     environment:
       - WORKFLOW_SERVICE_HOST=workflow-engine
       - WORKFLOW_SERVICE_PORT=50050
+      # HTTP 客户端配置 (替换 gRPC)
+      - WORKFLOW_AGENT_HOST=workflow-agent
+      - WORKFLOW_AGENT_HTTP_PORT=8001
+      - USE_HTTP_CLIENT=true
     depends_on:
       redis:
         condition: service_healthy
