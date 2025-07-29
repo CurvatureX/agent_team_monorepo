@@ -12,7 +12,7 @@ class BaseResponse(BaseModel):
     message: str = ""
 
     class Config:
-        schema_extra = {"example": {"success": True, "message": "操作成功"}}
+        json_schema_extra = {"example": {"success": True, "message": "操作成功"}}
 
 
 class ErrorResponse(BaseResponse):
@@ -23,7 +23,7 @@ class ErrorResponse(BaseResponse):
     details: Optional[Dict[str, Any]] = None
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "success": False,
                 "message": "操作失败",
@@ -50,7 +50,7 @@ class HealthResponse(BaseModel):
     details: Optional[Dict[str, Any]] = None
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "status": "healthy",
                 "version": "1.0.0",
@@ -81,7 +81,7 @@ class ServiceHealthCheck(BaseModel):
     error: Optional[str] = None
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "status": "healthy",
                 "status_code": 200,
