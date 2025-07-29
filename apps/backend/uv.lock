@@ -116,7 +116,6 @@ dependencies = [
     { name = "python-json-logger" },
     { name = "python-multipart" },
     { name = "redis", extra = ["hiredis"] },
-    { name = "structlog" },
     { name = "supabase" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -153,7 +152,6 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.6" },
     { name = "redis", specifier = ">=5.0.0" },
     { name = "redis", extras = ["hiredis"], specifier = ">=5.0.0" },
-    { name = "structlog", specifier = ">=23.2.0" },
     { name = "supabase", specifier = ">=2.9.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.26.0" },
 ]

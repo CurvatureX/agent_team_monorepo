@@ -26,34 +26,17 @@ router = APIRouter()
 @router.post("/sessions", response_model=SessionResponse)
 async def create_session(request: SessionCreate, deps: AuthenticatedDeps = Depends()):
     """
-    Create a new session
-    创建新的会话
+    Create a new session - 只 init session，不新建 workflow_agent_state
+    根据最新的 proto 定义，workflow_agent_state 的管理全部由 workflow_agent 服务负责
     """
     try:
         logger.info(f"📝 Creating session for user {deps.current_user.sub}")
 
-        # Validate action parameter
-        valid_actions = ["create", "edit", "copy"]
-        if request.action and request.action not in valid_actions:
-            raise ValidationError(
-                f"Invalid action. Must be one of: {valid_actions}",
-                details={"valid_actions": valid_actions},
-            )
-
-        # For workflow actions, workflow_id might be required
-        if request.action in ["edit", "copy"] and not request.workflow_id:
-            raise ValidationError(
-                "workflow_id is required for workflow execution", details={"action": request.action}
-            )
-
-        # Prepare session data
+        # Prepare session data - 只存储基本会话信息
         session_data = {
             "user_id": deps.current_user.sub,
-            "session_type": request.session_type,
             "action": request.action,
-            "workflow_id": request.workflow_id,
-            "metadata": request.metadata,
-            "status": "active",
+            "workflow_id": request.workflow_id,  # 对于 edit/copy 这是 source_workflow_id
         }
 
         # Create session using Supabase with user token
@@ -67,7 +50,7 @@ async def create_session(request: SessionCreate, deps: AuthenticatedDeps = Depen
         if not result:
             raise HTTPException(status_code=500, detail="Failed to create session")
 
-        logger.info(f"✅ Session created: {result['id']}")
+        logger.info(f"✅ Session created: {result['id']} (workflow_agent_state will be initialized by workflow_agent service)")
 
         # Create session object
         session = Session(**result)

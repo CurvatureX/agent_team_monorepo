@@ -24,8 +24,6 @@ from agents.state import (
 )
 from agents.tools import RAGTool
 from core.config import settings
-
-# Import the proper PromptEngine for production use
 from core.prompt_engine import get_prompt_engine
 
 logger = structlog.get_logger()

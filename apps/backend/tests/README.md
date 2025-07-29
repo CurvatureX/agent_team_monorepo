@@ -1,6 +1,6 @@
-# 新工作流系统测试套件
+# 重构后的测试套件
 
-这是升级后的工作流系统的完整测试套件，用于验证三种返回类型架构（AI Message, Workflow, Error）和所有核心功能。
+本测试套件是为重构后的 api-gateway 和 workflow_agent 服务设计的，基于最新的 workflow_agent.proto 定义。
 
 ## 🏗️ 测试架构
 
