@@ -7,14 +7,17 @@ This module implements workflow execution-related operations.
 import logging
 import uuid
 from datetime import datetime
+from typing import List, Optional
 
-import grpc
 from sqlalchemy.orm import Session
 
-from proto import execution_pb2
-from workflow_engine.models.database import get_db
+from shared.models import (
+    ExecuteWorkflowRequest,
+    Execution,
+    ExecutionStatus,
+)
 from workflow_engine.models.execution import WorkflowExecution as ExecutionModel
-from workflow_engine.execution_engine import WorkflowExecutionEngine
+from workflow_engine.execution_engine import EnhancedWorkflowExecutionEngine as WorkflowExecutionEngine
 from workflow_engine.core.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -24,229 +27,96 @@ settings = get_settings()
 class ExecutionService:
     """Service for workflow execution operations."""
 
-    def __init__(self):
+    def __init__(self, db_session: Session):
         self.logger = logger
+        self.db = db_session
         self.execution_engine = WorkflowExecutionEngine()
 
-    def execute_workflow(
-        self, 
-        request: execution_pb2.ExecuteWorkflowRequest, 
-        context: grpc.ServicerContext
-    ) -> execution_pb2.ExecuteWorkflowResponse:
-        """Execute a workflow."""
+    def execute_workflow(self, request: ExecuteWorkflowRequest) -> str:
+        """Execute a workflow and return the execution ID."""
         try:
             self.logger.info(f"Executing workflow: {request.workflow_id}")
             
-            # Generate execution ID
             execution_id = str(uuid.uuid4())
+            now = int(datetime.now().timestamp())
             
-            # Create execution record
-            execution = execution_pb2.ExecutionData()
-            execution.execution_id = execution_id
-            execution.workflow_id = request.workflow_id
-            execution.status = execution_pb2.ExecutionStatus.NEW
-            execution.mode = request.mode
-            execution.triggered_by = request.triggered_by
-            execution.start_time = int(datetime.now().timestamp())
-            execution.metadata.update(request.metadata)
-            
-            # Save to database
-            db = next(get_db())
-            try:
-                db_execution = ExecutionModel(
-                    execution_id=execution_id,
-                    workflow_id=request.workflow_id,
-                    status="NEW",
-                    mode=execution_pb2.ExecutionMode.Name(request.mode),
-                    triggered_by=request.triggered_by,
-                    start_time=execution.start_time,
-                    execution_metadata=dict(request.metadata)
-                )
-                db.add(db_execution)
-                db.commit()
-                
-                # TODO: Start workflow execution in background
-                # This would typically involve:
-                # 1. Loading the workflow definition
-                # 2. Creating execution context
-                # 3. Starting execution engine
-                # 4. Updating status to RUNNING
-                
-                self.logger.info(f"Workflow execution started: {execution_id}")
-                
-                return execution_pb2.ExecuteWorkflowResponse(
-                    execution_id=execution_id,
-                    status=execution_pb2.ExecutionStatus.NEW,
-                    message="Workflow execution started"
-                )
-                
-            except Exception as e:
-                db.rollback()
-                raise e
-            finally:
-                db.close()
-                
-        except Exception as e:
-            self.logger.error(f"Error executing workflow: {str(e)}")
-            context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details(f"Failed to execute workflow: {str(e)}")
-            
-            error_data = execution_pb2.ErrorData()
-            error_data.message = str(e)
-            error_data.name = type(e).__name__
-            
-            return execution_pb2.ExecuteWorkflowResponse(
-                execution_id="",
-                status=execution_pb2.ExecutionStatus.ERROR,
-                message=f"Error: {str(e)}",
-                error=error_data
+            db_execution = ExecutionModel(
+                execution_id=execution_id,
+                workflow_id=request.workflow_id,
+                status="PENDING",
+                # mode and triggered_by would need to be added to ExecuteWorkflowRequest
+                # if they are still needed.
+                start_time=now,
+                user_id=request.user_id,
+                session_id=request.session_id,
+                trigger_data=request.trigger_data
             )
+            self.db.add(db_execution)
+            self.db.commit()
+            
+            # Placeholder for starting the execution in the background
+            self.logger.info(f"Workflow execution created: {execution_id}")
+            
+            return execution_id
+            
+        except Exception as e:
+            self.db.rollback()
+            self.logger.error(f"Error executing workflow: {str(e)}")
+            raise
 
-    def get_execution_status(
-        self, 
-        request: execution_pb2.GetExecutionStatusRequest, 
-        context: grpc.ServicerContext
-    ) -> execution_pb2.GetExecutionStatusResponse:
+    def get_execution_status(self, execution_id: str) -> Optional[Execution]:
         """Get execution status."""
         try:
-            self.logger.info(f"Getting execution status: {request.execution_id}")
+            self.logger.info(f"Getting execution status: {execution_id}")
             
-            db = next(get_db())
-            try:
-                db_execution = db.query(ExecutionModel).filter(
-                    ExecutionModel.execution_id == request.execution_id
-                ).first()
+            db_execution = self.db.query(ExecutionModel).filter(
+                ExecutionModel.execution_id == execution_id
+            ).first()
+            
+            if not db_execution:
+                return None
                 
-                if not db_execution:
-                    return execution_pb2.GetExecutionStatusResponse(
-                        found=False,
-                        message="Execution not found"
-                    )
-                
-                # Convert to protobuf
-                execution = execution_pb2.ExecutionData()
-                execution.execution_id = db_execution.execution_id
-                execution.workflow_id = str(db_execution.workflow_id)  # Convert UUID to string
-                execution.status = execution_pb2.ExecutionStatus.Value(db_execution.status)
-                execution.mode = execution_pb2.ExecutionMode.Value(db_execution.mode)
-                execution.triggered_by = db_execution.triggered_by or ""
-                execution.start_time = db_execution.start_time or 0
-                execution.end_time = db_execution.end_time or 0
-                execution.metadata.update(db_execution.execution_metadata or {})
-                
-                # TODO: Add run_data from database
-                
-                return execution_pb2.GetExecutionStatusResponse(
-                    execution=execution,
-                    found=True,
-                    message="Execution status retrieved successfully"
-                )
-                
-            finally:
-                db.close()
-                
+            return Execution(**db_execution.to_dict())
+            
         except Exception as e:
             self.logger.error(f"Error getting execution status: {str(e)}")
-            context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details(f"Failed to get execution status: {str(e)}")
-            return execution_pb2.GetExecutionStatusResponse(
-                found=False,
-                message=f"Error: {str(e)}"
-            )
+            raise
 
-    def cancel_execution(
-        self, 
-        request: execution_pb2.CancelExecutionRequest, 
-        context: grpc.ServicerContext
-    ) -> execution_pb2.CancelExecutionResponse:
+    def cancel_execution(self, execution_id: str) -> bool:
         """Cancel a running execution."""
         try:
-            self.logger.info(f"Canceling execution: {request.execution_id}")
+            self.logger.info(f"Canceling execution: {execution_id}")
             
-            db = next(get_db())
-            try:
-                db_execution = db.query(ExecutionModel).filter(
-                    ExecutionModel.execution_id == request.execution_id
-                ).first()
-                
-                if not db_execution:
-                    context.set_code(grpc.StatusCode.NOT_FOUND)
-                    context.set_details("Execution not found")
-                    return execution_pb2.CancelExecutionResponse(
-                        success=False,
-                        message="Execution not found"
-                    )
-                
-                # Update status to CANCELED
-                db_execution.status = "CANCELED"
-                db_execution.end_time = int(datetime.now().timestamp())
-                db.commit()
-                
-                # TODO: Signal execution engine to stop
-                
-                self.logger.info(f"Execution canceled: {request.execution_id}")
-                
-                return execution_pb2.CancelExecutionResponse(
-                    success=True,
-                    message="Execution canceled successfully"
-                )
-                
-            except Exception as e:
-                db.rollback()
-                raise e
-            finally:
-                db.close()
-                
+            db_execution = self.db.query(ExecutionModel).filter(
+                ExecutionModel.execution_id == execution_id
+            ).first()
+            
+            if not db_execution:
+                return False
+            
+            db_execution.status = "CANCELLED"
+            db_execution.ended_at = int(datetime.now().timestamp())
+            self.db.commit()
+            
+            self.logger.info(f"Execution canceled: {execution_id}")
+            return True
+            
         except Exception as e:
+            self.db.rollback()
             self.logger.error(f"Error canceling execution: {str(e)}")
-            context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details(f"Failed to cancel execution: {str(e)}")
-            return execution_pb2.CancelExecutionResponse(
-                success=False,
-                message=f"Error: {str(e)}"
-            )
+            raise
 
-    def get_execution_history(
-        self, 
-        request: execution_pb2.GetExecutionHistoryRequest, 
-        context: grpc.ServicerContext
-    ) -> execution_pb2.GetExecutionHistoryResponse:
+    def get_execution_history(self, workflow_id: str, limit: int = 50) -> List[Execution]:
         """Get execution history for a workflow."""
         try:
-            self.logger.info(f"Getting execution history for workflow: {request.workflow_id}")
+            self.logger.info(f"Getting execution history for workflow: {workflow_id}")
             
-            db = next(get_db())
-            try:
-                db_executions = db.query(ExecutionModel).filter(
-                    ExecutionModel.workflow_id == request.workflow_id
-                ).order_by(ExecutionModel.start_time.desc()).limit(request.limit).all()
-                
-                executions = []
-                for db_execution in db_executions:
-                    execution = execution_pb2.ExecutionData()
-                    execution.execution_id = db_execution.execution_id
-                    execution.workflow_id = str(db_execution.workflow_id)  # Convert UUID to string
-                    execution.status = execution_pb2.ExecutionStatus.Value(db_execution.status)
-                    execution.mode = execution_pb2.ExecutionMode.Value(db_execution.mode)
-                    execution.triggered_by = db_execution.triggered_by or ""
-                    execution.start_time = db_execution.start_time or 0
-                    execution.end_time = db_execution.end_time or 0
-                    execution.metadata.update(db_execution.execution_metadata or {})
-                    executions.append(execution)
-                
-                return execution_pb2.GetExecutionHistoryResponse(
-                    executions=executions,
-                    total_count=len(executions)
-                )
-                
-            finally:
-                db.close()
-                
+            db_executions = self.db.query(ExecutionModel).filter(
+                ExecutionModel.workflow_id == workflow_id
+            ).order_by(ExecutionModel.start_time.desc()).limit(limit).all()
+            
+            return [Execution(**db_exec.to_dict()) for db_exec in db_executions]
+            
         except Exception as e:
             self.logger.error(f"Error getting execution history: {str(e)}")
-            context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details(f"Failed to get execution history: {str(e)}")
-            return execution_pb2.GetExecutionHistoryResponse(
-                executions=[],
-                total_count=0
-            ) 
+            raise 
