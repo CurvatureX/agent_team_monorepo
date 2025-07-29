@@ -131,6 +131,8 @@ resource "aws_lb_listener" "internal" {
     target_group_arn = aws_lb_target_group.workflow_agent_http.arn
   }
 
+  depends_on = [aws_lb_target_group.workflow_agent_http]
+
   tags = local.common_tags
 }
 
@@ -151,6 +153,8 @@ resource "aws_lb_listener_rule" "workflow_agent" {
   }
 
   tags = local.common_tags
+
+  depends_on = [aws_lb_target_group.workflow_agent_http]
 }
 
 resource "aws_lb_listener_rule" "workflow_engine" {
@@ -169,6 +173,8 @@ resource "aws_lb_listener_rule" "workflow_engine" {
   }
 
   tags = local.common_tags
+
+  depends_on = [aws_lb_target_group.workflow_engine_http]
 }
 
 # HTTP to HTTPS redirect (if certificate is provided)
