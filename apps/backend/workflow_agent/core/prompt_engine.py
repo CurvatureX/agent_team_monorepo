@@ -2,6 +2,7 @@
 Jinja2-based Prompt Engine for loading and rendering prompts.
 """
 import asyncio
+import json
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
@@ -9,6 +10,11 @@ import structlog
 from jinja2 import Environment, FileSystemLoader
 
 logger = structlog.get_logger()
+
+
+def tojsonpretty(value):
+    """Custom Jinja2 filter to format JSON with pretty printing"""
+    return json.dumps(value, indent=2, ensure_ascii=False)
 
 
 class PromptEngine:
@@ -32,6 +38,10 @@ class PromptEngine:
             lstrip_blocks=True,
             enable_async=True,
         )
+
+        # Register custom filters
+        self.env.filters["tojsonpretty"] = tojsonpretty
+
         logger.info("Jinja2 prompt engine initialized", template_path=str(self.template_path))
 
     async def render_prompt(self, template_name: str, **context: Any) -> str:
