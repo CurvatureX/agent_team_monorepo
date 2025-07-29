@@ -28,8 +28,12 @@ COPY shared/scripts/generate_engine_grpc.py /app/shared/scripts/
 
 # Generate proto files from engine directory using the virtual environment
 RUN .venv/bin/python /app/shared/scripts/generate_engine_grpc.py \
-    --proto_path=/app/shared/proto/engine \
+    --proto_path=/app/shared/proto \
     --output_dir=/app/proto
+
+# Create __init__.py files to make proto directories importable as packages
+RUN touch /app/proto/__init__.py
+RUN touch /app/proto/engine/__init__.py
 
 # Generate workflow_agent proto file separately
 RUN .venv/bin/python -m grpc_tools.protoc \

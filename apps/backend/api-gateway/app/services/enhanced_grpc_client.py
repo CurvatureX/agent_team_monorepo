@@ -10,15 +10,15 @@ import socket
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from enum import Enum, auto
+from typing import Any, Callable, Dict, List, Optional, AsyncIterator
 
 import grpc
 from app.core.config import settings
 
 # Import proto modules
 try:
-    from proto import workflow_service_pb2, workflow_service_pb2_grpc
+    from proto.engine import workflow_service_pb2, workflow_service_pb2_grpc
 
     GRPC_AVAILABLE = True
 except ImportError:
@@ -732,10 +732,21 @@ class WorkflowGRPCClientManager:
             cls._instance = None
 
 
-# 便捷函数
+_workflow_client_instance: Optional[EnhancedWorkflowGRPCClient] = None
+
+
 async def get_workflow_client() -> EnhancedWorkflowGRPCClient:
-    """获取 workflow gRPC 客户端"""
-    return await WorkflowGRPCClientManager.get_client()
+    """Dependency to get a workflow gRPC client instance."""
+    global _workflow_client_instance
+    if _workflow_client_instance is None or not _workflow_client_instance.is_connected():
+        logger.info("No active gRPC client found or client is disconnected, creating a new one.")
+        _workflow_client_instance = EnhancedWorkflowGRPCClient()
+        await _workflow_client_instance.connect()
+
+    if not _workflow_client_instance:
+        raise ConnectionError("Failed to create or connect the gRPC client.")
+
+    return _workflow_client_instance
 
 
 async def close_workflow_client():
@@ -763,7 +774,3 @@ async def example_usage():
         logger.error(f"Error in example usage: {e}")
     finally:
         await close_workflow_client()
-
-
-if __name__ == "__main__":
-    asyncio.run(example_usage())
