@@ -212,4 +212,23 @@ enum ConnectionType {
   AI_TEXT_SPLITTER = 10;
   AI_TOOL = 11;
   AI_VECTOR_STORE = 12;
+}
+
+// ============================================================================
+// 节点模板模块 (Node Template Module)
+// ============================================================================
+
+// 节点模板定义
+message NodeTemplate {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string category = 4;
+  NodeType node_type = 5;
+  string node_subtype = 6;
+  string version = 7;
+  bool is_system_template = 8;
+  map<string, string> default_parameters = 9;
+  repeated string required_parameters = 10;
+  string parameter_schema = 11; // JSON schema as a string
 } 

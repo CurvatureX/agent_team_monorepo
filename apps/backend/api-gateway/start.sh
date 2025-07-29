@@ -1,37 +1,36 @@
 #!/bin/bash
-# MVP API Gateway startup script with uv
+# start.sh - Entrypoint script for the API Gateway service
 
 set -e
 
-echo "🚀 Starting API Gateway MVP with uv..."
+# Ensure the logs directory exists
+mkdir -p /app/logs
 
-# Check if uv is installed
-if ! command -v uv &> /dev/null; then
-    echo "❌ uv is not installed. Please install it first:"
-    echo "   curl -LsSf https://astral.sh/uv/install.sh | sh"
-    exit 1
+# Function to check if a service is available
+wait_for_service() {
+    local service_name=$1
+    local port=$2
+    echo "Waiting for $service_name to be available on port $port..."
+    while ! nc -z localhost $port; do
+        echo "$service_name is not available yet. Waiting..."
+        sleep 1
+    done
+    echo "$service_name is now available."
+}
+
+echo "🚀 Starting API Gateway MVP..."
+
+# Activate virtual environment if it exists
+if [ -f ".venv/bin/activate" ]; then
+    echo "✅ Activating virtual environment"
+    source .venv/bin/activate
+else
+    echo "🚨 .venv not found, running without virtual environment"
 fi
 
-# Check if .env file exists
-if [ ! -f .env ]; then
-    echo "⚠️  .env file not found. Please copy .env.example to .env and configure it."
-    exit 1
-fi
+# Wait for dependent services (optional, for robust startup)
+# wait_for_service redis 6379
+# wait_for_service workflow-engine 50050
 
-# Load environment variables
-source .env
-
-# Check required environment variables
-if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SECRET_KEY" ]; then
-    echo "❌ Missing required environment variables:"
-    echo "   SUPABASE_URL and SUPABASE_SECRET_KEY are required"
-    exit 1
-fi
-
-# Install dependencies with uv
-echo "📦 Installing dependencies with uv..."
-uv sync
-
-# Start the server
-echo "🌟 Starting FastAPI server with uv..."
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+echo "▶️ Starting uvicorn server..."
+exec uvicorn app.main:app --host 0.0.0.0 --port 8000
