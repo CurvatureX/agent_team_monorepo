@@ -15,7 +15,7 @@ resource "aws_lb" "main" {
 
 # Internal Application Load Balancer for backend services (HTTP)
 resource "aws_lb" "internal" {
-  name               = "${local.name_prefix}-internal-alb"
+  name               = "${local.name_prefix}-int-alb"
   internal           = true
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb_internal.id]
