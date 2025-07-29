@@ -19,7 +19,7 @@ from app.models.workflow import (
     WorkflowResponse,
     WorkflowUpdate,
 )
-from app.services.enhanced_grpc_client import GRPC_AVAILABLE, get_workflow_client
+from app.services.grpc_client import GRPC_AVAILABLE, get_workflow_client
 from fastapi import APIRouter, Depends, HTTPException
 
 logger = logging.getLogger(__name__)

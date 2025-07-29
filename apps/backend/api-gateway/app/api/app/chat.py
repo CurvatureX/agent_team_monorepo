@@ -87,8 +87,9 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
             sequence_counter = next_sequence  # 从用户消息序号开始继续递增
             
             try:
-                # Import gRPC client
-                from app.services.grpc_client import workflow_client
+                # Import HTTP client (替换 gRPC)
+                from app.services.workflow_agent_client import get_workflow_client
+                workflow_client = await get_workflow_client()
                 
                 # Send initial status
                 yield format_sse_event({

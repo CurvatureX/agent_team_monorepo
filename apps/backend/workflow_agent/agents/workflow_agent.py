@@ -156,3 +156,15 @@ class WorkflowAgent:
         )
         
         return current_stage
+    
+    async def astream(self, state: WorkflowState):
+        """
+        Async stream method for processing workflow state
+        """
+        try:
+            # 使用 LangGraph 的 astream 方法
+            async for chunk in self.graph.astream(state):
+                yield chunk
+        except Exception as e:
+            logger.error(f"Error in workflow astream: {e}")
+            raise
