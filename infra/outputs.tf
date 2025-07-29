@@ -80,15 +80,6 @@ output "service_discovery_namespace_name" {
   value       = aws_service_discovery_private_dns_namespace.main.name
 }
 
-output "grpc_load_balancer_dns_name" {
-  description = "DNS name of the gRPC load balancer"
-  value       = aws_lb.grpc_internal.dns_name
-}
-
-output "grpc_load_balancer_endpoint" {
-  description = "Full endpoint of the gRPC load balancer"
-  value       = "${aws_lb.grpc_internal.dns_name}:50051"
-}
 
 output "workflow_agent_service_discovery_dns" {
   description = "Service discovery DNS name for workflow agent"
