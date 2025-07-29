@@ -168,31 +168,74 @@ class FieldTransformSpec:
 
 ## 📝 规范示例
 
-### AI代理路由器规范
+### 🤖 AI代理节点规范 (革新版本)
+
+#### 新的供应商驱动方法
+不再使用固定角色（如 ROUTER_AGENT），现在采用基于供应商的节点，功能通过系统提示词定义：
+
 ```python
-ROUTER_AGENT_SPEC = NodeSpec(
+# 旧方法：固定角色
+"AI_AGENT_NODE.ROUTER_AGENT"
+"AI_AGENT_NODE.TASK_ANALYZER"
+
+# 新方法：灵活的供应商节点
+"AI_AGENT_NODE.GEMINI_NODE"    # Google Gemini
+"AI_AGENT_NODE.OPENAI_NODE"    # OpenAI GPT
+"AI_AGENT_NODE.CLAUDE_NODE"    # Anthropic Claude
+```
+
+#### OpenAI节点规范示例
+```python
+OPENAI_NODE_SPEC = NodeSpec(
     node_type="AI_AGENT_NODE",
-    subtype="ROUTER_AGENT",
-    description="智能路由代理，根据输入决定下一步操作",
+    subtype="OPENAI_NODE",
+    description="OpenAI GPT AI agent with customizable behavior via system prompt",
     parameters=[
         ParameterDef(
-            name="prompt",
+            name="system_prompt",
             type=ParameterType.STRING,
             required=True,
-            description="路由决策的系统提示词"
+            description="System prompt that defines the AI agent's role, behavior, and instructions"
         ),
         ParameterDef(
-            name="routing_options",
-            type=ParameterType.JSON,
-            required=True,
-            description="可选的路由选项配置"
+            name="model_version",
+            type=ParameterType.ENUM,
+            required=False,
+            default_value="gpt-4",
+            enum_values=["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo", "gpt-4o"],
+            description="Specific OpenAI model version to use"
         ),
         ParameterDef(
             name="temperature",
             type=ParameterType.FLOAT,
             required=False,
             default_value="0.7",
-            description="AI模型的随机性控制"
+            description="Controls randomness in AI responses (0.0 = deterministic, 1.0 = creative)",
+            validation_pattern=r"^(0(\.\d+)?|1(\.0+)?)$"
+        ),
+        ParameterDef(
+            name="max_tokens",
+            type=ParameterType.INTEGER,
+            required=False,
+            default_value="2048",
+            description="Maximum number of tokens in the AI response"
+        ),
+        # OpenAI-specific parameters
+        ParameterDef(
+            name="presence_penalty",
+            type=ParameterType.FLOAT,
+            required=False,
+            default_value="0.0",
+            description="Penalty for new topics (−2.0 to 2.0)",
+            validation_pattern=r"^-?([01](\.\d+)?|2(\.0+)?)$"
+        ),
+        ParameterDef(
+            name="frequency_penalty",
+            type=ParameterType.FLOAT,
+            required=False,
+            default_value="0.0",
+            description="Penalty for repeated content (−2.0 to 2.0)",
+            validation_pattern=r"^-?([01](\.\d+)?|2(\.0+)?)$"
         )
     ],
     input_ports=[
@@ -200,39 +243,80 @@ ROUTER_AGENT_SPEC = NodeSpec(
             name="main",
             type="MAIN",
             required=True,
-            description="待路由的输入数据",
+            description="Input data and context for the AI agent",
             data_format=DataFormat(
                 mime_type="application/json",
-                schema='{"user_message": "string", "context": "object"}',
-                examples=['{"user_message": "帮我安排会议", "context": {"user_id": "123"}}']
+                schema='{"message": "string", "context": "object", "variables": "object"}',
+                examples=[
+                    '{"message": "Analyze this data", "context": {"user_id": "123"}, "variables": {"data": [1,2,3]}}',
+                    '{"message": "Route customer inquiry", "context": {"department": "support"}, "variables": {"urgency": "high"}}'
+                ]
             ),
-            validation_schema='{"type": "object", "properties": {"user_message": {"type": "string"}, "context": {"type": "object"}}, "required": ["user_message"]}'
-        ),
-        InputPortSpec(
-            name="language_model",
-            type="AI_LANGUAGE_MODEL",
-            required=True,
-            description="语言模型连接"
+            validation_schema='{"type": "object", "properties": {"message": {"type": "string"}, "context": {"type": "object"}, "variables": {"type": "object"}}, "required": ["message"]}'
         )
     ],
     output_ports=[
         OutputPortSpec(
             name="main",
             type="MAIN",
-            description="路由决策结果",
+            description="AI agent response and metadata",
             data_format=DataFormat(
                 mime_type="application/json",
-                schema='{"route": "string", "confidence": "number", "reasoning": "string"}'
+                schema='{"response": "string", "metadata": "object", "usage": "object", "processing_time": "number"}',
+                examples=['{"response": "Based on the analysis...", "metadata": {"model": "gpt-4", "temperature": 0.7}, "usage": {"prompt_tokens": 50, "completion_tokens": 100}, "processing_time": 2.5}']
             ),
-            validation_schema='{"type": "object", "properties": {"route": {"type": "string"}, "confidence": {"type": "number", "minimum": 0, "maximum": 1}, "reasoning": {"type": "string"}}, "required": ["route", "confidence"]}'
+            validation_schema='{"type": "object", "properties": {"response": {"type": "string"}, "metadata": {"type": "object"}, "usage": {"type": "object"}, "processing_time": {"type": "number"}}, "required": ["response"]}'
         ),
         OutputPortSpec(
             name="error",
-            type="MAIN",
-            description="路由失败时的错误信息"
+            type="ERROR",
+            description="Error output when AI processing fails"
         )
+    ],
+    examples=[
+        {
+            "name": "Customer Service Router",
+            "description": "Route customer inquiries to appropriate departments",
+            "system_prompt": """You are a customer service routing assistant. Based on the customer's message, determine the appropriate department:
+- "billing" for payment/invoice issues
+- "technical" for product problems
+- "sales" for new purchases
+- "general" for everything else
+
+Respond with JSON: {"department": "...", "confidence": 0.95, "reason": "..."}""",
+            "input_example": {"message": "I need help with my invoice", "context": {"customer_tier": "premium"}},
+            "expected_output": '{"department": "billing", "confidence": 0.98, "reason": "Customer mentioned invoice which is a billing matter"}'
+        }
     ]
 )
+```
+
+#### 系统提示词示例
+通过系统提示词实现无限功能可能性：
+
+```python
+# 数据分析代理
+data_analyst_prompt = """
+你是高级数据分析师。分析提供的数据集：
+1. 统计概览：均值、中位数、标准差
+2. 趋势分析：识别模式和异常
+3. 业务洞察：数据对业务决策的意义
+4. 数据质量评估
+5. 具体可行的建议
+
+以结构化JSON格式输出，包含置信度评分。
+"""
+
+# 代码审查代理
+code_reviewer_prompt = """
+你是资深软件工程师，进行代码安全审查：
+- 安全漏洞：SQL注入、XSS、命令注入
+- 性能问题：算法复杂度、资源使用
+- 最佳实践：代码风格、设计模式
+- 潜在bug：逻辑错误、边界条件
+
+提供具体的行号和改进建议。
+"""
 ```
 
 ### 触发器节点规范
@@ -884,16 +968,37 @@ function generateNodeConfigForm(spec: NodeSpec) {
 
 ### 计划规范
 
-| 节点类型 | 子类型 | 状态 |
-|---------|--------|------|
-| **TRIGGER_NODE** | MANUAL, WEBHOOK, CRON, CHAT, EMAIL, FORM, CALENDAR | ✅ 已计划 |
-| **AI_AGENT_NODE** | ROUTER_AGENT, TASK_ANALYZER, DATA_INTEGRATOR, REPORT_GENERATOR, REMINDER_DECISION, WEEKLY_REPORT | ✅ 已计划 |
-| **ACTION_NODE** | RUN_CODE, HTTP_REQUEST, PARSE_IMAGE, WEB_SEARCH, DATABASE_OPERATION, FILE_OPERATION, DATA_TRANSFORMATION | ✅ 已计划 |
-| **FLOW_NODE** | IF, FILTER, LOOP, MERGE, SWITCH, WAIT | ✅ 已计划 |
-| **TOOL_NODE** | GOOGLE_CALENDAR_MCP, NOTION_MCP, CALENDAR, EMAIL, HTTP, CODE_EXECUTION | ✅ 已计划 |
-| **MEMORY_NODE** | SIMPLE, BUFFER, KNOWLEDGE, VECTOR_STORE, DOCUMENT, EMBEDDING | ✅ 已计划 |
-| **HUMAN_IN_THE_LOOP_NODE** | GMAIL, SLACK, DISCORD, TELEGRAM, APP | ✅ 已计划 |
-| **EXTERNAL_ACTION_NODE** | GITHUB, GOOGLE_CALENDAR, TRELLO, EMAIL, SLACK, API_CALL, WEBHOOK, NOTIFICATION | ⚠️ 需要实现 |
+| 节点类型 | 子类型 | 状态 | 备注 |
+|---------|--------|------|------|
+| **TRIGGER_NODE** | MANUAL, WEBHOOK, CRON, CHAT, EMAIL, FORM, CALENDAR | ✅ 已实现 | 事件触发器 |
+| **AI_AGENT_NODE** | GEMINI_NODE, OPENAI_NODE, CLAUDE_NODE | 🚀 **已革新** | **基于供应商的提示词驱动节点** |
+| **ACTION_NODE** | RUN_CODE, HTTP_REQUEST, PARSE_IMAGE, WEB_SEARCH, DATABASE_OPERATION, FILE_OPERATION, DATA_TRANSFORMATION | ✅ 已实现 | 操作执行节点 |
+| **FLOW_NODE** | IF, FILTER, LOOP, MERGE, SWITCH, WAIT | ✅ 已实现 | 流程控制节点 |
+| **TOOL_NODE** | GOOGLE_CALENDAR_MCP, NOTION_MCP, CALENDAR, EMAIL, HTTP, CODE_EXECUTION | ⚠️ 计划中 | 工具集成节点 |
+| **MEMORY_NODE** | SIMPLE, BUFFER, KNOWLEDGE, VECTOR_STORE, DOCUMENT, EMBEDDING | ⚠️ 计划中 | 记忆存储节点 |
+| **HUMAN_IN_THE_LOOP_NODE** | GMAIL, SLACK, DISCORD, TELEGRAM, APP | ⚠️ 计划中 | 人机交互节点 |
+
+### 🔥 AI代理节点革新说明
+
+#### 旧方案问题
+- ❌ 固定角色限制：`ROUTER_AGENT`, `TASK_ANALYZER`, `REPORT_GENERATOR` 等
+- ❌ 功能受限于预定义逻辑
+- ❌ 新需求需要编写新代码
+- ❌ 无法充分利用不同AI供应商的特性
+
+#### 新方案优势
+- ✅ **供应商驱动**：基于 Gemini、OpenAI、Claude 三大供应商
+- ✅ **提示词定义**：通过 `system_prompt` 参数实现任意功能
+- ✅ **供应商特化**：每个供应商都有特定参数优化
+- ✅ **无限扩展**：通过提示词创新实现任何AI任务
+
+#### 供应商特性对比
+
+| 供应商 | 模型版本 | 特殊能力 | 独有参数 |
+|--------|----------|----------|----------|
+| **GEMINI_NODE** | gemini-pro, gemini-pro-vision, gemini-ultra | 🎯 多模态、视觉处理 | safety_settings |
+| **OPENAI_NODE** | gpt-3.5-turbo, gpt-4, gpt-4-turbo, gpt-4o | 🧠 推理、结构化输出 | presence_penalty, frequency_penalty |
+| **CLAUDE_NODE** | claude-3-haiku, claude-3-sonnet, claude-3-opus | 📚 长上下文、精确控制 | stop_sequences |
 
 ## 🚀 实施计划
 

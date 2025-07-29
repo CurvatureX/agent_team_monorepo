@@ -93,20 +93,108 @@
 
 **形状**: Rectangle node featuring two connection points, linkable to Memory and Tool components
 
-**参数配置:**
+**架构革新**: 从硬编码角色转向灵活的提供商驱动架构
 
-- `model_provider`: enum - 模型提供商 (openai/anthropic/google/local)
-- `model_name`: string - 模型名称（如 gpt-4、claude-3）
+### 子节点类型 (Provider-Based Architecture):
+
+#### Gemini Node (AI_GEMINI_NODE)
+Google Gemini AI 代理，功能完全由系统提示词定义
+
+**参数配置:**
+- `system_prompt`: text - **核心参数**：定义AI代理的角色、行为和指令
+- `model_version`: enum - 模型版本 (gemini-pro/gemini-pro-vision/gemini-ultra)
 - `temperature`: float - 创造性参数 (0.0-1.0)
 - `max_tokens`: integer - 最大生成 token 数
-- `system_prompt`: text - 系统提示词
-- `user_prompt_template`: text - 用户提示词模板
-- `memory_connection`: string - 连接的 Memory 节点 ID
-- `tool_connections`: `array<string>` - 连接的 Tool 节点 ID 列表
+- `top_p`: float - 核采样参数 (0.0-1.0)
+- `top_k`: integer - 候选词数量限制
+- `safety_settings`: object - 安全设置配置
 - `response_format`: enum - 响应格式 (text/json/structured)
+- `timeout_seconds`: integer - 请求超时时间
+- `retry_attempts`: integer - 重试次数
+
+#### OpenAI Node (AI_OPENAI_NODE)
+OpenAI GPT AI 代理，功能完全由系统提示词定义
+
+**参数配置:**
+- `system_prompt`: text - **核心参数**：定义AI代理的角色、行为和指令
+- `model_version`: enum - 模型版本 (gpt-4/gpt-4-turbo/gpt-3.5-turbo/gpt-4-vision-preview)
+- `temperature`: float - 创造性参数 (0.0-2.0)
+- `max_tokens`: integer - 最大生成 token 数
+- `top_p`: float - 核采样参数 (0.0-1.0)
+- `presence_penalty`: float - 存在惩罚 (-2.0-2.0)
+- `frequency_penalty`: float - 频率惩罚 (-2.0-2.0)
+- `response_format`: enum - 响应格式 (text/json/structured)
+- `timeout_seconds`: integer - 请求超时时间
+- `retry_attempts`: integer - 重试次数
+
+#### Claude Node (AI_CLAUDE_NODE)
+Anthropic Claude AI 代理，功能完全由系统提示词定义
+
+**参数配置:**
+- `system_prompt`: text - **核心参数**：定义AI代理的角色、行为和指令
+- `model_version`: enum - 模型版本 (claude-3-opus/claude-3-sonnet/claude-3-haiku/claude-2.1)
+- `temperature`: float - 创造性参数 (0.0-1.0)
+- `max_tokens`: integer - 最大生成 token 数
+- `top_p`: float - 核采样参数 (0.0-1.0)
+- `top_k`: integer - 候选词数量限制
+- `stop_sequences`: array<string> - 停止序列
+- `response_format`: enum - 响应格式 (text/json/structured)
+- `timeout_seconds`: integer - 请求超时时间
+- `retry_attempts`: integer - 重试次数
+
+### 通用连接配置:
+- `memory_connection`: string - 连接的 Memory 节点 ID
+- `tool_connections`: array<string> - 连接的 Tool 节点 ID 列表
 - `streaming`: boolean - 是否流式响应
-- `retry_count`: integer - 重试次数
-- `on_error`: enum - Action to take when the node execution fails (stop_workflow/continue)
+- `on_error`: enum - 节点执行失败时的操作 (stop_workflow/continue)
+
+### 系统提示词示例:
+
+**数据分析代理 (使用 Gemini)**:
+```
+您是一名高级数据分析师，专精统计分析和商业智能。
+
+任务：分析提供的数据集并提供可操作的洞察。
+
+分析要求：
+1. 统计概览：均值、中位数、标准差、四分位数
+2. 趋势分析：识别模式、季节性和异常值
+3. 相关性分析：变量间的关键关系
+4. 商业洞察：模式对商业决策的意义
+5. 数据质量：完整性、准确性、潜在问题
+6. 建议：具体的、可操作的下一步
+
+输出格式：结构化 JSON，包含上述各个要求的章节。
+置信水平：为每个洞察包含置信分数 (0-1)。
+```
+
+**客户服务路由代理 (使用 OpenAI)**:
+```
+您是一个智能客户服务路由系统。
+
+任务：分析客户询问并路由到适当的部门。
+
+路由规则：
+- "billing" → 付款问题、发票、退款、订阅问题
+- "technical" → 产品错误、功能问题、集成帮助
+- "sales" → 新购买、升级、价格咨询
+- "general" → 一般问题、反馈、投诉
+
+分析过程：
+1. 从客户消息中提取关键意图和实体
+2. 考虑紧急程度 (low/medium/high/critical)
+3. 识别客户等级 (basic/premium/enterprise)
+4. 应用路由规则并给出置信分数
+
+响应格式：
+{
+  "department": "billing|technical|sales|general",
+  "confidence": 0.95,
+  "urgency": "low|medium|high|critical",
+  "reasoning": "路由决策的简要解释",
+  "suggested_response": "推荐给客户的首次回复"
+}
+```
 
 ---
 

@@ -76,6 +76,53 @@ graph TB
    - 使用数据映射处理节点间数据流转
    - 执行统一的工作流验证
 
+## 🚀 AI代理架构革命 (已完成)
+
+### 重大架构变更说明
+
+**状态**: ✅ **已完成** - 这个架构变更已经在2025年1月实施完成
+
+在实施本计划之前，系统经历了一次革命性的AI代理架构转型：
+
+#### 旧架构 (已废弃) ❌
+```python
+# 硬编码的AI代理角色 - 已移除
+- AI_ROUTER_AGENT        # 路由决策
+- AI_TASK_ANALYZER       # 任务分析
+- AI_DATA_INTEGRATOR     # 数据整合
+- AI_REPORT_GENERATOR    # 报告生成
+- AI_REMINDER_DECISION   # 提醒决策
+- AI_WEEKLY_REPORT       # 周报生成
+```
+
+#### 新架构 (当前) ✅
+```python
+# 提供商驱动的AI代理 - 功能由系统提示词定义
+- AI_GEMINI_NODE         # Google Gemini提供商
+- AI_OPENAI_NODE         # OpenAI GPT提供商
+- AI_CLAUDE_NODE         # Anthropic Claude提供商
+
+# 核心参数
+system_prompt: "您是[角色定义]。[任务描述]。[输出要求]。"
+model_version: "provider-specific-model"
+temperature: 0.0-2.0
+# ... 提供商特定参数
+```
+
+### 革命性影响
+
+1. **开发效率提升**: 新AI功能从数小时缩短到数分钟
+2. **代码简化**: 3个提供商替代了数十个硬编码角色
+3. **无限可能**: 任何AI任务都可通过提示词实现
+4. **提供商优化**: 可为特定任务选择最佳AI提供商
+
+### 对实施计划的影响
+
+- **简化节点规范**: AI_AGENT_NODE只需定义3个提供商规范
+- **统一端口结构**: 所有AI代理共享相同的输入/输出端口
+- **减少开发工作量**: 无需为每个AI角色单独开发
+- **增强灵活性**: 系统提示词可在运行时动态配置
+
 ## 📅 4天详细实施计划
 
 ### Day 1 (第1天) - 基础架构 [24小时]
@@ -224,30 +271,50 @@ workflow_engine/data_mapping/
 
 #### 上午 (24-32小时): 高优先级节点规范
 **负责人**: Backend Developer 2
-- [ ] **24-26h**: 定义 `AI_AGENT_NODE` 所有子类型规范
+- [ ] **24-26h**: 定义 `AI_AGENT_NODE` 提供商规范 (Gemini/OpenAI/Claude)
 - [ ] **26-28h**: 定义 `TRIGGER_NODE` 所有子类型规范
 - [ ] **28-30h**: 定义 `FLOW_NODE` 基础子类型规范
 - [ ] **30-32h**: 注册所有定义的规范到注册器
 
 **节点规范示例**:
 ```python
-# 示例：AI路由代理规范
-ROUTER_AGENT_SPEC = NodeSpec(
+# 示例：OpenAI AI代理提供商规范
+OPENAI_NODE_SPEC = NodeSpec(
     node_type="AI_AGENT_NODE",
-    subtype="ROUTER_AGENT",
-    description="智能路由代理，根据输入决定下一步操作",
+    subtype="OPENAI_NODE",
+    description="OpenAI GPT AI代理，功能完全由系统提示词定义",
     parameters=[
         ParameterDef(
-            name="prompt",
+            name="system_prompt",
             type=ParameterType.STRING,
             required=True,
-            description="路由决策的系统提示词"
+            description="定义AI代理角色、行为和指令的核心系统提示词"
         ),
         ParameterDef(
-            name="routing_options",
-            type=ParameterType.JSON,
-            required=True,
-            description="可选的路由选项配置"
+            name="model_version",
+            type=ParameterType.ENUM,
+            required=False,
+            enum_values=["gpt-4", "gpt-4-turbo", "gpt-3.5-turbo", "gpt-4-vision-preview"],
+            default_value="gpt-4",
+            description="OpenAI模型版本"
+        ),
+        ParameterDef(
+            name="temperature",
+            type=ParameterType.FLOAT,
+            required=False,
+            default_value=0.7,
+            min_value=0.0,
+            max_value=2.0,
+            description="创造性参数，控制输出的随机性"
+        ),
+        ParameterDef(
+            name="presence_penalty",
+            type=ParameterType.FLOAT,
+            required=False,
+            default_value=0.0,
+            min_value=-2.0,
+            max_value=2.0,
+            description="存在惩罚，减少重复内容"
         )
     ],
     input_ports=[
@@ -255,29 +322,117 @@ ROUTER_AGENT_SPEC = NodeSpec(
             name="main",
             type="MAIN",
             required=True,
-            description="待路由的输入数据",
+            description="AI代理的主要输入数据",
             validation_schema='{"type": "object", "properties": {"user_message": {"type": "string"}}, "required": ["user_message"]}'
         ),
         InputPortSpec(
-            name="language_model",
-            type="AI_LANGUAGE_MODEL",
-            required=True,
-            description="语言模型连接"
+            name="ai_tool",
+            type="AI_TOOL",
+            required=False,
+            max_connections=10,
+            description="AI代理可调用的工具连接"
+        ),
+        InputPortSpec(
+            name="ai_memory",
+            type="AI_MEMORY",
+            required=False,
+            max_connections=5,
+            description="AI代理可访问的记忆系统连接"
         )
     ],
     output_ports=[
         OutputPortSpec(
             name="main",
             type="MAIN",
-            description="路由决策结果",
-            validation_schema='{"type": "object", "properties": {"route": {"type": "string"}, "confidence": {"type": "number"}}, "required": ["route", "confidence"]}'
+            description="AI代理的处理结果",
+            validation_schema='{"type": "object", "properties": {"response": {"type": "string"}, "metadata": {"type": "object"}}, "required": ["response"]}'
         ),
         OutputPortSpec(
             name="error",
             type="MAIN",
-            description="路由失败时的错误信息"
+            description="执行失败时的错误信息"
+        )
+    ],
+    examples=[
+        {
+            "title": "客户服务路由代理",
+            "description": "智能分析客户询问并路由到适当部门",
+            "parameters": {
+                "system_prompt": "您是智能客户服务路由系统。分析客户询问并路由到适当部门(billing/technical/sales/general)，提供置信分数和推理。",
+                "model_version": "gpt-4",
+                "temperature": 0.1
+            }
+        },
+        {
+            "title": "数据分析代理",
+            "description": "分析数据集并提供业务洞察",
+            "parameters": {
+                "system_prompt": "您是高级数据分析师。分析提供的数据集，提供统计概览、趋势分析和可操作的业务建议，以结构化JSON格式输出。",
+                "model_version": "gpt-4-turbo",
+                "temperature": 0.3
+            }
+        }
+    ]
+)
+
+# 示例：Gemini AI代理提供商规范
+GEMINI_NODE_SPEC = NodeSpec(
+    node_type="AI_AGENT_NODE",
+    subtype="GEMINI_NODE",
+    description="Google Gemini AI代理，功能完全由系统提示词定义",
+    parameters=[
+        ParameterDef(
+            name="system_prompt",
+            type=ParameterType.STRING,
+            required=True,
+            description="定义AI代理角色、行为和指令的核心系统提示词"
+        ),
+        ParameterDef(
+            name="model_version",
+            type=ParameterType.ENUM,
+            required=False,
+            enum_values=["gemini-pro", "gemini-pro-vision", "gemini-ultra"],
+            default_value="gemini-pro",
+            description="Gemini模型版本"
+        ),
+        ParameterDef(
+            name="safety_settings",
+            type=ParameterType.JSON,
+            required=False,
+            description="Gemini特有的安全设置配置"
+        )
+    ],
+    # ... 相同的input_ports和output_ports
+)
+
+# 示例：Claude AI代理提供商规范
+CLAUDE_NODE_SPEC = NodeSpec(
+    node_type="AI_AGENT_NODE",
+    subtype="CLAUDE_NODE",
+    description="Anthropic Claude AI代理，功能完全由系统提示词定义",
+    parameters=[
+        ParameterDef(
+            name="system_prompt",
+            type=ParameterType.STRING,
+            required=True,
+            description="定义AI代理角色、行为和指令的核心系统提示词"
+        ),
+        ParameterDef(
+            name="model_version",
+            type=ParameterType.ENUM,
+            required=False,
+            enum_values=["claude-3-opus", "claude-3-sonnet", "claude-3-haiku", "claude-2.1"],
+            default_value="claude-3-sonnet",
+            description="Claude模型版本"
+        ),
+        ParameterDef(
+            name="stop_sequences",
+            type=ParameterType.JSON,
+            required=False,
+            description="Claude特有的停止序列配置"
         )
     ]
+    # ... 相同的input_ports和output_ports
 )
 ```
 
@@ -489,10 +644,11 @@ git checkout -b feature/api-endpoints
 - [ ] 基础单元测试通过
 
 ### Day 2 完成标准
-- [ ] 至少5个核心节点类型有完整规范定义
+- [ ] 3个AI代理提供商规范完整定义 (Gemini/OpenAI/Claude)
+- [ ] 至少4个其他核心节点类型有完整规范定义 (TRIGGER, FLOW, ACTION, TOOL)
 - [ ] 数据映射支持FIELD_MAPPING和TEMPLATE
 - [ ] BaseNodeExecutor成功集成节点规范
-- [ ] 至少1个现有节点执行器完成升级
+- [ ] 至少1个现有节点执行器完成升级 (AI代理执行器优先)
 
 ### Day 3 完成标准
 - [ ] 核心API端点可以正常工作
@@ -548,10 +704,11 @@ class WorkflowMigrationTool:
 ## 📈 最终成功指标
 
 ### 技术指标
-- [ ] 100% 覆盖所有现有节点类型的规范定义
+- [ ] 100% 覆盖所有现有节点类型的规范定义 (包括3个AI代理提供商)
 - [ ] 少于100ms 节点规范查询性能
 - [ ] 少于500ms 数据映射处理性能
 - [ ] 大于95% 向后兼容性测试通过率
+- [ ] AI代理系统提示词验证和参数校验100%覆盖
 
 ### 用户体验指标
 - [ ] 节点配置错误减少80%+
