@@ -98,12 +98,8 @@ class WorkflowAgentServicer(workflow_agent_pb2_grpc.WorkflowAgentServicer):
                 
                 # 使用 LangGraph 流式处理
                 async for step_state in self.workflow_agent.graph.astream(workflow_state):
-                    logger.info(f"LangGraph step completed: {step_state}")
-                    
-                    # 获取最新的状态
-                    if step_state:
-                        # step_state 是字典，包含节点名和状态
-                        node_name, updated_state = next(iter(step_state.items()))
+                    for node_name, updated_state in step_state.items():
+                        logger.info(f"LangGraph step completed: {node_name}")
                         
                         # 为每个节点生成相应的 gRPC 响应
                         async for response in self._generate_node_response(node_name, updated_state, session_id):
