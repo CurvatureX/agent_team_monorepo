@@ -92,11 +92,38 @@ class APILayerSettings(BaseSettings):
 class ServiceSettings(BaseSettings):
     """外部服务配置"""
 
-    # gRPC Services
-    WORKFLOW_SERVICE_HOST: str = Field(default="localhost", description="工作流服务主机")
-    WORKFLOW_SERVICE_PORT: int = Field(default=50051, description="工作流服务端口")
+    # gRPC Services (Legacy - Deprecated)
+    WORKFLOW_SERVICE_HOST: str = Field(default="localhost", description="工作流服务主机 (已弃用)")
+    WORKFLOW_SERVICE_PORT: int = Field(default=50051, description="工作流服务端口 (已弃用)")
     WORKFLOW_AGENT_HOST: str = Field(default="localhost", description="工作流代理主机")
-    WORKFLOW_AGENT_PORT: int = Field(default=50051, description="工作流代理端口")
+    WORKFLOW_AGENT_PORT: int = Field(default=50051, description="工作流代理端口 (已弃用)")
+    WORKFLOW_ENGINE_HOST: str = Field(default="localhost", description="工作流引擎主机")
+    WORKFLOW_ENGINE_PORT: int = Field(default=50050, description="工作流引擎端口 (已弃用)")
+
+    # HTTP Services (FastAPI Migration)
+    WORKFLOW_AGENT_URL: Optional[str] = Field(
+        default=None, description="工作流代理HTTP URL (优先于HOST:PORT)"
+    )
+    WORKFLOW_ENGINE_URL: Optional[str] = Field(
+        default=None, description="工作流引擎HTTP URL (优先于HOST:PORT)"
+    )
+    WORKFLOW_AGENT_HTTP_PORT: int = Field(default=8001, description="工作流代理HTTP端口")
+    WORKFLOW_ENGINE_HTTP_PORT: int = Field(default=8002, description="工作流引擎HTTP端口")
+    USE_HTTP_CLIENT: bool = Field(default=True, description="使用HTTP客户端替代gRPC")
+
+    @property
+    def workflow_agent_http_url(self) -> str:
+        """获取工作流代理的 HTTP URL"""
+        if self.WORKFLOW_AGENT_URL:
+            return self.WORKFLOW_AGENT_URL
+        return f"http://{self.WORKFLOW_AGENT_HOST}:{self.WORKFLOW_AGENT_HTTP_PORT}"
+
+    @property
+    def workflow_engine_http_url(self) -> str:
+        """获取工作流引擎的 HTTP URL"""
+        if self.WORKFLOW_ENGINE_URL:
+            return self.WORKFLOW_ENGINE_URL
+        return f"http://{self.WORKFLOW_ENGINE_HOST}:{self.WORKFLOW_ENGINE_HTTP_PORT}"
 
     # MCP Services
     NODE_KNOWLEDGE_SUPABASE_URL: str = Field(default="", description="节点知识库Supabase URL")
@@ -239,6 +266,14 @@ class Settings(
                 "host": self.WORKFLOW_AGENT_HOST,
                 "port": self.WORKFLOW_AGENT_PORT,
             },
+        }
+
+    def get_http_config(self) -> Dict[str, Union[str, int, bool]]:
+        """获取HTTP服务配置"""
+        return {
+            "workflow_agent_url": self.workflow_agent_http_url,
+            "workflow_engine_url": self.workflow_engine_http_url,
+            "use_http_client": self.USE_HTTP_CLIENT,
         }
 
     def get_redis_config(self) -> Dict[str, Union[str, int, Dict[str, int]]]:

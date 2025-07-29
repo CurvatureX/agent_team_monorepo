@@ -1,4 +1,3 @@
-
 services:
   # ======================
   # Infrastructure Services
@@ -46,10 +45,10 @@ services:
       - agent-team-network
 
   # ======================
-  # Backend Services (gRPC)
+  # Backend Services (FastAPI)
   # ======================
 
-  # Workflow Agent - AI workflow consultant (gRPC service on port 50051)
+  # Workflow Agent - AI workflow consultant (FastAPI service on port 8001)
   workflow-agent:
     build:
       context: .
@@ -58,37 +57,16 @@ services:
       args:
         - PYTHON_VERSION=3.11
     container_name: agent-team-workflow-agent
-    environment:
-      # Core service configuration
-      DEBUG: "${DEBUG:-false}"
-      GRPC_HOST: "${GRPC_HOST:-[::]}"
-      GRPC_PORT: "${GRPC_PORT:-50051}"
-
-      # Database configuration (Supabase)
-      SUPABASE_URL: "${SUPABASE_URL}"
-      SUPABASE_SECRET_KEY: "${SUPABASE_SECRET_KEY}"
-
-      # Redis configuration for LangGraph checkpoints
-      REDIS_URL: "redis://redis:6379/0"
-      LANGGRAPH_CHECKPOINT_BACKEND: "redis"
-
-      # AI API keys
-      OPENAI_API_KEY: "${OPENAI_API_KEY}"
-      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
-
-      # AI model configuration
-      DEFAULT_MODEL_PROVIDER: "${DEFAULT_MODEL_PROVIDER:-openai}"
-      DEFAULT_MODEL_NAME: "${DEFAULT_MODEL_NAME:-gpt-4}"
-
-      # RAG configuration
-      EMBEDDING_MODEL: "${EMBEDDING_MODEL:-text-embedding-ada-002}"
-      RAG_SIMILARITY_THRESHOLD: "${RAG_SIMILARITY_THRESHOLD:-0.3}"
-
-      # Service discovery (matches AWS ECS configuration)
-      SERVICE_NAME: "workflow-agent"
-      ENVIRONMENT: "${ENVIRONMENT:-development}"
     ports:
-      - "50051:50051"
+      - "8001:8001" # FastAPI port
+    env_file:
+      - ./.env
+    environment:
+      # Override specific settings
+      PYTHONPATH: "/app"
+      PYTHONUNBUFFERED: "1"
+      REDIS_URL: "redis://redis:6379/0"
+      SERVICE_NAME: "workflow-agent"
     depends_on:
       redis:
         condition: service_healthy
@@ -96,31 +74,45 @@ services:
       - ./shared/proto:/app/shared/proto:ro
       - workflow_agent_logs:/app/logs
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "50051"]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 240s # Matches production configuration
+      start_period: 60s
     restart: unless-stopped
     networks:
       - agent-team-network
 
-  # Workflow Engine - Workflow execution engine (gRPC service on port 50050)
+  # Workflow Engine - Workflow execution engine (FastAPI service on port 8002)
   workflow-engine:
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     build:
       context: .
       dockerfile: ./workflow_engine/Dockerfile
       target: production
     container_name: agent-team-workflow-engine
+    ports:
+      - "8002:8002"
     env_file:
-      - ./workflow_engine/.env
+      - ./.env
+    environment:
+      # Override specific settings
+      PYTHONPATH: "/app"
+      PYTHONUNBUFFERED: "1"
+      REDIS_URL: "redis://redis:6379/0"
+      SERVICE_NAME: "workflow-engine"
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "50050"]
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 180s
-
+      start_period: 45s # FastAPI starts faster than gRPC
+    restart: unless-stopped
     networks:
       - agent-team-network
 
@@ -138,17 +130,21 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - ./api-gateway/.env
+      - ./.env
     environment:
-      - WORKFLOW_SERVICE_HOST=workflow-engine
-      - WORKFLOW_SERVICE_PORT=50050
+      # HTTP client configuration (replacing gRPC)
+      - WORKFLOW_ENGINE_HOST=workflow-engine
+      - WORKFLOW_ENGINE_PORT=8002
+      - WORKFLOW_AGENT_HOST=workflow-agent
+      - WORKFLOW_AGENT_PORT=8001
+      - USE_HTTP_CLIENT=true
     depends_on:
       redis:
         condition: service_healthy
-      workflow-agent:
-        condition: service_healthy
-      workflow-engine:
-        condition: service_healthy
+      # workflow-agent:
+      #   condition: service_healthy
+      # workflow-engine:
+      #   condition: service_healthy
     volumes:
       - ./shared/proto:/app/shared/proto:ro
       - api_gateway_logs:/app/logs
