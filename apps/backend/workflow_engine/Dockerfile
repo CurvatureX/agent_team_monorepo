@@ -58,12 +58,15 @@ COPY --from=builder /app/shared ./shared
 WORKDIR /app/workflow_engine
 RUN python generate_proto.py && echo "Proto generation completed successfully"
 
-# Copy generated proto files to top-level proto directory for imports to work
+# Create a clean /app/proto directory and move the generated files, then create package initializers
 WORKDIR /app
-RUN cp -r /app/workflow_engine/proto /app/proto
+RUN mkdir -p /app/proto
+RUN mv /app/workflow_engine/proto/engine /app/proto/engine
+RUN touch /app/proto/__init__.py
+RUN touch /app/proto/engine/__init__.py
 
-# Verify proto files were generated correctly
-RUN ls -la /app/proto/ && python -c "from proto import workflow_service_pb2; print('Proto import test successful')"
+# Verify proto files were generated correctly using the proper import path
+RUN ls -la /app/proto/engine/ && python -c "from proto.engine import workflow_service_pb2; print('Proto import test successful')"
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash --uid 1000 app && \
@@ -84,3 +87,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
 
 # Run application directly
 CMD ["python", "-m", "workflow_engine"]
+
