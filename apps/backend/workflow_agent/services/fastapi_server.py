@@ -9,24 +9,19 @@ from typing import AsyncGenerator
 import json
 import time
 import structlog
-
-# 设置正确的 Python 路径
 import sys
 import os
 
-# 根据运行环境设置不同的导入路径
-if os.path.exists('/app/shared'):  # Docker 环境
-    sys.path.insert(0, '/app')
-    from shared.models.conversation import ConversationRequest, ConversationResponse, ResponseType, ErrorContent
-    from agents.workflow_agent import WorkflowAgent
-    from agents.state import WorkflowState, WorkflowStage, WorkflowOrigin
-    from core.config import settings
-else:  # 本地开发环境
-    sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
-    from shared.models.conversation import ConversationRequest, ConversationResponse, ResponseType, ErrorContent
-    from workflow_agent.agents.workflow_agent import WorkflowAgent
-    from workflow_agent.agents.state import WorkflowState, WorkflowStage, WorkflowOrigin
-    from workflow_agent.core.config import settings
+# 添加项目根目录到Python路径
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.join(current_dir, '..', '..')  # 回到 apps/backend
+sys.path.insert(0, project_root)
+
+# 直接导入
+from shared.models.conversation import ConversationRequest, ConversationResponse, ResponseType, ErrorContent
+from workflow_agent.agents.workflow_agent import WorkflowAgent
+from workflow_agent.agents.state import WorkflowState, WorkflowStage, WorkflowOrigin
+from workflow_agent.core.config import settings
 
 logger = structlog.get_logger()
 
