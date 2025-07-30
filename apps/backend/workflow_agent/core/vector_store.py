@@ -7,7 +7,7 @@ import asyncio
 from typing import Any, Dict, List, Optional, Tuple
 
 import structlog
-from workflow_agent.core.config import settings
+from .config import settings
 from langchain_core.embeddings import Embeddings
 from langchain_openai import OpenAIEmbeddings
 from supabase import Client, create_client
