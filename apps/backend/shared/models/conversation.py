@@ -3,7 +3,7 @@ ProcessConversation 接口的 Pydantic 模型
 严格按照 workflow_agent.proto 定义
 """
 
-from typing import Optional
+from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field
 from enum import Enum
 
@@ -43,6 +43,7 @@ class ResponseType(str, Enum):
     MESSAGE = "RESPONSE_TYPE_MESSAGE"
     WORKFLOW = "RESPONSE_TYPE_WORKFLOW"
     ERROR = "RESPONSE_TYPE_ERROR"
+    STATUS_CHANGE = "RESPONSE_TYPE_STATUS_CHANGE"
 
 
 class ErrorContent(BaseModel):
@@ -51,6 +52,14 @@ class ErrorContent(BaseModel):
     message: str = Field(..., description="错误消息")
     details: str = Field(..., description="错误详情")
     is_recoverable: bool = Field(..., description="是否可恢复")
+
+
+class StatusChangeContent(BaseModel):
+    """状态变化内容 - 用于前端调试"""
+    previous_stage: Optional[str] = Field(default=None, description="之前的阶段")
+    current_stage: str = Field(..., description="当前阶段")
+    stage_state: Dict[str, Any] = Field(..., description="完整的阶段状态结构体")
+    node_name: str = Field(..., description="执行的节点名称")
 
 
 class ConversationResponse(BaseModel):
@@ -63,6 +72,7 @@ class ConversationResponse(BaseModel):
     message: Optional[str] = Field(default=None, description="消息文本")
     workflow: Optional[str] = Field(default=None, description="工作流JSON字符串")
     error: Optional[ErrorContent] = Field(default=None, description="错误内容")
+    status_change: Optional[StatusChangeContent] = Field(default=None, description="状态变化内容")
 
     class Config:
         json_schema_extra = {

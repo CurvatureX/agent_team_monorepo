@@ -10,6 +10,10 @@ import uuid
 from typing import List
 
 import structlog
+from langchain_anthropic import ChatAnthropic
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+
 from agents.state import (
     AlternativeOption,
     ClarificationContext,
@@ -18,7 +22,7 @@ from agents.state import (
     WorkflowStage,
     WorkflowState,
 )
-from agents.tools import RAGTool
+from .tools import RAGTool
 from core.config import settings
 from core.prompt_engine import get_prompt_engine
 from langchain_anthropic import ChatAnthropic
@@ -26,7 +30,6 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 logger = structlog.get_logger()
-
 
 class WorkflowAgentNodes:
     """Simplified LangGraph nodes for workflow generation"""
@@ -229,6 +232,8 @@ class WorkflowAgentNodes:
                 )
                 analysis = json.loads(response_text)
 
+                logger.info(f"Clarification analysis: {analysis}")
+
                 # clarification_f2 format: clarification_question, is_complete, workflow_summary
                 clarification_question = analysis.get("clarification_question", "")
                 is_complete = analysis.get("is_complete", False)
@@ -262,9 +267,9 @@ class WorkflowAgentNodes:
             # Update state
             state["intent_summary"] = intent_summary
 
-            # Store workflow summary if complete
-            if "workflow_summary" in locals() and workflow_summary:
-                state["workflow_summary"] = workflow_summary
+            # # Store workflow summary if complete
+            # if "workflow_summary" in locals() and workflow_summary:
+            #     state["intent_summary"] = workflow_summary
 
             if needs_clarification and questions:
                 # Need more clarification - go to negotiation
