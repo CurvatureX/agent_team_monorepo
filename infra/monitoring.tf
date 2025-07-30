@@ -32,13 +32,13 @@ resource "aws_cloudwatch_dashboard" "grpc_service_dashboard" {
 
         properties = {
           metrics = [
-            ["AWS/NetworkELB", "TargetResponseTime", "LoadBalancer", aws_lb.grpc_internal.arn_suffix],
-            ["AWS/NetworkELB", "ActiveFlowCount", "LoadBalancer", aws_lb.grpc_internal.arn_suffix]
+            ["AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", aws_lb.internal.arn_suffix],
+            ["AWS/ApplicationELB", "RequestCount", "LoadBalancer", aws_lb.internal.arn_suffix]
           ]
           view    = "timeSeries"
           stacked = false
           region  = var.aws_region
-          title   = "gRPC Load Balancer Metrics"
+          title   = "Internal Load Balancer Metrics"
           period  = 300
         }
       },
@@ -106,21 +106,21 @@ resource "aws_cloudwatch_metric_alarm" "workflow_agent_memory_high" {
   tags = local.common_tags
 }
 
-resource "aws_cloudwatch_metric_alarm" "grpc_nlb_unhealthy_targets" {
-  alarm_name          = "${local.name_prefix}-grpc-nlb-unhealthy-targets"
+resource "aws_cloudwatch_metric_alarm" "internal_alb_unhealthy_targets" {
+  alarm_name          = "${local.name_prefix}-internal-alb-unhealthy-targets"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = "2"
   metric_name         = "UnHealthyHostCount"
-  namespace           = "AWS/NetworkELB"
+  namespace           = "AWS/ApplicationELB"
   period              = "300"
   statistic           = "Average"
   threshold           = "0"
-  alarm_description   = "This metric monitors gRPC NLB unhealthy targets"
+  alarm_description   = "This metric monitors internal ALB unhealthy targets"
   alarm_actions       = [aws_sns_topic.alerts.arn]
 
   dimensions = {
-    TargetGroup  = aws_lb_target_group.workflow_agent_grpc.arn_suffix
-    LoadBalancer = aws_lb.grpc_internal.arn_suffix
+    TargetGroup  = aws_lb_target_group.workflow_agent_http.arn_suffix
+    LoadBalancer = aws_lb.internal.arn_suffix
   }
 
   tags = local.common_tags
