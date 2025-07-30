@@ -17,7 +17,6 @@
   "executionEnvironments": [
     {
       "root": "apps/backend/workflow_agent",
-      "pythonPath": "apps/backend/.venv/bin/python",
       "extraPaths": [
         "apps/backend",
         "apps/backend/workflow_agent",
@@ -28,7 +27,6 @@
     },
     {
       "root": "apps/backend/api-gateway",
-      "pythonPath": "apps/backend/.venv/bin/python",
       "extraPaths": [
         "apps/backend",
         "apps/backend/api-gateway",
@@ -37,7 +35,6 @@
     },
     {
       "root": "apps/backend/workflow_engine",
-      "pythonPath": "apps/backend/.venv/bin/python",
       "extraPaths": [
         "apps/backend",
         "apps/backend/workflow_engine",
