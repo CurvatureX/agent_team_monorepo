@@ -22,7 +22,7 @@ from agents.state import (
     WorkflowStage,
     WorkflowState,
 )
-from agents.tools import RAGTool
+from .tools import RAGTool
 from core.config import settings
 from core.prompt_engine import get_prompt_engine
 from langchain_anthropic import ChatAnthropic
@@ -231,6 +231,8 @@ class WorkflowAgentNodes:
                     response.content if isinstance(response.content, str) else str(response.content)
                 )
                 analysis = json.loads(response_text)
+
+                logger.info(f"Clarification analysis: {analysis}")
 
                 # clarification_f2 format: clarification_question, is_complete, workflow_summary
                 clarification_question = analysis.get("clarification_question", "")

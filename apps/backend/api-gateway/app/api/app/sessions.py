@@ -35,16 +35,16 @@ async def create_session(request: SessionCreate, deps: AuthenticatedDeps = Depen
         # Prepare session data - 只存储基本会话信息
         session_data = {
             "user_id": deps.current_user.sub,
-            "action": request.action,
-            "workflow_id": request.workflow_id,  # 对于 edit/copy 这是 source_workflow_id
+            "action_type": request.action,
+            "source_workflow_id": request.workflow_id,  # 对于 edit/copy 这是 source_workflow_id
         }
 
-        # Create session using Supabase with user token
-        user_client = create_user_supabase_client(deps.current_user.token)
-        if not user_client:
+        # Use the service role key for database operations
+        admin_client = deps.db_manager.supabase_admin
+        if not admin_client:
             raise HTTPException(status_code=500, detail="Failed to create database client")
 
-        result = user_client.table("sessions").insert(session_data).execute()
+        result = admin_client.table("sessions").insert(session_data).execute()
         result = result.data[0] if result.data else None
 
         if not result:
@@ -60,7 +60,9 @@ async def create_session(request: SessionCreate, deps: AuthenticatedDeps = Depen
     except (ValidationError, HTTPException):
         raise
     except Exception as e:
+        import traceback
         logger.error(f"❌ Error creating session: {e}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -75,12 +77,12 @@ async def get_session(
     try:
         logger.info(f"🔍 Getting session {session_id} for user {deps.current_user.sub}")
 
-        # Get session from database with RLS
-        user_client = create_user_supabase_client(deps.current_user.token)
-        if not user_client:
+        # Get session from database with service role key
+        admin_client = deps.db_manager.supabase_admin
+        if not admin_client:
             raise HTTPException(status_code=500, detail="Failed to create database client")
 
-        result = user_client.table("sessions").select("*").eq("id", session_id).execute()
+        result = admin_client.table("sessions").select("*").eq("id", session_id).eq("user_id", deps.current_user.sub).execute()
         result = result.data[0] if result.data else None
 
         if not result:
@@ -111,13 +113,13 @@ async def list_user_sessions(
     try:
         logger.info(f"📋 Listing sessions for user {deps.current_user.sub}")
 
-        # Get all sessions for this user with RLS
-        user_client = create_user_supabase_client(deps.current_user.token)
-        if not user_client:
+        # Get all sessions for this user with service role key
+        admin_client = deps.db_manager.supabase_admin
+        if not admin_client:
             raise HTTPException(status_code=500, detail="Failed to create database client")
 
         result = (
-            user_client.table("sessions").select("*").eq("user_id", deps.current_user.sub).execute()
+            admin_client.table("sessions").select("*").eq("user_id", deps.current_user.sub).execute()
         )
         sessions_data = result.data if result.data else []
 
@@ -156,12 +158,12 @@ async def delete_session(
     try:
         logger.info(f"🗑️ Deleting session {session_id} for user {deps.current_user.sub}")
 
-        # Delete session with RLS (ensures user can only delete their own sessions)
-        user_client = create_user_supabase_client(deps.current_user.token)
-        if not user_client:
+        # Delete session with service role key (filter by user_id for security)
+        admin_client = deps.db_manager.supabase_admin
+        if not admin_client:
             raise HTTPException(status_code=500, detail="Failed to create database client")
 
-        result = user_client.table("sessions").delete().eq("id", session_id).execute()
+        result = admin_client.table("sessions").delete().eq("id", session_id).eq("user_id", deps.current_user.sub).execute()
         success = len(result.data) > 0 if result.data else False
 
         if not success:
@@ -197,12 +199,12 @@ async def update_session(
         if not update_data:
             raise ValidationError("No update data provided")
 
-        # Update session with RLS
-        user_client = create_user_supabase_client(deps.current_user.token)
-        if not user_client:
+        # Update session with service role key
+        admin_client = deps.db_manager.supabase_admin
+        if not admin_client:
             raise HTTPException(status_code=500, detail="Failed to create database client")
 
-        result = user_client.table("sessions").update(update_data).eq("id", session_id).execute()
+        result = admin_client.table("sessions").update(update_data).eq("id", session_id).eq("user_id", deps.current_user.sub).execute()
         result = result.data[0] if result.data else None
 
         if not result:

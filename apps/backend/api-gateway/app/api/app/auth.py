@@ -63,14 +63,14 @@ async def get_user_sessions(
     try:
         logger.info(f"🔐 Getting auth sessions for user {deps.current_user.sub}")
 
-        # Get user-specific Supabase client
-        user_client = create_user_supabase_client(deps.current_user.token)
-        if not user_client:
+        # Get service role client
+        admin_client = deps.db_manager.supabase_admin
+        if not admin_client:
             raise HTTPException(status_code=500, detail="Failed to create database client")
 
-        # Get sessions with auth context (more detailed than regular sessions)
+        # Get sessions with auth context
         result = (
-            user_client.table("sessions")
+            admin_client.table("sessions")
             .select("id, session_type, status, created_at, updated_at, last_activity, metadata")
             .eq("user_id", deps.current_user.sub)
             .order("created_at", desc=True)
