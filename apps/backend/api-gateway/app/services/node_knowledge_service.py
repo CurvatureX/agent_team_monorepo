@@ -9,12 +9,10 @@ import os
 import sys
 from typing import Any, Dict, List, Optional
 
-# Add shared node_specs to path for import
-sys.path.append(os.path.join(os.path.dirname(__file__), "../../../shared"))
-
+# Import from shared module - Docker has shared/ in /app/shared/
 try:
-    from node_specs.base import NodeSpec
-    from node_specs.registry import node_spec_registry
+    from shared.node_specs.base import NodeSpec
+    from shared.node_specs.registry import node_spec_registry
 except ImportError as e:
     # Fallback for development/testing
     print(f"Warning: Could not import node_specs: {e}")

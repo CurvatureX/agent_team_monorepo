@@ -42,7 +42,8 @@ COPY --from=builder /app/.venv /app/.venv
 
 # No proto files to copy for HTTP-only deployment
 
-# Copy application code
+# Copy shared models and application code
+COPY shared/ ./shared/
 COPY api-gateway/ ./
 
 # Create non-root user

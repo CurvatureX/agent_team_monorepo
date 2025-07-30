@@ -188,8 +188,7 @@ class NodeKnowledgeMCPService:
                 "available": True,
                 "category": "workflow",
                 "usage_examples": [
-                    {},  # Get all types
-                    {"type_filter": "ACTION_NODE"},  # Filter by type
+                    {"type_filter": "ACTION_NODE"},  # Filter by specific type
                 ],
             },
             "get_node_details": {

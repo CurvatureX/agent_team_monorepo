@@ -16,7 +16,7 @@ class BaseModel(PydanticBaseModel):
     """
 
     class Config:
-        # 允许使用orm_mode进行ORM对象转换
+        # 允许从ORM对象转换为Pydantic模型
         from_attributes = True
         # 在序列化时排除None值
         exclude_none = True
