@@ -9,9 +9,9 @@ from typing import Optional
 from app.core.config import get_settings
 from app.dependencies import AuthenticatedDeps
 from app.exceptions import NotFoundError, ValidationError
-from app.models.base import ResponseModel
-from app.models.workflow import (
+from app.models import (
     NodeTemplateListResponse,
+    ResponseModel,
     Workflow,
     WorkflowCreate,
     WorkflowExecutionRequest,
@@ -38,8 +38,6 @@ async def list_all_node_templates(
     """
     try:
         settings = get_settings()
-        if not settings.USE_HTTP_CLIENT:
-            raise HTTPException(status_code=503, detail="HTTP client is disabled")
 
         http_client = await get_workflow_engine_client()
         templates = await http_client.list_all_node_templates(
@@ -66,8 +64,6 @@ async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Dep
 
         # Get HTTP client
         settings = get_settings()
-        if not settings.USE_HTTP_CLIENT:
-            raise HTTPException(status_code=503, detail="HTTP client is disabled")
 
         http_client = await get_workflow_engine_client()
 
@@ -113,8 +109,6 @@ async def get_workflow(workflow_id: str, deps: AuthenticatedDeps = Depends()):
 
         # Get HTTP client
         settings = get_settings()
-        if not settings.USE_HTTP_CLIENT:
-            raise HTTPException(status_code=503, detail="HTTP client is disabled")
 
         http_client = await get_workflow_engine_client()
 
@@ -158,8 +152,6 @@ async def update_workflow(
 
         # Get HTTP client
         settings = get_settings()
-        if not settings.USE_HTTP_CLIENT:
-            raise HTTPException(status_code=503, detail="HTTP client is disabled")
 
         http_client = await get_workflow_engine_client()
 
@@ -205,8 +197,6 @@ async def delete_workflow(workflow_id: str, deps: AuthenticatedDeps = Depends())
 
         # Get HTTP client
         settings = get_settings()
-        if not settings.USE_HTTP_CLIENT:
-            raise HTTPException(status_code=503, detail="HTTP client is disabled")
 
         http_client = await get_workflow_engine_client()
 
@@ -246,8 +236,6 @@ async def list_workflows(
 
         # Get HTTP client
         settings = get_settings()
-        if not settings.USE_HTTP_CLIENT:
-            raise HTTPException(status_code=503, detail="HTTP client is disabled")
 
         http_client = await get_workflow_engine_client()
 
@@ -289,8 +277,6 @@ async def execute_workflow(
 
         # Get HTTP client
         settings = get_settings()
-        if not settings.USE_HTTP_CLIENT:
-            raise HTTPException(status_code=503, detail="HTTP client is disabled")
 
         http_client = await get_workflow_engine_client()
 

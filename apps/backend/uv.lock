@@ -22,12 +22,7 @@ shared-config = [
     { name = "pydantic-settings", specifier = ">=2.1.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
 ]
-shared-infra = [
-    { name = "grpcio", specifier = ">=1.68.0" },
-    { name = "grpcio-tools", specifier = ">=1.68.0" },
-    { name = "protobuf", specifier = ">=6.0.0" },
-    { name = "structlog", specifier = ">=23.2.0" },
-]
+shared-infra = [{ name = "structlog", specifier = ">=23.2.0" }]
 
 [[package]]
 name = "alembic"
@@ -104,11 +99,8 @@ dependencies = [
     { name = "bleach" },
     { name = "email-validator" },
     { name = "fastapi" },
-    { name = "grpcio" },
-    { name = "grpcio-tools" },
     { name = "jsonschema" },
     { name = "passlib", extra = ["bcrypt"] },
-    { name = "protobuf" },
     { name = "pydantic", extra = ["email"] },
     { name = "pydantic-settings" },
     { name = "python-dotenv" },
@@ -138,12 +130,9 @@ requires-dist = [
     { name = "bleach", specifier = ">=6.0.0" },
     { name = "email-validator", specifier = ">=2.0.0" },
     { name = "fastapi", specifier = ">=0.104.1" },
-    { name = "grpcio", specifier = ">=1.68.0" },
-    { name = "grpcio-tools", specifier = ">=1.68.0" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.24.0" },
     { name = "jsonschema", specifier = ">=4.0.0" },
     { name = "passlib", extras = ["bcrypt"], specifier = "==1.7.4" },
-    { name = "protobuf", specifier = ">=6.0.0" },
     { name = "pydantic", extras = ["email"], specifier = ">=2.7.4" },
     { name = "pydantic-settings", specifier = "==2.1.0" },
     { name = "python-dotenv", specifier = "==1.0.0" },

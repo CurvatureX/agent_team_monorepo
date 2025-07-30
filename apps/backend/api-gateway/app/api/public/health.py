@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from app.core.config import Settings, get_settings
 from app.core.events import health_check
 from app.dependencies import CommonDeps
-from app.models.base import HealthCheckModel
+from app.models import HealthCheckModel
 from app.utils.logger import get_logger
 from fastapi import APIRouter, Depends, Request
 
@@ -29,11 +29,11 @@ async def health_check_endpoint(request: Request, settings: Settings = Depends(g
         health_info = await health_check()
 
         # 添加请求信息
-        health_info["timestamp"] = datetime.now(timezone.utc).isoformat()
+        health_info["timestamp"] = datetime.now(timezone.utc)
         health_info["request_id"] = getattr(request.state, "request_id", None)
         health_info["processing_time_ms"] = round((time.time() - start_time) * 1000, 2)
 
-        return health_info
+        return HealthCheckModel(**health_info)
 
     except Exception as e:
         logger.error(f"❌ Health check failed: {e}")

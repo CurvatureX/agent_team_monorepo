@@ -150,7 +150,79 @@ class ActionNodeExecutor(BaseNodeExecutor):
         # ...
 ```
 
-### 4.2. The `ConnectionsMap`: A System for AI Data Flows
+### 4.2. The AI Agent Architecture Revolution
+
+The workflow engine has undergone a fundamental transformation in how it handles AI Agent nodes, moving from hardcoded roles to a flexible, provider-based architecture.
+
+#### Legacy Approach (Before v2.0) ❌
+Previously, AI agents were defined by rigid, hardcoded subtypes:
+- `AI_ROUTER_AGENT` - Limited to routing decisions
+- `AI_TASK_ANALYZER` - Only capable of task analysis
+- `AI_DATA_INTEGRATOR` - Fixed data integration logic
+- `AI_REPORT_GENERATOR` - Restricted to report generation
+
+This approach required new code for each AI role and limited customization capabilities.
+
+#### Provider-Based Architecture (v2.0+) ✅
+The new architecture introduces three universal AI agent providers where **functionality is entirely defined by system prompts**:
+
+```python
+// In nodes/ai_agent_node.py - New implementation
+class AIAgentNodeExecutor(BaseNodeExecutor):
+    def get_supported_subtypes(self) -> List[str]:
+        return [
+            "GEMINI_NODE",      # Google Gemini provider
+            "OPENAI_NODE",      # OpenAI GPT provider
+            "CLAUDE_NODE"       # Anthropic Claude provider
+        ]
+
+    def execute(self, context: NodeExecutionContext) -> NodeExecutionResult:
+        subtype = context.node.subtype
+
+        if subtype == "GEMINI_NODE":
+            return self._execute_gemini_agent(context, logs, start_time)
+        elif subtype == "OPENAI_NODE":
+            return self._execute_openai_agent(context, logs, start_time)
+        elif subtype == "CLAUDE_NODE":
+            return self._execute_claude_agent(context, logs, start_time)
+```
+
+**Key Benefits:**
+- **Unlimited Functionality**: Any AI task can be achieved through system prompts
+- **Easy Customization**: Simply modify the system prompt parameter
+- **Provider Optimization**: Leverage unique capabilities of each AI provider
+- **Simplified Codebase**: Three providers instead of dozens of hardcoded roles
+- **Rapid Experimentation**: Test new AI behaviors instantly
+
+#### System Prompt Examples
+
+**Data Analysis Agent (Gemini)**:
+```json
+{
+  "type": "AI_AGENT_NODE",
+  "subtype": "GEMINI_NODE",
+  "parameters": {
+    "system_prompt": "You are a senior data analyst. Analyze datasets and provide statistical insights, trend analysis, and business recommendations in structured JSON format.",
+    "model_version": "gemini-pro",
+    "temperature": 0.3
+  }
+}
+```
+
+**Customer Service Router (OpenAI)**:
+```json
+{
+  "type": "AI_AGENT_NODE",
+  "subtype": "OPENAI_NODE",
+  "parameters": {
+    "system_prompt": "You are an intelligent customer service routing system. Analyze inquiries and route to appropriate departments (billing/technical/sales/general) with confidence scoring.",
+    "model_version": "gpt-4",
+    "temperature": 0.1
+  }
+}
+```
+
+### 4.3. The `ConnectionsMap`: A System for AI Data Flows
 
 A standout feature is the `ConnectionsMap`, which goes beyond simple linear connections. It supports **13 distinct connection types**, allowing a workflow to model sophisticated data flows.
 
@@ -158,17 +230,17 @@ A standout feature is the `ConnectionsMap`, which goes beyond simple linear conn
 -   **Implementation**: The `_prepare_node_input_data_with_tracking` method in the execution engine is responsible for interpreting these types and structuring the input data accordingly.
 
 ```json
-// Example of a ConnectionsMap for an AI Agent
-"Secretary AI Agent": {
+// Example of a ConnectionsMap for a Provider-Based AI Agent
+"Customer Analysis Agent": {
   "connection_types": {
     "ai_tool": {
-      "connections": [{"node": "Google Calendar Tool", "type": "AI_TOOL"}]
+      "connections": [{"node": "Customer Database Tool", "type": "AI_TOOL"}]
     },
     "ai_memory": {
-      "connections": [{"node": "User Preferences Memory", "type": "AI_MEMORY"}]
+      "connections": [{"node": "Customer Interaction History", "type": "AI_MEMORY"}]
     },
     "main": {
-      "connections": [{"node": "Send Notification", "type": "MAIN"}]
+      "connections": [{"node": "Data Ingestion", "type": "MAIN"}]
     }
   }
 }
@@ -176,10 +248,32 @@ A standout feature is the `ConnectionsMap`, which goes beyond simple linear conn
 
 ## 5. Extensibility
 
-Adding new capabilities to the engine is straightforward:
+### 5.1. Traditional Node Extension
+Adding new non-AI capabilities to the engine follows the established pattern:
 
 1.  **Create a New Node Executor**: Write a new Python class in the `nodes/` directory that inherits from `BaseNodeExecutor`.
 2.  **Implement the Logic**: Implement the `execute()` and `validate()` methods.
 3.  **Register the Executor**: Add the new executor to the `register_default_executors()` function in `nodes/factory.py`.
 
-The engine will now automatically recognize and be able to execute this new node type.
+### 5.2. AI Agent Extension (Revolutionary Approach)
+With the provider-based architecture, adding new AI capabilities is dramatically simpler:
+
+**No Code Required**: Simply create a new workflow with a different `system_prompt`:
+```json
+{
+  "type": "AI_AGENT_NODE",
+  "subtype": "CLAUDE_NODE",
+  "parameters": {
+    "system_prompt": "You are a cybersecurity analyst. Review code for vulnerabilities, classify risks by CVSS scoring, and provide detailed remediation steps with secure code examples.",
+    "model_version": "claude-3-opus",
+    "temperature": 0.2
+  }
+}
+```
+
+**Adding New AI Providers**: To add support for new AI providers (e.g., `LLAMA_NODE`):
+1. Add the new subtype to `get_supported_subtypes()` in `AIAgentNodeExecutor`
+2. Implement a new `_execute_llama_agent()` method
+3. Update the protobuf schema and regenerate
+
+This approach has **revolutionized development velocity** - new AI functionalities can be created in minutes rather than hours or days.

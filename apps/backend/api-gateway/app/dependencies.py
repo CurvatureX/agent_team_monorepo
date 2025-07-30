@@ -3,9 +3,10 @@ FastAPI Dependencies for Dependency Injection
 依赖注入函数，遵循FastAPI最佳实践
 """
 
-from typing import Optional, Dict, Any, Generator
+from typing import Any, Dict, Generator, Optional
+
 from fastapi import Depends, HTTPException, Request, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from supabase import Client
 
 try:
@@ -20,11 +21,11 @@ from app.core.config import Settings, get_settings
 from app.core.database import (
     DatabaseManager,
     get_database_manager,
+    get_redis,
     get_supabase,
     get_supabase_admin,
-    get_redis,
 )
-from app.models.auth import AuthUser, AuthClient
+from app.models import AuthClient, AuthUser
 from app.services.auth_service import verify_supabase_token
 from app.utils.logger import get_logger
 
@@ -197,11 +198,13 @@ async def get_mcp_client(
         api_key_obj = mcp_authenticator.verify_api_key(api_key)
         if api_key_obj:
             return AuthClient(
-                id=api_key_obj.id,
+                client_id=api_key_obj.id,
                 client_name=api_key_obj.client_name,
                 scopes=api_key_obj.scopes,
-                rate_limit_tier=api_key_obj.rate_limit_tier,
-                active=api_key_obj.active,
+                metadata={
+                    "rate_limit_tier": api_key_obj.rate_limit_tier,
+                    "active": api_key_obj.active,
+                },
             )
         return None
     except Exception as e:

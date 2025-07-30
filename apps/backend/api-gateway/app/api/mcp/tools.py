@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from app.dependencies import MCPDeps, get_tool_name, require_scope
 from app.exceptions import ServiceUnavailableError, ValidationError
-from app.models.mcp import (
+from app.models import (
     MCPErrorResponse,
     MCPHealthCheck,
     MCPInvokeRequest,
@@ -17,6 +17,7 @@ from app.models.mcp import (
     MCPTool,
     MCPToolsResponse,
 )
+from app.services.node_knowledge_service import NodeKnowledgeService
 from app.utils.logger import get_logger
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -25,161 +26,194 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-# Enhanced MCP Service
-class EnhancedMCPService:
+# Node Knowledge MCP Service
+class NodeKnowledgeMCPService:
+    def __init__(self):
+        self.node_knowledge = NodeKnowledgeService()
+
     def get_available_tools(self) -> MCPToolsResponse:
-        """获取可用工具列表"""
+        """Get available node knowledge tools."""
         tools = [
             MCPTool(
-                name="text_analysis",
-                description="Analyze text content for sentiment, keywords, and structure",
+                name="get_node_types",
+                description="Get all available workflow node types and their subtypes",
                 parameters={
                     "type": "object",
                     "properties": {
-                        "text": {"type": "string", "description": "Text to analyze"},
-                        "analysis_type": {
+                        "type_filter": {
                             "type": "string",
-                            "enum": ["sentiment", "keywords", "structure"],
-                            "description": "Type of analysis to perform",
-                        },
+                            "enum": [
+                                "ACTION_NODE",
+                                "TRIGGER_NODE",
+                                "AI_AGENT_NODE",
+                                "FLOW_NODE",
+                                "TOOL_NODE",
+                                "MEMORY_NODE",
+                                "HUMAN_LOOP_NODE",
+                                "EXTERNAL_ACTION_NODE",
+                            ],
+                            "description": "Filter by node type (optional)",
+                        }
                     },
-                    "required": ["text"],
-                },
-                category="analysis",
-                tags=["text", "nlp", "analysis"],
-            ),
-            MCPTool(
-                name="workflow_generator",
-                description="Generate workflow definitions from natural language descriptions",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "description": {
-                            "type": "string",
-                            "description": "Natural language workflow description",
-                        },
-                        "complexity": {
-                            "type": "string",
-                            "enum": ["simple", "medium", "complex"],
-                            "default": "medium",
-                        },
-                    },
-                    "required": ["description"],
                 },
                 category="workflow",
-                tags=["workflow", "generation", "automation"],
+                tags=["nodes", "workflow", "specifications"],
             ),
             MCPTool(
-                name="example_tool",
-                description="Example tool for testing MCP API functionality",
+                name="get_node_details",
+                description="Get detailed specifications for workflow nodes including parameters, ports, and examples",
                 parameters={
                     "type": "object",
-                    "properties": {"message": {"type": "string", "description": "Test message"}},
+                    "properties": {
+                        "nodes": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "node_type": {"type": "string"},
+                                    "subtype": {"type": "string"},
+                                },
+                                "required": ["node_type", "subtype"],
+                            },
+                            "description": "List of nodes to get details for",
+                        },
+                        "include_examples": {
+                            "type": "boolean",
+                            "default": True,
+                            "description": "Include usage examples",
+                        },
+                        "include_schemas": {
+                            "type": "boolean",
+                            "default": True,
+                            "description": "Include input/output schemas",
+                        },
+                    },
+                    "required": ["nodes"],
                 },
-                category="testing",
-                tags=["test", "example"],
+                category="workflow",
+                tags=["nodes", "specifications", "details"],
+            ),
+            MCPTool(
+                name="search_nodes",
+                description="Search workflow nodes by functionality, description, or capabilities",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search query describing desired functionality",
+                        },
+                        "max_results": {
+                            "type": "integer",
+                            "default": 10,
+                            "description": "Maximum number of results",
+                        },
+                        "include_details": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "Include full specifications",
+                        },
+                    },
+                    "required": ["query"],
+                },
+                category="workflow",
+                tags=["search", "nodes", "discovery"],
             ),
         ]
 
         return MCPToolsResponse(
-            success=True,
             tools=tools,
             total_count=len(tools),
-            available_count=len([t for t in tools if t.available]),
+            available_count=len(tools),  # All tools are available
             categories=list(set(t.category for t in tools if t.category)),
-            timestamp=datetime.now(timezone.utc),
         )
 
     async def invoke_tool(self, tool_name: str, params: Dict[str, Any]) -> MCPInvokeResponse:
-        """调用指定工具"""
+        """Invoke specified node knowledge tool."""
         start_time = time.time()
 
-        # 模拟不同工具的处理逻辑
-        if tool_name == "text_analysis":
-            text = params.get("text", "")
-            analysis_type = params.get("analysis_type", "sentiment")
+        try:
+            if tool_name == "get_node_types":
+                type_filter = params.get("type_filter")
+                result = self.node_knowledge.get_node_types(type_filter)
 
-            # 模拟分析结果
-            result = {
-                "text": text,
-                "analysis_type": analysis_type,
-                "result": {
-                    "sentiment": "positive" if "good" in text.lower() else "neutral",
-                    "confidence": 0.85,
-                    "keywords": text.split()[:5] if analysis_type == "keywords" else [],
-                },
-            }
+            elif tool_name == "get_node_details":
+                nodes = params.get("nodes", [])
+                include_examples = params.get("include_examples", True)
+                include_schemas = params.get("include_schemas", True)
+                result = self.node_knowledge.get_node_details(
+                    nodes, include_examples, include_schemas
+                )
 
-        elif tool_name == "workflow_generator":
-            description = params.get("description", "")
-            complexity = params.get("complexity", "medium")
+            elif tool_name == "search_nodes":
+                query = params.get("query", "")
+                max_results = params.get("max_results", 10)
+                include_details = params.get("include_details", False)
+                result = self.node_knowledge.search_nodes(query, max_results, include_details)
 
-            result = {
-                "description": description,
-                "complexity": complexity,
-                "workflow": {
-                    "name": f"Generated Workflow - {complexity}",
-                    "nodes": ["start", "process", "end"],
-                    "connections": [["start", "process"], ["process", "end"]],
-                },
-            }
+            else:
+                return MCPInvokeResponse(
+                    success=False,
+                    tool_name=tool_name,
+                    error=f"Tool '{tool_name}' not found",
+                    error_type="TOOL_NOT_FOUND",
+                    execution_time_ms=round((time.time() - start_time) * 1000, 2),
+                )
 
-        elif tool_name == "example_tool":
-            message = params.get("message", "No message provided")
-            result = {
-                "original_message": message,
-                "response": f"Processed: {message}",
-                "processed_at": datetime.now(timezone.utc).isoformat(),
-            }
+            return MCPInvokeResponse(
+                success=True,
+                tool_name=tool_name,
+                result=result,
+                execution_time_ms=round((time.time() - start_time) * 1000, 2),
+                timestamp=datetime.now(timezone.utc),
+            )
 
-        else:
+        except Exception as e:
             return MCPInvokeResponse(
                 success=False,
                 tool_name=tool_name,
-                error=f"Tool '{tool_name}' not found",
-                error_type="TOOL_NOT_FOUND",
+                error=f"Tool execution failed: {str(e)}",
+                error_type="EXECUTION_ERROR",
                 execution_time_ms=round((time.time() - start_time) * 1000, 2),
+                timestamp=datetime.now(timezone.utc),
             )
 
-        return MCPInvokeResponse(
-            success=True,
-            tool_name=tool_name,
-            result=result,
-            execution_time_ms=round((time.time() - start_time) * 1000, 2),
-            timestamp=datetime.now(timezone.utc),
-        )
-
     def get_tool_info(self, tool_name: str) -> Dict[str, Any]:
-        """获取工具详细信息"""
+        """Get detailed information about a specific tool."""
         tools_map = {
-            "text_analysis": {
-                "name": "text_analysis",
-                "description": "Advanced text analysis tool with sentiment analysis and keyword extraction",
-                "version": "1.2.0",
-                "available": True,
-                "category": "analysis",
-                "usage_examples": [
-                    {"text": "This is great!", "analysis_type": "sentiment"},
-                    {"text": "Machine learning and AI", "analysis_type": "keywords"},
-                ],
-            },
-            "workflow_generator": {
-                "name": "workflow_generator",
-                "description": "Generate automated workflows from natural language descriptions",
-                "version": "1.1.0",
+            "get_node_types": {
+                "name": "get_node_types",
+                "description": "Get all available workflow node types and their subtypes",
+                "version": "1.0.0",
                 "available": True,
                 "category": "workflow",
                 "usage_examples": [
-                    {"description": "Create a user onboarding workflow", "complexity": "medium"}
+                    {"type_filter": "ACTION_NODE"},  # Filter by specific type
                 ],
             },
-            "example_tool": {
-                "name": "example_tool",
-                "description": "Simple example tool for testing MCP functionality",
+            "get_node_details": {
+                "name": "get_node_details",
+                "description": "Get detailed specifications for workflow nodes",
                 "version": "1.0.0",
                 "available": True,
-                "category": "testing",
-                "usage_examples": [{"message": "Hello, MCP!"}],
+                "category": "workflow",
+                "usage_examples": [
+                    {
+                        "nodes": [{"node_type": "ACTION_NODE", "subtype": "HTTP_REQUEST"}],
+                        "include_examples": True,
+                    }
+                ],
+            },
+            "search_nodes": {
+                "name": "search_nodes",
+                "description": "Search workflow nodes by functionality or description",
+                "version": "1.0.0",
+                "available": True,
+                "category": "workflow",
+                "usage_examples": [
+                    {"query": "send email", "max_results": 5},
+                    {"query": "HTTP request", "include_details": True},
+                ],
             },
         }
 
@@ -194,19 +228,22 @@ class EnhancedMCPService:
         )
 
     def health_check(self) -> MCPHealthCheck:
-        """MCP服务健康检查"""
-        available_tools = ["text_analysis", "workflow_generator", "example_tool"]
+        """MCP service health check."""
+        available_tools = ["get_node_types", "get_node_details", "search_nodes"]
+
+        # Check if node knowledge service is available
+        healthy = self.node_knowledge.registry is not None
 
         return MCPHealthCheck(
-            healthy=True,
-            version="2.0.0",
-            available_tools=available_tools,
+            healthy=healthy,
+            version="3.0.0",
+            available_tools=available_tools if healthy else [],
             timestamp=int(time.time()),
         )
 
 
 # Initialize MCP service
-mcp_service = EnhancedMCPService()
+mcp_service = NodeKnowledgeMCPService()
 
 
 @router.get("/tools", response_model=MCPToolsResponse)
@@ -266,11 +303,13 @@ async def invoke_tool(
         )
 
         # Validate timeout
-        if invoke_request.timeout and (invoke_request.timeout < 1 or invoke_request.timeout > 300):
+        if invoke_request.timeout is not None and (
+            invoke_request.timeout < 1 or invoke_request.timeout > 300
+        ):
             raise ValidationError("Timeout must be between 1 and 300 seconds")
 
         result = await mcp_service.invoke_tool(
-            tool_name=invoke_request.tool_name, params=invoke_request.params
+            tool_name=invoke_request.tool_name, params=invoke_request.parameters
         )
 
         # Add request metadata
