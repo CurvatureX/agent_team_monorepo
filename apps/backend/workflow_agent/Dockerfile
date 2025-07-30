@@ -61,4 +61,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8001/health || exit 1
 
 # Run the FastAPI application (替换 gRPC 服务器)
-CMD ["python", "main_fastapi.py"]
+CMD ["python", "main.py"]

@@ -7,20 +7,42 @@
   "venvPath": "apps/backend",
   "venv": ".venv",
   "extraPaths": [
+    "apps/backend",
     "apps/backend/workflow_agent",
     "apps/backend/api-gateway",
-    "apps/backend/shared"
+    "apps/backend/shared",
+    "apps/backend/workflow_engine",
+    "apps/backend/workflow_runtime"
   ],
   "executionEnvironments": [
     {
       "root": "apps/backend/workflow_agent",
       "pythonPath": "apps/backend/.venv/bin/python",
-      "extraPaths": ["apps/backend/workflow_agent", "apps/backend/shared"]
+      "extraPaths": [
+        "apps/backend",
+        "apps/backend/workflow_agent",
+        "apps/backend/shared",
+        "apps/backend/workflow_engine",
+        "apps/backend/workflow_runtime"
+      ]
     },
     {
       "root": "apps/backend/api-gateway",
       "pythonPath": "apps/backend/.venv/bin/python",
-      "extraPaths": ["apps/backend/api-gateway", "apps/backend/shared"]
+      "extraPaths": [
+        "apps/backend",
+        "apps/backend/api-gateway",
+        "apps/backend/shared"
+      ]
+    },
+    {
+      "root": "apps/backend/workflow_engine",
+      "pythonPath": "apps/backend/.venv/bin/python",
+      "extraPaths": [
+        "apps/backend",
+        "apps/backend/workflow_engine",
+        "apps/backend/shared"
+      ]
     }
   ]
 }
