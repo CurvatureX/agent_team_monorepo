@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from app.core.database import create_user_supabase_client
 from app.dependencies import AuthenticatedDeps, get_session_id
 from app.exceptions import NotFoundError, ValidationError
-from app.models.chat import ChatHistory, ChatMessage, ChatRequest, MessageType
+from app.models import ChatHistory, ChatMessage, ChatRequest, MessageType
 from app.utils.logger import get_logger
 from app.utils.sse import create_mock_chat_stream, format_sse_event
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -43,7 +43,11 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
             raise HTTPException(status_code=500, detail="Failed to create database client")
 
         session_result = (
-            admin_client.table("sessions").select("*").eq("id", chat_request.session_id).eq("user_id", deps.current_user.sub).execute()
+            admin_client.table("sessions")
+            .select("*")
+            .eq("id", chat_request.session_id)
+            .eq("user_id", deps.current_user.sub)
+            .execute()
         )
         session = session_result.data[0] if session_result.data else None
         if not session:
@@ -94,9 +98,7 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                 from app.core.config import get_settings
                 from app.services.workflow_agent_http_client import get_workflow_agent_client
 
-                settings = get_settings()
-                if not settings.USE_HTTP_CLIENT:
-                    raise HTTPException(status_code=503, detail="HTTP client is disabled")
+                # HTTP client is now the only option
 
                 workflow_client = await get_workflow_agent_client()
 
@@ -142,7 +144,7 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                             }
                         )
                         return
-                    
+
                     # Handle status change responses - 新增支持
                     elif response.get("response_type") == "RESPONSE_TYPE_STATUS_CHANGE":
                         status_change = response.get("status_change", {})
@@ -153,11 +155,11 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                                     "previous_stage": status_change.get("previous_stage"),
                                     "current_stage": status_change.get("current_stage"),
                                     "stage_state": status_change.get("stage_state", {}),
-                                    "node_name": status_change.get("node_name")
+                                    "node_name": status_change.get("node_name"),
                                 },
                                 "session_id": chat_request.session_id,
                                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                                "is_final": response.get("is_final", False)
+                                "is_final": response.get("is_final", False),
                             }
                         )
                         # 状态变化不需要存储到数据库，继续处理下一个响应
@@ -229,7 +231,9 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                         }
 
                         try:
-                            ai_result = admin_client.table("chats").insert(ai_message_data).execute()
+                            ai_result = (
+                                admin_client.table("chats").insert(ai_message_data).execute()
+                            )
                             if ai_result.data:
                                 logger.info(
                                     f"📝 Stored workflow message: {ai_result.data[0]['id']} (seq: {sequence_counter})"
@@ -250,7 +254,7 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
 
                         if response.get("is_final", True):
                             break
-                    
+
                     # Handle unknown response types
                     else:
                         response_type = response.get("response_type", "UNKNOWN")
@@ -260,7 +264,7 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                                 "type": "debug",
                                 "data": {
                                     "message": f"Received unknown response type: {response_type}",
-                                    "raw_response": response
+                                    "raw_response": response,
                                 },
                                 "session_id": chat_request.session_id,
                                 "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -315,7 +319,13 @@ async def get_chat_history(
         if not admin_client:
             raise HTTPException(status_code=500, detail="Failed to create database client")
 
-        session_result = admin_client.table("sessions").select("*").eq("id", session_id).eq("user_id", deps.current_user.sub).execute()
+        session_result = (
+            admin_client.table("sessions")
+            .select("*")
+            .eq("id", session_id)
+            .eq("user_id", deps.current_user.sub)
+            .execute()
+        )
         session = session_result.data[0] if session_result.data else None
         if not session:
             raise NotFoundError("Session")

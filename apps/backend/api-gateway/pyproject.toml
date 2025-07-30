@@ -26,10 +26,7 @@ dependencies = [
     # Redis dependencies
     "redis>=5.0.0",
     "redis[hiredis]>=5.0.0", # Enhanced performance with hiredis
-    # gRPC dependencies
-    "grpcio>=1.68.0",
-    "grpcio-tools>=1.68.0",
-    "protobuf>=6.0.0",
+    # gRPC dependencies removed - migrated to HTTP clients
     # JSON Schema validation
     "jsonschema>=4.0.0",
     # Security and validation

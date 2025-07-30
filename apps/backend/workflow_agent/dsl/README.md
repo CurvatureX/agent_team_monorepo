@@ -74,13 +74,10 @@ Entry points for workflow execution
 - `TRIGGER_CALENDAR` - Calendar event triggers
 
 ### 🤖 **AI Agent Nodes**
-AI-powered processing nodes
-- `AI_ROUTER_AGENT` - Route decisions
-- `AI_TASK_ANALYZER` - Task analysis
-- `AI_DATA_INTEGRATOR` - Data integration
-- `AI_REPORT_GENERATOR` - Report generation
-- `AI_REMINDER_DECISION` - Reminder logic
-- `AI_WEEKLY_REPORT` - Weekly summaries
+Provider-based AI processing nodes (functionality defined by system prompts)
+- `AI_GEMINI_NODE` - Google Gemini AI agent
+- `AI_OPENAI_NODE` - OpenAI GPT AI agent
+- `AI_CLAUDE_NODE` - Anthropic Claude AI agent
 
 ### 🔌 **External Action Nodes**
 External service integrations

@@ -8,8 +8,8 @@ from typing import List, Optional
 from app.core.database import create_user_supabase_client, get_supabase_admin
 from app.dependencies import AuthenticatedDeps, get_session_id
 from app.exceptions import NotFoundError, ValidationError
-from app.models.base import ResponseModel
-from app.models.session import (
+from app.models import (
+    ResponseModel,
     Session,
     SessionCreate,
     SessionListResponse,
@@ -50,7 +50,9 @@ async def create_session(request: SessionCreate, deps: AuthenticatedDeps = Depen
         if not result:
             raise HTTPException(status_code=500, detail="Failed to create session")
 
-        logger.info(f"✅ Session created: {result['id']} (workflow_agent_state will be initialized by workflow_agent service)")
+        logger.info(
+            f"✅ Session created: {result['id']} (workflow_agent_state will be initialized by workflow_agent service)"
+        )
 
         # Create session object
         session = Session(**result)
@@ -61,6 +63,7 @@ async def create_session(request: SessionCreate, deps: AuthenticatedDeps = Depen
         raise
     except Exception as e:
         import traceback
+
         logger.error(f"❌ Error creating session: {e}")
         logger.error(f"Full traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -82,7 +85,13 @@ async def get_session(
         if not admin_client:
             raise HTTPException(status_code=500, detail="Failed to create database client")
 
-        result = admin_client.table("sessions").select("*").eq("id", session_id).eq("user_id", deps.current_user.sub).execute()
+        result = (
+            admin_client.table("sessions")
+            .select("*")
+            .eq("id", session_id)
+            .eq("user_id", deps.current_user.sub)
+            .execute()
+        )
         result = result.data[0] if result.data else None
 
         if not result:
@@ -119,7 +128,10 @@ async def list_user_sessions(
             raise HTTPException(status_code=500, detail="Failed to create database client")
 
         result = (
-            admin_client.table("sessions").select("*").eq("user_id", deps.current_user.sub).execute()
+            admin_client.table("sessions")
+            .select("*")
+            .eq("user_id", deps.current_user.sub)
+            .execute()
         )
         sessions_data = result.data if result.data else []
 
@@ -163,7 +175,13 @@ async def delete_session(
         if not admin_client:
             raise HTTPException(status_code=500, detail="Failed to create database client")
 
-        result = admin_client.table("sessions").delete().eq("id", session_id).eq("user_id", deps.current_user.sub).execute()
+        result = (
+            admin_client.table("sessions")
+            .delete()
+            .eq("id", session_id)
+            .eq("user_id", deps.current_user.sub)
+            .execute()
+        )
         success = len(result.data) > 0 if result.data else False
 
         if not success:
@@ -204,7 +222,13 @@ async def update_session(
         if not admin_client:
             raise HTTPException(status_code=500, detail="Failed to create database client")
 
-        result = admin_client.table("sessions").update(update_data).eq("id", session_id).eq("user_id", deps.current_user.sub).execute()
+        result = (
+            admin_client.table("sessions")
+            .update(update_data)
+            .eq("id", session_id)
+            .eq("user_id", deps.current_user.sub)
+            .execute()
+        )
         result = result.data[0] if result.data else None
 
         if not result:
