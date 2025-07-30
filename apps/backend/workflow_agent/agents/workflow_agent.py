@@ -6,8 +6,8 @@ Alternative Solution Generation, Workflow Generation, and Debug
 import structlog
 from langgraph.graph import END, StateGraph
 
-from workflow_agent.agents.nodes import WorkflowAgentNodes
-from workflow_agent.agents.state import (
+from .nodes import WorkflowAgentNodes
+from .state import (
     WorkflowState,
     WorkflowStage,
 )

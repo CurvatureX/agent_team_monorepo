@@ -59,14 +59,20 @@ class WorkflowAgentHTTPClient:
             await self.connect()
 
         try:
-            # Prepare HTTP request
+            # Prepare HTTP request - 符合最新的 ConversationRequest 模型
             request_data = {
                 "session_id": session_id,
                 "user_id": user_id,
                 "user_message": user_message,
                 "access_token": access_token or "",
-                "workflow_context": workflow_context or {},
             }
+            
+            # 正确处理 workflow_context - 需要匹配 WorkflowContext 模型
+            if workflow_context:
+                request_data["workflow_context"] = {
+                    "origin": workflow_context.get("origin", "create"),
+                    "source_workflow_id": workflow_context.get("source_workflow_id", "")
+                }
 
             log_info(f"📨 Sending HTTP request to {self.base_url}/process-conversation")
 
@@ -93,33 +99,31 @@ class WorkflowAgentHTTPClient:
 
         except httpx.HTTPStatusError as e:
             log_error(f"❌ HTTP error in process_conversation_stream: {e.response.status_code}")
-            # Yield error response
+            # Yield error response - 符合 ConversationResponse 格式
             yield {
-                "type": "error",
                 "session_id": session_id,
+                "response_type": "RESPONSE_TYPE_ERROR",
+                "is_final": True,
                 "error": {
                     "error_code": f"HTTP_{e.response.status_code}",
                     "message": f"HTTP request failed: {e.response.status_code}",
                     "details": str(e),
                     "is_recoverable": True,
-                },
-                "timestamp": int(time.time() * 1000),
-                "is_final": True,
+                }
             }
         except Exception as e:
             log_error(f"❌ Error in process_conversation_stream: {e}")
-            # Yield error response
+            # Yield error response - 符合 ConversationResponse 格式
             yield {
-                "type": "error",
                 "session_id": session_id,
+                "response_type": "RESPONSE_TYPE_ERROR",
+                "is_final": True,
                 "error": {
                     "error_code": "INTERNAL_ERROR",
                     "message": f"Failed to process conversation: {str(e)}",
                     "details": str(e),
                     "is_recoverable": True,
-                },
-                "timestamp": int(time.time() * 1000),
-                "is_final": True,
+                }
             }
 
 

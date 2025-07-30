@@ -49,9 +49,12 @@ def get_app_settings() -> Settings:
 # =============================================================================
 
 
-def get_db_manager() -> DatabaseManager:
+async def get_db_manager() -> DatabaseManager:
     """获取数据库管理器（依赖注入）"""
-    return get_database_manager()
+    manager = get_database_manager()
+    if not manager._initialized:
+        await manager.initialize()
+    return manager
 
 
 def get_supabase_client() -> Optional[Client]:
@@ -388,12 +391,14 @@ class AuthenticatedDeps:
         db_manager: DatabaseManager = Depends(get_db_manager),
         current_user: AuthUser = Depends(get_required_user),
         user_supabase: Optional[Client] = Depends(get_user_supabase_client),
+        access_token: Optional[str] = Depends(get_authorization_header),
         request_context: Dict[str, Any] = Depends(get_request_context),
     ):
         self.settings = settings
         self.db_manager = db_manager
         self.current_user = current_user
         self.user_supabase = user_supabase
+        self.access_token = access_token
         self.request_context = request_context
 
 
