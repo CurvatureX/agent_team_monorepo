@@ -23,6 +23,10 @@ class DatabaseSettings(BaseSettings):
         default_factory=lambda: os.getenv("SUPABASE_SECRET_KEY", ""),
         description="Supabase服务角色密钥 (replaces both service and anon keys)",
     )
+    SUPABASE_ANON_KEY: str = Field(
+        default_factory=lambda: os.getenv("SUPABASE_ANON_KEY", ""),
+        description="Supabase匿名密钥（用于客户端和RLS操作）",
+    )
 
     # Redis Configuration
     REDIS_URL: str = Field(

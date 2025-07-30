@@ -3,35 +3,29 @@ FastAPI Server for Workflow Agent
 只实现 ProcessConversation 这一个接口，替换 gRPC 服务器
 """
 
+import asyncio
 import json
 import os
 
-# 统一导入路径管理
+# Import shared models
 import sys
 import time
-from pathlib import Path
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 import structlog
+from agents.state import WorkflowStage, WorkflowState
+
+# Import workflow agent components
+from agents.workflow_agent import WorkflowAgent
+from core.config import settings
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
+from services.state_manager import get_workflow_agent_state_manager
 
-# 设置shared models导入路径
-if os.path.exists("/app/shared"):  # Docker 环境
-    if "/app" not in sys.path:
-        sys.path.insert(0, "/app")
-    # Docker环境下使用相对导入
-    from agents.state import WorkflowOrigin, WorkflowStage, WorkflowState
-    from agents.workflow_agent import WorkflowAgent
-    from core.config import settings
-else:  # 本地开发环境
-    backend_dir = Path(__file__).parent.parent.parent
-    if str(backend_dir) not in sys.path:
-        sys.path.insert(0, str(backend_dir))
-    # 本地环境下使用完整路径导入
-    from workflow_agent.agents.state import WorkflowOrigin, WorkflowStage, WorkflowState
-    from workflow_agent.agents.workflow_agent import WorkflowAgent
-    from workflow_agent.core.config import settings
+# Add parent directory to path for shared models
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(os.path.dirname(current_dir))  # Go to apps/backend
+sys.path.insert(0, parent_dir)
 
 # shared models导入（两种环境都相同）
 from shared.models.conversation import (
@@ -39,186 +33,317 @@ from shared.models.conversation import (
     ConversationResponse,
     ErrorContent,
     ResponseType,
+    StatusChangeContent,
 )
 
 logger = structlog.get_logger()
 
 
-class FastAPIWorkflowServer:
-    """FastAPI 工作流服务器 - 只实现 ProcessConversation"""
+class WorkflowAgentServicer:
+    """
+    Workflow Agent FastAPI 服务实现
+    基于 gRPC 实现的相同逻辑，转换为 FastAPI 流式接口
+    内部管理 workflow_agent_state，对外提供简洁的对话接口
+    """
 
     def __init__(self):
+        logger.info("Initializing WorkflowAgentServicer")
         self.workflow_agent = WorkflowAgent()
-        logger.info("FastAPI Workflow Server initialized")
+        self.state_manager = get_workflow_agent_state_manager()
+        logger.info("WorkflowAgentServicer initialized with database state management")
 
-    async def process_conversation_stream(
-        self, request: ConversationRequest
-    ) -> AsyncGenerator[str, None]:
+    async def process_conversation(self, request: ConversationRequest) -> AsyncGenerator[str, None]:
         """
-        ProcessConversation 的流式实现
-        返回 Server-Sent Events 格式的流
+        处理对话的统一接口 - 支持所有工作流生成阶段
+        内部管理 workflow_agent_state，对外提供流式响应
+        完全复刻 gRPC 服务的逻辑
         """
         try:
-            logger.info(f"Processing conversation for session {request.session_id}")
+            logger.info(f"Request: {request}")
+            session_id = request.session_id
+            current_state = self.state_manager.get_state_by_session(
+                session_id, request.access_token
+            )
 
-            # 转换请求为内部状态格式
-            state: WorkflowState = {
-                "session_id": request.session_id,
-                "user_id": request.user_id,
-                "created_at": int(time.time() * 1000),
-                "updated_at": int(time.time() * 1000),
-                "stage": WorkflowStage.CLARIFICATION,
-                "intent_summary": "",
-                "clarification_context": {"origin": WorkflowOrigin.CREATE, "pending_questions": []},
-                "conversations": [
+            if not current_state:
+                # 创建新的 workflow_agent_state 记录
+                workflow_context = None
+                if request.workflow_context:
+                    workflow_context = {
+                        "origin": request.workflow_context.origin,
+                        "source_workflow_id": request.workflow_context.source_workflow_id,
+                    }
+                state_id = self.state_manager.create_state(
+                    session_id=session_id,
+                    user_id=request.user_id or "anonymous",
+                    initial_stage=WorkflowStage.CLARIFICATION,
+                    workflow_context=workflow_context,
+                    access_token=request.access_token,
+                )
+
+                if not state_id:
+                    raise Exception("Failed to create workflow_agent_state")
+
+                # 重新获取创建的状态
+                current_state = self.state_manager.get_state_by_session(
+                    session_id, request.access_token
+                )
+                logger.info(f"Created new workflow_agent_state for session {session_id}")
+            else:
+                logger.info(f"Retrieved existing workflow_agent_state for session {session_id}")
+
+            # 添加用户消息到对话历史
+            conversations = current_state.get("conversations", [])
+            if request.user_message:
+                conversations.append(
                     {
                         "role": "user",
                         "text": request.user_message,
                         "timestamp": int(time.time() * 1000),
                     }
-                ],
-                "gaps": [],
-                "alternatives": [],
-                "current_workflow": {},
-                "debug_result": "",
-                "debug_loop_count": 0,
-            }
-
-            # 如果有工作流上下文，设置相应字段
-            if request.workflow_context:
-                # 这里根据实际的 WorkflowAgent 实现来设置状态
-                pass
-
-            # 调用现有的 LangGraph 工作流代理
-            try:
-                # 使用现有的工作流代理处理
-                async for chunk in self.workflow_agent.astream(state):
-                    # 转换 LangGraph 输出为 ConversationResponse 格式
-                    for node_name, node_output in chunk.items():
-                        # 处理不同类型的输出
-                        if isinstance(node_output, dict) and hasattr(node_output, "get"):
-                            response = self._convert_to_conversation_response(
-                                request.session_id, node_name, node_output
-                            )
-                            if response:
-                                yield f"data: {response.model_dump_json()}\n\n"
-                        elif isinstance(node_output, str):
-                            # 处理字符串输出（通常是错误信息）
-                            response = ConversationResponse(
-                                session_id=request.session_id,
-                                response_type=ResponseType.MESSAGE,
-                                is_final=False,
-                                message=f"节点 {node_name}: {node_output}",
-                            )
-                            yield f"data: {response.model_dump_json()}\n\n"
-                        else:
-                            # 处理其他类型的输出
-                            logger.warning(
-                                f"Unknown node output type for {node_name}: {type(node_output)}"
-                            )
-                            response = ConversationResponse(
-                                session_id=request.session_id,
-                                response_type=ResponseType.MESSAGE,
-                                is_final=False,
-                                message=f"处理节点 {node_name}...",
-                            )
-                            yield f"data: {response.model_dump_json()}\n\n"
-
-                # 发送最终响应
-                final_response = ConversationResponse(
-                    session_id=request.session_id,
-                    response_type=ResponseType.MESSAGE,
-                    is_final=True,
-                    message="工作流处理完成",
                 )
-                yield f"data: {final_response.model_dump_json()}\n\n"
+                current_state["conversations"] = conversations
 
-            except Exception as e:
-                logger.error(f"Error in workflow processing: {e}")
+            logger.info(f"Current stage: {current_state.get('stage', 'unknown')}")
+
+            # 通过 LangGraph 处理状态 - 使用真正的 workflow_agent
+            try:
+                # 转换状态格式为 LangGraph WorkflowState
+                workflow_state = self._convert_to_workflow_state(current_state)
+                previous_stage = workflow_state.get("stage")
+
+                # 使用 LangGraph 流式处理
+                async for step_state in self.workflow_agent.graph.astream(workflow_state):
+                    for node_name, updated_state in step_state.items():
+                        logger.info(f"LangGraph step completed: {node_name}")
+
+                        # 发送状态变化信息
+                        if node_name != "router":
+                            status_change_response = self._create_status_change_response(
+                                session_id, node_name, previous_stage, updated_state
+                            )
+                            yield f"data: {status_change_response.model_dump_json()}\n\n"
+
+                        # 只在特定阶段发送消息响应
+                        current_stage = updated_state.get("stage", WorkflowStage.CLARIFICATION)
+                        if current_stage in [WorkflowStage.NEGOTIATION]:
+                            message_response = await self._create_message_response(
+                                session_id, updated_state
+                            )
+                            if message_response:
+                                yield f"data: {message_response.model_dump_json()}\n\n"
+
+                        # 如果是工作流生成完成，发送工作流响应
+                        if current_stage == WorkflowStage.WORKFLOW_GENERATION:
+                            workflow_response = await self._create_workflow_response(
+                                session_id, updated_state
+                            )
+                            if workflow_response:
+                                yield f"data: {workflow_response.model_dump_json()}\n\n"
+
+                        # 更新状态跟踪
+                        previous_stage = current_stage
+                        current_state = self._convert_from_workflow_state(updated_state)
+
+                        # 如果到达完成状态，退出循环
+                        if updated_state.get("stage") in [
+                            WorkflowStage.COMPLETED,
+                            WorkflowStage.NEGOTIATION,
+                        ]:
+                            logger.warning(f"Workflow completed!!!!!!: {updated_state}")
+                            break
+
+                # 保存更新后的状态到数据库
+                success = self.state_manager.save_full_state(
+                    session_id=session_id,
+                    workflow_state=current_state,
+                    access_token=request.access_token,
+                )
+                if success:
+                    logger.info(f"Saved updated workflow_agent_state for session {session_id}")
+                else:
+                    logger.error(f"Failed to save workflow_agent_state for session {session_id}")
+
+            except Exception as processing_error:
+                logger.error(f"Error in workflow processing: {processing_error}")
                 error_response = ConversationResponse(
-                    session_id=request.session_id,
+                    session_id=session_id,
                     response_type=ResponseType.ERROR,
-                    is_final=True,
                     error=ErrorContent(
-                        error_code="WORKFLOW_ERROR",
-                        message=str(e),
-                        details=f"Error in workflow processing: {e}",
+                        error_code="PROCESSING_ERROR",
+                        message=f"Error processing workflow: {str(processing_error)}",
+                        details=str(processing_error),
                         is_recoverable=True,
                     ),
+                    is_final=True,
                 )
                 yield f"data: {error_response.model_dump_json()}\n\n"
 
         except Exception as e:
-            logger.error(f"Error in process_conversation_stream: {e}")
+            import traceback
+
+            error_traceback = traceback.format_exc()
+            logger.error(
+                f"Failed to process conversation: {str(e)}",
+                session_id=request.session_id,
+                traceback=error_traceback,
+            )
+
+            # 发送错误响应
             error_response = ConversationResponse(
                 session_id=request.session_id,
                 response_type=ResponseType.ERROR,
-                is_final=True,
                 error=ErrorContent(
                     error_code="INTERNAL_ERROR",
-                    message="Internal server error",
-                    details=str(e),
-                    is_recoverable=False,
-                ),
-            )
-            yield f"data: {error_response.model_dump_json()}\n\n"
-
-    def _convert_to_conversation_response(
-        self, session_id: str, node_name: str, node_output: dict
-    ) -> ConversationResponse:
-        """
-        将 LangGraph 节点输出转换为 ConversationResponse
-        """
-        try:
-            # 根据节点类型和输出内容决定响应类型
-            if node_name == "designer" and "current_workflow_json" in node_output:
-                # 工作流生成完成
-                return ConversationResponse(
-                    session_id=session_id,
-                    response_type=ResponseType.WORKFLOW,
-                    is_final=False,
-                    workflow=node_output["current_workflow_json"],
-                )
-            elif "message" in node_output or "response" in node_output:
-                # 普通消息响应
-                message_text = node_output.get("message", node_output.get("response", ""))
-                return ConversationResponse(
-                    session_id=session_id,
-                    response_type=ResponseType.MESSAGE,
-                    is_final=False,
-                    message=str(message_text),
-                )
-
-            # 默认返回空消息
-            return ConversationResponse(
-                session_id=session_id,
-                response_type=ResponseType.MESSAGE,
-                is_final=False,
-                message="处理中...",
-            )
-
-        except Exception as e:
-            logger.error(f"Error converting node output: {e}")
-            return ConversationResponse(
-                session_id=session_id,
-                response_type=ResponseType.ERROR,
-                is_final=False,
-                error=ErrorContent(
-                    error_code="CONVERSION_ERROR",
-                    message="Error converting response",
+                    message=f"Failed to process conversation: {str(e)}",
                     details=str(e),
                     is_recoverable=True,
                 ),
+                is_final=True,
             )
+            yield f"data: {error_response.model_dump_json()}\n\n"
+
+    def _convert_to_workflow_state(self, db_state: dict) -> WorkflowState:
+        """将数据库状态转换为 LangGraph WorkflowState"""
+        workflow_state: WorkflowState = {
+            "session_id": db_state.get("session_id", ""),
+            "user_id": db_state.get("user_id", "anonymous"),
+            "created_at": db_state.get("created_at", int(time.time() * 1000)),
+            "updated_at": db_state.get("updated_at", int(time.time() * 1000)),
+            "stage": WorkflowStage(db_state.get("stage", "clarification")),
+            "intent_summary": db_state.get("intent_summary", ""),
+            "execution_history": db_state.get("execution_history", []),
+            "clarification_context": db_state.get(
+                "clarification_context", {"origin": "create", "pending_questions": []}
+            ),
+            "conversations": db_state.get("conversations", []),
+            "gaps": db_state.get("gaps", []),
+            "alternatives": db_state.get("alternatives", []),
+            "current_workflow": {},
+            "debug_result": db_state.get("debug_result", ""),
+            "debug_loop_count": db_state.get("debug_loop_count", 0),
+        }
+
+        # 处理 current_workflow
+        current_workflow = db_state.get("current_workflow")
+        if isinstance(current_workflow, str) and current_workflow:
+            try:
+                workflow_state["current_workflow"] = json.loads(current_workflow)
+            except json.JSONDecodeError:
+                workflow_state["current_workflow"] = {}
+        elif isinstance(current_workflow, dict):
+            workflow_state["current_workflow"] = current_workflow
+        else:
+            workflow_state["current_workflow"] = {}
+
+        return workflow_state
+
+    def _convert_from_workflow_state(self, workflow_state: WorkflowState) -> dict:
+        """将 LangGraph WorkflowState 转换为数据库状态"""
+        db_state = dict(workflow_state)
+
+        # 确保stage 是字符串
+        if isinstance(db_state.get("stage"), WorkflowStage):
+            db_state["stage"] = db_state["stage"].value
+
+        return db_state
+
+    def _create_status_change_response(
+        self,
+        session_id: str,
+        node_name: str,
+        previous_stage: Optional[WorkflowStage],
+        current_state: WorkflowState,
+    ) -> ConversationResponse:
+        """创建状态变化响应"""
+        current_stage = current_state.get("stage", WorkflowStage.CLARIFICATION)
+
+        # 准备 stage_state 内容（不包含敏感信息）
+        stage_state = {
+            "session_id": current_state.get("session_id", session_id),
+            "stage": (
+                current_stage.value
+                if isinstance(current_stage, WorkflowStage)
+                else str(current_stage)
+            ),
+            "intent_summary": current_state.get("intent_summary", ""),
+            "gaps": current_state.get("gaps", []),
+            "alternatives": current_state.get("alternatives", []),
+            "debug_result": current_state.get("debug_result", ""),
+            "debug_loop_count": current_state.get("debug_loop_count", 0),
+            "conversations_count": len(current_state.get("conversations", [])),
+            "has_workflow": bool(current_state.get("current_workflow", {})),
+        }
+
+        return ConversationResponse(
+            session_id=session_id,
+            response_type=ResponseType.STATUS_CHANGE,
+            is_final=False,
+            status_change=StatusChangeContent(
+                previous_stage=(
+                    previous_stage.value
+                    if previous_stage and isinstance(previous_stage, WorkflowStage)
+                    else (str(previous_stage) if previous_stage else None)
+                ),
+                current_stage=(
+                    current_stage.value
+                    if isinstance(current_stage, WorkflowStage)
+                    else str(current_stage)
+                ),
+                stage_state=stage_state,
+                node_name=node_name,
+            ),
+        )
+
+    async def _create_message_response(
+        self, session_id: str, state: WorkflowState
+    ) -> Optional[ConversationResponse]:
+        """创建消息响应（仅限 clarification 和 alternative 阶段）"""
+        conversations = state.get("conversations", [])
+
+        # 获取最后一条 assistant 消息
+        for conv in reversed(conversations):
+            if conv.get("role") == "assistant":
+                return ConversationResponse(
+                    session_id=session_id,
+                    response_type=ResponseType.MESSAGE,
+                    message=conv.get("text", ""),
+                    is_final=True,
+                )
+
+        return None
+
+    async def _create_workflow_response(
+        self, session_id: str, state: WorkflowState
+    ) -> Optional[ConversationResponse]:
+        """创建工作流响应"""
+        current_workflow = state.get("current_workflow", {})
+
+        if (
+            current_workflow
+            and isinstance(current_workflow, dict)
+            and current_workflow.get("nodes")
+        ):
+            workflow_json = json.dumps(current_workflow)
+            return ConversationResponse(
+                session_id=session_id,
+                response_type=ResponseType.WORKFLOW,
+                workflow=workflow_json,
+                is_final=False,
+            )
+
+        return None
 
 
 # 创建 FastAPI 应用
 app = FastAPI(
-    title="Workflow Agent API", description="工作流代理服务 - ProcessConversation 接口", version="1.0.0"
+    title="Workflow Agent API",
+    description="工作流代理服务 - ProcessConversation 接口",
+    version="1.0.0",
 )
 
 # 创建服务器实例
-server = FastAPIWorkflowServer()
+servicer = WorkflowAgentServicer()
 
 
 @app.post("/process-conversation")
@@ -228,7 +353,7 @@ async def process_conversation(request: ConversationRequest):
     返回流式响应
     """
     return StreamingResponse(
-        server.process_conversation_stream(request),
+        servicer.process_conversation(request),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -244,6 +369,8 @@ async def health_check():
 
 
 if __name__ == "__main__":
+    import os
+
     import uvicorn
 
     port = getattr(settings, "FASTAPI_PORT", None) or int(os.getenv("FASTAPI_PORT", "8001"))

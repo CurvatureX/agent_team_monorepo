@@ -27,7 +27,7 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
     集成workflow生成功能：
     - 自动检测workflow生成请求
     - 返回stage变更和workflow生成消息
-    - Event types: message, status, error, workflow_stage
+    - Event types: message, status, error, workflow
 
     按照技术设计方案实现：
     - POST接口符合HTTP语义
@@ -37,13 +37,17 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
     try:
         logger.info(f"💬 Starting chat stream for session {chat_request.session_id}")
 
-        # Session validation with RLS
-        user_client = create_user_supabase_client(deps.current_user.token)
-        if not user_client:
+        # Session validation with service role key
+        admin_client = deps.db_manager.supabase_admin
+        if not admin_client:
             raise HTTPException(status_code=500, detail="Failed to create database client")
 
         session_result = (
-            user_client.table("sessions").select("*").eq("id", chat_request.session_id).execute()
+            admin_client.table("sessions")
+            .select("*")
+            .eq("id", chat_request.session_id)
+            .eq("user_id", deps.current_user.sub)
+            .execute()
         )
         session = session_result.data[0] if session_result.data else None
         if not session:
@@ -52,9 +56,10 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
         # Get the next sequence number for this session
         try:
             sequence_result = (
-                user_client.table("chats")
+                admin_client.table("chats")
                 .select("sequence_number")
                 .eq("session_id", chat_request.session_id)
+                .eq("user_id", deps.current_user.sub)
                 .order("sequence_number", desc=True)
                 .limit(1)
                 .execute()
@@ -75,9 +80,9 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
             "sequence_number": next_sequence,
         }
 
-        # Store user message with RLS
+        # Store user message with service role key
         try:
-            chat_result = user_client.table("chats").insert(user_message_data).execute()
+            chat_result = admin_client.table("chats").insert(user_message_data).execute()
             stored_user_message = chat_result.data[0] if chat_result.data else None
         except Exception as e:
             logger.warning(f"Failed to store user message: {e}")
@@ -124,12 +129,12 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                     user_message=chat_request.user_message,
                     user_id=deps.current_user.sub,
                     workflow_context=workflow_context,
-                    access_token=deps.current_user.token,
+                    access_token=deps.access_token,
                 ):
                     logger.info(f"🔄 Received response: {response}")
 
                     # Handle error responses
-                    if response.get("response_type") == "error":
+                    if response.get("response_type") == "RESPONSE_TYPE_ERROR":
                         yield format_sse_event(
                             {
                                 "type": "error",
@@ -140,8 +145,27 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                         )
                         return
 
+                    # Handle status change responses - 新增支持
+                    elif response.get("response_type") == "RESPONSE_TYPE_STATUS_CHANGE":
+                        status_change = response.get("status_change", {})
+                        yield format_sse_event(
+                            {
+                                "type": "status_change",
+                                "data": {
+                                    "previous_stage": status_change.get("previous_stage"),
+                                    "current_stage": status_change.get("current_stage"),
+                                    "stage_state": status_change.get("stage_state", {}),
+                                    "node_name": status_change.get("node_name"),
+                                },
+                                "session_id": chat_request.session_id,
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                                "is_final": response.get("is_final", False),
+                            }
+                        )
+                        # 状态变化不需要存储到数据库，继续处理下一个响应
+
                     # Handle message responses - 根据新 proto
-                    if response.get("response_type") == "message":
+                    elif response.get("response_type") == "RESPONSE_TYPE_MESSAGE":
                         message_content = response.get("message", "")
 
                         # Store AI message in database immediately - 符合要求
@@ -157,7 +181,7 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
 
                             try:
                                 ai_result = (
-                                    user_client.table("chats").insert(ai_message_data).execute()
+                                    admin_client.table("chats").insert(ai_message_data).execute()
                                 )
                                 if ai_result.data:
                                     logger.info(
@@ -182,7 +206,7 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                             break
 
                     # Handle workflow responses - 根据新 proto
-                    elif response.get("response_type") == "workflow":
+                    elif response.get("response_type") == "RESPONSE_TYPE_WORKFLOW":
                         workflow_content = response.get("workflow", "")
 
                         # Parse workflow JSON if it's a string
@@ -207,7 +231,9 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                         }
 
                         try:
-                            ai_result = user_client.table("chats").insert(ai_message_data).execute()
+                            ai_result = (
+                                admin_client.table("chats").insert(ai_message_data).execute()
+                            )
                             if ai_result.data:
                                 logger.info(
                                     f"📝 Stored workflow message: {ai_result.data[0]['id']} (seq: {sequence_counter})"
@@ -228,6 +254,22 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
 
                         if response.get("is_final", True):
                             break
+
+                    # Handle unknown response types
+                    else:
+                        response_type = response.get("response_type", "UNKNOWN")
+                        logger.warning(f"⚠️ Unknown response type: {response_type}")
+                        yield format_sse_event(
+                            {
+                                "type": "debug",
+                                "data": {
+                                    "message": f"Received unknown response type: {response_type}",
+                                    "raw_response": response,
+                                },
+                                "session_id": chat_request.session_id,
+                                "timestamp": datetime.now(timezone.utc).isoformat(),
+                            }
+                        )
 
             except Exception as e:
                 logger.error(f"❌ Error in chat stream: {e}")
@@ -272,22 +314,29 @@ async def get_chat_history(
     try:
         logger.info(f"📜 Getting chat history for session {session_id}")
 
-        # Validate session access with RLS
-        user_client = create_user_supabase_client(deps.current_user.token)
-        if not user_client:
+        # Validate session access with service role key
+        admin_client = deps.db_manager.supabase_admin
+        if not admin_client:
             raise HTTPException(status_code=500, detail="Failed to create database client")
 
-        session_result = user_client.table("sessions").select("*").eq("id", session_id).execute()
+        session_result = (
+            admin_client.table("sessions")
+            .select("*")
+            .eq("id", session_id)
+            .eq("user_id", deps.current_user.sub)
+            .execute()
+        )
         session = session_result.data[0] if session_result.data else None
         if not session:
             raise NotFoundError("Session")
 
-        # Get chat history with RLS
+        # Get chat history with service role key
         try:
             messages_result = (
-                user_client.table("chats")
+                admin_client.table("chats")
                 .select("*")
                 .eq("session_id", session_id)
+                .eq("user_id", deps.current_user.sub)
                 .order("created_at")
                 .limit(page_size)
                 .offset((page - 1) * page_size)

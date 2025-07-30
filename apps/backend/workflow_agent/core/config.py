@@ -14,10 +14,14 @@ class Settings(BaseSettings):
     APP_NAME: str = "Workflow Agent"
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
 
-    # gRPC settings
+    # gRPC settings (deprecated - keeping for compatibility)
     GRPC_HOST: str = os.getenv("GRPC_HOST", "[::]")
     GRPC_PORT: int = int(os.getenv("GRPC_PORT", "50051"))
     MAX_WORKERS: int = int(os.getenv("MAX_WORKERS", "10"))
+
+    # FastAPI settings
+    FASTAPI_PORT: int = int(os.getenv("FASTAPI_PORT", "8001"))
+    HOST: str = os.getenv("HOST", "0.0.0.0")
 
     # Database settings
     DATABASE_URL: str = os.getenv(
