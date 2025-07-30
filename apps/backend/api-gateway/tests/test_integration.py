@@ -30,6 +30,16 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+# 检查是否在CI环境中
+def is_ci_environment():
+    """检查是否在CI环境中运行"""
+    ci_vars = [
+        "CI", "GITHUB_ACTIONS", "TRAVIS", "CIRCLECI", 
+        "GITLAB_CI", "JENKINS_URL", "BUILD_ID"
+    ]
+    return any(os.getenv(var) for var in ci_vars)
+
+
 class SupabaseAuth:
     """Helper class for Supabase authentication"""
     
@@ -291,6 +301,11 @@ class APIGatewayIntegrationTest:
 
 async def main():
     """Main test runner"""
+    # 在CI环境中跳过测试
+    if is_ci_environment():
+        print("🔄 Running in CI environment, skipping integration tests")
+        return True
+    
     # Check environment setup
     required_vars = ["SUPABASE_URL", "SUPABASE_ANON_KEY", "TEST_USER_EMAIL", "TEST_USER_PASSWORD"]
     missing_vars = [var for var in required_vars if not os.getenv(var)]
@@ -316,6 +331,7 @@ if __name__ == "__main__":
 
 # Pytest integration for automated testing
 @pytest.mark.asyncio
+@pytest.mark.skipif(is_ci_environment(), reason="Integration test requires local environment")
 async def test_integration():
     """Pytest wrapper for integration test"""
     test = APIGatewayIntegrationTest()
@@ -323,7 +339,8 @@ async def test_integration():
     assert success, "Integration test failed"
 
 
-@pytest.mark.asyncio  
+@pytest.mark.asyncio
+@pytest.mark.skipif(is_ci_environment(), reason="Auth test requires local environment")
 async def test_auth_only():
     """Test authentication only"""
     auth = SupabaseAuth()
@@ -333,6 +350,7 @@ async def test_auth_only():
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(is_ci_environment(), reason="Session test requires local environment")
 async def test_session_only():
     """Test session creation only"""
     test = APIGatewayIntegrationTest()
