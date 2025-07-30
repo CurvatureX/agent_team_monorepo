@@ -5,8 +5,8 @@ import asyncio
 from typing import Any, Dict, List
 
 import structlog
-from agents.state import RAGContext, RetrievedDocument, WorkflowState
-from core.vector_store import SupabaseVectorStore
+from workflow_agent.agents.state import RAGContext, RetrievedDocument, WorkflowState
+from workflow_agent.core.vector_store import SupabaseVectorStore
 
 logger = structlog.get_logger()
 

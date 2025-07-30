@@ -14,7 +14,7 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
-from agents.state import (
+from workflow_agent.agents.state import (
     AlternativeOption,
     ClarificationContext,
     Conversation,
@@ -22,9 +22,9 @@ from agents.state import (
     WorkflowStage,
     WorkflowState,
 )
-from agents.tools import RAGTool
-from core.config import settings
-from core.prompt_engine import get_prompt_engine
+from workflow_agent.agents.tools import RAGTool
+from workflow_agent.core.config import settings
+from workflow_agent.core.prompt_engine import get_prompt_engine
 
 logger = structlog.get_logger()
 
