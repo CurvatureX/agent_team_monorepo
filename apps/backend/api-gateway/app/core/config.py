@@ -26,7 +26,7 @@ class DatabaseSettings(BaseSettings):
 
     # Redis Configuration
     REDIS_URL: str = Field(
-        default_factory=lambda: os.getenv("REDIS_URL", "redis://localhost:6379/0"),
+        default_factory=lambda: os.getenv("REDIS_URL", "redis://redis:6379/0"),
         description="Redis连接URL",
     )
     REDIS_POOL_SIZE: int = Field(default=20, description="Redis连接池大小")
@@ -92,11 +92,32 @@ class APILayerSettings(BaseSettings):
 class ServiceSettings(BaseSettings):
     """外部服务配置"""
 
-    # gRPC Services
-    WORKFLOW_SERVICE_HOST: str = Field(default="localhost", description="工作流服务主机")
-    WORKFLOW_SERVICE_PORT: int = Field(default=50051, description="工作流服务端口")
+    # HTTP Services Configuration
     WORKFLOW_AGENT_HOST: str = Field(default="localhost", description="工作流代理主机")
-    WORKFLOW_AGENT_PORT: int = Field(default=50051, description="工作流代理端口")
+    WORKFLOW_ENGINE_HOST: str = Field(default="localhost", description="工作流引擎主机")
+    WORKFLOW_AGENT_URL: Optional[str] = Field(
+        default=None, description="工作流代理HTTP URL (优先于HOST:PORT)"
+    )
+    WORKFLOW_ENGINE_URL: Optional[str] = Field(
+        default=None, description="工作流引擎HTTP URL (优先于HOST:PORT)"
+    )
+    WORKFLOW_AGENT_HTTP_PORT: int = Field(default=8001, description="工作流代理HTTP端口")
+    WORKFLOW_ENGINE_HTTP_PORT: int = Field(default=8002, description="工作流引擎HTTP端口")
+    # HTTP client is the only option now - gRPC removed
+
+    @property
+    def workflow_agent_http_url(self) -> str:
+        """获取工作流代理的 HTTP URL"""
+        if self.WORKFLOW_AGENT_URL:
+            return self.WORKFLOW_AGENT_URL
+        return f"http://{self.WORKFLOW_AGENT_HOST}:{self.WORKFLOW_AGENT_HTTP_PORT}"
+
+    @property
+    def workflow_engine_http_url(self) -> str:
+        """获取工作流引擎的 HTTP URL"""
+        if self.WORKFLOW_ENGINE_URL:
+            return self.WORKFLOW_ENGINE_URL
+        return f"http://{self.WORKFLOW_ENGINE_HOST}:{self.WORKFLOW_ENGINE_HTTP_PORT}"
 
     # MCP Services
     NODE_KNOWLEDGE_SUPABASE_URL: str = Field(default="", description="节点知识库Supabase URL")
@@ -228,17 +249,11 @@ class Settings(
             "service_key": self.SUPABASE_SECRET_KEY,
         }
 
-    def get_grpc_config(self) -> Dict[str, Dict[str, Union[str, int]]]:
-        """获取gRPC配置"""
+    def get_http_config(self) -> Dict[str, Union[str, int]]:
+        """获取HTTP服务配置"""
         return {
-            "workflow_service": {
-                "host": self.WORKFLOW_SERVICE_HOST,
-                "port": self.WORKFLOW_SERVICE_PORT,
-            },
-            "workflow_agent": {
-                "host": self.WORKFLOW_AGENT_HOST,
-                "port": self.WORKFLOW_AGENT_PORT,
-            },
+            "workflow_agent_url": self.workflow_agent_http_url,
+            "workflow_engine_url": self.workflow_engine_http_url,
         }
 
     def get_redis_config(self) -> Dict[str, Union[str, int, Dict[str, int]]]:

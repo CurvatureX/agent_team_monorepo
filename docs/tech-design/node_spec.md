@@ -5,6 +5,7 @@
 本文档描述了工作流引擎节点规范系统的技术设计。该系统解决了当前节点类型和子类型仅以枚举形式定义，缺乏参数模式、输入输出端口定义和验证规则的问题。
 
 节点规范系统是工作流引擎的核心架构组件，它统一管理:
+
 - **节点类型定义**: 每个节点类型的参数、端口、验证规则
 - **端口系统**: 输入输出端口的类型安全和连接验证
 - **数据格式规范**: 端口间数据传输的结构化定义
@@ -13,15 +14,17 @@
 ## 🎯 问题描述
 
 ### 当前问题
+
 1. **缺失参数模式**: 没有正式定义每个节点类型需要什么参数
 2. **未定义端口规范**: 每个节点的输入输出端口定义不清晰
 3. **缺乏端口类型安全**: 节点连接时无法验证端口类型兼容性
 4. **缺乏验证**: 对节点配置没有类型检查或验证
 5. **开发体验差**: 没有自动补全或参数文档
-6. **实现不一致**: Protocol Buffer定义与实际执行器实现不匹配
+6. **实现不一致**: Protocol Buffer 定义与实际执行器实现不匹配
 7. **数据映射缺失**: 无法定义节点间数据如何转换和验证
 
 ### 当前状态示例
+
 ```python
 # 目前节点配置方式，没有任何验证
 node.parameters = {
@@ -34,11 +37,13 @@ node.parameters = {
 ## 🏗️ 解决方案
 
 ### 基于代码的规范系统
-我们提出**基于代码**的方案，将所有节点规范定义为共享代码库中的Python类，而不是存储在数据库中。
+
+我们提出**基于代码**的方案，将所有节点规范定义为共享代码库中的 Python 类，而不是存储在数据库中。
 
 #### 为什么选择基于代码？
-- **版本控制**: 所有变更在Git中跟踪，有完整的代码审查流程
-- **类型安全**: 完整的Python类型提示和IDE支持
+
+- **版本控制**: 所有变更在 Git 中跟踪，有完整的代码审查流程
+- **类型安全**: 完整的 Python 类型提示和 IDE 支持
 - **性能**: 启动时加载一次，运行时从内存访问
 - **简单性**: 无需数据库依赖
 - **开发体验**: 自动补全和内联文档
@@ -46,6 +51,7 @@ node.parameters = {
 ## 🏛️ 架构设计
 
 ### 目录结构
+
 ```
 apps/backend/shared/node_specs/
 ├── __init__.py
@@ -66,6 +72,7 @@ apps/backend/shared/node_specs/
 ### 核心数据结构
 
 #### 基础规范类
+
 ```python
 @dataclass
 class ParameterDef:
@@ -109,6 +116,7 @@ class NodeSpec:
 ```
 
 #### 参数类型
+
 ```python
 class ParameterType(Enum):
     STRING = "string"
@@ -124,6 +132,7 @@ class ParameterType(Enum):
 ```
 
 #### 数据格式规范
+
 ```python
 @dataclass
 class DataFormat:
@@ -168,9 +177,10 @@ class FieldTransformSpec:
 
 ## 📝 规范示例
 
-### 🤖 AI代理节点规范 (革新版本)
+### 🤖 AI 代理节点规范 (革新版本)
 
 #### 新的供应商驱动方法
+
 不再使用固定角色（如 ROUTER_AGENT），现在采用基于供应商的节点，功能通过系统提示词定义：
 
 ```python
@@ -184,7 +194,8 @@ class FieldTransformSpec:
 "AI_AGENT_NODE.CLAUDE_NODE"    # Anthropic Claude
 ```
 
-#### OpenAI节点规范示例
+#### OpenAI 节点规范示例
+
 ```python
 OPENAI_NODE_SPEC = NodeSpec(
     node_type="AI_AGENT_NODE",
@@ -292,6 +303,7 @@ Respond with JSON: {"department": "...", "confidence": 0.95, "reason": "..."}"""
 ```
 
 #### 系统提示词示例
+
 通过系统提示词实现无限功能可能性：
 
 ```python
@@ -320,6 +332,7 @@ code_reviewer_prompt = """
 ```
 
 ### 触发器节点规范
+
 ```python
 CRON_TRIGGER_SPEC = NodeSpec(
     node_type="TRIGGER_NODE",
@@ -357,6 +370,7 @@ CRON_TRIGGER_SPEC = NodeSpec(
 ```
 
 ### 流程控制节点规范
+
 ```python
 IF_NODE_SPEC = NodeSpec(
     node_type="FLOW_NODE",
@@ -404,6 +418,7 @@ IF_NODE_SPEC = NodeSpec(
 ## 🔧 注册器系统
 
 ### 中央注册器
+
 ```python
 class NodeSpecRegistry:
     def __init__(self):
@@ -486,6 +501,7 @@ node_spec_registry = NodeSpecRegistry()
 ```
 
 ### 验证系统
+
 ```python
 class NodeSpecValidator:
     @staticmethod
@@ -610,7 +626,7 @@ class NodeSpecValidator:
 
 ## 🔗 集成点
 
-### Protocol Buffer Schema更新
+### Protocol Buffer Schema 更新
 
 为了支持统一的端口系统，需要更新 `apps/backend/shared/proto/engine/workflow.proto`:
 
@@ -705,6 +721,7 @@ enum TransformType {
 ```
 
 ### 工作流引擎集成
+
 ```python
 # 在BaseNodeExecutor中
 class BaseNodeExecutor(ABC):
@@ -758,6 +775,7 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
 ```
 
 ### 连接验证器增强
+
 ```python
 class WorkflowValidator:
     def __init__(self):
@@ -827,7 +845,8 @@ class WorkflowValidator:
         return errors
 ```
 
-### API网关集成
+### API 网关集成
+
 ```python
 @router.get("/node-types")
 async def get_node_types():
@@ -937,6 +956,7 @@ async def validate_connection(
 ```
 
 ### 前端集成
+
 ```typescript
 // 前端现在可以获取结构化的节点规范
 interface NodeSpec {
@@ -950,13 +970,13 @@ interface NodeSpec {
 
 // 基于规范自动生成表单
 function generateNodeConfigForm(spec: NodeSpec) {
-  return spec.parameters.map(param => {
+  return spec.parameters.map((param) => {
     switch (param.type) {
-      case 'enum':
+      case "enum":
         return <Select options={param.enum_values} required={param.required} />;
-      case 'boolean':
+      case "boolean":
         return <Checkbox defaultValue={param.default_value} />;
-      case 'integer':
+      case "integer":
         return <NumberInput required={param.required} />;
       // ... 其他类型
     }
@@ -968,84 +988,94 @@ function generateNodeConfigForm(spec: NodeSpec) {
 
 ### 计划规范
 
-| 节点类型 | 子类型 | 状态 | 备注 |
-|---------|--------|------|------|
-| **TRIGGER_NODE** | MANUAL, WEBHOOK, CRON, CHAT, EMAIL, FORM, CALENDAR | ✅ 已实现 | 事件触发器 |
-| **AI_AGENT_NODE** | GEMINI_NODE, OPENAI_NODE, CLAUDE_NODE | 🚀 **已革新** | **基于供应商的提示词驱动节点** |
-| **ACTION_NODE** | RUN_CODE, HTTP_REQUEST, PARSE_IMAGE, WEB_SEARCH, DATABASE_OPERATION, FILE_OPERATION, DATA_TRANSFORMATION | ✅ 已实现 | 操作执行节点 |
-| **FLOW_NODE** | IF, FILTER, LOOP, MERGE, SWITCH, WAIT | ✅ 已实现 | 流程控制节点 |
-| **TOOL_NODE** | GOOGLE_CALENDAR_MCP, NOTION_MCP, CALENDAR, EMAIL, HTTP, CODE_EXECUTION | ⚠️ 计划中 | 工具集成节点 |
-| **MEMORY_NODE** | SIMPLE, BUFFER, KNOWLEDGE, VECTOR_STORE, DOCUMENT, EMBEDDING | ⚠️ 计划中 | 记忆存储节点 |
-| **HUMAN_IN_THE_LOOP_NODE** | GMAIL, SLACK, DISCORD, TELEGRAM, APP | ⚠️ 计划中 | 人机交互节点 |
+| 节点类型                   | 子类型                                                                                                   | 状态          | 备注                           |
+| -------------------------- | -------------------------------------------------------------------------------------------------------- | ------------- | ------------------------------ |
+| **TRIGGER_NODE**           | MANUAL, WEBHOOK, CRON, CHAT, EMAIL, FORM, CALENDAR                                                       | ✅ 已实现     | 事件触发器                     |
+| **AI_AGENT_NODE**          | GEMINI_NODE, OPENAI_NODE, CLAUDE_NODE                                                                    | 🚀 **已革新** | **基于供应商的提示词驱动节点** |
+| **ACTION_NODE**            | RUN_CODE, HTTP_REQUEST, PARSE_IMAGE, WEB_SEARCH, DATABASE_OPERATION, FILE_OPERATION, DATA_TRANSFORMATION | ✅ 已实现     | 操作执行节点                   |
+| **FLOW_NODE**              | IF, FILTER, LOOP, MERGE, SWITCH, WAIT                                                                    | ✅ 已实现     | 流程控制节点                   |
+| **TOOL_NODE**              | GOOGLE_CALENDAR_MCP, NOTION_MCP, CALENDAR, EMAIL, HTTP, CODE_EXECUTION                                   | ⚠️ 计划中     | 工具集成节点                   |
+| **MEMORY_NODE**            | SIMPLE, BUFFER, KNOWLEDGE, VECTOR_STORE, DOCUMENT, EMBEDDING                                             | ⚠️ 计划中     | 记忆存储节点                   |
+| **HUMAN_IN_THE_LOOP_NODE** | GMAIL, SLACK, DISCORD, TELEGRAM, APP                                                                     | ⚠️ 计划中     | 人机交互节点                   |
 
-### 🔥 AI代理节点革新说明
+### 🔥 AI 代理节点革新说明
 
 #### 旧方案问题
+
 - ❌ 固定角色限制：`ROUTER_AGENT`, `TASK_ANALYZER`, `REPORT_GENERATOR` 等
 - ❌ 功能受限于预定义逻辑
 - ❌ 新需求需要编写新代码
-- ❌ 无法充分利用不同AI供应商的特性
+- ❌ 无法充分利用不同 AI 供应商的特性
 
 #### 新方案优势
+
 - ✅ **供应商驱动**：基于 Gemini、OpenAI、Claude 三大供应商
 - ✅ **提示词定义**：通过 `system_prompt` 参数实现任意功能
 - ✅ **供应商特化**：每个供应商都有特定参数优化
-- ✅ **无限扩展**：通过提示词创新实现任何AI任务
+- ✅ **无限扩展**：通过提示词创新实现任何 AI 任务
 
 #### 供应商特性对比
 
-| 供应商 | 模型版本 | 特殊能力 | 独有参数 |
-|--------|----------|----------|----------|
-| **GEMINI_NODE** | gemini-pro, gemini-pro-vision, gemini-ultra | 🎯 多模态、视觉处理 | safety_settings |
-| **OPENAI_NODE** | gpt-3.5-turbo, gpt-4, gpt-4-turbo, gpt-4o | 🧠 推理、结构化输出 | presence_penalty, frequency_penalty |
-| **CLAUDE_NODE** | claude-3-haiku, claude-3-sonnet, claude-3-opus | 📚 长上下文、精确控制 | stop_sequences |
+| 供应商          | 模型版本                                       | 特殊能力              | 独有参数                            |
+| --------------- | ---------------------------------------------- | --------------------- | ----------------------------------- |
+| **GEMINI_NODE** | gemini-pro, gemini-pro-vision, gemini-ultra    | 🎯 多模态、视觉处理   | safety_settings                     |
+| **OPENAI_NODE** | gpt-3.5-turbo, gpt-4, gpt-4-turbo, gpt-4o      | 🧠 推理、结构化输出   | presence_penalty, frequency_penalty |
+| **CLAUDE_NODE** | claude-3-haiku, claude-3-sonnet, claude-3-opus | 📚 长上下文、精确控制 | stop_sequences                      |
 
 ## 🚀 实施计划
 
-### 第一阶段：基础架构与端口系统 (第1-2周)
+### 第一阶段：基础架构与端口系统 (第 1-2 周)
 
-#### Protocol Buffer更新
+#### Protocol Buffer 更新
+
 - [ ] 更新 `workflow.proto` 添加端口定义和数据映射消息
-- [ ] 重新生成Python protobuf文件
-- [ ] 更新现有Node和Connection消息结构
+- [ ] 重新生成 Python protobuf 文件
+- [ ] 更新现有 Node 和 Connection 消息结构
 
 #### 节点规范系统
+
 - [ ] 在 `shared/node_specs/base.py` 中创建基础规范类（包含端口规范）
 - [ ] 在 `shared/node_specs/registry.py` 中实现注册器系统
 - [ ] 在 `shared/node_specs/validator.py` 中创建验证框架
 - [ ] 为基础功能建立单元测试
 
 #### 端口系统集成
-- [ ] 更新BaseNodeExecutor类集成端口规范
+
+- [ ] 更新 BaseNodeExecutor 类集成端口规范
 - [ ] 实现端口兼容性验证逻辑
 - [ ] 创建端口数据验证器
 
-### 第二阶段：核心节点规范定义 (第3周)
+### 第二阶段：核心节点规范定义 (第 3 周)
+
 - [ ] 定义 TRIGGER_NODE 子类型规范
 - [ ] 定义 AI_AGENT_NODE 子类型规范
 - [ ] 定义 ACTION_NODE 子类型规范
 - [ ] 定义 FLOW_NODE 子类型规范
 
-### 第三阶段：其余规范与数据映射 (第4周)
+### 第三阶段：其余规范与数据映射 (第 4 周)
+
 - [ ] 定义 TOOL_NODE 子类型规范
 - [ ] 定义 MEMORY_NODE 子类型规范
 - [ ] 定义 HUMAN_IN_THE_LOOP_NODE 子类型规范
 - [ ] 实现缺失的 EXTERNAL_ACTION_NODE 子类型
 
-### 第四阶段：数据映射系统 (第5周)
-- [ ] 实现DataMappingProcessor类
+### 第四阶段：数据映射系统 (第 5 周)
+
+- [ ] 实现 DataMappingProcessor 类
 - [ ] 集成字段映射、模板转换、脚本转换
-- [ ] 更新ConnectionExecutor支持数据映射
+- [ ] 更新 ConnectionExecutor 支持数据映射
 - [ ] 添加数据转换的监控和调试工具
 
-### 第五阶段：完整集成 (第6周)
+### 第五阶段：完整集成 (第 6 周)
+
 - [ ] 更新 BaseNodeExecutor 以使用规范
 - [ ] 更新所有现有节点执行器
-- [ ] 添加规范查询的API端点
+- [ ] 添加规范查询的 API 端点
 - [ ] 更新工作流验证器以使用规范
 - [ ] 创建现有工作流的迁移指南
 
-### 第六阶段：文档和测试 (第7周)
+### 第六阶段：文档和测试 (第 7 周)
+
 - [ ] 编写全面的文档
 - [ ] 创建规范示例和模板
 - [ ] 添加集成测试
@@ -1054,18 +1084,21 @@ function generateNodeConfigForm(spec: NodeSpec) {
 ## 🧪 测试策略
 
 ### 单元测试
+
 - 参数验证逻辑
 - 端口规范验证
 - 注册器功能
 - 个别节点规范
 
 ### 集成测试
+
 - 使用规范的工作流验证
-- API端点功能
+- API 端点功能
 - 节点执行器集成
 - 前端表单生成
 
 ### 测试数据
+
 ```python
 # 测试示例
 def test_router_agent_validation():
@@ -1097,18 +1130,21 @@ def test_missing_required_parameter():
 ## 📈 优势
 
 ### 对开发者
-1. **类型安全**: 完整的IDE支持和自动补全
+
+1. **类型安全**: 完整的 IDE 支持和自动补全
 2. **清晰文档**: 每个参数和端口都有文档
 3. **验证**: 早期发现配置错误
 4. **一致性**: 所有节点类型的标准化方法
 
 ### 对用户
-1. **更好的UI**: 自动生成带验证的表单
+
+1. **更好的 UI**: 自动生成带验证的表单
 2. **清晰指导**: 全面的参数描述和示例
 3. **错误预防**: 在执行前捕获无效配置
 4. **可发现性**: 容易探索可用的节点类型和功能
 
 ### 对系统
+
 1. **可维护性**: 集中的规范管理
 2. **可扩展性**: 容易添加新节点类型和参数
 3. **一致性**: 所有节点的统一验证和行为
@@ -1117,29 +1153,33 @@ def test_missing_required_parameter():
 ## 🔄 迁移策略
 
 ### 向后兼容
+
 - 现有工作流继续正常工作
 - 逐步迁移到使用规范
-- 对现有API无破坏性更改
+- 对现有 API 无破坏性更改
 
 ### 迁移步骤
+
 1. **与现有代码一起部署规范**
 2. **更新验证器使用规范（带回退）**
-3. **添加基于规范的API端点**
+3. **添加基于规范的 API 端点**
 4. **更新前端使用新端点**
 5. **弃用旧的参数验证逻辑**
 
 ## 🎯 成功指标
 
 ### 开发指标
+
 - [ ] 100%覆盖现有节点类型/子类型
-- [ ] 少于100ms规范查找性能
+- [ ] 少于 100ms 规范查找性能
 - [ ] 迁移期间零破坏性更改
-- [ ] 规范系统90%+测试覆盖率
+- [ ] 规范系统 90%+测试覆盖率
 
 ### 用户体验指标
+
 - [ ] 所有节点类型的自动生成表单
 - [ ] 全面的验证错误消息
-- [ ] 交互式API文档
+- [ ] 交互式 API 文档
 - [ ] 开发者入门时间减少
 
 ---

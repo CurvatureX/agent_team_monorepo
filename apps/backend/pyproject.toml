@@ -24,12 +24,9 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
 
-# 依赖分组 - 按功能组织
+# 依赖分组 - 按功能组织 (gRPC dependencies removed)
 [dependency-groups]
 shared-infra = [
-    "grpcio>=1.68.0",
-    "grpcio-tools>=1.68.0",
-    "protobuf>=6.0.0",
     "structlog>=23.2.0",
 ]
 

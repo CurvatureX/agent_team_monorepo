@@ -41,16 +41,7 @@ COPY shared/ ./shared/
 # Create the prompts directory where the prompt engine expects it
 RUN mkdir -p /shared/prompts && cp -r ./shared/prompts/* /shared/prompts/
 
-# Create proto directory and generate protobuf files
-RUN mkdir -p proto && \
-    python -m grpc_tools.protoc \
-    --python_out=proto \
-    --grpc_python_out=proto \
-    --proto_path=shared/proto \
-    shared/proto/workflow_agent.proto || echo "Proto generation failed, continuing anyway"
-
-# Fix protobuf imports
-RUN find proto -name "*_pb2_grpc.py" -exec sed -i 's/^import \([a-zA-Z_][a-zA-Z0-9_]*_pb2\) as /from . import \1 as /g' {} \; || true
+# FastAPI 不需要 protobuf 生成
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash --uid 1000 app && \
@@ -60,9 +51,14 @@ USER app
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+ENV FASTAPI_PORT=8001
 
-# Expose the gRPC port
-EXPOSE 50051
+# Expose the FastAPI port (替换 gRPC 端口)
+EXPOSE 8001
 
-# Run the application
-CMD ["python", "main.py"]
+# Health check for FastAPI service
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8001/health || exit 1
+
+# Run the FastAPI application (替换 gRPC 服务器)
+CMD ["python", "main_fastapi.py"]

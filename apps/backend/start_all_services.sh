@@ -118,7 +118,7 @@ else
 fi
 cd ..
 
-start_service "workflow_agent" "workflow_agent" "python main.py" "50051"
+start_service "workflow_agent" "workflow_agent" "python main_fastapi.py" "8001"
 
 # 等待一下确保gRPC服务完全启动
 sleep 3

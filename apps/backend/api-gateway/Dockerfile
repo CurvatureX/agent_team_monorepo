@@ -22,6 +22,8 @@ COPY api-gateway/.python-version* ./api-gateway/
 # Install Python dependencies with uv
 RUN uv sync --frozen --package api-gateway-mvp
 
+# No proto files needed for HTTP-only deployment
+
 # Production stage
 FROM python:3.11-slim AS production
 
@@ -37,6 +39,8 @@ RUN apt-get update && apt-get install -y \
 
 # Copy uv and dependencies from builder
 COPY --from=builder /app/.venv /app/.venv
+
+# No proto files to copy for HTTP-only deployment
 
 # Copy application code
 COPY api-gateway/ ./
@@ -68,6 +72,8 @@ ENV MCP_API_KEY_REQUIRED="true"
 # Rate limiting settings
 ENV PUBLIC_RATE_LIMIT_ENABLED="true"
 
+ENV UV_HTTP_TIMEOUT=120
+
 # Expose port
 EXPOSE 8000
 
@@ -76,5 +82,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
     CMD curl -f http://localhost:8000/api/v1/public/health || curl -f http://localhost:8000/health || exit 1
 
-# Run application with production settings
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--access-log"]
+# Set the default command to run the start script
+# This script waits for the database and then starts the application
+CMD ["/bin/bash", "start.sh"]

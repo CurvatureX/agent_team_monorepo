@@ -4,19 +4,12 @@ Implements the 6 core nodes: Clarification, Negotiation, Gap Analysis,
 Alternative Solution Generation, Workflow Generation, and Debug
 """
 
-import asyncio
 import json
-import sys
 import time
 import uuid
-from pathlib import Path
-from typing import Any, Dict, List
+from typing import List
 
 import structlog
-from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
-
 from agents.state import (
     AlternativeOption,
     ClarificationContext,
@@ -27,9 +20,10 @@ from agents.state import (
 )
 from agents.tools import RAGTool
 from core.config import settings
-
-# Import the proper PromptEngine for production use
 from core.prompt_engine import get_prompt_engine
+from langchain_anthropic import ChatAnthropic
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
 
 logger = structlog.get_logger()
 
@@ -70,6 +64,99 @@ class WorkflowAgentNodes:
 
         state["conversations"].append(Conversation(role=role, text=text))
 
+    def _get_current_scenario(self, state: WorkflowState) -> str:
+        """Determine the current scenario based on state"""
+        stage = state.get("stage")
+        previous_stage = state.get("previous_stage")
+
+        if stage == WorkflowStage.CLARIFICATION:
+            if previous_stage == WorkflowStage.DEBUG:
+                return "Debug Recovery"
+            elif previous_stage == WorkflowStage.GAP_ANALYSIS:
+                return "Gap Analysis Feedback Processing"
+            elif state.get("template_workflow"):
+                return "Template Customization"
+            else:
+                return "Initial Clarification"
+        return "Initial Clarification"
+
+    def _get_current_goal(self, state: WorkflowState) -> str:
+        """Determine the current goal based on scenario"""
+        scenario = self._get_current_scenario(state)
+
+        if scenario == "Debug Recovery":
+            return "Understand debug failures and gather information needed to fix workflow issues"
+        elif scenario == "Gap Analysis Feedback Processing":
+            return "Process user feedback after gap analysis and alternative solution presentation"
+        elif scenario == "Template Customization":
+            return "Understand how the user wants to modify an existing template workflow to meet their specific needs"
+        else:
+            return "Understand the user's workflow automation needs and capture all essential requirements through strategic questioning"
+
+    def _get_scenario_type(self, state: WorkflowState) -> str:
+        """Determine the scenario type for template conditional logic"""
+        stage = state.get("stage")
+        previous_stage = state.get("previous_stage")
+
+        if previous_stage == WorkflowStage.DEBUG:
+            return "debug_recovery"
+        elif previous_stage == WorkflowStage.GAP_ANALYSIS:
+            return "gap_analysis_feedback"
+        elif state.get("template_workflow"):
+            return "template_customization"
+        else:
+            return "initial_creation"
+
+    def _get_gap_analysis_scenario(self, state: WorkflowState) -> str:
+        """Determine the gap analysis scenario based on state"""
+        stage = state.get("stage")
+        previous_stage = state.get("previous_stage")
+
+        if stage == WorkflowStage.GAP_ANALYSIS:
+            if previous_stage == WorkflowStage.NEGOTIATION:
+                return "Post-Negotiation Gap Analysis"
+            elif state.get("template_workflow"):
+                return "Template Capability Analysis"
+            elif previous_stage == WorkflowStage.DEBUG:
+                return "Debug Failure Gap Analysis"
+            else:
+                return "Initial Gap Analysis"
+        return "Initial Gap Analysis"
+
+    def _get_gap_analysis_goal(self, state: WorkflowState) -> str:
+        """Determine the gap analysis goal based on scenario"""
+        scenario = self._get_gap_analysis_scenario(state)
+
+        if scenario == "Post-Negotiation Gap Analysis":
+            return "Review user feedback and selected alternatives to resolve identified gaps"
+        elif scenario == "Template Capability Analysis":
+            return "Analyze template requirements against available capabilities"
+        elif scenario == "Debug Failure Gap Analysis":
+            return "Identify capability gaps that caused workflow failure"
+        else:
+            return "Analyze user requirements against available node capabilities and identify missing components"
+
+    def _get_gap_analysis_scenario_type(self, state: WorkflowState) -> str:
+        """Determine the scenario type for gap analysis template conditional logic"""
+        previous_stage = state.get("previous_stage")
+
+        if previous_stage == WorkflowStage.NEGOTIATION:
+            return "post_negotiation"
+        elif state.get("template_workflow"):
+            return "template_analysis"
+        elif previous_stage == WorkflowStage.DEBUG:
+            return "debug_analysis"
+        else:
+            return "initial_analysis"
+
+    def _get_latest_user_input(self, state: WorkflowState) -> str:
+        """Get the latest user input from conversations"""
+        if state.get("conversations"):
+            for conv in reversed(state["conversations"]):
+                if conv["role"] == "user":
+                    return conv["text"]
+        return ""
+
     async def clarification_node(self, state: WorkflowState) -> WorkflowState:
         """
         Clarification Node - 解析和澄清用户意图
@@ -96,32 +183,71 @@ class WorkflowAgentNodes:
                 logger.info("Retrieving knowledge with RAG tool")
                 state = await self.rag_tool.retrieve_knowledge(state, query=user_input)
 
-            # Analyze user input and generate intent summary using proper prompt engine
-            prompt_text = await self.prompt_engine.render_prompt(
-                "clarification",
-                origin=origin,
-                user_input=user_input,
-                conversations=state.get("conversations", []),
-                rag_context=state.get("rag"),
+            # Use separate system and user prompt files for clarification
+            template_context = {
+                "origin": origin,
+                "user_input": user_input,
+                "execution_history": state.get("execution_history", []),
+                "current_scenario": self._get_current_scenario(state),
+                "goal": self._get_current_goal(state),
+                "scenario_type": self._get_scenario_type(state),
+                "current_workflow": state.get("current_workflow"),
+                "debug_result": state.get("debug_result"),
+                "gaps": state.get("gaps", []),
+                "alternatives": state.get("alternatives", []),
+                "template_workflow": state.get("template_workflow"),
+                "rag_context": state.get("rag"),
+            }
+
+            system_prompt = await self.prompt_engine.render_prompt(
+                "clarification_f2_system", **template_context
+            )
+            user_prompt = await self.prompt_engine.render_prompt(
+                "clarification_f2_user", **template_context
             )
 
-            system_prompt = (
-                "You are a workflow clarification assistant. Follow the instructions carefully."
-            )
-            user_prompt = prompt_text
+            # Build messages with conversation history as separate messages
+            messages = [SystemMessage(content=system_prompt)]
 
-            messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
+            # Add conversation history as separate messages (better for LLM understanding)
+            conversations = state.get("conversations", [])
+            for conv in conversations:
+                if conv["role"] == "user":
+                    messages.append(HumanMessage(content=conv["text"]))
+                elif conv["role"] == "assistant":
+                    messages.append(AIMessage(content=conv["text"]))
+
+            # Add current clarification request
+            messages.append(HumanMessage(content=user_prompt))
+
             response = await self.llm.ainvoke(messages)
 
-            # Parse response to determine if more clarification needed
+            # Parse response using clarification_f2 format
             try:
                 response_text = (
                     response.content if isinstance(response.content, str) else str(response.content)
                 )
                 analysis = json.loads(response_text)
-                intent_summary = analysis.get("intent_summary", "")
-                needs_clarification = analysis.get("needs_clarification", False)
-                questions = analysis.get("questions", [])
+
+                # clarification_f2 format: clarification_question, is_complete, workflow_summary
+                clarification_question = analysis.get("clarification_question", "")
+                is_complete = analysis.get("is_complete", False)
+                workflow_summary = analysis.get("workflow_summary", "")
+
+                # Convert to old format for compatibility
+                if is_complete and workflow_summary:
+                    # Clarification is complete - extract intent from workflow summary
+                    intent_summary = (
+                        workflow_summary.split("\n")[0] if workflow_summary else "用户需求已澄清"
+                    )
+                    needs_clarification = False
+                    questions = []
+                else:
+                    # More clarification needed
+                    intent_summary = "需要进一步澄清用户需求"
+                    needs_clarification = True
+                    questions = [clarification_question] if clarification_question else []
+
             except json.JSONDecodeError:
                 # Fallback parsing
                 response_text = (
@@ -135,6 +261,10 @@ class WorkflowAgentNodes:
 
             # Update state
             state["intent_summary"] = intent_summary
+
+            # Store workflow summary if complete
+            if "workflow_summary" in locals() and workflow_summary:
+                state["workflow_summary"] = workflow_summary
 
             if needs_clarification and questions:
                 # Need more clarification - go to negotiation
@@ -202,17 +332,43 @@ class WorkflowAgentNodes:
         try:
             intent_summary = state.get("intent_summary", "")
 
-            # Use prompt to analyze capability gaps
-            prompt_text = await self.prompt_engine.render_prompt(
-                "gap_analysis",
-                intent_summary=intent_summary,
-                conversations=state.get("conversations", []),
+            # Use separate system and user prompt files for capability gap analysis
+            template_context = {
+                "intent_summary": intent_summary,
+                "conversations": state.get("conversations", []),
+                "execution_history": state.get("execution_history", []),
+                "current_scenario": self._get_gap_analysis_scenario(state),
+                "goal": self._get_gap_analysis_goal(state),
+                "scenario_type": self._get_gap_analysis_scenario_type(state),
+                "user_feedback": self._get_latest_user_input(state),
+                "selected_alternative": state.get("selected_alternative"),
+                "template_workflow": state.get("template_workflow"),
+                "current_workflow": state.get("current_workflow"),
+                "debug_result": state.get("debug_result"),
+                "rag_context": state.get("rag"),
+            }
+
+            system_prompt = await self.prompt_engine.render_prompt(
+                "gap_analysis_f2_system", **template_context
+            )
+            user_prompt = await self.prompt_engine.render_prompt(
+                "gap_analysis_f2_user", **template_context
             )
 
-            system_prompt = "You are a capability gap analysis specialist. Follow the analysis framework provided."
-            user_prompt = prompt_text
+            # Build messages with conversation history as separate messages
+            messages = [SystemMessage(content=system_prompt)]
 
-            messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
+            # Add conversation history as separate messages (better for LLM understanding)
+            conversations = state.get("conversations", [])
+            for conv in conversations:
+                if conv["role"] == "user":
+                    messages.append(HumanMessage(content=conv["text"]))
+                elif conv["role"] == "assistant":
+                    messages.append(AIMessage(content=conv["text"]))
+
+            # Add current analysis request
+            messages.append(HumanMessage(content=user_prompt))
+
             response = await self.llm.ainvoke(messages)
 
             try:
@@ -291,17 +447,19 @@ class WorkflowAgentNodes:
                         description=f"跳过{gap}相关功能的简化实现",
                         approach="简化实现",
                         trade_offs=[f"不包含{gap}功能"],
-                        complexity="simple"
+                        complexity="simple",
                     )
                     for i, gap in enumerate(gaps[:2])
-                ] + [AlternativeOption(
-                    id="alt_manual",
-                    title="手动配置替代方案",
-                    description="通过手动配置实现所需功能",
-                    approach="手动配置",
-                    trade_offs=["需要手动设置"],
-                    complexity="medium"
-                )]
+                ] + [
+                    AlternativeOption(
+                        id="alt_manual",
+                        title="手动配置替代方案",
+                        description="通过手动配置实现所需功能",
+                        approach="手动配置",
+                        trade_offs=["需要手动设置"],
+                        complexity="medium",
+                    )
+                ]
 
             state["alternatives"] = alternatives
 
@@ -313,9 +471,7 @@ class WorkflowAgentNodes:
 
             # Set up clarification context for gap resolution
             state["clarification_context"] = ClarificationContext(
-                origin=state.get("clarification_context", {}).get(
-                    "origin", WorkflowOrigin.CREATE
-                ),
+                origin=state.get("clarification_context", {}).get("origin", WorkflowOrigin.CREATE),
                 pending_questions=[f"请选择您希望采用的方案（1-{len(alternatives)}）"],
             )
 
@@ -534,6 +690,7 @@ class WorkflowAgentNodes:
             WorkflowStage.NEGOTIATION: "negotiation",
             WorkflowStage.GAP_ANALYSIS: "gap_analysis",
             WorkflowStage.WORKFLOW_GENERATION: "workflow_generation",
+            WorkflowStage.ALTERNATIVE_GENERATION: "alternative_generation",
             WorkflowStage.DEBUG: "debug",
             "completed": "END",
         }

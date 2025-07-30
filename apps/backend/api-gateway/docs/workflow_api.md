@@ -9,6 +9,38 @@ This document provides detailed information about the Workflow API endpoints, wh
 
 ---
 
+## Node Templates
+
+### 1. List all available node templates
+
+-   **Endpoint**: `GET /node-templates/`
+-   **Description**: Retrieves a list of all available node templates that can be used to build a workflow.
+-   **Example Request**:
+    ```bash
+    curl "http://localhost:8000/api/v1/workflow/node-templates/"
+    ```
+-   **Success Response**: `200 OK`
+    -   Returns a list of `NodeTemplateResponse` objects.
+-   **Error Response**:
+    -   `500 Internal Server Error`: If an unexpected error occurs.
+-   **`NodeTemplateResponse` Structure**:
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `id` | string | Unique identifier for the template. |
+| `name` | string | Display name of the template. |
+| `description`| string | Optional description of what the node does. |
+| `category` | string | Category for grouping templates (e.g., "AI", "Action"). |
+| `node_type` | string | The main type of the node (e.g., `ACTION_NODE`). |
+| `node_subtype`| string | The specific subtype of the node (e.g., `ACTION_SEND_HTTP_REQUEST`). |
+| `version` | string | Optional version of the template. |
+| `is_system_template`| boolean | Whether this is a system-provided template. |
+| `default_parameters`| object | A key-value map of default parameters for the node. |
+| `required_parameters`| array of strings | A list of parameter keys that are required for the node. |
+| `parameter_schema`| object | A JSON schema defining the structure and validation rules for the node's parameters. |
+
+---
+
 ## Workflow Management
 
 ### 1. Create a new workflow
