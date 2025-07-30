@@ -137,8 +137,12 @@ resource "aws_ecs_task_definition" "api_gateway" {
           value = "workflow-agent.${local.name_prefix}.local"
         },
         {
-          name  = "WORKFLOW_SERVICE_LB_ENDPOINT"
-          value = "${aws_lb.grpc_internal.dns_name}:50051"
+          name  = "WORKFLOW_AGENT_URL"
+          value = "http://${aws_lb.internal.dns_name}/process-conversation"
+        },
+        {
+          name  = "WORKFLOW_ENGINE_URL"
+          value = "http://${aws_lb.internal.dns_name}/v1"
         },
         {
           name  = "AWS_REGION"
@@ -200,7 +204,7 @@ resource "aws_ecs_task_definition" "workflow_engine" {
 
       portMappings = [
         {
-          containerPort = 50050
+          containerPort = 8002
           protocol      = "tcp"
         }
       ]
@@ -211,16 +215,12 @@ resource "aws_ecs_task_definition" "workflow_engine" {
           value = "false"
         },
         {
-          name  = "GRPC_HOST"
+          name  = "HOST"
           value = "0.0.0.0"
         },
         {
-          name  = "GRPC_PORT"
-          value = "50050"
-        },
-        {
-          name  = "REDIS_URL"
-          value = "redis://${aws_elasticache_cluster.redis.cache_nodes[0].address}:6379/0"
+          name  = "PORT"
+          value = "8002"
         }
       ]
 
@@ -257,11 +257,11 @@ resource "aws_ecs_task_definition" "workflow_engine" {
       }
 
       healthCheck = {
-        command     = ["CMD-SHELL", "nc -z localhost 50050 || exit 1"]
+        command     = ["CMD-SHELL", "curl -f http://localhost:8002/health || exit 1"]
         interval    = 30
-        timeout     = 10
+        timeout     = 5
         retries     = 3
-        startPeriod = 180
+        startPeriod = 120
       }
     }
   ])
@@ -315,7 +315,7 @@ resource "aws_ecs_task_definition" "workflow_agent" {
 
       portMappings = [
         {
-          containerPort = 50051
+          containerPort = 8001
           protocol      = "tcp"
         }
       ]
@@ -326,12 +326,16 @@ resource "aws_ecs_task_definition" "workflow_agent" {
           value = "false"
         },
         {
-          name  = "GRPC_HOST"
+          name  = "HOST"
           value = "0.0.0.0"
         },
         {
-          name  = "GRPC_PORT"
-          value = "50051"
+          name  = "PORT"
+          value = "8001"
+        },
+        {
+          name  = "FASTAPI_PORT"
+          value = "8001"
         },
         {
           name  = "REDIS_URL"
@@ -368,11 +372,11 @@ resource "aws_ecs_task_definition" "workflow_agent" {
       }
 
       healthCheck = {
-        command     = ["CMD-SHELL", "nc -z localhost 50051 || exit 1"]
+        command     = ["CMD-SHELL", "curl -f http://localhost:8001/health || exit 1"]
         interval    = 30
-        timeout     = 10
+        timeout     = 5
         retries     = 3
-        startPeriod = 240
+        startPeriod = 120
       }
     }
   ])
@@ -394,9 +398,17 @@ resource "aws_ecs_service" "workflow_engine" {
     assign_public_ip = false
   }
 
+  load_balancer {
+    target_group_arn = aws_lb_target_group.workflow_engine_http.arn
+    container_name   = "workflow-engine"
+    container_port   = 8002
+  }
+
   service_registries {
     registry_arn = aws_service_discovery_service.workflow_engine.arn
   }
+
+  depends_on = [aws_lb_listener.internal]
 
   tags = local.common_tags
 }
@@ -416,16 +428,16 @@ resource "aws_ecs_service" "workflow_agent" {
   }
 
   load_balancer {
-    target_group_arn = aws_lb_target_group.workflow_agent_grpc.arn
+    target_group_arn = aws_lb_target_group.workflow_agent_http.arn
     container_name   = "workflow-agent"
-    container_port   = 50051
+    container_port   = 8001
   }
 
   service_registries {
     registry_arn = aws_service_discovery_service.workflow_agent.arn
   }
 
-  depends_on = [aws_lb_listener.grpc]
+  depends_on = [aws_lb_listener.internal]
 
   tags = local.common_tags
 }

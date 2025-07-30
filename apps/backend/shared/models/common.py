@@ -1,4 +1,5 @@
 # 通用基础模型
+import time
 from enum import Enum
 from typing import Any, Dict, Optional
 
@@ -6,7 +7,7 @@ from pydantic import BaseModel, Field
 
 
 class BaseResponse(BaseModel):
-    """所有响应的基础模型"""
+    """Base model for all responses"""
 
     success: bool = True
     message: str = ""
@@ -16,7 +17,7 @@ class BaseResponse(BaseModel):
 
 
 class ErrorResponse(BaseResponse):
-    """错误响应模型"""
+    """Error response model"""
 
     success: bool = False
     error_code: Optional[str] = None
@@ -34,19 +35,15 @@ class ErrorResponse(BaseResponse):
 
 
 class HealthStatus(str, Enum):
-    """健康状态枚举"""
-
     HEALTHY = "healthy"
     UNHEALTHY = "unhealthy"
     DEGRADED = "degraded"
 
 
 class HealthResponse(BaseModel):
-    """健康检查响应"""
-
     status: HealthStatus
     version: str = "1.0.0"
-    timestamp: Optional[int] = None
+    timestamp: int = Field(default_factory=lambda: int(time.time()))
     details: Optional[Dict[str, Any]] = None
 
     class Config:
