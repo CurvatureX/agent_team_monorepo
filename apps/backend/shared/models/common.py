@@ -130,6 +130,10 @@ class HealthCheckModel(BaseModel):
     )
     checks: Optional[Dict[str, Any]] = Field(default=None, description="详细检查结果")
     message: Optional[str] = Field(default=None, description="状态消息")
+    request_id: Optional[str] = Field(default=None, description="请求ID")
+    processing_time_ms: Optional[float] = Field(default=None, description="处理时间（毫秒）")
+    environment: Optional[str] = Field(default=None, description="环境")
+    debug: Optional[bool] = Field(default=None, description="调试模式")
 
 
 class HealthResponse(BaseModel):

@@ -71,8 +71,11 @@ __all__ = [
     "WorkflowUpdate",
     # MCP models
     "MCPTool",
+    "MCPToolsResponse",
     "MCPInvokeRequest",
     "MCPInvokeResponse",
+    "MCPErrorResponse",
+    "MCPHealthCheck",
     # Chat models
     "MessageType",
     "ChatRequest",

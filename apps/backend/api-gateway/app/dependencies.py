@@ -195,11 +195,13 @@ async def get_mcp_client(
         api_key_obj = mcp_authenticator.verify_api_key(api_key)
         if api_key_obj:
             return AuthClient(
-                id=api_key_obj.id,
+                client_id=api_key_obj.id,
                 client_name=api_key_obj.client_name,
                 scopes=api_key_obj.scopes,
-                rate_limit_tier=api_key_obj.rate_limit_tier,
-                active=api_key_obj.active,
+                metadata={
+                    "rate_limit_tier": api_key_obj.rate_limit_tier,
+                    "active": api_key_obj.active,
+                },
             )
         return None
     except Exception as e:

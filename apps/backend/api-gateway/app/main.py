@@ -3,8 +3,19 @@ API Gateway - Three-Layer Architecture with FastAPI Best Practices
 三层API架构：Public API, App API, MCP API
 """
 
+import os
+import sys
 import time
 from datetime import datetime, timezone
+
+# Add shared node_specs to Python path for node knowledge access
+current_dir = os.path.dirname(os.path.abspath(__file__))
+shared_path = os.path.join(current_dir, "../../../shared")
+if shared_path not in sys.path:
+    sys.path.insert(0, shared_path)
+
+# 工具 - Use custom logging
+import logging
 
 from app.api.app.router import router as app_router
 from app.api.mcp.router import router as mcp_router
@@ -21,9 +32,6 @@ from app.exceptions import register_exception_handlers
 # 中间件
 from app.middleware.auth import unified_auth_middleware
 from app.middleware.rate_limit import rate_limit_middleware
-
-# 工具 - Use custom logging
-import logging
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -132,7 +140,9 @@ async def request_logging_middleware(request: Request, call_next):
     response.headers["X-Process-Time"] = str(round(process_time * 1000, 2))
 
     # 记录响应
-    logger.info(f"📤 {request.method} {request.url.path} -> {response.status_code} [{round(process_time * 1000, 2)}ms]")
+    logger.info(
+        f"📤 {request.method} {request.url.path} -> {response.status_code} [{round(process_time * 1000, 2)}ms]"
+    )
 
     return response
 
