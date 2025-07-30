@@ -45,9 +45,9 @@
 **参数配置:**
 
 - `channel`: string - 聊天频道标识符（如 Slack/Discord/Teams 频道 ID）
-- `allowedUsers`: `array<string>` - 允许触发的用户 ID 列表
+- `allowedUsers`: `array&lt;string&gt;` - 允许触发的用户 ID 列表
 - `triggerPhrase`: string - 触发短语或关键词
-- `supportedMediaTypes`: `array<enum>` - 支持的媒体类型 (text/image/audio/video/file)
+- `supportedMediaTypes`: `array&lt;enum&gt;` - 支持的媒体类型 (text/image/audio/video/file)
 - `maxFileSize`: integer - 最大文件大小（MB，适用于所有媒体类型）-
 - `enableOCR`: boolean - 是否启用图片 OCR 文字识别
 - `enableSpeechToText`: boolean - 是否启用音频语音转文字
@@ -69,7 +69,7 @@
 - `authHeaderValue`: string - 认证头值
 - `respond`: enum - 响应方式 (immediately/when_last_node_finishes/using_respond_node)
 - `responseCode`: integer - HTTP 响应状态码 (默认 200)
-- `responseHeaders`: `map<string, string>` - 响应头
+- `responseHeaders`: `map&lt;string, string&gt;` - 响应头
 - `responseBody`: string - 立即响应的内容
 - `responseData`: enum - 响应数据格式，仅在 respond 为 when_last_node_finishes 时生效
   - `first_entry_json` - 返回最后节点的第一个数据项作为 JSON 对象
@@ -137,14 +137,14 @@ Anthropic Claude AI 代理，功能完全由系统提示词定义
 - `max_tokens`: integer - 最大生成 token 数
 - `top_p`: float - 核采样参数 (0.0-1.0)
 - `top_k`: integer - 候选词数量限制
-- `stop_sequences`: array<string> - 停止序列
+- `stop_sequences`: array&lt;string&gt; - 停止序列
 - `response_format`: enum - 响应格式 (text/json/structured)
 - `timeout_seconds`: integer - 请求超时时间
 - `retry_attempts`: integer - 重试次数
 
 ### 通用连接配置:
 - `memory_connection`: string - 连接的 Memory 节点 ID
-- `tool_connections`: array<string> - 连接的 Tool 节点 ID 列表
+- `tool_connections`: array&lt;string&gt; - 连接的 Tool 节点 ID 列表
 - `streaming`: boolean - 是否流式响应
 - `on_error`: enum - 节点执行失败时的操作 (stop_workflow/continue)
 
@@ -272,7 +272,7 @@ Anthropic Claude AI 代理，功能完全由系统提示词定义
 - `language`: enum - 编程语言 (python/javascript/java/golang)
 - `code`: text - 要执行的代码
 - `timeout`: integer - 执行超时时间（秒）
-- `environment_variables`: `map<string, string>` - 环境变量
+- `environment_variables`: `map&lt;string, string&gt;` - 环境变量
 - `input_data`: text - 输入数据
 - `continue_on_fail`: boolean - 失败时是否继续
 
@@ -282,8 +282,8 @@ Anthropic Claude AI 代理，功能完全由系统提示词定义
 
 - `url`: string - 请求 URL
 - `method`: enum - HTTP 方法 (GET/POST/PUT/DELETE/PATCH)
-- `headers`: `map<string, string>` - 请求头
-- `query_parameters`: `map<string, string>` - 查询参数
+- `headers`: `map&lt;string, string&gt;` - 请求头
+- `query_parameters`: `map&lt;string, string&gt;` - 查询参数
 - `body`: text - 请求体
 - `body_type`: enum - 请求体类型 (json/form/raw/binary)
 - `authentication`: enum - 认证方式 (none/api_key/bearer_token/basic_auth/oauth)
@@ -336,7 +336,7 @@ Anthropic Claude AI 代理，功能完全由系统提示词定义
 - `targetFormat`: string - 目标格式（转换操作用）
 - `compressionLevel`: integer - 压缩级别 (1-9)
 - `maxFileSize`: integer - 最大文件大小（MB）
-- `allowedTypes`: `array<string>` - 允许的文件类型
+- `allowedTypes`: `array&lt;string&gt;` - 允许的文件类型
 - `virusScan`: boolean - 是否进行病毒扫描
 - `extractMetadata`: boolean - 是否提取元数据
 - `enableBackup`: boolean - 是否启用备份
@@ -423,7 +423,7 @@ Anthropic Claude AI 代理，功能完全由系统提示词定义
 - `gmail_credentials`: string - Gmail 凭证
 - `approval_subject`: string - 审批邮件主题
 - `approval_body`: text - 审批邮件内容
-- `approver_emails`: `array<string>` - 审批人邮箱
+- `approver_emails`: `array&lt;string&gt;` - 审批人邮箱
 - `timeout_hours`: integer - 审批超时时间（小时）
 - `auto_approve_after_timeout`: boolean - 超时后是否自动批准
 - `response_format`: enum - 响应格式 (simple/detailed)
@@ -434,9 +434,9 @@ Anthropic Claude AI 代理，功能完全由系统提示词定义
 
 - `slack_token`: string - Slack 机器人令牌
 - `approval_channel`: string - 审批频道
-- `approver_users`: `array<string>` - 审批用户
+- `approver_users`: `array&lt;string&gt;` - 审批用户
 - `approval_message`: text - 审批消息
-- `approval_buttons`: `array<string>` - 审批按钮选项
+- `approval_buttons`: `array&lt;string&gt;` - 审批按钮选项
 - `timeout_minutes`: integer - 审批超时时间（分钟）
 - `auto_approve_after_timeout`: boolean - 超时后是否自动批准
 
@@ -448,8 +448,8 @@ Anthropic Claude AI 代理，功能完全由系统提示词定义
 - `guild_id`: string - 服务器 ID
 - `channel_id`: string - 频道 ID
 - `approval_message`: text - 审批消息
-- `approver_roles`: `array<string>` - 审批角色
-- `approval_reactions`: `array<string>` - 审批表情
+- `approver_roles`: `array&lt;string&gt;` - 审批角色
+- `approval_reactions`: `array&lt;string&gt;` - 审批表情
 - `timeout_minutes`: integer - 审批超时时间（分钟）
 
 #### Telegram Node
@@ -498,7 +498,7 @@ Anthropic Claude AI 代理，功能完全由系统提示词定义
 - `notion_token`: string - Notion 集成令牌
 - `database_id`: string - 数据库 ID
 - `page_id`: string - 页面 ID
-- `property_mappings`: `map<string, string>` - 属性映射
+- `property_mappings`: `map&lt;string, string&gt;` - 属性映射
 
 ---
 

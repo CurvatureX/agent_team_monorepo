@@ -1,12 +1,12 @@
 ---
 id: mvp-workflow-data-structure-definition
-title: "[MVP] Workflow 节点的数据结构定义"
+title: "MVP Workflow 节点的数据结构定义"
 sidebar_label: "MVP Workflow 数据结构"
 sidebar_position: 3
 slug: /tech-design/mvp-workflow-data-structure-definition
 ---
 
-# [MVP] Workflow 节点的数据结构定义
+# MVP Workflow 节点的数据结构定义
 
 ## 📚 目录
 
