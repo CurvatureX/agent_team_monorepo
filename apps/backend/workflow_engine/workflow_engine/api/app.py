@@ -12,8 +12,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from shared.node_specs import node_spec_registry
-from workflow_engine.api.node_specs import router as node_specs_router
-from workflow_engine.core.config import get_settings
+from workflow_engine.workflow_engine.api.node_specs import router as node_specs_router
+from workflow_engine.workflow_engine.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 

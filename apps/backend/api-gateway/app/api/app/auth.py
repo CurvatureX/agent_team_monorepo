@@ -8,8 +8,7 @@ from typing import Any, Dict, List, Optional
 from app.core.database import create_user_supabase_client
 from app.dependencies import AuthenticatedDeps
 from app.exceptions import NotFoundError, ValidationError
-from app.models.auth import UserProfileResponse, UserSessionListResponse
-from app.models.base import ResponseModel
+from app.models import ResponseModel, UserProfileResponse, UserSessionListResponse
 from app.utils.logger import get_logger
 from fastapi import APIRouter, Depends, HTTPException
 

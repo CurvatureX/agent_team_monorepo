@@ -8,8 +8,7 @@ from typing import Any, Dict, Optional
 from app.core.config import get_settings
 from app.dependencies import AuthenticatedDeps
 from app.exceptions import NotFoundError, ValidationError
-from app.models.base import ResponseModel
-from app.models.execution import ExecutionCancelResponse, ExecutionStatusResponse
+from app.models import ExecutionCancelResponse, ExecutionStatusResponse, ResponseModel
 from app.services.workflow_engine_http_client import get_workflow_engine_client
 from app.utils.logger import get_logger
 from fastapi import APIRouter, Depends, HTTPException

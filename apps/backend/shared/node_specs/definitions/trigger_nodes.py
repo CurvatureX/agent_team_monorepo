@@ -18,7 +18,7 @@ from ..base import (
 # Manual trigger - started by user action
 MANUAL_TRIGGER_SPEC = NodeSpec(
     node_type="TRIGGER_NODE",
-    subtype="MANUAL",
+    subtype="TRIGGER_MANUAL",
     description="Manual trigger activated by user action",
     parameters=[
         ParameterDef(
@@ -57,7 +57,7 @@ MANUAL_TRIGGER_SPEC = NodeSpec(
 # Cron trigger - scheduled execution
 CRON_TRIGGER_SPEC = NodeSpec(
     node_type="TRIGGER_NODE",
-    subtype="CRON",
+    subtype="TRIGGER_CRON",
     description="Scheduled trigger based on cron expressions",
     parameters=[
         ParameterDef(
@@ -104,7 +104,7 @@ CRON_TRIGGER_SPEC = NodeSpec(
 # Webhook trigger - HTTP endpoint
 WEBHOOK_TRIGGER_SPEC = NodeSpec(
     node_type="TRIGGER_NODE",
-    subtype="WEBHOOK",
+    subtype="TRIGGER_WEBHOOK",
     description="HTTP webhook trigger that responds to incoming requests",
     parameters=[
         ParameterDef(
@@ -159,7 +159,7 @@ WEBHOOK_TRIGGER_SPEC = NodeSpec(
 # Chat trigger - messaging platform integration
 CHAT_TRIGGER_SPEC = NodeSpec(
     node_type="TRIGGER_NODE",
-    subtype="CHAT",
+    subtype="TRIGGER_CHAT",
     description="Chat message trigger from messaging platforms",
     parameters=[
         ParameterDef(
@@ -211,7 +211,7 @@ CHAT_TRIGGER_SPEC = NodeSpec(
 # Email trigger - email monitoring
 EMAIL_TRIGGER_SPEC = NodeSpec(
     node_type="TRIGGER_NODE",
-    subtype="EMAIL",
+    subtype="TRIGGER_EMAIL",
     description="Email trigger that monitors incoming emails",
     parameters=[
         ParameterDef(
@@ -265,7 +265,7 @@ EMAIL_TRIGGER_SPEC = NodeSpec(
 # Form trigger - web form submission
 FORM_TRIGGER_SPEC = NodeSpec(
     node_type="TRIGGER_NODE",
-    subtype="FORM",
+    subtype="TRIGGER_FORM",
     description="Web form submission trigger",
     parameters=[
         ParameterDef(
@@ -316,7 +316,7 @@ FORM_TRIGGER_SPEC = NodeSpec(
 # Calendar trigger - calendar event based
 CALENDAR_TRIGGER_SPEC = NodeSpec(
     node_type="TRIGGER_NODE",
-    subtype="CALENDAR",
+    subtype="TRIGGER_CALENDAR",
     description="Calendar event trigger for meetings and appointments",
     parameters=[
         ParameterDef(

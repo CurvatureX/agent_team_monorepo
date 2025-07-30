@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from app.core.database import create_user_supabase_client
 from app.dependencies import AuthenticatedDeps, get_session_id
 from app.exceptions import NotFoundError, ValidationError
-from app.models.chat import ChatHistory, ChatMessage, ChatRequest, MessageType
+from app.models import ChatHistory, ChatMessage, ChatRequest, MessageType
 from app.utils.logger import get_logger
 from app.utils.sse import create_mock_chat_stream, format_sse_event
 from fastapi import APIRouter, Depends, HTTPException, Query, Request

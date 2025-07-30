@@ -9,9 +9,9 @@ from typing import Optional
 from app.core.config import get_settings
 from app.dependencies import AuthenticatedDeps
 from app.exceptions import NotFoundError, ValidationError
-from app.models.base import ResponseModel
-from app.models.workflow import (
+from app.models import (
     NodeTemplateListResponse,
+    ResponseModel,
     Workflow,
     WorkflowCreate,
     WorkflowExecutionRequest,

@@ -3,9 +3,10 @@ FastAPI Dependencies for Dependency Injection
 依赖注入函数，遵循FastAPI最佳实践
 """
 
-from typing import Optional, Dict, Any, Generator
+from typing import Any, Dict, Generator, Optional
+
 from fastapi import Depends, HTTPException, Request, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from supabase import Client
 
 try:
@@ -20,11 +21,11 @@ from app.core.config import Settings, get_settings
 from app.core.database import (
     DatabaseManager,
     get_database_manager,
+    get_redis,
     get_supabase,
     get_supabase_admin,
-    get_redis,
 )
-from app.models.auth import AuthUser, AuthClient
+from app.models import AuthClient, AuthUser
 from app.services.auth_service import verify_supabase_token
 from app.utils.logger import get_logger
 

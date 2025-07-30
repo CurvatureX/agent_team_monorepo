@@ -13,9 +13,9 @@ from pydantic import BaseModel
 
 from shared.node_specs import node_spec_registry
 from shared.node_specs.base import NodeSpec
-from workflow_engine.data_mapping import DataMappingProcessor, ExecutionContext
-from workflow_engine.data_mapping.context import ExecutionContext
-from workflow_engine.data_mapping.processor import DataMapping, MappingType
+from workflow_engine.workflow_engine.data_mapping import DataMappingProcessor
+from workflow_engine.workflow_engine.data_mapping.context import ExecutionContext
+from workflow_engine.workflow_engine.data_mapping.processor import DataMapping, MappingType
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/node-specs", tags=["Node Specifications"])

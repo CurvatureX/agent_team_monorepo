@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import Field, field_validator
 
-from .base import BaseModel, EntityModel
+from .common import BaseModel, EntityModel
 
 
 class MessageType(str, Enum):
@@ -54,19 +54,10 @@ class ChatSSEEvent(BaseModel):
     聊天SSE事件模型
     """
 
-    type: str = Field(description="事件类型 (message, workflow, error)")
+    event: str = Field(description="事件类型")
     data: Dict[str, Any] = Field(description="事件数据")
-    session_id: str = Field(description="会话ID")
-    timestamp: Optional[str] = Field(default=None, description="时间戳")
-
-    @field_validator("type")
-    @classmethod
-    def validate_event_type(cls, v):
-        """验证事件类型"""
-        valid_types = ["message", "workflow", "error"]
-        if v not in valid_types:
-            raise ValueError(f"Invalid event type. Must be one of: {valid_types}")
-        return v
+    id: Optional[str] = Field(default=None, description="事件ID")
+    retry: Optional[int] = Field(default=None, description="重试间隔(毫秒)")
 
 
 class ChatHistory(BaseModel):
@@ -74,9 +65,8 @@ class ChatHistory(BaseModel):
     聊天历史模型
     """
 
+    messages: List[ChatMessage] = Field(default_factory=list, description="聊天消息列表")
     session_id: str = Field(description="会话ID")
-    messages: List[ChatMessage] = Field(default_factory=list, description="消息列表")
     total_count: int = Field(default=0, description="消息总数")
     page: int = Field(default=1, description="当前页码")
     page_size: int = Field(default=50, description="每页大小")
-

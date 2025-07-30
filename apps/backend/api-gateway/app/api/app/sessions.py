@@ -8,8 +8,8 @@ from typing import List, Optional
 from app.core.database import create_user_supabase_client, get_supabase_admin
 from app.dependencies import AuthenticatedDeps, get_session_id
 from app.exceptions import NotFoundError, ValidationError
-from app.models.base import ResponseModel
-from app.models.session import (
+from app.models import (
+    ResponseModel,
     Session,
     SessionCreate,
     SessionListResponse,
@@ -50,7 +50,9 @@ async def create_session(request: SessionCreate, deps: AuthenticatedDeps = Depen
         if not result:
             raise HTTPException(status_code=500, detail="Failed to create session")
 
-        logger.info(f"✅ Session created: {result['id']} (workflow_agent_state will be initialized by workflow_agent service)")
+        logger.info(
+            f"✅ Session created: {result['id']} (workflow_agent_state will be initialized by workflow_agent service)"
+        )
 
         # Create session object
         session = Session(**result)

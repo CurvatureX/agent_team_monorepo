@@ -15,7 +15,7 @@ from typing import Any, Dict
 
 from app.core.config import settings
 from app.core.database import get_database_manager
-from app.models.base import ResponseModel
+from app.models import ResponseModel
 
 # HTTP client status checks
 from fastapi import APIRouter, Depends

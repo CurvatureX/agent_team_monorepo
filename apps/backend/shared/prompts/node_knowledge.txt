@@ -13,12 +13,11 @@ Subtypes:
 - TRIGGER_CALENDAR: Triggered by a calendar event.
 
 Node Type: AI_AGENT_NODE
-Description: A node that runs an intelligent AI-driven task.
+Description: A node that runs an intelligent AI-driven task using provider-based architecture where functionality is defined by system prompts.
 Subtypes:
-- AI_ROUTER_AGENT: Routes tasks to the most suitable agent.
-- AI_TASK_ANALYZER: Breaks down user requests into structured tasks.
-- AI_DATA_INTEGRATOR: Integrates and summarizes information from multiple sources.
-- AI_REPORT_GENERATOR: Automatically creates structured reports.
+- GEMINI_NODE: Google Gemini AI agent with customizable behavior via system prompt.
+- OPENAI_NODE: OpenAI GPT AI agent with customizable behavior via system prompt.
+- CLAUDE_NODE: Anthropic Claude AI agent with customizable behavior via system prompt.
 
 Node Type: EXTERNAL_ACTION_NODE
 Description: A node that interacts with external systems and platforms.

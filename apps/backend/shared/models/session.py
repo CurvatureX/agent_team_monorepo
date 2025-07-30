@@ -3,11 +3,11 @@ Session Models
 会话相关的数据模型
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import Field, field_validator, model_validator
 
-from .base import BaseModel, EntityModel
+from .common import BaseModel, EntityModel
 
 
 class SessionCreate(BaseModel):
@@ -18,18 +18,18 @@ class SessionCreate(BaseModel):
     action: Optional[str] = Field(default="create", description="会话动作类型 (create, edit, copy)")
     workflow_id: Optional[str] = Field(default=None, description="关联的工作流ID")
 
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def validate_session_data(self):
         """验证会话数据的完整性和一致性"""
         # 验证 action 类型
         valid_actions = ["create", "edit", "copy"]
         if self.action and self.action not in valid_actions:
             raise ValueError(f"Invalid action. Must be one of: {valid_actions}")
-        
+
         # 验证 edit/copy 动作需要 workflow_id
         if self.action in ["edit", "copy"] and not self.workflow_id:
             raise ValueError(f"workflow_id is required for {self.action} actions")
-        
+
         return self
 
 
@@ -56,20 +56,15 @@ class SessionUpdate(BaseModel):
 class Session(EntityModel):
     """
     会话模型
-    表示用户或系统的交互会话
+    表示一个用户会话实例
     """
 
-    user_id: Optional[str] = Field(default=None, description="用户ID（None表示游客会话）")
-    session_type: str = Field(default="user", description="会话类型")
-    action: Optional[str] = Field(default="create", description="会话动作类型 (create, edit, copy)")
+    user_id: str = Field(description="会话所属用户ID")
     workflow_id: Optional[str] = Field(default=None, description="关联的工作流ID")
     status: str = Field(default="active", description="会话状态")
+    title: Optional[str] = Field(default=None, description="会话标题")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="会话元数据")
     last_activity: Optional[str] = Field(default=None, description="最后活动时间")
-
-    def is_guest_session(self) -> bool:
-        """判断是否为游客会话"""
-        return self.user_id is None or self.session_type == "guest"
 
     def is_active(self) -> bool:
         """判断会话是否活跃"""
@@ -90,7 +85,7 @@ class SessionListResponse(BaseModel):
     会话列表响应模型
     """
 
-    sessions: list[Session] = Field(default_factory=list, description="会话列表")
+    sessions: List[Session] = Field(default_factory=list, description="会话列表")
     total_count: int = Field(default=0, description="总数量")
     page: int = Field(default=1, description="当前页码")
     page_size: int = Field(default=20, description="每页大小")
