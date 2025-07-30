@@ -30,16 +30,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-# 检查是否在CI环境中
-def is_ci_environment():
-    """检查是否在CI环境中运行"""
-    ci_vars = [
-        "CI", "GITHUB_ACTIONS", "TRAVIS", "CIRCLECI", 
-        "GITLAB_CI", "JENKINS_URL", "BUILD_ID"
-    ]
-    return any(os.getenv(var) for var in ci_vars)
-
-
 class SupabaseAuth:
     """Helper class for Supabase authentication"""
     
@@ -180,33 +170,9 @@ class APIGatewayIntegrationTest:
                 async for line in response.aiter_lines():
                     if line.startswith("data: "):
                         try:
-                            # 修复：去掉 "data: " 前缀再解析 JSON
-                            data = json.loads(line[6:])  # 去掉 "data: " 前缀
+                            data = json.loads(line) 
                             response_count += 1
                             print(f"📥 Response #{response_count} - Type: {data}")
-                            
-                            # 收集响应类型用于分析
-                            response_type = data.get("type", "unknown")
-                            response_types.add(response_type)
-                            
-                            # 收集消息内容
-                            if response_type == "message":
-                                message_content = data.get("data", {}).get("text", "")
-                                if message_content:
-                                    messages_received.append(message_content)
-                            
-                            # 收集状态变化
-                            elif response_type == "status_change":
-                                status_info = data.get("data", {})
-                                status_changes.append({
-                                    "previous": status_info.get("previous_stage"),
-                                    "current": status_info.get("current_stage"),
-                                    "node": status_info.get("node_name")
-                                })
-                            
-                            # 检查工作流响应
-                            elif response_type == "workflow":
-                                workflow_received = True
                             
                             # Stop after final response or reasonable limit
                             if data.get("is_final", False) or response_count >= 20:
@@ -215,11 +181,6 @@ class APIGatewayIntegrationTest:
                         except json.JSONDecodeError as e:
                             print(f"❌ Failed to parse SSE data: {e}")
                             print(f"   Raw line: {line}")
-                            # 添加更详细的调试信息
-                            print(f"   Line length: {len(line)}")
-                            print(f"   Line starts with 'data: ': {line.startswith('data: ')}")
-                            if line.startswith("data: "):
-                                print(f"   Content after 'data: ': {line[6:]}")
                             continue
         
         # Analyze results
@@ -301,11 +262,6 @@ class APIGatewayIntegrationTest:
 
 async def main():
     """Main test runner"""
-    # 在CI环境中跳过测试
-    if is_ci_environment():
-        print("🔄 Running in CI environment, skipping integration tests")
-        return True
-    
     # Check environment setup
     required_vars = ["SUPABASE_URL", "SUPABASE_ANON_KEY", "TEST_USER_EMAIL", "TEST_USER_PASSWORD"]
     missing_vars = [var for var in required_vars if not os.getenv(var)]
@@ -331,7 +287,6 @@ if __name__ == "__main__":
 
 # Pytest integration for automated testing
 @pytest.mark.asyncio
-@pytest.mark.skipif(is_ci_environment(), reason="Integration test requires local environment")
 async def test_integration():
     """Pytest wrapper for integration test"""
     test = APIGatewayIntegrationTest()
@@ -339,8 +294,7 @@ async def test_integration():
     assert success, "Integration test failed"
 
 
-@pytest.mark.asyncio
-@pytest.mark.skipif(is_ci_environment(), reason="Auth test requires local environment")
+@pytest.mark.asyncio  
 async def test_auth_only():
     """Test authentication only"""
     auth = SupabaseAuth()
@@ -350,7 +304,6 @@ async def test_auth_only():
 
 
 @pytest.mark.asyncio
-@pytest.mark.skipif(is_ci_environment(), reason="Session test requires local environment")
 async def test_session_only():
     """Test session creation only"""
     test = APIGatewayIntegrationTest()
