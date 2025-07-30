@@ -35,17 +35,25 @@ resource "aws_security_group" "alb" {
   }
 }
 
-# Security Group for gRPC Network Load Balancer
-resource "aws_security_group" "grpc_nlb" {
-  name_prefix = "${local.name_prefix}-grpc-nlb-"
+# Security Group for Internal Application Load Balancer
+resource "aws_security_group" "alb_internal" {
+  name_prefix = "${local.name_prefix}-alb-internal-"
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description = "gRPC from VPC"
-    from_port   = 50051
-    to_port     = 50051
+    description = "HTTP from VPC"
+    from_port   = 80
+    to_port     = 80
     protocol    = "tcp"
     cidr_blocks = [var.vpc_cidr]
+  }
+
+  ingress {
+    description = "HTTP from API Gateway ALB"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    security_groups = [aws_security_group.alb.id]
   }
 
   egress {
@@ -56,7 +64,7 @@ resource "aws_security_group" "grpc_nlb" {
   }
 
   tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-grpc-nlb-sg"
+    Name = "${local.name_prefix}-alb-internal-sg"
   })
 
   lifecycle {
@@ -78,17 +86,49 @@ resource "aws_security_group" "ecs_tasks" {
   }
 
   ingress {
-    description     = "gRPC from NLB"
-    from_port       = 50051
-    to_port         = 50051
+    description     = "HTTP from Internal ALB"
+    from_port       = 8000
+    to_port         = 8000
     protocol        = "tcp"
-    security_groups = [aws_security_group.grpc_nlb.id]
+    security_groups = [aws_security_group.alb_internal.id]
   }
 
   ingress {
-    description = "gRPC inter-service communication"
-    from_port   = 50051
-    to_port     = 50051
+    description     = "HTTP from Internal ALB - Workflow Agent"
+    from_port       = 8001
+    to_port         = 8001
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb_internal.id]
+  }
+
+  ingress {
+    description     = "HTTP from Internal ALB - Workflow Engine"
+    from_port       = 8002
+    to_port         = 8002
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb_internal.id]
+  }
+
+  ingress {
+    description = "HTTP inter-service communication"
+    from_port   = 8000
+    to_port     = 8000
+    protocol    = "tcp"
+    self        = true
+  }
+
+  ingress {
+    description = "HTTP inter-service communication - Workflow Agent"
+    from_port   = 8001
+    to_port     = 8001
+    protocol    = "tcp"
+    self        = true
+  }
+
+  ingress {
+    description = "HTTP inter-service communication - Workflow Engine"
+    from_port   = 8002
+    to_port     = 8002
     protocol    = "tcp"
     self        = true
   }

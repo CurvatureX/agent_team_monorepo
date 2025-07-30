@@ -26,9 +26,10 @@ class Settings(BaseSettings):
     # SSL配置（Supabase需要）
     database_ssl_mode: str = "require"  # require for Supabase
 
-    # gRPC Server
-    grpc_host: str = "0.0.0.0"
-    grpc_port: int = int(os.getenv("GRPC_PORT", "50050"))
+    # Server Configuration
+    HOST: str = "0.0.0.0"
+    PORT: int = int(os.getenv("PORT", "8002"))
+
     # Logging
     log_level: str = "INFO"
 
