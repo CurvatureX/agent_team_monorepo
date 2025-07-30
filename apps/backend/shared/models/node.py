@@ -1,5 +1,7 @@
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+
 
 class NodeTemplate(BaseModel):
     id: str
@@ -15,4 +17,4 @@ class NodeTemplate(BaseModel):
     parameter_schema: Dict[str, Any] = Field(default_factory=dict)
 
     class Config:
-        orm_mode = True 
+        from_attributes = True

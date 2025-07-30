@@ -76,13 +76,10 @@ enum NodeSubtype {
   TRIGGER_FORM = 5;
   TRIGGER_CALENDAR = 6;
 
-  // AI Agent子类型
-  AI_ROUTER_AGENT = 10;
-  AI_TASK_ANALYZER = 11;
-  AI_DATA_INTEGRATOR = 12;
-  AI_REPORT_GENERATOR = 13;
-  AI_REMINDER_DECISION = 14;
-  AI_WEEKLY_REPORT = 15;
+  // AI Agent子类型 - Provider-based architecture
+  AI_GEMINI_NODE = 10;
+  AI_OPENAI_NODE = 11;
+  AI_CLAUDE_NODE = 12;
 
   // 外部动作子类型
   EXTERNAL_GITHUB = 20;
@@ -135,6 +132,24 @@ enum NodeSubtype {
   MEMORY_EMBEDDING = 75;
 }
 
+// 端口定义
+message InputPort {
+  string name = 1;
+  string type = 2;           // ConnectionType
+  bool required = 3;
+  string description = 4;
+  int32 max_connections = 5;
+  string validation_schema = 6; // JSON Schema
+}
+
+message OutputPort {
+  string name = 1;
+  string type = 2;
+  string description = 3;
+  int32 max_connections = 4;
+  string validation_schema = 5;
+}
+
 // 节点定义
 message Node {
   string id = 1;
@@ -150,6 +165,10 @@ message Node {
   RetryPolicy retry_policy = 11;
   map<string, string> notes = 12;
   repeated string webhooks = 13;
+
+  // 新增：端口定义（基于NodeSpec自动生成）
+  repeated InputPort input_ports = 14;
+  repeated OutputPort output_ports = 15;
 }
 
 // 节点位置
@@ -190,11 +209,53 @@ message ConnectionArray {
   repeated Connection connections = 1;
 }
 
+// 数据映射系统
+message DataMapping {
+  MappingType type = 1;
+  repeated FieldMapping field_mappings = 2;
+  string transform_script = 3;
+  map<string, string> static_values = 4;
+  string description = 5;
+}
+
+enum MappingType {
+  DIRECT = 0;
+  FIELD_MAPPING = 1;
+  TEMPLATE = 2;
+  TRANSFORM = 3;
+}
+
+message FieldMapping {
+  string source_field = 1;
+  string target_field = 2;
+  FieldTransform transform = 3;
+  bool required = 4;
+  string default_value = 5;
+}
+
+message FieldTransform {
+  TransformType type = 1;
+  string transform_value = 2;
+  map<string, string> options = 3;
+}
+
+enum TransformType {
+  NONE = 0;
+  STRING_FORMAT = 1;
+  JSON_PATH = 2;
+  REGEX = 3;
+  FUNCTION = 4;
+  CONDITION = 5;
+}
+
 // 单个连接定义
 message Connection {
   string node = 1;              // 目标节点名
   ConnectionType type = 2;      // 连接类型
-  int32 index = 3;             // 端口索引
+  int32 index = 3;             // 端口索引（向后兼容）
+  string source_port = 4;       // 基于NodeSpec验证
+  string target_port = 5;       // 基于NodeSpec验证
+  DataMapping data_mapping = 6; // 数据映射规则
 }
 
 // 连接类型枚举
@@ -231,4 +292,4 @@ message NodeTemplate {
   map<string, string> default_parameters = 9;
   repeated string required_parameters = 10;
   string parameter_schema = 11; // JSON schema as a string
-} 
+}

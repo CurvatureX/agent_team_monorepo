@@ -96,15 +96,9 @@ class APILayerSettings(BaseSettings):
 class ServiceSettings(BaseSettings):
     """外部服务配置"""
 
-    # gRPC Services (Legacy - Deprecated)
-    WORKFLOW_SERVICE_HOST: str = Field(default="localhost", description="工作流服务主机 (已弃用)")
-    WORKFLOW_SERVICE_PORT: int = Field(default=50051, description="工作流服务端口 (已弃用)")
+    # HTTP Services Configuration
     WORKFLOW_AGENT_HOST: str = Field(default="localhost", description="工作流代理主机")
-    WORKFLOW_AGENT_PORT: int = Field(default=50051, description="工作流代理端口 (已弃用)")
     WORKFLOW_ENGINE_HOST: str = Field(default="localhost", description="工作流引擎主机")
-    WORKFLOW_ENGINE_PORT: int = Field(default=50050, description="工作流引擎端口 (已弃用)")
-
-    # HTTP Services (FastAPI Migration)
     WORKFLOW_AGENT_URL: Optional[str] = Field(
         default=None, description="工作流代理HTTP URL (优先于HOST:PORT)"
     )
@@ -113,7 +107,7 @@ class ServiceSettings(BaseSettings):
     )
     WORKFLOW_AGENT_HTTP_PORT: int = Field(default=8001, description="工作流代理HTTP端口")
     WORKFLOW_ENGINE_HTTP_PORT: int = Field(default=8002, description="工作流引擎HTTP端口")
-    USE_HTTP_CLIENT: bool = Field(default=True, description="使用HTTP客户端替代gRPC")
+    # HTTP client is the only option now - gRPC removed
 
     @property
     def workflow_agent_http_url(self) -> str:
@@ -259,25 +253,11 @@ class Settings(
             "service_key": self.SUPABASE_SECRET_KEY,
         }
 
-    def get_grpc_config(self) -> Dict[str, Dict[str, Union[str, int]]]:
-        """获取gRPC配置"""
-        return {
-            "workflow_service": {
-                "host": self.WORKFLOW_SERVICE_HOST,
-                "port": self.WORKFLOW_SERVICE_PORT,
-            },
-            "workflow_agent": {
-                "host": self.WORKFLOW_AGENT_HOST,
-                "port": self.WORKFLOW_AGENT_PORT,
-            },
-        }
-
-    def get_http_config(self) -> Dict[str, Union[str, int, bool]]:
+    def get_http_config(self) -> Dict[str, Union[str, int]]:
         """获取HTTP服务配置"""
         return {
             "workflow_agent_url": self.workflow_agent_http_url,
             "workflow_engine_url": self.workflow_engine_http_url,
-            "use_http_client": self.USE_HTTP_CLIENT,
         }
 
     def get_redis_config(self) -> Dict[str, Union[str, int, Dict[str, int]]]:

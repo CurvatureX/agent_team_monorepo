@@ -8,8 +8,7 @@ from typing import Any, Dict, Optional
 from app.core.config import get_settings
 from app.dependencies import AuthenticatedDeps
 from app.exceptions import NotFoundError, ValidationError
-from app.models.base import ResponseModel
-from app.models.execution import ExecutionCancelResponse, ExecutionStatusResponse
+from app.models import ExecutionCancelResponse, ExecutionStatusResponse, ResponseModel
 from app.services.workflow_engine_http_client import get_workflow_engine_client
 from app.utils.logger import get_logger
 from fastapi import APIRouter, Depends, HTTPException
@@ -29,8 +28,6 @@ async def get_execution_status(execution_id: str, deps: AuthenticatedDeps = Depe
 
         # Get HTTP client
         settings = get_settings()
-        if not settings.USE_HTTP_CLIENT:
-            raise HTTPException(status_code=503, detail="HTTP client is disabled")
 
         http_client = await get_workflow_engine_client()
 
@@ -61,8 +58,6 @@ async def cancel_execution(execution_id: str, deps: AuthenticatedDeps = Depends(
 
         # Get HTTP client
         settings = get_settings()
-        if not settings.USE_HTTP_CLIENT:
-            raise HTTPException(status_code=503, detail="HTTP client is disabled")
 
         http_client = await get_workflow_engine_client()
 
@@ -102,8 +97,6 @@ async def get_workflow_execution_history(
 
         # Get HTTP client
         settings = get_settings()
-        if not settings.USE_HTTP_CLIENT:
-            raise HTTPException(status_code=503, detail="HTTP client is disabled")
 
         http_client = await get_workflow_engine_client()
 
