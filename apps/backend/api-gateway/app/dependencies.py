@@ -79,22 +79,42 @@ def get_redis_client() -> Optional[Any]:
 
 
 async def get_authorization_header(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ) -> Optional[str]:
-    """获取Authorization头部的token"""
+    """
+    获取Authorization头部的token
+    优先从request.state获取中间件已提取的token
+    """
+    # 优先使用中间件存储的 token
+    if hasattr(request.state, "access_token") and request.state.access_token:
+        return request.state.access_token
+    
+    # 否则从头部提取
     if credentials and credentials.scheme.lower() == "bearer":
         return credentials.credentials
     return None
 
 
 async def get_current_user(
+    request: Request,
     token: Optional[str] = Depends(get_authorization_header),
     settings: Settings = Depends(get_app_settings),
 ) -> Optional[AuthUser]:
     """
     获取当前认证用户（可选认证）
-    返回None表示未认证或认证失败
+    优先使用中间件已验证的用户信息，避免重复验证
     """
+    # 1. 首先检查中间件是否已经验证并存储了用户信息
+    if hasattr(request.state, "user") and request.state.user:
+        try:
+            # 使用中间件已验证的用户数据
+            logger.debug("Using cached user from middleware, skipping JWT verification")
+            return AuthUser(**request.state.user)
+        except Exception as e:
+            logger.warning(f"Failed to create AuthUser from request.state: {e}")
+    
+    # 2. 如果中间件未验证（例如可选认证的端点），则手动验证
     if not token:
         return None
 
@@ -138,15 +158,23 @@ async def get_optional_user(
 
 
 async def get_user_supabase_client(
+    request: Request,
     token: Optional[str] = Depends(get_authorization_header),
     db_manager: DatabaseManager = Depends(get_db_manager),
 ) -> Optional[Client]:
     """获取用户特定的Supabase客户端（带RLS支持）"""
-    if not token:
+    # 优先使用中间件存储的 token
+    access_token = None
+    if hasattr(request.state, "access_token") and request.state.access_token:
+        access_token = request.state.access_token
+    else:
+        access_token = token
+    
+    if not access_token:
         return None
 
     try:
-        return db_manager.create_user_client(token)
+        return db_manager.create_user_client(access_token)
     except Exception as e:
         logger.warning(f"Failed to create user Supabase client: {e}")
         return None
@@ -390,6 +418,7 @@ class AuthenticatedDeps:
 
     def __init__(
         self,
+        request: Request,
         settings: Settings = Depends(get_app_settings),
         db_manager: DatabaseManager = Depends(get_db_manager),
         current_user: AuthUser = Depends(get_required_user),
@@ -397,6 +426,7 @@ class AuthenticatedDeps:
         access_token: Optional[str] = Depends(get_authorization_header),
         request_context: Dict[str, Any] = Depends(get_request_context),
     ):
+        self.request = request
         self.settings = settings
         self.db_manager = db_manager
         self.current_user = current_user
