@@ -221,8 +221,8 @@ class TestMCPPerformance:
 
         # All operations should succeed
         for result in results:
-            assert result.success is True
-            assert result.execution_time_ms is not None
+            assert result.isError is False
+            assert result._execution_time_ms is not None
 
     def test_memory_usage_with_large_specs(self):
         """Test memory efficiency with large spec serialization using real specs"""
@@ -279,7 +279,7 @@ class TestMCPPerformance:
             execution_times.append(end_time - start_time)
 
             # Should always succeed
-            assert result.success is True
+            assert result.isError is False
 
         # Performance should be consistent (no significant degradation)
         avg_time = sum(execution_times) / len(execution_times)
@@ -363,7 +363,7 @@ class TestMCPPerformance:
             end_time = time.time()
 
             actual_time = (end_time - start_time) * 1000  # Convert to milliseconds
-            reported_time = result.execution_time_ms
+            reported_time = result._execution_time_ms
 
             # Reported time should be reasonably close to actual time
             # Allow for some measurement overhead
