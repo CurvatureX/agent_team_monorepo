@@ -125,7 +125,8 @@ This FastAPI application implements a **three-layer API architecture** with dist
 2. Frontend sends API requests with JWT Bearer tokens
 3. Backend verifies tokens and processes requests
 4. Sessions are created and stored in Supabase with user association
-5. Chat messages trigger gRPC calls to workflow service
+5. Chat messages trigger HTTP calls to workflow agent service
+6. Workflow execution requests forwarded to workflow engine service
 7. All data is persisted in Supabase PostgreSQL with RLS protection
 
 ## Configuration
@@ -138,9 +139,9 @@ SUPABASE_URL=https://your-project-id.supabase.co
 SUPABASE_SECRET_KEY=your-service-role-key
 SUPABASE_ANON_KEY=your-anon-key  # Required for RLS operations
 
-# Workflow Service Configuration
-WORKFLOW_SERVICE_HOST=localhost
-WORKFLOW_SERVICE_PORT=50051
+# Backend Services Configuration
+WORKFLOW_AGENT_URL=http://localhost:8001
+WORKFLOW_ENGINE_URL=http://localhost:8002
 
 # Logging Configuration
 DEBUG=true
@@ -300,8 +301,12 @@ export LOG_FORMAT=simple  # For minimal output
 
 This API Gateway is part of a larger monorepo structure:
 - **Location**: `apps/backend/api-gateway/`
-- **Related Services**: `apps/backend/workflow_agent/` (gRPC service with LangGraph)
-- **Shared Components**: `apps/backend/shared/proto/` (gRPC definitions), `apps/backend/shared/prompts/` (Jinja2 templates)
+- **Related Services**: 
+  - `apps/backend/workflow_agent/` (FastAPI service with LangGraph for AI workflow generation)
+  - `apps/backend/workflow_engine/` (FastAPI service for workflow execution)
+- **Shared Components**: 
+  - `apps/backend/shared/models/` (Shared Pydantic models)
+  - `apps/backend/shared/prompts/` (Jinja2 templates for AI prompts)
 - **Frontend Demo**: `apps/demo_apps/workflow_generation/` (React/Vite demo)
 - **Documentation**: `docs/tech-design/` (Architecture and API documentation)
 

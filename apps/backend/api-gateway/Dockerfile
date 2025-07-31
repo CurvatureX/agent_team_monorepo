@@ -10,8 +10,8 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
-RUN pip install uv
+# Install uv with retry and increased timeout
+RUN pip install --default-timeout=120 --retries 5 uv
 
 # Copy workspace files from parent directory (context should be apps/backend)
 COPY pyproject.toml ./
