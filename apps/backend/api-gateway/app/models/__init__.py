@@ -28,6 +28,7 @@ try:
         ErrorContent,
         ErrorModel,
         HealthCheckModel,
+        MCPContentItem,
         MCPErrorResponse,
         MCPHealthCheck,
         MCPInvokeRequest,
@@ -80,6 +81,7 @@ except ImportError:
         ErrorContent,
         ErrorModel,
         HealthCheckModel,
+        MCPContentItem,
         MCPErrorResponse,
         MCPHealthCheck,
         MCPInvokeRequest,
@@ -104,7 +106,6 @@ except ImportError:
 
 # 向后兼容别名
 HealthResponse = HealthCheckModel
-SessionCreateRequest = SessionCreate
 ErrorResponse = ErrorModel
 
 __all__ = [
@@ -114,7 +115,6 @@ __all__ = [
     "ErrorModel",
     "HealthCheckModel",
     "HealthResponse",  # 向后兼容
-    "SessionCreateRequest",  # 向后兼容
     "SessionResponse",  # 向后兼容
     "ErrorResponse",  # 向后兼容
     # Authentication models
@@ -145,6 +145,7 @@ __all__ = [
     "MCPToolsResponse",
     "MCPInvokeRequest",
     "MCPInvokeResponse",
+    "MCPContentItem",
     "MCPErrorResponse",
     "MCPHealthCheck",
     # Chat models

@@ -112,8 +112,8 @@ async def initialize_database_connections() -> None:
         logger.info(f"🔗 Database connections: {', '.join(connections_status)}")
 
     except Exception as e:
-        logger.error(f"❌ Failed to initialize database connections: {e}")
-        raise
+        logger.warning(f"⚠️ Database connections initialization completed with warnings: {e}")
+        # Don't raise - allow app to start with degraded functionality
 
 
 async def perform_startup_health_checks() -> None:

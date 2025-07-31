@@ -226,20 +226,20 @@ class TestMCPErrorHandling:
 
         # get_node_types should return empty result
         result = await service.invoke_tool("get_node_types", {})
-        assert result.success is True  # Service doesn't fail, just returns empty
-        assert result.result == {}
+        assert result.isError is False  # Service doesn't fail, just returns empty
+        assert result.structuredContent == {}
 
         # get_node_details should return empty result
         result = await service.invoke_tool(
             "get_node_details", {"nodes": [{"node_type": "TEST", "subtype": "TEST"}]}
         )
-        assert result.success is True
-        assert result.result == []
+        assert result.isError is False
+        assert result.structuredContent == {"nodes": []}
 
         # search_nodes should return empty result
         result = await service.invoke_tool("search_nodes", {"query": "test"})
-        assert result.success is True
-        assert result.result == []
+        assert result.isError is False
+        assert result.structuredContent == {"results": []}
 
     @pytest.mark.asyncio
     async def test_mcp_service_timeout_handling(self):
@@ -255,7 +255,7 @@ class TestMCPErrorHandling:
 
             # This should complete successfully (no actual timeout implemented)
             result = await mcp_service.invoke_tool("get_node_types", {})
-            assert result.success is True
+            assert result.isError is False
 
     def test_mcp_service_health_check_edge_cases(self):
         """Test MCP service health check edge cases"""
@@ -449,8 +449,8 @@ class TestMCPErrorHandling:
             results = await asyncio.gather(*tasks)
 
             # Some should succeed, some should fail due to exceptions
-            success_count = sum(1 for r in results if r.success)
-            failure_count = sum(1 for r in results if not r.success)
+            success_count = sum(1 for r in results if not r.isError)
+            failure_count = sum(1 for r in results if r.isError)
 
             assert success_count + failure_count == 4
             assert success_count > 0  # At least some should succeed
