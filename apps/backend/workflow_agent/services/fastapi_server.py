@@ -10,11 +10,11 @@ from typing import Optional, AsyncGenerator
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
-import structlog
 
 # Import workflow agent components
 from agents.workflow_agent import WorkflowAgent
 from core.config import settings
+from core.logging_config import get_logger
 from services.state_manager import get_workflow_agent_state_manager
 from agents.state import WorkflowState, WorkflowStage
 
@@ -31,7 +31,7 @@ from shared.models.conversation import (
     ErrorContent, ResponseType, StatusChangeContent
 )
 
-logger = structlog.get_logger()
+logger = get_logger(__name__)
 
 
 class WorkflowAgentServicer:
@@ -104,10 +104,24 @@ class WorkflowAgentServicer:
                 workflow_state = self._convert_to_workflow_state(current_state)
                 previous_stage = workflow_state.get("stage")
                 
+                # 使用标志变量控制外层循环
+                should_continue = True
+                
                 # 使用 LangGraph 流式处理
+                logger.info(f"Starting LangGraph streaming for session {session_id}")
                 async for step_state in self.workflow_agent.graph.astream(workflow_state):
+                    # 检查是否应该继续
+                    if not should_continue:
+                        logger.info(f"Breaking out of LangGraph stream for session {session_id}")
+                        break
+                    
                     for node_name, updated_state in step_state.items():
-                        logger.info(f"LangGraph step completed: {node_name}")
+                        logger.info(
+                            f"LangGraph node execution completed",
+                            session_id=session_id,
+                            node_name=node_name,
+                            current_stage=updated_state.get("stage")
+                        )
                         
                         # 发送状态变化信息
                         if node_name != 'router':
@@ -133,10 +147,23 @@ class WorkflowAgentServicer:
                         previous_stage = current_stage
                         current_state = self._convert_from_workflow_state(updated_state)
                         
-                        # 如果到达完成状态，退出循环
-                        if updated_state.get("stage") in [WorkflowStage.COMPLETED, WorkflowStage.NEGOTIATION]:
-                            logger.warning(f"Workflow completed!!!!!!: {updated_state}")
+                        # 检查是否应该终止 workflow
+                        if self._should_terminate_workflow(updated_state):
+                            logger.info(
+                                f"Workflow termination triggered",
+                                session_id=session_id,
+                                node_name=node_name,
+                                stage=current_stage
+                            )
+                            should_continue = False
                             break
+                
+                logger.info(
+                    f"LangGraph streaming completed",
+                    session_id=session_id,
+                    final_stage=current_state.get("stage"),
+                    was_terminated=not should_continue
+                )
 
                 # 保存更新后的状态到数据库
                 success = self.state_manager.save_full_state(
@@ -149,8 +176,44 @@ class WorkflowAgentServicer:
                 else:
                     logger.error(f"Failed to save workflow_agent_state for session {session_id}")
 
+            except GeneratorExit:
+                # 客户端断开连接时的正常处理
+                logger.info(
+                    f"Client disconnected during workflow processing",
+                    session_id=session_id,
+                    current_stage=current_state.get("stage")
+                )
+                # 保存当前状态
+                try:
+                    self.state_manager.save_full_state(
+                        session_id=session_id,
+                        workflow_state=current_state,
+                        access_token=request.access_token
+                    )
+                except Exception as save_error:
+                    logger.error(f"Failed to save state on disconnect: {save_error}")
+                raise  # 重新抛出 GeneratorExit
+                
             except Exception as processing_error:
-                logger.error(f"Error in workflow processing: {processing_error}")
+                logger.error(
+                    f"Error in workflow processing",
+                    session_id=session_id,
+                    error=str(processing_error),
+                    error_type=type(processing_error).__name__
+                )
+                
+                # 尝试保存错误状态
+                try:
+                    current_state["error"] = str(processing_error)
+                    current_state["error_stage"] = current_state.get("stage", "unknown")
+                    self.state_manager.save_full_state(
+                        session_id=session_id,
+                        workflow_state=current_state,
+                        access_token=request.access_token
+                    )
+                except Exception as save_error:
+                    logger.error(f"Failed to save error state: {save_error}")
+                
                 error_response = ConversationResponse(
                     session_id=session_id,
                     response_type=ResponseType.ERROR,
@@ -163,6 +226,14 @@ class WorkflowAgentServicer:
                     is_final=True
                 )
                 yield f"data: {error_response.model_dump_json()}\n\n"
+            
+            finally:
+                # 清理逻辑
+                logger.info(
+                    f"Workflow processing cleanup",
+                    session_id=session_id,
+                    final_stage=current_state.get("stage")
+                )
 
         except Exception as e:
             import traceback
@@ -241,18 +312,8 @@ class WorkflowAgentServicer:
         """创建状态变化响应"""
         current_stage = current_state.get("stage", WorkflowStage.CLARIFICATION)
         
-        # 准备 stage_state 内容（不包含敏感信息）
-        stage_state = {
-            "session_id": current_state.get("session_id", session_id),
-            "stage": current_stage.value if isinstance(current_stage, WorkflowStage) else str(current_stage),
-            "intent_summary": current_state.get("intent_summary", ""),
-            "gaps": current_state.get("gaps", []),
-            "alternatives": current_state.get("alternatives", []),
-            "debug_result": current_state.get("debug_result", ""),
-            "debug_loop_count": current_state.get("debug_loop_count", 0),
-            "conversations_count": len(current_state.get("conversations", [])),
-            "has_workflow": bool(current_state.get("current_workflow", {}))
-        }
+        # 返回完整的 current_state
+        stage_state = dict(current_state)
         
         return ConversationResponse(
             session_id=session_id,
@@ -296,7 +357,43 @@ class WorkflowAgentServicer:
             )
         
         return None
+    
+    def _should_terminate_workflow(self, state: WorkflowState) -> bool:
+        """
+        判断是否应该终止 workflow 执行
         
+        Args:
+            state: 当前的 workflow 状态
+            
+        Returns:
+            bool: True 表示应该终止，False 表示继续
+        """
+        current_stage = state.get("stage")
+        
+        # 定义应该终止的状态
+        terminal_stages = [
+            WorkflowStage.COMPLETED,
+            WorkflowStage.NEGOTIATION  # 根据业务需求，negotiation 阶段也可能需要终止
+        ]
+        
+        if current_stage in terminal_stages:
+            logger.info(
+                f"Workflow reached terminal stage: {current_stage}",
+                session_id=state.get("session_id", "unknown"),
+                stage=current_stage.value if hasattr(current_stage, 'value') else str(current_stage)
+            )
+            return True
+            
+        # 可以添加其他终止条件，比如错误次数过多
+        debug_loop_count = state.get("debug_loop_count", 0)
+        if debug_loop_count > 5:  # 防止无限循环
+            logger.warning(
+                f"Debug loop count exceeded limit: {debug_loop_count}",
+                session_id=state.get("session_id", "unknown")
+            )
+            return True
+            
+        return False
 
 
 # 创建 FastAPI 应用

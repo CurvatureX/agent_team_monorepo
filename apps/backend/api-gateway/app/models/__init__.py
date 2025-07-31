@@ -13,6 +13,13 @@ from .chat import (
     ChatRequest,
     ChatMessage,
     ChatSSEEvent,
+    SSEEventType,
+    MessageEventData,
+    StatusChangeEventData,
+    WorkflowEventData,
+    ErrorEventData,
+    DebugEventData,
+    ChatStreamResponse,
     ChatHistory,
 )
 
@@ -54,5 +61,12 @@ __all__ = [
     "ChatRequest",
     "ChatMessage",
     "ChatSSEEvent",
+    "SSEEventType",
+    "MessageEventData",
+    "StatusChangeEventData",
+    "WorkflowEventData",
+    "ErrorEventData",
+    "DebugEventData",
+    "ChatStreamResponse",
     "ChatHistory",
 ]

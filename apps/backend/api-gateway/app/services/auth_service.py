@@ -38,13 +38,29 @@ async def verify_supabase_token(token: str, use_cache: bool = True) -> Optional[
                 return cached_user_data
 
         # Token not in cache or cache disabled, verify with Supabase
-        supabase = get_supabase()
-        if not supabase:
-            logger.error("Supabase client not initialized")
+        # Create a new Supabase client to avoid DNS caching issues
+        from supabase import create_client
+        from app.core.config import settings
+        
+        if not settings.SUPABASE_URL or not settings.SUPABASE_SECRET_KEY:
+            logger.error("Supabase configuration missing")
             return None
-
-        # Get user data from JWT token
-        response = supabase.auth.get_user(token)
+            
+        # Create client with retry for DNS issues
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_SECRET_KEY)
+                response = supabase.auth.get_user(token)
+                break
+            except Exception as e:
+                if "name resolution" in str(e) and attempt < max_retries - 1:
+                    logger.warning(f"DNS resolution failed, retrying... (attempt {attempt + 1}/{max_retries})")
+                    import time
+                    time.sleep(1)  # Wait 1 second before retry
+                    continue
+                else:
+                    raise
 
         if response and response.user and response.user.id:
             user_data = {
