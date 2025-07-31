@@ -10,7 +10,7 @@ from typing import Dict, Any
 from app.core.database import create_user_supabase_client
 from app.dependencies import AuthenticatedDeps, get_session_id
 from app.exceptions import NotFoundError, ValidationError
-from shared.models.chat import (
+from app.models import (
     ChatHistory, ChatMessage, ChatRequest, MessageType,
     ChatSSEEvent, SSEEventType, ChatStreamResponse,
     MessageEventData, StatusChangeEventData, WorkflowEventData,

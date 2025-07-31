@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from app.main import create_application
-from shared.models import MCPHealthCheck, MCPInvokeResponse, MCPTool, MCPToolsResponse
+from app.models import MCPHealthCheck, MCPInvokeResponse, MCPTool, MCPToolsResponse
 from fastapi.testclient import TestClient
 
 
