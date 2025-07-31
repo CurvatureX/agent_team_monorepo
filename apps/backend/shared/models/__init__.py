@@ -112,6 +112,13 @@ __all__ = [
     "ChatRequest",
     "ChatMessage",
     "ChatSSEEvent",
+    "SSEEventType",
+    "MessageEventData",
+    "StatusChangeEventData",
+    "WorkflowEventData",
+    "ErrorEventData",
+    "DebugEventData",
+    "ChatStreamResponse",
     "ChatHistory",
     # MCP models
     "MCPTool",

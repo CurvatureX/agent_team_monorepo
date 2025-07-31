@@ -6,10 +6,10 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
-import structlog
 from jinja2 import Environment, FileSystemLoader
+from .logging_config import get_logger
 
-logger = structlog.get_logger()
+logger = get_logger(__name__)
 
 
 def tojsonpretty(value):

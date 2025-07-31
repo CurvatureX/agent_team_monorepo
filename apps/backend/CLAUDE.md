@@ -4,15 +4,21 @@ This file provides guidance to Claude Code and other AI assistants when working 
 
 ## Architecture Overview
 
-This backend consists of two main services that work together to provide AI-powered workflow automation:
+This backend consists of three main services that work together to provide AI-powered workflow automation:
 
 ### Services Structure
 ```
 apps/backend/
-├── workflow_agent/     # AI workflow consultant (gRPC service)
-├── workflow_engine/    # Workflow execution engine (FastAPI + gRPC)
-└── shared/            # Shared protobuf definitions and utilities
+├── api-gateway/       # Client-facing API (FastAPI)
+├── workflow_agent/    # AI workflow consultant (FastAPI, formerly gRPC)
+├── workflow_engine/   # Workflow execution engine (FastAPI)
+└── shared/           # Shared models and utilities
 ```
+
+### Service Communication
+- **API Gateway** → **Workflow Agent**: HTTP/REST for workflow generation
+- **API Gateway** → **Workflow Engine**: HTTP/REST for workflow execution
+- All services now use FastAPI (migrated from gRPC)
 
 ## Critical Import Patterns & Best Practices
 
@@ -88,26 +94,38 @@ CMD ["python", "main.py"]  # Causes import errors
 
 ## Service-Specific Configurations
 
-### Workflow Agent (gRPC Service)
-- **Port**: 50051 (gRPC)
-- **Protocol**: gRPC with TCP health checks
-- **Dependencies**: OpenAI, Anthropic APIs, Supabase (for RAG), Redis
-- **Health Check**: `nc -z localhost 50051 || exit 1` (TCP connection test)
-- **Start Period**: 240s (updated after deployment timeout issues)
+### API Gateway (FastAPI Service)
+- **Port**: 8000
+- **Protocol**: HTTP/REST with OpenAPI docs
+- **Dependencies**: FastAPI, Supabase Auth, Redis
+- **Health Check**: `curl -f http://localhost:8000/health || exit 1`
+- **Key Features**: Authentication, rate limiting, request routing
 
-### Workflow Engine (gRPC Service)
-- **Port**: 8000 (gRPC)
-- **Protocol**: gRPC server with TCP health checks
-- **Dependencies**: croniter, Redis, PostgreSQL, gRPC tools
-- **Health Check**: `nc -z localhost 8000 || exit 1` (TCP connection test)
-- **Start Period**: 180s (updated after deployment timeout issues)
+### Workflow Agent (FastAPI Service)
+- **Port**: 8001 (migrated from gRPC port 50051)
+- **Protocol**: HTTP/REST with streaming support
+- **Dependencies**: LangGraph, OpenAI, Anthropic APIs, Supabase (for RAG)
+- **Health Check**: `curl -f http://localhost:8001/health || exit 1`
+- **Start Period**: 120s
+
+### Workflow Engine (FastAPI Service)
+- **Port**: 8002
+- **Protocol**: HTTP/REST API
+- **Dependencies**: croniter, Redis, PostgreSQL, SQLAlchemy
+- **Health Check**: `curl -f http://localhost:8002/health || exit 1`
+- **Start Period**: 90s
 
 ## Development Commands
 
 ### Core Development
-- **Install dependencies**: `pip install -r requirements.txt`
-- **Run workflow-agent**: `python -m workflow_agent.main`
-- **Run workflow-engine**: `python -m workflow_engine.server`
+- **Install dependencies**: 
+  - API Gateway: `cd api-gateway && pip install -e .`
+  - Workflow Agent: `cd workflow_agent && uv pip install --system -e .`
+  - Workflow Engine: `cd workflow_engine && pip install -r requirements.txt`
+- **Run services**:
+  - API Gateway: `cd api-gateway && python main.py`
+  - Workflow Agent: `cd workflow_agent && python main.py`
+  - Workflow Engine: `cd workflow_engine && python main.py`
 - **Run tests**: `pytest tests/`
 
 ### Docker Development
@@ -168,11 +186,31 @@ Run tests using: `python run_tests.py --all` or `python run_tests.py --quick`
 
 ### Required Environment Variables
 
+**API Gateway:**
+```bash
+# Core service
+APP_NAME="Workflow API Gateway"
+PORT="8000"
+DEBUG="false"
+
+# Supabase Auth
+SUPABASE_URL="https://your-project.supabase.co"
+SUPABASE_ANON_KEY="eyJ..."
+SUPABASE_SERVICE_KEY="eyJ..."
+
+# Backend services
+WORKFLOW_AGENT_URL="http://localhost:8001"
+WORKFLOW_ENGINE_URL="http://localhost:8002"
+
+# Redis cache
+REDIS_URL="redis://localhost:6379"
+```
+
 **Workflow Agent:**
 ```bash
 # Core service
-GRPC_HOST="[::]"
-GRPC_PORT="50051"
+FASTAPI_PORT="8001"
+HOST="0.0.0.0"
 DEBUG="false"
 
 # AI APIs
@@ -183,22 +221,21 @@ ANTHROPIC_API_KEY="sk-ant-..."
 SUPABASE_URL="https://your-project.supabase.co"
 SUPABASE_SECRET_KEY="sb_secret_..."
 
-# State management
-REDIS_URL="redis://localhost:6379/0"
+# RAG Configuration
+EMBEDDING_MODEL="text-embedding-ada-002"
+RAG_SIMILARITY_THRESHOLD="0.3"
 ```
 
 **Workflow Engine:**
 ```bash
 # Core service
-PORT="8000"
+PORT="8002"
 DEBUG="false"
 
-# AI APIs (for workflow execution)
-OPENAI_API_KEY="sk-..."
-ANTHROPIC_API_KEY="sk-ant-..."
-
-# Data persistence
+# Database
 DATABASE_URL="postgresql://user:pass@localhost/workflow_engine"
+
+# Redis
 REDIS_URL="redis://localhost:6379/0"
 ```
 
@@ -290,16 +327,16 @@ Before deploying to AWS ECS:
 ### Health Check Protocol Matrix
 | Service Type | Port | Protocol | Health Check Command |
 |-------------|------|----------|---------------------|
-| workflow-agent | 50051 | gRPC | `nc -z localhost 50051` (startPeriod: 240s) |
-| workflow-engine | 8000 | gRPC | `nc -z localhost 8000` (startPeriod: 180s) |
-| api-gateway | 8000 | HTTP | `curl -f http://localhost:8000/health` (startPeriod: 120s) |
+| api-gateway | 8000 | HTTP | `curl -f http://localhost:8000/health` (startPeriod: 60s) |
+| workflow-agent | 8001 | HTTP | `curl -f http://localhost:8001/health` (startPeriod: 120s) |
+| workflow-engine | 8002 | HTTP | `curl -f http://localhost:8002/health` (startPeriod: 90s) |
 
 ### Critical Health Check Rules
-- ❌ **NEVER**: `curl` on gRPC ports → Always fails
-- ✅ **ALWAYS**: Use `nc -z` for gRPC services
-- ✅ **ALWAYS**: Set startPeriod ≥ 180s for gRPC services (updated after timeout incidents)
+- ✅ **ALWAYS**: Use `curl` for HTTP/FastAPI services
+- ✅ **ALWAYS**: Set appropriate startPeriod based on service complexity
 - ✅ **ALWAYS**: Test health check command locally before deployment
 - ✅ **ALWAYS**: Use conservative timing - services need adequate startup time
+- ✅ **ALWAYS**: Include health endpoint in all FastAPI services
 
 ## RAG System Integration
 
