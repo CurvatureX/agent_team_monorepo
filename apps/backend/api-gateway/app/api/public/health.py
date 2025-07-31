@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from app.core.config import Settings, get_settings
 from app.core.events import health_check
 from app.dependencies import CommonDeps
-from shared.models import HealthCheckModel
+from app.models import HealthCheckModel
 from app.utils.logger import get_logger
 from fastapi import APIRouter, Depends, Request
 

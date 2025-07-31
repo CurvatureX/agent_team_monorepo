@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from app.dependencies import MCPDeps, get_tool_name, require_scope
 from app.exceptions import ServiceUnavailableError, ValidationError
-from shared.models import (
+from app.models import (
     MCPErrorResponse,
     MCPHealthCheck,
     MCPInvokeRequest,

@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional
 from app.core.config import get_settings
 from app.dependencies import AuthenticatedDeps
 from app.exceptions import NotFoundError, ValidationError
-from shared.models import ResponseModel
+from app.models import ResponseModel
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional
 

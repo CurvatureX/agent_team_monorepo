@@ -25,7 +25,7 @@ from app.core.database import (
     get_supabase,
     get_supabase_admin,
 )
-from shared.models import AuthClient, AuthUser
+from app.models import AuthClient, AuthUser
 from app.services.auth_service import verify_supabase_token
 from app.utils.logger import get_logger
 
