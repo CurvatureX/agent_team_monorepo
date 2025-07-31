@@ -109,27 +109,27 @@ class TestNodeKnowledgeMCPService:
         for tool in result.tools:
             assert hasattr(tool, "name")
             assert hasattr(tool, "description")
-            assert hasattr(tool, "parameters")
+            assert hasattr(tool, "inputSchema")
             assert hasattr(tool, "category")
             assert hasattr(tool, "tags")
 
             # Check parameters structure
-            assert "type" in tool.parameters
-            assert "properties" in tool.parameters
-            assert tool.parameters["type"] == "object"
+            assert "type" in tool.inputSchema
+            assert "properties" in tool.inputSchema
+            assert tool.inputSchema["type"] == "object"
 
     @pytest.mark.asyncio
     async def test_invoke_get_node_types(self, mcp_service):
         """Test invoking get_node_types tool"""
         result = await mcp_service.invoke_tool("get_node_types", {})
 
-        assert result.success is True
-        assert result.tool_name == "get_node_types"
-        assert result.result is not None
-        assert isinstance(result.result, dict)
-        assert "ACTION_NODE" in result.result
-        assert result.execution_time_ms is not None
-        assert result.execution_time_ms > 0
+        assert result.isError is False
+        assert result._tool_name == "get_node_types"
+        assert result.structuredContent is not None
+        assert isinstance(result.structuredContent, dict)
+        assert "ACTION_NODE" in result.structuredContent
+        assert result._execution_time_ms is not None
+        assert result._execution_time_ms > 0
 
     @pytest.mark.asyncio
     async def test_invoke_get_node_types_with_filter(self, mcp_service):
@@ -141,8 +141,8 @@ class TestNodeKnowledgeMCPService:
 
         result = await mcp_service.invoke_tool("get_node_types", {"type_filter": "ACTION_NODE"})
 
-        assert result.success is True
-        assert result.result is not None
+        assert result.isError is False
+        assert result.structuredContent is not None
         mcp_service.node_knowledge.get_node_types.assert_called_once_with("ACTION_NODE")
 
     @pytest.mark.asyncio
@@ -156,13 +156,14 @@ class TestNodeKnowledgeMCPService:
 
         result = await mcp_service.invoke_tool("get_node_details", params)
 
-        assert result.success is True
-        assert result.tool_name == "get_node_details"
-        assert result.result is not None
-        assert isinstance(result.result, list)
-        assert len(result.result) == 1
+        assert result.isError is False
+        assert result._tool_name == "get_node_details"
+        assert result.structuredContent is not None
+        assert isinstance(result.structuredContent, dict)
+        assert "nodes" in result.structuredContent
+        assert len(result.structuredContent["nodes"]) == 1
 
-        node_detail = result.result[0]
+        node_detail = result.structuredContent["nodes"][0]
         assert node_detail["node_type"] == "ACTION_NODE"
         assert node_detail["subtype"] == "HTTP_REQUEST"
 
@@ -178,7 +179,7 @@ class TestNodeKnowledgeMCPService:
 
         result = await mcp_service.invoke_tool("get_node_details", params)
 
-        assert result.success is True
+        assert result.isError is False
         # Should use default values for include_examples and include_schemas
         mcp_service.node_knowledge.get_node_details.assert_called_once_with(
             [{"node_type": "ACTION_NODE", "subtype": "HTTP_REQUEST"}], True, True
@@ -191,13 +192,14 @@ class TestNodeKnowledgeMCPService:
 
         result = await mcp_service.invoke_tool("search_nodes", params)
 
-        assert result.success is True
-        assert result.tool_name == "search_nodes"
-        assert result.result is not None
-        assert isinstance(result.result, list)
-        assert len(result.result) == 1
+        assert result.isError is False
+        assert result._tool_name == "search_nodes"
+        assert result.structuredContent is not None
+        assert isinstance(result.structuredContent, dict)
+        assert "results" in result.structuredContent
+        assert len(result.structuredContent["results"]) == 1
 
-        search_result = result.result[0]
+        search_result = result.structuredContent["results"][0]
         assert search_result["node_type"] == "ACTION_NODE"
         assert search_result["subtype"] == "HTTP_REQUEST"
         assert "relevance_score" in search_result
@@ -212,7 +214,7 @@ class TestNodeKnowledgeMCPService:
 
         result = await mcp_service.invoke_tool("search_nodes", params)
 
-        assert result.success is True
+        assert result.isError is False
         # Should use default values
         mcp_service.node_knowledge.search_nodes.assert_called_once_with("HTTP", 10, False)
 
@@ -221,11 +223,11 @@ class TestNodeKnowledgeMCPService:
         """Test invoking non-existent tool"""
         result = await mcp_service.invoke_tool("invalid_tool", {})
 
-        assert result.success is False
-        assert result.tool_name == "invalid_tool"
-        assert result.error == "Tool 'invalid_tool' not found"
-        assert result.error_type == "TOOL_NOT_FOUND"
-        assert result.execution_time_ms is not None
+        assert result.isError is True
+        assert result._tool_name == "invalid_tool"
+        assert len(result.content) > 0
+        assert "Tool 'invalid_tool' not found" in result.content[0].text
+        assert result._execution_time_ms is not None
 
     def test_get_tool_info_valid_tools(self, mcp_service):
         """Test getting info for valid tools"""
@@ -277,21 +279,21 @@ class TestNodeKnowledgeMCPService:
         """Test that tool execution includes timing information"""
         result = await mcp_service.invoke_tool("get_node_types", {})
 
-        assert result.execution_time_ms is not None
-        assert result.execution_time_ms > 0
-        assert isinstance(result.execution_time_ms, float)
+        assert result._execution_time_ms is not None
+        assert result._execution_time_ms > 0
+        assert isinstance(result._execution_time_ms, float)
 
     @pytest.mark.asyncio
     async def test_tool_with_empty_params(self, mcp_service):
         """Test tools with empty parameters"""
         # get_node_types with empty params
         result = await mcp_service.invoke_tool("get_node_types", {})
-        assert result.success is True
+        assert result.isError is False
 
         # search_nodes should fail with empty params (query required)
         mcp_service.node_knowledge.search_nodes.return_value = []
         result = await mcp_service.invoke_tool("search_nodes", {})
-        assert result.success is True  # Service doesn't validate required params
+        assert result.isError is False  # Service doesn't validate required params
         mcp_service.node_knowledge.search_nodes.assert_called_with("", 10, False)
 
     @pytest.mark.asyncio
@@ -311,8 +313,8 @@ class TestNodeKnowledgeMCPService:
 
         # All should succeed
         for result in results:
-            assert result.success is True
-            assert result.execution_time_ms is not None
+            assert result.isError is False
+            assert result._execution_time_ms is not None
 
     @pytest.mark.asyncio
     async def test_large_node_list_handling(self, mcp_service):
@@ -329,15 +331,16 @@ class TestNodeKnowledgeMCPService:
 
         result = await mcp_service.invoke_tool("get_node_details", {"nodes": large_node_list})
 
-        assert result.success is True
-        assert len(result.result) == 100
+        assert result.isError is False
+        assert "nodes" in result.structuredContent
+        assert len(result.structuredContent["nodes"]) == 100
 
     def test_tool_parameter_validation_structure(self, mcp_service):
         """Test that tool parameter schemas are properly structured"""
         tools_response = mcp_service.get_available_tools()
 
         for tool in tools_response.tools:
-            params = tool.parameters
+            params = tool.inputSchema
 
             # All tools should have proper JSON Schema structure
             assert params["type"] == "object"
@@ -368,8 +371,8 @@ class TestNodeKnowledgeMCPService:
         """Test that responses include proper timestamp and metadata"""
         result = await mcp_service.invoke_tool("get_node_types", {})
 
-        assert result.success is True
-        assert result.tool_name == "get_node_types"
-        assert result.execution_time_ms is not None
-        assert isinstance(result.execution_time_ms, float)
+        assert result.isError is False
+        assert result._tool_name == "get_node_types"
+        assert result._execution_time_ms is not None
+        assert isinstance(result._execution_time_ms, float)
         # Note: timestamp and request_id are set by the HTTP layer, not the service layer

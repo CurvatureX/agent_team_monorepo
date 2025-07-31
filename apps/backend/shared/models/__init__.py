@@ -117,6 +117,7 @@ __all__ = [
     "MCPTool",
     "MCPInvokeRequest",
     "MCPInvokeResponse",
+    "MCPContentItem",
     "MCPToolsResponse",
     "MCPHealthCheck",
     "MCPErrorResponse",

@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 from app.dependencies import MCPDeps, get_tool_name, require_scope
 from app.exceptions import ServiceUnavailableError, ValidationError
 from app.models import (
+    MCPContentItem,
     MCPErrorResponse,
     MCPHealthCheck,
     MCPInvokeRequest,
@@ -129,7 +130,7 @@ class NodeKnowledgeMCPService:
         )
 
     async def invoke_tool(self, tool_name: str, params: Dict[str, Any]) -> MCPInvokeResponse:
-        """Invoke specified node knowledge tool."""
+        """Invoke specified node knowledge tool - returns MCP-compliant response."""
         start_time = time.time()
 
         try:
@@ -152,31 +153,54 @@ class NodeKnowledgeMCPService:
                 result = self.node_knowledge.search_nodes(query, max_results, include_details)
 
             else:
-                return MCPInvokeResponse(
-                    success=False,
-                    tool_name=tool_name,
-                    error=f"Tool '{tool_name}' not found",
-                    error_type="TOOL_NOT_FOUND",
-                    execution_time_ms=round((time.time() - start_time) * 1000, 2),
+                # Return MCP-compliant error response
+                response = MCPInvokeResponse(
+                    content=[
+                        MCPContentItem(type="text", text=f"Error: Tool '{tool_name}' not found")
+                    ],
+                    isError=True,
                 )
+                response._tool_name = tool_name
+                response._execution_time_ms = round((time.time() - start_time) * 1000, 2)
+                return response
 
-            return MCPInvokeResponse(
-                success=True,
-                tool_name=tool_name,
-                result=result,
-                execution_time_ms=round((time.time() - start_time) * 1000, 2),
-                timestamp=datetime.now(timezone.utc),
+            # Convert result to MCP-compliant content format
+            if isinstance(result, (dict, list)):
+                # For structured data, provide both text and structured content
+                content = [
+                    MCPContentItem(type="text", text=f"Tool '{tool_name}' executed successfully")
+                ]
+                # Ensure structured_content is always a dictionary
+                if isinstance(result, dict):
+                    structured_content = result
+                else:  # result is a list
+                    # Wrap list in appropriate structure based on tool type
+                    if tool_name == "get_node_details":
+                        structured_content = {"nodes": result}
+                    elif tool_name == "search_nodes":
+                        structured_content = {"results": result}
+                    else:
+                        structured_content = {"data": result}
+            else:
+                # For simple results, convert to text
+                content = [MCPContentItem(type="text", text=str(result))]
+                structured_content = None
+
+            response = MCPInvokeResponse(
+                content=content, isError=False, structuredContent=structured_content
             )
+            response._tool_name = tool_name
+            response._execution_time_ms = round((time.time() - start_time) * 1000, 2)
+            return response
 
         except Exception as e:
-            return MCPInvokeResponse(
-                success=False,
-                tool_name=tool_name,
-                error=f"Tool execution failed: {str(e)}",
-                error_type="EXECUTION_ERROR",
-                execution_time_ms=round((time.time() - start_time) * 1000, 2),
-                timestamp=datetime.now(timezone.utc),
+            response = MCPInvokeResponse(
+                content=[MCPContentItem(type="text", text=f"Tool execution failed: {str(e)}")],
+                isError=True,
             )
+            response._tool_name = tool_name
+            response._execution_time_ms = round((time.time() - start_time) * 1000, 2)
+            return response
 
     def get_tool_info(self, tool_name: str) -> Dict[str, Any]:
         """Get detailed information about a specific tool."""
@@ -246,13 +270,13 @@ class NodeKnowledgeMCPService:
 mcp_service = NodeKnowledgeMCPService()
 
 
-@router.get("/tools", response_model=MCPToolsResponse)
+@router.get("/tools")
 async def list_tools(
     deps: MCPDeps = Depends(), tools_scope: None = Depends(require_scope("tools:read"))
 ):
     """
-    Get list of all available MCP tools
-    获取所有可用的MCP工具列表
+    Get list of all available MCP tools - follows MCP JSON-RPC 2.0 standard
+    获取所有可用的MCP工具列表 - 遵循MCP JSON-RPC 2.0标准
     """
     start_time = time.time()
     request_id = deps.request_context.get("request_id", "unknown")
@@ -263,79 +287,87 @@ async def list_tools(
         tools_response = mcp_service.get_available_tools()
         processing_time = time.time() - start_time
 
-        # Add request metadata
-        tools_response.processing_time_ms = round(processing_time * 1000, 2)
-        tools_response.request_id = request_id
-
         logger.info(f"✅ MCP tools retrieved: {tools_response.total_count} tools")
-        return tools_response
+
+        # Return JSON-RPC 2.0 format per MCP standard
+        return {"jsonrpc": "2.0", "id": request_id, "result": {"tools": tools_response.tools}}
 
     except Exception as e:
         processing_time = time.time() - start_time
         logger.error(f"❌ Error retrieving MCP tools: {e}")
 
+        # Return JSON-RPC 2.0 error format
         return JSONResponse(
             status_code=500,
-            content=MCPErrorResponse(
-                error=f"Failed to retrieve tools: {str(e)}",
-                error_type="INTERNAL_ERROR",
-                request_id=request_id,
-            ).dict(),
+            content={
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {
+                    "code": -32603,  # Internal error per JSON-RPC 2.0
+                    "message": f"Failed to retrieve tools: {str(e)}",
+                    "data": {
+                        "error_type": "INTERNAL_ERROR",
+                        "request_id": request_id,
+                    },
+                },
+            },
         )
 
 
-@router.post("/invoke", response_model=MCPInvokeResponse)
+@router.post("/invoke")
 async def invoke_tool(
     invoke_request: MCPInvokeRequest,
     deps: MCPDeps = Depends(),
     execute_scope: None = Depends(require_scope("tools:execute")),
 ):
     """
-    Invoke a specific MCP tool with parameters
-    调用指定的MCP工具
+    Invoke a specific MCP tool - follows MCP JSON-RPC 2.0 tools/call standard
+    调用指定的MCP工具 - 遵循MCP JSON-RPC 2.0 tools/call标准
     """
     start_time = time.time()
     request_id = deps.request_context.get("request_id", "unknown")
 
     try:
-        logger.info(
-            f"⚡ Invoking MCP tool '{invoke_request.tool_name}' for client {deps.mcp_client.client_name}"
-        )
+        tool_name = invoke_request.name
+        arguments = invoke_request.arguments
 
-        # Validate timeout
-        if invoke_request.timeout is not None and (
-            invoke_request.timeout < 1 or invoke_request.timeout > 300
-        ):
-            raise ValidationError("Timeout must be between 1 and 300 seconds")
+        logger.info(f"⚡ Invoking MCP tool '{tool_name}' for client {deps.mcp_client.client_name}")
 
-        result = await mcp_service.invoke_tool(
-            tool_name=invoke_request.tool_name, params=invoke_request.parameters
-        )
+        result = await mcp_service.invoke_tool(tool_name=tool_name, params=arguments)
 
-        # Add request metadata
-        result.request_id = request_id
-        if not result.execution_time_ms:
-            result.execution_time_ms = round((time.time() - start_time) * 1000, 2)
+        # Store internal metadata
+        result._request_id = request_id
+        if not result._execution_time_ms:
+            result._execution_time_ms = round((time.time() - start_time) * 1000, 2)
 
-        logger.info(
-            f"✅ Tool '{invoke_request.tool_name}' executed successfully in {result.execution_time_ms}ms"
-        )
-        return result
+        logger.info(f"✅ Tool '{tool_name}' executed successfully in {result._execution_time_ms}ms")
+
+        # Return JSON-RPC 2.0 format per MCP tools/call standard
+        return {"jsonrpc": "2.0", "id": request_id, "result": result.model_dump()}
 
     except ValidationError:
         raise
     except Exception as e:
         processing_time = time.time() - start_time
-        logger.error(f"❌ Tool '{invoke_request.tool_name}' execution failed: {e}")
+        tool_name = getattr(invoke_request, "name", "unknown")
+        logger.error(f"❌ Tool '{tool_name}' execution failed: {e}")
 
+        # Return JSON-RPC 2.0 error format
         return JSONResponse(
             status_code=500,
-            content=MCPErrorResponse(
-                error=f"Tool invocation failed: {str(e)}",
-                error_type="EXECUTION_ERROR",
-                tool_name=invoke_request.tool_name,
-                request_id=request_id,
-            ).dict(),
+            content={
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "error": {
+                    "code": -32603,  # Internal error per JSON-RPC 2.0
+                    "message": f"Tool invocation failed: {str(e)}",
+                    "data": {
+                        "tool_name": tool_name,
+                        "error_type": "EXECUTION_ERROR",
+                        "request_id": request_id,
+                    },
+                },
+            },
         )
 
 

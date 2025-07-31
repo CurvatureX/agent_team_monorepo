@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from app.main import create_application
-from app.models import MCPHealthCheck, MCPInvokeResponse, MCPTool, MCPToolsResponse
+from app.models import MCPContentItem, MCPHealthCheck, MCPInvokeResponse, MCPTool, MCPToolsResponse
 from fastapi.testclient import TestClient
 
 
@@ -95,11 +95,17 @@ class TestMCPEndpoints:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["success"] is True
-        assert len(data["tools"]) == 3
-        assert data["total_count"] == 3
-        assert "processing_time_ms" in data
-        assert "request_id" in data
+        # Response follows MCP JSON-RPC 2.0 standard
+        assert data["jsonrpc"] == "2.0"
+        assert "id" in data
+        assert "result" in data
+        assert "tools" in data["result"]
+        assert len(data["result"]["tools"]) == 3
+        # Check first tool has MCP required fields
+        first_tool = data["result"]["tools"][0]
+        assert first_tool["name"] == "get_node_types"
+        assert first_tool["description"] == "Get node types"
+        assert "inputSchema" in first_tool or "parameters" in first_tool
 
     @patch("app.api.mcp.tools.mcp_service")
     @patch("app.dependencies.get_mcp_client")
@@ -119,8 +125,11 @@ class TestMCPEndpoints:
 
         assert response.status_code == 500
         data = response.json()
+        # Response follows JSON-RPC 2.0 error format
+        assert data["jsonrpc"] == "2.0"
         assert "error" in data
-        assert "Failed to retrieve tools" in data["error"]
+        assert data["error"]["code"] == -32603
+        assert "Failed to retrieve tools" in data["error"]["message"]
 
     def test_mcp_invoke_endpoint_without_auth(self, client):
         """Test MCP invoke endpoint requires authentication"""
@@ -139,31 +148,43 @@ class TestMCPEndpoints:
         mock_get_mcp_client.return_value = mock_deps
         mock_require_scope.return_value = None
 
-        # Mock service response
+        # Mock service response - MCP compliant format
         mock_result = MCPInvokeResponse(
-            success=True,
-            tool_name="get_node_types",
-            result={
+            content=[
+                MCPContentItem(type="text", text="Tool 'get_node_types' executed successfully")
+            ],
+            isError=False,
+            structuredContent={
                 "ACTION_NODE": ["HTTP_REQUEST", "RUN_CODE"],
                 "AI_AGENT_NODE": ["OPENAI_NODE", "CLAUDE_NODE"],
             },
-            execution_time_ms=15.5,
-            timestamp=datetime.now(timezone.utc),
-            request_id="test-request-123",
         )
+        # Set private attributes
+        mock_result._tool_name = "get_node_types"
+        mock_result._execution_time_ms = 15.5
+        mock_result._request_id = "test-request-123"
         mock_service.invoke_tool = AsyncMock(return_value=mock_result)
 
-        payload = {"tool_name": "get_node_types", "parameters": {}}
+        # Support both old and new request formats for backwards compatibility
+        payload = {"name": "get_node_types", "arguments": {}}
 
         response = client.post("/api/v1/mcp/invoke", json=payload, headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
-        assert data["success"] is True
-        assert data["tool_name"] == "get_node_types"
-        assert "ACTION_NODE" in data["result"]
-        assert data["execution_time_ms"] == 15.5
-        assert "request_id" in data
+        # Response follows JSON-RPC 2.0 format
+        assert data["jsonrpc"] == "2.0"
+        assert "id" in data
+        assert "result" in data
+        # Check MCP tools/call response structure
+        result = data["result"]
+        assert "content" in result
+        assert "isError" in result
+        assert result["isError"] is False
+        assert len(result["content"]) > 0
+        assert result["content"][0]["type"] == "text"
+        assert "structuredContent" in result
+        assert "ACTION_NODE" in result["structuredContent"]
 
     @patch("app.api.mcp.tools.mcp_service")
     @patch("app.dependencies.get_mcp_client")
@@ -178,27 +199,31 @@ class TestMCPEndpoints:
 
         # Mock service response
         mock_result = MCPInvokeResponse(
-            success=True,
-            tool_name="get_node_details",
-            result=[
-                {
-                    "node_type": "ACTION_NODE",
-                    "subtype": "HTTP_REQUEST",
-                    "description": "Make HTTP requests to external APIs",
-                    "parameters": [{"name": "url", "type": "string", "required": True}],
-                    "input_ports": [],
-                    "output_ports": [],
-                }
+            content=[
+                MCPContentItem(type="text", text="Tool 'get_node_details' executed successfully")
             ],
-            execution_time_ms=25.3,
-            timestamp=datetime.now(timezone.utc),
-            request_id="test-request-123",
+            isError=False,
+            structuredContent={
+                "nodes": [
+                    {
+                        "node_type": "ACTION_NODE",
+                        "subtype": "HTTP_REQUEST",
+                        "description": "Make HTTP requests to external APIs",
+                        "parameters": [{"name": "url", "type": "string", "required": True}],
+                        "input_ports": [],
+                        "output_ports": [],
+                    }
+                ]
+            },
         )
+        # Set private attributes
+        mock_result._tool_name = "get_node_details"
+        mock_result._execution_time_ms = 25.3
         mock_service.invoke_tool = AsyncMock(return_value=mock_result)
 
         payload = {
-            "tool_name": "get_node_details",
-            "parameters": {
+            "name": "get_node_details",
+            "arguments": {
                 "nodes": [{"node_type": "ACTION_NODE", "subtype": "HTTP_REQUEST"}],
                 "include_examples": True,
             },
@@ -208,10 +233,21 @@ class TestMCPEndpoints:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["success"] is True
-        assert data["tool_name"] == "get_node_details"
-        assert len(data["result"]) == 1
-        assert data["result"][0]["node_type"] == "ACTION_NODE"
+        # Response follows JSON-RPC 2.0 format
+        assert data["jsonrpc"] == "2.0"
+        assert "id" in data
+        assert "result" in data
+        # Check MCP tools/call response structure
+        result = data["result"]
+        assert "content" in result
+        assert "isError" in result
+        assert result["isError"] is False
+        assert len(result["content"]) > 0
+        assert result["content"][0]["type"] == "text"
+        assert "structuredContent" in result
+        assert "nodes" in result["structuredContent"]
+        assert len(result["structuredContent"]["nodes"]) == 1
+        assert result["structuredContent"]["nodes"][0]["node_type"] == "ACTION_NODE"
 
     @patch("app.api.mcp.tools.mcp_service")
     @patch("app.dependencies.get_mcp_client")
@@ -226,20 +262,22 @@ class TestMCPEndpoints:
 
         # Mock service response
         mock_result = MCPInvokeResponse(
-            success=True,
-            tool_name="search_nodes",
-            result=[
-                {
-                    "node_type": "ACTION_NODE",
-                    "subtype": "HTTP_REQUEST",
-                    "description": "Make HTTP requests",
-                    "relevance_score": 15,
-                }
-            ],
-            execution_time_ms=12.7,
-            timestamp=datetime.now(timezone.utc),
-            request_id="test-request-123",
+            content=[MCPContentItem(type="text", text="Tool 'search_nodes' executed successfully")],
+            isError=False,
+            structuredContent={
+                "nodes": [
+                    {
+                        "node_type": "ACTION_NODE",
+                        "subtype": "HTTP_REQUEST",
+                        "description": "Make HTTP requests",
+                        "relevance_score": 15,
+                    }
+                ]
+            },
         )
+        # Set private attributes
+        mock_result._tool_name = "search_nodes"
+        mock_result._execution_time_ms = 12.7
         mock_service.invoke_tool = AsyncMock(return_value=mock_result)
 
         payload = {
@@ -251,10 +289,21 @@ class TestMCPEndpoints:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["success"] is True
-        assert data["tool_name"] == "search_nodes"
-        assert len(data["result"]) == 1
-        assert data["result"][0]["relevance_score"] == 15
+        # Response follows JSON-RPC 2.0 format
+        assert data["jsonrpc"] == "2.0"
+        assert "id" in data
+        assert "result" in data
+        # Check MCP tools/call response structure
+        result = data["result"]
+        assert "content" in result
+        assert "isError" in result
+        assert result["isError"] is False
+        assert len(result["content"]) > 0
+        assert result["content"][0]["type"] == "text"
+        assert "structuredContent" in result
+        assert "nodes" in result["structuredContent"]
+        assert len(result["structuredContent"]["nodes"]) == 1
+        assert result["structuredContent"]["nodes"][0]["relevance_score"] == 15
 
     @patch("app.api.mcp.tools.mcp_service")
     @patch("app.dependencies.get_mcp_client")
@@ -269,14 +318,12 @@ class TestMCPEndpoints:
 
         # Mock service response for invalid tool
         mock_result = MCPInvokeResponse(
-            success=False,
-            tool_name="invalid_tool",
-            error="Tool 'invalid_tool' not found",
-            error_type="TOOL_NOT_FOUND",
-            execution_time_ms=1.2,
-            timestamp=datetime.now(timezone.utc),
-            request_id="test-request-123",
+            content=[MCPContentItem(type="text", text="Tool 'invalid_tool' not found")],
+            isError=True,
         )
+        # Set private attributes
+        mock_result._tool_name = "invalid_tool"
+        mock_result._execution_time_ms = 1.2
         mock_service.invoke_tool = AsyncMock(return_value=mock_result)
 
         payload = {"tool_name": "invalid_tool", "parameters": {}}
@@ -285,32 +332,38 @@ class TestMCPEndpoints:
 
         assert response.status_code == 200  # Service returns error in response, not HTTP error
         data = response.json()
-        assert data["success"] is False
-        assert data["error"] == "Tool 'invalid_tool' not found"
-        assert data["error_type"] == "TOOL_NOT_FOUND"
+        # Response follows JSON-RPC 2.0 format
+        assert data["jsonrpc"] == "2.0"
+        assert "id" in data
+        assert "result" in data
+        # Check MCP tools/call response structure for errors
+        result = data["result"]
+        assert "content" in result
+        assert "isError" in result
+        assert result["isError"] is True
+        assert len(result["content"]) > 0
+        assert "Tool 'invalid_tool' not found" in result["content"][0]["text"]
 
     @patch("app.api.mcp.tools.mcp_service")
     @patch("app.dependencies.get_mcp_client")
     @patch("app.dependencies.require_scope")
-    def test_mcp_invoke_timeout_validation(
+    def test_mcp_invoke_missing_name_validation(
         self, mock_require_scope, mock_get_mcp_client, mock_service, client, mock_deps, auth_headers
     ):
-        """Test timeout parameter validation"""
+        """Test validation when required name field is missing"""
         # Mock authentication
         mock_get_mcp_client.return_value = mock_deps
         mock_require_scope.return_value = None
 
-        # Test invalid timeout (too low)
-        payload = {"tool_name": "get_node_types", "parameters": {}, "timeout": 0}
+        # Test missing name field
+        payload = {"arguments": {}}
 
         response = client.post("/api/v1/mcp/invoke", json=payload, headers=auth_headers)
-        assert response.status_code == 400  # ValidationError
+        assert response.status_code == 422  # ValidationError for missing required field
 
-        # Test invalid timeout (too high)
-        payload["timeout"] = 500
-
-        response = client.post("/api/v1/mcp/invoke", json=payload, headers=auth_headers)
-        assert response.status_code == 400  # ValidationError
+        # Test that the first case (missing name) returns proper error
+        data = response.json()
+        assert "Field required" in str(data)
 
     @patch("app.api.mcp.tools.mcp_service")
     @patch("app.dependencies.get_mcp_client")
@@ -332,8 +385,10 @@ class TestMCPEndpoints:
 
         assert response.status_code == 500
         data = response.json()
+        # Response follows JSON-RPC 2.0 error format
+        assert data["jsonrpc"] == "2.0"
         assert "error" in data
-        assert "Tool invocation failed" in data["error"]
+        assert "Tool invocation failed" in data["error"]["message"]
 
     def test_mcp_tool_info_endpoint_without_auth(self, client):
         """Test MCP tool info endpoint requires authentication"""
@@ -510,8 +565,10 @@ class TestMCPEndpoints:
 
             assert response.status_code == 200
             data = response.json()
-            assert "processing_time_ms" in data
-            assert "request_id" in data
+            # Response follows MCP JSON-RPC 2.0 standard
+            assert data["jsonrpc"] == "2.0"
+            assert "result" in data
+            assert "tools" in data["result"]
 
     def test_malformed_json_request(self, client, auth_headers):
         """Test handling of malformed JSON in POST requests"""

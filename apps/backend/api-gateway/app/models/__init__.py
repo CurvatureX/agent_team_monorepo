@@ -22,6 +22,7 @@ from shared.models import (
     ChatSSEEvent,
     ErrorModel,
     HealthCheckModel,
+    MCPContentItem,
     MCPErrorResponse,
     MCPHealthCheck,
     MCPInvokeRequest,
@@ -74,6 +75,7 @@ __all__ = [
     "MCPToolsResponse",
     "MCPInvokeRequest",
     "MCPInvokeResponse",
+    "MCPContentItem",
     "MCPErrorResponse",
     "MCPHealthCheck",
     # Chat models
