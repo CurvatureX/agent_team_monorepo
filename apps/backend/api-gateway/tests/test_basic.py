@@ -122,7 +122,7 @@ def test_mcp_node_knowledge_integration(client):
 
     # Should be able to get available tools
     tools_response = service.get_available_tools()
-    assert tools_response.success is True
+    assert tools_response.success is True  # MCPToolsResponse still has success field
     assert len(tools_response.tools) == 3
 
     # Should have the expected tool names
