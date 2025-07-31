@@ -6,14 +6,14 @@ Integrates with Supabase pgvector for intelligent node recommendation
 import asyncio
 from typing import Any, Dict, List, Optional, Tuple
 
-import structlog
 from .config import settings
+from .logging_config import get_logger
 from langchain_core.embeddings import Embeddings
 from langchain_openai import OpenAIEmbeddings
 from supabase import Client, create_client
 from supabase.client import ClientOptions
 
-logger = structlog.get_logger()
+logger = get_logger(__name__)
 
 
 class NodeKnowledgeEntry:

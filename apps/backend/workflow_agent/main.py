@@ -13,37 +13,21 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv()
 
-# Import logging first
-import structlog
-import logging
+# Import and configure logging
+from core.logging_config import setup_logging, get_logger
 
-# Set standard library logging level to INFO
-logging.basicConfig(level=logging.INFO)
-
-# Configure structlog for better output with line numbers
-structlog.configure(
-    processors=[
-        structlog.stdlib.filter_by_level,
-        structlog.stdlib.add_logger_name,
-        structlog.stdlib.add_log_level,
-        structlog.stdlib.PositionalArgumentsFormatter(),
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
-        structlog.processors.UnicodeDecoder(),
-        # Use JSON renderer for better formatting
-        structlog.processors.JSONRenderer(indent=2),
-    ],
-    context_class=dict,
-    logger_factory=structlog.stdlib.LoggerFactory(),
-    cache_logger_on_first_use=True,
+# Setup logging configuration from environment
+setup_logging(
+    log_level=os.getenv("LOG_LEVEL", "INFO"),
+    service_name="workflow_agent",
+    environment=os.getenv("ENVIRONMENT", "development")
 )
 
 from core.config import settings
 from services.fastapi_server import app
 import uvicorn
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(__name__)
 
 
 class FastAPIServer:

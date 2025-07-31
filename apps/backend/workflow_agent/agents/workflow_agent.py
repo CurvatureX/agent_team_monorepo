@@ -3,16 +3,16 @@ Simplified Workflow Agent based on new architecture
 Implements 6 core nodes: Clarification, Negotiation, Gap Analysis,
 Alternative Solution Generation, Workflow Generation, and Debug
 """
-import structlog
 from langgraph.graph import END, StateGraph
 
+from core.logging_config import get_logger
 from .nodes import WorkflowAgentNodes
 from .state import (
     WorkflowState,
     WorkflowStage,
 )
 
-logger = structlog.get_logger()
+logger = get_logger(__name__)
 
 class WorkflowAgent:
     """

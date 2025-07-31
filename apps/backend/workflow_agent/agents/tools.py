@@ -4,11 +4,11 @@ Tools for the Workflow Agent, including RAG tools.
 import asyncio
 from typing import Any, Dict, List
 
-import structlog
 from .state import RAGContext, RetrievedDocument, WorkflowState
+from core.logging_config import get_logger
 from core.vector_store import SupabaseVectorStore
 
-logger = structlog.get_logger()
+logger = get_logger(__name__)
 
 
 class RAGTool:
