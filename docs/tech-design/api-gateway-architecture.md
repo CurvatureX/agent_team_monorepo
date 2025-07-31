@@ -453,7 +453,7 @@ app/api/
 **请求/响应模型** (`app/models.py`):
 ```python
 # 会话管理模型
-class SessionCreateRequest(BaseModel):
+class SessionCreate(BaseModel):
     action: str  # "create", "edit", "copy"
     workflow_id: Optional[str] = None
     meta_data: Dict[str, Any] = Field(default_factory=dict)
