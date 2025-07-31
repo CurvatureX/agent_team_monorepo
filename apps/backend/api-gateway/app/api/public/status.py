@@ -15,7 +15,7 @@ from typing import Any, Dict
 
 from app.core.config import settings
 from app.core.database import get_database_manager
-from app.models.base import ResponseModel
+from shared.models import ResponseModel
 
 # HTTP client status checks
 from fastapi import APIRouter, Depends
@@ -54,16 +54,11 @@ async def get_system_status():
     # Check HTTP client health
     http_health = {"healthy": False, "error": "Not implemented"}
     try:
-        from app.core.config import get_settings
         from app.services.workflow_agent_http_client import get_workflow_agent_client
 
-        app_settings = get_settings()
-        if app_settings.USE_HTTP_CLIENT:
-            http_client = await get_workflow_agent_client()
-            await http_client.connect()  # Test connection
-            http_health = {"healthy": True, "service": "workflow_agent_http"}
-        else:
-            http_health = {"healthy": False, "error": "HTTP client disabled"}
+        http_client = await get_workflow_agent_client()
+        await http_client.connect()  # Test connection
+        http_health = {"healthy": True, "service": "workflow_agent_http"}
     except Exception as e:
         http_health = {"healthy": False, "error": str(e)}
 

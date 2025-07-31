@@ -5,14 +5,19 @@ Main gRPC server application.
 import logging
 import sys
 import time
+from pathlib import Path
 from typing import Optional
 
 import grpc
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from shared.models.common import HealthResponse, HealthStatus
 
+# Add backend directory to Python path for shared models
+backend_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(backend_dir))
+
+from shared.models.common import HealthResponse, HealthStatus
 from workflow_engine.api.v1 import executions, triggers, workflows
 from workflow_engine.core.config import get_settings
 from workflow_engine.models.database import close_db

@@ -54,7 +54,20 @@ def test_app_api_requires_auth(client):
 
 def test_mcp_api_requires_auth(client):
     """Test that MCP API endpoints require authentication"""
+    # Test tools endpoint
     response = client.get("/api/v1/mcp/tools")
+    assert response.status_code == 401
+
+    # Test invoke endpoint
+    response = client.post("/api/v1/mcp/invoke", json={"tool_name": "test", "params": {}})
+    assert response.status_code == 401
+
+    # Test health endpoint
+    response = client.get("/api/v1/mcp/health")
+    assert response.status_code == 401
+
+    # Test tool info endpoint
+    response = client.get("/api/v1/mcp/tools/test_tool")
     assert response.status_code == 401
 
 
@@ -98,3 +111,44 @@ def test_middleware_configuration(client):
     assert "X-Process-Time" in response.headers
     # Check CORS is enabled
     assert response.status_code == 200
+
+
+def test_mcp_node_knowledge_integration(client):
+    """Test that MCP node knowledge tools are available (basic integration test)"""
+    # This test verifies the MCP service can be instantiated without errors
+    # Full functionality is tested in dedicated MCP test files
+    from app.api.mcp.tools import NodeKnowledgeMCPService
+
+    # Should be able to create service without errors
+    service = NodeKnowledgeMCPService()
+    assert service is not None
+
+    # Should have node knowledge service
+    assert hasattr(service, "node_knowledge")
+
+    # Should be able to get available tools
+    tools_response = service.get_available_tools()
+    assert tools_response.success is True
+    assert len(tools_response.tools) == 3
+
+    # Should have the expected tool names
+    tool_names = [tool.name for tool in tools_response.tools]
+    expected_tools = ["get_node_types", "get_node_details", "search_nodes"]
+    for expected_tool in expected_tools:
+        assert expected_tool in tool_names
+
+
+def test_health_endpoints_consistency(client):
+    """Test that all health endpoints return consistent structure"""
+    # Public health (no auth required)
+    response = client.get("/api/v1/public/health")
+    assert response.status_code == 200
+    public_health = response.json()
+    assert "status" in public_health
+
+    # Root endpoint health info
+    response = client.get("/")
+    assert response.status_code == 200
+    root_data = response.json()
+    assert "service" in root_data
+    assert "version" in root_data

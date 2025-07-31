@@ -8,8 +8,24 @@ from typing import Any, Dict, Optional
 from app.core.config import get_settings
 from app.dependencies import AuthenticatedDeps
 from app.exceptions import NotFoundError, ValidationError
-from app.models.base import ResponseModel
-from app.models.execution import ExecutionCancelResponse, ExecutionStatusResponse
+from shared.models import ResponseModel
+from pydantic import BaseModel, Field
+from typing import Dict, Any, Optional
+
+# Local models for execution endpoints
+class ExecutionStatusResponse(BaseModel):
+    execution_id: str = Field(description="Execution ID")
+    status: str = Field(description="Execution status")
+    workflow_id: Optional[str] = Field(default=None, description="Workflow ID")
+    started_at: Optional[str] = Field(default=None, description="Start time")
+    completed_at: Optional[str] = Field(default=None, description="Completion time")
+    result: Optional[Dict[str, Any]] = Field(default=None, description="Execution result")
+    error: Optional[str] = Field(default=None, description="Error message if failed")
+
+class ExecutionCancelResponse(BaseModel):
+    success: bool = Field(description="Whether cancellation was successful")
+    message: str = Field(description="Result message")
+    execution_id: str = Field(description="Execution ID")
 from app.services.workflow_engine_http_client import get_workflow_engine_client
 from app.utils.logger import get_logger
 from fastapi import APIRouter, Depends, HTTPException
@@ -29,8 +45,6 @@ async def get_execution_status(execution_id: str, deps: AuthenticatedDeps = Depe
 
         # Get HTTP client
         settings = get_settings()
-        if not settings.USE_HTTP_CLIENT:
-            raise HTTPException(status_code=503, detail="HTTP client is disabled")
 
         http_client = await get_workflow_engine_client()
 
@@ -61,8 +75,6 @@ async def cancel_execution(execution_id: str, deps: AuthenticatedDeps = Depends(
 
         # Get HTTP client
         settings = get_settings()
-        if not settings.USE_HTTP_CLIENT:
-            raise HTTPException(status_code=503, detail="HTTP client is disabled")
 
         http_client = await get_workflow_engine_client()
 
@@ -102,8 +114,6 @@ async def get_workflow_execution_history(
 
         # Get HTTP client
         settings = get_settings()
-        if not settings.USE_HTTP_CLIENT:
-            raise HTTPException(status_code=503, detail="HTTP client is disabled")
 
         http_client = await get_workflow_engine_client()
 

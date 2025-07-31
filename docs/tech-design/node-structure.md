@@ -45,9 +45,9 @@
 **参数配置:**
 
 - `channel`: string - 聊天频道标识符（如 Slack/Discord/Teams 频道 ID）
-- `allowedUsers`: `array<string>` - 允许触发的用户 ID 列表
+- `allowedUsers`: `array&lt;string&gt;` - 允许触发的用户 ID 列表
 - `triggerPhrase`: string - 触发短语或关键词
-- `supportedMediaTypes`: `array<enum>` - 支持的媒体类型 (text/image/audio/video/file)
+- `supportedMediaTypes`: `array&lt;enum&gt;` - 支持的媒体类型 (text/image/audio/video/file)
 - `maxFileSize`: integer - 最大文件大小（MB，适用于所有媒体类型）-
 - `enableOCR`: boolean - 是否启用图片 OCR 文字识别
 - `enableSpeechToText`: boolean - 是否启用音频语音转文字
@@ -69,7 +69,7 @@
 - `authHeaderValue`: string - 认证头值
 - `respond`: enum - 响应方式 (immediately/when_last_node_finishes/using_respond_node)
 - `responseCode`: integer - HTTP 响应状态码 (默认 200)
-- `responseHeaders`: `map<string, string>` - 响应头
+- `responseHeaders`: `map&lt;string, string&gt;` - 响应头
 - `responseBody`: string - 立即响应的内容
 - `responseData`: enum - 响应数据格式，仅在 respond 为 when_last_node_finishes 时生效
   - `first_entry_json` - 返回最后节点的第一个数据项作为 JSON 对象
@@ -93,20 +93,108 @@
 
 **形状**: Rectangle node featuring two connection points, linkable to Memory and Tool components
 
-**参数配置:**
+**架构革新**: 从硬编码角色转向灵活的提供商驱动架构
 
-- `model_provider`: enum - 模型提供商 (openai/anthropic/google/local)
-- `model_name`: string - 模型名称（如 gpt-4、claude-3）
+### 子节点类型 (Provider-Based Architecture):
+
+#### Gemini Node (AI_GEMINI_NODE)
+Google Gemini AI 代理，功能完全由系统提示词定义
+
+**参数配置:**
+- `system_prompt`: text - **核心参数**：定义AI代理的角色、行为和指令
+- `model_version`: enum - 模型版本 (gemini-pro/gemini-pro-vision/gemini-ultra)
 - `temperature`: float - 创造性参数 (0.0-1.0)
 - `max_tokens`: integer - 最大生成 token 数
-- `system_prompt`: text - 系统提示词
-- `user_prompt_template`: text - 用户提示词模板
-- `memory_connection`: string - 连接的 Memory 节点 ID
-- `tool_connections`: `array<string>` - 连接的 Tool 节点 ID 列表
+- `top_p`: float - 核采样参数 (0.0-1.0)
+- `top_k`: integer - 候选词数量限制
+- `safety_settings`: object - 安全设置配置
 - `response_format`: enum - 响应格式 (text/json/structured)
+- `timeout_seconds`: integer - 请求超时时间
+- `retry_attempts`: integer - 重试次数
+
+#### OpenAI Node (AI_OPENAI_NODE)
+OpenAI GPT AI 代理，功能完全由系统提示词定义
+
+**参数配置:**
+- `system_prompt`: text - **核心参数**：定义AI代理的角色、行为和指令
+- `model_version`: enum - 模型版本 (gpt-4/gpt-4-turbo/gpt-3.5-turbo/gpt-4-vision-preview)
+- `temperature`: float - 创造性参数 (0.0-2.0)
+- `max_tokens`: integer - 最大生成 token 数
+- `top_p`: float - 核采样参数 (0.0-1.0)
+- `presence_penalty`: float - 存在惩罚 (-2.0-2.0)
+- `frequency_penalty`: float - 频率惩罚 (-2.0-2.0)
+- `response_format`: enum - 响应格式 (text/json/structured)
+- `timeout_seconds`: integer - 请求超时时间
+- `retry_attempts`: integer - 重试次数
+
+#### Claude Node (AI_CLAUDE_NODE)
+Anthropic Claude AI 代理，功能完全由系统提示词定义
+
+**参数配置:**
+- `system_prompt`: text - **核心参数**：定义AI代理的角色、行为和指令
+- `model_version`: enum - 模型版本 (claude-3-opus/claude-3-sonnet/claude-3-haiku/claude-2.1)
+- `temperature`: float - 创造性参数 (0.0-1.0)
+- `max_tokens`: integer - 最大生成 token 数
+- `top_p`: float - 核采样参数 (0.0-1.0)
+- `top_k`: integer - 候选词数量限制
+- `stop_sequences`: array&lt;string&gt; - 停止序列
+- `response_format`: enum - 响应格式 (text/json/structured)
+- `timeout_seconds`: integer - 请求超时时间
+- `retry_attempts`: integer - 重试次数
+
+### 通用连接配置:
+- `memory_connection`: string - 连接的 Memory 节点 ID
+- `tool_connections`: array&lt;string&gt; - 连接的 Tool 节点 ID 列表
 - `streaming`: boolean - 是否流式响应
-- `retry_count`: integer - 重试次数
-- `on_error`: enum - Action to take when the node execution fails (stop_workflow/continue)
+- `on_error`: enum - 节点执行失败时的操作 (stop_workflow/continue)
+
+### 系统提示词示例:
+
+**数据分析代理 (使用 Gemini)**:
+```
+您是一名高级数据分析师，专精统计分析和商业智能。
+
+任务：分析提供的数据集并提供可操作的洞察。
+
+分析要求：
+1. 统计概览：均值、中位数、标准差、四分位数
+2. 趋势分析：识别模式、季节性和异常值
+3. 相关性分析：变量间的关键关系
+4. 商业洞察：模式对商业决策的意义
+5. 数据质量：完整性、准确性、潜在问题
+6. 建议：具体的、可操作的下一步
+
+输出格式：结构化 JSON，包含上述各个要求的章节。
+置信水平：为每个洞察包含置信分数 (0-1)。
+```
+
+**客户服务路由代理 (使用 OpenAI)**:
+```
+您是一个智能客户服务路由系统。
+
+任务：分析客户询问并路由到适当的部门。
+
+路由规则：
+- "billing" → 付款问题、发票、退款、订阅问题
+- "technical" → 产品错误、功能问题、集成帮助
+- "sales" → 新购买、升级、价格咨询
+- "general" → 一般问题、反馈、投诉
+
+分析过程：
+1. 从客户消息中提取关键意图和实体
+2. 考虑紧急程度 (low/medium/high/critical)
+3. 识别客户等级 (basic/premium/enterprise)
+4. 应用路由规则并给出置信分数
+
+响应格式：
+{
+  "department": "billing|technical|sales|general",
+  "confidence": 0.95,
+  "urgency": "low|medium|high|critical",
+  "reasoning": "路由决策的简要解释",
+  "suggested_response": "推荐给客户的首次回复"
+}
+```
 
 ---
 
@@ -184,7 +272,7 @@
 - `language`: enum - 编程语言 (python/javascript/java/golang)
 - `code`: text - 要执行的代码
 - `timeout`: integer - 执行超时时间（秒）
-- `environment_variables`: `map<string, string>` - 环境变量
+- `environment_variables`: `map&lt;string, string&gt;` - 环境变量
 - `input_data`: text - 输入数据
 - `continue_on_fail`: boolean - 失败时是否继续
 
@@ -194,8 +282,8 @@
 
 - `url`: string - 请求 URL
 - `method`: enum - HTTP 方法 (GET/POST/PUT/DELETE/PATCH)
-- `headers`: `map<string, string>` - 请求头
-- `query_parameters`: `map<string, string>` - 查询参数
+- `headers`: `map&lt;string, string&gt;` - 请求头
+- `query_parameters`: `map&lt;string, string&gt;` - 查询参数
 - `body`: text - 请求体
 - `body_type`: enum - 请求体类型 (json/form/raw/binary)
 - `authentication`: enum - 认证方式 (none/api_key/bearer_token/basic_auth/oauth)
@@ -248,7 +336,7 @@
 - `targetFormat`: string - 目标格式（转换操作用）
 - `compressionLevel`: integer - 压缩级别 (1-9)
 - `maxFileSize`: integer - 最大文件大小（MB）
-- `allowedTypes`: `array<string>` - 允许的文件类型
+- `allowedTypes`: `array&lt;string&gt;` - 允许的文件类型
 - `virusScan`: boolean - 是否进行病毒扫描
 - `extractMetadata`: boolean - 是否提取元数据
 - `enableBackup`: boolean - 是否启用备份
@@ -335,7 +423,7 @@
 - `gmail_credentials`: string - Gmail 凭证
 - `approval_subject`: string - 审批邮件主题
 - `approval_body`: text - 审批邮件内容
-- `approver_emails`: `array<string>` - 审批人邮箱
+- `approver_emails`: `array&lt;string&gt;` - 审批人邮箱
 - `timeout_hours`: integer - 审批超时时间（小时）
 - `auto_approve_after_timeout`: boolean - 超时后是否自动批准
 - `response_format`: enum - 响应格式 (simple/detailed)
@@ -346,9 +434,9 @@
 
 - `slack_token`: string - Slack 机器人令牌
 - `approval_channel`: string - 审批频道
-- `approver_users`: `array<string>` - 审批用户
+- `approver_users`: `array&lt;string&gt;` - 审批用户
 - `approval_message`: text - 审批消息
-- `approval_buttons`: `array<string>` - 审批按钮选项
+- `approval_buttons`: `array&lt;string&gt;` - 审批按钮选项
 - `timeout_minutes`: integer - 审批超时时间（分钟）
 - `auto_approve_after_timeout`: boolean - 超时后是否自动批准
 
@@ -360,8 +448,8 @@
 - `guild_id`: string - 服务器 ID
 - `channel_id`: string - 频道 ID
 - `approval_message`: text - 审批消息
-- `approver_roles`: `array<string>` - 审批角色
-- `approval_reactions`: `array<string>` - 审批表情
+- `approver_roles`: `array&lt;string&gt;` - 审批角色
+- `approval_reactions`: `array&lt;string&gt;` - 审批表情
 - `timeout_minutes`: integer - 审批超时时间（分钟）
 
 #### Telegram Node
@@ -410,7 +498,7 @@
 - `notion_token`: string - Notion 集成令牌
 - `database_id`: string - 数据库 ID
 - `page_id`: string - 页面 ID
-- `property_mappings`: `map<string, string>` - 属性映射
+- `property_mappings`: `map&lt;string, string&gt;` - 属性映射
 
 ---
 

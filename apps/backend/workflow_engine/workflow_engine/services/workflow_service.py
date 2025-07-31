@@ -4,24 +4,29 @@ Workflow Service - 工作流CRUD操作服务.
 This module implements workflow-related operations: Create, Read, Update, Delete, List.
 """
 
+import json
 import logging
-from typing import Optional, List, Tuple
+import sys
 import uuid
 from datetime import datetime
-import json
+from pathlib import Path
+from typing import List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
+# Add backend directory to Python path for shared models
+backend_dir = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(backend_dir))
+
 from shared.models import (
-    WorkflowData,
     CreateWorkflowRequest,
-    UpdateWorkflowRequest,
     ListWorkflowsRequest,
     NodeTemplate,
+    UpdateWorkflowRequest,
+    WorkflowData,
 )
-from workflow_engine.models.workflow import Workflow as WorkflowModel
-from workflow_engine.models.node_template import NodeTemplate as NodeTemplateModel
 from workflow_engine.core.config import get_settings
+from workflow_engine.models import NodeTemplateModel, WorkflowModel
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -38,7 +43,7 @@ class WorkflowService:
         """Create a new workflow from Pydantic model."""
         try:
             self.logger.info(f"Creating workflow: {request.name}")
-            
+
             workflow_id = str(uuid.uuid4())
             now = int(datetime.now().timestamp())
 
@@ -54,7 +59,7 @@ class WorkflowService:
                 active=True,
                 created_at=now,
                 updated_at=now,
-                version="1.0.0"
+                version="1.0.0",
             )
 
             db_workflow = WorkflowModel(
@@ -72,7 +77,7 @@ class WorkflowService:
             )
             self.db.add(db_workflow)
             self.db.commit()
-            
+
             self.logger.info(f"Workflow created successfully: {workflow_id}")
             return workflow_data
         except Exception as e:
@@ -84,42 +89,46 @@ class WorkflowService:
         """Get a workflow by ID."""
         try:
             self.logger.info(f"Getting workflow: {workflow_id}")
-            
-            db_workflow = self.db.query(WorkflowModel).filter(
-                WorkflowModel.id == workflow_id,
-                WorkflowModel.user_id == user_id
-            ).first()
-            
+
+            db_workflow = (
+                self.db.query(WorkflowModel)
+                .filter(WorkflowModel.id == workflow_id, WorkflowModel.user_id == user_id)
+                .first()
+            )
+
             if not db_workflow:
                 return None
-            
+
             return WorkflowData(**db_workflow.workflow_data)
         except Exception as e:
             self.logger.error(f"Error getting workflow: {str(e)}")
             raise
 
-    def update_workflow_from_data(self, workflow_id: str, user_id: str, update_data: UpdateWorkflowRequest) -> WorkflowData:
+    def update_workflow_from_data(
+        self, workflow_id: str, user_id: str, update_data: UpdateWorkflowRequest
+    ) -> WorkflowData:
         """Update an existing workflow from Pydantic model."""
         try:
             self.logger.info(f"Updating workflow: {workflow_id}")
-            
-            db_workflow = self.db.query(WorkflowModel).filter(
-                WorkflowModel.id == workflow_id,
-                WorkflowModel.user_id == user_id
-            ).first()
-            
+
+            db_workflow = (
+                self.db.query(WorkflowModel)
+                .filter(WorkflowModel.id == workflow_id, WorkflowModel.user_id == user_id)
+                .first()
+            )
+
             if not db_workflow:
                 raise Exception("Workflow not found")
-            
+
             workflow_data = WorkflowData(**db_workflow.workflow_data)
-            
+
             update_dict = update_data.dict(exclude_unset=True)
             for key, value in update_dict.items():
                 if hasattr(workflow_data, key):
                     setattr(workflow_data, key, value)
-            
+
             workflow_data.updated_at = int(datetime.now().timestamp())
-            
+
             db_workflow.name = workflow_data.name
             db_workflow.description = workflow_data.description
             db_workflow.active = workflow_data.active
@@ -128,9 +137,9 @@ class WorkflowService:
             db_workflow.tags = workflow_data.tags
             if update_data.session_id:
                 db_workflow.session_id = update_data.session_id
-            
+
             self.db.commit()
-            
+
             self.logger.info(f"Workflow updated successfully: {workflow_id}")
             return workflow_data
         except Exception as e:
@@ -142,15 +151,16 @@ class WorkflowService:
         """Delete a workflow."""
         try:
             self.logger.info(f"Deleting workflow: {workflow_id}")
-            
-            result = self.db.query(WorkflowModel).filter(
-                WorkflowModel.id == workflow_id,
-                WorkflowModel.user_id == user_id
-            ).delete()
-            
+
+            result = (
+                self.db.query(WorkflowModel)
+                .filter(WorkflowModel.id == workflow_id, WorkflowModel.user_id == user_id)
+                .delete()
+            )
+
             if result == 0:
                 raise Exception("Workflow not found")
-            
+
             self.db.commit()
             self.logger.info(f"Workflow deleted successfully: {workflow_id}")
             return True
@@ -163,40 +173,36 @@ class WorkflowService:
         """List workflows for a user."""
         try:
             self.logger.info(f"Listing workflows for user: {request.user_id}")
-            
-            query = self.db.query(WorkflowModel).filter(
-                WorkflowModel.user_id == request.user_id
-            )
-            
+
+            query = self.db.query(WorkflowModel).filter(WorkflowModel.user_id == request.user_id)
+
             if request.active_only:
                 query = query.filter(WorkflowModel.active == True)
-            
+
             if request.tags:
                 for tag in request.tags:
                     query = query.filter(WorkflowModel.tags.contains([tag]))
-            
+
             total_count = query.count()
-            
+
             query = query.order_by(WorkflowModel.updated_at.desc())
-            
+
             if request.limit > 0:
                 query = query.limit(request.limit)
             if request.offset > 0:
                 query = query.offset(request.offset)
-            
+
             db_workflows = query.all()
-            
+
             workflows = [WorkflowData(**db_workflow.workflow_data) for db_workflow in db_workflows]
-            
+
             return workflows, total_count
         except Exception as e:
             self.logger.error(f"Error listing workflows: {str(e)}")
             raise
 
     def list_all_node_templates(
-        self,
-        category_filter: Optional[str] = None,
-        include_system_templates: bool = True
+        self, category_filter: Optional[str] = None, include_system_templates: bool = True
     ) -> List[NodeTemplate]:
         """List all available node templates."""
         try:

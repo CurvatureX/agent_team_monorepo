@@ -11,8 +11,9 @@ from typing import Any, Dict, List, Optional
 from app.core.config import get_settings
 
 settings = get_settings()
-from app.services.auth_service import verify_supabase_token
 import logging
+
+from app.services.auth_service import verify_supabase_token
 
 logger = logging.getLogger("app.middleware.auth")
 from fastapi import HTTPException, Request
@@ -61,9 +62,9 @@ class MCPApiKey:
 
 # API Key 权限范围定义
 MCP_SCOPES = {
-    "tools:read": ["GET /api/mcp/tools", "GET /api/mcp/tools/{tool_name}"],
-    "tools:execute": ["POST /api/mcp/invoke"],
-    "health:check": ["GET /api/mcp/health"],
+    "tools:read": ["GET /api/v1/mcp/tools", "GET /api/v1/mcp/tools/{tool_name}"],
+    "tools:execute": ["POST /api/v1/mcp/invoke"],
+    "health:check": ["GET /api/v1/mcp/health"],
     "admin": ["*"],  # 管理员权限
 }
 
@@ -331,7 +332,9 @@ async def unified_auth_middleware(request: Request, call_next):
         request.state.access_token = auth_result.token
         request.state.auth_type = "supabase"
 
-        logger.info(f"Supabase auth successful: {path} - {auth_result.user.get('email', 'unknown')}")
+        logger.info(
+            f"Supabase auth successful: {path} - {auth_result.user.get('email', 'unknown')}"
+        )
 
     else:
         # 其他路径使用传统认证（兼容性）

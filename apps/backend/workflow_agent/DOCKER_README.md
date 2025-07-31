@@ -27,7 +27,7 @@ cd /Users/bytedance/personal/agent_team_monorepo/apps/backend/workflow_agent
 
 # 设置环境变量
 export OPENAI_API_KEY="sk-your-key"
-export ANTHROPIC_API_KEY="sk-ant-your-key"  
+export ANTHROPIC_API_KEY="sk-ant-your-key"
 export SUPABASE_URL="https://your-project.supabase.co"
 export SUPABASE_SECRET_KEY="your-secret-key"
 
@@ -77,7 +77,7 @@ curl -X POST "http://localhost:8001/process-conversation" \
   -H "Content-Type: application/json" \
   -d '{
     "session_id": "test_123",
-    "user_id": "user_123", 
+    "user_id": "user_123",
     "access_token": "test_token",
     "user_message": "帮我创建一个处理邮件的工作流"
   }'
@@ -101,7 +101,7 @@ docker network rm workflow-network
 # 查看 workflow_agent 日志
 docker logs -f workflow-agent
 
-# 查看 Redis 日志  
+# 查看 Redis 日志
 docker logs -f workflow-redis
 
 # 进入容器调试
@@ -146,10 +146,10 @@ docker exec workflow-redis redis-cli ping
 ```
 workflow_agent/
 ├── start_docker.sh      # 完整启动脚本
-├── quick_start.sh       # 快速启动脚本  
+├── quick_start.sh       # 快速启动脚本
 ├── stop_docker.sh       # 停止脚本 (自动生成)
 ├── .env                 # 环境变量文件 (自动生成)
-├── main_fastapi.py      # FastAPI 启动入口
+├── main.py              # FastAPI 启动入口
 ├── services/
 │   └── fastapi_server.py # FastAPI 服务实现
 └── Dockerfile           # Docker 构建文件

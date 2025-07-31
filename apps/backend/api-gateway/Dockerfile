@@ -22,14 +22,7 @@ COPY api-gateway/.python-version* ./api-gateway/
 # Install Python dependencies with uv
 RUN uv sync --frozen --package api-gateway-mvp
 
-# Copy shared proto files and generation script for proto compilation
-COPY shared/proto/ /app/shared/proto/
-COPY shared/scripts/generate_engine_grpc.py /app/shared/scripts/
-
-# Skip proto generation for FastAPI-only deployment
-RUN mkdir -p /app/proto
-RUN echo "# Placeholder proto module" > /app/proto/__init__.py
-RUN echo "# Proto generation skipped for FastAPI deployment" > /app/proto/placeholder.py
+# No proto files needed for HTTP-only deployment
 
 # Production stage
 FROM python:3.11-slim AS production
@@ -47,10 +40,10 @@ RUN apt-get update && apt-get install -y \
 # Copy uv and dependencies from builder
 COPY --from=builder /app/.venv /app/.venv
 
-# Copy generated proto files from builder
-COPY --from=builder /app/proto /app/proto
+# No proto files to copy for HTTP-only deployment
 
-# Copy application code
+# Copy shared models and application code
+COPY shared/ ./shared/
 COPY api-gateway/ ./
 
 # Create non-root user
