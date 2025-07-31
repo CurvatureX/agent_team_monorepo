@@ -9,7 +9,6 @@ import time
 import uuid
 from typing import List
 
-import structlog
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
@@ -24,12 +23,10 @@ from agents.state import (
 )
 from .tools import RAGTool
 from core.config import settings
+from core.logging_config import get_logger
 from core.prompt_engine import get_prompt_engine
-from langchain_anthropic import ChatAnthropic
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 
-logger = structlog.get_logger()
+logger = get_logger(__name__)
 
 class WorkflowAgentNodes:
     """Simplified LangGraph nodes for workflow generation"""
@@ -230,7 +227,18 @@ class WorkflowAgentNodes:
                 response_text = (
                     response.content if isinstance(response.content, str) else str(response.content)
                 )
-                analysis = json.loads(response_text)
+                
+                # Remove markdown code blocks if present
+                if response_text.strip().startswith("```json"):
+                    response_text = response_text.strip()[7:]  # Remove ```json
+                    if response_text.endswith("```"):
+                        response_text = response_text[:-3]  # Remove trailing ```
+                elif response_text.strip().startswith("```"):
+                    response_text = response_text.strip()[3:]  # Remove ```
+                    if response_text.endswith("```"):
+                        response_text = response_text[:-3]  # Remove trailing ```
+                
+                analysis = json.loads(response_text.strip())
 
                 logger.info(f"Clarification analysis: {analysis}")
 
@@ -380,7 +388,18 @@ class WorkflowAgentNodes:
                 response_text = (
                     response.content if isinstance(response.content, str) else str(response.content)
                 )
-                analysis = json.loads(response_text)
+                
+                # Remove markdown code blocks if present
+                if response_text.strip().startswith("```json"):
+                    response_text = response_text.strip()[7:]  # Remove ```json
+                    if response_text.endswith("```"):
+                        response_text = response_text[:-3]  # Remove trailing ```
+                elif response_text.strip().startswith("```"):
+                    response_text = response_text.strip()[3:]  # Remove ```
+                    if response_text.endswith("```"):
+                        response_text = response_text[:-3]  # Remove trailing ```
+                
+                analysis = json.loads(response_text.strip())
                 gaps = analysis.get("gaps", [])
                 severity = analysis.get("severity", "low")
             except json.JSONDecodeError:
@@ -523,7 +542,18 @@ class WorkflowAgentNodes:
                 response_text = (
                     response.content if isinstance(response.content, str) else str(response.content)
                 )
-                workflow = json.loads(response_text)
+                
+                # Remove markdown code blocks if present
+                if response_text.strip().startswith("```json"):
+                    response_text = response_text.strip()[7:]  # Remove ```json
+                    if response_text.endswith("```"):
+                        response_text = response_text[:-3]  # Remove trailing ```
+                elif response_text.strip().startswith("```"):
+                    response_text = response_text.strip()[3:]  # Remove ```
+                    if response_text.endswith("```"):
+                        response_text = response_text[:-3]  # Remove trailing ```
+                
+                workflow = json.loads(response_text.strip())
             except json.JSONDecodeError:
                 # Fallback workflow structure
                 workflow = {
@@ -583,7 +613,18 @@ class WorkflowAgentNodes:
                     if isinstance(llm_response.content, str)
                     else str(llm_response.content)
                 )
-                debug_analysis = json.loads(response_text)
+                
+                # Remove markdown code blocks if present
+                if response_text.strip().startswith("```json"):
+                    response_text = response_text.strip()[7:]  # Remove ```json
+                    if response_text.endswith("```"):
+                        response_text = response_text[:-3]  # Remove trailing ```
+                elif response_text.strip().startswith("```"):
+                    response_text = response_text.strip()[3:]  # Remove ```
+                    if response_text.endswith("```"):
+                        response_text = response_text[:-3]  # Remove trailing ```
+                
+                debug_analysis = json.loads(response_text.strip())
 
                 # Extract key information from LLM analysis
                 errors = debug_analysis.get("issues_found", {}).get("critical_errors", [])

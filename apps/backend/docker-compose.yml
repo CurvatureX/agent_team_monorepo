@@ -56,6 +56,7 @@ services:
       target: production
       args:
         - PYTHON_VERSION=3.11
+        - BUILDKIT_PROGRESS=plain
     container_name: agent-team-workflow-agent
     ports:
       - "8001:8001" # FastAPI port
@@ -125,6 +126,8 @@ services:
     build:
       context: .
       dockerfile: ./api-gateway/Dockerfile
+      args:
+        - BUILDKIT_PROGRESS=plain
     container_name: api_gateway_service
     user: "1000:1000"
     ports:
@@ -138,6 +141,10 @@ services:
       - WORKFLOW_AGENT_HOST=workflow-agent
       - WORKFLOW_AGENT_PORT=8001
       - USE_HTTP_CLIENT=true
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+      - 1.1.1.1
     depends_on:
       redis:
         condition: service_healthy

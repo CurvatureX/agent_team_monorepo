@@ -8,15 +8,15 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+# Install uv with timeout and retry
+RUN pip install --default-timeout=120 --retries 5 uv
 ENV PATH="/root/.local/bin:$PATH"
 
 # Copy pyproject.toml first for better Docker layer caching
 COPY workflow_agent/pyproject.toml .
 
-# Install Python dependencies using uv
-RUN uv pip install --system -e .
+# Install Python dependencies using uv with timeout
+RUN UV_HTTP_TIMEOUT=120 uv pip install --system -e .
 
 # Production stage
 FROM python:3.11-slim AS production
