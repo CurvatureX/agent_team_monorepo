@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 from app.core.database import create_user_supabase_client
 from app.dependencies import AuthenticatedDeps
 from app.exceptions import NotFoundError, ValidationError
-from shared.models import ResponseModel
+from app.models import ResponseModel
 from pydantic import BaseModel, Field
 from typing import Dict, Any, List
 

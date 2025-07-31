@@ -9,15 +9,15 @@ from typing import Optional
 from app.core.config import get_settings
 from app.dependencies import AuthenticatedDeps
 from app.exceptions import NotFoundError, ValidationError
-from shared.models import (
+from app.models import (
     NodeTemplateListResponse,
     ResponseModel,
-    WorkflowEntity as Workflow,
-    WorkflowCreateRequest as WorkflowCreate,
+    Workflow,
+    WorkflowCreate,
     WorkflowExecutionRequest,
     WorkflowExecutionResponse,
     WorkflowResponse,
-    WorkflowUpdateRequest as WorkflowUpdate,
+    WorkflowUpdate,
 )
 from app.services.workflow_engine_http_client import get_workflow_engine_client
 from fastapi import APIRouter, Depends, HTTPException

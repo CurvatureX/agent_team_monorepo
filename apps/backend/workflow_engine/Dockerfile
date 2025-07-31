@@ -1,7 +1,7 @@
 # Dockerfile for workflow_engine using FastAPI
 
 # Use an official Python runtime as a parent image
-FROM python:3.11-slim as base
+FROM python:3.11-slim AS base
 
 # Set the working directory in the container
 WORKDIR /app
@@ -23,7 +23,7 @@ COPY ./workflow_engine/workflow_engine /app/workflow_engine
 COPY ./shared /app/shared
 
 # Production stage
-FROM base as production
+FROM base AS production
 
 # Create a non-root user
 RUN useradd --create-home --shell /bin/bash app

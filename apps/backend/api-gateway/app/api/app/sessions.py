@@ -8,7 +8,7 @@ from typing import List, Optional
 from app.core.database import create_user_supabase_client, get_supabase_admin
 from app.dependencies import AuthenticatedDeps, get_session_id
 from app.exceptions import NotFoundError, ValidationError
-from shared.models import (
+from app.models import (
     ResponseModel,
     Session,
     SessionCreate,
