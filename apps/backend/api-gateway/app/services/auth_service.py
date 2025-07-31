@@ -64,10 +64,11 @@ async def verify_supabase_token(token: str, use_cache: bool = True) -> Optional[
 
         if response and response.user and response.user.id:
             user_data = {
+                "id": response.user.id,  # AuthUser expects 'id' field
                 "sub": response.user.id,
                 "email": response.user.email,
-                "email_confirmed_at": response.user.email_confirmed_at,
-                "created_at": response.user.created_at,
+                "email_confirmed_at": response.user.email_confirmed_at.isoformat() if response.user.email_confirmed_at else None,
+                "created_at": response.user.created_at.isoformat() if response.user.created_at else None,
                 "user_metadata": response.user.user_metadata,
                 "app_metadata": response.user.app_metadata,
                 # Add token validation metadata
