@@ -20,22 +20,36 @@ This approach offers several advantages:
 """
 
 from .agent import *
+from .auth import *
+from .chat import *
 
 # Import all models from the respective files
 from .common import *
+from .conversation import *
+from .db_models import *
 from .execution import *
+from .mcp import *
 from .node import *
+from .session import *
 from .trigger import *
 from .workflow import *
 
 # Use __all__ to explicitly define the public API of this module
 __all__ = [
-    # common.py
+    # common.py - 基础模型
+    "BaseModel",
+    "TimestampedModel",
+    "IDModel",
+    "EntityModel",
+    "ResponseModel",
     "BaseResponse",
+    "ErrorModel",
     "ErrorResponse",
     "HealthStatus",
+    "HealthCheckModel",
     "HealthResponse",
-    "HealthStatus",
+    "PaginationModel",
+    "PaginatedResponseModel",
     "ServiceStatus",
     "ServiceHealthCheck",
     # Workflow models
@@ -61,12 +75,58 @@ __all__ = [
     "ListWorkflowsResponse",
     "ExecuteWorkflowRequest",
     "ExecuteWorkflowResponse",
+    # API Gateway工作流模型
+    "WorkflowStatus",
+    "WorkflowType",
+    "NodeType",
+    "WorkflowNode",
+    "WorkflowEdge",
+    "WorkflowCreateRequest",
+    "WorkflowUpdateRequest",
+    "WorkflowEntity",
+    "WorkflowExecutionRecord",
+    "WorkflowResponse",
+    "WorkflowListResponse",
+    "WorkflowExecutionRequest",
+    "WorkflowExecutionResponse",
+    "NodeTemplate",
+    "NodeTemplateListResponse",
     # Conversation models (ProcessConversation interface)
     "WorkflowContext",
     "ConversationRequest",
     "ConversationResponse",
     "ResponseType",
     "ErrorContent",
+    # Authentication models
+    "AuthUser",
+    "AuthClient",
+    "AuthResult",
+    # Session models
+    "SessionCreate",
+    "SessionUpdate",
+    "Session",
+    "SessionResponse",
+    "SessionListResponse",
+    # Chat models
+    "MessageType",
+    "ChatRequest",
+    "ChatMessage",
+    "ChatSSEEvent",
+    "SSEEventType",
+    "MessageEventData",
+    "StatusChangeEventData",
+    "WorkflowEventData",
+    "ErrorEventData",
+    "DebugEventData",
+    "ChatStreamResponse",
+    "ChatHistory",
+    # MCP models
+    "MCPTool",
+    "MCPInvokeRequest",
+    "MCPInvokeResponse",
+    "MCPToolsResponse",
+    "MCPHealthCheck",
+    "MCPErrorResponse",
     # agent.py
     "WorkflowGenerationRequest",
     "WorkflowGenerationResponse",
@@ -83,4 +143,9 @@ __all__ = [
     "Trigger",
     # node.py
     "NodeTemplate",
+    # db_models.py - SQLAlchemy数据库模型
+    "Base",
+    "WorkflowExecution",
+    "WorkflowDB",
+    "NodeTemplateDB",
 ]

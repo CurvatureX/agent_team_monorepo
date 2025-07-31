@@ -6,7 +6,7 @@ Validation Status API endpoints for monitoring security validation
 from datetime import datetime
 from typing import Any, Dict
 
-from app.models.base import ResponseModel
+from shared.models import ResponseModel
 from app.services.auth_service import get_auth_cache_stats
 from app.services.validation import (
     EnhancedValidationService,

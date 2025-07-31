@@ -1,1 +1,0 @@
-# Proto package for API Gateway 

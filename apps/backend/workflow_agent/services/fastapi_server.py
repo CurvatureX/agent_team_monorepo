@@ -5,30 +5,35 @@ FastAPI Server for Workflow Agent
 
 import asyncio
 import json
+import os
+
+# Import shared models
+import sys
 import time
-from typing import Optional, AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
+from agents.state import WorkflowStage, WorkflowState
 
 # Import workflow agent components
 from agents.workflow_agent import WorkflowAgent
 from core.config import settings
 from core.logging_config import get_logger
 from services.state_manager import get_workflow_agent_state_manager
-from agents.state import WorkflowState, WorkflowStage
 
-# Import shared models
-import sys
-import os
 # Add parent directory to path for shared models
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(os.path.dirname(current_dir))  # Go to apps/backend
 sys.path.insert(0, parent_dir)
 
+# shared models导入（两种环境都相同）
 from shared.models.conversation import (
-    ConversationRequest, ConversationResponse,
-    ErrorContent, ResponseType, StatusChangeContent
+    ConversationRequest,
+    ConversationResponse,
+    ErrorContent,
+    ResponseType,
+    StatusChangeContent,
 )
 
 logger = get_logger(__name__)
@@ -46,11 +51,8 @@ class WorkflowAgentServicer:
         self.workflow_agent = WorkflowAgent()
         self.state_manager = get_workflow_agent_state_manager()
         logger.info("WorkflowAgentServicer initialized with database state management")
-    
-    async def process_conversation(
-        self, 
-        request: ConversationRequest
-    ) -> AsyncGenerator[str, None]:
+
+    async def process_conversation(self, request: ConversationRequest) -> AsyncGenerator[str, None]:
         """
         处理对话的统一接口 - 支持所有工作流生成阶段
         内部管理 workflow_agent_state，对外提供流式响应
@@ -59,41 +61,47 @@ class WorkflowAgentServicer:
         try:
             logger.info(f"Request: {request}")
             session_id = request.session_id
-            current_state = self.state_manager.get_state_by_session(session_id, request.access_token)
-            
+            current_state = self.state_manager.get_state_by_session(
+                session_id, request.access_token
+            )
+
             if not current_state:
                 # 创建新的 workflow_agent_state 记录
                 workflow_context = None
                 if request.workflow_context:
                     workflow_context = {
                         "origin": request.workflow_context.origin,
-                        "source_workflow_id": request.workflow_context.source_workflow_id
+                        "source_workflow_id": request.workflow_context.source_workflow_id,
                     }
                 state_id = self.state_manager.create_state(
                     session_id=session_id,
                     user_id=request.user_id or "anonymous",
                     initial_stage=WorkflowStage.CLARIFICATION,
                     workflow_context=workflow_context,
-                    access_token=request.access_token
+                    access_token=request.access_token,
                 )
-                
+
                 if not state_id:
                     raise Exception("Failed to create workflow_agent_state")
-                
+
                 # 重新获取创建的状态
-                current_state = self.state_manager.get_state_by_session(session_id, request.access_token)
+                current_state = self.state_manager.get_state_by_session(
+                    session_id, request.access_token
+                )
                 logger.info(f"Created new workflow_agent_state for session {session_id}")
             else:
                 logger.info(f"Retrieved existing workflow_agent_state for session {session_id}")
-            
+
             # 添加用户消息到对话历史
             conversations = current_state.get("conversations", [])
             if request.user_message:
-                conversations.append({
-                    "role": "user",
-                    "text": request.user_message,
-                    "timestamp": int(time.time() * 1000)
-                })
+                conversations.append(
+                    {
+                        "role": "user",
+                        "text": request.user_message,
+                        "timestamp": int(time.time() * 1000),
+                    }
+                )
                 current_state["conversations"] = conversations
 
             logger.info(f"Current stage: {current_state.get('stage', 'unknown')}")
@@ -124,25 +132,29 @@ class WorkflowAgentServicer:
                         )
                         
                         # 发送状态变化信息
-                        if node_name != 'router':
+                        if node_name != "router":
                             status_change_response = self._create_status_change_response(
                                 session_id, node_name, previous_stage, updated_state
                             )
                             yield f"data: {status_change_response.model_dump_json()}\n\n"
-                        
+
                         # 只在特定阶段发送消息响应
                         current_stage = updated_state.get("stage", WorkflowStage.CLARIFICATION)
                         if current_stage in [WorkflowStage.NEGOTIATION]:
-                            message_response = await self._create_message_response(session_id, updated_state)
+                            message_response = await self._create_message_response(
+                                session_id, updated_state
+                            )
                             if message_response:
                                 yield f"data: {message_response.model_dump_json()}\n\n"
-                        
+
                         # 如果是工作流生成完成，发送工作流响应
                         if current_stage == WorkflowStage.WORKFLOW_GENERATION:
-                            workflow_response = await self._create_workflow_response(session_id, updated_state)
+                            workflow_response = await self._create_workflow_response(
+                                session_id, updated_state
+                            )
                             if workflow_response:
                                 yield f"data: {workflow_response.model_dump_json()}\n\n"
-                        
+
                         # 更新状态跟踪
                         previous_stage = current_stage
                         current_state = self._convert_from_workflow_state(updated_state)
@@ -169,7 +181,7 @@ class WorkflowAgentServicer:
                 success = self.state_manager.save_full_state(
                     session_id=session_id,
                     workflow_state=current_state,
-                    access_token=request.access_token
+                    access_token=request.access_token,
                 )
                 if success:
                     logger.info(f"Saved updated workflow_agent_state for session {session_id}")
@@ -221,9 +233,9 @@ class WorkflowAgentServicer:
                         error_code="PROCESSING_ERROR",
                         message=f"Error processing workflow: {str(processing_error)}",
                         details=str(processing_error),
-                        is_recoverable=True
+                        is_recoverable=True,
                     ),
-                    is_final=True
+                    is_final=True,
                 )
                 yield f"data: {error_response.model_dump_json()}\n\n"
             
@@ -237,11 +249,14 @@ class WorkflowAgentServicer:
 
         except Exception as e:
             import traceback
+
             error_traceback = traceback.format_exc()
-            logger.error(f"Failed to process conversation: {str(e)}", 
-                        session_id=request.session_id,
-                        traceback=error_traceback)
-            
+            logger.error(
+                f"Failed to process conversation: {str(e)}",
+                session_id=request.session_id,
+                traceback=error_traceback,
+            )
+
             # 发送错误响应
             error_response = ConversationResponse(
                 session_id=request.session_id,
@@ -250,12 +265,12 @@ class WorkflowAgentServicer:
                     error_code="INTERNAL_ERROR",
                     message=f"Failed to process conversation: {str(e)}",
                     details=str(e),
-                    is_recoverable=True
+                    is_recoverable=True,
                 ),
-                is_final=True
+                is_final=True,
             )
             yield f"data: {error_response.model_dump_json()}\n\n"
-    
+
     def _convert_to_workflow_state(self, db_state: dict) -> WorkflowState:
         """将数据库状态转换为 LangGraph WorkflowState"""
         workflow_state: WorkflowState = {
@@ -266,10 +281,9 @@ class WorkflowAgentServicer:
             "stage": WorkflowStage(db_state.get("stage", "clarification")),
             "intent_summary": db_state.get("intent_summary", ""),
             "execution_history": db_state.get("execution_history", []),
-            "clarification_context": db_state.get("clarification_context", {
-                "origin": "create",
-                "pending_questions": []
-            }),
+            "clarification_context": db_state.get(
+                "clarification_context", {"origin": "create", "pending_questions": []}
+            ),
             "conversations": db_state.get("conversations", []),
             "gaps": db_state.get("gaps", []),
             "alternatives": db_state.get("alternatives", []),
@@ -277,7 +291,7 @@ class WorkflowAgentServicer:
             "debug_result": db_state.get("debug_result", ""),
             "debug_loop_count": db_state.get("debug_loop_count", 0),
         }
-        
+
         # 处理 current_workflow
         current_workflow = db_state.get("current_workflow")
         if isinstance(current_workflow, str) and current_workflow:
@@ -289,48 +303,72 @@ class WorkflowAgentServicer:
             workflow_state["current_workflow"] = current_workflow
         else:
             workflow_state["current_workflow"] = {}
-            
+
         return workflow_state
-        
+
     def _convert_from_workflow_state(self, workflow_state: WorkflowState) -> dict:
         """将 LangGraph WorkflowState 转换为数据库状态"""
         db_state = dict(workflow_state)
-        
+
         # 确保stage 是字符串
         if isinstance(db_state.get("stage"), WorkflowStage):
             db_state["stage"] = db_state["stage"].value
-            
+
         return db_state
-        
+
     def _create_status_change_response(
-        self, 
-        session_id: str, 
-        node_name: str, 
-        previous_stage: Optional[WorkflowStage], 
-        current_state: WorkflowState
+        self,
+        session_id: str,
+        node_name: str,
+        previous_stage: Optional[WorkflowStage],
+        current_state: WorkflowState,
     ) -> ConversationResponse:
         """创建状态变化响应"""
         current_stage = current_state.get("stage", WorkflowStage.CLARIFICATION)
         
-        # 返回完整的 current_state
-        stage_state = dict(current_state)
-        
+        # 准备 stage_state 内容（不包含敏感信息）
+        stage_state = {
+            "session_id": current_state.get("session_id", session_id),
+            "stage": (
+                current_stage.value
+                if isinstance(current_stage, WorkflowStage)
+                else str(current_stage)
+            ),
+            "intent_summary": current_state.get("intent_summary", ""),
+            "gaps": current_state.get("gaps", []),
+            "alternatives": current_state.get("alternatives", []),
+            "debug_result": current_state.get("debug_result", ""),
+            "debug_loop_count": current_state.get("debug_loop_count", 0),
+            "conversations_count": len(current_state.get("conversations", [])),
+            "has_workflow": bool(current_state.get("current_workflow", {})),
+        }
+
         return ConversationResponse(
             session_id=session_id,
             response_type=ResponseType.STATUS_CHANGE,
             is_final=False,
             status_change=StatusChangeContent(
-                previous_stage=previous_stage.value if previous_stage and isinstance(previous_stage, WorkflowStage) else (str(previous_stage) if previous_stage else None),
-                current_stage=current_stage.value if isinstance(current_stage, WorkflowStage) else str(current_stage),
+                previous_stage=(
+                    previous_stage.value
+                    if previous_stage and isinstance(previous_stage, WorkflowStage)
+                    else (str(previous_stage) if previous_stage else None)
+                ),
+                current_stage=(
+                    current_stage.value
+                    if isinstance(current_stage, WorkflowStage)
+                    else str(current_stage)
+                ),
                 stage_state=stage_state,
-                node_name=node_name
-            )
+                node_name=node_name,
+            ),
         )
-    
-    async def _create_message_response(self, session_id: str, state: WorkflowState) -> Optional[ConversationResponse]:
+
+    async def _create_message_response(
+        self, session_id: str, state: WorkflowState
+    ) -> Optional[ConversationResponse]:
         """创建消息响应（仅限 clarification 和 alternative 阶段）"""
         conversations = state.get("conversations", [])
-        
+
         # 获取最后一条 assistant 消息
         for conv in reversed(conversations):
             if conv.get("role") == "assistant":
@@ -338,24 +376,30 @@ class WorkflowAgentServicer:
                     session_id=session_id,
                     response_type=ResponseType.MESSAGE,
                     message=conv.get("text", ""),
-                    is_final=True
+                    is_final=True,
                 )
-        
+
         return None
-    
-    async def _create_workflow_response(self, session_id: str, state: WorkflowState) -> Optional[ConversationResponse]:
+
+    async def _create_workflow_response(
+        self, session_id: str, state: WorkflowState
+    ) -> Optional[ConversationResponse]:
         """创建工作流响应"""
         current_workflow = state.get("current_workflow", {})
-        
-        if current_workflow and isinstance(current_workflow, dict) and current_workflow.get("nodes"):
+
+        if (
+            current_workflow
+            and isinstance(current_workflow, dict)
+            and current_workflow.get("nodes")
+        ):
             workflow_json = json.dumps(current_workflow)
             return ConversationResponse(
                 session_id=session_id,
                 response_type=ResponseType.WORKFLOW,
                 workflow=workflow_json,
-                is_final=False
+                is_final=False,
             )
-        
+
         return None
     
     def _should_terminate_workflow(self, state: WorkflowState) -> bool:
@@ -400,7 +444,7 @@ class WorkflowAgentServicer:
 app = FastAPI(
     title="Workflow Agent API",
     description="工作流代理服务 - ProcessConversation 接口",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 # 创建服务器实例
@@ -419,7 +463,7 @@ async def process_conversation(request: ConversationRequest):
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-        }
+        },
     )
 
 
@@ -430,7 +474,9 @@ async def health_check():
 
 
 if __name__ == "__main__":
-    import uvicorn
     import os
-    port = getattr(settings, 'FASTAPI_PORT', None) or int(os.getenv('FASTAPI_PORT', '8001'))
+
+    import uvicorn
+
+    port = getattr(settings, "FASTAPI_PORT", None) or int(os.getenv("FASTAPI_PORT", "8001"))
     uvicorn.run(app, host="0.0.0.0", port=port)
