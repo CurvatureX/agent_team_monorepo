@@ -62,104 +62,177 @@ service: "api-gateway" | "workflow-engine" | "workflow-agent"
 
 所有 API 请求和服务调用都必须包含 `track_id` 用于分布式追踪：
 
-#### A. Tracking ID 传递策略
+#### A. 统一追踪标识符策略 (基于 OpenTelemetry)
 
-**1. HTTP Header 标准**
+**核心思路：直接使用 OpenTelemetry Trace ID 作为统一的 tracking_id**
 
-- **Header 名称**: `X-Tracking-ID` (统一使用 Tracking 而非 Trace)
-- **格式规范**: UUID v4 格式 (例: `f47ac10b-58cc-4372-a567-0e02b2c3d479`)
-- **字符编码**: UTF-8, 长度固定 36 字符
+**1. 统一 ID 格式**
 
-**2. 传递规则**
+- **唯一格式**: OpenTelemetry 128-bit trace ID (32位十六进制)
+  - 例: `4bf92f3577b34da6a3ce929d0e0e4736`
+- **全场景使用**: 客户端、服务间、数据库、日志全部使用相同ID
+- **HTTP Header**: `X-Tracking-ID` 返回完整格式给客户端
+
+**2. 零侵入实现方案**
 
 ```python
-# 在 TracingMiddleware 中实现三级策略
-def _extract_or_generate_tracking_id(self, request: Request) -> str:
-    # 1. 优先从请求头提取 (继续使用现有 ID)
-    tracking_id = request.headers.get("X-Tracking-ID")
-    if tracking_id and self._is_valid_uuid(tracking_id):
-        return tracking_id
+class TrackingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # OpenTelemetry 自动处理所有追踪逻辑，无需手动传播
+        span = trace.get_current_span()
 
-    # 2. 从 OpenTelemetry 上下文提取
-    context = propagate.extract(dict(request.headers))
-    span_context = trace.get_current_span(context).get_span_context()
-    if span_context.is_valid:
-        return f"{span_context.trace_id:032x}"
+        if span.is_recording():
+            # 直接使用 OpenTelemetry 的完整 trace_id 作为 tracking_id
+            tracking_id = format(span.get_span_context().trace_id, '032x')
 
-    # 3. Gateway 生成新的 UUID v4
-    return str(uuid.uuid4())
+            # 添加到 span 属性，便于业务查询
+            span.set_attribute("tracking.id", tracking_id)
 
-def _is_valid_uuid(self, uuid_string: str) -> bool:
-    """验证 UUID v4 格式"""
-    try:
-        uuid_obj = uuid.UUID(uuid_string, version=4)
-        return str(uuid_obj) == uuid_string
-    except ValueError:
-        return False
+            # 存储到请求状态，供业务代码使用
+            request.state.tracking_id = tracking_id
+
+        response = await call_next(request)
+
+        # 返回完整的 tracking_id 给客户端
+        if hasattr(request.state, 'tracking_id'):
+            response.headers["X-Tracking-ID"] = request.state.tracking_id
+
+        return response
+
+# 主应用初始化 - 一次性配置
+def setup_telemetry(app: FastAPI):
+    # 1. 配置 OpenTelemetry 导出器
+    trace.set_tracer_provider(TracerProvider())
+    otlp_exporter = OTLPSpanExporter(endpoint="http://otel-collector:4317")
+    span_processor = BatchSpanProcessor(otlp_exporter)
+    trace.get_tracer_provider().add_span_processor(span_processor)
+
+    # 2. 自动装配 - 核心优势！
+    FastAPIInstrumentor().instrument_app(app)  # 自动追踪所有请求
+    RequestsInstrumentor().instrument()        # 自动追踪所有HTTP调用
+
+    # 3. 添加统一追踪中间件
+    app.add_middleware(TrackingMiddleware)
 ```
 
-**3. 服务间调用要求**
-
-- ✅ **必须携带**: 所有内部服务调用必须包含 `X-Tracking-ID` 头
-- ✅ **格式验证**: 接收端验证 UUID v4 格式，无效时生成新 ID
-- ✅ **响应返回**: 所有 HTTP 响应必须返回 `X-Tracking-ID` 头
-- ✅ **日志记录**: 每个服务记录接收和发送的 tracking_id
-
-#### Track ID 传播机制
-
-- **HTTP 头部**: `X-Tracking-ID` 在所有服务间传递
-- **响应头**: 返回 `X-Tracking-ID` 便于客户端追踪
-- **日志关联**: 所有日志自动包含 `tracking_id` 字段
-- **数据库记录**: 业务数据关联 `tracking_id` 便于问题定位
-
-### 📊 **每个 API 的 Track ID 实现**
-
-#### API Gateway → Workflow Agent
+**3. 自动化传播机制**
 
 ```python
-# API Gateway 发起请求时传递 tracking_id
-async def call_workflow_agent(tracking_id: str, payload: dict):
-    headers = {"X-Tracking-ID": tracking_id}
+# 服务间调用示例 - 完全自动化
+@app.post("/api/v1/sessions")
+async def create_session(request: Request, session_data: SessionCreate):
+    tracking_id = request.state.tracking_id  # 完整的 OpenTelemetry trace ID
+
+    # 调用其他服务 - OpenTelemetry 自动传播完整 trace context
+    # 无需手动添加任何 header！
+    response = await httpx.post(
+        f"{WORKFLOW_AGENT_URL}/generate",
+        json=session_data.dict()
+        # OpenTelemetry 自动注入 traceparent header
+    )
+
+    # 保存到数据库 - 使用完整 tracking_id
+    db_session = Session(
+        id=str(uuid.uuid4()),
+        tracking_id=tracking_id,  # 完整的32位格式
+        user_id=session_data.user_id,
+        created_at=datetime.utcnow()
+    )
+
+    logger.info(
+        f"Created session for user {session_data.user_id}",
+        extra={
+            "tracking_id": tracking_id,
+            "session_id": db_session.id,
+            "user_id": session_data.user_id
+        }
+    )
+
+    return {"session_id": db_session.id, "tracking_id": tracking_id}
+```
+
+**4. 统一追踪的优势**
+
+- ✅ **零侵入**: OpenTelemetry 自动处理所有 header 传播
+- ✅ **完全统一**: 所有场景使用同一个 trace ID，无任何混淆
+- ✅ **自动关联**: 日志、metrics、traces 自动包含相同标识符
+- ✅ **标准兼容**: 完全遵循 W3C Trace Context 标准
+
+#### 统一追踪传播机制
+
+- **技术层面**: OpenTelemetry 自动传播 `traceparent` header (W3C标准)
+- **业务层面**: 完整的 32位 `tracking_id` 用于客户端和数据库
+- **响应头**: 返回 `X-Tracking-ID` (完整格式) 便于客户端追踪
+- **完美对应**: tracking_id 直接对应 OpenTelemetry trace_id，无转换
+
+### 📊 **自动化服务调用实现**
+
+#### 完全自动化的服务间调用
+
+```python
+# API Gateway → Workflow Agent (零手动配置)
+async def call_workflow_agent(request: Request, payload: dict):
+    # 无需手动传递任何 header - OpenTelemetry 自动处理！
     response = await httpx.post(
         f"{WORKFLOW_AGENT_URL}/generate-workflow",
-        headers=headers,
         json=payload
+        # traceparent header 自动注入
     )
-```
 
-#### API Gateway → Workflow Engine
+    # 业务代码使用统一的 tracking_id
+    tracking_id = request.state.tracking_id
+    logger.info(f"Called workflow agent with tracking_id: {tracking_id}")
 
-```python
-# 执行工作流时传递 tracking_id
-async def execute_workflow(tracking_id: str, workflow_data: dict):
-    headers = {"X-Tracking-ID": tracking_id}
+    return response
+
+# API Gateway → Workflow Engine (同样零配置)
+async def execute_workflow(request: Request, workflow_data: dict):
     response = await httpx.post(
         f"{WORKFLOW_ENGINE_URL}/execute",
-        headers=headers,
         json=workflow_data
+        # OpenTelemetry 自动传播完整的 trace context
     )
+
+    return response
 ```
 
-#### 中间件自动处理
+#### 统一中间件 - 极简实现
 
 ```python
-# TracingMiddleware 自动处理所有请求
-class TracingMiddleware(BaseHTTPMiddleware):
+# 只需要这一个中间件！
+class TrackingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # 提取或生成 tracking_id
-        tracking_id = self._extract_or_generate_tracking_id(request)
+        span = trace.get_current_span()
 
-        # 存储在请求状态中
-        request.state.tracking_id = tracking_id
+        if span.is_recording():
+            # 直接使用 OpenTelemetry 的完整 trace_id
+            tracking_id = format(span.get_span_context().trace_id, '032x')
 
-        # 处理请求
-        with self.tracer.start_as_current_span(span_name) as span:
+            # 存储供业务使用
+            request.state.tracking_id = tracking_id
+
+            # 添加到 span 便于查询
             span.set_attribute("tracking.id", tracking_id)
-            response = await call_next(request)
 
-            # 添加到响应头
-            response.headers["X-Tracking-ID"] = tracking_id
-            return response
+        response = await call_next(request)
+
+        # 返回完整 tracking_id 给客户端
+        if hasattr(request.state, 'tracking_id'):
+            response.headers["X-Tracking-ID"] = request.state.tracking_id
+
+        return response
+
+# 应用启动时的一次性配置
+def main():
+    app = FastAPI()
+
+    # 1. 配置 OpenTelemetry
+    setup_telemetry(app)
+
+    # 2. 添加统一追踪中间件
+    app.add_middleware(TrackingMiddleware)
+
+    # 就这样！所有追踪自动工作
 ```
 
 ## C. 日志关联规范
@@ -171,14 +244,11 @@ class TracingMiddleware(BaseHTTPMiddleware):
 ```python
 # AWS CloudWatch 优化的日志格式
 {
-    "timestamp": "2025-01-31T10:30:45.123Z",
-    "@timestamp": "2025-01-31T10:30:45.123Z",  # CloudWatch 自动解析
-    "level": "INFO",
-    "@level": "INFO",  # CloudWatch 日志级别字段
+    "@timestamp": "2025-01-31T10:30:45.123Z",
+    "@level": "INFO",
+    "@message": "POST /api/v1/sessions - 201",
     "service": "api-gateway",
-    "tracking_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-    "message": "POST /api/v1/sessions - 201",
-    "@message": "POST /api/v1/sessions - 201",  # CloudWatch 消息字段
+    "tracking_id": "4bf92f3577b34da6a3ce929d0e0e4736",  # 完整的 OpenTelemetry trace ID
     "request": {  # 嵌套对象支持点号查询
         "method": "POST",
         "path": "/api/v1/sessions",
@@ -197,8 +267,8 @@ class TracingMiddleware(BaseHTTPMiddleware):
         "id": "session_67890"
     },
     "tracing": {
-        "span_id": "1a2b3c4d5e6f7890",
-        "trace_id": "f47ac10b58cc4372a5670e02b2c3d479"
+        "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",  # OpenTelemetry trace ID (与 tracking_id 相同)
+        "span_id": "1a2b3c4d5e6f7890"
     }
 }
 ```
@@ -226,7 +296,7 @@ fields @timestamp, service, request.path, request.duration
 - `@timestamp` - 自动索引时间字段
 - `@level` - 日志级别索引
 - `@message` - 消息内容索引
-- `tracking_id` - 追踪 ID 索引
+- `tracking_id` - 统一追踪 ID 索引 (32位 OpenTelemetry trace ID)
 - `service` - 服务名索引
 - `request.method` - HTTP 方法索引
 - `response.status` - 状态码索引
@@ -246,16 +316,13 @@ class CloudWatchTracingFormatter(logging.Formatter):
 
         timestamp = datetime.utcnow().isoformat() + "Z"
 
-        # CloudWatch 优化格式
+        # CloudWatch 优化格式 (统一使用 OpenTelemetry trace ID)
         log_entry = {
-            "timestamp": timestamp,
-            "@timestamp": timestamp,  # CloudWatch 自动解析
-            "level": record.levelname,
-            "@level": record.levelname,  # CloudWatch 日志级别
+            "@timestamp": timestamp,
+            "@level": record.levelname,
+            "@message": record.getMessage(),
             "service": self.service_name,
-            "tracking_id": tracking_id,
-            "message": record.getMessage(),
-            "@message": record.getMessage(),  # CloudWatch 消息字段
+            "tracking_id": tracking_id,  # 完整的32位 OpenTelemetry trace ID
             "source": {
                 "module": record.module,
                 "function": record.funcName,
@@ -294,6 +361,15 @@ class CloudWatchTracingFormatter(logging.Formatter):
             log_entry['session'] = {
                 'id': extra_fields.get('session_id'),
                 'duration': extra_fields.get('session_duration')
+            }
+
+        # 添加追踪信息 (tracking_id 已经是完整的 trace_id)
+        span = trace.get_current_span()
+        if span.is_recording():
+            span_context = span.get_span_context()
+            log_entry['tracing'] = {
+                'trace_id': tracking_id,  # 与 tracking_id 相同，都是完整的 trace_id
+                'span_id': format(span_context.span_id, '016x')
             }
 
         return json.dumps(log_entry, ensure_ascii=False, separators=(',', ':'))
@@ -408,14 +484,11 @@ span.set_attributes({
 
 ```json
 {
-  "timestamp": "2025-01-31T10:30:45.123Z",
   "@timestamp": "2025-01-31T10:30:45.123Z",
-  "level": "INFO|WARN|ERROR|DEBUG",
   "@level": "INFO|WARN|ERROR|DEBUG",
+  "@message": "Human readable message",
   "service": "api-gateway|workflow-agent|workflow-engine",
-  "tracking_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-  "message": "Human readable message",
-  "@message": "Human readable message"
+  "tracking_id": "4bf92f3577b34da6a3ce929d0e0e4736"
 }
 ```
 
@@ -939,19 +1012,19 @@ class MetricsMiddleware(BaseHTTPMiddleware):
 4. [ ] 日志包含 trace_id 关联
 5. [ ] 告警规则正常触发
 6. [ ] 成本控制在预算内
-7. [ ] **每个 API 请求都有 tracking_id (UUID v4 格式)**
-8. [ ] **服务间调用正确传递 X-Tracking-ID 头**
-9. [ ] **响应头包含 X-Tracking-ID 便于客户端追踪**
-10. [ ] **数据库记录关联 tracking_id 字段**
+7. [ ] **每个 API 请求都有 tracking_id (直接使用完整的 OpenTelemetry trace ID)**
+8. [ ] **OpenTelemetry 自动传播 traceparent header (零手动配置)**
+9. [ ] **响应头包含完整的 X-Tracking-ID 便于客户端追踪**
+10. [ ] **数据库记录关联完整的 tracking_id 字段 (32位格式)**
 11. [ ] **所有日志使用 JSON 结构化格式 (完全适配 AWS CloudWatch)**
-12. [ ] **所有日志必须包含 tracking_id 字段**
+12. [ ] **所有日志包含统一的 tracking_id (与 OpenTelemetry trace_id 完全一致)**
 13. [ ] **ERROR 级别日志自动创建 OpenTelemetry Span Events**
-14. [ ] **基础指标包含必需标签维度 (service_name, endpoint, method, status_code, api_version)**
-15. [ ] **业务指标收集 (api_key_usage, endpoint_usage, user_activity)**
+14. [ ] **基础指标自动包含 OpenTelemetry 标签维度**
+15. [ ] **业务指标收集 (通过 span 属性自动关联)**
 16. [ ] **CloudWatch 字段优化 (@timestamp, @level, @message 字段)**
-17. [ ] **嵌套对象结构支持点号查询 (request.method, user.id)**
+17. [ ] **tracing 对象包含 trace_id 和 span_id (无重复字段)**
 18. [ ] **字段数量限制 (小于 1000 字段避免截断)**
-19. [ ] **CloudWatch Logs Insights 查询验证**
+19. [ ] **OpenTelemetry 自动装配验证 (FastAPI + requests)**
 
 ### 🎯 关键成功指标
 
