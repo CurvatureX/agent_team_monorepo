@@ -22,7 +22,7 @@ workflow:
   nodes:
     - name: string                # Unique node identifier
       type: enum                  # Core node type (TRIGGER_NODE, AI_AGENT_NODE, etc.)
-      subtype: enum              # Specific implementation (TRIGGER_CHAT, AI_ROUTER_AGENT, etc.)
+      subtype: enum              # Specific implementation (TRIGGER_CHAT, AI_GEMINI_NODE, etc.)
       role: string               # Human-readable role description
       disabled: bool             # Whether node is active
 
@@ -66,12 +66,9 @@ node_types:
   AI_AGENT_NODE:
     description: "AI-powered processing nodes"
     subtypes:
-      - AI_ROUTER_AGENT
-      - AI_TASK_ANALYZER
-      - AI_DATA_INTEGRATOR
-      - AI_REPORT_GENERATOR
-      - AI_REMINDER_DECISION
-      - AI_WEEKLY_REPORT
+      - AI_GEMINI_NODE
+      - AI_OPENAI_NODE
+      - AI_CLAUDE_NODE
 
   EXTERNAL_ACTION_NODE:
     description: "External service integrations"

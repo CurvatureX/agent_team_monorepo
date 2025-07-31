@@ -8,8 +8,19 @@ from typing import Any, Dict, List, Optional
 from app.core.database import create_user_supabase_client
 from app.dependencies import AuthenticatedDeps
 from app.exceptions import NotFoundError, ValidationError
-from app.models.auth import UserProfileResponse, UserSessionListResponse
-from app.models.base import ResponseModel
+from shared.models import ResponseModel
+from pydantic import BaseModel, Field
+from typing import Dict, Any, List
+
+# Local models for auth endpoints
+class UserProfileResponse(ResponseModel):
+    user_profile: Dict[str, Any] = Field(description="User profile information")
+
+class UserSessionListResponse(ResponseModel):
+    sessions: List[Dict[str, Any]] = Field(description="List of user sessions")
+    total_count: int = Field(default=0, description="Total number of sessions")
+    page: int = Field(default=1, description="Current page")
+    page_size: int = Field(default=20, description="Page size")
 from app.utils.logger import get_logger
 from fastapi import APIRouter, Depends, HTTPException
 

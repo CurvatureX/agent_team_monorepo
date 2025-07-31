@@ -19,8 +19,8 @@ echo "   - Backend目录: $BACKEND_DIR"
 echo "   - workflow_agent目录: $WORKFLOW_AGENT_DIR"
 
 # 检查是否在正确的目录
-if [ ! -f "$WORKFLOW_AGENT_DIR/main_fastapi.py" ]; then
-    echo "❌ 错误: 未找到 main_fastapi.py 文件"
+if [ ! -f "$WORKFLOW_AGENT_DIR/main.py" ]; then
+    echo "❌ 错误: 未找到 main.py 文件"
     echo "   请确保在 workflow_agent 目录下运行此脚本"
     exit 1
 fi
@@ -61,7 +61,7 @@ RAG_MAX_RESULTS=5
 DEFAULT_MODEL_PROVIDER=openai
 DEFAULT_MODEL_NAME=gpt-4
 EOF
-    
+
     ENV_FILE="$LOCAL_ENV_FILE"
     echo "✅ 已创建环境变量模板: $LOCAL_ENV_FILE"
     echo ""
@@ -126,7 +126,7 @@ check_port() {
     local service=$2
     if lsof -i :$port >/dev/null 2>&1; then
         echo "⚠️  端口 $port 被占用 ($service)"
-        
+
         # 检查是否是我们的容器占用
         if docker ps --format "table {{.Names}}\t{{.Ports}}" | grep -q ":$port->"; then
             echo "   由现有 Docker 容器占用，将停止相关容器"
@@ -194,10 +194,10 @@ if [ -f "$ENV_FILE" ]; then
         # 跳过注释和空行
         [[ $key =~ ^#.*$ ]] && continue
         [[ -z $key ]] && continue
-        
+
         # 移除值中的引号
         value=$(echo "$value" | sed 's/^"//' | sed 's/"$//')
-        
+
         # 确保值不为空且不是模板值
         if [ ! -z "$value" ] && [ "$value" != "sk-your-openai-api-key-here" ] && [ "$value" != "https://your-project-id.supabase.co" ] && [ "$value" != "your-service-role-secret-key" ]; then
             # 对于布尔值和 API Keys，不要加引号
@@ -249,14 +249,14 @@ while [ $attempt -le $max_attempts ]; do
         echo "✅ workflow_agent 健康检查通过"
         break
     fi
-    
+
     if [ $attempt -eq $max_attempts ]; then
         echo "❌ workflow_agent 健康检查超时"
         echo "查看容器日志:"
         docker logs "$AGENT_CONTAINER_NAME"
         exit 1
     fi
-    
+
     echo -n "."
     sleep 2
     attempt=$((attempt + 1))

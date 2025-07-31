@@ -7,7 +7,7 @@ croniter
 psycopg2-binary
 sqlalchemy
 alembic
-protobuf
+# protobuf removed - migrated to FastAPI from gRPC
 python-dotenv
 requests
 google-api-python-client
@@ -36,4 +36,4 @@ opentelemetry-instrumentation-redis
 opentelemetry-instrumentation-langchain
 opentelemetry-instrumentation-boto3sqs
 opentelemetry-instrumentation-botocore
-nest-asyncio 
+nest-asyncio

@@ -249,4 +249,10 @@ async def health_check() -> dict:
 
     except Exception as e:
         logger.error(f"❌ Health check failed: {e}")
-        return {"service": "API Gateway", "status": "unhealthy", "error": str(e), "timestamp": None}
+        return {
+            "service": "API Gateway",
+            "version": settings.VERSION,
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": None,
+        }
