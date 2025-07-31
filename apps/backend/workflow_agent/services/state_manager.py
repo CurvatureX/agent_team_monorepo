@@ -8,9 +8,9 @@ import time
 from typing import Any, Dict, List, Optional
 
 from core.config import settings
-import structlog
+from core.logging_config import get_logger
 
-logger = structlog.get_logger()
+logger = get_logger(__name__)
 
 # Import Supabase client
 try:

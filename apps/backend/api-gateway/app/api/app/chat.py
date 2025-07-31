@@ -5,11 +5,17 @@ Chat API endpoints with integrated workflow agent
 
 import json
 from datetime import datetime, timezone
+from typing import Dict, Any
 
 from app.core.database import create_user_supabase_client
 from app.dependencies import AuthenticatedDeps, get_session_id
 from app.exceptions import NotFoundError, ValidationError
-from app.models import ChatHistory, ChatMessage, ChatRequest, MessageType
+from app.models import (
+    ChatHistory, ChatMessage, ChatRequest, MessageType,
+    ChatSSEEvent, SSEEventType, ChatStreamResponse,
+    MessageEventData, StatusChangeEventData, WorkflowEventData,
+    ErrorEventData, DebugEventData
+)
 from app.utils.logger import get_logger
 from app.utils.sse import create_mock_chat_stream, format_sse_event
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -19,7 +25,42 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-@router.post("/stream")
+def create_sse_event(
+    event_type: SSEEventType,
+    data: Dict[str, Any],
+    session_id: str,
+    is_final: bool = False
+) -> ChatSSEEvent:
+    """创建类型化的SSE事件"""
+    return ChatSSEEvent(
+        type=event_type,
+        data=data,
+        session_id=session_id,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        is_final=is_final
+    )
+
+
+@router.post(
+    "/stream",
+    summary="流式聊天接口",
+    description="通过SSE (Server-Sent Events) 返回AI助手的流式响应",
+    response_model=ChatStreamResponse,
+    responses={
+        200: {
+            "description": "成功返回SSE流",
+            "content": {
+                "text/event-stream": {
+                    "schema": {
+                        "type": "string",
+                        "format": "event-stream",
+                        "example": "data: {\"type\":\"message\",\"data\":{\"text\":\"Hello\",\"role\":\"assistant\"},\"session_id\":\"123\",\"timestamp\":\"2025-07-31T00:00:00Z\"}\n\n"
+                    }
+                }
+            }
+        }
+    }
+)
 async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depends()):
     """
     流式对话接口 - 负责和 workflow_agent 交互
@@ -103,17 +144,15 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                 workflow_client = await get_workflow_agent_client()
 
                 # Send initial status
-                yield format_sse_event(
-                    {
-                        "type": "message",
-                        "data": {
-                            "status": "processing",
-                            "message": "Connecting to workflow agent...",
-                        },
-                        "session_id": chat_request.session_id,
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    }
+                initial_event = create_sse_event(
+                    event_type=SSEEventType.MESSAGE,
+                    data={
+                        "status": "processing",
+                        "message": "Connecting to workflow agent...",
+                    },
+                    session_id=chat_request.session_id
                 )
+                yield format_sse_event(initial_event.model_dump())
 
                 # 构建 workflow_context - 根据 session 的 action 字段
                 workflow_context = None
@@ -135,33 +174,31 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
 
                     # Handle error responses
                     if response.get("response_type") == "RESPONSE_TYPE_ERROR":
-                        yield format_sse_event(
-                            {
-                                "type": "error",
-                                "data": response.get("error", {"message": "Unknown error"}),
-                                "session_id": chat_request.session_id,
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
-                            }
+                        error_data = response.get("error", {"message": "Unknown error"})
+                        error_event = create_sse_event(
+                            event_type=SSEEventType.ERROR,
+                            data=error_data,
+                            session_id=chat_request.session_id,
+                            is_final=True
                         )
+                        yield format_sse_event(error_event.model_dump())
                         return
 
                     # Handle status change responses - 新增支持
                     elif response.get("response_type") == "RESPONSE_TYPE_STATUS_CHANGE":
                         status_change = response.get("status_change", {})
-                        yield format_sse_event(
-                            {
-                                "type": "status_change",
-                                "data": {
-                                    "previous_stage": status_change.get("previous_stage"),
-                                    "current_stage": status_change.get("current_stage"),
-                                    "stage_state": status_change.get("stage_state", {}),
-                                    "node_name": status_change.get("node_name"),
-                                },
-                                "session_id": chat_request.session_id,
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
-                                "is_final": response.get("is_final", False),
-                            }
+                        status_event = create_sse_event(
+                            event_type=SSEEventType.STATUS_CHANGE,
+                            data={
+                                "previous_stage": status_change.get("previous_stage"),
+                                "current_stage": status_change.get("current_stage"),
+                                "stage_state": status_change.get("stage_state", {}),
+                                "node_name": status_change.get("node_name")
+                            },
+                            session_id=chat_request.session_id,
+                            is_final=response.get("is_final", False)
                         )
+                        yield format_sse_event(status_event.model_dump())
                         # 状态变化不需要存储到数据库，继续处理下一个响应
 
                     # Handle message responses - 根据新 proto
@@ -191,15 +228,13 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                                 logger.warning(f"Failed to store AI message: {e}")
 
                         # Build SSE response
-                        sse_data = {
-                            "type": "message",
-                            "session_id": chat_request.session_id,
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                            "is_final": response.get("is_final", False),
-                            "data": {"text": message_content, "role": "assistant"},
-                        }
-
-                        yield format_sse_event(sse_data)
+                        message_event = create_sse_event(
+                            event_type=SSEEventType.MESSAGE,
+                            data={"text": message_content, "role": "assistant"},
+                            session_id=chat_request.session_id,
+                            is_final=response.get("is_final", False)
+                        )
+                        yield format_sse_event(message_event.model_dump())
 
                         # If this is the final response, break
                         if response.get("is_final", False):
@@ -242,15 +277,13 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                             logger.warning(f"Failed to store workflow message: {e}")
 
                         # Build SSE response
-                        sse_data = {
-                            "type": "workflow",
-                            "session_id": chat_request.session_id,
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                            "is_final": response.get("is_final", True),
-                            "data": {"text": workflow_message, "workflow": workflow_data},
-                        }
-
-                        yield format_sse_event(sse_data)
+                        workflow_event = create_sse_event(
+                            event_type=SSEEventType.WORKFLOW,
+                            data={"text": workflow_message, "workflow": workflow_data},
+                            session_id=chat_request.session_id,
+                            is_final=response.get("is_final", True)
+                        )
+                        yield format_sse_event(workflow_event.model_dump())
 
                         if response.get("is_final", True):
                             break
@@ -259,28 +292,25 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                     else:
                         response_type = response.get("response_type", "UNKNOWN")
                         logger.warning(f"⚠️ Unknown response type: {response_type}")
-                        yield format_sse_event(
-                            {
-                                "type": "debug",
-                                "data": {
-                                    "message": f"Received unknown response type: {response_type}",
-                                    "raw_response": response,
-                                },
-                                "session_id": chat_request.session_id,
-                                "timestamp": datetime.now(timezone.utc).isoformat(),
-                            }
+                        debug_event = create_sse_event(
+                            event_type=SSEEventType.DEBUG,
+                            data={
+                                "message": f"Received unknown response type: {response_type}",
+                                "raw_response": response
+                            },
+                            session_id=chat_request.session_id
                         )
+                        yield format_sse_event(debug_event.model_dump())
 
             except Exception as e:
                 logger.error(f"❌ Error in chat stream: {e}")
-                yield format_sse_event(
-                    {
-                        "type": "error",
-                        "data": {"error": str(e), "error_type": "STREAM_ERROR"},
-                        "session_id": chat_request.session_id,
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    }
+                error_event = create_sse_event(
+                    event_type=SSEEventType.ERROR,
+                    data={"error": str(e), "error_type": "STREAM_ERROR"},
+                    session_id=chat_request.session_id,
+                    is_final=True
                 )
+                yield format_sse_event(error_event.model_dump())
 
         logger.info(f"✅ Chat stream initiated for session {chat_request.session_id}")
 

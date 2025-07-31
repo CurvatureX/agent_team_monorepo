@@ -351,6 +351,8 @@ class DatabaseManager:
         self._initialized = False
         self._redis_manager = RedisManager()
         self._supabase_auth_client = SupabaseAuthClient()
+        self._supabase_admin_client: Optional[Client] = None
+        self._supabase_anon_client: Optional[Client] = None
 
     async def initialize(self):
         """Initialize all database connections."""
@@ -395,12 +397,16 @@ class DatabaseManager:
     @property
     def supabase_admin(self) -> Optional[Client]:
         """Get Supabase admin client (backward compatibility)."""
-        return self._create_supabase_admin_client()
+        if self._supabase_admin_client is None:
+            self._supabase_admin_client = self._create_supabase_admin_client()
+        return self._supabase_admin_client
 
     @property
     def supabase(self) -> Optional[Client]:
         """Get Supabase anon client (backward compatibility)."""
-        return self._create_supabase_client()
+        if self._supabase_anon_client is None:
+            self._supabase_anon_client = self._create_supabase_client()
+        return self._supabase_anon_client
 
     def _create_supabase_client(self) -> Optional[Client]:
         """Create Supabase anon client (backward compatibility)."""

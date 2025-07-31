@@ -9,7 +9,7 @@ import logging
 from typing import AsyncGenerator, Dict, Any, Optional
 
 from app.core.config import get_settings
-from shared.models.conversation import ConversationRequest, ConversationResponse
+from app.models import ConversationRequest, ConversationResponse
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
