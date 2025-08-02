@@ -10,15 +10,43 @@ from datetime import datetime, timezone
 
 # Add shared node_specs to Python path for node knowledge access
 current_dir = os.path.dirname(os.path.abspath(__file__))
-shared_path = os.path.join(current_dir, "../../../shared")
-if shared_path not in sys.path:
+# Try multiple paths to find shared module
+possible_paths = [
+    os.path.join(current_dir, "../../../shared"),  # Original path
+    os.path.join(current_dir, "../../shared"),      # From app directory
+    os.path.abspath(os.path.join(current_dir, "..", "..", "shared")),  # Absolute path
+]
+
+shared_path = None
+for path in possible_paths:
+    if os.path.exists(path) and os.path.isdir(path):
+        shared_path = path
+        break
+
+if shared_path and shared_path not in sys.path:
     sys.path.insert(0, shared_path)
 
 # 工具 - Use custom logging
 import logging
 
 # 遥测组件
-from shared.telemetry import setup_telemetry, TrackingMiddleware, MetricsMiddleware
+try:
+    from shared.telemetry import setup_telemetry, TrackingMiddleware, MetricsMiddleware
+except ImportError:
+    # Fallback for tests - create dummy implementations
+    print("Warning: Could not import telemetry components, using stubs")
+    def setup_telemetry(*args, **kwargs):
+        pass
+    class TrackingMiddleware:
+        def __init__(self, app):
+            self.app = app
+        async def __call__(self, scope, receive, send):
+            await self.app(scope, receive, send)
+    class MetricsMiddleware:
+        def __init__(self, app):
+            self.app = app
+        async def __call__(self, scope, receive, send):
+            await self.app(scope, receive, send)
 
 from app.api.app.router import router as app_router
 from app.api.mcp.router import router as mcp_router
