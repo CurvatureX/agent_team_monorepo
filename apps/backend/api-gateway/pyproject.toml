@@ -31,6 +31,15 @@ dependencies = [
     "jsonschema>=4.0.0",
     # Security and validation
     "bleach>=6.0.0", # HTML sanitization
+    # OpenTelemetry dependencies
+    "opentelemetry-api>=1.21.0",
+    "opentelemetry-sdk>=1.21.0",
+    "opentelemetry-instrumentation-fastapi>=0.42b0",
+    "opentelemetry-instrumentation-requests>=0.42b0",
+    "opentelemetry-instrumentation-httpx>=0.42b0",
+    "opentelemetry-instrumentation-psycopg2>=0.42b0",
+    "opentelemetry-exporter-otlp>=1.21.0",
+    "opentelemetry-exporter-prometheus>=1.12.0",
 ]
 
 [project.optional-dependencies]

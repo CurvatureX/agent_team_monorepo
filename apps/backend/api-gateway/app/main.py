@@ -17,6 +17,9 @@ if shared_path not in sys.path:
 # 工具 - Use custom logging
 import logging
 
+# 遥测组件
+from shared.telemetry import setup_telemetry, TrackingMiddleware, MetricsMiddleware
+
 from app.api.app.router import router as app_router
 from app.api.mcp.router import router as mcp_router
 
@@ -26,7 +29,6 @@ from app.api.public.router import router as public_router
 # 核心组件
 from app.core.config import get_settings
 from app.core.events import health_check, lifespan
-from app.core.logging import setup_logging
 from app.exceptions import register_exception_handlers
 
 # 中间件
@@ -36,8 +38,6 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-# 在应用启动前设置日志
-setup_logging()
 logger = logging.getLogger("app.main")
 
 # 获取配置
@@ -89,15 +89,22 @@ def create_application() -> FastAPI:
         ],
     )
 
+    # 初始化遥测系统
+    setup_telemetry(app, service_name="api-gateway", service_version=settings.VERSION)
+
     # 注册中间件（顺序很重要）
-    # 1. 限流中间件（最外层，先限流再认证）
+    # 1. 追踪中间件（最外层，为每个请求生成 tracking_id）
+    app.add_middleware(TrackingMiddleware)
+
+    # 2. 指标收集中间件
+    app.add_middleware(MetricsMiddleware, service_name="api-gateway")
+
+    # 3. 限流中间件
     app.middleware("http")(rate_limit_middleware)
 
-    # 2. 认证中间件
+    # 4. 认证中间件
     app.middleware("http")(unified_auth_middleware)
 
-    # 3. 请求日志中间件
-    app.middleware("http")(request_logging_middleware)
 
     # 注册异常处理器
     register_exception_handlers(app)

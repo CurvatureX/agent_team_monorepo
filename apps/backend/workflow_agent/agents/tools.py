@@ -5,10 +5,10 @@ import asyncio
 from typing import Any, Dict, List
 
 from .state import RAGContext, RetrievedDocument, WorkflowState
-from core.logging_config import get_logger
+import logging
 from core.vector_store import SupabaseVectorStore
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class RAGTool:
