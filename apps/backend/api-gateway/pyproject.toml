@@ -75,6 +75,8 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
     "asyncio: mark test as async",
+    "integration: mark test as integration test requiring real services",
+    "requires_env: mark test as requiring environment variables",
 ]
 addopts = [
     "--strict-markers",
