@@ -95,8 +95,9 @@ class WorkflowAgentStateManager:
                 "intent_summary": "",
                 "workflow_context": workflow_context,
                 "conversations": [],
-                "gaps": [],
-                "alternatives": [],
+                # Using legacy fields in database
+                "gaps": [],  # Maps to identified_gaps in code
+                "alternatives": [],  # Not used anymore
                 "current_workflow_json": "",
                 "debug_result": "",
                 "debug_loop_count": 0,
@@ -155,6 +156,16 @@ class WorkflowAgentStateManager:
                         latest_state["current_workflow"] = {}
                 else:
                     latest_state["current_workflow"] = {}
+                
+                # Map legacy database fields to new field names
+                if "gaps" in latest_state:
+                    latest_state["identified_gaps"] = latest_state.get("gaps", [])
+                    # Keep gaps field for backward compatibility
+                if "alternatives" in latest_state:
+                    # Remove alternatives as it's not used anymore
+                    pass
+                # Set default values for new fields not in database
+                latest_state["gap_status"] = "no_gap"
                 
                 logger.debug(f"Retrieved workflow_agent_state for session {session_id}")
                 return latest_state
@@ -321,7 +332,10 @@ class WorkflowAgentStateManager:
             "stage": "stage",
             "execution_history": "execution_history",
             "intent_summary": "intent_summary",
-            "gaps": "gaps",
+            # Map new field names to legacy database columns
+            "identified_gaps": "gaps",  # Using legacy column name
+            # "gap_status": "gap_status",  # Not in database yet
+            # "gap_resolution": "gap_resolution",  # Not in database yet
             "debug_result": "debug_result",
             "debug_loop_count": "debug_loop_count",
         }
@@ -350,7 +364,6 @@ class WorkflowAgentStateManager:
         json_fields = {
             "workflow_context": "workflow_context",
             "conversations": "conversations", 
-            "alternatives": "alternatives",
             "clarification_context": "clarification_context"
         }
         
@@ -370,7 +383,9 @@ class WorkflowAgentStateManager:
             "conversations": [],
             "intent_summary": "",
             "current_workflow": None,
-            "alternatives": [],
+            # Using legacy fields in database
+            "gaps": [],  # Maps to identified_gaps in code
+            "alternatives": [],  # Not used anymore
             "workflow_context": {"origin": "create", "source_workflow_id": ""},
             "clarification_context": {
                 "purpose": "initial_intent",
