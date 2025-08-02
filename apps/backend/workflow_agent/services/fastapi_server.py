@@ -19,13 +19,20 @@ from agents.state import WorkflowStage, WorkflowState
 # Import workflow agent components
 from agents.workflow_agent import WorkflowAgent
 from core.config import settings
-from core.logging_config import get_logger
+import logging
 from services.state_manager import get_workflow_agent_state_manager
 
 # Add parent directory to path for shared models
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(os.path.dirname(current_dir))  # Go to apps/backend
 sys.path.insert(0, parent_dir)
+
+# Import telemetry components
+shared_telemetry_path = os.path.join(parent_dir, "shared")
+if shared_telemetry_path not in sys.path:
+    sys.path.insert(0, shared_telemetry_path)
+
+from telemetry import setup_telemetry, TrackingMiddleware, MetricsMiddleware
 
 # shared models导入（两种环境都相同）
 from shared.models.conversation import (
@@ -36,7 +43,7 @@ from shared.models.conversation import (
     StatusChangeContent,
 )
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class WorkflowAgentServicer:
@@ -446,6 +453,13 @@ app = FastAPI(
     description="工作流代理服务 - ProcessConversation 接口",
     version="1.0.0",
 )
+
+# 初始化遥测系统
+setup_telemetry(app, service_name="workflow-agent", service_version="1.0.0")
+
+# 添加遥测中间件
+app.add_middleware(TrackingMiddleware)
+app.add_middleware(MetricsMiddleware, service_name="workflow-agent")
 
 # 创建服务器实例
 servicer = WorkflowAgentServicer()

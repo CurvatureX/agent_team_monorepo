@@ -23,10 +23,10 @@ from agents.state import (
 )
 from .tools import RAGTool
 from core.config import settings
-from core.logging_config import get_logger
+import logging
 from core.prompt_engine import get_prompt_engine
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 class WorkflowAgentNodes:
     """Simplified LangGraph nodes for workflow generation"""

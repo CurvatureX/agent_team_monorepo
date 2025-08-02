@@ -36,4 +36,5 @@ opentelemetry-instrumentation-redis
 opentelemetry-instrumentation-langchain
 opentelemetry-instrumentation-boto3sqs
 opentelemetry-instrumentation-botocore
+opentelemetry-exporter-prometheus
 nest-asyncio

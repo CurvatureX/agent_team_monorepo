@@ -4,9 +4,9 @@ Dependencies for FastAPI
 
 from fastapi import Request
 from typing import Optional
-from core.logging_config import get_logger
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 async def get_request_id(request: Request) -> str:

@@ -27,7 +27,6 @@ from .database import (
     get_redis_dependency,
 )
 
-from .logging import setup_logging, ensure_log_directory
 
 from .events import lifespan, startup_event, shutdown_event, health_check
 
@@ -52,9 +51,6 @@ __all__ = [
     "get_database_manager_dependency",
     "get_supabase_dependency",
     "get_redis_dependency",
-    # Logging
-    "setup_logging",
-    "ensure_log_directory",
     # Events
     "lifespan",
     "startup_event",

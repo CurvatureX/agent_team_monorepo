@@ -172,3 +172,92 @@ fields @timestamp, @message
 | limit 100
 EOF
 }
+
+# ============================================================================
+# Grafana Cloud 集成配置
+# ============================================================================
+
+# Grafana Cloud API Key 存储在 AWS SSM Parameter Store
+resource "aws_ssm_parameter" "grafana_cloud_api_key" {
+  name  = "/ai-teams/${var.environment}/monitoring/grafana-cloud-api-key"
+  type  = "SecureString"
+  value = var.grafana_cloud_api_key
+
+  tags = local.common_tags
+}
+
+# Grafana Cloud 配置信息
+resource "aws_ssm_parameter" "grafana_cloud_config" {
+  name = "/ai-teams/${var.environment}/monitoring/grafana-cloud-config"
+  type = "String"
+  value = jsonencode({
+    tenant_id     = var.grafana_cloud_tenant_id
+    prometheus_url = var.grafana_cloud_prometheus_url
+    loki_url      = var.grafana_cloud_loki_url
+  })
+
+  tags = local.common_tags
+}
+
+# OpenTelemetry Collector 配置存储
+resource "aws_ssm_parameter" "otel_collector_config" {
+  name = "/ai-teams/${var.environment}/monitoring/otel-collector-config"
+  type = "String"
+  value = jsonencode({
+    environment = var.environment
+    project    = "starmates-ai-team"
+    otlp_endpoint = "http://localhost:4317"
+  })
+
+  tags = local.common_tags
+}
+
+# CloudWatch Logs Insights 查询 - 追踪 ID 关联
+resource "aws_cloudwatch_query_definition" "tracking_id_correlation" {
+  name = "${local.name_prefix}-tracking-id-correlation"
+
+  log_group_names = [
+    aws_cloudwatch_log_group.ecs.name
+  ]
+
+  query_string = <<EOF
+fields @timestamp, @message, tracking_id, service, @level
+| filter ispresent(tracking_id)
+| sort @timestamp desc
+| limit 100
+EOF
+}
+
+# CloudWatch Logs Insights 查询 - 错误追踪
+resource "aws_cloudwatch_query_definition" "error_tracking" {
+  name = "${local.name_prefix}-error-tracking"
+
+  log_group_names = [
+    aws_cloudwatch_log_group.ecs.name
+  ]
+
+  query_string = <<EOF
+fields @timestamp, @message, tracking_id, service, error.type, error.message
+| filter @level = "ERROR"
+| filter ispresent(tracking_id)
+| sort @timestamp desc
+| limit 50
+EOF
+}
+
+# CloudWatch Logs Insights 查询 - 请求性能分析
+resource "aws_cloudwatch_query_definition" "request_performance" {
+  name = "${local.name_prefix}-request-performance"
+
+  log_group_names = [
+    aws_cloudwatch_log_group.ecs.name
+  ]
+
+  query_string = <<EOF
+fields @timestamp, tracking_id, request.method, request.path, request.duration, response.status
+| filter ispresent(request.duration)
+| filter request.duration > 1.0
+| sort request.duration desc
+| limit 50
+EOF
+}

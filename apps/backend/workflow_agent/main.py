@@ -13,21 +13,22 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv()
 
-# Import and configure logging
-from core.logging_config import setup_logging, get_logger
+# Add shared telemetry path
+shared_path = Path(__file__).parent.parent / "shared"
+if str(shared_path) not in sys.path:
+    sys.path.insert(0, str(shared_path))
 
-# Setup logging configuration from environment
-setup_logging(
-    log_level=os.getenv("LOG_LEVEL", "INFO"),
-    service_name="workflow_agent",
-    environment=os.getenv("ENVIRONMENT", "development")
-)
+# Import telemetry components
+from telemetry import setup_telemetry, TrackingMiddleware, MetricsMiddleware
+
+# Import logging
+import logging
 
 from core.config import settings
 from services.fastapi_server import app
 import uvicorn
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class FastAPIServer:

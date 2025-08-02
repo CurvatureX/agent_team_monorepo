@@ -151,6 +151,22 @@ resource "aws_ecs_task_definition" "api_gateway" {
         {
           name  = "REDIS_URL"
           value = "redis://${aws_elasticache_cluster.redis.cache_nodes[0].address}:6379/0"
+        },
+        {
+          name  = "ENVIRONMENT"
+          value = var.environment
+        },
+        {
+          name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
+          value = "http://localhost:4317"
+        },
+        {
+          name  = "OTEL_SERVICE_NAME"
+          value = "api-gateway"
+        },
+        {
+          name  = "OTEL_RESOURCE_ATTRIBUTES"
+          value = "service.name=api-gateway,service.version=1.0.0,deployment.environment=${var.environment},project=starmates-ai-team"
         }
       ]
 
@@ -221,6 +237,22 @@ resource "aws_ecs_task_definition" "workflow_engine" {
         {
           name  = "PORT"
           value = "8002"
+        },
+        {
+          name  = "ENVIRONMENT"
+          value = var.environment
+        },
+        {
+          name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
+          value = "http://localhost:4317"
+        },
+        {
+          name  = "OTEL_SERVICE_NAME"
+          value = "workflow-engine"
+        },
+        {
+          name  = "OTEL_RESOURCE_ATTRIBUTES"
+          value = "service.name=workflow-engine,service.version=1.0.0,deployment.environment=${var.environment},project=starmates-ai-team"
         }
       ]
 
@@ -340,6 +372,22 @@ resource "aws_ecs_task_definition" "workflow_agent" {
         {
           name  = "REDIS_URL"
           value = "redis://${aws_elasticache_cluster.redis.cache_nodes[0].address}:6379/0"
+        },
+        {
+          name  = "ENVIRONMENT"
+          value = var.environment
+        },
+        {
+          name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
+          value = "http://localhost:4317"
+        },
+        {
+          name  = "OTEL_SERVICE_NAME"
+          value = "workflow-agent"
+        },
+        {
+          name  = "OTEL_RESOURCE_ATTRIBUTES"
+          value = "service.name=workflow-agent,service.version=1.0.0,deployment.environment=${var.environment},project=starmates-ai-team"
         }
       ]
 

@@ -1,0 +1,60 @@
+receivers:
+  otlp:
+    protocols:
+      grpc: { endpoint: 0.0.0.0:4317 }
+      http: { endpoint: 0.0.0.0:4318 }
+
+processors:
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: "${ENVIRONMENT}"
+        action: upsert
+      - key: project
+        value: "starmates-ai-team"
+        action: upsert
+  memory_limiter: { limit_mib: 512 }
+  batch: { timeout: 1s }
+
+exporters:
+  # 本地 Jaeger
+  jaeger:
+    endpoint: jaeger:14250
+    tls: { insecure: true }
+
+  # 本地 Prometheus
+  prometheus:
+    endpoint: "0.0.0.0:8888"
+    const_labels:
+      environment: "${ENVIRONMENT}"
+      project: "starmates-ai-team"
+
+  # Grafana Cloud Mimir
+  prometheusremotewrite/grafana-cloud:
+    endpoint: "${GRAFANA_CLOUD_PROMETHEUS_URL}"
+    headers:
+      authorization: "Bearer ${GRAFANA_CLOUD_TENANT_ID}:${GRAFANA_CLOUD_API_KEY}"
+    external_labels:
+      environment: "${ENVIRONMENT}"
+      project: "starmates-ai-team"
+
+  # Grafana Cloud Loki
+  loki/grafana-cloud:
+    endpoint: "${GRAFANA_CLOUD_LOKI_URL}"
+    headers:
+      authorization: "Bearer ${GRAFANA_CLOUD_TENANT_ID}:${GRAFANA_CLOUD_API_KEY}"
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [jaeger]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [prometheus, prometheusremotewrite/grafana-cloud]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [loki/grafana-cloud]

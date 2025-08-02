@@ -8,9 +8,9 @@ import time
 from typing import Any, Dict, List, Optional
 
 from core.config import settings
-from core.logging_config import get_logger
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # Import Supabase client
 try:

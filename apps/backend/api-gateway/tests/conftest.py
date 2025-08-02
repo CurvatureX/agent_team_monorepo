@@ -10,7 +10,9 @@ import pytest
 
 # Add shared path for imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
-shared_path = os.path.join(current_dir, "../../../../shared")
+# Go up to backend directory then add shared
+backend_dir = os.path.abspath(os.path.join(current_dir, "../.."))
+shared_path = os.path.join(backend_dir, "shared")
 if shared_path not in sys.path:
     sys.path.insert(0, shared_path)
 
@@ -24,9 +26,42 @@ def setup_test_environment():
     os.environ["TESTING"] = "true"
     os.environ["MCP_API_KEY_REQUIRED"] = "true"  # Enable MCP auth testing
 
-    # Ensure shared path is available
+    # Ensure shared path is available (recompute to ensure it's correct)
+    backend_dir = os.path.abspath(os.path.join(current_dir, "../.."))
+    shared_path = os.path.join(backend_dir, "shared")
     if shared_path not in sys.path:
         sys.path.insert(0, shared_path)
+
+
+def pytest_configure(config):
+    """Configure pytest with custom markers"""
+    config.addinivalue_line(
+        "markers", "integration: mark test as integration test requiring real services"
+    )
+    config.addinivalue_line(
+        "markers", "requires_env: mark test as requiring environment variables"
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    """Skip tests that require environment variables if they're not available"""
+    skip_integration = pytest.mark.skip(reason="Skipping integration tests in CI")
+    skip_env = pytest.mark.skip(reason="Required environment variables not available")
+    
+    # Check if we're in CI or missing required env vars
+    is_ci = os.environ.get("CI", "").lower() == "true"
+    has_supabase = bool(os.environ.get("SUPABASE_URL"))
+    has_services = bool(os.environ.get("WORKFLOW_AGENT_URL")) and bool(os.environ.get("WORKFLOW_ENGINE_URL"))
+    
+    for item in items:
+        # Skip integration tests in CI
+        if is_ci and "integration" in item.keywords:
+            item.add_marker(skip_integration)
+        
+        # Skip tests requiring env vars if they're not available
+        if "requires_env" in item.keywords:
+            if not has_supabase or not has_services:
+                item.add_marker(skip_env)
 
 
 @pytest.fixture
