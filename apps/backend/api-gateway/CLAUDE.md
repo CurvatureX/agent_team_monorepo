@@ -338,3 +338,28 @@ The API Gateway was recently migrated from a single-layer architecture to a comp
 **Commits:**
 - `73876ba` - Complete API Gateway migration to three-layer FastAPI architecture
 - `53fa4c3` - Fix isort configuration and add basic tests
+
+## Important: Supabase Authentication for Testing
+
+When running tests or interactive demos that require authentication:
+
+1. **Always use real credentials from `.env`**:
+   - `TEST_USER_EMAIL` - Must be a real email registered in Supabase
+   - `TEST_USER_PASSWORD` - Must be the real password for that account
+   - These are NOT placeholder values - they are actual test account credentials
+
+2. **Authentication flow**:
+   ```bash
+   # The .env file contains:
+   TEST_USER_EMAIL=daming.lu@starmates.ai  # Real account
+   TEST_USER_PASSWORD=test.1234!           # Real password
+   
+   # Use these in tests:
+   curl -X POST "${SUPABASE_URL}/auth/v1/token?grant_type=password" \
+     -H "apikey: ${SUPABASE_ANON_KEY}" \
+     -H "Content-Type: application/json" \
+     -d '{"email":"'${TEST_USER_EMAIL}'","password":"'${TEST_USER_PASSWORD}'"}'
+   ```
+
+3. **Never use fake credentials** - The API Gateway requires valid Supabase JWT tokens
+4. **The test account must exist** in the Supabase project before running tests

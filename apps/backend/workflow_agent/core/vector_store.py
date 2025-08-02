@@ -4,12 +4,15 @@ Integrates with Supabase pgvector for intelligent node recommendation
 """
 
 import asyncio
+import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 from .config import settings
 from .logging_config import get_logger
 from langchain_core.embeddings import Embeddings
 from langchain_openai import OpenAIEmbeddings
+import openai
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
 from supabase import Client, create_client
 from supabase.client import ClientOptions
 
@@ -61,6 +64,7 @@ class SupabaseVectorStore:
     def __init__(self):
         self.supabase_client = self._create_supabase_client()
         self.embeddings = self._create_embeddings_client()
+        self._check_database_ready()
 
     def _create_supabase_client(self) -> Client:
         """Create Supabase client with proper configuration"""
@@ -89,11 +93,77 @@ class SupabaseVectorStore:
         return client
 
     def _create_embeddings_client(self) -> Embeddings:
-        """Create embeddings client"""
+        """Create embeddings client with retry configuration"""
         if not settings.OPENAI_API_KEY:
             raise ValueError("OPENAI_API_KEY must be configured for embeddings")
 
-        return OpenAIEmbeddings(model=settings.EMBEDDING_MODEL, api_key=settings.OPENAI_API_KEY)
+        # Configure with more robust retry settings
+        # Configure OpenAI embeddings
+        # CRITICAL: Disable OpenAI's built-in retries to prevent LangGraph stream termination
+        return OpenAIEmbeddings(
+            model=settings.EMBEDDING_MODEL, 
+            api_key=settings.OPENAI_API_KEY,
+            max_retries=0,  # DISABLE built-in retries - we handle them ourselves
+            show_progress_bar=False,
+            timeout=5.0,  # Shorter timeout, we'll retry ourselves
+        )
+
+    def _check_database_ready(self):
+        """Check if the database is ready and has the required function"""
+        try:
+            # Quick test to see if we can query the table
+            result = self.supabase_client.table("node_knowledge_vectors").select("count").limit(1).execute()
+            logger.info(f"Database check successful, table exists")
+        except Exception as e:
+            logger.warning(f"Database check failed: {e}")
+
+    async def _generate_embedding_with_retry(self, text: str) -> Optional[List[float]]:
+        """Generate embedding with explicit retry logic"""
+        logger.info(f"_generate_embedding_with_retry called for text: {text[:50]}...")
+        
+        # Workaround: Add a small delay to avoid rate limiting
+        await asyncio.sleep(0.1)
+        
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            try:
+                logger.info(f"Attempt {attempt + 1}/{max_attempts}: Calling OpenAI embeddings.aembed_query...")
+                # Create a shielded task for the embedding call
+                embedding_task = asyncio.create_task(self.embeddings.aembed_query(text))
+                
+                try:
+                    # Shield the task from cancellation
+                    result = await asyncio.shield(embedding_task)
+                    logger.info("OpenAI embeddings.aembed_query completed successfully")
+                    return result
+                except asyncio.CancelledError:
+                    logger.warning(f"Main context was cancelled, but waiting for embedding to complete...")
+                    # Even if cancelled, try to get the result if the task completed
+                    try:
+                        # Give the task a bit more time to complete
+                        result = await asyncio.wait_for(embedding_task, timeout=2.0)
+                        logger.info("Retrieved embedding result despite cancellation")
+                        return result
+                    except (asyncio.TimeoutError, asyncio.CancelledError):
+                        logger.warning(f"Could not retrieve embedding result after cancellation")
+                        # Cancel the task if it's still running
+                        if not embedding_task.done():
+                            embedding_task.cancel()
+                        raise asyncio.CancelledError()
+                    
+            except asyncio.CancelledError:
+                logger.warning(f"Embedding generation was cancelled during attempt {attempt + 1}")
+                # Re-raise CancelledError to maintain proper cancellation semantics
+                raise
+            except Exception as e:
+                logger.warning(f"Attempt {attempt + 1} failed: {type(e).__name__}: {str(e)}")
+                if attempt < max_attempts - 1:
+                    wait_time = (attempt + 1) * 0.5  # Progressive backoff: 0.5s, 1s, 1.5s
+                    logger.info(f"Waiting {wait_time}s before retry...")
+                    await asyncio.sleep(wait_time)
+                else:
+                    logger.error("All embedding attempts failed")
+                    raise
 
     async def similarity_search(
         self,
@@ -115,25 +185,96 @@ class SupabaseVectorStore:
             List of matching node knowledge entries
         """
         try:
-            # Generate embedding for query
-            query_embedding = await self.embeddings.aembed_query(query)
+            logger.info(
+                "Starting similarity search",
+                query=query[:100],
+                node_type_filter=node_type_filter,
+                similarity_threshold=similarity_threshold,
+                max_results=max_results
+            )
+            
+            # Generate embedding for query with retry handling
+            try:
+                # Add timeout for embedding generation
+                logger.info("Starting embedding generation", query=query[:100])
+                # Use a shorter timeout to prevent hanging
+                async with asyncio.timeout(15.0):  # 15 second timeout for embedding
+                    query_embedding = await self._generate_embedding_with_retry(query)
+                logger.info("Generated query embedding successfully")
+            except asyncio.TimeoutError:
+                logger.error(
+                    "Embedding generation timed out",
+                    query=query[:100],
+                    timeout_seconds=30
+                )
+                return []
+            except Exception as e:
+                logger.error(
+                    "Failed to generate embedding after retries",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    query=query[:100]
+                )
+                # Don't retry here, just return empty results
+                return []
 
             # Use configured defaults if not provided
             threshold = similarity_threshold or settings.RAG_SIMILARITY_THRESHOLD
             max_count = max_results or settings.RAG_MAX_RESULTS
 
-            # Call the PostgreSQL function for vector similarity search using asyncio.to_thread
-            result = await asyncio.to_thread(
-                lambda: self.supabase_client.rpc(
-                    "match_node_knowledge",
-                    {
-                        "query_embedding": query_embedding,
-                        "match_threshold": threshold,
-                        "match_count": max_count,
-                        "node_type_filter": node_type_filter,
-                    },
-                ).execute()
-            )
+            # Call the PostgreSQL function for vector similarity search with timeout
+            try:
+                # Use asyncio timeout to prevent hanging
+                async with asyncio.timeout(20.0):  # 20 second timeout
+                    # Create a task for the RPC call
+                    rpc_task = asyncio.create_task(
+                        asyncio.to_thread(
+                            lambda: self.supabase_client.rpc(
+                                "match_node_knowledge",
+                                {
+                                    "query_embedding": query_embedding,
+                                    "match_threshold": threshold,
+                                    "match_count": max_count,
+                                    "node_type_filter": node_type_filter,
+                                },
+                            ).execute()
+                        )
+                    )
+                    
+                    try:
+                        # Shield the RPC call from cancellation
+                        result = await asyncio.shield(rpc_task)
+                        logger.info("Vector similarity search completed successfully")
+                    except asyncio.CancelledError:
+                        logger.warning("Main context cancelled during vector search, waiting for completion...")
+                        # Try to get the result despite cancellation
+                        try:
+                            result = await asyncio.wait_for(rpc_task, timeout=2.0)
+                            logger.info("Retrieved vector search results despite cancellation")
+                        except (asyncio.TimeoutError, asyncio.CancelledError):
+                            logger.warning("Could not complete vector search after cancellation")
+                            if not rpc_task.done():
+                                rpc_task.cancel()
+                            raise asyncio.CancelledError()
+                            
+            except asyncio.CancelledError:
+                logger.warning("Vector similarity search was cancelled")
+                raise
+            except asyncio.TimeoutError:
+                logger.error(
+                    "Vector similarity search timed out",
+                    query=query[:100],
+                    timeout_seconds=20
+                )
+                return []
+            except Exception as e:
+                logger.error(
+                    "RPC call failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    query=query[:100]
+                )
+                return []
 
             # Convert results to NodeKnowledgeEntry objects
             entries = []

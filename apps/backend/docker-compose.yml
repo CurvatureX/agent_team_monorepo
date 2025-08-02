@@ -142,9 +142,8 @@ services:
       - WORKFLOW_AGENT_PORT=8001
       - USE_HTTP_CLIENT=true
     dns:
-      - 8.8.8.8
-      - 8.8.4.4
       - 1.1.1.1
+      - 8.8.8.8
     depends_on:
       redis:
         condition: service_healthy

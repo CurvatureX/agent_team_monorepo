@@ -1,7 +1,7 @@
 """
 Simplified Workflow Agent based on new architecture
-Implements 6 core nodes: Clarification, Negotiation, Gap Analysis,
-Alternative Solution Generation, Workflow Generation, and Debug
+Implements 4 core nodes: Clarification, Gap Analysis,
+Workflow Generation, and Debug
 """
 from langgraph.graph import END, StateGraph
 
@@ -9,7 +9,6 @@ from core.logging_config import get_logger
 from .nodes import WorkflowAgentNodes
 from .state import (
     WorkflowState,
-    WorkflowStage,
 )
 
 logger = get_logger(__name__)
@@ -25,57 +24,28 @@ class WorkflowAgent:
         self._setup_graph()
 
     def _setup_graph(self):
-        """Setup the simplified LangGraph workflow with dynamic router and 6 nodes"""
+        """Setup the simplified LangGraph workflow with 4 nodes"""
 
         # Create the StateGraph with simplified state
         workflow = StateGraph(WorkflowState)
 
-        # Add the dynamic router node as entry point
-        workflow.add_node("router", self._route_to_stage)
-        
-        # Add the 6 core nodes with interception
+        # Add the 4 core nodes (removed negotiation, router, and alternative_generation)
         workflow.add_node("clarification", self.nodes.clarification_node)
-        workflow.add_node("negotiation", self.nodes.negotiation_node)
         workflow.add_node("gap_analysis", self.nodes.gap_analysis_node)
-        workflow.add_node("alternative_generation", self.nodes.alternative_solution_generation_node)
         workflow.add_node("workflow_generation", self.nodes.workflow_generation_node)
         workflow.add_node("debug", self.nodes.debug_node)
 
-        # Set router as entry point instead of clarification
-        workflow.set_entry_point("router")
-
-        # Router routes to appropriate stage based on current state
-        workflow.add_conditional_edges(
-            "router",
-            self._get_current_stage,
-            {
-                WorkflowStage.CLARIFICATION: "clarification",
-                WorkflowStage.NEGOTIATION: "negotiation", 
-                WorkflowStage.GAP_ANALYSIS: "gap_analysis",
-                WorkflowStage.ALTERNATIVE_GENERATION: "alternative_generation",
-                WorkflowStage.WORKFLOW_GENERATION: "workflow_generation",
-                WorkflowStage.DEBUG: "debug",
-                WorkflowStage.COMPLETED: END,
-            },
-        )
+        # Set clarification as entry point directly
+        workflow.set_entry_point("clarification")
 
         # Add conditional edges based on the architecture flow
         workflow.add_conditional_edges(
             "clarification",
             self.nodes.should_continue,
             {
-                "negotiation": "negotiation",
+                "clarification": "clarification",  # Continue clarification if needs more info
                 "gap_analysis": "gap_analysis",
-                "END": END,
-            },
-        )
-
-        workflow.add_conditional_edges(
-            "negotiation",
-            self.nodes.should_continue,
-            {
-                "clarification": "clarification",
-                "END": END,
+                "END": END,  # Wait for user input
             },
         )
 
@@ -83,17 +53,8 @@ class WorkflowAgent:
             "gap_analysis",
             self.nodes.should_continue,
             {
-                "alternative_generation": "alternative_generation",
-                "workflow_generation": "workflow_generation",
-                "END": END,
-            },
-        )
-
-        workflow.add_conditional_edges(
-            "alternative_generation",
-            self.nodes.should_continue,
-            {
-                "negotiation": "negotiation",
+                "clarification": "clarification",  # Go back to clarification if has gaps
+                "workflow_generation": "workflow_generation",  # Proceed if no gaps
                 "END": END,
             },
         )
@@ -119,52 +80,23 @@ class WorkflowAgent:
 
         # Compile the graph
         self.graph = workflow.compile()
-        logger.info("LangGraph workflow compiled successfully with dynamic router, interception, and 6-node architecture")
-
-    def _route_to_stage(self, state: WorkflowState) -> WorkflowState:
-        """
-        Router node that determines where to start execution based on current stage.
-        This is a lightweight pass-through node that just logs the routing decision.
-        """
-        current_stage = state.get("stage", WorkflowStage.CLARIFICATION)
-        session_id = state.get("session_id", "unknown")
-        
-        logger.info(
-            "🎯 Dynamic Router: Directing execution flow",
-            session_id=session_id,
-            current_stage=current_stage,
-            router_action="route_to_stage"
-        )
-        
-        # Return state unchanged - router is just for flow control
-        return state
-
-    def _get_current_stage(self, state: WorkflowState) -> str:
-        """
-        Get current stage for conditional routing from router node.
-        This determines which node the router will direct to.
-        """
-        current_stage = state.get("stage", WorkflowStage.CLARIFICATION)
-        session_id = state.get("session_id", "unknown")
-        
-        logger.info(
-            "🔀 Router Decision: Determining next node",
-            session_id=session_id,
-            current_stage=current_stage,
-            next_node=current_stage,  # stage maps directly to node name
-            routing_logic="stage_to_node_mapping"
-        )
-        
-        return current_stage
+        logger.info("LangGraph workflow compiled successfully with 4-node architecture")
     
     async def astream(self, state: WorkflowState):
         """
         Async stream method for processing workflow state
         """
         try:
+            logger.info(f"WorkflowAgent.astream called with stage: {state.get('stage')}")
             # 使用 LangGraph 的 astream 方法
+            chunk_count = 0
             async for chunk in self.graph.astream(state):
+                chunk_count += 1
+                logger.info(f"WorkflowAgent yielding chunk {chunk_count}: {list(chunk.keys())}")
                 yield chunk
+            logger.info(f"WorkflowAgent.astream completed, total chunks: {chunk_count}")
         except Exception as e:
             logger.error(f"Error in workflow astream: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             raise
