@@ -4,6 +4,7 @@ Replaces the gRPC client with HTTP/FastAPI calls
 """
 
 import asyncio
+import json
 import time
 from typing import Any, AsyncGenerator, Dict, Optional
 
@@ -22,8 +23,20 @@ class WorkflowAgentHTTPClient:
 
     def __init__(self):
         self.base_url = settings.WORKFLOW_AGENT_URL or f"http://{settings.WORKFLOW_AGENT_HOST}:8001"
-        self.timeout = httpx.Timeout(30.0, connect=5.0)
+        # Increased timeout for streaming operations and RAG embedding generation
+        self.timeout = httpx.Timeout(
+            timeout=300.0,  # 5 minutes total timeout
+            connect=10.0,   # 10 seconds connection timeout
+            read=60.0,      # 60 seconds read timeout per chunk
+            write=30.0      # 30 seconds write timeout
+        )
         self.connected = False
+        # Add connection pooling for better connection reuse
+        self.limits = httpx.Limits(
+            max_keepalive_connections=5,
+            max_connections=10,
+            keepalive_expiry=30.0
+        )
 
     async def connect(self):
         """Test connection to workflow agent service"""
@@ -42,6 +55,7 @@ class WorkflowAgentHTTPClient:
         """Close HTTP connection (no-op for HTTP)"""
         self.connected = False
         log_info("Closed Workflow Agent HTTP connection")
+
 
     async def process_conversation_stream(
         self,
@@ -76,26 +90,39 @@ class WorkflowAgentHTTPClient:
 
             log_info(f"📨 Sending HTTP request to {self.base_url}/process-conversation")
 
-            # Stream conversation processing via HTTP SSE
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            # Stream conversation processing via HTTP SSE with connection pooling
+            async with httpx.AsyncClient(
+                timeout=self.timeout,
+                limits=self.limits,
+                http2=True  # Enable HTTP/2 for better streaming
+            ) as client:
                 async with client.stream(
                     "POST",
                     f"{self.base_url}/process-conversation",
                     json=request_data,
-                    headers={"Accept": "text/event-stream", "Content-Type": "application/json"},
+                    headers={
+                        "Accept": "text/event-stream",
+                        "Content-Type": "application/json",
+                        "Connection": "keep-alive",
+                        "Cache-Control": "no-cache"
+                    },
                 ) as response:
                     response.raise_for_status()
 
-                    async for line in response.aiter_lines():
-                        if line.startswith("data: "):
-                            try:
-                                import json
-
-                                data = json.loads(line[6:])  # Remove "data: " prefix
-                                yield data
-                            except json.JSONDecodeError as e:
-                                log_error(f"❌ Error parsing SSE data: {e}")
-                                continue
+                    # Process stream lines with better cancellation handling
+                    try:
+                        async for line in response.aiter_lines():
+                            if line.startswith("data: "):
+                                try:
+                                    data = json.loads(line[6:])  # Remove "data: " prefix
+                                    yield data
+                                except json.JSONDecodeError as e:
+                                    log_error(f"❌ Error parsing SSE data: {e}")
+                                    continue
+                    except asyncio.CancelledError:
+                        log_info("Client disconnected during streaming")
+                        # Re-raise to maintain proper cancellation semantics
+                        raise
 
         except httpx.HTTPStatusError as e:
             log_error(f"❌ HTTP error in process_conversation_stream: {e.response.status_code}")

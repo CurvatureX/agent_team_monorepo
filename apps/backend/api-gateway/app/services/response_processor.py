@@ -28,7 +28,6 @@ class UnifiedResponseProcessor:
             "clarification": UnifiedResponseProcessor._process_clarification,
             "negotiation": UnifiedResponseProcessor._process_negotiation,
             "gap_analysis": UnifiedResponseProcessor._process_gap_analysis,
-            "alternative_generation": UnifiedResponseProcessor._process_alternative_generation,
             "workflow_generation": UnifiedResponseProcessor._process_workflow_generation,
             "debug": UnifiedResponseProcessor._process_debug,
             "completed": UnifiedResponseProcessor._process_completed
@@ -68,7 +67,7 @@ class UnifiedResponseProcessor:
     def _process_negotiation(agent_state: Dict[str, Any]) -> Dict[str, Any]:
         """处理协商阶段响应"""
         conversations = agent_state.get("conversations", [])
-        alternatives = agent_state.get("alternatives", [])
+        # No alternatives in new architecture - handled in gap_analysis
         
         latest_message = ""
         if conversations:
@@ -77,30 +76,20 @@ class UnifiedResponseProcessor:
                     latest_message = conv.get("text", "")
                     break
         
-        # 如果有替代方案，返回alternatives类型
-        if alternatives:
-            return {
-                "type": "alternatives",
-                "content": {
-                    "text": latest_message,
-                    "stage": "negotiation", 
-                    "alternatives": alternatives
-                }
+        return {
+            "type": "ai_message",
+            "content": {
+                "text": latest_message or "正在进行需求协商...",
+                "stage": "negotiation"
             }
-        else:
-            return {
-                "type": "ai_message",
-                "content": {
-                    "text": latest_message or "正在进行需求协商...",
-                    "stage": "negotiation"
-                }
-            }
+        }
     
     @staticmethod
     def _process_gap_analysis(agent_state: Dict[str, Any]) -> Dict[str, Any]:
         """处理差距分析阶段响应"""
         conversations = agent_state.get("conversations", [])
-        gaps = agent_state.get("gaps", [])
+        identified_gaps = agent_state.get("identified_gaps", [])
+        gap_status = agent_state.get("gap_status", "no_gap")
         
         latest_message = ""
         if conversations:
@@ -114,40 +103,11 @@ class UnifiedResponseProcessor:
             "content": {
                 "text": latest_message or "正在分析技术差距...",
                 "stage": "gap_analysis",
-                "gaps": gaps
+                "gaps": identified_gaps,
+                "gap_status": gap_status
             }
         }
     
-    @staticmethod
-    def _process_alternative_generation(agent_state: Dict[str, Any]) -> Dict[str, Any]:
-        """处理替代方案生成阶段响应"""
-        conversations = agent_state.get("conversations", [])
-        alternatives = agent_state.get("alternatives", [])
-        
-        latest_message = ""
-        if conversations:
-            for conv in reversed(conversations):
-                if isinstance(conv, dict) and conv.get("role") == "assistant":
-                    latest_message = conv.get("text", "")
-                    break
-        
-        if alternatives:
-            return {
-                "type": "alternatives",
-                "content": {
-                    "text": latest_message,
-                    "stage": "alternative_generation",
-                    "alternatives": alternatives
-                }
-            }
-        else:
-            return {
-                "type": "ai_message", 
-                "content": {
-                    "text": latest_message or "正在生成替代方案...",
-                    "stage": "alternative_generation"
-                }
-            }
     
     @staticmethod
     def _process_workflow_generation(agent_state: Dict[str, Any]) -> Dict[str, Any]:

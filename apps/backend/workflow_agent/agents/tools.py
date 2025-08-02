@@ -49,8 +49,43 @@ class RAGTool:
 
         logger.info("Retrieving knowledge from Supabase", query=query)
 
-        # 1. Call the real vector store function
-        retrieved_entries = await self.vector_store.similarity_search(query, max_results=top_k)
+        try:
+            # 1. Call the real vector store function with cancellation protection
+            # Create a task for the similarity search
+            search_task = asyncio.create_task(
+                self.vector_store.similarity_search(query, max_results=top_k)
+            )
+            
+            try:
+                # Shield the search from cancellation to ensure it completes
+                retrieved_entries = await asyncio.shield(search_task)
+                logger.info(f"Successfully retrieved {len(retrieved_entries)} entries")
+            except asyncio.CancelledError:
+                logger.warning("Main context was cancelled during RAG retrieval, waiting for search to complete...")
+                # Try to get the result even if cancelled
+                try:
+                    retrieved_entries = await asyncio.wait_for(search_task, timeout=3.0)
+                    logger.info(f"Retrieved {len(retrieved_entries)} entries despite cancellation")
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    logger.warning("Could not complete RAG search after cancellation")
+                    # Cancel the task if still running
+                    if not search_task.done():
+                        search_task.cancel()
+                    # Re-raise to maintain cancellation semantics
+                    raise asyncio.CancelledError()
+                    
+        except asyncio.CancelledError:
+            # Re-raise cancellation errors
+            logger.warning("RAG retrieval cancelled")
+            raise
+        except Exception as e:
+            logger.warning(f"Failed to retrieve knowledge, continuing without RAG: {e}", query=query, error_type=type(e).__name__)
+            # Return empty results on error - this is not a fatal error
+            if "rag" not in state or state["rag"] is None:
+                state["rag"] = RAGContext(query="", results=[])
+            state["rag"]["query"] = query
+            state["rag"]["results"] = []
+            return state
 
         # 2. Convert NodeKnowledgeEntry objects to RetrievedDocument typed dicts
         retrieved_docs = [
