@@ -1,862 +1,350 @@
 """
-External Action Node Specifications.
+External action node specifications.
 
-Node specifications for EXTERNAL_ACTION_NODE type with all subtypes
-that interact with external systems and platforms.
+This module defines specifications for all EXTERNAL_ACTION_NODE subtypes including
+GitHub, Email, Slack, and API call integrations.
 """
 
-from shared.node_specs.base import NodeSpec, ParameterSpec, PortSpec
+from ..base import (
+    ConnectionType,
+    DataFormat,
+    InputPortSpec,
+    NodeSpec,
+    OutputPortSpec,
+    ParameterDef,
+    ParameterType,
+)
 
-# EXTERNAL_GITHUB Node Specification
-external_github_spec = NodeSpec(
+# GitHub - GitHub operations
+GITHUB_SPEC = NodeSpec(
     node_type="EXTERNAL_ACTION_NODE",
-    subtype="EXTERNAL_GITHUB",
-    display_name="GitHub Action",
-    description="Performs actions using the GitHub API",
-    category="external_action",
+    subtype="GITHUB",
+    description="Execute GitHub operations via GitHub API",
     parameters=[
-        ParameterSpec(
+        ParameterDef(
             name="action",
-            display_name="Action Type",
-            description="The GitHub action to perform",
-            param_type="string",
+            type=ParameterType.STRING,
             required=True,
-            allowed_values=[
-                "create_repo",
-                "update_repo",
-                "delete_repo",
-                "create_issue",
-                "update_issue",
-                "create_pr",
-                "merge_pr",
-                "create_branch",
-                "delete_branch",
-            ],
+            description="GitHub action type",
         ),
-        ParameterSpec(
+        ParameterDef(
             name="repository",
-            display_name="Repository",
-            description="The GitHub repository (owner/repo format)",
-            param_type="string",
+            type=ParameterType.STRING,
             required=True,
+            description="Repository name (owner/repo format)",
         ),
-        ParameterSpec(
+        ParameterDef(
             name="auth_token",
-            display_name="GitHub Token",
-            description="GitHub personal access token",
-            param_type="string",
+            type=ParameterType.STRING,
             required=True,
-            is_secret=True,
+            description="GitHub access token (sensitive)",
         ),
-        ParameterSpec(
+        ParameterDef(
             name="branch",
-            display_name="Branch Name",
-            description="Branch name for branch operations",
-            param_type="string",
+            type=ParameterType.STRING,
             required=False,
+            description="Branch name",
         ),
-        ParameterSpec(
+        ParameterDef(
             name="title",
-            display_name="Title",
-            description="Title for issues or pull requests",
-            param_type="string",
+            type=ParameterType.STRING,
             required=False,
+            description="Title (issues or PR)",
         ),
-        ParameterSpec(
+        ParameterDef(
             name="body",
-            display_name="Body/Description",
-            description="Body content for issues or pull requests",
-            param_type="text",
+            type=ParameterType.STRING,
             required=False,
+            description="Content (issues or PR)",
         ),
     ],
     input_ports=[
-        PortSpec(
-            name="trigger",
-            display_name="Trigger",
-            description="Trigger the GitHub action",
-            port_type="execution",
-            required=True,
-        ),
-        PortSpec(
-            name="repository_data",
-            display_name="Repository Data",
-            description="Repository information and parameters",
-            port_type="data",
+        InputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
             required=False,
-        ),
+            description="GitHub operation parameters",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"action_params": "object", "metadata": "object"}',
+                examples=[
+                    '{"action_params": {"labels": ["bug", "urgent"]}, "metadata": {"assignees": ["user1"]}}'
+                ],
+            ),
+        )
     ],
     output_ports=[
-        PortSpec(
-            name="success",
-            display_name="Success",
-            description="Action completed successfully",
-            port_type="execution",
-            required=True,
+        OutputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            description="GitHub operation result",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"result": "object", "status": "string", "url": "string"}',
+                examples=[
+                    '{"result": {"id": 123, "number": 456}, "status": "created", "url": "https://github.com/owner/repo/issues/456"}'
+                ],
+            ),
         ),
-        PortSpec(
+        OutputPortSpec(
             name="error",
-            display_name="Error",
-            description="Action failed",
-            port_type="execution",
-            required=True,
-        ),
-        PortSpec(
-            name="result",
-            display_name="Result Data",
-            description="GitHub API response data",
-            port_type="data",
-            required=True,
+            type=ConnectionType.ERROR,
+            description="Error output when GitHub operation fails",
         ),
     ],
 )
 
-# EXTERNAL_GOOGLE_CALENDAR Node Specification
-external_google_calendar_spec = NodeSpec(
+# Email - email operations
+EMAIL_SPEC = NodeSpec(
     node_type="EXTERNAL_ACTION_NODE",
-    subtype="EXTERNAL_GOOGLE_CALENDAR",
-    display_name="Google Calendar Action",
-    description="Interacts with Google Calendar API",
-    category="external_action",
+    subtype="EMAIL",
+    description="Send emails through various providers",
     parameters=[
-        ParameterSpec(
-            name="action",
-            display_name="Action Type",
-            description="The calendar action to perform",
-            param_type="string",
+        ParameterDef(
+            name="to",
+            type=ParameterType.JSON,
             required=True,
-            allowed_values=[
-                "create_event",
-                "update_event",
-                "delete_event",
-                "list_events",
-                "get_free_busy",
-            ],
+            description="Recipient list",
         ),
-        ParameterSpec(
-            name="calendar_id",
-            display_name="Calendar ID",
-            description="Google Calendar ID (primary for default)",
-            param_type="string",
-            required=True,
-            default_value="primary",
-        ),
-        ParameterSpec(
-            name="credentials",
-            display_name="Google Credentials",
-            description="Google OAuth2 credentials JSON",
-            param_type="json",
-            required=True,
-            is_secret=True,
-        ),
-        ParameterSpec(
-            name="event_title",
-            display_name="Event Title",
-            description="Title of the calendar event",
-            param_type="string",
-            required=False,
-        ),
-        ParameterSpec(
-            name="start_time",
-            display_name="Start Time",
-            description="Event start time (ISO format)",
-            param_type="datetime",
-            required=False,
-        ),
-        ParameterSpec(
-            name="end_time",
-            display_name="End Time",
-            description="Event end time (ISO format)",
-            param_type="datetime",
-            required=False,
-        ),
-        ParameterSpec(
-            name="attendees",
-            display_name="Attendees",
-            description="List of attendee email addresses",
-            param_type="array",
-            required=False,
-        ),
-    ],
-    input_ports=[
-        PortSpec(
-            name="trigger",
-            display_name="Trigger",
-            description="Trigger the calendar action",
-            port_type="execution",
-            required=True,
-        ),
-        PortSpec(
-            name="event_data",
-            display_name="Event Data",
-            description="Calendar event information",
-            port_type="data",
-            required=False,
-        ),
-    ],
-    output_ports=[
-        PortSpec(
-            name="success",
-            display_name="Success",
-            description="Action completed successfully",
-            port_type="execution",
-            required=True,
-        ),
-        PortSpec(
-            name="error",
-            display_name="Error",
-            description="Action failed",
-            port_type="execution",
-            required=True,
-        ),
-        PortSpec(
-            name="calendar_result",
-            display_name="Calendar Result",
-            description="Google Calendar API response",
-            port_type="data",
-            required=True,
-        ),
-    ],
-)
-
-# EXTERNAL_TRELLO Node Specification
-external_trello_spec = NodeSpec(
-    node_type="EXTERNAL_ACTION_NODE",
-    subtype="EXTERNAL_TRELLO",
-    display_name="Trello Action",
-    description="Sends actions to or reads data from Trello",
-    category="external_action",
-    parameters=[
-        ParameterSpec(
-            name="action",
-            display_name="Action Type",
-            description="The Trello action to perform",
-            param_type="string",
-            required=True,
-            allowed_values=[
-                "create_board",
-                "create_list",
-                "create_card",
-                "update_card",
-                "move_card",
-                "add_comment",
-                "add_attachment",
-            ],
-        ),
-        ParameterSpec(
-            name="board_id",
-            display_name="Board ID",
-            description="Trello board identifier",
-            param_type="string",
-            required=True,
-        ),
-        ParameterSpec(
-            name="api_key",
-            display_name="Trello API Key",
-            description="Trello API key",
-            param_type="string",
-            required=True,
-            is_secret=True,
-        ),
-        ParameterSpec(
-            name="api_token",
-            display_name="Trello API Token",
-            description="Trello API token",
-            param_type="string",
-            required=True,
-            is_secret=True,
-        ),
-        ParameterSpec(
-            name="list_id",
-            display_name="List ID",
-            description="Trello list identifier",
-            param_type="string",
-            required=False,
-        ),
-        ParameterSpec(
-            name="card_name",
-            display_name="Card Name",
-            description="Name of the Trello card",
-            param_type="string",
-            required=False,
-        ),
-        ParameterSpec(
-            name="card_description",
-            display_name="Card Description",
-            description="Description of the Trello card",
-            param_type="text",
-            required=False,
-        ),
-    ],
-    input_ports=[
-        PortSpec(
-            name="trigger",
-            display_name="Trigger",
-            description="Trigger the Trello action",
-            port_type="execution",
-            required=True,
-        ),
-        PortSpec(
-            name="trello_data",
-            display_name="Trello Data",
-            description="Trello board and card information",
-            port_type="data",
-            required=False,
-        ),
-    ],
-    output_ports=[
-        PortSpec(
-            name="success",
-            display_name="Success",
-            description="Action completed successfully",
-            port_type="execution",
-            required=True,
-        ),
-        PortSpec(
-            name="error",
-            display_name="Error",
-            description="Action failed",
-            port_type="execution",
-            required=True,
-        ),
-        PortSpec(
-            name="trello_result",
-            display_name="Trello Result",
-            description="Trello API response data",
-            port_type="data",
-            required=True,
-        ),
-    ],
-)
-
-# EXTERNAL_EMAIL Node Specification
-external_email_spec = NodeSpec(
-    node_type="EXTERNAL_ACTION_NODE",
-    subtype="EXTERNAL_EMAIL",
-    display_name="Email Action",
-    description="Sends or receives emails",
-    category="external_action",
-    parameters=[
-        ParameterSpec(
-            name="action",
-            display_name="Action Type",
-            description="The email action to perform",
-            param_type="string",
-            required=True,
-            allowed_values=["send", "receive", "parse", "forward"],
-        ),
-        ParameterSpec(
-            name="email_provider",
-            display_name="Email Provider",
-            description="Email service provider",
-            param_type="string",
-            required=True,
-            allowed_values=["gmail", "outlook", "smtp", "imap"],
-            default_value="gmail",
-        ),
-        ParameterSpec(
-            name="credentials",
-            display_name="Email Credentials",
-            description="Email authentication credentials",
-            param_type="json",
-            required=True,
-            is_secret=True,
-        ),
-        ParameterSpec(
-            name="recipients",
-            display_name="Recipients",
-            description="Email recipient addresses",
-            param_type="array",
-            required=False,
-        ),
-        ParameterSpec(
+        ParameterDef(
             name="subject",
-            display_name="Subject",
-            description="Email subject line",
-            param_type="string",
-            required=False,
+            type=ParameterType.STRING,
+            required=True,
+            description="Email subject",
         ),
-        ParameterSpec(
+        ParameterDef(
             name="body",
-            display_name="Email Body",
-            description="Email content body",
-            param_type="text",
-            required=False,
+            type=ParameterType.STRING,
+            required=True,
+            description="Email body",
         ),
-        ParameterSpec(
+        ParameterDef(
+            name="cc",
+            type=ParameterType.JSON,
+            required=False,
+            default_value=[],
+            description="CC list",
+        ),
+        ParameterDef(
+            name="bcc",
+            type=ParameterType.JSON,
+            required=False,
+            default_value=[],
+            description="BCC list",
+        ),
+        ParameterDef(
             name="attachments",
-            display_name="Attachments",
-            description="File attachments",
-            param_type="array",
+            type=ParameterType.JSON,
             required=False,
+            default_value=[],
+            description="Attachment list",
+        ),
+        ParameterDef(
+            name="html_body",
+            type=ParameterType.BOOLEAN,
+            required=False,
+            default_value=False,
+            description="Whether body is HTML format",
         ),
     ],
     input_ports=[
-        PortSpec(
-            name="trigger",
-            display_name="Trigger",
-            description="Trigger the email action",
-            port_type="execution",
-            required=True,
-        ),
-        PortSpec(
-            name="email_data",
-            display_name="Email Data",
-            description="Email content and metadata",
-            port_type="data",
+        InputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
             required=False,
-        ),
+            description="Email data and template variables",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"template_vars": "object", "attachments": "array"}',
+                examples=[
+                    '{"template_vars": {"name": "John", "order_id": "12345"}, "attachments": []}'
+                ],
+            ),
+        )
     ],
     output_ports=[
-        PortSpec(
-            name="success",
-            display_name="Success",
-            description="Email action completed successfully",
-            port_type="execution",
-            required=True,
+        OutputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            description="Email send result",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"message_id": "string", "status": "string", "timestamp": "string"}',
+                examples=[
+                    '{"message_id": "msg_123", "status": "sent", "timestamp": "2025-01-28T10:30:00Z"}'
+                ],
+            ),
         ),
-        PortSpec(
+        OutputPortSpec(
             name="error",
-            display_name="Error",
-            description="Email action failed",
-            port_type="execution",
-            required=True,
-        ),
-        PortSpec(
-            name="email_result",
-            display_name="Email Result",
-            description="Email operation result data",
-            port_type="data",
-            required=True,
+            type=ConnectionType.ERROR,
+            description="Error output when email send fails",
         ),
     ],
 )
 
-# EXTERNAL_SLACK Node Specification
-external_slack_spec = NodeSpec(
+# Slack - Slack operations
+SLACK_SPEC = NodeSpec(
     node_type="EXTERNAL_ACTION_NODE",
-    subtype="EXTERNAL_SLACK",
-    display_name="Slack Action",
-    description="Sends messages or reads data from Slack",
-    category="external_action",
+    subtype="SLACK",
+    description="Send messages and interact with Slack",
     parameters=[
-        ParameterSpec(
-            name="action",
-            display_name="Action Type",
-            description="The Slack action to perform",
-            param_type="string",
-            required=True,
-            allowed_values=[
-                "send_message",
-                "update_message",
-                "delete_message",
-                "upload_file",
-                "create_channel",
-                "invite_user",
-            ],
-        ),
-        ParameterSpec(
+        ParameterDef(
             name="channel",
-            display_name="Channel",
-            description="Slack channel ID or name",
-            param_type="string",
+            type=ParameterType.STRING,
             required=True,
+            description="Channel ID or name",
         ),
-        ParameterSpec(
-            name="bot_token",
-            display_name="Bot Token",
-            description="Slack bot token",
-            param_type="string",
-            required=True,
-            is_secret=True,
-        ),
-        ParameterSpec(
+        ParameterDef(
             name="message",
-            display_name="Message",
-            description="Message content to send",
-            param_type="text",
-            required=False,
+            type=ParameterType.STRING,
+            required=True,
+            description="Message content",
         ),
-        ParameterSpec(
-            name="user",
-            display_name="Target User",
-            description="User ID for user-specific actions",
-            param_type="string",
-            required=False,
+        ParameterDef(
+            name="bot_token",
+            type=ParameterType.STRING,
+            required=True,
+            description="Slack Bot token (sensitive)",
         ),
-        ParameterSpec(
+        ParameterDef(
+            name="attachments",
+            type=ParameterType.JSON,
+            required=False,
+            default_value=[],
+            description="Message attachments",
+        ),
+        ParameterDef(
             name="thread_ts",
-            display_name="Thread Timestamp",
-            description="Timestamp for threaded messages",
-            param_type="string",
+            type=ParameterType.STRING,
             required=False,
+            description="Thread timestamp",
         ),
     ],
     input_ports=[
-        PortSpec(
-            name="trigger",
-            display_name="Trigger",
-            description="Trigger the Slack action",
-            port_type="execution",
-            required=True,
-        ),
-        PortSpec(
-            name="slack_data",
-            display_name="Slack Data",
-            description="Slack message and channel information",
-            port_type="data",
+        InputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
             required=False,
-        ),
+            description="Dynamic message content and formatting",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"blocks": "array", "mentions": "array", "metadata": "object"}',
+                examples=[
+                    '{"blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Hello!"}}], "mentions": ["@user123"], "metadata": {}}'
+                ],
+            ),
+        )
     ],
     output_ports=[
-        PortSpec(
-            name="success",
-            display_name="Success",
-            description="Slack action completed successfully",
-            port_type="execution",
-            required=True,
+        OutputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            description="Slack message result",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"ts": "string", "channel": "string", "message": "object"}',
+                examples=[
+                    '{"ts": "1234567890.123456", "channel": "C123456", "message": {"text": "Hello!"}}'
+                ],
+            ),
         ),
-        PortSpec(
+        OutputPortSpec(
             name="error",
-            display_name="Error",
-            description="Slack action failed",
-            port_type="execution",
-            required=True,
-        ),
-        PortSpec(
-            name="slack_result",
-            display_name="Slack Result",
-            description="Slack API response data",
-            port_type="data",
-            required=True,
+            type=ConnectionType.ERROR,
+            description="Error output when Slack operation fails",
         ),
     ],
 )
 
-# EXTERNAL_API_CALL Node Specification
-external_api_call_spec = NodeSpec(
+# API Call - generic API calls
+API_CALL_SPEC = NodeSpec(
     node_type="EXTERNAL_ACTION_NODE",
-    subtype="EXTERNAL_API_CALL",
-    display_name="Generic API Call",
-    description="Makes a generic HTTP API call",
-    category="external_action",
+    subtype="API_CALL",
+    description="Make generic HTTP API calls",
     parameters=[
-        ParameterSpec(
+        ParameterDef(
             name="method",
-            display_name="HTTP Method",
-            description="HTTP request method",
-            param_type="string",
+            type=ParameterType.ENUM,
             required=True,
-            allowed_values=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
             default_value="GET",
+            enum_values=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+            description="HTTP method",
         ),
-        ParameterSpec(
+        ParameterDef(
             name="url",
-            display_name="API URL",
-            description="Target API endpoint URL",
-            param_type="url",
+            type=ParameterType.URL,
             required=True,
+            description="API endpoint URL",
         ),
-        ParameterSpec(
+        ParameterDef(
             name="headers",
-            display_name="Headers",
-            description="HTTP request headers",
-            param_type="json",
+            type=ParameterType.JSON,
             required=False,
             default_value={},
+            description="HTTP headers",
         ),
-        ParameterSpec(
+        ParameterDef(
             name="query_params",
-            display_name="Query Parameters",
-            description="URL query parameters",
-            param_type="json",
+            type=ParameterType.JSON,
             required=False,
             default_value={},
+            description="Query parameters",
         ),
-        ParameterSpec(
+        ParameterDef(
             name="body",
-            display_name="Request Body",
-            description="HTTP request body data",
-            param_type="json",
+            type=ParameterType.JSON,
             required=False,
+            description="Request body data",
         ),
-        ParameterSpec(
+        ParameterDef(
             name="timeout",
-            display_name="Timeout",
-            description="Request timeout in seconds",
-            param_type="number",
+            type=ParameterType.INTEGER,
             required=False,
             default_value=30,
+            description="Timeout in seconds",
         ),
-        ParameterSpec(
+        ParameterDef(
             name="authentication",
-            display_name="Authentication",
-            description="API authentication method",
-            param_type="string",
+            type=ParameterType.ENUM,
             required=False,
-            allowed_values=["none", "bearer", "basic", "api_key"],
             default_value="none",
+            enum_values=["none", "bearer", "basic", "api_key"],
+            description="Authentication method",
         ),
     ],
     input_ports=[
-        PortSpec(
-            name="trigger",
-            display_name="Trigger",
-            description="Trigger the API call",
-            port_type="execution",
-            required=True,
-        ),
-        PortSpec(
-            name="request_data",
-            display_name="Request Data",
-            description="Dynamic request parameters",
-            port_type="data",
+        InputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
             required=False,
-        ),
+            description="Dynamic API request data",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"dynamic_params": "object", "dynamic_headers": "object"}',
+                examples=[
+                    '{"dynamic_params": {"user_id": "123"}, "dynamic_headers": {"X-Custom": "value"}}'
+                ],
+            ),
+        )
     ],
     output_ports=[
-        PortSpec(
-            name="success",
-            display_name="Success",
-            description="API call completed successfully",
-            port_type="execution",
-            required=True,
+        OutputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            description="API response",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"status_code": "number", "headers": "object", "body": "object", "response_time": "number"}',
+                examples=[
+                    '{"status_code": 200, "headers": {"content-type": "application/json"}, "body": {"result": "success"}, "response_time": 0.25}'
+                ],
+            ),
         ),
-        PortSpec(
+        OutputPortSpec(
             name="error",
-            display_name="Error",
-            description="API call failed",
-            port_type="execution",
-            required=True,
-        ),
-        PortSpec(
-            name="response",
-            display_name="API Response",
-            description="HTTP response data and metadata",
-            port_type="data",
-            required=True,
+            type=ConnectionType.ERROR,
+            description="Error output when API call fails",
         ),
     ],
 )
-
-# EXTERNAL_WEBHOOK Node Specification
-external_webhook_spec = NodeSpec(
-    node_type="EXTERNAL_ACTION_NODE",
-    subtype="EXTERNAL_WEBHOOK",
-    display_name="Webhook Action",
-    description="Sends a webhook to an external service",
-    category="external_action",
-    parameters=[
-        ParameterSpec(
-            name="url",
-            display_name="Webhook URL",
-            description="Target webhook endpoint URL",
-            param_type="url",
-            required=True,
-        ),
-        ParameterSpec(
-            name="payload",
-            display_name="Payload",
-            description="Webhook payload data",
-            param_type="json",
-            required=True,
-        ),
-        ParameterSpec(
-            name="method",
-            display_name="HTTP Method",
-            description="HTTP method for webhook",
-            param_type="string",
-            required=False,
-            allowed_values=["POST", "PUT", "PATCH"],
-            default_value="POST",
-        ),
-        ParameterSpec(
-            name="headers",
-            display_name="Headers",
-            description="HTTP headers for webhook",
-            param_type="json",
-            required=False,
-            default_value={"Content-Type": "application/json"},
-        ),
-        ParameterSpec(
-            name="retry_attempts",
-            display_name="Retry Attempts",
-            description="Number of retry attempts on failure",
-            param_type="number",
-            required=False,
-            default_value=3,
-        ),
-        ParameterSpec(
-            name="retry_delay",
-            display_name="Retry Delay",
-            description="Delay between retries in seconds",
-            param_type="number",
-            required=False,
-            default_value=5,
-        ),
-        ParameterSpec(
-            name="signature_secret",
-            display_name="Signature Secret",
-            description="Secret for webhook signature verification",
-            param_type="string",
-            required=False,
-            is_secret=True,
-        ),
-    ],
-    input_ports=[
-        PortSpec(
-            name="trigger",
-            display_name="Trigger",
-            description="Trigger the webhook",
-            port_type="execution",
-            required=True,
-        ),
-        PortSpec(
-            name="webhook_data",
-            display_name="Webhook Data",
-            description="Dynamic webhook payload data",
-            port_type="data",
-            required=False,
-        ),
-    ],
-    output_ports=[
-        PortSpec(
-            name="success",
-            display_name="Success",
-            description="Webhook sent successfully",
-            port_type="execution",
-            required=True,
-        ),
-        PortSpec(
-            name="error",
-            display_name="Error",
-            description="Webhook failed",
-            port_type="execution",
-            required=True,
-        ),
-        PortSpec(
-            name="webhook_result",
-            display_name="Webhook Result",
-            description="Webhook response and status",
-            port_type="data",
-            required=True,
-        ),
-    ],
-)
-
-# EXTERNAL_NOTIFICATION Node Specification
-external_notification_spec = NodeSpec(
-    node_type="EXTERNAL_ACTION_NODE",
-    subtype="EXTERNAL_NOTIFICATION",
-    display_name="Notification Action",
-    description="Sends a notification to a user or system",
-    category="external_action",
-    parameters=[
-        ParameterSpec(
-            name="type",
-            display_name="Notification Type",
-            description="Type of notification to send",
-            param_type="string",
-            required=True,
-            allowed_values=["push", "sms", "email", "in_app"],
-        ),
-        ParameterSpec(
-            name="message",
-            display_name="Message",
-            description="Notification message content",
-            param_type="text",
-            required=True,
-        ),
-        ParameterSpec(
-            name="target",
-            display_name="Target",
-            description="Notification target (user ID, device token, phone number, etc.)",
-            param_type="string",
-            required=True,
-        ),
-        ParameterSpec(
-            name="title",
-            display_name="Title",
-            description="Notification title (for push notifications)",
-            param_type="string",
-            required=False,
-        ),
-        ParameterSpec(
-            name="provider",
-            display_name="Notification Provider",
-            description="Notification service provider",
-            param_type="string",
-            required=False,
-            allowed_values=["fcm", "apns", "twilio", "ses", "oneSignal"],
-            default_value="fcm",
-        ),
-        ParameterSpec(
-            name="provider_config",
-            display_name="Provider Configuration",
-            description="Provider-specific configuration",
-            param_type="json",
-            required=False,
-            is_secret=True,
-        ),
-        ParameterSpec(
-            name="priority",
-            display_name="Priority",
-            description="Notification priority level",
-            param_type="string",
-            required=False,
-            allowed_values=["low", "normal", "high"],
-            default_value="normal",
-        ),
-    ],
-    input_ports=[
-        PortSpec(
-            name="trigger",
-            display_name="Trigger",
-            description="Trigger the notification",
-            port_type="execution",
-            required=True,
-        ),
-        PortSpec(
-            name="notification_data",
-            display_name="Notification Data",
-            description="Dynamic notification content",
-            port_type="data",
-            required=False,
-        ),
-    ],
-    output_ports=[
-        PortSpec(
-            name="success",
-            display_name="Success",
-            description="Notification sent successfully",
-            port_type="execution",
-            required=True,
-        ),
-        PortSpec(
-            name="error",
-            display_name="Error",
-            description="Notification failed",
-            port_type="execution",
-            required=True,
-        ),
-        PortSpec(
-            name="notification_result",
-            display_name="Notification Result",
-            description="Notification delivery status and metadata",
-            port_type="data",
-            required=True,
-        ),
-    ],
-)
-
-# Export all external action node specifications
-EXTERNAL_ACTION_NODE_SPECS = {
-    "EXTERNAL_GITHUB": external_github_spec,
-    "EXTERNAL_GOOGLE_CALENDAR": external_google_calendar_spec,
-    "EXTERNAL_TRELLO": external_trello_spec,
-    "EXTERNAL_EMAIL": external_email_spec,
-    "EXTERNAL_SLACK": external_slack_spec,
-    "EXTERNAL_API_CALL": external_api_call_spec,
-    "EXTERNAL_WEBHOOK": external_webhook_spec,
-    "EXTERNAL_NOTIFICATION": external_notification_spec,
-}

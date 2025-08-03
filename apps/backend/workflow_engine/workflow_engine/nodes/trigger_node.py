@@ -27,9 +27,9 @@ class TriggerNodeExecutor(BaseNodeExecutor):
 
     def _get_node_spec(self) -> Optional[NodeSpec]:
         """Get the node specification for trigger nodes."""
-        if node_spec_registry:
-            # Return the MANUAL spec as default (most commonly used)
-            return node_spec_registry.get_spec("TRIGGER_NODE", "TRIGGER_MANUAL")
+        if node_spec_registry and self._subtype:
+            # Return the specific spec for current subtype
+            return node_spec_registry.get_spec("TRIGGER_NODE", self._subtype)
         return None
 
     def get_supported_subtypes(self) -> List[str]:
@@ -45,32 +45,46 @@ class TriggerNodeExecutor(BaseNodeExecutor):
         ]
 
     def validate(self, node: Any) -> List[str]:
-        """Validate trigger node configuration."""
-        errors = []
-
+        """Validate trigger node configuration using spec-based validation."""
+        # First use the base class validation which includes spec validation
+        errors = super().validate(node)
+        
+        # If spec validation passed, we're done
+        if not errors and self.spec:
+            return errors
+        
+        # Fallback if spec not available
         if not node.subtype:
             errors.append("Trigger subtype is required")
             return errors
 
+        if node.subtype not in self.get_supported_subtypes():
+            errors.append(f"Unsupported trigger subtype: {node.subtype}")
+
+        return errors
+    
+    def _validate_legacy(self, node: Any) -> List[str]:
+        """Legacy validation for backward compatibility."""
+        errors = []
+        
+        if not hasattr(node, 'subtype'):
+            return errors
+            
         subtype = node.subtype
 
         if subtype == "TRIGGER_WEBHOOK":
-            errors.extend(self._validate_required_parameters(node, ["method", "path"]))
-            method = node.parameters.get("method", "").upper()
-            if method not in ["GET", "POST", "PUT", "DELETE"]:
-                errors.append(f"Invalid HTTP method: {method}")
+            # Note: The spec uses webhook_path and http_method, not method and path
+            if hasattr(node, 'parameters'):
+                http_method = node.parameters.get("http_method", "").upper()
+                if http_method and http_method not in ["GET", "POST", "PUT", "DELETE", "PATCH"]:
+                    errors.append(f"Invalid HTTP method: {http_method}")
 
         elif subtype == "TRIGGER_CRON":
             errors.extend(self._validate_required_parameters(node, ["cron_expression"]))
-            cron_expr = node.parameters.get("cron_expression", "")
-            if not self._is_valid_cron(cron_expr):
-                errors.append(f"Invalid cron expression: {cron_expr}")
-
-        elif subtype == "TRIGGER_EMAIL":
-            errors.extend(self._validate_required_parameters(node, ["email_filter"]))
-
-        elif subtype == "TRIGGER_CALENDAR":
-            errors.extend(self._validate_required_parameters(node, ["calendar_id"]))
+            if hasattr(node, 'parameters'):
+                cron_expr = node.parameters.get("cron_expression", "")
+                if cron_expr and not self._is_valid_cron(cron_expr):
+                    errors.append(f"Invalid cron expression: {cron_expr}")
 
         return errors
 
@@ -116,7 +130,10 @@ class TriggerNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute manual trigger."""
-        require_confirmation = context.get_parameter("require_confirmation", False)
+        # Use spec-based parameter retrieval
+        require_confirmation = self.get_parameter_with_spec(context, "require_confirmation")
+        trigger_name = self.get_parameter_with_spec(context, "trigger_name")
+        description = self.get_parameter_with_spec(context, "description")
 
         logs.append(f"Manual trigger executed, confirmation required: {require_confirmation}")
 
