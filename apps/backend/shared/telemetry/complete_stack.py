@@ -27,7 +27,11 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor
+try:
+    from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor
+    HAS_PSYCOPG2 = True
+except ImportError:
+    HAS_PSYCOPG2 = False
 
 from .formatter import CloudWatchTracingFormatter
 
@@ -148,11 +152,12 @@ def _setup_auto_instrumentation(app: FastAPI) -> None:
     HTTPXClientInstrumentor().instrument()
     
     # 数据库自动装配 (如果使用 PostgreSQL)
-    try:
-        Psycopg2Instrumentor().instrument()
-    except Exception:
-        # 如果没有安装 psycopg2，跳过
-        pass
+    if HAS_PSYCOPG2:
+        try:
+            Psycopg2Instrumentor().instrument()
+        except Exception:
+            # 如果装配失败，跳过
+            pass
 
 
 def get_tracer(name: str) -> trace.Tracer:
