@@ -135,3 +135,29 @@ variable "alert_email" {
   type        = string
   default     = ""
 }
+
+# Grafana Cloud 集成配置
+variable "grafana_cloud_api_key" {
+  description = "Grafana Cloud API Key"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "grafana_cloud_tenant_id" {
+  description = "Grafana Cloud Tenant ID"
+  type        = string
+  default     = ""
+}
+
+variable "grafana_cloud_prometheus_url" {
+  description = "Grafana Cloud Prometheus Push URL"
+  type        = string
+  default     = "https://prometheus-prod-01-eu-west-0.grafana.net/api/prom/push"
+}
+
+variable "grafana_cloud_loki_url" {
+  description = "Grafana Cloud Loki Push URL"
+  type        = string
+  default     = "https://logs-prod-006.grafana.net/loki/api/v1/push"
+}

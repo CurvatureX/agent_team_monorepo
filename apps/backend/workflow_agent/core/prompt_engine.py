@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import Any, Dict, Tuple
 
 from jinja2 import Environment, FileSystemLoader
-from .logging_config import get_logger
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def tojsonpretty(value):
@@ -42,7 +42,7 @@ class PromptEngine:
         # Register custom filters
         self.env.filters["tojsonpretty"] = tojsonpretty
 
-        logger.info("Jinja2 prompt engine initialized", template_path=str(self.template_path))
+        logger.info(f"Jinja2 prompt engine initialized at {str(self.template_path)}")
 
     async def render_prompt(self, template_name: str, **context: Any) -> str:
         """

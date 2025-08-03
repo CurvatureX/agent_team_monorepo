@@ -7,13 +7,13 @@ import asyncio
 from typing import Any, Dict, List, Optional, Tuple
 
 from .config import settings
-from .logging_config import get_logger
+import logging
 from langchain_core.embeddings import Embeddings
 from langchain_openai import OpenAIEmbeddings
 from supabase import Client, create_client
 from supabase.client import ClientOptions
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class NodeKnowledgeEntry:
@@ -160,7 +160,7 @@ class SupabaseVectorStore:
             return entries
 
         except Exception as e:
-            logger.error("Vector similarity search failed", error=str(e), query=query)
+            logger.error(f"Vector similarity search failed for query '{query}': {str(e)}")
             return []
 
     async def search_by_capabilities(

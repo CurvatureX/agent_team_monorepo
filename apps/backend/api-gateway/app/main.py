@@ -10,12 +10,43 @@ from datetime import datetime, timezone
 
 # Add shared node_specs to Python path for node knowledge access
 current_dir = os.path.dirname(os.path.abspath(__file__))
-shared_path = os.path.join(current_dir, "../../../shared")
-if shared_path not in sys.path:
+# Try multiple paths to find shared module
+possible_paths = [
+    os.path.join(current_dir, "../../../shared"),  # Original path
+    os.path.join(current_dir, "../../shared"),      # From app directory
+    os.path.abspath(os.path.join(current_dir, "..", "..", "shared")),  # Absolute path
+]
+
+shared_path = None
+for path in possible_paths:
+    if os.path.exists(path) and os.path.isdir(path):
+        shared_path = path
+        break
+
+if shared_path and shared_path not in sys.path:
     sys.path.insert(0, shared_path)
 
 # 工具 - Use custom logging
 import logging
+
+# 遥测组件
+try:
+    from shared.telemetry import setup_telemetry, TrackingMiddleware, MetricsMiddleware  # type: ignore[assignment]
+except ImportError:
+    # Fallback for tests - create dummy implementations
+    print("Warning: Could not import telemetry components, using stubs")
+    def setup_telemetry(*args, **kwargs):  # type: ignore[misc]
+        pass
+    class TrackingMiddleware:  # type: ignore[misc]
+        def __init__(self, app):
+            self.app = app
+        async def __call__(self, scope, receive, send):
+            await self.app(scope, receive, send)
+    class MetricsMiddleware:  # type: ignore[misc]
+        def __init__(self, app, **kwargs):
+            self.app = app
+        async def __call__(self, scope, receive, send):
+            await self.app(scope, receive, send)
 
 from app.api.app.router import router as app_router
 from app.api.mcp.router import router as mcp_router
@@ -26,7 +57,6 @@ from app.api.public.router import router as public_router
 # 核心组件
 from app.core.config import get_settings
 from app.core.events import health_check, lifespan
-from app.core.logging import setup_logging
 from app.exceptions import register_exception_handlers
 
 # 中间件
@@ -36,8 +66,6 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-# 在应用启动前设置日志
-setup_logging()
 logger = logging.getLogger("app.main")
 
 # 获取配置
@@ -89,14 +117,23 @@ def create_application() -> FastAPI:
         ],
     )
 
+    # 初始化遥测系统
+    setup_telemetry(app, service_name="api-gateway", service_version=settings.VERSION)
+
     # 注册中间件（顺序很重要）
-    # 1. 限流中间件（最外层，先限流再认证）
+    # 1. 追踪中间件（最外层，为每个请求生成 tracking_id）
+    app.add_middleware(TrackingMiddleware)  # type: ignore
+
+    # 2. 指标收集中间件
+    app.add_middleware(MetricsMiddleware, service_name="api-gateway")  # type: ignore
+
+    # 3. 限流中间件
     app.middleware("http")(rate_limit_middleware)
 
-    # 2. 认证中间件
+    # 4. 认证中间件
     app.middleware("http")(unified_auth_middleware)
 
-    # 3. 请求日志中间件
+    # 5. 请求日志中间件（添加 X-Process-Time 头）
     app.middleware("http")(request_logging_middleware)
 
     # 注册异常处理器
@@ -136,7 +173,7 @@ async def request_logging_middleware(request: Request, call_next):
     process_time = time.time() - start_time
 
     # 添加响应头
-    response.headers["X-Request-ID"] = request_id
+    # X-Tracking-ID is already set by TrackingMiddleware
     response.headers["X-Process-Time"] = str(round(process_time * 1000, 2))
 
     # 记录响应
