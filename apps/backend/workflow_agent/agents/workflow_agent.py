@@ -55,7 +55,7 @@ class WorkflowAgent:
             {
                 "clarification": "clarification",  # Go back to clarification if has gaps
                 "workflow_generation": "workflow_generation",  # Proceed if no gaps
-                "END": END,
+                "END": END,  # End if waiting for user input
             },
         )
 

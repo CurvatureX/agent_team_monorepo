@@ -113,7 +113,8 @@ class WorkflowAgentNodes:
         previous_stage = state.get("previous_stage")
 
         if stage == WorkflowStage.GAP_ANALYSIS:
-            if previous_stage == WorkflowStage.CLARIFICATION and state.get("clarification_context", {}).get("purpose") == "gap_resolution":
+            # Check if we're re-analyzing after user feedback on gaps
+            if previous_stage == WorkflowStage.CLARIFICATION and state.get("gap_status") == "has_gap":
                 return "Post-Gap Resolution Analysis"
             elif state.get("template_workflow"):
                 return "Template Capability Analysis"
@@ -140,7 +141,8 @@ class WorkflowAgentNodes:
         """Determine the scenario type for gap analysis template conditional logic"""
         previous_stage = state.get("previous_stage")
 
-        if previous_stage == WorkflowStage.CLARIFICATION and state.get("clarification_context", {}).get("purpose") == "gap_resolution":
+        # Check if we're re-analyzing after user feedback on gaps
+        if previous_stage == WorkflowStage.CLARIFICATION and state.get("gap_status") == "has_gap":
             return "post_gap_resolution"
         elif state.get("template_workflow"):
             return "template_analysis"
@@ -213,10 +215,10 @@ class WorkflowAgentNodes:
                 # Update the state with cleared pending questions
                 state["clarification_context"] = clarification_context
                 
-                # If this is a gap resolution response, store the user's choice
-                if purpose == "gap_resolution" and user_input:
-                    state["gap_resolution"] = user_input
-                    logger.info(f"Stored gap resolution choice: {user_input}")
+                # If this is a gap resolution response, mark that we need to re-run gap analysis
+                if purpose == "gap_negotiation" and user_input:
+                    logger.info(f"User responded to gap negotiation: {user_input}")
+                    # The gap analysis will run again to check if gaps are resolved
 
             # If we have user input, use RAG to retrieve knowledge
             if user_input:
@@ -288,24 +290,18 @@ class WorkflowAgentNodes:
 
                 logger.info(f"Clarification analysis: {analysis}")
 
-                # clarification_f2 format: clarification_question, is_complete, workflow_summary
+                # clarification_f2 format: clarification_question, is_complete, intent_summary
                 clarification_question = analysis.get("clarification_question", "")
                 is_complete = analysis.get("is_complete", False)
-                workflow_summary = analysis.get("workflow_summary", "")
+                intent_summary = analysis.get("intent_summary", "")
 
-                # Convert to old format for compatibility
-                if is_complete and workflow_summary:
-                    # Clarification is complete - extract intent from workflow summary
-                    intent_summary = (
-                        workflow_summary.split("\n")[0] if workflow_summary else "用户需求已澄清"
-                    )
-                    needs_clarification = False
-                    questions = []
-                else:
-                    # More clarification needed
-                    intent_summary = "需要进一步澄清用户需求"
-                    needs_clarification = True
-                    questions = [clarification_question] if clarification_question else []
+                # Determine if we need more clarification
+                needs_clarification = not is_complete
+                questions = [clarification_question] if clarification_question and not is_complete else []
+                
+                # Use provided intent_summary or create default
+                if not intent_summary:
+                    intent_summary = "用户需求已澄清" if is_complete else "需要进一步澄清用户需求"
 
             except json.JSONDecodeError:
                 # Fallback parsing
@@ -331,8 +327,8 @@ class WorkflowAgentNodes:
                 return {**state, "stage": WorkflowStage.CLARIFICATION}
             else:
                 # Check if we're in gap resolution flow
-                if purpose == "gap_resolution" and state.get("gap_resolution"):
-                    # User has provided gap resolution choice, go back to gap analysis
+                if purpose == "gap_negotiation":
+                    # Re-run gap analysis to check if gaps are resolved
                     return {**state, "stage": WorkflowStage.GAP_ANALYSIS}
                 else:
                     # Initial clarification complete - proceed to gap analysis
@@ -356,10 +352,9 @@ class WorkflowAgentNodes:
         try:
             intent_summary = state.get("intent_summary", "")
             
-            # Check if we're returning from gap resolution
-            if state.get("gap_resolution") and state.get("gap_status") == "has_gap":
-                logger.info(f"Processing gap resolution choice: {state.get('gap_resolution')}")
-                # User has made a choice, proceed to workflow generation
+            # Check if gaps have been resolved
+            if state.get("gap_status") == "gap_resolved":
+                logger.info("Gaps have been resolved, proceeding to workflow generation")
                 return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
 
             # Use separate system and user prompt files for capability gap analysis
@@ -431,13 +426,11 @@ class WorkflowAgentNodes:
                 response_lower = response_text.lower()
                 gap_status = "has_gap" if ("gap" in response_lower or "missing" in response_lower) else "no_gap"
                 negotiation_phrase = "We identified some gaps in the workflow requirements."
-                gap_resolution = None
                 identified_gaps = []
 
             # Update state with gap analysis results
             state["gap_status"] = gap_status
             state["identified_gaps"] = identified_gaps
-            state["gap_resolution"] = gap_resolution
 
             if gap_status == "has_gap" and identified_gaps:
                 # We have gaps with alternatives - send negotiation phrase to user
@@ -446,7 +439,7 @@ class WorkflowAgentNodes:
                 
                 # Set up clarification context for user choice
                 clarification_context = state.get("clarification_context", {})
-                clarification_context["purpose"] = "gap_resolution"
+                clarification_context["purpose"] = "gap_negotiation"
                 clarification_context["pending_questions"] = [negotiation_phrase] if negotiation_phrase else []
                 state["clarification_context"] = clarification_context
                 
@@ -473,7 +466,7 @@ class WorkflowAgentNodes:
         try:
             intent_summary = state.get("intent_summary", "")
             identified_gaps = state.get("identified_gaps", [])
-            gap_resolution = state.get("gap_resolution", "")
+            gap_status = state.get("gap_status", "no_gap")
             template_workflow = state.get("template_workflow")
 
             # Use prompt to generate workflow
@@ -481,7 +474,7 @@ class WorkflowAgentNodes:
                 "workflow_architecture",
                 intent_summary=intent_summary,
                 identified_gaps=identified_gaps,
-                gap_resolution=gap_resolution,
+                gap_status=gap_status,
                 template_workflow=template_workflow,
             )
 
