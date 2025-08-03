@@ -165,7 +165,7 @@ class WorkflowAgentStateManager:
                     # Remove alternatives as it's not used anymore
                     pass
                 # Set default values for new fields not in database
-                latest_state["gap_status"] = "no_gap"
+                latest_state["gap_status"] = latest_state.get("gap_status", "no_gap")
                 
                 logger.debug(f"Retrieved workflow_agent_state for session {session_id}")
                 return latest_state
@@ -334,8 +334,8 @@ class WorkflowAgentStateManager:
             "intent_summary": "intent_summary",
             # Map new field names to legacy database columns
             "identified_gaps": "gaps",  # Using legacy column name
-            # "gap_status": "gap_status",  # Not in database yet
-            # "gap_resolution": "gap_resolution",  # Not in database yet
+            # "gap_status": "gap_status",  # Not in database yet - skip for now
+            # gap_resolution removed - using gap_status instead
             "debug_result": "debug_result",
             "debug_loop_count": "debug_loop_count",
         }
