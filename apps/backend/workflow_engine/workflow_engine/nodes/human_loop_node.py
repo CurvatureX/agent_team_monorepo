@@ -24,9 +24,9 @@ class HumanLoopNodeExecutor(BaseNodeExecutor):
 
     def _get_node_spec(self) -> Optional[NodeSpec]:
         """Get the node specification for human loop nodes."""
-        if node_spec_registry:
-            # Return the GMAIL spec as default (most comprehensive)
-            return node_spec_registry.get_spec("HUMAN_IN_THE_LOOP_NODE", "HUMAN_GMAIL")
+        if node_spec_registry and self._subtype:
+            # Return the specific spec for current subtype
+            return node_spec_registry.get_spec("HUMAN_IN_THE_LOOP_NODE", self._subtype)
         return None
 
     def get_supported_subtypes(self) -> List[str]:
@@ -34,13 +34,31 @@ class HumanLoopNodeExecutor(BaseNodeExecutor):
         return ["HUMAN_GMAIL", "HUMAN_SLACK", "HUMAN_DISCORD", "HUMAN_TELEGRAM", "HUMAN_APP"]
 
     def validate(self, node: Any) -> List[str]:
-        """Validate human-in-the-loop node configuration."""
-        errors = []
-
+        """Validate human-in-the-loop node configuration using spec-based validation."""
+        # First use the base class validation which includes spec validation
+        errors = super().validate(node)
+        
+        # If spec validation passed, we're done
+        if not errors and self.spec:
+            return errors
+        
+        # Fallback if spec not available
         if not node.subtype:
             errors.append("Human-in-the-loop subtype is required")
             return errors
 
+        if node.subtype not in self.get_supported_subtypes():
+            errors.append(f"Unsupported human-in-the-loop subtype: {node.subtype}")
+
+        return errors
+    
+    def _validate_legacy(self, node: Any) -> List[str]:
+        """Legacy validation for backward compatibility."""
+        errors = []
+        
+        if not hasattr(node, 'subtype'):
+            return errors
+            
         subtype = node.subtype
 
         if subtype == "HUMAN_GMAIL":
@@ -61,9 +79,10 @@ class HumanLoopNodeExecutor(BaseNodeExecutor):
 
         elif subtype == "HUMAN_APP":
             errors.extend(self._validate_required_parameters(node, ["notification_type"]))
-            notification_type = node.parameters.get("notification_type", "")
-            if notification_type not in ["approval", "input", "review", "confirmation"]:
-                errors.append(f"Invalid notification type: {notification_type}")
+            if hasattr(node, 'parameters'):
+                notification_type = node.parameters.get("notification_type", "")
+                if notification_type and notification_type not in ["approval", "input", "review", "confirmation"]:
+                    errors.append(f"Invalid notification type: {notification_type}")
 
         return errors
 
@@ -105,10 +124,11 @@ class HumanLoopNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute Gmail interaction."""
-        email_template = context.get_parameter("email_template", "")
-        recipients = context.get_parameter("recipients", [])
-        subject = context.get_parameter("subject", "Action Required")
-        timeout_hours = context.get_parameter("timeout_hours", 24)
+        # Use spec-based parameter retrieval
+        email_template = self.get_parameter_with_spec(context, "email_template")
+        recipients = self.get_parameter_with_spec(context, "recipients")
+        subject = self.get_parameter_with_spec(context, "subject")
+        timeout_hours = self.get_parameter_with_spec(context, "timeout_hours")
 
         logs.append(f"Gmail interaction: sending to {len(recipients)} recipients")
 
@@ -140,9 +160,10 @@ class HumanLoopNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute Slack interaction."""
-        channel = context.get_parameter("channel", "")
-        message_template = context.get_parameter("message_template", "")
-        timeout_minutes = context.get_parameter("timeout_minutes", 60)
+        # Use spec-based parameter retrieval
+        channel = self.get_parameter_with_spec(context, "channel")
+        message_template = self.get_parameter_with_spec(context, "message_template")
+        timeout_minutes = self.get_parameter_with_spec(context, "timeout_minutes")
 
         logs.append(f"Slack interaction: sending to channel {channel}")
 
@@ -172,9 +193,10 @@ class HumanLoopNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute Discord interaction."""
-        channel_id = context.get_parameter("channel_id", "")
-        message_template = context.get_parameter("message_template", "")
-        timeout_minutes = context.get_parameter("timeout_minutes", 60)
+        # Use spec-based parameter retrieval
+        channel_id = self.get_parameter_with_spec(context, "channel_id")
+        message_template = self.get_parameter_with_spec(context, "message_template")
+        timeout_minutes = self.get_parameter_with_spec(context, "timeout_minutes")
 
         logs.append(f"Discord interaction: sending to channel {channel_id}")
 
@@ -204,9 +226,10 @@ class HumanLoopNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute Telegram interaction."""
-        chat_id = context.get_parameter("chat_id", "")
-        message_template = context.get_parameter("message_template", "")
-        timeout_minutes = context.get_parameter("timeout_minutes", 60)
+        # Use spec-based parameter retrieval
+        chat_id = self.get_parameter_with_spec(context, "chat_id")
+        message_template = self.get_parameter_with_spec(context, "message_template")
+        timeout_minutes = self.get_parameter_with_spec(context, "timeout_minutes")
 
         logs.append(f"Telegram interaction: sending to chat {chat_id}")
 
@@ -236,10 +259,11 @@ class HumanLoopNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute app interaction."""
-        notification_type = context.get_parameter("notification_type", "approval")
-        title = context.get_parameter("title", "Action Required")
-        message = context.get_parameter("message", "")
-        timeout_minutes = context.get_parameter("timeout_minutes", 30)
+        # Use spec-based parameter retrieval
+        notification_type = self.get_parameter_with_spec(context, "notification_type")
+        title = self.get_parameter_with_spec(context, "title")
+        message = self.get_parameter_with_spec(context, "message")
+        timeout_minutes = self.get_parameter_with_spec(context, "timeout_minutes")
 
         logs.append(f"App interaction: {notification_type} notification")
 

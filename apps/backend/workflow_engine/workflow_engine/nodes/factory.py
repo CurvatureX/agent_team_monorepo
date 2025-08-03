@@ -28,11 +28,15 @@ class NodeExecutorFactory:
         cls._executors[node_type] = executor_class
 
     @classmethod
-    def create_executor(cls, node_type: str) -> Optional[BaseNodeExecutor]:
+    def create_executor(cls, node_type: str, subtype: Optional[str] = None) -> Optional[BaseNodeExecutor]:
         """Create a node executor for the given node type."""
         executor_class = cls._executors.get(node_type)
         if executor_class:
-            return executor_class()
+            executor = executor_class()
+            # Pre-set the subtype if provided
+            if subtype and hasattr(executor, '_subtype'):
+                executor._subtype = subtype
+            return executor
         return None
 
     @classmethod
