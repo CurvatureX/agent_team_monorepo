@@ -9,7 +9,6 @@ from typing import AsyncGenerator
 
 from app.core.config import get_settings
 from app.core.database import get_database_manager
-from app.core.logging import setup_logging
 from app.utils.logger import get_logger
 from fastapi import FastAPI
 
@@ -32,8 +31,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 async def startup_event(app: FastAPI) -> None:
     """应用程序启动事件"""
-    # 首先设置日志系统
-    setup_logging()
     logger = get_logger(__name__)
 
     settings = get_settings()

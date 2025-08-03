@@ -28,6 +28,15 @@ dependencies = [
     "alembic==1.13.1",
     "jinja2>=3.1.0",
     "supabase>=2.0.0",
+    # OpenTelemetry dependencies
+    "opentelemetry-api>=1.21.0",
+    "opentelemetry-sdk>=1.21.0",
+    "opentelemetry-instrumentation-fastapi>=0.42b0",
+    "opentelemetry-instrumentation-requests>=0.42b0",
+    "opentelemetry-instrumentation-httpx>=0.42b0",
+    "opentelemetry-instrumentation-psycopg2>=0.42b0",
+    "opentelemetry-exporter-otlp>=1.21.0",
+    "opentelemetry-exporter-prometheus",
 ]
 
 [project.optional-dependencies]
