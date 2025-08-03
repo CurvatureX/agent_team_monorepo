@@ -13,17 +13,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv()
 
-# Add shared telemetry path
-shared_path = Path(__file__).parent.parent / "shared"
-if str(shared_path) not in sys.path:
-    sys.path.insert(0, str(shared_path))
-
-# Import telemetry components
-try:
-    from shared.telemetry import setup_telemetry, TrackingMiddleware, MetricsMiddleware
-except ImportError:
-    # Fallback for different path structures
-    from telemetry import setup_telemetry, TrackingMiddleware, MetricsMiddleware
+# Import telemetry components using unified import module
+from .telemetry_imports import setup_telemetry, TrackingMiddleware, MetricsMiddleware
 
 # Import logging
 import logging
