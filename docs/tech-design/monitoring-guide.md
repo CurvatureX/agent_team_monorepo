@@ -52,6 +52,350 @@
 
 ---
 
+## 🏗️ 监控系统架构与数据流
+
+### **整体架构图**
+
+```mermaid
+graph TB
+    subgraph "应用服务"
+        A1[API Gateway<br/>:8000]
+        A2[Workflow Agent<br/>:8001]
+        A3[Workflow Engine<br/>:8002]
+    end
+    
+    subgraph "OpenTelemetry SDK"
+        SDK1[OTel SDK<br/>in API Gateway]
+        SDK2[OTel SDK<br/>in Workflow Agent]
+        SDK3[OTel SDK<br/>in Workflow Engine]
+    end
+    
+    subgraph "数据收集层"
+        OC[OpenTelemetry Collector<br/>:4317 gRPC<br/>:4318 HTTP]
+        PROM[Prometheus<br/>:9090]
+    end
+    
+    subgraph "本地存储与可视化"
+        JAE[Jaeger<br/>:16686 UI<br/>:14250 gRPC]
+    end
+    
+    subgraph "Grafana Cloud"
+        GCM[Grafana Cloud Mimir<br/>长期指标存储]
+        GCL[Grafana Cloud Loki<br/>日志聚合]
+        GCT[Grafana Cloud Tempo<br/>分布式追踪]
+    end
+    
+    %% 应用到SDK
+    A1 --> SDK1
+    A2 --> SDK2
+    A3 --> SDK3
+    
+    %% SDK到Collector
+    SDK1 -->|OTLP gRPC<br/>Traces & Metrics| OC
+    SDK2 -->|OTLP gRPC<br/>Traces & Metrics| OC
+    SDK3 -->|OTLP gRPC<br/>Traces & Metrics| OC
+    
+    %% SDK到Prometheus
+    SDK1 -->|/metrics<br/>Pull| PROM
+    SDK2 -->|/metrics<br/>Pull| PROM
+    SDK3 -->|/metrics<br/>Pull| PROM
+    
+    %% Collector分发
+    OC -->|Traces| JAE
+    OC -->|Metrics| GCM
+    OC -->|Logs| GCL
+    OC -->|Traces| GCT
+    
+    %% Prometheus远程写入
+    PROM -->|Remote Write| GCM
+    
+    %% 日志直接输出
+    A1 -.->|Structured Logs<br/>CloudWatch| GCL
+    A2 -.->|Structured Logs<br/>CloudWatch| GCL
+    A3 -.->|Structured Logs<br/>CloudWatch| GCL
+```
+
+### **组件协作原理**
+
+#### **1. 数据生成层 - 应用服务**
+
+每个服务通过 `shared.telemetry` 模块初始化 OpenTelemetry SDK：
+
+```python
+# 在 apps/backend/api-gateway/app/main.py
+from shared.telemetry import setup_telemetry, TrackingMiddleware, MetricsMiddleware
+
+# 初始化遥测系统
+setup_telemetry(
+    app=app,
+    service_name="api-gateway",
+    service_version="1.0.0",
+    otlp_endpoint="http://localhost:4317",  # OTel Collector 地址
+    prometheus_port=8000
+)
+```
+
+**数据类型生成：**
+- **Traces（追踪）**: 自动记录每个 HTTP 请求的完整生命周期
+- **Metrics（指标）**: 记录请求数、延迟、错误率等
+- **Logs（日志）**: 结构化 JSON 日志，包含 trace_id 关联
+
+#### **2. 数据收集层 - OpenTelemetry SDK**
+
+SDK 在每个服务内部运行，负责：
+
+```python
+# shared/telemetry/complete_stack.py
+def _setup_tracing(resource: Resource, otlp_endpoint: str):
+    # 创建 TracerProvider
+    tracer_provider = TracerProvider(resource=resource)
+    trace.set_tracer_provider(tracer_provider)
+    
+    # 配置 OTLP 导出器 - 发送到 Collector
+    otlp_exporter = OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True)
+    span_processor = BatchSpanProcessor(otlp_exporter)
+    tracer_provider.add_span_processor(span_processor)
+```
+
+**关键功能：**
+- **自动装配**: FastAPI、HTTP 客户端、数据库调用自动追踪
+- **上下文传播**: 跨服务传递 trace_id 实现分布式追踪
+- **批量导出**: 高效发送数据到 Collector
+
+#### **3. 数据路由层 - OpenTelemetry Collector**
+
+Collector 是中心化的数据处理器：
+
+```yaml
+# monitoring/otel-collector-config.yml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317  # 接收来自 SDK 的数据
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+  
+  attributes:
+    actions:
+      - key: environment
+        value: ${ENVIRONMENT}
+        action: insert
+
+exporters:
+  # 本地 Jaeger
+  jaeger:
+    endpoint: jaeger:14250
+    tls: { insecure: true }
+  
+  # Grafana Cloud
+  otlphttp/grafana-cloud-traces:
+    endpoint: ${GRAFANA_CLOUD_TEMPO_URL}
+    headers:
+      authorization: Basic ${GRAFANA_CLOUD_API_KEY}
+```
+
+**数据流向：**
+1. **接收**: 从所有服务接收 OTLP 格式数据
+2. **处理**: 批量处理、添加标签、数据转换
+3. **导出**: 同时发送到多个后端（Jaeger、Grafana Cloud）
+
+#### **4. 存储与可视化层**
+
+##### **Jaeger（本地追踪）**
+- **用途**: 开发调试，查看请求链路
+- **数据源**: 从 Collector 接收 traces
+- **访问**: http://localhost:16686
+
+##### **Prometheus（本地指标）**
+- **用途**: 短期指标存储和查询
+- **数据源**: 主动拉取各服务的 /metrics 端点
+- **配置**:
+```yaml
+# monitoring/prometheus.yml
+scrape_configs:
+  - job_name: 'api-gateway'
+    static_configs:
+      - targets: ['api-gateway:8000']
+    metrics_path: '/metrics'
+```
+
+##### **Grafana Cloud（生产监控）**
+- **Mimir**: 长期指标存储，接收 Prometheus 远程写入
+- **Loki**: 日志聚合，通过 CloudWatch 或直接推送
+- **Tempo**: 分布式追踪存储，从 Collector 接收
+
+### **具体代码实现**
+
+#### **1. 追踪生成与传播**
+
+```python
+# shared/telemetry/middleware.py
+class TrackingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        # 获取当前 OpenTelemetry span
+        span = trace.get_current_span()
+        
+        if span.is_recording():
+            # 提取 trace_id 作为 tracking_id
+            span_context = span.get_span_context()
+            tracking_id = format(span_context.trace_id, '032x')
+            
+            # 存储到请求状态，供业务代码使用
+            request.state.tracking_id = tracking_id
+            
+            # 添加 span 属性
+            span.set_attribute("tracking.id", tracking_id)
+            span.set_attribute("http.method", request.method)
+            span.set_attribute("http.url", str(request.url))
+```
+
+**跨服务传播：**
+```python
+# 在 API Gateway 调用其他服务时
+async def call_workflow_agent(data: dict):
+    # OpenTelemetry 自动注入追踪头部
+    async with httpx.AsyncClient() as client:
+        # TracePropagator 自动添加 traceparent 头部
+        response = await client.post(
+            "http://workflow-agent:8001/generate",
+            json=data
+        )
+    return response.json()
+```
+
+#### **2. 指标收集与导出**
+
+```python
+# shared/telemetry/metrics.py
+class MetricsCollector:
+    def __init__(self, service_name: str):
+        self.meter = metrics.get_meter(service_name)
+        
+        # 创建指标
+        self.request_count = self.meter.create_counter(
+            name="http_requests_total",
+            description="Total HTTP requests",
+            unit="1"
+        )
+        
+        self.request_duration = self.meter.create_histogram(
+            name="http_request_duration_seconds",
+            description="HTTP request duration",
+            unit="s"
+        )
+```
+
+**指标记录：**
+```python
+# shared/telemetry/middleware.py
+class MetricsMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        start_time = time.time()
+        
+        try:
+            response = await call_next(request)
+            duration = time.time() - start_time
+            
+            # 记录指标
+            self.metrics.request_count.add(1, {
+                'service_name': self.service_name,
+                'endpoint': request.url.path,
+                'method': request.method,
+                'status_code': str(response.status_code)
+            })
+            
+            self.metrics.request_duration.record(duration, {
+                'service_name': self.service_name,
+                'endpoint': request.url.path
+            })
+```
+
+#### **3. 日志关联**
+
+```python
+# shared/telemetry/formatter.py
+class CloudWatchTracingFormatter(logging.Formatter):
+    def format(self, record):
+        # 获取当前 trace context
+        span = trace.get_current_span()
+        if span.is_recording():
+            span_context = span.get_span_context()
+            trace_id = format(span_context.trace_id, '032x')
+            span_id = format(span_context.span_id, '016x')
+        else:
+            trace_id = "no-trace"
+            span_id = "no-span"
+        
+        # 构建结构化日志
+        log_record = {
+            "@timestamp": self.formatTime(record, self.datefmt),
+            "@level": record.levelname,
+            "@message": record.getMessage(),
+            "@logger": record.name,
+            "@thread": record.thread,
+            "service": self.service_name,
+            "trace_id": trace_id,
+            "span_id": span_id,
+            "file": f"{record.filename}:{record.lineno}"
+        }
+        
+        return json.dumps(log_record)
+```
+
+### **数据查询示例**
+
+#### **1. 在 Jaeger 中追踪请求**
+```
+1. 访问 http://localhost:16686
+2. 选择服务: api-gateway
+3. 查找操作: POST /api/app/workflows
+4. 查看完整调用链:
+   - api-gateway (100ms)
+   - → workflow-agent (500ms)
+   - → workflow-engine (200ms)
+```
+
+#### **2. 在 Prometheus 查询指标**
+```promql
+# 服务请求速率
+rate(http_requests_total{service_name="api-gateway"}[5m])
+
+# P95 延迟
+histogram_quantile(0.95, 
+  sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
+)
+```
+
+#### **3. 在 Grafana Cloud 关联数据**
+```
+1. 使用 trace_id 关联所有数据:
+   - Tempo: 查看分布式追踪
+   - Loki: 查看相关日志
+   - Mimir: 查看时间段内的指标
+
+2. 创建统一仪表板展示:
+   - 追踪数据面板
+   - 日志流面板
+   - 指标图表
+```
+
+### **关键集成点**
+
+1. **服务初始化**: `setup_telemetry()` 一次性配置所有组件
+2. **中间件注册**: 自动收集数据，无需修改业务代码
+3. **上下文传播**: OpenTelemetry 自动处理跨服务追踪
+4. **统一 trace_id**: 所有遥测数据通过 trace_id 关联
+
+这个架构确保了完整的可观测性，从请求进入系统到响应返回，每一步都被记录和关联。
+
+---
+
 ## 🔧 如何在代码中使用
 
 ### **1. 初始化遥测系统**
