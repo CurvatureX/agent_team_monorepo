@@ -291,7 +291,7 @@ class WorkflowAgentNodes:
                 return {**state, "stage": WorkflowStage.GAP_ANALYSIS}
 
         except Exception as e:
-            logger.error("Clarification node failed", error=str(e))
+            logger.error(f"Clarification node failed: {str(e)}")
             return {
                 **state,
                 "stage": WorkflowStage.CLARIFICATION,
@@ -329,7 +329,7 @@ class WorkflowAgentNodes:
                 return {**state, "stage": WorkflowStage.NEGOTIATION}
 
         except Exception as e:
-            logger.error("Negotiation node failed", error=str(e))
+            logger.error(f"Negotiation node failed: {str(e)}")
             return {
                 **state,
                 "stage": WorkflowStage.NEGOTIATION,
@@ -425,7 +425,7 @@ class WorkflowAgentNodes:
                 return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
 
         except Exception as e:
-            logger.error("Gap analysis node failed", error=str(e))
+            logger.error(f"Gap analysis node failed: {str(e)}")
             return {
                 **state,
                 "stage": WorkflowStage.GAP_ANALYSIS,
@@ -502,7 +502,7 @@ class WorkflowAgentNodes:
             return {**state, "stage": WorkflowStage.NEGOTIATION}
 
         except Exception as e:
-            logger.error("Alternative solution generation node failed", error=str(e))
+            logger.error(f"Alternative solution generation node failed: {str(e)}")
             return {
                 **state,
                 "stage": WorkflowStage.WORKFLOW_GENERATION,
@@ -572,7 +572,7 @@ class WorkflowAgentNodes:
             return {**state, "stage": WorkflowStage.DEBUG}
 
         except Exception as e:
-            logger.error("Workflow generation node failed", error=str(e))
+            logger.error(f"Workflow generation node failed: {str(e)}")
             return {
                 **state,
                 "stage": WorkflowStage.WORKFLOW_GENERATION,
@@ -719,7 +719,7 @@ class WorkflowAgentNodes:
                 return {**state, "stage": WorkflowStage.COMPLETED}
 
         except Exception as e:
-            logger.error("Debug node failed", error=str(e))
+            logger.error(f"Debug node failed: {str(e)}")
             return {
                 **state,
                 "stage": WorkflowStage.DEBUG,
