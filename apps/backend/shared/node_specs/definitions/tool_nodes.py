@@ -18,7 +18,7 @@ from ..base import (
 # MCP Tool Node
 GOOGLE_CALENDAR_MCP_TOOL_SPEC = NodeSpec(
     node_type="TOOL_NODE",
-    subtype="TOOL_GOOGLE_CALENDAR_MCP",
+    subtype="GOOGLE_CALENDAR_MCP",
     description="Manages calendar operations through MCP",
     parameters=[
         ParameterDef(
