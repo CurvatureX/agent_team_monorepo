@@ -24,9 +24,9 @@ class FlowNodeExecutor(BaseNodeExecutor):
 
     def _get_node_spec(self) -> Optional[NodeSpec]:
         """Get the node specification for flow nodes."""
-        if node_spec_registry:
-            # Return the IF spec as default (most commonly used)
-            return node_spec_registry.get_spec("FLOW_NODE", "IF")
+        if node_spec_registry and self._subtype:
+            # Return the specific spec for current subtype
+            return node_spec_registry.get_spec("FLOW_NODE", self._subtype)
         return None
 
     def get_supported_subtypes(self) -> List[str]:
@@ -34,13 +34,31 @@ class FlowNodeExecutor(BaseNodeExecutor):
         return ["IF", "FILTER", "LOOP", "MERGE", "SWITCH", "WAIT"]
 
     def validate(self, node: Any) -> List[str]:
-        """Validate flow node configuration."""
-        errors = []
-
+        """Validate flow node configuration using spec-based validation."""
+        # First use the base class validation which includes spec validation
+        errors = super().validate(node)
+        
+        # If spec validation passed, we're done
+        if not errors and self.spec:
+            return errors
+        
+        # Fallback if spec not available
         if not node.subtype:
             errors.append("Flow subtype is required")
             return errors
 
+        if node.subtype not in self.get_supported_subtypes():
+            errors.append(f"Unsupported flow subtype: {node.subtype}")
+
+        return errors
+    
+    def _validate_legacy(self, node: Any) -> List[str]:
+        """Legacy validation for backward compatibility."""
+        errors = []
+        
+        if not hasattr(node, 'subtype'):
+            return errors
+            
         subtype = node.subtype
 
         if subtype == "IF":
@@ -51,18 +69,20 @@ class FlowNodeExecutor(BaseNodeExecutor):
 
         elif subtype == "LOOP":
             errors.extend(self._validate_required_parameters(node, ["loop_type"]))
-            loop_type = node.parameters.get("loop_type")
-            if loop_type not in ["for_each", "while", "times"]:
-                errors.append(f"Invalid loop type: {loop_type}")
+            if hasattr(node, 'parameters'):
+                loop_type = node.parameters.get("loop_type")
+                if loop_type and loop_type not in ["for_each", "while", "times"]:
+                    errors.append(f"Invalid loop type: {loop_type}")
 
         elif subtype == "SWITCH":
             errors.extend(self._validate_required_parameters(node, ["switch_cases"]))
 
         elif subtype == "WAIT":
             errors.extend(self._validate_required_parameters(node, ["wait_type"]))
-            wait_type = node.parameters.get("wait_type")
-            if wait_type not in ["time", "condition", "event"]:
-                errors.append(f"Invalid wait type: {wait_type}")
+            if hasattr(node, 'parameters'):
+                wait_type = node.parameters.get("wait_type")
+                if wait_type and wait_type not in ["time", "condition", "event"]:
+                    errors.append(f"Invalid wait type: {wait_type}")
 
         return errors
 
@@ -106,7 +126,8 @@ class FlowNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute if condition."""
-        condition = context.get_parameter("condition")
+        # Use spec-based parameter retrieval
+        condition = self.get_parameter_with_spec(context, "condition")
 
         logs.append(f"Evaluating if condition: {condition}")
 
@@ -137,7 +158,8 @@ class FlowNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute filter operation."""
-        filter_condition = context.get_parameter("filter_condition")
+        # Use spec-based parameter retrieval
+        filter_condition = self.get_parameter_with_spec(context, "filter_condition")
 
         logs.append(f"Applying filter: {filter_condition}")
 
@@ -169,8 +191,9 @@ class FlowNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute loop operation."""
-        loop_type = context.get_parameter("loop_type")
-        max_iterations = context.get_parameter("max_iterations", 100)
+        # Use spec-based parameter retrieval
+        loop_type = self.get_parameter_with_spec(context, "loop_type")
+        max_iterations = self.get_parameter_with_spec(context, "max_iterations")
 
         logs.append(f"Executing {loop_type} loop with max iterations: {max_iterations}")
 
@@ -179,10 +202,10 @@ class FlowNodeExecutor(BaseNodeExecutor):
         if loop_type == "for_each":
             result = self._execute_for_each_loop(input_data, max_iterations)
         elif loop_type == "while":
-            condition = context.get_parameter("while_condition", "true")
+            condition = self.get_parameter_with_spec(context, "while_condition")
             result = self._execute_while_loop(input_data, condition, max_iterations)
         elif loop_type == "times":
-            times = context.get_parameter("times", 1)
+            times = self.get_parameter_with_spec(context, "times")
             result = self._execute_times_loop(input_data, times)
         else:
             result = {"error": f"Unknown loop type: {loop_type}"}
@@ -204,7 +227,8 @@ class FlowNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute merge operation."""
-        merge_strategy = context.get_parameter("merge_strategy", "combine")
+        # Use spec-based parameter retrieval
+        merge_strategy = self.get_parameter_with_spec(context, "merge_strategy")
 
         logs.append(f"Merging data with strategy: {merge_strategy}")
 
@@ -236,7 +260,8 @@ class FlowNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute switch operation."""
-        switch_cases = context.get_parameter("switch_cases", [])
+        # Use spec-based parameter retrieval
+        switch_cases = self.get_parameter_with_spec(context, "switch_cases")
         switch_value = context.input_data.get("switch_value", "")
 
         logs.append(f"Executing switch with value: {switch_value}")
@@ -271,24 +296,25 @@ class FlowNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute wait operation."""
-        wait_type = context.get_parameter("wait_type")
+        # Use spec-based parameter retrieval
+        wait_type = self.get_parameter_with_spec(context, "wait_type")
 
         logs.append(f"Executing wait with type: {wait_type}")
 
         if wait_type == "time":
-            duration = context.get_parameter("duration", 1)  # seconds
+            duration = self.get_parameter_with_spec(context, "duration")  # seconds
             logs.append(f"Waiting for {duration} seconds")
             # In real implementation, would actually wait
             wait_result = {"waited_seconds": duration}
 
         elif wait_type == "condition":
-            condition = context.get_parameter("wait_condition", "true")
+            condition = self.get_parameter_with_spec(context, "wait_condition")
             logs.append(f"Waiting for condition: {condition}")
             # In real implementation, would poll condition
             wait_result = {"condition": condition, "condition_met": True}
 
         elif wait_type == "event":
-            event_name = context.get_parameter("event_name", "unknown")
+            event_name = self.get_parameter_with_spec(context, "event_name")
             logs.append(f"Waiting for event: {event_name}")
             # In real implementation, would wait for event
             wait_result = {"event_name": event_name, "event_received": True}

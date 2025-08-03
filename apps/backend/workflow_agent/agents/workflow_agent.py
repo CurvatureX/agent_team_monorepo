@@ -5,13 +5,13 @@ Workflow Generation, and Debug
 """
 from langgraph.graph import END, StateGraph
 
-from core.logging_config import get_logger
+import logging
 from .nodes import WorkflowAgentNodes
 from .state import (
     WorkflowState,
 )
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 class WorkflowAgent:
     """
