@@ -27,6 +27,7 @@ from shared.models import (
 )
 from workflow_engine.core.config import get_settings
 from workflow_engine.models import NodeTemplateModel, WorkflowModel
+from workflow_engine.utils.node_id_generator import NodeIdGenerator
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -47,12 +48,42 @@ class WorkflowService:
             workflow_id = str(uuid.uuid4())
             now = int(datetime.now().timestamp())
 
+            # Convert nodes to dict for processing
+            nodes_data = [node.dict() for node in request.nodes]
+            
+            # Ensure all nodes have unique IDs
+            nodes_data = NodeIdGenerator.ensure_unique_node_ids(nodes_data)
+            
+            # Check if any IDs were changed (for connection updates)
+            original_ids = {node.id: node.id for node in request.nodes if node.id}
+            new_ids = {node['id']: node['id'] for node in nodes_data}
+            id_changed = False
+            id_mapping = {}
+            
+            for i, original_node in enumerate(request.nodes):
+                if original_node.id and nodes_data[i]['id'] != original_node.id:
+                    id_changed = True
+                    id_mapping[original_node.id] = nodes_data[i]['id']
+                    self.logger.info(f"Node ID changed: {original_node.id} -> {nodes_data[i]['id']}")
+            
+            # Update connections if any IDs changed
+            connections_data = request.connections.dict() if request.connections else {}
+            if id_changed and connections_data:
+                connections_data = NodeIdGenerator.update_connection_references(
+                    connections_data, id_mapping
+                )
+                self.logger.info("Updated connection references after ID changes")
+            
+            # Convert nodes back to NodeData objects
+            from shared.models import NodeData
+            nodes = [NodeData(**node_data) for node_data in nodes_data]
+
             workflow_data = WorkflowData(
                 id=workflow_id,
                 name=request.name,
                 description=request.description,
-                nodes=request.nodes,
-                connections=request.connections,
+                nodes=nodes,
+                connections=connections_data,
                 settings=request.settings,
                 static_data=request.static_data,
                 tags=request.tags,
@@ -123,6 +154,37 @@ class WorkflowService:
             workflow_data = WorkflowData(**db_workflow.workflow_data)
 
             update_dict = update_data.dict(exclude_unset=True)
+            
+            # If nodes are being updated, ensure unique IDs
+            if 'nodes' in update_dict and update_dict['nodes']:
+                nodes_data = [node.dict() if hasattr(node, 'dict') else node for node in update_dict['nodes']]
+                
+                # Ensure all nodes have unique IDs
+                nodes_data = NodeIdGenerator.ensure_unique_node_ids(nodes_data)
+                
+                # Check if any IDs were changed
+                original_nodes = update_dict['nodes']
+                id_mapping = {}
+                
+                for i, original_node in enumerate(original_nodes):
+                    orig_id = original_node.id if hasattr(original_node, 'id') else original_node.get('id')
+                    if orig_id and nodes_data[i]['id'] != orig_id:
+                        id_mapping[orig_id] = nodes_data[i]['id']
+                        self.logger.info(f"Node ID changed during update: {orig_id} -> {nodes_data[i]['id']}")
+                
+                # Update connections if IDs changed
+                if id_mapping and 'connections' in update_dict:
+                    connections_data = update_dict['connections']
+                    if hasattr(connections_data, 'dict'):
+                        connections_data = connections_data.dict()
+                    update_dict['connections'] = NodeIdGenerator.update_connection_references(
+                        connections_data, id_mapping
+                    )
+                
+                # Convert nodes back to proper format
+                from shared.models import NodeData
+                update_dict['nodes'] = [NodeData(**node_data) for node_data in nodes_data]
+            
             for key, value in update_dict.items():
                 if hasattr(workflow_data, key):
                     setattr(workflow_data, key, value)
@@ -217,7 +279,25 @@ class WorkflowService:
 
             db_node_templates = query.all()
 
-            return [NodeTemplate.from_orm(t) for t in db_node_templates]
+            # Convert DB models to Pydantic models
+            node_templates = []
+            for t in db_node_templates:
+                # Map template_id to id for the Pydantic model
+                data = {
+                    "id": t.template_id,  # Use template_id as id
+                    "name": t.name,
+                    "description": t.description,
+                    "category": t.category,
+                    "node_type": t.node_type,
+                    "node_subtype": t.node_subtype,
+                    "version": t.version,
+                    "is_system_template": t.is_system_template,
+                    "default_parameters": t.default_parameters,
+                    "required_parameters": t.required_parameters,
+                    "parameter_schema": t.parameter_schema,
+                }
+                node_templates.append(NodeTemplate.model_validate(data))
+            return node_templates
 
         except Exception as e:
             self.logger.error(f"Error listing node templates: {str(e)}")

@@ -69,7 +69,8 @@ class WorkflowEngineHTTPClient:
                 response.raise_for_status()
 
                 data = response.json()
-                templates = data.get("node_templates", [])
+                # The workflow engine returns the array directly
+                templates = data if isinstance(data, list) else data.get("node_templates", [])
                 log_info(f"✅ Retrieved {len(templates)} node templates")
                 return templates
 
