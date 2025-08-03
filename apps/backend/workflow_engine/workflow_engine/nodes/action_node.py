@@ -31,9 +31,9 @@ class ActionNodeExecutor(BaseNodeExecutor):
 
     def _get_node_spec(self) -> Optional[NodeSpec]:
         """Get the node specification for action nodes."""
-        if node_spec_registry:
-            # Return the HTTP_REQUEST spec as default (most commonly used)
-            return node_spec_registry.get_spec("ACTION_NODE", "HTTP_REQUEST")
+        if node_spec_registry and self._subtype:
+            # Return the specific spec for current subtype
+            return node_spec_registry.get_spec("ACTION_NODE", self._subtype)
         return None
 
     def get_supported_subtypes(self) -> List[str]:
@@ -41,38 +41,60 @@ class ActionNodeExecutor(BaseNodeExecutor):
         return ["RUN_CODE", "HTTP_REQUEST", "DATA_TRANSFORMATION", "FILE_OPERATION"]
 
     def validate(self, node: Any) -> List[str]:
-        """Validate action node configuration."""
-        errors = []
-
+        """Validate action node configuration using spec-based validation."""
+        # First use the base class validation which includes spec validation
+        errors = super().validate(node)
+        
+        # If spec validation passed, we're done
+        if not errors and self.spec:
+            return errors
+        
+        # Fallback to basic validation if spec not available
         if not node.subtype:
             errors.append("Action subtype is required")
             return errors
 
+        if node.subtype not in self.get_supported_subtypes():
+            errors.append(f"Unsupported action subtype: {node.subtype}")
+
+        return errors
+    
+    def _validate_legacy(self, node: Any) -> List[str]:
+        """Legacy validation for backward compatibility."""
+        errors = []
+        
+        if not hasattr(node, 'subtype'):
+            return errors
+            
         subtype = node.subtype
 
         if subtype == "RUN_CODE":
             errors.extend(self._validate_required_parameters(node, ["code", "language"]))
-            language = node.parameters.get("language", "")
-            if language not in ["python", "javascript", "bash", "sql"]:
-                errors.append(f"Unsupported language: {language}")
+            if hasattr(node, 'parameters'):
+                language = node.parameters.get("language", "")
+                if language not in ["python", "javascript", "bash", "sql", "r", "julia"]:
+                    errors.append(f"Unsupported language: {language}")
 
         elif subtype == "HTTP_REQUEST":
             errors.extend(self._validate_required_parameters(node, ["method", "url"]))
-            method = node.parameters.get("method", "").upper()
-            if method not in ["GET", "POST", "PUT", "DELETE", "PATCH"]:
-                errors.append(f"Invalid HTTP method: {method}")
+            if hasattr(node, 'parameters'):
+                method = node.parameters.get("method", "").upper()
+                if method not in ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]:
+                    errors.append(f"Invalid HTTP method: {method}")
 
         elif subtype == "DATA_TRANSFORMATION":
-            errors.extend(self._validate_required_parameters(node, ["transformation_type"]))
-            transform_type = node.parameters.get("transformation_type", "")
-            if transform_type not in ["filter", "map", "reduce", "sort", "group", "join"]:
-                errors.append(f"Invalid transformation type: {transform_type}")
+            errors.extend(self._validate_required_parameters(node, ["transformation_type", "transformation_rule"]))
+            if hasattr(node, 'parameters'):
+                transform_type = node.parameters.get("transformation_type", "")
+                if transform_type not in ["filter", "map", "reduce", "sort", "group", "join", "aggregate", "custom"]:
+                    errors.append(f"Invalid transformation type: {transform_type}")
 
         elif subtype == "FILE_OPERATION":
-            errors.extend(self._validate_required_parameters(node, ["operation_type"]))
-            operation_type = node.parameters.get("operation_type", "")
-            if operation_type not in ["read", "write", "copy", "move", "delete", "list"]:
-                errors.append(f"Invalid file operation type: {operation_type}")
+            errors.extend(self._validate_required_parameters(node, ["operation", "file_path"]))
+            if hasattr(node, 'parameters'):
+                operation = node.parameters.get("operation", "")
+                if operation not in ["read", "write", "copy", "move", "delete", "list"]:
+                    errors.append(f"Invalid file operation: {operation}")
 
         return errors
 
@@ -112,9 +134,12 @@ class ActionNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute code in specified language."""
-        code = context.get_parameter("code", "")
-        language = context.get_parameter("language", "python")
-        timeout = context.get_parameter("timeout", 30)
+        # Use spec-based parameter retrieval
+        code = self.get_parameter_with_spec(context, "code")
+        language = self.get_parameter_with_spec(context, "language")
+        timeout = self.get_parameter_with_spec(context, "timeout")
+        environment = self.get_parameter_with_spec(context, "environment")
+        capture_output = self.get_parameter_with_spec(context, "capture_output")
 
         logs.append(f"Running {language} code with timeout: {timeout}s")
 
@@ -162,11 +187,18 @@ class ActionNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute HTTP request."""
-        method = context.get_parameter("method", "GET").upper()
-        url = context.get_parameter("url", "")
-        headers = context.get_parameter("headers", {})
-        data = context.get_parameter("data", {})
-        timeout = context.get_parameter("timeout", 30)
+        # Use spec-based parameter retrieval
+        method = self.get_parameter_with_spec(context, "method")
+        url = self.get_parameter_with_spec(context, "url")
+        headers = self.get_parameter_with_spec(context, "headers")
+        data = self.get_parameter_with_spec(context, "data")
+        timeout = self.get_parameter_with_spec(context, "timeout")
+        authentication = self.get_parameter_with_spec(context, "authentication")
+        retry_attempts = self.get_parameter_with_spec(context, "retry_attempts")
+        
+        # Convert method to uppercase
+        if method:
+            method = method.upper()
 
         # Debug logging
         logs.append(f"Parameters: {context.node.parameters}")
