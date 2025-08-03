@@ -19,7 +19,11 @@ if str(shared_path) not in sys.path:
     sys.path.insert(0, str(shared_path))
 
 # Import telemetry components
-from telemetry import setup_telemetry, TrackingMiddleware, MetricsMiddleware
+try:
+    from shared.telemetry import setup_telemetry, TrackingMiddleware, MetricsMiddleware
+except ImportError:
+    # Fallback for different path structures
+    from telemetry import setup_telemetry, TrackingMiddleware, MetricsMiddleware
 
 # Import logging
 import logging
