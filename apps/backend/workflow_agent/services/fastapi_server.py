@@ -27,12 +27,24 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(os.path.dirname(current_dir))  # Go to apps/backend
 sys.path.insert(0, parent_dir)
 
-# Import telemetry components
-shared_telemetry_path = os.path.join(parent_dir, "shared")
-if shared_telemetry_path not in sys.path:
-    sys.path.insert(0, shared_telemetry_path)
-
-from telemetry import setup_telemetry, TrackingMiddleware, MetricsMiddleware
+# 遥测组件
+try:
+    from shared.telemetry import setup_telemetry, TrackingMiddleware, MetricsMiddleware
+except ImportError:
+    # Fallback for deployment - create dummy implementations
+    print("Warning: Could not import telemetry components, using stubs")
+    def setup_telemetry(*args, **kwargs):
+        pass
+    class TrackingMiddleware:
+        def __init__(self, app):
+            self.app = app
+        async def __call__(self, scope, receive, send):
+            await self.app(scope, receive, send)
+    class MetricsMiddleware:
+        def __init__(self, app, **kwargs):
+            self.app = app
+        async def __call__(self, scope, receive, send):
+            await self.app(scope, receive, send)
 
 # shared models导入（两种环境都相同）
 from shared.models.conversation import (
@@ -458,8 +470,8 @@ app = FastAPI(
 setup_telemetry(app, service_name="workflow-agent", service_version="1.0.0")
 
 # 添加遥测中间件
-app.add_middleware(TrackingMiddleware)
-app.add_middleware(MetricsMiddleware, service_name="workflow-agent")
+app.add_middleware(TrackingMiddleware)  # type: ignore
+app.add_middleware(MetricsMiddleware, service_name="workflow-agent")  # type: ignore
 
 # 创建服务器实例
 servicer = WorkflowAgentServicer()

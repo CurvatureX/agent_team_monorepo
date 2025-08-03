@@ -13,8 +13,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv()
 
-# Import telemetry components using unified import module
-from .telemetry_imports import setup_telemetry, TrackingMiddleware, MetricsMiddleware
+# Note: 遥测组件现在在 services/fastapi_server.py 中定义
 
 # Import logging
 import logging
