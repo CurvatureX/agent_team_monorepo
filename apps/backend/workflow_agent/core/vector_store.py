@@ -113,13 +113,13 @@ class SupabaseVectorStore:
         try:
             # Quick test to see if we can query the table
             result = self.supabase_client.table("node_knowledge_vectors").select("count").limit(1).execute()
-            logger.info(f"Database check successful, table exists")
+            logger.info("Database check successful, table exists")
         except Exception as e:
-            logger.warning(f"Database check failed: {e}")
+            logger.warning("Database check failed", extra={"error": str(e)})
 
     async def _generate_embedding_with_retry(self, text: str) -> Optional[List[float]]:
         """Generate embedding with explicit retry logic"""
-        logger.info(f"_generate_embedding_with_retry called for text: {text[:50]}...")
+        logger.info("_generate_embedding_with_retry called", extra={"text_preview": text[:50] + "..." if len(text) > 50 else text})
         
         # Workaround: Add a small delay to avoid rate limiting
         await asyncio.sleep(0.1)
@@ -127,7 +127,7 @@ class SupabaseVectorStore:
         max_attempts = 3
         for attempt in range(max_attempts):
             try:
-                logger.info(f"Attempt {attempt + 1}/{max_attempts}: Calling OpenAI embeddings.aembed_query...")
+                logger.info("Calling OpenAI embeddings.aembed_query", extra={"attempt": attempt + 1, "max_attempts": max_attempts})
                 # Create a shielded task for the embedding call
                 embedding_task = asyncio.create_task(self.embeddings.aembed_query(text))
                 
@@ -137,7 +137,7 @@ class SupabaseVectorStore:
                     logger.info("OpenAI embeddings.aembed_query completed successfully")
                     return result
                 except asyncio.CancelledError:
-                    logger.warning(f"Main context was cancelled, but waiting for embedding to complete...")
+                    logger.warning("Main context was cancelled, but waiting for embedding to complete")
                     # Even if cancelled, try to get the result if the task completed
                     try:
                         # Give the task a bit more time to complete
@@ -145,21 +145,21 @@ class SupabaseVectorStore:
                         logger.info("Retrieved embedding result despite cancellation")
                         return result
                     except (asyncio.TimeoutError, asyncio.CancelledError):
-                        logger.warning(f"Could not retrieve embedding result after cancellation")
+                        logger.warning("Could not retrieve embedding result after cancellation")
                         # Cancel the task if it's still running
                         if not embedding_task.done():
                             embedding_task.cancel()
                         raise asyncio.CancelledError()
                     
             except asyncio.CancelledError:
-                logger.warning(f"Embedding generation was cancelled during attempt {attempt + 1}")
+                logger.warning("Embedding generation was cancelled", extra={"attempt": attempt + 1})
                 # Re-raise CancelledError to maintain proper cancellation semantics
                 raise
             except Exception as e:
-                logger.warning(f"Attempt {attempt + 1} failed: {type(e).__name__}: {str(e)}")
+                logger.warning("Embedding attempt failed", extra={"attempt": attempt + 1, "error_type": type(e).__name__, "error": str(e)})
                 if attempt < max_attempts - 1:
                     wait_time = (attempt + 1) * 0.5  # Progressive backoff: 0.5s, 1s, 1.5s
-                    logger.info(f"Waiting {wait_time}s before retry...")
+                    logger.info("Waiting before retry", extra={"wait_seconds": wait_time})
                     await asyncio.sleep(wait_time)
                 else:
                     logger.error("All embedding attempts failed")
@@ -196,7 +196,7 @@ class SupabaseVectorStore:
             # Generate embedding for query with retry handling
             try:
                 # Add timeout for embedding generation
-                logger.info("Starting embedding generation", query=query[:100])
+                logger.info("Starting embedding generation", extra={"query": query[:100]})
                 # Use a shorter timeout to prevent hanging
                 async with asyncio.timeout(15.0):  # 15 second timeout for embedding
                     query_embedding = await self._generate_embedding_with_retry(query)
@@ -301,7 +301,7 @@ class SupabaseVectorStore:
             return entries
 
         except Exception as e:
-            logger.error(f"Vector similarity search failed for query '{query}': {str(e)}")
+            logger.error("Vector similarity search failed", extra={"query": query, "error": str(e)})
             return []
 
     async def search_by_capabilities(
