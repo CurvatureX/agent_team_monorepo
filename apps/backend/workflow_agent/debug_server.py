@@ -28,7 +28,7 @@ try:
     logger.info("Debug server initialized. Use main gRPC server for actual testing.")
 
 except Exception as e:
-    logger.error(f"Failed to initialize and set up the debug server: {str(e)}")
+    logger.error("Failed to initialize and set up the debug server", extra={"error": str(e)})
     # Exit or handle error appropriately
     exit(1)
 

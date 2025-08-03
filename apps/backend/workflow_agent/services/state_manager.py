@@ -48,7 +48,7 @@ class WorkflowAgentStateManager:
             else:
                 logger.warning("Supabase credentials not configured")
         except Exception as e:
-            logger.error(f"Failed to initialize Supabase client: {e}")
+            logger.error("Failed to initialize Supabase client", extra={"error": str(e)})
 
     def create_state(
         self,
@@ -73,7 +73,7 @@ class WorkflowAgentStateManager:
         """
         try:
             if not self.supabase_client:
-                logger.warning(f"Supabase not available, using mock state for session {session_id}")
+                logger.warning("Supabase not available, using mock state", extra={"session_id": session_id})
                 return session_id  # 返回 mock ID
             
             current_time = int(time.time() * 1000)
@@ -113,14 +113,14 @@ class WorkflowAgentStateManager:
             
             if result.data:
                 state_id = result.data[0]["id"]
-                logger.info(f"Created workflow_agent_state for session {session_id}: {state_id}")
+                logger.info("Created workflow_agent_state", extra={"session_id": session_id, "state_id": state_id})
                 return state_id
             else:
-                logger.error(f"Failed to create workflow_agent_state for session {session_id}")
+                logger.error("Failed to create workflow_agent_state", extra={"session_id": session_id})
                 return None
                 
         except Exception as e:
-            logger.error(f"Error creating workflow_agent_state for session {session_id}: {e}")
+            logger.error("Error creating workflow_agent_state", extra={"session_id": session_id, "error": str(e)})
             return None
 
     def get_state_by_session(self, session_id: str, access_token: Optional[str] = None) -> Optional[Dict[str, Any]]:
@@ -136,7 +136,7 @@ class WorkflowAgentStateManager:
         """
         try:
             if not self.supabase_client:
-                logger.warning(f"Supabase not available, returning mock state for session {session_id}")
+                logger.warning("Supabase not available, returning mock state", extra={"session_id": session_id})
                 return self._get_mock_state(session_id)
             
             result = self.supabase_client.table(self.table_name)\
@@ -167,14 +167,14 @@ class WorkflowAgentStateManager:
                 # Set default values for new fields not in database
                 latest_state["gap_status"] = latest_state.get("gap_status", "no_gap")
                 
-                logger.debug(f"Retrieved workflow_agent_state for session {session_id}")
+                logger.debug("Retrieved workflow_agent_state", extra={"session_id": session_id})
                 return latest_state
             else:
-                logger.debug(f"No workflow_agent_state found for session {session_id}")
+                logger.debug("No workflow_agent_state found", extra={"session_id": session_id})
                 return None
                 
         except Exception as e:
-            logger.error(f"Error retrieving workflow_agent_state for session {session_id}: {e}")
+            logger.error("Error retrieving workflow_agent_state", extra={"session_id": session_id, "error": str(e)})
             return None
 
     def update_state(
@@ -196,13 +196,13 @@ class WorkflowAgentStateManager:
         """
         try:
             if not self.supabase_client:
-                logger.warning(f"Supabase not available, mock updating state for session {session_id}")
+                logger.warning("Supabase not available, mock updating state", extra={"session_id": session_id})
                 return True  # Mock 成功
             
             # 获取当前状态以找到记录 ID
             current_state = self.get_state_by_session(session_id, access_token)
             if not current_state:
-                logger.error(f"Cannot update - no workflow_agent_state found for session {session_id}")
+                logger.error("Cannot update - no workflow_agent_state found", extra={"session_id": session_id})
                 return False
             
             state_id = current_state["id"]
@@ -216,14 +216,14 @@ class WorkflowAgentStateManager:
                 .execute()
             
             if result.data:
-                logger.info(f"Updated workflow_agent_state for session {session_id}")
+                logger.info("Updated workflow_agent_state", extra={"session_id": session_id})
                 return True
             else:
-                logger.error(f"Failed to update workflow_agent_state for session {session_id}")
+                logger.error("Failed to update workflow_agent_state", extra={"session_id": session_id})
                 return False
                 
         except Exception as e:
-            logger.error(f"Error updating workflow_agent_state for session {session_id}: {e}")
+            logger.error("Error updating workflow_agent_state", extra={"session_id": session_id, "error": str(e)})
             return False
 
     def save_full_state(
@@ -272,7 +272,7 @@ class WorkflowAgentStateManager:
                 return False
                 
         except Exception as e:
-            logger.error(f"Error saving full workflow_agent_state for session {session_id}: {e}")
+            logger.error("Error saving full workflow_agent_state", extra={"session_id": session_id, "error": str(e)})
             return False
 
     def delete_state(self, session_id: str, access_token: Optional[str] = None) -> bool:
@@ -288,13 +288,13 @@ class WorkflowAgentStateManager:
         """
         try:
             if not self.supabase_client:
-                logger.warning(f"Supabase not available, mock deleting state for session {session_id}")
+                logger.warning("Supabase not available, mock deleting state", extra={"session_id": session_id})
                 return True  # Mock 成功
             
             # 获取当前状态以找到记录 ID
             current_state = self.get_state_by_session(session_id, access_token)
             if not current_state:
-                logger.error(f"Cannot delete - no workflow_agent_state found for session {session_id}")
+                logger.error("Cannot delete - no workflow_agent_state found", extra={"session_id": session_id})
                 return False
             
             state_id = current_state["id"]
@@ -304,11 +304,11 @@ class WorkflowAgentStateManager:
                 .eq("id", state_id)\
                 .execute()
             
-            logger.info(f"Deleted workflow_agent_state for session {session_id}")
+            logger.info("Deleted workflow_agent_state", extra={"session_id": session_id})
             return True
             
         except Exception as e:
-            logger.error(f"Error deleting workflow_agent_state for session {session_id}: {e}")
+            logger.error("Error deleting workflow_agent_state", extra={"session_id": session_id, "error": str(e)})
             return False
 
     def _prepare_state_for_db(self, workflow_state: Dict[str, Any]) -> Dict[str, Any]:

@@ -174,15 +174,15 @@ class WorkflowAgentNodes:
             purpose = clarification_context.get("purpose", "initial_intent")
             pending_questions = clarification_context.get("pending_questions", [])
             
-            logger.info(f"Clarification context - origin: {origin}, purpose: {purpose}, pending_questions: {len(pending_questions)}")
+            logger.info("Clarification context", extra={"origin": origin, "purpose": purpose, "pending_questions_count": len(pending_questions)})
             if pending_questions:
-                logger.info(f"Pending questions: {pending_questions}")
+                logger.info("Pending questions", extra={"pending_questions": pending_questions})
 
             # Get user input from conversations
             user_input = ""
             latest_user_message_index = -1
             conversations = state.get("conversations", [])
-            logger.info(f"Total conversations in state: {len(conversations)}")
+            logger.info("Total conversations in state", extra={"conversation_count": len(conversations)})
             
             if conversations:
                 # Get the latest user message and its index
@@ -203,9 +203,10 @@ class WorkflowAgentNodes:
                     if conv["role"] == "assistant":
                         # Found the previous assistant message
                         is_response_to_pending_questions = True
-                        logger.info(f"Found user input after assistant message with pending questions")
-                        logger.info(f"Pending questions: {pending_questions}")
-                        logger.info(f"User response: {user_input[:100]}...")
+                        logger.info("Found user input after assistant message with pending questions")
+                        logger.info("Pending questions details", extra={"pending_questions": pending_questions})
+                        user_preview = user_input[:100] + "..." if len(user_input) > 100 else user_input
+                        logger.info("User response", extra={"user_input_preview": user_preview})
                         break
             
             # Clear pending questions if this is a response
@@ -217,7 +218,7 @@ class WorkflowAgentNodes:
                 
                 # If this is a gap resolution response, mark that we need to re-run gap analysis
                 if purpose == "gap_negotiation" and user_input:
-                    logger.info(f"User responded to gap negotiation: {user_input}")
+                    logger.info("User responded to gap negotiation", extra={"user_input": user_input})
                     # The gap analysis will run again to check if gaps are resolved
 
             # If we have user input, use RAG to retrieve knowledge
@@ -227,7 +228,7 @@ class WorkflowAgentNodes:
                     # Call RAG tool directly without shield
                     state = await self.rag_tool.retrieve_knowledge(state, query=user_input)
                 except Exception as rag_error:
-                    logger.warning(f"RAG retrieval failed, continuing without RAG context: {str(rag_error)}")
+                    logger.warning("RAG retrieval failed, continuing without RAG context", extra={"error": str(rag_error)})
                     # Continue without RAG context - the workflow should still function
                     if "rag" not in state:
                         state["rag"] = {"query": user_input, "results": []}
@@ -288,7 +289,7 @@ class WorkflowAgentNodes:
                 
                 analysis = json.loads(response_text.strip())
 
-                logger.info(f"Clarification analysis: {analysis}")
+                logger.info("Clarification analysis", extra={"analysis": analysis})
 
                 # clarification_f2 format: clarification_question, is_complete, intent_summary
                 clarification_question = analysis.get("clarification_question", "")
@@ -326,16 +327,10 @@ class WorkflowAgentNodes:
                 # Stay in clarification stage but return END to wait for user
                 return {**state, "stage": WorkflowStage.CLARIFICATION}
             else:
-                # Check if we're in gap resolution flow
-                if purpose == "gap_negotiation":
-                    # Re-run gap analysis to check if gaps are resolved
-                    return {**state, "stage": WorkflowStage.GAP_ANALYSIS}
-                else:
-                    # Initial clarification complete - proceed to gap analysis
-                    return {**state, "stage": WorkflowStage.GAP_ANALYSIS}
+                return {**state, "stage": WorkflowStage.GAP_ANALYSIS}
 
         except Exception as e:
-            logger.error(f"Clarification node failed: {str(e)}")
+            logger.error("Clarification node failed", extra={"error": str(e)})
             return {
                 **state,
                 "stage": WorkflowStage.CLARIFICATION,
@@ -411,7 +406,7 @@ class WorkflowAgentNodes:
                         response_text = response_text[:-3]  # Remove trailing ```
                 
                 analysis = json.loads(response_text.strip())
-                logger.info(f"Gap analysis: {analysis}")
+                logger.info("Gap analysis", extra={"analysis": analysis})
                 
                 # Extract gap analysis results
                 gap_status = analysis.get("gap_status", "no_gap")
@@ -450,7 +445,7 @@ class WorkflowAgentNodes:
                 return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
 
         except Exception as e:
-            logger.error(f"Gap analysis node failed: {str(e)}")
+            logger.error("Gap analysis node failed", extra={"error": str(e)})
             return {
                 **state,
                 "stage": WorkflowStage.GAP_ANALYSIS,
@@ -491,7 +486,7 @@ class WorkflowAgentNodes:
                     response.content if isinstance(response.content, str) else str(response.content)
                 )
                 
-                logger.info(f"workflow_generation response: {response_text}")
+                logger.info("workflow_generation response", extra={"response_text": response_text})
                 # Remove markdown code blocks if present
                 if response_text.strip().startswith("```json"):
                     response_text = response_text.strip()[7:]  # Remove ```json
@@ -503,7 +498,7 @@ class WorkflowAgentNodes:
                         response_text = response_text[:-3]  # Remove trailing ```
                 
                 workflow = json.loads(response_text.strip())
-                logger.info(f"workflow_generation: {workflow}")
+                logger.info("workflow_generation result", extra={"workflow": workflow})
             except json.JSONDecodeError:
                 # Fallback workflow structure
                 workflow = {
@@ -522,7 +517,7 @@ class WorkflowAgentNodes:
             return {**state, "stage": WorkflowStage.DEBUG}
 
         except Exception as e:
-            logger.error(f"Workflow generation node failed: {str(e)}")
+            logger.error("Workflow generation node failed", extra={"error": str(e)})
             return {
                 **state,
                 "stage": WorkflowStage.WORKFLOW_GENERATION,
@@ -575,7 +570,7 @@ class WorkflowAgentNodes:
                         response_text = response_text[:-3]  # Remove trailing ```
                 
                 debug_analysis = json.loads(response_text.strip())
-                logger.info(f"debug_analysis: {debug_analysis}")
+                logger.info("debug_analysis result", extra={"debug_analysis": debug_analysis})
 
                 # Extract key information from LLM analysis
                 errors = debug_analysis.get("issues_found", {}).get("critical_errors", [])
@@ -595,7 +590,7 @@ class WorkflowAgentNodes:
             except (json.JSONDecodeError, Exception) as e:
                 # Fallback to basic validation if prompt-based analysis fails
                 logger.warning(
-                    "Debug prompt analysis failed, using fallback validation", error=str(e)
+                    "Debug prompt analysis failed, using fallback validation", extra={"error": str(e)}
                 )
 
                 errors = []
@@ -670,7 +665,7 @@ class WorkflowAgentNodes:
                 return {**state, "stage": WorkflowStage.COMPLETED}
 
         except Exception as e:
-            logger.error(f"Debug node failed: {str(e)}")
+            logger.error("Debug node failed", extra={"error": str(e)})
             return {
                 **state,
                 "stage": WorkflowStage.DEBUG,
@@ -703,6 +698,6 @@ class WorkflowAgentNodes:
         }
 
         next_node = stage_mapping.get(stage, "END")
-        logger.info(f"Stage {stage} -> Next node: {next_node}")
+        logger.info("Stage transition", extra={"current_stage": stage, "next_node": next_node})
 
         return next_node
