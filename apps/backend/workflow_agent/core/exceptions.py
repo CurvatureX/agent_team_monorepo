@@ -5,9 +5,9 @@ HTTP Exception Handlers for FastAPI
 from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
-from .logging_config import get_logger
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 async def http_exception_handler(request: Request, exc: HTTPException):

@@ -19,13 +19,32 @@ from agents.state import WorkflowStage, WorkflowState
 # Import workflow agent components
 from agents.workflow_agent import WorkflowAgent
 from core.config import settings
-from core.logging_config import get_logger
+import logging
 from services.state_manager import get_workflow_agent_state_manager
 
 # Add parent directory to path for shared models
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(os.path.dirname(current_dir))  # Go to apps/backend
 sys.path.insert(0, parent_dir)
+
+# 遥测组件
+try:
+    from shared.telemetry import setup_telemetry, TrackingMiddleware, MetricsMiddleware  # type: ignore[assignment]
+except ImportError:
+    # Fallback for deployment - create dummy implementations
+    print("Warning: Could not import telemetry components, using stubs")
+    def setup_telemetry(*args, **kwargs):  # type: ignore[misc]
+        pass
+    class TrackingMiddleware:  # type: ignore[misc]
+        def __init__(self, app):
+            self.app = app
+        async def __call__(self, scope, receive, send):
+            await self.app(scope, receive, send)
+    class MetricsMiddleware:  # type: ignore[misc]
+        def __init__(self, app, **kwargs):
+            self.app = app
+        async def __call__(self, scope, receive, send):
+            await self.app(scope, receive, send)
 
 # shared models导入（两种环境都相同）
 from shared.models.conversation import (
@@ -36,7 +55,7 @@ from shared.models.conversation import (
     StatusChangeContent,
 )
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class WorkflowAgentServicer:
@@ -446,6 +465,13 @@ app = FastAPI(
     description="工作流代理服务 - ProcessConversation 接口",
     version="1.0.0",
 )
+
+# 初始化遥测系统
+setup_telemetry(app, service_name="workflow-agent", service_version="1.0.0")
+
+# 添加遥测中间件
+app.add_middleware(TrackingMiddleware)  # type: ignore
+app.add_middleware(MetricsMiddleware, service_name="workflow-agent")  # type: ignore
 
 # 创建服务器实例
 servicer = WorkflowAgentServicer()
