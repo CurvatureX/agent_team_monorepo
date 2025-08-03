@@ -64,6 +64,7 @@ class WorkflowAgentHTTPClient:
         user_id: str = "anonymous",
         workflow_context: Optional[Dict[str, Any]] = None,
         access_token: Optional[str] = None,
+        trace_id: Optional[str] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Process conversation using HTTP POST to /process-conversation
@@ -104,7 +105,8 @@ class WorkflowAgentHTTPClient:
                         "Accept": "text/event-stream",
                         "Content-Type": "application/json",
                         "Connection": "keep-alive",
-                        "Cache-Control": "no-cache"
+                        "Cache-Control": "no-cache",
+                        "X-Trace-ID": trace_id or "",  # 传递 trace_id
                     },
                 ) as response:
                     response.raise_for_status()

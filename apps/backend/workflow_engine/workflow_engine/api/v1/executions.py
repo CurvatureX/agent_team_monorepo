@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 # Add backend directory to Python path for shared models
 backend_dir = Path(__file__).parent.parent.parent.parent.parent
@@ -29,9 +29,18 @@ def get_execution_service(db: Session = Depends(get_db)):
 
 @router.post("/workflows/{workflow_id}/execute", response_model=ExecuteWorkflowResponse)
 async def execute_workflow(
-    request: ExecuteWorkflowRequest, service: ExecutionService = Depends(get_execution_service)
+    request: ExecuteWorkflowRequest, 
+    request_obj: Request,
+    service: ExecutionService = Depends(get_execution_service)
 ):
     try:
+        # 获取 trace_id
+        trace_id = getattr(request_obj.state, 'trace_id', None)
+        if trace_id:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Executing workflow with trace_id: {trace_id}")
+            
         execution_id = service.execute_workflow(request)
         return ExecuteWorkflowResponse(
             execution_id=execution_id,

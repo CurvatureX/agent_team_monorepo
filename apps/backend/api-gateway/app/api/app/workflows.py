@@ -77,6 +77,7 @@ async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Dep
             static_data=request.static_data or {},
             tags=request.tags or [],
             user_id=deps.current_user.sub,
+            trace_id=getattr(deps.request.state, "trace_id", None),
         )
 
         if not result.get("success", False) or not result.get("workflow", {}).get("id"):
@@ -282,7 +283,8 @@ async def execute_workflow(
 
         # Execute workflow via HTTP
         result = await http_client.execute_workflow(
-            workflow_id, deps.current_user.sub, execution_request.input_data
+            workflow_id, deps.current_user.sub, execution_request.input_data,
+            trace_id=getattr(deps.request.state, "trace_id", None)
         )
 
         if not result.get("success", False) or not result.get("execution_id"):

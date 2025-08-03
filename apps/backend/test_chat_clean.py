@@ -90,6 +90,16 @@ class CleanChatTester:
                 print(f"{Fore.RED}Request failed: {response.status_code}{Style.RESET_ALL}")
                 return
                 
+            # Print tracking ID from response headers
+            trace_id = response.headers.get('X-Trace-ID')
+            if trace_id:
+                print(f"{Fore.MAGENTA}Trace ID: {trace_id}{Style.RESET_ALL}")
+            
+            # Also check for x-tracking-id (lowercase)
+            tracking_id = response.headers.get('x-tracking-id')
+            if tracking_id:
+                print(f"{Fore.MAGENTA}Tracking ID: {tracking_id}{Style.RESET_ALL}")
+                
             event_count = 0
             assistant_messages = []
             
