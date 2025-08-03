@@ -132,7 +132,7 @@ class EnhancedWorkflowExecutionEngine:
         return {
             "workflow_id": workflow_id,
             "execution_id": execution_id,
-            "status": "running",
+            "status": "RUNNING",
             "start_time": datetime.now().isoformat(),
             "nodes": workflow_definition.get("nodes", []),
             "connections": workflow_definition.get("connections", {}),
@@ -187,7 +187,7 @@ class EnhancedWorkflowExecutionEngine:
         node_def = self._get_node_by_id(workflow_definition, node_id)
         if not node_def:
             return {
-                "status": "error",
+                "status": "ERROR",
                 "error_message": f"Node {node_id} not found in workflow definition"
             }
         
@@ -205,7 +205,7 @@ class EnhancedWorkflowExecutionEngine:
         executor = self.factory.get_executor(node_type, node_subtype)
         if not executor:
             return {
-                "status": "error",
+                "status": "ERROR",
                 "error_message": f"No executor found for node type: {node_type}"
             }
         
@@ -287,7 +287,7 @@ class EnhancedWorkflowExecutionEngine:
             })
             
             return {
-                "status": "error",
+                "status": "ERROR",
                 "error_message": f"Execution error: {str(e)}",
                 "output_data": {},
                 "performance_metrics": {
@@ -428,7 +428,7 @@ class EnhancedWorkflowExecutionEngine:
             "output_targets": self._get_output_targets(node_id, workflow_definition),
             "connections": self._get_connection_info(node_id, workflow_definition),
             "context_variables": {},
-            "error": node_result.get("error_message") if node_result["status"] == "error" else None
+            "error": node_result.get("error_message") if node_result["status"] == "ERROR" else None
         }
         
         execution_state["execution_path"]["steps"].append(path_step)
@@ -559,7 +559,7 @@ class EnhancedWorkflowExecutionEngine:
                 "total_execution_time": total_execution_time,
                 "nodes_executed": len(execution_state["execution_path"]["steps"]),
                 "nodes_failed": len([step for step in execution_state["execution_path"]["steps"] 
-                                   if step["status"] == "error"]),
+                                   if step["status"] == "ERROR"]),
                 "start_time": execution_state["start_time"],
                 "end_time": execution_state["end_time"]
             },

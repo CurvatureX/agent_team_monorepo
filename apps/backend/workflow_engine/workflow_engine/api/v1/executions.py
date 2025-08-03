@@ -10,7 +10,13 @@ sys.path.insert(0, str(backend_dir))
 
 from sqlalchemy.orm import Session
 
-from shared.models import ExecuteWorkflowRequest, ExecuteWorkflowResponse, Execution
+from shared.models import (
+    ExecuteWorkflowRequest, 
+    ExecuteWorkflowResponse, 
+    Execution,
+    ExecuteSingleNodeRequest,
+    SingleNodeExecutionResponse
+)
 from workflow_engine.models.database import get_db
 from workflow_engine.services.execution_service import ExecutionService
 
@@ -29,7 +35,7 @@ async def execute_workflow(
         execution_id = service.execute_workflow(request)
         return ExecuteWorkflowResponse(
             execution_id=execution_id,
-            status="PENDING",
+            status="NEW",  # Changed from PENDING to NEW
             success=True,
             message="Workflow execution started",
         )
@@ -69,5 +75,53 @@ async def get_execution_history(
 ):
     try:
         return service.get_execution_history(workflow_id, limit)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/workflows/{workflow_id}/nodes/{node_id}/execute", 
+    response_model=SingleNodeExecutionResponse,
+    summary="Execute a single node",
+    description="""
+    Execute a single node within a workflow without running the entire workflow.
+    
+    This endpoint is useful for:
+    - Testing individual nodes
+    - Re-running failed nodes
+    - Manual node execution
+    - Debugging workflow components
+    """
+)
+async def execute_single_node(
+    workflow_id: str,
+    node_id: str,
+    request: ExecuteSingleNodeRequest,
+    service: ExecutionService = Depends(get_execution_service)
+):
+    """
+    Execute a single node in a workflow.
+    
+    Args:
+        workflow_id: The ID of the workflow containing the node
+        node_id: The ID of the node to execute
+        request: Execution request containing input data and context
+        
+    Returns:
+        SingleNodeExecutionResponse with execution results
+        
+    Raises:
+        404: If workflow or node not found
+        500: If execution fails
+    """
+    try:
+        result = service.execute_single_node(
+            workflow_id=workflow_id,
+            node_id=node_id,
+            request=request
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
