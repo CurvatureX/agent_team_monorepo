@@ -31,19 +31,19 @@ import logging
 
 # 遥测组件
 try:
-    from shared.telemetry import setup_telemetry, TrackingMiddleware, MetricsMiddleware
+    from shared.telemetry import setup_telemetry, TrackingMiddleware, MetricsMiddleware  # type: ignore[assignment]
 except ImportError:
     # Fallback for tests - create dummy implementations
     print("Warning: Could not import telemetry components, using stubs")
-    def setup_telemetry(*args, **kwargs):
+    def setup_telemetry(*args, **kwargs):  # type: ignore[misc]
         pass
-    class TrackingMiddleware:
+    class TrackingMiddleware:  # type: ignore[misc]
         def __init__(self, app):
             self.app = app
         async def __call__(self, scope, receive, send):
             await self.app(scope, receive, send)
-    class MetricsMiddleware:
-        def __init__(self, app):
+    class MetricsMiddleware:  # type: ignore[misc]
+        def __init__(self, app, **kwargs):
             self.app = app
         async def __call__(self, scope, receive, send):
             await self.app(scope, receive, send)
