@@ -133,6 +133,8 @@ def create_application() -> FastAPI:
     # 4. 认证中间件
     app.middleware("http")(unified_auth_middleware)
 
+    # 5. 请求日志中间件（添加 X-Process-Time 头）
+    app.middleware("http")(request_logging_middleware)
 
     # 注册异常处理器
     register_exception_handlers(app)
@@ -171,7 +173,7 @@ async def request_logging_middleware(request: Request, call_next):
     process_time = time.time() - start_time
 
     # 添加响应头
-    response.headers["X-Request-ID"] = request_id
+    # X-Tracking-ID is already set by TrackingMiddleware
     response.headers["X-Process-Time"] = str(round(process_time * 1000, 2))
 
     # 记录响应
