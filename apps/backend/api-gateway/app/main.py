@@ -122,10 +122,10 @@ def create_application() -> FastAPI:
 
     # 注册中间件（顺序很重要）
     # 1. 追踪中间件（最外层，为每个请求生成 tracking_id）
-    app.add_middleware(TrackingMiddleware)
+    app.add_middleware(TrackingMiddleware)  # type: ignore
 
     # 2. 指标收集中间件
-    app.add_middleware(MetricsMiddleware, service_name="api-gateway")
+    app.add_middleware(MetricsMiddleware, service_name="api-gateway")  # type: ignore
 
     # 3. 限流中间件
     app.middleware("http")(rate_limit_middleware)
