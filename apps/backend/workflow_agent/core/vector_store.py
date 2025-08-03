@@ -160,7 +160,7 @@ class SupabaseVectorStore:
             return entries
 
         except Exception as e:
-            logger.error("Vector similarity search failed", error=str(e), query=query)
+            logger.error(f"Vector similarity search failed for query '{query}': {str(e)}")
             return []
 
     async def search_by_capabilities(
