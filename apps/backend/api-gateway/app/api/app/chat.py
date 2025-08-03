@@ -169,6 +169,7 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                     user_id=deps.current_user.sub,
                     workflow_context=workflow_context,
                     access_token=deps.access_token,
+                    trace_id=getattr(deps.request.state, "trace_id", None),
                 ):
                     logger.info(f"🔄 Received response: {response}")
 

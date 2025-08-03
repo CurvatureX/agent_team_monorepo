@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 # Add backend directory to Python path for shared models
 backend_dir = Path(__file__).parent.parent.parent.parent.parent
@@ -34,9 +34,18 @@ def get_workflow_service(db: Session = Depends(get_db)):
 
 @router.post("/workflows", response_model=CreateWorkflowResponse)
 async def create_workflow(
-    request: CreateWorkflowRequest, service: WorkflowService = Depends(get_workflow_service)
+    request: CreateWorkflowRequest, 
+    request_obj: Request,
+    service: WorkflowService = Depends(get_workflow_service)
 ):
     try:
+        # 获取 trace_id
+        trace_id = request_obj.headers.get("x-trace-id") or request_obj.headers.get("X-Trace-ID")
+        if trace_id:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Creating workflow with trace_id: {trace_id}")
+            
         workflow = service.create_workflow_from_data(request)
         return CreateWorkflowResponse(
             workflow=workflow, success=True, message="Workflow created successfully"
