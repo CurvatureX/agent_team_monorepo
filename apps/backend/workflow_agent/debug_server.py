@@ -2,20 +2,13 @@ import uvicorn
 from agents.workflow_agent import WorkflowAgent
 from dotenv import load_dotenv
 from fastapi import FastAPI
-from core.logging_config import setup_logging, get_logger
+import logging
 # from langgraph.server import add_routes  # Not available in current LangGraph version
 
 # Load environment variables
 load_dotenv()
 
-# Configure logging
-setup_logging(
-    log_level="DEBUG",  # Debug server uses DEBUG level
-    service_name="workflow_agent_debug",
-    environment="debug"
-)
-
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # Initialize the FastAPI app
 app = FastAPI(
@@ -35,7 +28,7 @@ try:
     logger.info("Debug server initialized. Use main gRPC server for actual testing.")
 
 except Exception as e:
-    logger.error("Failed to initialize and set up the debug server", error=str(e))
+    logger.error(f"Failed to initialize and set up the debug server: {str(e)}")
     # Exit or handle error appropriately
     exit(1)
 

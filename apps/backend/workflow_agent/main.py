@@ -13,21 +13,16 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv()
 
-# Import and configure logging
-from core.logging_config import setup_logging, get_logger
+# Note: 遥测组件现在在 services/fastapi_server.py 中定义
 
-# Setup logging configuration from environment
-setup_logging(
-    log_level=os.getenv("LOG_LEVEL", "INFO"),
-    service_name="workflow_agent",
-    environment=os.getenv("ENVIRONMENT", "development")
-)
+# Import logging
+import logging
 
 from core.config import settings
 from services.fastapi_server import app
 import uvicorn
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class FastAPIServer:
@@ -60,13 +55,13 @@ class FastAPIServer:
             )
             self.server = uvicorn.Server(config)
             
-            logger.info("FastAPI server started successfully", port=port)
+            logger.info(f"FastAPI server started successfully on port {port}")
             await self.server.serve()
             
         except Exception as e:
-            logger.error("Failed to start FastAPI server", error=str(e))
+            logger.error(f"Failed to start FastAPI server: {str(e)}")
             import traceback
-            logger.error("Traceback:", traceback=traceback.format_exc())
+            logger.error(f"Traceback: {traceback.format_exc()}")
             raise
             
     async def stop(self):
@@ -92,7 +87,7 @@ async def main():
 
     # Setup graceful shutdown
     def signal_handler(signum, frame):
-        logger.info("Received shutdown signal", signal=signum)
+        logger.info(f"Received shutdown signal {signum}")
         asyncio.create_task(server.stop())
 
     signal.signal(signal.SIGINT, signal_handler)
@@ -101,16 +96,16 @@ async def main():
     try:
         logger.info("Starting FastAPI server...")
         await server.start()
-        logger.info("Workflow Agent Service started successfully", port=settings.FASTAPI_PORT)
+        logger.info(f"Workflow Agent Service started successfully on port {settings.FASTAPI_PORT}")
 
         # Keep the server running
         logger.info("Waiting for server termination...")
         await server.wait_for_termination()
 
     except Exception as e:
-        logger.error("Failed to start Workflow Agent Service", error=str(e))
+        logger.error(f"Failed to start Workflow Agent Service: {str(e)}")
         import traceback
-        logger.error("Traceback:", traceback=traceback.format_exc())
+        logger.error(f"Traceback: {traceback.format_exc()}")
         sys.exit(1)
     finally:
         logger.info("Workflow Agent Service stopped")
