@@ -15,7 +15,6 @@ class WorkflowStage(str, Enum):
     WORKFLOW_GENERATION = "workflow_generation"
     DEBUG = "debug"
     COMPLETED = "completed"
-    END = "end"
 
 
 class WorkflowOrigin(str, Enum):
@@ -30,7 +29,7 @@ class ClarificationPurpose(str, Enum):
     
     INITIAL_INTENT = "initial_intent"
     TEMPLATE_MODIFICATION = "template_modification"
-    GAP_RESOLUTION = "gap_resolution"
+    GAP_NEGOTIATION = "gap_negotiation"  # When negotiating gap alternatives with user
     DEBUG_ISSUE = "debug_issue"
 
 
@@ -103,7 +102,7 @@ class WorkflowState(TypedDict):
     # Gap analysis results
     gap_status: NotRequired[str]  # "has_gap" or "no_gap"
     identified_gaps: NotRequired[List[GapDetail]]  # detailed gap information
-    gap_resolution: NotRequired[str]  # user's choice for gap resolution
+    # gap_resolution removed - using gap_status: "gap_resolved" instead
     
     # Workflow data
     current_workflow: NotRequired[Any]  # workflow JSON object

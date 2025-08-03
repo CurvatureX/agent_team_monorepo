@@ -136,10 +136,6 @@ class WorkflowAgentServicer:
 
                             # 只在特定阶段发送消息响应
                             current_stage = updated_state.get("stage", WorkflowStage.CLARIFICATION)
-                            # Skip if stage is LangGraph END constant
-                            # if current_stage == "__end__" or str(current_stage) == "__end__":
-                            #     logger.info("Skipping message response for END stage")
-                            #     continue
                             if current_stage == WorkflowStage.CLARIFICATION:
                                 # Check if we have pending questions to send
                                 clarification_context = updated_state.get("clarification_context", {})
@@ -151,35 +147,22 @@ class WorkflowAgentServicer:
                                     if message_response:
                                         yield f"data: {message_response.model_dump_json()}\n\n"
 
-                            # 如果是工作流生成完成，发送工作流响应
-                            if current_stage == WorkflowStage.WORKFLOW_GENERATION:
+                            # 只在WORKFLOW_GENERATION节点完成后发送工作流响应
+                            if node_name == "workflow_generation" and current_stage == WorkflowStage.DEBUG:
+                                # workflow_generation节点完成，进入DEBUG阶段，此时发送workflow
                                 workflow_response = await self._create_workflow_response(
                                     session_id, updated_state
                                 )
                                 if workflow_response:
+                                    logger.info(f"Sending workflow response after workflow_generation node completed")
                                     yield f"data: {workflow_response.model_dump_json()}\n\n"
 
                             # 更新状态跟踪
                             previous_stage = current_stage
                             current_state = self._convert_from_workflow_state(updated_state)
                             
-                            # Check termination after each node execution
-                            if self._should_terminate_workflow(updated_state):
-                                # Safe handling of stage for logging
-                                if hasattr(current_stage, 'value'):
-                                    stage_log = current_stage.value
-                                elif current_stage == "__end__" or str(current_stage) == "__end__":
-                                    stage_log = "END"
-                                else:
-                                    stage_log = str(current_stage)
-                                    
-                                logger.info(
-                                    f"Workflow termination triggered",
-                                    session_id=session_id,
-                                    node_name=node_name,
-                                    stage=stage_log
-                                )
-                                break
+                            # LangGraph will naturally stop when it reaches END node
+                            # No need for manual termination check
                 
                 except asyncio.CancelledError:
                     logger.warning(f"LangGraph stream was cancelled for session {session_id}")
@@ -313,7 +296,7 @@ class WorkflowAgentServicer:
             "conversations": db_state.get("conversations", []),
             "identified_gaps": db_state.get("identified_gaps", db_state.get("gaps", [])),  # Use new name or legacy
             "gap_status": db_state.get("gap_status", "no_gap"),
-            "gap_resolution": "",  # Not in database yet
+            # gap_resolution removed
             "current_workflow": {},
             "debug_result": db_state.get("debug_result", ""),
             "debug_loop_count": db_state.get("debug_loop_count", 0),
@@ -429,64 +412,18 @@ class WorkflowAgentServicer:
             and current_workflow.get("nodes")
         ):
             workflow_json = json.dumps(current_workflow)
+            logger.info(f"Creating workflow response with {len(current_workflow.get('nodes', []))} nodes")
             return ConversationResponse(
                 session_id=session_id,
                 response_type=ResponseType.WORKFLOW,
                 workflow=workflow_json,
                 is_final=False,
             )
+        else:
+            logger.debug(f"No workflow to send. current_workflow: {current_workflow}")
 
         return None
     
-    def _should_terminate_workflow(self, state: WorkflowState) -> bool:
-        """
-        判断是否应该终止 workflow 执行
-        
-        Args:
-            state: 当前的 workflow 状态
-            
-        Returns:
-            bool: True 表示应该终止，False 表示继续
-        """
-
-        current_stage = state.get("stage")
-        
-        # Terminal stages
-        terminal_stages = [
-            WorkflowStage.COMPLETED,
-            WorkflowStage.DEBUG,  # DEBUG is the final stage before END
-        ]
-        
-        # Special check for clarification waiting for input
-        if current_stage == WorkflowStage.CLARIFICATION:
-            clarification_context = state.get("clarification_context", {})
-            pending_questions = clarification_context.get("pending_questions", [])
-            
-            if pending_questions:
-                logger.info(
-                    f"Workflow waiting for user input in clarification",
-                    session_id=state.get("session_id", "unknown"),
-                    pending_questions_count=len(pending_questions)
-                )
-                return True
-
-        if current_stage in terminal_stages:
-            # Handle both WorkflowStage enum and LangGraph END constant
-            if hasattr(current_stage, 'value'):
-                stage_str = current_stage.value
-            elif current_stage == "__end__" or str(current_stage) == "__end__":
-                stage_str = "END"
-            else:
-                stage_str = str(current_stage)
-                
-            logger.info(
-                f"Workflow reached terminal stage: {current_stage}",
-                session_id=state.get("session_id", "unknown"),
-                stage=stage_str
-            )
-            return True
-            
-        return False
 
 
 # 创建 FastAPI 应用
