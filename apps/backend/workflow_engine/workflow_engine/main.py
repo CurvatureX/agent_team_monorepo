@@ -17,16 +17,8 @@ from fastapi.middleware.cors import CORSMiddleware
 backend_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(backend_dir))
 
-# Add shared telemetry to path
-shared_path = backend_dir / "shared"
-if str(shared_path) not in sys.path:
-    sys.path.insert(0, str(shared_path))
-
-try:
-    from shared.telemetry import setup_telemetry, TrackingMiddleware, MetricsMiddleware
-except ImportError:
-    # Fallback for different path structures
-    from telemetry import setup_telemetry, TrackingMiddleware, MetricsMiddleware
+# Import telemetry components using unified import module
+from .telemetry_imports import setup_telemetry, TrackingMiddleware, MetricsMiddleware
 from shared.models.common import HealthResponse, HealthStatus
 from workflow_engine.api.v1 import executions, triggers, workflows
 from workflow_engine.core.config import get_settings
