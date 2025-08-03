@@ -34,6 +34,13 @@ MANUAL_TRIGGER_SPEC = NodeSpec(
             required=False,
             description="Description of what this trigger does",
         ),
+        ParameterDef(
+            name="require_confirmation",
+            type=ParameterType.BOOLEAN,
+            required=False,
+            default_value=False,
+            description="Whether to require confirmation before execution",
+        ),
     ],
     input_ports=[],  # Trigger nodes have no input ports
     output_ports=[
@@ -78,7 +85,7 @@ CRON_TRIGGER_SPEC = NodeSpec(
             name="enabled",
             type=ParameterType.BOOLEAN,
             required=False,
-            default_value="true",
+            default_value=True,
             description="Whether the cron trigger is active",
         ),
     ],
@@ -125,7 +132,7 @@ WEBHOOK_TRIGGER_SPEC = NodeSpec(
             name="authentication_required",
             type=ParameterType.BOOLEAN,
             required=False,
-            default_value="true",
+            default_value=True,
             description="Whether authentication is required",
         ),
         ParameterDef(
@@ -179,7 +186,7 @@ CHAT_TRIGGER_SPEC = NodeSpec(
             name="mention_required",
             type=ParameterType.BOOLEAN,
             required=False,
-            default_value="false",
+            default_value=False,
             description="Whether bot mention is required to trigger",
         ),
         ParameterDef(
@@ -231,7 +238,7 @@ EMAIL_TRIGGER_SPEC = NodeSpec(
             name="mark_as_read",
             type=ParameterType.BOOLEAN,
             required=False,
-            default_value="true",
+            default_value=True,
             description="Mark processed emails as read",
         ),
         ParameterDef(
@@ -290,7 +297,7 @@ FORM_TRIGGER_SPEC = NodeSpec(
             name="require_captcha",
             type=ParameterType.BOOLEAN,
             required=False,
-            default_value="false",
+            default_value=False,
             description="Whether to require CAPTCHA verification",
         ),
     ],

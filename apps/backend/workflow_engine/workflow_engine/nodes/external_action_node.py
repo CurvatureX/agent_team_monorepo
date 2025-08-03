@@ -27,9 +27,9 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
     def _get_node_spec(self) -> Optional[NodeSpec]:
         """Get the node specification for external action nodes."""
-        if node_spec_registry:
-            # Return the API_CALL spec as default (most commonly used)
-            return node_spec_registry.get_spec("EXTERNAL_ACTION_NODE", "API_CALL")
+        if node_spec_registry and self._subtype:
+            # Return the specific spec for current subtype
+            return node_spec_registry.get_spec("EXTERNAL_ACTION_NODE", self._subtype)
         return None
 
     def get_supported_subtypes(self) -> List[str]:
@@ -46,13 +46,31 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         ]
 
     def validate(self, node: Any) -> List[str]:
-        """Validate external action node configuration."""
-        errors = []
-
+        """Validate external action node configuration using spec-based validation."""
+        # First use the base class validation which includes spec validation
+        errors = super().validate(node)
+        
+        # If spec validation passed, we're done
+        if not errors and self.spec:
+            return errors
+        
+        # Fallback if spec not available
         if not node.subtype:
             errors.append("External action subtype is required")
             return errors
 
+        if node.subtype not in self.get_supported_subtypes():
+            errors.append(f"Unsupported external action subtype: {node.subtype}")
+
+        return errors
+    
+    def _validate_legacy(self, node: Any) -> List[str]:
+        """Legacy validation for backward compatibility."""
+        errors = []
+        
+        if not hasattr(node, 'subtype'):
+            return errors
+            
         subtype = node.subtype
 
         if subtype == "GITHUB":
@@ -66,7 +84,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
         elif subtype == "EMAIL":
             errors.extend(self._validate_required_parameters(node, ["action"]))
-            if node.parameters.get("action") == "send":
+            if hasattr(node, 'parameters') and node.parameters.get("action") == "send":
                 errors.extend(self._validate_required_parameters(node, ["recipients", "subject"]))
 
         elif subtype == "SLACK":
@@ -74,18 +92,20 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
         elif subtype == "API_CALL":
             errors.extend(self._validate_required_parameters(node, ["method", "url"]))
-            method = node.parameters.get("method", "").upper()
-            if method not in ["GET", "POST", "PUT", "DELETE", "PATCH"]:
-                errors.append(f"Invalid HTTP method: {method}")
+            if hasattr(node, 'parameters'):
+                method = node.parameters.get("method", "").upper()
+                if method and method not in ["GET", "POST", "PUT", "DELETE", "PATCH"]:
+                    errors.append(f"Invalid HTTP method: {method}")
 
         elif subtype == "WEBHOOK":
             errors.extend(self._validate_required_parameters(node, ["url", "payload"]))
 
         elif subtype == "NOTIFICATION":
             errors.extend(self._validate_required_parameters(node, ["type", "message", "target"]))
-            notification_type = node.parameters.get("type", "")
-            if notification_type not in ["push", "sms", "email", "in_app"]:
-                errors.append(f"Invalid notification type: {notification_type}")
+            if hasattr(node, 'parameters'):
+                notification_type = node.parameters.get("type", "")
+                if notification_type and notification_type not in ["push", "sms", "email", "in_app"]:
+                    errors.append(f"Invalid notification type: {notification_type}")
 
         return errors
 
@@ -133,8 +153,9 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute GitHub action."""
-        action = context.get_parameter("action")
-        repository = context.get_parameter("repository")
+        # Use spec-based parameter retrieval
+        action = self.get_parameter_with_spec(context, "action")
+        repository = self.get_parameter_with_spec(context, "repository")
 
         logs.append(f"GitHub action: {action} on repository: {repository}")
 
@@ -155,8 +176,9 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute Google Calendar action."""
-        action = context.get_parameter("action")
-        calendar_id = context.get_parameter("calendar_id")
+        # Use spec-based parameter retrieval
+        action = self.get_parameter_with_spec(context, "action")
+        calendar_id = self.get_parameter_with_spec(context, "calendar_id")
 
         logs.append(f"Google Calendar action: {action} on calendar: {calendar_id}")
 
@@ -177,8 +199,9 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute Trello action."""
-        action = context.get_parameter("action")
-        board_id = context.get_parameter("board_id")
+        # Use spec-based parameter retrieval
+        action = self.get_parameter_with_spec(context, "action")
+        board_id = self.get_parameter_with_spec(context, "board_id")
 
         logs.append(f"Trello action: {action} on board: {board_id}")
 
@@ -199,7 +222,8 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute email action."""
-        action = context.get_parameter("action")
+        # Use spec-based parameter retrieval
+        action = self.get_parameter_with_spec(context, "action")
 
         logs.append(f"Email action: {action}")
 
@@ -212,8 +236,8 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         }
 
         if action == "send":
-            recipients = context.get_parameter("recipients", [])
-            subject = context.get_parameter("subject", "")
+            recipients = self.get_parameter_with_spec(context, "recipients")
+            subject = self.get_parameter_with_spec(context, "subject")
             output_data.update({"recipients": recipients, "subject": subject})
 
         return self._create_success_result(
@@ -224,8 +248,9 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute Slack action."""
-        action = context.get_parameter("action")
-        channel = context.get_parameter("channel")
+        # Use spec-based parameter retrieval
+        action = self.get_parameter_with_spec(context, "action")
+        channel = self.get_parameter_with_spec(context, "channel")
 
         logs.append(f"Slack action: {action} in channel: {channel}")
 
@@ -246,9 +271,14 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute generic API call action."""
-        method = context.get_parameter("method", "GET").upper()
-        url = context.get_parameter("url")
-        headers = context.get_parameter("headers", {})
+        # Use spec-based parameter retrieval
+        method = self.get_parameter_with_spec(context, "method")
+        url = self.get_parameter_with_spec(context, "url")
+        headers = self.get_parameter_with_spec(context, "headers")
+        
+        # Convert method to uppercase
+        if method:
+            method = method.upper()
 
         logs.append(f"API call: {method} {url}")
 
@@ -270,8 +300,9 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute webhook action."""
-        url = context.get_parameter("url")
-        payload = context.get_parameter("payload", {})
+        # Use spec-based parameter retrieval
+        url = self.get_parameter_with_spec(context, "url")
+        payload = self.get_parameter_with_spec(context, "payload")
 
         logs.append(f"Webhook: POST to {url}")
 
@@ -292,9 +323,10 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute notification action."""
-        notification_type = context.get_parameter("type")
-        message = context.get_parameter("message")
-        target = context.get_parameter("target")
+        # Use spec-based parameter retrieval
+        notification_type = self.get_parameter_with_spec(context, "type")
+        message = self.get_parameter_with_spec(context, "message")
+        target = self.get_parameter_with_spec(context, "target")
 
         logs.append(f"Notification: {notification_type} to {target}")
 
