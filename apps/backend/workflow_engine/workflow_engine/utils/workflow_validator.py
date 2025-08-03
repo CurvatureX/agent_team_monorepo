@@ -112,9 +112,9 @@ class WorkflowValidator:
             # Get executor and validate
             node_subtype = node.get("subtype", "")
             try:
-                executor = self.node_factory.create_executor(node_type)
+                executor = self.node_factory.create_executor(node_type, node_subtype)
                 if not executor:
-                    errors.append(f"No executor found for node type: {node_type}")
+                    errors.append(f"No executor found for node type: {node_type}, subtype: {node_subtype}")
                     continue
                 
                 # Validate node parameters if requested
