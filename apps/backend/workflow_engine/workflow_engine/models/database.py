@@ -45,6 +45,7 @@ if parsed_url.hostname == "postgres":
     }
 
 # Create engine with enhanced configuration
+# Temporarily enable SQL echo for debugging
 engine = create_engine(
     database_url,
     poolclass=QueuePool,
@@ -53,7 +54,7 @@ engine = create_engine(
     pool_timeout=settings.database_pool_timeout,
     pool_recycle=settings.database_pool_recycle,
     pool_pre_ping=True,
-    echo=settings.database_echo,
+    echo=True,  # Force SQL logging for debugging
     connect_args=connect_args,
 )
 

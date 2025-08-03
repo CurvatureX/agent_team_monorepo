@@ -440,3 +440,73 @@ class NodeTemplateListResponse(BaseModel):
     """
 
     node_templates: List[NodeTemplate] = Field(default_factory=list)
+
+
+# Single Node Execution Models
+class ExecuteSingleNodeRequest(BaseModel):
+    """
+    请求执行工作流中的单个节点
+    """
+    user_id: str = Field(..., description="用户ID", min_length=1)
+    input_data: Dict[str, Any] = Field(
+        default_factory=dict, 
+        description="节点执行的输入数据"
+    )
+    execution_context: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="执行上下文配置",
+        example={
+            "use_previous_results": False,
+            "previous_execution_id": None,
+            "override_parameters": {},
+            "credentials": {}
+        }
+    )
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "user_id": "00000000-0000-0000-0000-000000000123",
+                "input_data": {
+                    "url": "https://api.example.com",
+                    "method": "GET"
+                },
+                "execution_context": {
+                    "use_previous_results": False,
+                    "override_parameters": {
+                        "timeout": "30"
+                    }
+                }
+            }
+        }
+
+
+class SingleNodeExecutionResponse(BaseModel):
+    """
+    单节点执行响应
+    """
+    execution_id: str = Field(..., description="执行ID")
+    node_id: str = Field(..., description="节点ID")
+    workflow_id: str = Field(..., description="工作流ID")
+    status: str = Field(..., description="执行状态")
+    output_data: Dict[str, Any] = Field(default_factory=dict, description="节点输出数据")
+    execution_time: float = Field(..., description="执行时间（秒）")
+    logs: List[str] = Field(default_factory=list, description="执行日志")
+    error_message: Optional[str] = Field(None, description="错误信息")
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "execution_id": "single-node-exec-123",
+                "node_id": "http_request_node",
+                "workflow_id": "workflow-456", 
+                "status": "COMPLETED",
+                "output_data": {
+                    "response_code": 200,
+                    "response_body": {"data": "example"}
+                },
+                "execution_time": 1.23,
+                "logs": ["Starting HTTP request...", "Request completed"],
+                "error_message": None
+            }
+        }
