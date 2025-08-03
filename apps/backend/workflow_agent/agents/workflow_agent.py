@@ -87,16 +87,16 @@ class WorkflowAgent:
         Async stream method for processing workflow state
         """
         try:
-            logger.info(f"WorkflowAgent.astream called with stage: {state.get('stage')}")
+            logger.info("WorkflowAgent.astream called", extra={"stage": state.get('stage')})
             # 使用 LangGraph 的 astream 方法
             chunk_count = 0
             async for chunk in self.graph.astream(state):
                 chunk_count += 1
-                logger.info(f"WorkflowAgent yielding chunk {chunk_count}: {list(chunk.keys())}")
+                logger.info("WorkflowAgent yielding chunk", extra={"chunk_count": chunk_count, "chunk_keys": list(chunk.keys())})
                 yield chunk
-            logger.info(f"WorkflowAgent.astream completed, total chunks: {chunk_count}")
+            logger.info("WorkflowAgent.astream completed", extra={"total_chunks": chunk_count})
         except Exception as e:
-            logger.error(f"Error in workflow astream: {e}")
+            logger.error("Error in workflow astream", extra={"error": str(e)})
             import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
+            logger.error("Traceback details", extra={"traceback": traceback.format_exc()})
             raise
