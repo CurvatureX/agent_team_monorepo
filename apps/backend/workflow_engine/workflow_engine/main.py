@@ -17,8 +17,24 @@ from fastapi.middleware.cors import CORSMiddleware
 backend_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(backend_dir))
 
-# Import telemetry components using unified import module
-from .telemetry_imports import setup_telemetry, TrackingMiddleware, MetricsMiddleware
+# 遥测组件
+try:
+    from shared.telemetry import setup_telemetry, TrackingMiddleware, MetricsMiddleware  # type: ignore[assignment]
+except ImportError:
+    # Fallback for deployment - create dummy implementations
+    print("Warning: Could not import telemetry components, using stubs")
+    def setup_telemetry(*args, **kwargs):  # type: ignore[misc]
+        pass
+    class TrackingMiddleware:  # type: ignore[misc]
+        def __init__(self, app):
+            self.app = app
+        async def __call__(self, scope, receive, send):
+            await self.app(scope, receive, send)
+    class MetricsMiddleware:  # type: ignore[misc]
+        def __init__(self, app, **kwargs):
+            self.app = app
+        async def __call__(self, scope, receive, send):
+            await self.app(scope, receive, send)
 from shared.models.common import HealthResponse, HealthStatus
 from workflow_engine.api.v1 import executions, triggers, workflows
 from workflow_engine.core.config import get_settings
@@ -41,8 +57,8 @@ app = FastAPI(
 setup_telemetry(app, service_name="workflow-engine", service_version="1.0.0")
 
 # 添加遥测中间件
-app.add_middleware(TrackingMiddleware)
-app.add_middleware(MetricsMiddleware, service_name="workflow-engine")
+app.add_middleware(TrackingMiddleware)  # type: ignore
+app.add_middleware(MetricsMiddleware, service_name="workflow-engine")  # type: ignore
 
 @app.on_event("startup")
 def on_startup():

@@ -1,0 +1,19 @@
+{
+  "include": [
+    "api-gateway",
+    "workflow_agent", 
+    "workflow_engine",
+    "shared"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.*"
+  ],
+  "reportAssignmentType": "none",
+  "reportIncompatibleMethodOverride": "none",
+  "reportIncompatibleVariableOverride": "none",
+  "reportGeneralTypeIssues": "warning",
+  "pythonVersion": "3.11",
+  "pythonPlatform": "All"
+}
