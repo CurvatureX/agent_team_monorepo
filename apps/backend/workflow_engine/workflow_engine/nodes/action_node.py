@@ -168,9 +168,22 @@ class ActionNodeExecutor(BaseNodeExecutor):
         data = context.get_parameter("data", {})
         timeout = context.get_parameter("timeout", 30)
 
+        # Debug logging
+        logs.append(f"Parameters: {context.node.parameters}")
+        logs.append(f"Headers type: {type(headers)}, value: {headers}")
         logs.append(f"Making {method} request to {url}")
 
         try:
+            # Ensure headers is a dictionary
+            if isinstance(headers, str):
+                headers = {}
+                logs.append("WARNING: headers was a string, using empty dict")
+                
+            # Also ensure data is a dictionary
+            if isinstance(data, str):
+                data = {}
+                logs.append("WARNING: data was a string, using empty dict")
+                
             response = requests.request(
                 method=method,
                 url=url,
