@@ -42,7 +42,7 @@ class PromptEngine:
         # Register custom filters
         self.env.filters["tojsonpretty"] = tojsonpretty
 
-        logger.info(f"Jinja2 prompt engine initialized at {str(self.template_path)}")
+        logger.info("Jinja2 prompt engine initialized", extra={"template_path": str(self.template_path)})
 
     async def render_prompt(self, template_name: str, **context: Any) -> str:
         """
@@ -61,8 +61,10 @@ class PromptEngine:
         except Exception as e:
             logger.error(
                 "Failed to render prompt template",
-                template_name=template_name,
-                error=str(e),
+                extra={
+                    "template_name": template_name,
+                    "error": str(e)
+                }
             )
             return f"Error rendering template {template_name}: {e}"
 
@@ -91,8 +93,10 @@ class PromptEngine:
         except Exception as e:
             logger.error(
                 "Failed to render system and user prompts",
-                template_name=template_name,
-                error=str(e),
+                extra={
+                    "template_name": template_name,
+                    "error": str(e)
+                }
             )
             return (
                 f"Error rendering system prompt for {template_name}",
