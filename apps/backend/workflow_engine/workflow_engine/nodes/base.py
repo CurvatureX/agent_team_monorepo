@@ -53,7 +53,20 @@ class NodeExecutionContext:
 
     def get_parameter(self, key: str, default: Any = None) -> Any:
         """Get node parameter value."""
-        return self.node.parameters.get(key, default)
+        # Handle case where parameters might be a string (JSON)
+        if isinstance(self.node.parameters, str):
+            import json
+            try:
+                parameters = json.loads(self.node.parameters)
+            except:
+                return default
+        else:
+            parameters = self.node.parameters
+            
+        if hasattr(parameters, 'get'):
+            return parameters.get(key, default)
+        else:
+            return default
 
     def get_credential(self, key: str, default: Any = None) -> Any:
         """Get credential value."""
