@@ -9,6 +9,7 @@ from typing import Dict, Any, List, Set, Optional
 from collections import defaultdict, deque
 
 from ..nodes.factory import get_node_executor_factory
+from .node_id_generator import NodeIdGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,10 @@ class WorkflowValidator:
                 errors.append(f"Node {node_id} missing name")
                 continue
             
+            # Validate node ID format
+            if not NodeIdGenerator.is_valid_node_id(node_id):
+                errors.append(f"Invalid node ID format: {node_id}. IDs must start with a letter or underscore, and contain only letters, numbers, underscores, and hyphens.")
+            
             if node_id in node_ids:
                 errors.append(f"Duplicate node ID: {node_id}")
             node_ids.add(node_id)
@@ -107,9 +112,9 @@ class WorkflowValidator:
             # Get executor and validate
             node_subtype = node.get("subtype", "")
             try:
-                executor = self.node_factory.create_executor(node_type)
+                executor = self.node_factory.create_executor(node_type, node_subtype)
                 if not executor:
-                    errors.append(f"No executor found for node type: {node_type}")
+                    errors.append(f"No executor found for node type: {node_type}, subtype: {node_subtype}")
                     continue
                 
                 # Validate node parameters if requested

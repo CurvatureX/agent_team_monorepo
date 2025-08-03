@@ -23,10 +23,10 @@ from .state import (
 )
 from .tools import RAGTool
 from core.config import settings
-from core.logging_config import get_logger
+import logging
 from core.prompt_engine import get_prompt_engine
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 class WorkflowAgentNodes:
     """Simplified LangGraph nodes for workflow generation"""
@@ -335,7 +335,7 @@ class WorkflowAgentNodes:
                     return {**state, "stage": WorkflowStage.GAP_ANALYSIS}
 
         except Exception as e:
-            logger.error("Clarification node failed", error=str(e))
+            logger.error(f"Clarification node failed: {str(e)}")
             return {
                 **state,
                 "stage": WorkflowStage.CLARIFICATION,
@@ -450,7 +450,7 @@ class WorkflowAgentNodes:
                 return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
 
         except Exception as e:
-            logger.error("Gap analysis node failed", error=str(e))
+            logger.error(f"Gap analysis node failed: {str(e)}")
             return {
                 **state,
                 "stage": WorkflowStage.GAP_ANALYSIS,
@@ -522,7 +522,7 @@ class WorkflowAgentNodes:
             return {**state, "stage": WorkflowStage.DEBUG}
 
         except Exception as e:
-            logger.error("Workflow generation node failed", error=str(e))
+            logger.error(f"Workflow generation node failed: {str(e)}")
             return {
                 **state,
                 "stage": WorkflowStage.WORKFLOW_GENERATION,
@@ -670,7 +670,7 @@ class WorkflowAgentNodes:
                 return {**state, "stage": WorkflowStage.COMPLETED}
 
         except Exception as e:
-            logger.error("Debug node failed", error=str(e))
+            logger.error(f"Debug node failed: {str(e)}")
             return {
                 **state,
                 "stage": WorkflowStage.DEBUG,

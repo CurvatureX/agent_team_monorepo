@@ -32,9 +32,9 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
     def _get_node_spec(self) -> Optional[NodeSpec]:
         """Get the node specification for memory nodes."""
-        if node_spec_registry:
-            # Return the VECTOR_DB spec as default (most comprehensive)
-            return node_spec_registry.get_spec("MEMORY_NODE", "MEMORY_VECTOR_STORE")
+        if node_spec_registry and self._subtype:
+            # Return the specific spec for current subtype
+            return node_spec_registry.get_spec("MEMORY_NODE", self._subtype)
         return None
 
     def get_supported_subtypes(self) -> List[str]:
@@ -49,34 +49,55 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         ]
 
     def validate(self, node: Any) -> List[str]:
-        """Validate memory node configuration."""
-        errors = []
-
+        """Validate memory node configuration using spec-based validation."""
+        # First use the base class validation which includes spec validation
+        errors = super().validate(node)
+        
+        # If spec validation passed, we're done
+        if not errors and self.spec:
+            return errors
+        
+        # Fallback if spec not available
         if not node.subtype:
             errors.append("Memory subtype is required")
             return errors
 
+        if node.subtype not in self.get_supported_subtypes():
+            errors.append(f"Unsupported memory subtype: {node.subtype}")
+
+        return errors
+    
+    def _validate_legacy(self, node: Any) -> List[str]:
+        """Legacy validation for backward compatibility."""
+        errors = []
+        
+        if not hasattr(node, 'subtype'):
+            return errors
+            
         subtype = node.subtype
 
         if subtype == "MEMORY_VECTOR_STORE":
             errors.extend(
                 self._validate_required_parameters(node, ["operation", "collection_name"])
             )
-            operation = node.parameters.get("operation", "")
-            if operation not in ["store", "search", "delete", "update"]:
-                errors.append(f"Invalid vector DB operation: {operation}")
+            if hasattr(node, 'parameters'):
+                operation = node.parameters.get("operation", "")
+                if operation and operation not in ["store", "search", "delete", "update"]:
+                    errors.append(f"Invalid vector DB operation: {operation}")
 
         elif subtype == "MEMORY_SIMPLE":
             errors.extend(self._validate_required_parameters(node, ["operation", "key"]))
-            operation = node.parameters.get("operation", "")
-            if operation not in ["get", "set", "delete", "exists"]:
-                errors.append(f"Invalid key-value operation: {operation}")
+            if hasattr(node, 'parameters'):
+                operation = node.parameters.get("operation", "")
+                if operation and operation not in ["get", "set", "delete", "exists"]:
+                    errors.append(f"Invalid key-value operation: {operation}")
 
         elif subtype == "MEMORY_DOCUMENT":
             errors.extend(self._validate_required_parameters(node, ["operation", "document_id"]))
-            operation = node.parameters.get("operation", "")
-            if operation not in ["store", "retrieve", "update", "delete", "search"]:
-                errors.append(f"Invalid document operation: {operation}")
+            if hasattr(node, 'parameters'):
+                operation = node.parameters.get("operation", "")
+                if operation and operation not in ["store", "retrieve", "update", "delete", "search"]:
+                    errors.append(f"Invalid document operation: {operation}")
 
         return errors
 
@@ -120,27 +141,28 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute vector database operations."""
-        operation = context.get_parameter("operation", "store")
-        collection_name = context.get_parameter("collection_name", "default")
+        # Use spec-based parameter retrieval
+        operation = self.get_parameter_with_spec(context, "operation")
+        collection_name = self.get_parameter_with_spec(context, "collection_name")
 
         logs.append(f"Vector DB: {operation} on collection {collection_name}")
 
         try:
             if operation == "store":
-                vector_data = context.get_parameter("vector_data", {})
-                metadata = context.get_parameter("metadata", {})
+                vector_data = self.get_parameter_with_spec(context, "vector_data")
+                metadata = self.get_parameter_with_spec(context, "metadata")
                 result = self._store_vector(collection_name, vector_data, metadata)
             elif operation == "search":
-                query_vector = context.get_parameter("query_vector", [])
-                top_k = context.get_parameter("top_k", 5)
+                query_vector = self.get_parameter_with_spec(context, "query_vector")
+                top_k = self.get_parameter_with_spec(context, "top_k")
                 result = self._search_vectors(collection_name, query_vector, top_k)
             elif operation == "delete":
-                vector_id = context.get_parameter("vector_id", "")
+                vector_id = self.get_parameter_with_spec(context, "vector_id")
                 result = self._delete_vector(collection_name, vector_id)
             elif operation == "update":
-                vector_id = context.get_parameter("vector_id", "")
-                vector_data = context.get_parameter("vector_data", {})
-                metadata = context.get_parameter("metadata", {})
+                vector_id = self.get_parameter_with_spec(context, "vector_id")
+                vector_data = self.get_parameter_with_spec(context, "vector_data")
+                metadata = self.get_parameter_with_spec(context, "metadata")
                 result = self._update_vector(collection_name, vector_id, vector_data, metadata)
             else:
                 result = {"error": f"Unknown operation: {operation}"}
@@ -170,8 +192,9 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute key-value operations."""
-        operation = context.get_parameter("operation", "get")
-        key = context.get_parameter("key", "")
+        # Use spec-based parameter retrieval
+        operation = self.get_parameter_with_spec(context, "operation")
+        key = self.get_parameter_with_spec(context, "key")
 
         logs.append(f"Key-Value: {operation} for key {key}")
 
@@ -179,8 +202,8 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             if operation == "get":
                 result = self._get_key_value(key)
             elif operation == "set":
-                value = context.get_parameter("value", "")
-                ttl = context.get_parameter("ttl", None)
+                value = self.get_parameter_with_spec(context, "value")
+                ttl = self.get_parameter_with_spec(context, "ttl")
                 result = self._set_key_value(key, value, ttl)
             elif operation == "delete":
                 result = self._delete_key_value(key)
@@ -214,24 +237,25 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute document operations."""
-        operation = context.get_parameter("operation", "store")
-        document_id = context.get_parameter("document_id", "")
+        # Use spec-based parameter retrieval
+        operation = self.get_parameter_with_spec(context, "operation")
+        document_id = self.get_parameter_with_spec(context, "document_id")
 
         logs.append(f"Document: {operation} for document {document_id}")
 
         try:
             if operation == "store":
-                document_data = context.get_parameter("document_data", {})
+                document_data = self.get_parameter_with_spec(context, "document_data")
                 result = self._store_document(document_id, document_data)
             elif operation == "retrieve":
                 result = self._retrieve_document(document_id)
             elif operation == "update":
-                document_data = context.get_parameter("document_data", {})
+                document_data = self.get_parameter_with_spec(context, "document_data")
                 result = self._update_document(document_id, document_data)
             elif operation == "delete":
                 result = self._delete_document(document_id)
             elif operation == "search":
-                query = context.get_parameter("query", "")
+                query = self.get_parameter_with_spec(context, "query")
                 result = self._search_documents(query)
             else:
                 result = {"error": f"Unknown operation: {operation}"}
@@ -419,8 +443,9 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute buffer memory operations."""
-        operation = context.get_parameter("operation", "append")
-        buffer_name = context.get_parameter("buffer_name", "default")
+        # Use spec-based parameter retrieval
+        operation = self.get_parameter_with_spec(context, "operation")
+        buffer_name = self.get_parameter_with_spec(context, "buffer_name")
 
         logs.append(f"Buffer Memory: {operation} on buffer {buffer_name}")
 
@@ -429,7 +454,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             self._key_value_store[buffer_name] = []
 
         buffer = self._key_value_store[buffer_name]
-        max_size = context.get_parameter("max_size", 100)
+        max_size = self.get_parameter_with_spec(context, "max_size")
 
         if operation == "append":
             item = context.input_data.get("item", {})
@@ -443,7 +468,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             result = {"operation": "get", "items": buffer, "count": len(buffer)}
 
         elif operation == "get_last_n":
-            n = context.get_parameter("item_count", 10)
+            n = self.get_parameter_with_spec(context, "item_count")
             items = buffer[-n:] if buffer else []
             result = {"operation": "get_last_n", "items": items, "count": len(items)}
 
@@ -466,8 +491,9 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute knowledge memory operations."""
-        operation = context.get_parameter("operation", "store")
-        knowledge_id = context.get_parameter("knowledge_id", "")
+        # Use spec-based parameter retrieval
+        operation = self.get_parameter_with_spec(context, "operation")
+        knowledge_id = self.get_parameter_with_spec(context, "knowledge_id")
 
         logs.append(f"Knowledge Memory: {operation} for {knowledge_id}")
 
@@ -483,8 +509,8 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             knowledge_store[knowledge_id] = {
                 "content": content,
                 "metadata": metadata,
-                "category": context.get_parameter("category", "general"),
-                "tags": context.get_parameter("tags", []),
+                "category": self.get_parameter_with_spec(context, "category"),
+                "tags": self.get_parameter_with_spec(context, "tags"),
                 "created_at": datetime.now().isoformat(),
             }
             result = {"operation": "store", "knowledge_id": knowledge_id}
@@ -521,8 +547,9 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute embedding memory operations."""
-        operation = context.get_parameter("operation", "embed")
-        embedding_model = context.get_parameter("embedding_model", "text-embedding-ada-002")
+        # Use spec-based parameter retrieval
+        operation = self.get_parameter_with_spec(context, "operation")
+        embedding_model = self.get_parameter_with_spec(context, "embedding_model")
 
         logs.append(f"Embedding Memory: {operation} using {embedding_model}")
 
@@ -544,7 +571,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             result = {
                 "operation": "compare",
                 "similarity": similarity,
-                "metric": context.get_parameter("similarity_metric", "cosine"),
+                "metric": self.get_parameter_with_spec(context, "similarity_metric"),
             }
 
         elif operation == "find_similar":

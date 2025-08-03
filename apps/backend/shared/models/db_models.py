@@ -9,7 +9,7 @@ try:
     from sqlalchemy import JSON, Boolean, Column, DateTime, Integer, String, Text
     from sqlalchemy.dialects.postgresql import ARRAY, UUID
     from sqlalchemy.ext.declarative import declarative_base
-    from sqlalchemy.sql import func
+    from sqlalchemy.sql import func, text
 
     # Create base class for database models
     Base = declarative_base()
@@ -52,48 +52,60 @@ if SQLALCHEMY_AVAILABLE:
 
         __tablename__ = "workflow_executions"
 
-        # Primary key
-        execution_id = Column(String(36), primary_key=True, index=True)
+        # Primary key - UUID in database
+        id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("uuid_generate_v4()"))
+        
+        # Unique execution identifier
+        execution_id = Column(String(255), nullable=False, unique=True, index=True)
 
-        # Workflow reference
-        workflow_id = Column(String(36), nullable=False, index=True)
+        # Workflow reference - UUID in database
+        workflow_id = Column(UUID(as_uuid=True), nullable=False, index=True)
 
         # Execution information
         status = Column(
             String(50), nullable=False, default="NEW"
-        )  # NEW, RUNNING, COMPLETED, FAILED, CANCELED
-        mode = Column(String(50), nullable=False, default="SYNC")  # SYNC, ASYNC
+        )  # NEW, RUNNING, SUCCESS, ERROR, CANCELED, WAITING
+        mode = Column(String(50), nullable=False, default="MANUAL")  # MANUAL, TRIGGER, WEBHOOK, RETRY
 
         # Execution metadata
         triggered_by = Column(String(255), nullable=True)
+        parent_execution_id = Column(String(255), nullable=True)
         start_time = Column(Integer, nullable=True)  # Unix timestamp
         end_time = Column(Integer, nullable=True)  # Unix timestamp
+        
+        # JSON fields
+        run_data = Column(JSON, nullable=True)  # Runtime data
+        workflow_metadata = Column("metadata", JSON, default=dict)  # General metadata
         execution_metadata = Column(
             JSON, default=dict
         )  # Additional metadata (avoid SQLAlchemy reserved word)
-
-        # Execution results
-        run_data = Column(JSON, nullable=True)  # Runtime data
         error_message = Column(Text, nullable=True)  # Error message
         error_details = Column(JSON, nullable=True)  # Error details
+        
+        # Timestamps
+        created_at = Column(DateTime(timezone=True), server_default=func.now())
 
         def __repr__(self):
-            return f"<WorkflowExecution(execution_id='{self.execution_id}', workflow_id='{self.workflow_id}', status='{self.status}')>"
+            return f"<WorkflowExecution(id='{self.id}', execution_id='{self.execution_id}', workflow_id='{self.workflow_id}', status='{self.status}')>"
 
         def to_dict(self):
             """Convert model to dictionary."""
             return {
+                "id": str(self.id) if self.id else None,
                 "execution_id": self.execution_id,
-                "workflow_id": self.workflow_id,
+                "workflow_id": str(self.workflow_id) if self.workflow_id else None,
                 "status": self.status,
                 "mode": self.mode,
                 "triggered_by": self.triggered_by,
+                "parent_execution_id": self.parent_execution_id,
                 "start_time": self.start_time,
                 "end_time": self.end_time,
-                "metadata": self.execution_metadata,
+                "metadata": self.metadata,
+                "execution_metadata": self.execution_metadata,
                 "run_data": self.run_data,
                 "error_message": self.error_message,
                 "error_details": self.error_details,
+                "created_at": self.created_at.isoformat() if self.created_at else None,
             }
 
     class WorkflowDB(Base):
@@ -101,8 +113,8 @@ if SQLALCHEMY_AVAILABLE:
 
         __tablename__ = "workflows"
 
-        # Primary key
-        id = Column(String(36), primary_key=True, index=True)
+        # Primary key - Note: This should be UUID if the database uses UUID
+        id = Column(String(36), primary_key=True, index=True)  # Keep as String for now to avoid breaking changes
 
         # User information
         user_id = Column(String(36), nullable=False, index=True)

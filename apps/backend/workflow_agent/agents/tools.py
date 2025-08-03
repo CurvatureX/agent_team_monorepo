@@ -5,10 +5,10 @@ import asyncio
 from typing import Any, Dict, List
 
 from .state import RAGContext, RetrievedDocument, WorkflowState
-from core.logging_config import get_logger
+import logging
 from core.vector_store import SupabaseVectorStore
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class RAGTool:
@@ -39,7 +39,7 @@ class RAGTool:
             The updated workflow state.
         """
         if not self.rag_available:
-            logger.warning("RAG system unavailable, returning empty results", query=query)
+            logger.warning(f"RAG system unavailable, returning empty results for query: {query}")
             # Initialize empty RAG context
             if "rag" not in state or state["rag"] is None:
                 state["rag"] = RAGContext(query="", results=[])
@@ -47,7 +47,7 @@ class RAGTool:
             state["rag"]["results"] = []
             return state
 
-        logger.info("Retrieving knowledge from Supabase", query=query)
+        logger.info(f"Retrieving knowledge from Supabase for query: {query}")
 
         try:
             # 1. Call the real vector store function with cancellation protection
@@ -105,6 +105,6 @@ class RAGTool:
         state["rag"]["query"] = query
         state["rag"]["results"] = retrieved_docs
 
-        logger.info("Updated state with RAG context", num_retrieved=len(retrieved_docs))
+        logger.info(f"Updated state with RAG context, retrieved {len(retrieved_docs)} documents")
 
         return state

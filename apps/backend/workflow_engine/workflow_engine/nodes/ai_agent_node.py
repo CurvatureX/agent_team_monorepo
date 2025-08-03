@@ -31,9 +31,9 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
 
     def _get_node_spec(self) -> Optional[NodeSpec]:
         """Get the node specification for AI agent nodes."""
-        if node_spec_registry:
-            # Return the OpenAI spec as default (all AI agent specs are similar)
-            return node_spec_registry.get_spec("AI_AGENT_NODE", "OPENAI_NODE")
+        if node_spec_registry and self._subtype:
+            # Return the specific spec for current subtype
+            return node_spec_registry.get_spec("AI_AGENT_NODE", self._subtype)
         return None
 
     def _init_ai_clients(self):
@@ -66,9 +66,15 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         ]
 
     def validate(self, node: Any) -> List[str]:
-        """Validate AI agent node configuration for provider-based architecture."""
-        errors = []
-
+        """Validate AI agent node configuration using spec-based validation."""
+        # First use the base class validation which includes spec validation
+        errors = super().validate(node)
+        
+        # If spec validation passed, we can skip manual validation
+        if not errors and self.spec:
+            return errors
+        
+        # Fallback to legacy validation if spec not available
         if not node.subtype:
             errors.append("AI Agent subtype is required")
             return errors
@@ -80,22 +86,29 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             errors.append(
                 f"Unsupported AI agent subtype: {subtype}. Supported types: {', '.join(supported_subtypes)}"
             )
-            return errors
 
-        # Validate required parameters for all provider-based nodes
+        return errors
+    
+    def _validate_legacy(self, node: Any) -> List[str]:
+        """Legacy validation for backward compatibility."""
+        errors = []
+        
+        # Validate required parameters
         errors.extend(self._validate_required_parameters(node, ["system_prompt"]))
 
         # Validate model_version if provided
-        model_version = node.parameters.get("model_version")
-        if model_version:
-            valid_models = self._get_valid_models_for_provider(subtype)
-            if valid_models and model_version not in valid_models:
-                errors.append(
-                    f"Invalid model version '{model_version}' for {subtype}. Valid models: {', '.join(valid_models)}"
-                )
+        if hasattr(node, 'parameters'):
+            model_version = node.parameters.get("model_version")
+            if model_version and hasattr(node, 'subtype'):
+                valid_models = self._get_valid_models_for_provider(node.subtype)
+                if valid_models and model_version not in valid_models:
+                    errors.append(
+                        f"Invalid model version '{model_version}' for {node.subtype}. Valid models: {', '.join(valid_models)}"
+                    )
 
-        # Validate provider-specific parameters
-        errors.extend(self._validate_provider_specific_parameters(node, subtype))
+            # Validate provider-specific parameters
+            if hasattr(node, 'subtype'):
+                errors.extend(self._validate_provider_specific_parameters(node, node.subtype))
 
         return errors
 
@@ -133,11 +146,12 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute Gemini AI agent."""
-        system_prompt = context.get_parameter("system_prompt")
-        model_version = context.get_parameter("model_version", "gemini-pro")
-        temperature = context.get_parameter("temperature", 0.7)
-        max_tokens = context.get_parameter("max_tokens", 1000)
-        safety_settings = context.get_parameter("safety_settings", {})
+        # Use spec-based parameter retrieval
+        system_prompt = self.get_parameter_with_spec(context, "system_prompt")
+        model_version = self.get_parameter_with_spec(context, "model_version")
+        temperature = self.get_parameter_with_spec(context, "temperature")
+        max_tokens = self.get_parameter_with_spec(context, "max_tokens")
+        safety_settings = self.get_parameter_with_spec(context, "safety_settings")
 
         logs.append(f"Gemini agent: {model_version}, temp: {temperature}")
 
@@ -183,12 +197,13 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute OpenAI AI agent."""
-        system_prompt = context.get_parameter("system_prompt")
-        model_version = context.get_parameter("model_version", "gpt-4")
-        temperature = context.get_parameter("temperature", 0.7)
-        max_tokens = context.get_parameter("max_tokens", 1000)
-        presence_penalty = context.get_parameter("presence_penalty", 0.0)
-        frequency_penalty = context.get_parameter("frequency_penalty", 0.0)
+        # Use spec-based parameter retrieval
+        system_prompt = self.get_parameter_with_spec(context, "system_prompt")
+        model_version = self.get_parameter_with_spec(context, "model_version")
+        temperature = self.get_parameter_with_spec(context, "temperature")
+        max_tokens = self.get_parameter_with_spec(context, "max_tokens")
+        presence_penalty = self.get_parameter_with_spec(context, "presence_penalty")
+        frequency_penalty = self.get_parameter_with_spec(context, "frequency_penalty")
 
         logs.append(f"OpenAI agent: {model_version}, temp: {temperature}")
 
@@ -236,11 +251,12 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute Claude AI agent."""
-        system_prompt = context.get_parameter("system_prompt")
-        model_version = context.get_parameter("model_version", "claude-3-sonnet")
-        temperature = context.get_parameter("temperature", 0.7)
-        max_tokens = context.get_parameter("max_tokens", 1000)
-        stop_sequences = context.get_parameter("stop_sequences", [])
+        # Use spec-based parameter retrieval
+        system_prompt = self.get_parameter_with_spec(context, "system_prompt")
+        model_version = self.get_parameter_with_spec(context, "model_version")
+        temperature = self.get_parameter_with_spec(context, "temperature")
+        max_tokens = self.get_parameter_with_spec(context, "max_tokens")
+        stop_sequences = self.get_parameter_with_spec(context, "stop_sequences")
 
         logs.append(f"Claude agent: {model_version}, temp: {temperature}")
 
