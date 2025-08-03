@@ -141,11 +141,13 @@ variable "grafana_cloud_api_key" {
   description = "Grafana Cloud API Key"
   type        = string
   sensitive   = true
+  default     = ""
 }
 
 variable "grafana_cloud_tenant_id" {
   description = "Grafana Cloud Tenant ID"
   type        = string
+  default     = ""
 }
 
 variable "grafana_cloud_prometheus_url" {
