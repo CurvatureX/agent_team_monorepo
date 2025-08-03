@@ -68,9 +68,9 @@ def test_mcp_api_requires_auth(client):
 
 
 def test_request_id_header(client):
-    """Test that request ID header is added"""
+    """Test that tracking ID header is added"""
     response = client.get("/")
-    assert "X-Request-ID" in response.headers
+    assert "X-Tracking-ID" in response.headers
 
 
 def test_process_time_header(client):
@@ -103,7 +103,7 @@ def test_middleware_configuration(client):
     """Test middleware is properly configured"""
     response = client.get("/")
     # Check that standard headers are present
-    assert "X-Request-ID" in response.headers
+    assert "X-Tracking-ID" in response.headers
     assert "X-Process-Time" in response.headers
     # Check CORS is enabled
     assert response.status_code == 200
