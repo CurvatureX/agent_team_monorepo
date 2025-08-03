@@ -453,3 +453,5 @@ secrets.json
 .env
 .claude
 .langgraph_api/
+claude.md
+apps/backend/env.example
