@@ -83,7 +83,7 @@ class WorkflowData(BaseModel):
     name: str
     description: Optional[str] = None
     nodes: List[NodeData]
-    connections: Dict[str, NodeConnectionsData] = Field(default_factory=dict)
+    connections: Dict[str, Any] = Field(default_factory=dict)
     settings: WorkflowSettingsData
     static_data: Dict[str, str] = Field(default_factory=dict)
     pin_data: Dict[str, str] = Field(default_factory=dict)
@@ -116,7 +116,7 @@ class CreateWorkflowRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = Field(None, max_length=1000)
     nodes: List[NodeData] = Field(..., min_items=1)
-    connections: Dict[str, NodeConnectionsData] = Field(default_factory=dict)
+    connections: Dict[str, Any] = Field(default_factory=dict)
     settings: Optional[WorkflowSettingsData] = None
     static_data: Dict[str, str] = Field(default_factory=dict)
     tags: List[str] = Field(default_factory=list)
@@ -166,7 +166,7 @@ class UpdateWorkflowRequest(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = Field(None, max_length=1000)
     nodes: Optional[List[NodeData]] = None
-    connections: Optional[Dict[str, NodeConnectionsData]] = None
+    connections: Optional[Dict[str, Any]] = None
     settings: Optional[WorkflowSettingsData] = None
     static_data: Optional[Dict[str, str]] = None
     tags: Optional[List[str]] = None

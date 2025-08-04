@@ -97,11 +97,11 @@ class NodeExecutionResult:
 class BaseNodeExecutor(ABC):
     """Base class for all node executors."""
 
-    def __init__(self):
+    def __init__(self, subtype: Optional[str] = None):
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.spec = self._get_node_spec()
+        self._subtype = subtype  # Set subtype first
+        self.spec = self._get_node_spec()  # Now _subtype is available
         self.data_mapper = DataMappingProcessor() if DataMappingProcessor else None
-        self._subtype = None  # Will be set during validation
 
     def _get_node_spec(self) -> Optional[NodeSpec]:
         """Get the node specification for this executor.
