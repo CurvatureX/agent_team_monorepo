@@ -2,7 +2,7 @@
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 from .common import BaseResponse, EntityModel
 
@@ -75,7 +75,8 @@ class WorkflowSettingsData(BaseModel):
     error_policy: str = Field(default="continue", pattern="^(continue|stop)$")
     caller_policy: str = Field(default="workflow", pattern="^(workflow|user)$")
 
-    @validator("timezone", pre=True)
+    @field_validator("timezone", mode="before")
+    @classmethod
     def validate_timezone(cls, v):
         if isinstance(v, str):
             return {"name": v}
@@ -99,13 +100,15 @@ class WorkflowData(BaseModel):
     updated_at: Optional[int] = None
     version: str = Field(default="1.0")
 
-    @validator("name")
+    @field_validator("name")
+    @classmethod
     def name_must_not_be_empty(cls, v):
         if not v.strip():
             raise ValueError("Workflow name cannot be empty")
         return v.strip()
 
-    @validator("nodes")
+    @field_validator("nodes")
+    @classmethod
     def validate_nodes(cls, v):
         if not v:
             raise ValueError("Workflow must contain at least one node")
@@ -121,7 +124,7 @@ class CreateWorkflowRequest(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = Field(None, max_length=1000)
-    nodes: List[NodeData] = Field(..., min_items=1)
+    nodes: List[NodeData] = Field(..., min_length=1)
     connections: ConnectionsMapData
     settings: Optional[WorkflowSettingsData] = None
     static_data: Dict[str, str] = Field(default_factory=dict)
@@ -129,13 +132,15 @@ class CreateWorkflowRequest(BaseModel):
     user_id: str = Field(..., min_length=1)
     session_id: Optional[str] = None
 
-    @validator("name")
+    @field_validator("name")
+    @classmethod
     def name_must_not_be_empty(cls, v):
         if not v.strip():
             raise ValueError("工作流名称不能为空或仅包含空格")
         return v.strip()
 
-    @validator("nodes")
+    @field_validator("nodes")
+    @classmethod
     def validate_node_connections(cls, v):
         if not v:
             raise ValueError("工作流必须包含至少一个节点")
@@ -447,11 +452,9 @@ class ExecuteSingleNodeRequest(BaseModel):
     """
     请求执行工作流中的单个节点
     """
+
     user_id: str = Field(..., description="用户ID", min_length=1)
-    input_data: Dict[str, Any] = Field(
-        default_factory=dict, 
-        description="节点执行的输入数据"
-    )
+    input_data: Dict[str, Any] = Field(default_factory=dict, description="节点执行的输入数据")
     execution_context: Dict[str, Any] = Field(
         default_factory=dict,
         description="执行上下文配置",
@@ -459,24 +462,19 @@ class ExecuteSingleNodeRequest(BaseModel):
             "use_previous_results": False,
             "previous_execution_id": None,
             "override_parameters": {},
-            "credentials": {}
-        }
+            "credentials": {},
+        },
     )
 
     class Config:
         schema_extra = {
             "example": {
                 "user_id": "00000000-0000-0000-0000-000000000123",
-                "input_data": {
-                    "url": "https://api.example.com",
-                    "method": "GET"
-                },
+                "input_data": {"url": "https://api.example.com", "method": "GET"},
                 "execution_context": {
                     "use_previous_results": False,
-                    "override_parameters": {
-                        "timeout": "30"
-                    }
-                }
+                    "override_parameters": {"timeout": "30"},
+                },
             }
         }
 
@@ -485,6 +483,7 @@ class SingleNodeExecutionResponse(BaseModel):
     """
     单节点执行响应
     """
+
     execution_id: str = Field(..., description="执行ID")
     node_id: str = Field(..., description="节点ID")
     workflow_id: str = Field(..., description="工作流ID")
@@ -493,20 +492,17 @@ class SingleNodeExecutionResponse(BaseModel):
     execution_time: float = Field(..., description="执行时间（秒）")
     logs: List[str] = Field(default_factory=list, description="执行日志")
     error_message: Optional[str] = Field(None, description="错误信息")
-    
+
     class Config:
         schema_extra = {
             "example": {
                 "execution_id": "single-node-exec-123",
                 "node_id": "http_request_node",
-                "workflow_id": "workflow-456", 
+                "workflow_id": "workflow-456",
                 "status": "COMPLETED",
-                "output_data": {
-                    "response_code": 200,
-                    "response_body": {"data": "example"}
-                },
+                "output_data": {"response_code": 200, "response_body": {"data": "example"}},
                 "execution_time": 1.23,
                 "logs": ["Starting HTTP request...", "Request completed"],
-                "error_message": None
+                "error_message": None,
             }
         }

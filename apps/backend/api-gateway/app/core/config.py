@@ -8,7 +8,7 @@ from functools import lru_cache
 from typing import Any, Dict, List, Optional, Union
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class DatabaseSettings(BaseSettings):
@@ -210,11 +210,12 @@ class Settings(
     遵循FastAPI最佳实践的配置管理
     """
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        extra = "ignore"  # 忽略未定义的额外字段
-        case_sensitive = True  # 环境变量大小写敏感
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",  # 忽略未定义的额外字段
+        case_sensitive=True,  # 环境变量大小写敏感
+    )
 
     @field_validator("SUPABASE_URL")
     @classmethod

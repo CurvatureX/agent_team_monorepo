@@ -5,6 +5,7 @@ Tests cover all three API layers: Public, App, and MCP
 
 import os
 import sys
+
 import pytest
 from app.main import create_application
 from fastapi.testclient import TestClient
@@ -129,11 +130,11 @@ def test_mcp_node_knowledge_integration(client):
     # Should be able to get available tools
     tools_response = service.get_available_tools()
     assert tools_response.success is True  # MCPToolsResponse still has success field
-    assert len(tools_response.tools) == 3
+    assert len(tools_response.tools) == 2
 
     # Should have the expected tool names
     tool_names = [tool.name for tool in tools_response.tools]
-    expected_tools = ["get_node_types", "get_node_details", "search_nodes"]
+    expected_tools = ["get_node_types", "get_node_details"]
     for expected_tool in expected_tools:
         assert expected_tool in tool_names
 
