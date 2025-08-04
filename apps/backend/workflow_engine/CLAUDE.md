@@ -2,218 +2,246 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Workflow Engine Overview
+
+The Workflow Engine is a **FastAPI-based microservice** that executes AI-powered workflows through a sophisticated node-based execution system. It serves as the execution layer in a three-service architecture alongside the API Gateway and Workflow Agent.
+
+## Core Architecture
+
+### Node-Based Execution System
+The engine uses a **factory pattern** with 8 core node types:
+- **TRIGGER_NODE**: Manual, webhook, cron triggers  
+- **AI_AGENT_NODE**: OpenAI, Anthropic, and custom AI nodes
+- **ACTION_NODE**: HTTP requests, code execution, data transformation
+- **EXTERNAL_ACTION_NODE**: Third-party API integrations (GitHub, Slack, etc.)
+- **FLOW_NODE**: Conditional logic (IF, SWITCH, MERGE, FILTER)
+- **HUMAN_IN_THE_LOOP_NODE**: Human interaction points
+- **TOOL_NODE**: MCP tools and utilities
+- **MEMORY_NODE**: Vector stores and data persistence
+
+### Key Components
+- **BaseNodeExecutor**: Abstract base class with spec-aware validation
+- **NodeExecutorFactory**: Dynamic node creation with type registration
+- **NodeExecutionContext**: Execution context with input data and credentials
+- **Node Specification System**: Centralized parameter validation and type conversion
+
 ## Development Commands
 
-### Core Development
-- **Install dependencies**: `pip install -r requirements.txt`
-- **Run service**: `python -m workflow_engine.main` or `./start_server.sh`
-- **Run tests**: `pytest tests/`
-- **Run specific test**: `pytest tests/test_workflow_crud.py::test_create_workflow`
-
-### Database Operations
-- **Initialize database**: `python tests/init_database.py`
-- **Run migrations**: `alembic upgrade head`
-- **Clean database**: `python tests/clean_database.py`
-
-### Docker Operations
-- **Build image**: `docker build -f Dockerfile -t workflow-engine .`
-- **Run container**: `docker run -p 8002:8002 --env-file .env workflow-engine`
-
-## Architecture Overview
-
-The Workflow Engine is responsible for executing AI-powered workflows created by the Workflow Agent. It manages workflow lifecycle, executes nodes, and handles state persistence.
-
-### Core Components
-
-1. **FastAPI Server** (`workflow_engine/main.py`)
-   - HTTP API on port 8002
-   - Handles workflow CRUD operations
-   - Manages workflow execution lifecycle
-
-2. **Execution Engine** (`workflow_engine/execution_engine.py`)
-   - Orchestrates workflow execution
-   - Manages node state transitions
-   - Handles error recovery and retries
-
-3. **Node System** (`workflow_engine/nodes/`)
-   - **Base Node**: Abstract interface for all node types
-   - **Trigger Nodes**: Workflow entry points (cron, webhook, manual)
-   - **AI Agent Nodes**: LLM-powered processing nodes
-   - **Action Nodes**: External API calls, data transformations
-   - **Flow Nodes**: Conditional logic, loops, branching
-   - **Human-in-Loop Nodes**: User interaction points
-   - **Memory Nodes**: Data persistence and retrieval
-   - **Tool Nodes**: Specialized integrations
-
-4. **Data Models** (`workflow_engine/models/`)
-   - **Workflow Model**: Workflow definition and metadata
-   - **Execution Model**: Runtime state and history
-   - **Node Template Model**: Node configuration schemas
-
-5. **Services** (`workflow_engine/services/`)
-   - **Workflow Service**: CRUD operations for workflows
-   - **Execution Service**: Manages workflow runs
-   - **Validation Service**: Validates workflow definitions
-
-## Workflow Execution Flow
-
-1. **Workflow Creation**: Define workflow structure with nodes and connections
-2. **Validation**: Ensure workflow is valid (no cycles, proper connections)
-3. **Execution Start**: Create execution instance with initial state
-4. **Node Processing**:
-   - Execute nodes based on topological order
-   - Pass data between nodes via connections
-   - Handle errors with retry logic
-5. **State Persistence**: Save execution state after each node
-6. **Completion**: Mark execution as complete/failed
-
-## Node Implementation
-
-### Creating New Node Types
-
-1. Extend `BaseNode` class in `nodes/base.py`
-2. Implement required methods:
-   ```python
-   async def execute(self, context: ExecutionContext) -> NodeOutput
-   async def validate(self, config: Dict[str, Any]) -> bool
-   ```
-3. Register node in `nodes/factory.py`
-4. Add node type to protobuf definitions if needed
-
-### Node Configuration
-
-Each node has:
-- **Type**: Node category (TRIGGER, AI_AGENT, ACTION, etc.)
-- **Subtype**: Specific implementation (CRON, OPENAI_CHAT, HTTP_REQUEST)
-- **Config**: Node-specific parameters
-- **Connections**: Input/output mappings
-
-## Database Schema
-
-PostgreSQL database with tables:
-- **workflows**: Workflow definitions
-- **workflow_versions**: Version history
-- **executions**: Execution instances
-- **execution_logs**: Node execution history
-- **node_templates**: Reusable node configurations
-
-## Environment Configuration
-
-Required environment variables:
+### Environment Setup
 ```bash
-# Service Configuration
-PORT=8002
-DEBUG=false
+# Install dependencies
+uv sync
 
-# Database
-DATABASE_URL=postgresql://user:pass@localhost/workflow_engine
-
-# Redis Cache
-REDIS_URL=redis://localhost:6379/0
-
-# AI Services (for AI nodes)
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
-
-# External Services
-WEBHOOK_BASE_URL=https://your-domain.com/webhooks
+# Alternative: pip install
+pip install -e .
+pip install -e ".[dev]"  # For development dependencies
 ```
 
-## API Endpoints
+### Server Management
+```bash
+# Start FastAPI server
+python -m workflow_engine.main
+# Or: ./start_server.sh
 
-### Workflow Management
-- `GET /api/v1/workflows` - List workflows
-- `POST /api/v1/workflows` - Create workflow
-- `GET /api/v1/workflows/{id}` - Get workflow details
-- `PUT /api/v1/workflows/{id}` - Update workflow
-- `DELETE /api/v1/workflows/{id}` - Delete workflow
+# Start with auto-reload
+uvicorn workflow_engine.main:app --reload --port 8002
+```
 
-### Execution Management
-- `POST /api/v1/executions` - Start workflow execution
-- `GET /api/v1/executions/{id}` - Get execution status
-- `POST /api/v1/executions/{id}/cancel` - Cancel execution
-- `GET /api/v1/executions/{id}/logs` - Get execution logs
+### Database Operations
+```bash
+# Initialize database
+make db-init
+alembic upgrade head
 
-### Triggers
-- `POST /api/v1/triggers/webhook/{workflow_id}` - Webhook trigger
-- `GET /api/v1/triggers/cron` - List cron triggers
+# Create migration
+make db-migrate MSG="description"
+alembic revision --autogenerate -m "description"
 
-## Testing Strategy
+# Reset database (development)
+make db-reset
+```
 
-### Unit Tests
-- Node implementations: `tests/test_nodes/`
-- Service logic: `tests/test_services/`
-- Validation: `tests/test_validation_service.py`
+### Testing & Quality
+```bash
+# Run tests
+make test
+pytest tests/
 
-### Integration Tests
-- Workflow CRUD: `tests/test_workflow_crud.py`
-- Execution flow: `tests/test_workflow_execution.py`
-- End-to-end: `tests/test_enhanced_execution.py`
+# Single test file
+pytest tests/test_node_executor.py
 
-### Test Utilities
-- Database setup: `tests/init_database.py`
-- Test data: `tests/fixtures/`
+# With coverage
+pytest --cov=workflow_engine tests/
 
-## Common Development Tasks
+# Code quality
+make lint     # flake8 + mypy
+make format   # black + isort
+```
 
-### Adding New Node Type
-1. Create node class in `nodes/` directory
-2. Add to node factory
-3. Update protobuf if needed
-4. Add tests
-5. Update documentation
+## Node Specification Integration
 
-### Debugging Executions
-1. Check execution logs in database
-2. Use `quick_debug.sh` for rapid testing
-3. Enable DEBUG logging
-4. Review execution state transitions
+The engine integrates with a centralized node specification system in `shared/node_specs/`:
 
-### Performance Optimization
-- Use Redis for frequently accessed data
-- Implement connection pooling
-- Optimize database queries
-- Add appropriate indexes
+### Key Features
+- **Automatic Validation**: Parameters validated against specs during execution
+- **Type Conversion**: Automatic conversion (string → int/float/bool/JSON)
+- **Default Values**: Spec-defined defaults applied when parameters missing
+- **Dual Validation**: Spec-based validation with legacy fallback
 
-## Migration from gRPC
+### Usage in Node Executors
+```python
+# In node executor classes
+def execute(self, context: NodeExecutionContext) -> NodeExecutionResult:
+    # Get parameter with automatic type conversion
+    temperature = self.get_parameter_with_spec(context, "temperature")  # Returns float
+    model = self.get_parameter_with_spec(context, "model_version")      # Returns string
+    
+    # Validation happens automatically during workflow creation
+```
 
-The service is migrating from gRPC to FastAPI:
-- Main server now uses FastAPI (port 8002)
-- gRPC definitions kept for data validation
-- RESTful API for all operations
-- Maintains compatibility with existing data models
+## API Endpoints Structure
 
-## Key Design Decisions
+### Core Endpoints (Port 8002)
+```
+GET    /health                              # Health check with DB validation
+GET    /docs                                # OpenAPI documentation
 
-1. **Stateful Execution**: Each node execution is persisted for reliability
-2. **Retry Logic**: Built-in retry mechanisms for transient failures
-3. **Async First**: All node executions are async for better performance
-4. **Modular Nodes**: Easy to add new node types without core changes
-5. **Version Control**: Workflow versioning for safe updates
+# Workflow Management
+POST   /v1/workflows                        # Create workflow with validation
+GET    /v1/workflows/{id}                   # Get workflow details
+PUT    /v1/workflows/{id}                   # Update workflow
+DELETE /v1/workflows/{id}                   # Delete workflow
+GET    /v1/workflows                        # List workflows
 
-## Troubleshooting
+# Execution Management  
+POST   /v1/workflows/{id}/execute           # Execute complete workflow
+GET    /v1/executions/{id}                  # Get execution status
+POST   /v1/executions/{id}/cancel           # Cancel running execution
+GET    /v1/workflows/{id}/executions        # Get execution history
 
-### Common Issues
+# Single Node Execution
+POST   /v1/workflows/{id}/nodes/{node_id}/execute  # Execute single node
 
-1. **Database Connection**:
-   - Check DATABASE_URL format
-   - Ensure PostgreSQL is running
-   - Verify database exists
+# Node Specifications
+GET    /api/v1/node-specs                   # List all node specifications
+GET    /api/v1/node-specs/{type}/{subtype}  # Get specific node spec
+```
 
-2. **Node Execution Failures**:
-   - Check node configuration
-   - Verify external service credentials
-   - Review execution logs
+## Database Architecture
 
-3. **Performance Issues**:
-   - Monitor database query performance
-   - Check Redis connection
-   - Review async operation handling
+### Key Models (in shared/models/db_models.py)
+- **Workflow**: Complete workflow definitions stored as JSONB
+- **WorkflowExecution**: Execution tracking with status and results
+- **NodeTemplate**: Reusable node configurations
+- **Integration**: Third-party service configurations
 
-## Integration with Other Services
+### Database Configuration
+- **PostgreSQL**: Primary database with SSL for Supabase
+- **SQLAlchemy**: ORM with proper session management
+- **Alembic**: Migration management
+- **Connection Pooling**: Configured for production use
 
-- **API Gateway**: Receives execution requests via HTTP
-- **Workflow Agent**: Provides workflow definitions
-- **External Services**: Integrates via action nodes
+## Service Layer Architecture
 
-Remember: The Workflow Engine is the execution heart of the system - reliability and performance are critical.
+### Core Services (workflow_engine/services/)
+- **WorkflowService**: CRUD operations with spec validation
+- **ExecutionService**: Workflow and single-node execution
+- **ValidationService**: Workflow structure and parameter validation
+
+### Validation Integration
+```python
+# WorkflowService automatically validates using specs
+def create_workflow_from_data(self, workflow_data: dict) -> Workflow:
+    # Validates against node specifications
+    validation_result = self.validator.validate_workflow_structure(
+        workflow_data, validate_node_parameters=True
+    )
+    if not validation_result['valid']:
+        raise ValueError(f"Validation failed: {validation_result['errors']}")
+```
+
+## Configuration Management
+
+### Environment Variables (workflow_engine/core/config.py)
+```bash
+# Database
+DATABASE_URL="postgresql://user:pass@host/db"
+
+# Server
+PORT="8002"
+HOST="0.0.0.0"
+DEBUG="false"
+
+# AI Providers
+OPENAI_API_KEY="sk-..."
+ANTHROPIC_API_KEY="sk-ant-..."
+
+# Cache
+REDIS_URL="redis://localhost:6379/0"
+```
+
+## Testing Patterns
+
+### Test Structure
+- **Unit Tests**: Node executors, services, validation
+- **Integration Tests**: End-to-end workflow execution
+- **Database Tests**: Schema validation and migrations
+
+### Common Test Patterns
+```python
+# Test node execution with specs
+def test_node_with_spec():
+    node = OpenAINode(subtype="OPENAI_NODE")
+    context = NodeExecutionContext(
+        parameters={"system_prompt": "test", "model_version": "gpt-4"}
+    )
+    result = node.execute(context)
+    assert result.status == "success"
+
+# Test workflow validation
+def test_workflow_validation():
+    workflow_data = {...}  # Complete workflow definition
+    validator = WorkflowValidator()
+    result = validator.validate_workflow_structure(
+        workflow_data, validate_node_parameters=True
+    )
+    assert result['valid']
+```
+
+## Important Development Notes
+
+### Recent Architectural Changes
+1. **gRPC → FastAPI Migration**: Service migrated from gRPC to FastAPI for consistency
+2. **Node Specification Integration**: All node executors now use centralized specs
+3. **Dual Validation System**: Spec-based validation with legacy fallback
+4. **Type-Safe Parameters**: Automatic type conversion based on specifications
+
+### Factory Pattern Registration
+```python
+# New node types automatically registered
+@NodeExecutorFactory.register("NEW_NODE_TYPE")
+class NewNodeExecutor(BaseNodeExecutor):
+    def execute(self, context):
+        # Implementation with spec support
+        param_value = self.get_parameter_with_spec(context, "param_name")
+```
+
+### Error Handling Patterns
+- **Structured Errors**: Consistent error responses with correlation IDs
+- **Graceful Degradation**: Fallback to legacy validation when specs unavailable
+- **Comprehensive Logging**: Detailed execution tracking and debugging
+
+### Docker & Deployment
+- **Multi-stage Dockerfile**: Optimized for production deployment
+- **Health Checks**: Built-in container health monitoring
+- **Non-root User**: Security best practices implemented
+- **Resource Optimization**: Proper signal handling and cleanup
+
+## Performance Considerations
+
+- **Connection Pooling**: Database connections optimized for concurrent workflows
+- **Redis Caching**: Used for execution state and temporary data
+- **Async Operations**: FastAPI async support for I/O-bound operations
+- **Monitoring**: OpenTelemetry integration for performance tracking
+
+The Workflow Engine provides a robust, scalable foundation for executing complex AI workflows with comprehensive validation, monitoring, and extensibility for new node types.
