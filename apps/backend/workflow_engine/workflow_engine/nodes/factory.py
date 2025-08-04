@@ -32,10 +32,8 @@ class NodeExecutorFactory:
         """Create a node executor for the given node type."""
         executor_class = cls._executors.get(node_type)
         if executor_class:
-            executor = executor_class()
-            # Pre-set the subtype if provided
-            if subtype and hasattr(executor, '_subtype'):
-                executor._subtype = subtype
+            # Pass subtype to constructor if provided
+            executor = executor_class(subtype=subtype)
             return executor
         return None
 
