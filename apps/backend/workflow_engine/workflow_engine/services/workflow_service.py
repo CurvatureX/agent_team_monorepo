@@ -60,10 +60,10 @@ class WorkflowService:
             from shared.models import NodeData
             temp_nodes = [NodeData(**node_data) for node_data in nodes_data]
             
-            # Validate workflow before saving
+            # Validate workflow before saving - validator expects dict, not objects
             validation_result = self.validator.validate_workflow_structure({
                 'name': request.name,
-                'nodes': temp_nodes,
+                'nodes': [node.dict() for node in temp_nodes],  # Convert to dict for validator
                 'connections': request.connections if request.connections else {},
                 'settings': request.settings
             }, validate_node_parameters=True)
@@ -92,6 +92,7 @@ class WorkflowService:
             
             # Update connections if any IDs changed
             connections_data = request.connections if request.connections else {}
+            self.logger.info(f"Original connections data from request: {json.dumps(connections_data, ensure_ascii=False)}")
             if id_changed and connections_data:
                 connections_data = NodeIdGenerator.update_connection_references(
                     connections_data, id_mapping
@@ -102,6 +103,10 @@ class WorkflowService:
             from shared.models import NodeData
             nodes = [NodeData(**node_data) for node_data in nodes_data]
 
+            # 先打印 connections_data 的内容
+            self.logger.info(f"connections_data before WorkflowData creation: {connections_data}")
+            self.logger.info(f"connections_data type: {type(connections_data)}")
+            
             workflow_data = WorkflowData(
                 id=workflow_id,
                 name=request.name,
@@ -116,6 +121,12 @@ class WorkflowService:
                 updated_at=now,
                 version="1.0.0",
             )
+            
+            self.logger.info(f"WorkflowData connections after creation: {workflow_data.connections}")
+            self.logger.info(f"WorkflowData connections type: {type(workflow_data.connections)}")
+            workflow_dict = workflow_data.dict()
+            self.logger.info(f"WorkflowData dict connections: {workflow_dict.get('connections')}")
+            self.logger.info(f"Full workflow_dict: {json.dumps(workflow_dict, ensure_ascii=False)}")
 
             db_workflow = WorkflowModel(
                 id=workflow_id,
