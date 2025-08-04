@@ -94,32 +94,6 @@ class NodeKnowledgeMCPService:
                 category="workflow",
                 tags=["nodes", "specifications", "details"],
             ),
-            MCPTool(
-                name="search_nodes",
-                description="Search workflow nodes by functionality, description, or capabilities",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "Search query describing desired functionality",
-                        },
-                        "max_results": {
-                            "type": "integer",
-                            "default": 10,
-                            "description": "Maximum number of results",
-                        },
-                        "include_details": {
-                            "type": "boolean",
-                            "default": False,
-                            "description": "Include full specifications",
-                        },
-                    },
-                    "required": ["query"],
-                },
-                category="workflow",
-                tags=["search", "nodes", "discovery"],
-            ),
         ]
 
         return MCPToolsResponse(
@@ -146,12 +120,6 @@ class NodeKnowledgeMCPService:
                     nodes, include_examples, include_schemas
                 )
 
-            elif tool_name == "search_nodes":
-                query = params.get("query", "")
-                max_results = params.get("max_results", 10)
-                include_details = params.get("include_details", False)
-                result = self.node_knowledge.search_nodes(query, max_results, include_details)
-
             else:
                 # Return MCP-compliant error response
                 response = MCPInvokeResponse(
@@ -177,8 +145,6 @@ class NodeKnowledgeMCPService:
                     # Wrap list in appropriate structure based on tool type
                     if tool_name == "get_node_details":
                         structured_content = {"nodes": result}
-                    elif tool_name == "search_nodes":
-                        structured_content = {"results": result}
                     else:
                         structured_content = {"data": result}
             else:
@@ -228,17 +194,6 @@ class NodeKnowledgeMCPService:
                     }
                 ],
             },
-            "search_nodes": {
-                "name": "search_nodes",
-                "description": "Search workflow nodes by functionality or description",
-                "version": "1.0.0",
-                "available": True,
-                "category": "workflow",
-                "usage_examples": [
-                    {"query": "send email", "max_results": 5},
-                    {"query": "HTTP request", "include_details": True},
-                ],
-            },
         }
 
         return tools_map.get(
@@ -253,7 +208,7 @@ class NodeKnowledgeMCPService:
 
     def health_check(self) -> MCPHealthCheck:
         """MCP service health check."""
-        available_tools = ["get_node_types", "get_node_details", "search_nodes"]
+        available_tools = ["get_node_types", "get_node_details"]
 
         # Check if node knowledge service is available
         healthy = self.node_knowledge.registry is not None
@@ -405,7 +360,7 @@ async def get_tool_info(
                     error_type="TOOL_NOT_FOUND",
                     tool_name=tool_name,
                     request_id=request_id,
-                ).dict(),
+                ).model_dump(),
             )
 
         logger.info(f"✅ Tool info retrieved for '{tool_name}'")
@@ -422,7 +377,7 @@ async def get_tool_info(
                 error_type="INTERNAL_ERROR",
                 tool_name=tool_name,
                 request_id=request_id,
-            ).dict(),
+            ).model_dump(),
         )
 
 
@@ -453,7 +408,7 @@ async def mcp_health(
             f"✅ MCP health check completed: {'healthy' if health_info.healthy else 'unhealthy'}"
         )
 
-        return JSONResponse(status_code=status_code, content=health_info.dict())
+        return JSONResponse(status_code=status_code, content=health_info.model_dump())
 
     except Exception as e:
         processing_time = time.time() - start_time
@@ -469,5 +424,5 @@ async def mcp_health(
                 error=f"Health check failed: {str(e)}",
                 request_id=request_id,
                 processing_time_ms=round(processing_time * 1000, 2),
-            ).dict(),
+            ).model_dump(),
         )

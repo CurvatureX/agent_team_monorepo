@@ -13,7 +13,7 @@ import logging
 import random
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Any, Dict, Optional
 
@@ -326,7 +326,7 @@ class SupabaseAuthClient:
                 "response_time_seconds": response_time,
                 "connection_status": connection_status,
                 "scope": "auth_only",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
         except Exception as e:
@@ -335,7 +335,7 @@ class SupabaseAuthClient:
                 "healthy": False,
                 "error": str(e),
                 "connection_status": "failed",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
 

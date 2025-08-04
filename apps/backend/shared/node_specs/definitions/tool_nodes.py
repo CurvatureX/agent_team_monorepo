@@ -149,9 +149,7 @@ CODE_EXECUTION_TOOL_SPEC = NodeSpec(
             data_format=DataFormat(
                 mime_type="application/json",
                 schema='{"variables": "object", "stdin": "string"}',
-                examples=[
-                    '{"variables": {"x": 10, "y": 20}, "stdin": "input data"}'
-                ],
+                examples=['{"variables": {"x": 10, "y": 20}, "stdin": "input data"}'],
             ),
         )
     ],
