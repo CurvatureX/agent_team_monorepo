@@ -64,7 +64,7 @@ class WorkflowService:
             validation_result = self.validator.validate_workflow_structure({
                 'name': request.name,
                 'nodes': temp_nodes,
-                'connections': request.connections.dict() if request.connections else {},
+                'connections': request.connections if request.connections else {},
                 'settings': request.settings
             }, validate_node_parameters=True)
             
@@ -91,7 +91,7 @@ class WorkflowService:
                     self.logger.info(f"Node ID changed: {original_node.id} -> {nodes_data[i]['id']}")
             
             # Update connections if any IDs changed
-            connections_data = request.connections.dict() if request.connections else {}
+            connections_data = request.connections if request.connections else {}
             if id_changed and connections_data:
                 connections_data = NodeIdGenerator.update_connection_references(
                     connections_data, id_mapping
