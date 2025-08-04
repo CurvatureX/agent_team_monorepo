@@ -95,9 +95,7 @@ class WorkflowAgentStateManager:
                 "intent_summary": "",
                 "workflow_context": workflow_context,
                 "conversations": [],
-                # Using legacy fields in database
-                "gaps": [],  # Maps to identified_gaps in code
-                "alternatives": [],  # Not used anymore
+                "identified_gaps": [],
                 "current_workflow_json": "",
                 "debug_result": "",
                 "debug_loop_count": 0,
@@ -157,13 +155,6 @@ class WorkflowAgentStateManager:
                 else:
                     latest_state["current_workflow"] = {}
                 
-                # Map legacy database fields to new field names
-                if "gaps" in latest_state:
-                    latest_state["identified_gaps"] = latest_state.get("gaps", [])
-                    # Keep gaps field for backward compatibility
-                if "alternatives" in latest_state:
-                    # Remove alternatives as it's not used anymore
-                    pass
                 # Set default values for new fields not in database
                 latest_state["gap_status"] = latest_state.get("gap_status", "no_gap")
                 
@@ -332,10 +323,8 @@ class WorkflowAgentStateManager:
             "stage": "stage",
             "execution_history": "execution_history",
             "intent_summary": "intent_summary",
-            # Map new field names to legacy database columns
-            "identified_gaps": "gaps",  # Using legacy column name
-            # "gap_status": "gap_status",  # Not in database yet - skip for now
-            # gap_resolution removed - using gap_status instead
+            "identified_gaps": "identified_gaps",
+            "gap_status": "gap_status",
             "debug_result": "debug_result",
             "debug_loop_count": "debug_loop_count",
         }
@@ -383,9 +372,7 @@ class WorkflowAgentStateManager:
             "conversations": [],
             "intent_summary": "",
             "current_workflow": None,
-            # Using legacy fields in database
-            "gaps": [],  # Maps to identified_gaps in code
-            "alternatives": [],  # Not used anymore
+            "identified_gaps": [],
             "workflow_context": {"origin": "create", "source_workflow_id": ""},
             "clarification_context": {
                 "purpose": "initial_intent",

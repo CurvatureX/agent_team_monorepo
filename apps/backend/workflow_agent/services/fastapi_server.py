@@ -1,6 +1,6 @@
 """
 FastAPI Server for Workflow Agent
-只实现 ProcessConversation 这一个接口，替换 gRPC 服务器
+只实现 ProcessConversation 这一个接口
 """
 
 import asyncio
@@ -61,7 +61,6 @@ logger = logging.getLogger(__name__)
 class WorkflowAgentServicer:
     """
     Workflow Agent FastAPI 服务实现
-    基于 gRPC 实现的相同逻辑，转换为 FastAPI 流式接口
     内部管理 workflow_agent_state，对外提供简洁的对话接口
     """
 
@@ -75,7 +74,6 @@ class WorkflowAgentServicer:
         """
         处理对话的统一接口 - 支持所有工作流生成阶段
         内部管理 workflow_agent_state，对外提供流式响应
-        完全复刻 gRPC 服务的逻辑
         """
         generator_created = False
         try:
@@ -332,7 +330,7 @@ class WorkflowAgentServicer:
                 "clarification_context", {"origin": "create", "pending_questions": []}
             ),
             "conversations": db_state.get("conversations", []),
-            "identified_gaps": db_state.get("identified_gaps", db_state.get("gaps", [])),  # Use new name or legacy
+            "identified_gaps": db_state.get("identified_gaps", []),
             "gap_status": db_state.get("gap_status", "no_gap"),
             # gap_resolution removed
             "current_workflow": {},
@@ -383,9 +381,7 @@ class WorkflowAgentServicer:
                 else str(current_stage)
             ),
             "intent_summary": current_state.get("intent_summary", ""),
-            # Using legacy field names for backward compatibility
-            "gaps": current_state.get("identified_gaps", []),  # Map to legacy name
-            "alternatives": [],  # Always empty, not used anymore
+            "identified_gaps": current_state.get("identified_gaps", []),
             "debug_result": current_state.get("debug_result", ""),
             "debug_loop_count": current_state.get("debug_loop_count", 0),
             "conversations_count": len(current_state.get("conversations", [])),
@@ -487,7 +483,7 @@ servicer = WorkflowAgentServicer()
 @app.post("/process-conversation")
 async def process_conversation(request: ConversationRequest, request_obj: Request):
     """
-    ProcessConversation 接口 - 对应原来的 gRPC 方法
+    ProcessConversation 接口
     返回流式响应
     """
     import time
