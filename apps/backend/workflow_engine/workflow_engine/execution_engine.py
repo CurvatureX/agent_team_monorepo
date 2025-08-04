@@ -320,7 +320,7 @@ class EnhancedWorkflowExecutionEngine:
         
         # Find incoming connections with enhanced tracking
         incoming_connections = []
-        connections_dict = connections.get("connections", {})
+        connections_dict = connections
         
         for source_node_name, node_connections in connections_dict.items():
             connection_types = node_connections.get("connection_types", {})
@@ -695,8 +695,8 @@ class EnhancedWorkflowExecutionEngine:
         """Validate ConnectionsMap structure."""
         errors = []
         
-        # Get connections dict from ConnectionsMap
-        connections_dict = connections.get("connections", {})
+        # Get connections dict
+        connections_dict = connections
         
         for source_node_name, node_connections in connections_dict.items():
             if source_node_name not in node_names:
@@ -749,8 +749,8 @@ class EnhancedWorkflowExecutionEngine:
             name_to_id[node_name] = node_id
             in_degree[node_id] = 0
         
-        # Build graph from ConnectionsMap
-        connections_dict = connections.get("connections", {})
+        # Build graph from connections
+        connections_dict = connections
         for source_node_name, node_connections in connections_dict.items():
             source_node_id = name_to_id.get(source_node_name)
             if not source_node_id:
@@ -796,8 +796,8 @@ class EnhancedWorkflowExecutionEngine:
             name_to_id[node_name] = node_id
             graph[node_id] = []
         
-        # Build graph from ConnectionsMap
-        connections_dict = connections.get("connections", {})
+        # Build graph from connections
+        connections_dict = connections
         for source_node_name, node_connections in connections_dict.items():
             source_node_id = name_to_id.get(source_node_name)
             if not source_node_id:

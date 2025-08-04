@@ -215,9 +215,7 @@ grpcurl -plaintext -d '{
       "parameters": {}
     }
   ],
-  "connections": {
-    "connections": {}
-  }
+  "connections": {}
 }' localhost:50051 workflow_engine.WorkflowService/CreateWorkflow
 ```
 
