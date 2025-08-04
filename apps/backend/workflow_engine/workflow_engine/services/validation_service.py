@@ -262,8 +262,8 @@ class ValidationService:
             name_to_id[node.name] = node.id
             graph[node.id] = []
         
-        # Build graph from ConnectionsMap
-        for source_node_name, node_connections in workflow.connections.connections.items():
+        # Build graph from connections
+        for source_node_name, node_connections in workflow.connections.items():
             source_node_id = name_to_id.get(source_node_name)
             if not source_node_id:
                 continue
