@@ -46,8 +46,7 @@ def create_test_workflow():
             }
         ],
         "connections": {
-            "connections": {
-                "Manual Trigger": {
+            "Manual Trigger": {
                     "connection_types": {
                         "main": {
                             "connections": [
@@ -72,7 +71,6 @@ def create_test_workflow():
                             ]
                         }
                     }
-                }
             }
         },
         "static_data": {
@@ -107,7 +105,7 @@ def test_enhanced_execution_engine():
     
     print(f"📋 Workflow: {workflow['name']}")
     print(f"🔢 Nodes: {len(workflow['nodes'])}")
-    print(f"🔗 Connections: {len(workflow['connections']['connections'])}")
+    print(f"🔗 Connections: {len(workflow['connections'])}")
     print()
     
     # Execute workflow
@@ -328,7 +326,7 @@ def test_error_handling():
                 "subtype": "INVALID_SUBTYPE"
             }
         ],
-        "connections": {"connections": {}}
+        "connections": {}
     }
     
     # Execute invalid workflow

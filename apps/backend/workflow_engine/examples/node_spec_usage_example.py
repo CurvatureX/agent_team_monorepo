@@ -294,7 +294,7 @@ class WorkflowValidationService:
                 errors.append(f"Node {node_id}: {error}")
         
         # 验证连接
-        connections = workflow.get("connections", {}).get("connections", {})
+        connections = workflow.get("connections", {})
         for source_name, conn_data in connections.items():
             # 查找源节点
             source_node = next((n for n in workflow["nodes"] if n.get("name") == source_name), None)
