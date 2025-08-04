@@ -1,6 +1,5 @@
 """
 Workflow Agent Service - FastAPI-based AI Agent for workflow generation
-Migrated from gRPC to FastAPI while preserving the same logic
 """
 
 import asyncio

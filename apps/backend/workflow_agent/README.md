@@ -10,10 +10,10 @@ The system moves beyond simple code generation by first negotiating a feasible s
 
 The agent's architecture is composed of several key components that work together to deliver an intelligent and interactive workflow design experience.
 
-### 1. Entrypoint (`main.py`, `services/grpc_server.py`)
-The service is exposed via a gRPC server.
-- **`main.py`**: Starts the gRPC server.
-- **`services/grpc_server.py`**: Implements the gRPC service methods (`GenerateWorkflow`, `RefineWorkflow`), handling the translation between protobuf messages and the system's internal data models.
+### 1. Entrypoint (`main.py`, `services/fastapi_server.py`)
+The service is exposed via a FastAPI server.
+- **`main.py`**: Starts the FastAPI server.
+- **`services/fastapi_server.py`**: Implements the FastAPI service endpoints, handling the REST API requests and streaming responses.
 
 ### 2. Orchestration (`agents/workflow_agent.py`, `core/design_engine.py`)
 - **`WorkflowAgent`**: Defines the high-level `langgraph` state machine, outlining the major stages of the generation process (e.g., `initialize_session`, `requirement_negotiation`, `design`) and the transitions between them.
@@ -39,7 +39,7 @@ The final output is a human-readable workflow defined in a custom Domain Specifi
 
 ## How It Works: The Generation Process
 
-1.  A user request to generate a workflow is received by the **gRPC server**.
+1.  A user request to generate a workflow is received by the **FastAPI server**.
 2.  The **`WorkflowAgent`** state machine is invoked, and the **`WorkflowOrchestrator`** initializes a new session.
 3.  **Negotiation Stage**: The `IntelligentAnalyzer` parses the request, and the `LLMCapabilityScanner` (powered by the RAG system) identifies any gaps between the user's needs and the system's capabilities. If gaps exist, the `IntelligentNegotiator` starts a dialogue to resolve them.
 4.  **Design Stage**: Once requirements are confirmed, the `IntelligentDesigner` takes over to create the technical design, task tree, and final architecture.

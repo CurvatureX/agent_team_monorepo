@@ -24,8 +24,8 @@ try:
     logger.info("WorkflowAgent and graph initialized successfully.")
 
     # Note: add_routes is not available in current LangGraph version
-    # For debugging, use the main gRPC server instead
-    logger.info("Debug server initialized. Use main gRPC server for actual testing.")
+    # For debugging, use the main FastAPI server instead
+    logger.info("Debug server initialized. Use main FastAPI server for actual testing.")
 
 except Exception as e:
     logger.error("Failed to initialize and set up the debug server", extra={"error": str(e)})
