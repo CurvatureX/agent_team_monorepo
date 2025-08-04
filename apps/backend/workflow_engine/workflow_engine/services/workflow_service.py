@@ -28,6 +28,7 @@ from shared.models import (
 from workflow_engine.core.config import get_settings
 from workflow_engine.models import NodeTemplateModel, WorkflowModel
 from workflow_engine.utils.node_id_generator import NodeIdGenerator
+from workflow_engine.utils.workflow_validator import WorkflowValidator
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -39,6 +40,7 @@ class WorkflowService:
     def __init__(self, db_session: Session):
         self.logger = logger
         self.db = db_session
+        self.validator = WorkflowValidator()
 
     def create_workflow_from_data(self, request: CreateWorkflowRequest) -> WorkflowData:
         """Create a new workflow from Pydantic model."""
@@ -54,6 +56,28 @@ class WorkflowService:
             # Ensure all nodes have unique IDs
             nodes_data = NodeIdGenerator.ensure_unique_node_ids(nodes_data)
             
+            # Convert nodes back to NodeData objects for validation
+            from shared.models import NodeData
+            temp_nodes = [NodeData(**node_data) for node_data in nodes_data]
+            
+            # Validate workflow before saving
+            validation_result = self.validator.validate_workflow_structure({
+                'name': request.name,
+                'nodes': temp_nodes,
+                'connections': request.connections if request.connections else {},
+                'settings': request.settings
+            }, validate_node_parameters=True)
+            
+            if not validation_result.get('valid', True):
+                validation_errors = validation_result.get('errors', [])
+                error_message = f"Workflow validation failed: {'; '.join(validation_errors)}"
+                self.logger.error(error_message)
+                raise ValueError(error_message)
+            
+            validation_warnings = validation_result.get('warnings', [])
+            if validation_warnings:
+                self.logger.warning(f"Workflow validation warnings: {'; '.join(validation_warnings)}")
+            
             # Check if any IDs were changed (for connection updates)
             original_ids = {node.id: node.id for node in request.nodes if node.id}
             new_ids = {node['id']: node['id'] for node in nodes_data}
@@ -67,7 +91,7 @@ class WorkflowService:
                     self.logger.info(f"Node ID changed: {original_node.id} -> {nodes_data[i]['id']}")
             
             # Update connections if any IDs changed
-            connections_data = request.connections.dict() if request.connections else {}
+            connections_data = request.connections if request.connections else {}
             if id_changed and connections_data:
                 connections_data = NodeIdGenerator.update_connection_references(
                     connections_data, id_mapping

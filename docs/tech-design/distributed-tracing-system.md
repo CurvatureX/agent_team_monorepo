@@ -1035,6 +1035,91 @@ class MetricsMiddleware(BaseHTTPMiddleware):
 
 ---
 
-**实施负责人**: 分配给具体开发者
+## 🚀 详细实施清单
+
+### 📋 Claude 负责完成的本地代码/配置更改
+
+#### ✅ 监控配置文件创建
+- [x] `monitoring/otel-collector-config.yml` - OpenTelemetry Collector 混合配置
+- [x] `monitoring/docker-compose.monitoring.yml` - 简化监控栈
+- [x] `monitoring/.env.monitoring` - Grafana Cloud 环境变量模板
+- [x] `monitoring/prometheus.yml` - 本地 Prometheus 配置
+
+#### ✅ Python 遥测 SDK 开发
+- [x] `apps/backend/shared/telemetry/__init__.py` - 包初始化
+- [x] `apps/backend/shared/telemetry/complete_stack.py` - 统一监控 SDK
+- [x] `apps/backend/shared/telemetry/middleware.py` - FastAPI 追踪中间件
+- [x] `apps/backend/shared/telemetry/metrics.py` - 核心指标定义
+- [x] `apps/backend/shared/telemetry/formatter.py` - CloudWatch 日志格式化器
+
+#### ✅ 服务集成更新
+- [x] `apps/backend/api-gateway/main.py` - 添加遥测初始化
+- [x] `apps/backend/workflow_agent/main.py` - 添加遥测初始化
+- [x] `apps/backend/workflow_engine/main.py` - 添加遥测初始化
+
+#### ✅ 依赖包更新
+- [x] `apps/backend/api-gateway/pyproject.toml` - 添加 OpenTelemetry 包
+- [x] `apps/backend/workflow_agent/pyproject.toml` - 添加 OpenTelemetry 包
+- [x] `apps/backend/workflow_engine/requirements.txt` - 添加 OpenTelemetry 包
+
+#### ✅ 基础设施代码
+- [x] `infra/monitoring.tf` - Terraform Grafana Cloud 集成
+- [x] 更新 `infra/ecs.tf` - ECS 任务环境变量配置
+- [x] 更新 `infra/variables.tf` - 添加 Grafana Cloud 变量
+
+#### ✅ 现有日志系统更新
+- [x] 检查并更新现有日志配置以符合 CloudWatch 结构化要求
+- [x] 确保所有服务使用统一的日志格式 (通过 telemetry 系统)
+
+### 🌐 您需要完成的云端配置
+
+#### ☁️ Grafana Cloud 设置
+- [ ] 注册 Grafana Cloud 免费账号 (grafana.com)
+- [ ] 获取 API Key 和 Tenant ID
+- [ ] 获取 Prometheus Push URL (格式: https://prometheus-prod-xx-xx-x.grafana.net/api/prom/push)
+- [ ] 获取 Loki Push URL (格式: https://logs-prod-xxx.grafana.net/loki/api/v1/push)
+- [ ] 在 Grafana Cloud 中配置告警规则
+
+#### 🔐 AWS Parameter Store 配置
+- [ ] 在 AWS Systems Manager Parameter Store 中存储:
+  - `/ai-teams/dev/monitoring/grafana-cloud-api-key` (SecureString)
+  - `/ai-teams/prod/monitoring/grafana-cloud-api-key` (SecureString)
+  - `/ai-teams/dev/monitoring/grafana-cloud-config` (String - JSON 格式)
+  - `/ai-teams/prod/monitoring/grafana-cloud-config` (String - JSON 格式)
+
+#### 🚀 基础设施部署
+- [ ] 运行 `terraform plan` 检查监控基础设施更改
+- [ ] 运行 `terraform apply` 部署监控配置到 AWS
+- [ ] 重启 ECS 服务以应用新的环境变量
+
+### 🔍 验证和测试
+
+#### 🏠 本地验证
+- [ ] 启动本地监控栈: `docker-compose -f monitoring/docker-compose.monitoring.yml up -d`
+- [ ] 验证 Jaeger UI 可访问: http://localhost:16686
+- [ ] 验证 Prometheus UI 可访问: http://localhost:9090
+- [ ] 测试 API 请求是否生成追踪数据
+- [ ] 检查日志是否包含 tracking_id
+
+#### ☁️ 云端验证
+- [ ] 验证 Grafana Cloud 仪表板显示指标数据
+- [ ] 确认 Loki 收到结构化日志
+- [ ] 测试告警规则是否正常触发
+- [ ] 验证 dev/prod 环境标签正确分离
+
+#### 🆔 Trace ID 流转验证
+- [ ] 确认每个 API 请求都有 X-Tracking-ID 响应头
+- [ ] 验证服务间调用自动传播 traceparent header
+- [ ] 检查数据库记录包含完整的 tracking_id
+- [ ] 确认日志和 traces 通过 tracking_id 正确关联
+
+### 📊 性能和成本监控
+- [ ] 监控 Grafana Cloud 使用量 (指标数量、日志容量)
+- [ ] 确认成本在免费层限制内
+- [ ] 设置使用量告警避免超出免费额度
+
+---
+
+**实施负责人**: Claude (本地代码) + 您 (云端配置)
 **预计完成时间**: 1 个工作日
 **依赖项**: Grafana Cloud 账号, AWS 权限
