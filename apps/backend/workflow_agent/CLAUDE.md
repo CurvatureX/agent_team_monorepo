@@ -32,15 +32,13 @@ The Workflow Agent is an AI-powered consultant that transforms natural language 
    - Handles streaming responses for real-time interaction
 
 2. **State Machine** (`agents/workflow_agent.py`)
-   - LangGraph-based orchestration with 6 core nodes
+   - LangGraph-based orchestration with 4 core nodes
    - Dynamic routing based on workflow stage
    - Maintains conversation history and context
 
 3. **Intelligence Layer** (`agents/nodes.py`)
    - **Clarification Node**: Analyzes requirements, identifies gaps using RAG
-   - **Negotiation Node**: Multi-turn dialogue to resolve ambiguities
    - **Gap Analysis Node**: Evaluates feasibility and suggests alternatives
-   - **Alternative Solution Node**: Generates creative workarounds
    - **Workflow Generation Node**: Creates final DSL output
    - **Debug Node**: Validates and optimizes the workflow
 
@@ -124,8 +122,7 @@ pytest tests/test_simplified_nodes.py::test_clarification_node_needs_more_info
 ### State Transitions
 The workflow always follows this progression:
 ```
-CLARIFICATION → NEGOTIATION → GAP_ANALYSIS → 
-ALTERNATIVE_SOLUTION → WORKFLOW_GENERATION → DEBUG → END
+CLARIFICATION → GAP_ANALYSIS → WORKFLOW_GENERATION → DEBUG → END
 ```
 
 Each node can route back to previous stages if issues are found.
