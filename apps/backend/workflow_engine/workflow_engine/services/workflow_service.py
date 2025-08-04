@@ -56,6 +56,20 @@ class WorkflowService:
             # Ensure all nodes have unique IDs
             nodes_data = NodeIdGenerator.ensure_unique_node_ids(nodes_data)
             
+            # Handle connections early - support both name and ID references
+            connections_data = request.connections if request.connections else {}
+            self.logger.info(f"Original connections data from request: {json.dumps(connections_data, ensure_ascii=False)}")
+            
+            # Create name to ID mapping for all nodes
+            name_to_id_mapping = NodeIdGenerator.create_name_to_id_mapping(nodes_data)
+            node_ids = {node['id'] for node in nodes_data}
+            
+            # Resolve any name-based references to IDs BEFORE validation
+            connections_data = NodeIdGenerator.resolve_connection_references(
+                connections_data, name_to_id_mapping, node_ids
+            )
+            self.logger.info(f"Resolved connections to use IDs: {json.dumps(connections_data, ensure_ascii=False)}")
+            
             # Convert nodes back to NodeData objects for validation
             from shared.models import NodeData
             temp_nodes = [NodeData(**node_data) for node_data in nodes_data]
@@ -64,7 +78,7 @@ class WorkflowService:
             validation_result = self.validator.validate_workflow_structure({
                 'name': request.name,
                 'nodes': [node.dict() for node in temp_nodes],  # Convert to dict for validator
-                'connections': request.connections if request.connections else {},
+                'connections': connections_data,  # Use resolved connections with IDs
                 'settings': request.settings
             }, validate_node_parameters=True)
             
@@ -90,9 +104,8 @@ class WorkflowService:
                     id_mapping[original_node.id] = nodes_data[i]['id']
                     self.logger.info(f"Node ID changed: {original_node.id} -> {nodes_data[i]['id']}")
             
-            # Update connections if any IDs changed
-            connections_data = request.connections if request.connections else {}
-            self.logger.info(f"Original connections data from request: {json.dumps(connections_data, ensure_ascii=False)}")
+            
+            # If any IDs were changed during generation, update the connections
             if id_changed and connections_data:
                 connections_data = NodeIdGenerator.update_connection_references(
                     connections_data, id_mapping

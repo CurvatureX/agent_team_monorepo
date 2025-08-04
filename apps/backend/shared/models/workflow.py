@@ -24,7 +24,7 @@ class RetryPolicyData(BaseModel):
 class NodeData(BaseModel):
     """工作流节点数据"""
 
-    id: str
+    id: Optional[str] = None  # 可选，系统会自动生成
     name: str
     type: str
     subtype: str
@@ -138,7 +138,8 @@ class CreateWorkflowRequest(BaseModel):
     def validate_node_connections(cls, v):
         if not v:
             raise ValueError("工作流必须包含至少一个节点")
-        node_ids = [node.id for node in v]
+        # 只检查非空的节点 ID
+        node_ids = [node.id for node in v if node.id is not None]
         if len(node_ids) != len(set(node_ids)):
             raise ValueError("节点ID必须唯一")
         return v
