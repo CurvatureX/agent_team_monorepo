@@ -1,0 +1,948 @@
+{
+    "node_templates": [
+        {
+            "id": "trigger-manual",
+            "name": "Manual Trigger",
+            "description": "Manually starts a workflow execution.",
+            "category": "Trigger",
+            "node_type": "TRIGGER",
+            "node_subtype": "MANUAL",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "require_confirmation": false
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "require_confirmation": {
+                        "type": "boolean"
+                    }
+                }
+            }
+        },
+        {
+            "id": "trigger-webhook",
+            "name": "Webhook Trigger",
+            "description": "Triggers a workflow via an HTTP webhook.",
+            "category": "Trigger",
+            "node_type": "TRIGGER",
+            "node_subtype": "WEBHOOK",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "path": "/webhook",
+                "method": "POST"
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string"
+                    },
+                    "method": {
+                        "enum": [
+                            "GET",
+                            "POST",
+                            "PUT",
+                            "DELETE"
+                        ],
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "trigger-cron",
+            "name": "Cron Schedule Trigger",
+            "description": "Triggers a workflow on a recurring schedule.",
+            "category": "Trigger",
+            "node_type": "TRIGGER",
+            "node_subtype": "CRON",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "timezone": "UTC",
+                "cron_expression": "0 9 * * MON"
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "timezone": {
+                        "type": "string"
+                    },
+                    "cron_expression": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "trigger-chat",
+            "name": "Chat Message Trigger",
+            "description": "Triggers a workflow when a chat message is received.",
+            "category": "Trigger",
+            "node_type": "TRIGGER",
+            "node_subtype": "CHAT",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "chat_platform": "general",
+                "message_filter": ""
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "chat_platform": {
+                        "type": "string"
+                    },
+                    "message_filter": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "trigger-email",
+            "name": "Email Trigger",
+            "description": "Triggers a workflow when an email is received.",
+            "category": "Trigger",
+            "node_type": "TRIGGER",
+            "node_subtype": "EMAIL",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "email_filter": "",
+                "email_provider": "gmail"
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "email_filter": {
+                        "type": "string"
+                    },
+                    "email_provider": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "trigger-form",
+            "name": "Form Submission Trigger",
+            "description": "Triggers a workflow when a form is submitted.",
+            "category": "Trigger",
+            "node_type": "TRIGGER",
+            "node_subtype": "FORM",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "form_id": ""
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "form_id": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "trigger-calendar",
+            "name": "Calendar Event Trigger",
+            "description": "Triggers a workflow based on a calendar event.",
+            "category": "Trigger",
+            "node_type": "TRIGGER",
+            "node_subtype": "CALENDAR",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "calendar_id": "primary",
+                "event_filter": ""
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "calendar_id": {
+                        "type": "string"
+                    },
+                    "event_filter": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "flow-if",
+            "name": "If Condition",
+            "description": "Executes a branch based on a boolean condition.",
+            "category": "Flow Control",
+            "node_type": "FLOW",
+            "node_subtype": "IF",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "condition": "true"
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "condition": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "flow-filter",
+            "name": "Filter Data",
+            "description": "Filters data based on a specified condition.",
+            "category": "Flow Control",
+            "node_type": "FLOW",
+            "node_subtype": "FILTER",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "filter_condition": {
+
+                }
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "filter_condition": {
+                        "type": "object"
+                    }
+                }
+            }
+        },
+        {
+            "id": "flow-loop",
+            "name": "Loop",
+            "description": "Executes a branch multiple times (for-each, while, times).",
+            "category": "Flow Control",
+            "node_type": "FLOW",
+            "node_subtype": "LOOP",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "loop_type": "for_each",
+                "max_iterations": 100
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "loop_type": {
+                        "enum": [
+                            "for_each",
+                            "while",
+                            "times"
+                        ],
+                        "type": "string"
+                    },
+                    "max_iterations": {
+                        "type": "integer"
+                    }
+                }
+            }
+        },
+        {
+            "id": "flow-merge",
+            "name": "Merge",
+            "description": "Merges data from multiple branches.",
+            "category": "Flow Control",
+            "node_type": "FLOW",
+            "node_subtype": "MERGE",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "merge_strategy": "combine"
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "merge_strategy": {
+                        "enum": [
+                            "combine",
+                            "union",
+                            "intersection"
+                        ],
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "flow-switch",
+            "name": "Switch",
+            "description": "Routes execution to a branch based on a value.",
+            "category": "Flow Control",
+            "node_type": "FLOW",
+            "node_subtype": "SWITCH",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "switch_cases": [
+
+                ]
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "switch_cases": {
+                        "type": "array"
+                    }
+                }
+            }
+        },
+        {
+            "id": "flow-wait",
+            "name": "Wait",
+            "description": "Pauses execution for a duration, condition, or event.",
+            "category": "Flow Control",
+            "node_type": "FLOW",
+            "node_subtype": "WAIT",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "duration": 1,
+                "wait_type": "time"
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "duration": {
+                        "type": "integer"
+                    },
+                    "wait_type": {
+                        "enum": [
+                            "time",
+                            "condition",
+                            "event"
+                        ],
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "human-gmail",
+            "name": "Gmail Interaction",
+            "description": "Sends an email via Gmail and waits for a response.",
+            "category": "Human Interaction",
+            "node_type": "HUMAN_IN_THE_LOOP",
+            "node_subtype": "GMAIL",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "subject": "Action Required",
+                "recipients": [
+
+                ]
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "subject": {
+                        "type": "string"
+                    },
+                    "recipients": {
+                        "type": "array"
+                    }
+                }
+            }
+        },
+        {
+            "id": "human-slack",
+            "name": "Slack Interaction",
+            "description": "Sends a message to a Slack channel and waits for a response.",
+            "category": "Human Interaction",
+            "node_type": "HUMAN_IN_THE_LOOP",
+            "node_subtype": "SLACK",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "channel": "",
+                "message_template": ""
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "channel": {
+                        "type": "string"
+                    },
+                    "message_template": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "human-discord",
+            "name": "Discord Interaction",
+            "description": "Sends a message to a Discord channel and waits for a response.",
+            "category": "Human Interaction",
+            "node_type": "HUMAN_IN_THE_LOOP",
+            "node_subtype": "DISCORD",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "channel_id": "",
+                "message_template": ""
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "channel_id": {
+                        "type": "string"
+                    },
+                    "message_template": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "human-telegram",
+            "name": "Telegram Interaction",
+            "description": "Sends a message to a Telegram chat and waits for a response.",
+            "category": "Human Interaction",
+            "node_type": "HUMAN_IN_THE_LOOP",
+            "node_subtype": "TELEGRAM",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "chat_id": "",
+                "message_template": ""
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "chat_id": {
+                        "type": "string"
+                    },
+                    "message_template": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "human-app",
+            "name": "In-App Interaction",
+            "description": "Sends an in-app notification and waits for a response.",
+            "category": "Human Interaction",
+            "node_type": "HUMAN_IN_THE_LOOP",
+            "node_subtype": "APP",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "title": "Action Required",
+                "notification_type": "approval"
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string"
+                    },
+                    "notification_type": {
+                        "enum": [
+                            "approval",
+                            "input",
+                            "review",
+                            "confirmation"
+                        ],
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "memory-vector-db",
+            "name": "Vector Database",
+            "description": "Performs operations on a vector database.",
+            "category": "Memory",
+            "node_type": "MEMORY",
+            "node_subtype": "VECTOR_DB",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "operation": "search",
+                "collection_name": "default"
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "operation": {
+                        "enum": [
+                            "store",
+                            "search",
+                            "delete",
+                            "update"
+                        ],
+                        "type": "string"
+                    },
+                    "collection_name": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "memory-key-value",
+            "name": "Key-Value Store",
+            "description": "Performs operations on a key-value store.",
+            "category": "Memory",
+            "node_type": "MEMORY",
+            "node_subtype": "KEY_VALUE",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "key": "",
+                "operation": "get"
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string"
+                    },
+                    "operation": {
+                        "enum": [
+                            "get",
+                            "set",
+                            "delete",
+                            "exists"
+                        ],
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "memory-document",
+            "name": "Document Store",
+            "description": "Performs operations on a document store.",
+            "category": "Memory",
+            "node_type": "MEMORY",
+            "node_subtype": "DOCUMENT",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "operation": "retrieve",
+                "document_id": ""
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "operation": {
+                        "enum": [
+                            "store",
+                            "retrieve",
+                            "update",
+                            "delete",
+                            "search"
+                        ],
+                        "type": "string"
+                    },
+                    "document_id": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "tool-mcp",
+            "name": "MCP Tool",
+            "description": "Executes a registered MCP tool.",
+            "category": "Tools",
+            "node_type": "TOOL",
+            "node_subtype": "MCP",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "operation": "",
+                "tool_name": ""
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "operation": {
+                        "type": "string"
+                    },
+                    "tool_name": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "tool-calendar",
+            "name": "Calendar Tool",
+            "description": "Performs operations on a calendar.",
+            "category": "Tools",
+            "node_type": "TOOL",
+            "node_subtype": "CALENDAR",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "operation": "list_events",
+                "calendar_id": "primary"
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "operation": {
+                        "enum": [
+                            "list_events",
+                            "create_event",
+                            "update_event",
+                            "delete_event"
+                        ],
+                        "type": "string"
+                    },
+                    "calendar_id": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "tool-email",
+            "name": "Email Tool",
+            "description": "Performs email operations.",
+            "category": "Tools",
+            "node_type": "TOOL",
+            "node_subtype": "EMAIL",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "operation": "send"
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "operation": {
+                        "enum": [
+                            "send",
+                            "read",
+                            "search",
+                            "delete"
+                        ],
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "tool-http",
+            "name": "HTTP Request",
+            "description": "Makes an HTTP request to a URL.",
+            "category": "Tools",
+            "node_type": "TOOL",
+            "node_subtype": "HTTP",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "url": "",
+                "method": "GET"
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string"
+                    },
+                    "method": {
+                        "enum": [
+                            "GET",
+                            "POST",
+                            "PUT",
+                            "DELETE",
+                            "PATCH"
+                        ],
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "action-run-code",
+            "name": "Run Code",
+            "description": "Executes code in Python, JavaScript, Bash, or SQL.",
+            "category": "Actions",
+            "node_type": "ACTION",
+            "node_subtype": "RUN_CODE",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "code": "",
+                "language": "python"
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "code": {
+                        "type": "string"
+                    },
+                    "language": {
+                        "enum": [
+                            "python",
+                            "javascript",
+                            "bash",
+                            "sql"
+                        ],
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "action-http-request",
+            "name": "HTTP Request",
+            "description": "Makes an HTTP request to a specified URL.",
+            "category": "Actions",
+            "node_type": "ACTION",
+            "node_subtype": "HTTP_REQUEST",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "url": "",
+                "method": "GET"
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string"
+                    },
+                    "method": {
+                        "enum": [
+                            "GET",
+                            "POST",
+                            "PUT",
+                            "DELETE",
+                            "PATCH"
+                        ],
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "action-data-transform",
+            "name": "Data Transformation",
+            "description": "Transforms data using various methods.",
+            "category": "Actions",
+            "node_type": "ACTION",
+            "node_subtype": "DATA_TRANSFORMATION",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "transformation_type": "filter"
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "transformation_type": {
+                        "enum": [
+                            "filter",
+                            "map",
+                            "reduce",
+                            "sort",
+                            "group",
+                            "join"
+                        ],
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "action-file-operation",
+            "name": "File Operation",
+            "description": "Performs operations on files.",
+            "category": "Actions",
+            "node_type": "ACTION",
+            "node_subtype": "FILE_OPERATION",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "file_path": "",
+                "operation_type": "read"
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string"
+                    },
+                    "operation_type": {
+                        "enum": [
+                            "read",
+                            "write",
+                            "copy",
+                            "move",
+                            "delete",
+                            "list"
+                        ],
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "ai-router-agent",
+            "name": "Router Agent",
+            "description": "Routes requests to appropriate handlers using an AI model.",
+            "category": "AI Agents",
+            "node_type": "AI_AGENT",
+            "node_subtype": "ROUTER_AGENT",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "model": "gpt-4",
+                "system_prompt": "You are a router agent."
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "model": {
+                        "type": "string"
+                    },
+                    "system_prompt": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "ai-task-analyzer",
+            "name": "Task Analyzer",
+            "description": "Analyzes tasks for requirements, complexity, or dependencies.",
+            "category": "AI Agents",
+            "node_type": "AI_AGENT",
+            "node_subtype": "TASK_ANALYZER",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "model": "gpt-4",
+                "analysis_type": "requirement"
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "model": {
+                        "type": "string"
+                    },
+                    "analysis_type": {
+                        "enum": [
+                            "requirement",
+                            "complexity",
+                            "dependency",
+                            "resource"
+                        ],
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "ai-data-integrator",
+            "name": "Data Integrator",
+            "description": "Integrates data from multiple sources using an AI model.",
+            "category": "AI Agents",
+            "node_type": "AI_AGENT",
+            "node_subtype": "DATA_INTEGRATOR",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "model": "gpt-4",
+                "integration_type": "merge"
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "model": {
+                        "type": "string"
+                    },
+                    "integration_type": {
+                        "enum": [
+                            "merge",
+                            "transform",
+                            "validate",
+                            "enrich"
+                        ],
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        {
+            "id": "ai-report-generator",
+            "name": "Report Generator",
+            "description": "Generates reports from data using an AI model.",
+            "category": "AI Agents",
+            "node_type": "AI_AGENT",
+            "node_subtype": "REPORT_GENERATOR",
+            "version": "1.0.0",
+            "is_system_template": true,
+            "default_parameters": {
+                "model": "gpt-4",
+                "report_type": "summary"
+            },
+            "required_parameters": null,
+            "parameter_schema": {
+                "type": "object",
+                "properties": {
+                    "model": {
+                        "type": "string"
+                    },
+                    "report_type": {
+                        "enum": [
+                            "summary",
+                            "detailed",
+                            "executive",
+                            "technical"
+                        ],
+                        "type": "string"
+                    }
+                }
+            }
+        }
+    ]
+}
