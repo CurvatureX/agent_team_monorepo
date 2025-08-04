@@ -142,7 +142,7 @@ resource "aws_ecs_task_definition" "api_gateway" {
         },
         {
           name  = "WORKFLOW_ENGINE_URL"
-          value = "http://${aws_lb.internal.dns_name}/v1"
+          value = "http://${aws_lb.internal.dns_name}"
         },
         {
           name  = "AWS_REGION"

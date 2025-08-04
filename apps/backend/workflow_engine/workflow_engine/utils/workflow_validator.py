@@ -53,7 +53,7 @@ class WorkflowValidator:
         
         # ConnectionsMap validation
         if connections:
-            connection_errors = self._validate_connections_map(connections, node_validation["node_names"])
+            connection_errors = self._validate_connections_map(connections, node_validation["node_ids"])
             errors.extend(connection_errors)
         
         # Check for circular dependencies
@@ -134,8 +134,8 @@ class WorkflowValidator:
             "node_names": node_names
         }
     
-    def _validate_connections_map(self, connections: Dict[str, Any], node_names: Set[str]) -> List[str]:
-        """Validate ConnectionsMap structure."""
+    def _validate_connections_map(self, connections: Dict[str, Any], node_ids: Set[str]) -> List[str]:
+        """Validate ConnectionsMap structure using node IDs."""
         errors = []
         
         # Get connections dict from ConnectionsMap
@@ -148,9 +148,9 @@ class WorkflowValidator:
             "ai_reranker", "ai_text_splitter", "ai_tool", "ai_vector_store"
         ]
         
-        for source_node_name, node_connections in connections_dict.items():
-            if source_node_name not in node_names:
-                errors.append(f"Connection source node '{source_node_name}' does not exist")
+        for source_node_id, node_connections in connections_dict.items():
+            if source_node_id not in node_ids:
+                errors.append(f"Connection source node ID '{source_node_id}' does not exist")
                 continue
             
             # Validate connection types
@@ -162,9 +162,9 @@ class WorkflowValidator:
                 
                 connections_list = connection_array.get("connections", [])
                 for connection in connections_list:
-                    target_node_name = connection.get("node")
-                    if target_node_name not in node_names:
-                        errors.append(f"Connection target node '{target_node_name}' does not exist")
+                    target_node_id = connection.get("node")
+                    if target_node_id not in node_ids:
+                        errors.append(f"Connection target node ID '{target_node_id}' does not exist")
                     
                     # Validate connection type enum
                     conn_type = connection.get("type")
