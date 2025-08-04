@@ -172,7 +172,7 @@ resource "aws_lb_listener_rule" "workflow_engine" {
 
   condition {
     path_pattern {
-      values = ["/v1/workflows*", "/v1/triggers*", "/v1/executions*"]
+      values = ["/v1/workflows*", "/v1/triggers*", "/v1/executions*", "/api/v1/app/workflows*"]
     }
   }
 
