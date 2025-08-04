@@ -112,7 +112,7 @@ async def list_workflows(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/node-templates", response_model=List[NodeTemplate])
+@router.get("/workflows/node-templates", response_model=List[NodeTemplate])
 async def list_node_templates(
     category: Optional[str] = None,
     include_system: bool = True,
