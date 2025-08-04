@@ -45,6 +45,24 @@ async def create_workflow(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/workflows/node-templates", response_model=List[NodeTemplate])
+async def list_node_templates(
+    category: Optional[str] = None,
+    include_system: bool = True,
+    service: WorkflowService = Depends(get_workflow_service),
+):
+    """
+    List all available node templates, with optional filters.
+    """
+    try:
+        templates = service.list_all_node_templates(
+            category_filter=category, include_system_templates=include_system
+        )
+        return templates
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/workflows/{workflow_id}", response_model=GetWorkflowResponse)
 async def get_workflow(
     workflow_id: str, user_id: str, service: WorkflowService = Depends(get_workflow_service)
@@ -108,23 +126,5 @@ async def list_workflows(
             total_count=total_count,
             has_more=(offset + len(workflows)) < total_count,
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/workflows/node-templates", response_model=List[NodeTemplate])
-async def list_node_templates(
-    category: Optional[str] = None,
-    include_system: bool = True,
-    service: WorkflowService = Depends(get_workflow_service),
-):
-    """
-    List all available node templates, with optional filters.
-    """
-    try:
-        templates = service.list_all_node_templates(
-            category_filter=category, include_system_templates=include_system
-        )
-        return templates
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
