@@ -80,7 +80,7 @@ class WorkflowAgentServicer:
         generator_created = False
         try:
             # 获取 trace_id（如果有的话）
-            trace_id = getattr(request_obj.state, 'trace_id', None) if 'request_obj' in locals() else None
+            trace_id = getattr(request_obj.state, 'trace_id', None) if request_obj else None
             
             logger.info("Processing conversation request", extra={
                 "request_session_id": request.session_id, 
