@@ -62,10 +62,10 @@ class WorkflowEngineHTTPClient:
             if type_filter:
                 params["type_filter"] = type_filter
 
-            log_info(f"📨 HTTP request to {self.base_url}/v1/node-templates")
+            log_info(f"📨 HTTP request to {self.base_url}/v1/workflows/node-templates")
 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.get(f"{self.base_url}/v1/node-templates", params=params)
+                response = await client.get(f"{self.base_url}/v1/workflows/node-templates", params=params)
                 response.raise_for_status()
 
                 data = response.json()
