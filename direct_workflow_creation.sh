@@ -84,8 +84,7 @@ curl -X POST http://localhost:8002/v1/workflows \
       }
     ],
     "connections": {
-      "connections": {
-        "定时监控触发器": {
+      "定时监控触发器": {
           "connection_types": {
             "main": {
               "connections": [
@@ -150,7 +149,6 @@ curl -X POST http://localhost:8002/v1/workflows \
             }
           }
         }
-      }
     },
     "settings": {
       "retry_policy": {
