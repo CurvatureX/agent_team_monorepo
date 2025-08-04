@@ -47,16 +47,6 @@ class TestNodeKnowledgeMCPService:
             }
         ]
 
-        # Mock search_nodes
-        service.search_nodes.return_value = [
-            {
-                "node_type": "ACTION_NODE",
-                "subtype": "HTTP_REQUEST",
-                "description": "Make HTTP requests",
-                "relevance_score": 15,
-            }
-        ]
-
         # Mock registry availability
         service.registry = Mock()
 
@@ -90,14 +80,13 @@ class TestNodeKnowledgeMCPService:
         result = mcp_service.get_available_tools()
 
         assert result.success is True
-        assert len(result.tools) == 3
-        assert result.total_count == 3
-        assert result.available_count == 3
+        assert len(result.tools) == 2
+        assert result.total_count == 2
+        assert result.available_count == 2
 
         tool_names = [tool.name for tool in result.tools]
         assert "get_node_types" in tool_names
         assert "get_node_details" in tool_names
-        assert "search_nodes" in tool_names
 
         # Check tool categories
         assert "workflow" in result.categories
@@ -186,39 +175,6 @@ class TestNodeKnowledgeMCPService:
         )
 
     @pytest.mark.asyncio
-    async def test_invoke_search_nodes(self, mcp_service):
-        """Test invoking search_nodes tool"""
-        params = {"query": "HTTP request", "max_results": 5, "include_details": False}
-
-        result = await mcp_service.invoke_tool("search_nodes", params)
-
-        assert result.isError is False
-        assert result._tool_name == "search_nodes"
-        assert result.structuredContent is not None
-        assert isinstance(result.structuredContent, dict)
-        assert "results" in result.structuredContent
-        assert len(result.structuredContent["results"]) == 1
-
-        search_result = result.structuredContent["results"][0]
-        assert search_result["node_type"] == "ACTION_NODE"
-        assert search_result["subtype"] == "HTTP_REQUEST"
-        assert "relevance_score" in search_result
-
-        # Verify the service was called with correct parameters
-        mcp_service.node_knowledge.search_nodes.assert_called_once_with("HTTP request", 5, False)
-
-    @pytest.mark.asyncio
-    async def test_invoke_search_nodes_with_defaults(self, mcp_service):
-        """Test invoking search_nodes with default parameters"""
-        params = {"query": "HTTP"}
-
-        result = await mcp_service.invoke_tool("search_nodes", params)
-
-        assert result.isError is False
-        # Should use default values
-        mcp_service.node_knowledge.search_nodes.assert_called_once_with("HTTP", 10, False)
-
-    @pytest.mark.asyncio
     async def test_invoke_invalid_tool(self, mcp_service):
         """Test invoking non-existent tool"""
         result = await mcp_service.invoke_tool("invalid_tool", {})
@@ -231,7 +187,7 @@ class TestNodeKnowledgeMCPService:
 
     def test_get_tool_info_valid_tools(self, mcp_service):
         """Test getting info for valid tools"""
-        valid_tools = ["get_node_types", "get_node_details", "search_nodes"]
+        valid_tools = ["get_node_types", "get_node_details"]
 
         for tool_name in valid_tools:
             info = mcp_service.get_tool_info(tool_name)
@@ -259,10 +215,9 @@ class TestNodeKnowledgeMCPService:
 
         assert result.healthy is True
         assert result.version == "3.0.0"
-        assert len(result.available_tools) == 3
+        assert len(result.available_tools) == 2
         assert "get_node_types" in result.available_tools
         assert "get_node_details" in result.available_tools
-        assert "search_nodes" in result.available_tools
         assert result.timestamp is not None
 
     def test_health_check_unhealthy(self, mcp_service_no_registry):
@@ -290,19 +245,12 @@ class TestNodeKnowledgeMCPService:
         result = await mcp_service.invoke_tool("get_node_types", {})
         assert result.isError is False
 
-        # search_nodes should fail with empty params (query required)
-        mcp_service.node_knowledge.search_nodes.return_value = []
-        result = await mcp_service.invoke_tool("search_nodes", {})
-        assert result.isError is False  # Service doesn't validate required params
-        mcp_service.node_knowledge.search_nodes.assert_called_with("", 10, False)
-
     @pytest.mark.asyncio
     async def test_concurrent_tool_invocation(self, mcp_service):
         """Test concurrent tool invocations"""
         # Create multiple concurrent requests
         tasks = [
             mcp_service.invoke_tool("get_node_types", {}),
-            mcp_service.invoke_tool("search_nodes", {"query": "HTTP"}),
             mcp_service.invoke_tool(
                 "get_node_details",
                 {"nodes": [{"node_type": "ACTION_NODE", "subtype": "HTTP_REQUEST"}]},
@@ -358,13 +306,6 @@ class TestNodeKnowledgeMCPService:
                 assert params["properties"]["nodes"]["type"] == "array"
                 assert "required" in params
                 assert "nodes" in params["required"]
-
-            elif tool.name == "search_nodes":
-                # Should have required query
-                assert "query" in params["properties"]
-                assert params["properties"]["query"]["type"] == "string"
-                assert "required" in params
-                assert "query" in params["required"]
 
     @pytest.mark.asyncio
     async def test_response_timestamp_and_metadata(self, mcp_service):
