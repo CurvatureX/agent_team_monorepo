@@ -143,52 +143,352 @@ FINAL RESPONSE MUST BE JSON ONLY:
 6. Start your final response with { and end with }
 7. Include ALL user requirements in the JSON structure
 
-🚨 VALIDATION CHECKLIST:
-- Every node subtype exists in get_node_types() response
+🚨 VALIDATION CHECKLIST (最新版本):
+
+**Node Structure Validation:**
+- Every node has ALL required fields: id, name, type, subtype, position, parameters, credentials, disabled, on_error, notes, webhooks
+- CRITICAL: subtype is required for ALL node types (enforced in model definition)
+- **🔥 NODE NAME VALIDATION (CRITICAL):**
+  - English names: Max 200 characters, use hyphens (no spaces/special chars): "task-analysis-ai-agent"
+  - Chinese names: Max 20 characters, meaningful semantics: "任务分析智能代理"
+  - Must be semantically meaningful and descriptive of the node's function
+  - Node names must be unique within the workflow
 - Every parameter name EXACTLY matches the MCP get_node_details response
 - AI nodes use "system_prompt" parameter (not "prompt")
-- HUMAN_SLACK nodes use "channel" and "message_template" parameters
-- EXTERNAL_API_CALL nodes use "method", "url", "headers", "body" parameters
 - All required parameters have non-null values from MCP specifications
-- Workflow includes conditional branching using FLOW_NODE types (IF, SWITCH, LOOP)
+- Node positions use float coordinates: {"x": float, "y": float}
+- type_version is integer (default: 1)
+- on_error is either "continue" or "stop"
+- retry_policy follows format: {"max_tries": int, "wait_between_tries": int}
+
+**Connections Structure Validation (🔥 现在使用 NODE NAME):**
+- Connections use proper nested format: {"source-node-name": {"main": [{"node": "target-node-name", "type": "main", "index": 0}]}}
+- **CRITICAL**: Every connection references valid NODE NAMES that exist in the nodes array (not node IDs)
+- Connection source keys must match exact node names from the nodes array
+- Connection target "node" values must match exact node names from the nodes array
+- Connection types follow STRICT rules:
+  - ACTION_NODE & EXTERNAL_ACTION_NODE: Can use `success`, `error`, `main`
+  - FLOW_NODE (IF subtype): Can use `true`, `false`, `main`
+  - ALL OTHER NODES: Can ONLY use `main` connections
+- ❌ Forbidden connection types:
+  - TRIGGER_NODE with `error`, `success`, `true`, `false`
+  - AI_AGENT_NODE with `error`, `success`, `true`, `false`
+  - HUMAN_IN_THE_LOOP_NODE with `error`, `success`, `true`, `false`
+  - TOOL_NODE with `error`, `success`, `true`, `false`
+  - MEMORY_NODE with `error`, `success`, `true`, `false`
+
+**Workflow Structure Validation:**
+- Workflow has name (required) and all optional fields with proper defaults
+- Settings include timezone object: {"name": "UTC"}, save_execution_progress, save_manual_executions, timeout, error_policy, caller_policy
+- static_data and pin_data are Dict[str, str] format
 - Complex requirements broken into 20+ interconnected nodes
+- Workflow includes conditional branching using FLOW_NODE (IF subtype)
 - Working hours logic (10:00-18:00, skip 12:00-13:30) implemented in AI prompts
 
-Example of required JSON format:
+**Output Format Validation:**
+- JSON starts with { and ends with }
+- No explanatory text, markdown, or comments
+- Complete valid JSON structure matching latest WorkflowData specification
+- All Dict[str, str] fields use string values only
+- All boolean fields use true/false (not null)
+- All numeric fields use appropriate types (int/float)
+
+✅ CORRECT WORKFLOW DATA STRUCTURE FORMAT (最新版本):
+
 ```json
 {
-  "name": "Example Workflow",
-  "description": "Description of what this workflow does",
+  "id": "unique-workflow-id",
+  "name": "Workflow Name",
+  "description": "Workflow description",
   "version": "1.0",
+  "active": true,
+  "created_at": null,
+  "updated_at": null,
   "nodes": [
     {
-      "id": "trigger_1",
-      "node_type": "TRIGGER_NODE",
+      "id": "node-1",
+      "name": "webhook-trigger-for-tasks",
+      "type": "TRIGGER_NODE",
       "subtype": "TRIGGER_WEBHOOK",
-      "parameters": { /* specific parameters */ }
-    },
-    {
-      "id": "action_1",
-      "node_type": "AI_AGENT_NODE",
-      "subtype": "CLAUDE_NODE",
-      "parameters": { /* specific parameters */ }
+      "type_version": 1,
+      "position": {
+        "x": 100.0,
+        "y": 100.0
+      },
+      "parameters": {
+        "param1": "value1",
+        "param2": "value2"
+      },
+      "credentials": {
+        "auth_key": "CREDENTIAL_NAME"
+      },
+      "disabled": false,
+      "on_error": "continue",
+      "retry_policy": {
+        "max_tries": 3,
+        "wait_between_tries": 5
+      },
+      "notes": {},
+      "webhooks": []
     }
   ],
   "connections": {
-    "trigger_1": ["action_1"]
+    "semantic-node-name-1": {
+      "main": [
+        {
+          "node": "semantic-node-name-2",
+          "type": "main",
+          "index": 0
+        }
+      ]
+    }
+  },
+  "settings": {
+    "timezone": {
+      "name": "UTC"
+    },
+    "save_execution_progress": true,
+    "save_manual_executions": true,
+    "timeout": 3600,
+    "error_policy": "continue",
+    "caller_policy": "workflow"
+  },
+  "static_data": {},
+  "pin_data": {},
+  "tags": ["tag1", "tag2"]
+}
+```
+
+📝 CRITICAL STRUCTURE REQUIREMENTS (最新版本):
+
+**WorkflowData Structure:**
+- `id`: string (optional) - unique workflow identifier
+- `name`: string (required) - workflow display name
+- `description`: string (optional) - workflow description
+- `nodes`: NodeData[] (required) - array of workflow nodes
+- `connections`: Dict[str, Any] (required) - 🔥 类型已简化但结构保持复杂
+- `settings`: WorkflowSettingsData (required) - workflow settings
+- `static_data`: Dict[str, str] (default: {}) - static workflow data
+- `pin_data`: Dict[str, str] (default: {}) - pinned data
+- `tags`: string[] (default: []) - workflow tags
+- `active`: boolean (default: true) - whether workflow is active
+- `created_at`: int (optional) - creation timestamp
+- `updated_at`: int (optional) - update timestamp
+- `version`: string (default: "1.0") - workflow version
+
+**NodeData Structure (EVERY node must have ALL these fields):**
+- `id`: string (required) - unique node identifier
+- `name`: string (required) - **CRITICAL**: NODE NAME NAMING RULES:
+  - Must be semantically meaningful and descriptive
+  - English: Max 200 characters, use hyphens to separate words, no spaces or special characters
+  - Chinese: Max 20 characters, meaningful semantic description
+  - Examples: "slack-message-trigger", "calendar-api-call", "task-priority-check", "任务优先级检查"
+  - Used in connections mapping (connections reference node names, not IDs)
+- `type`: string (required) - node type (TRIGGER_NODE, AI_AGENT_NODE, etc.)
+- `subtype`: string (required) - node subtype from MCP specs
+- `type_version`: int (default: 1) - type version number
+- `position`: PositionData (required) - `{"x": float, "y": float}` coordinates
+- `parameters`: Dict[str, str] (default: {}) - node-specific parameters from MCP specs
+- `credentials`: Dict[str, str] (default: {}) - credential references
+- `disabled`: boolean (default: false) - whether node is disabled
+- `on_error`: string (default: "continue") - error handling strategy (continue|stop)
+- `retry_policy`: RetryPolicyData (optional) - `{"max_tries": int, "wait_between_tries": int}`
+- `notes`: Dict[str, str] (default: {}) - node notes
+- `webhooks`: List[str] (default: []) - webhook configurations
+
+**ConnectionsMapData Structure (🔥 现在使用 NODE NAME 而非 NODE ID):**
+```json
+{
+  "source-node-name": {
+    "main": [
+      {
+        "node": "target-node-name",
+        "type": "main",
+        "index": 0
+      }
+    ],
+    "success": [
+      {
+        "node": "success-handler-node-name",
+        "type": "main",
+        "index": 0
+      }
+    ],
+    "error": [
+      {
+        "node": "error-handler-node-name",
+        "type": "main",
+        "index": 0
+      }
+    ],
+    "true": [
+      {
+        "node": "true-branch-node-name",
+        "type": "main",
+        "index": 0
+      }
+    ],
+    "false": [
+      {
+        "node": "false-branch-node-name",
+        "type": "main",
+        "index": 0
+      }
+    ]
   }
 }
 ```
-Schema Reference
-Workflow Structure
+
+🚨 **CRITICAL CONNECTION TYPE RULES:**
+
+**Connection Type Usage by Node Type:**
+- **ACTION_NODE & EXTERNAL_ACTION_NODE**: Can use `success`, `error`, and `main` connections
+- **IF_NODE (FLOW_NODE with IF subtype)**: Can use `true`, `false`, and `main` connections
+- **ALL OTHER NODE TYPES**: Can ONLY use `main` connections
+- **Standard Flow**: Most nodes connect via `main` → `main`
+- **Error Handling**: Only ACTION/EXTERNAL_ACTION nodes can have `error` outputs
+- **Conditional Logic**: Only IF nodes can have `true`/`false` outputs
+
+**Connection Type Examples (最新版本 - 使用 NODE NAME):**
+```json
 {
-  "name": "string (required)",
-  "description": "string (optional)",
-  "active": "boolean (default: true)",
-  "version": "string (default: '1.0')",
-  "nodes": "NodeData[]",
-  "connections": "ConnectionsMapData",
-  "settings": "WorkflowSettingsData",
-  "static_data": "object (optional)",
-  "tags": "string[] (optional)"
+  // ✅ EXTERNAL_ACTION_NODE: 可以使用 success, error, main
+  "google-calendar-api-call": {
+    "success": [{"node": "time-slot-data-processor", "type": "main", "index": 0}],
+    "error": [{"node": "api-error-handler", "type": "main", "index": 0}]
+  },
+
+  // ✅ ACTION_NODE: 可以使用 success, error, main
+  "task-file-upload": {
+    "success": [{"node": "file-validation-check", "type": "main", "index": 0}],
+    "error": [{"node": "upload-retry-handler", "type": "main", "index": 0}]
+  },
+
+  // ✅ FLOW_NODE (IF subtype): 可以使用 true, false, main
+  "working-hours-check": {
+    "true": [{"node": "schedule-task-immediately", "type": "main", "index": 0}],
+    "false": [{"node": "queue-for-next-workday", "type": "main", "index": 0}]
+  },
+
+  // ✅ 其他节点类型: 只能使用 main
+  "slack-message-trigger": {
+    "main": [{"node": "task-content-parser", "type": "main", "index": 0}]
+  },
+
+  "task-analysis-ai-agent": {
+    "main": [{"node": "priority-classification", "type": "main", "index": 0}]
+  },
+
+  "human-task-approval": {
+    "main": [{"node": "calendar-sync-action", "type": "main", "index": 0}]
+  }
 }
+```
+
+🎯 **完整工作流示例 (最新版本 - 使用 NODE NAME 连接):**
+```json
+{
+  "id": "smart-task-manager-v3",
+  "name": "智能任务管理系统",
+  "description": "基于Slack触发的AI驱动任务调度工作流",
+  "version": "3.0",
+  "active": true,
+  "created_at": null,
+  "updated_at": null,
+  "nodes": [
+    {
+      "id": "slack-trigger-001",
+      "name": "slack-task-message-trigger",
+      "type": "TRIGGER_NODE",
+      "subtype": "TRIGGER_CHAT",
+      "type_version": 1,
+      "position": {"x": 100.0, "y": 100.0},
+      "parameters": {
+        "channel": "#tasks",
+        "auto_reply": "true"
+      },
+      "credentials": {
+        "slack_token": "SLACK_BOT_TOKEN"
+      },
+      "disabled": false,
+      "on_error": "stop",
+      "retry_policy": {
+        "max_tries": 3,
+        "wait_between_tries": 5
+      },
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "calendar-api-002",
+      "name": "google-calendar-api-call",
+      "type": "EXTERNAL_ACTION_NODE",
+      "subtype": "EXTERNAL_API_CALL",
+      "type_version": 1,
+      "position": {"x": 300.0, "y": 100.0},
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+        "headers": "{\"Authorization\": \"Bearer {{oauth_token}}\"}"
+      },
+      "credentials": {
+        "google_oauth": "GOOGLE_CALENDAR_OAUTH"
+      },
+      "disabled": false,
+      "on_error": "continue",
+      "notes": {},
+      "webhooks": []
+    },
+    {
+      "id": "time-check-003",
+      "name": "working-hours-availability-check",
+      "type": "FLOW_NODE",
+      "subtype": "IF",
+      "type_version": 1,
+      "position": {"x": 500.0, "y": 100.0},
+      "parameters": {
+        "condition": "available_slots.length > 0 && is_working_hours"
+      },
+      "credentials": {},
+      "disabled": false,
+      "on_error": "continue",
+      "notes": {},
+      "webhooks": []
+    }
+  ],
+  "connections": {
+    "slack-task-message-trigger": {
+      "main": [{"node": "google-calendar-api-call", "type": "main", "index": 0}]
+    },
+    "google-calendar-api-call": {
+      "success": [{"node": "working-hours-availability-check", "type": "main", "index": 0}],
+      "error": [{"node": "calendar-api-error-handler", "type": "main", "index": 0}]
+    },
+    "working-hours-availability-check": {
+      "true": [{"node": "immediate-task-scheduler", "type": "main", "index": 0}],
+      "false": [{"node": "next-day-queue-handler", "type": "main", "index": 0}]
+    }
+  },
+  "settings": {
+    "timezone": {"name": "Asia/Shanghai"},
+    "save_execution_progress": true,
+    "save_manual_executions": true,
+    "timeout": 3600,
+    "error_policy": "continue",
+    "caller_policy": "workflow"
+  },
+  "static_data": {
+    "workspace_id": "team-001"
+  },
+  "pin_data": {},
+  "tags": ["ai", "scheduling", "slack", "calendar"]
+}
+```
+
+**WorkflowSettingsData Structure (最新版本):**
+- `timezone`: object (required) - `{"name": "UTC"}` - timezone configuration
+- `save_execution_progress`: boolean (default: true) - save execution progress
+- `save_manual_executions`: boolean (default: true) - save manual executions
+- `timeout`: number (default: 3600) - global timeout in seconds
+- `error_policy`: string (default: "continue") - "continue" | "stop" | "retry"
+- `caller_policy`: string (default: "workflow") - caller policy setting

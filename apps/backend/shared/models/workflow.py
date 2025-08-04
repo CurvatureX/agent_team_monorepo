@@ -27,7 +27,7 @@ class NodeData(BaseModel):
     id: str
     name: str
     type: str
-    subtype: Optional[str] = None
+    subtype: str
     type_version: int = Field(default=1)
     position: PositionData
     parameters: Dict[str, str] = Field(default_factory=dict)
