@@ -7,7 +7,7 @@ import os
 from typing import Any, Dict, List, Optional
 
 from pydantic import Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -27,8 +27,6 @@ class Settings(BaseSettings):
     WORKFLOW_AGENT_PORT: int = 50051
     WORKFLOW_ENGINE_HOST: str = "localhost"
     WORKFLOW_ENGINE_PORT: int = 50050
-    
-
 
     # Authentication Configuration
     JWT_SECRET_KEY: Optional[str] = None  # For additional JWT operations if needed
@@ -118,10 +116,11 @@ class Settings(BaseSettings):
     METRICS_ENABLED: bool = True
     HEALTH_CHECK_ENABLED: bool = True
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        extra = "ignore"  # Ignore extra fields that don't match the model
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",  # Ignore extra fields that don't match the model
+    )
 
     def get_supabase_config(self) -> dict:
         """Get Supabase configuration for client initialization"""

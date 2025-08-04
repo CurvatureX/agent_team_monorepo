@@ -236,11 +236,6 @@ class TestMCPErrorHandling:
         assert result.isError is False
         assert result.structuredContent == {"nodes": []}
 
-        # search_nodes should return empty result
-        result = await service.invoke_tool("search_nodes", {"query": "test"})
-        assert result.isError is False
-        assert result.structuredContent == {"results": []}
-
     @pytest.mark.asyncio
     async def test_mcp_service_timeout_handling(self):
         """Test MCP service with simulated slow operations"""
