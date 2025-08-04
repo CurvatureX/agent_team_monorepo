@@ -89,7 +89,7 @@ async def get_authorization_header(
     # 优先使用中间件存储的 token
     if hasattr(request.state, "access_token") and request.state.access_token:
         return request.state.access_token
-    
+
     # 否则从头部提取
     if credentials and credentials.scheme.lower() == "bearer":
         return credentials.credentials
@@ -113,7 +113,7 @@ async def get_current_user(
             return AuthUser(**request.state.user)
         except Exception as e:
             logger.warning(f"Failed to create AuthUser from request.state: {e}")
-    
+
     # 2. 如果中间件未验证（例如可选认证的端点），则手动验证
     if not token:
         return None
@@ -169,7 +169,7 @@ async def get_user_supabase_client(
         access_token = request.state.access_token
     else:
         access_token = token
-    
+
     if not access_token:
         return None
 
@@ -357,8 +357,8 @@ async def get_request_context(
         "client_ip": client_ip,
         "user_agent": request.headers.get("User-Agent"),
         "timestamp": None,  # 会在中间件中设置
-        "user": current_user.dict() if current_user else None,
-        "mcp_client": mcp_client.dict() if mcp_client else None,
+        "user": current_user.model_dump() if current_user else None,
+        "mcp_client": mcp_client.model_dump() if mcp_client else None,
         "auth_type": None,  # 会在中间件中设置
         "environment": settings.ENVIRONMENT,
         "debug": settings.DEBUG,

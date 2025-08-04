@@ -9,7 +9,7 @@ class NodeTemplate(BaseModel):
     description: Optional[str] = None
     category: Optional[str] = None
     node_type: str
-    node_subtype: Optional[str] = None
+    node_subtype: str
     version: str = "1.0.0"
     is_system_template: bool = False
     default_parameters: Dict[str, Any] = Field(default_factory=dict)
