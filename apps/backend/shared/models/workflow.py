@@ -59,12 +59,6 @@ class NodeConnectionsData(BaseModel):
     connection_types: Dict[str, ConnectionArrayData] = Field(default_factory=dict)
 
 
-class ConnectionsMapData(BaseModel):
-    """连接映射数据"""
-
-    connections: Dict[str, NodeConnectionsData] = Field(default_factory=dict)
-
-
 class WorkflowSettingsData(BaseModel):
     """工作流设置数据"""
 
@@ -89,7 +83,7 @@ class WorkflowData(BaseModel):
     name: str
     description: Optional[str] = None
     nodes: List[NodeData]
-    connections: ConnectionsMapData
+    connections: Dict[str, NodeConnectionsData] = Field(default_factory=dict)
     settings: WorkflowSettingsData
     static_data: Dict[str, str] = Field(default_factory=dict)
     pin_data: Dict[str, str] = Field(default_factory=dict)
@@ -122,7 +116,7 @@ class CreateWorkflowRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = Field(None, max_length=1000)
     nodes: List[NodeData] = Field(..., min_items=1)
-    connections: ConnectionsMapData
+    connections: Dict[str, NodeConnectionsData] = Field(default_factory=dict)
     settings: Optional[WorkflowSettingsData] = None
     static_data: Dict[str, str] = Field(default_factory=dict)
     tags: List[str] = Field(default_factory=list)
@@ -172,7 +166,7 @@ class UpdateWorkflowRequest(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = Field(None, max_length=1000)
     nodes: Optional[List[NodeData]] = None
-    connections: Optional[ConnectionsMapData] = None
+    connections: Optional[Dict[str, NodeConnectionsData]] = None
     settings: Optional[WorkflowSettingsData] = None
     static_data: Optional[Dict[str, str]] = None
     tags: Optional[List[str]] = None
