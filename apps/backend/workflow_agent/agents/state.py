@@ -98,11 +98,12 @@ class WorkflowState(TypedDict):
     
     # Clarification context
     clarification_context: ClarificationContext
+    clarification_round: NotRequired[int]  # track clarification rounds for limiting
     
     # Gap analysis results
-    gap_status: NotRequired[str]  # "has_gap" or "no_gap"
+    gap_status: NotRequired[str]  # "has_gap", "no_gap", or "gap_resolved"
     identified_gaps: NotRequired[List[GapDetail]]  # detailed gap information
-    # gap_resolution removed - using gap_status: "gap_resolved" instead
+    selected_alternative_index: NotRequired[int]  # which alternative user selected
     
     # Workflow data
     current_workflow: NotRequired[Any]  # workflow JSON object

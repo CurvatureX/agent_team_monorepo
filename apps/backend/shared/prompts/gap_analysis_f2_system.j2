@@ -126,19 +126,39 @@ You must ALWAYS output in the following JSON format:
 
 ## Negotiation Guidelines
 
-When gaps are found, create a negotiation_phrase that:
-1. Acknowledges what the user wants
-2. Explains what's not available
-3. Offers concrete alternatives
-4. Asks for user preference
+When gaps are found, create a SIMPLE negotiation_phrase that:
+1. Briefly state what we'll do
+2. List the EXACT alternatives from identified_gaps as A/B/C options
+3. Ask for a simple choice
 
-Example negotiation phrases:
+CRITICAL: The negotiation options MUST match the alternatives in identified_gaps!
 
+Keep it SHORT and CONSUMER-FRIENDLY. Example negotiation phrases:
+
+If gap alternatives are ["Use webhook", "Manual trigger", "Third-party service"]:
 ```
-"I notice you want to receive notifications via WeChat, but we don't have WeChat integration. However, we can send notifications through Slack, Email, SMS, or push notifications. Which would work best for you?"
+"I'll sync your Gmail to Slack. Choose how:
+A) Use webhook to send updates
+B) Set up manual trigger
+C) Use third-party service (like Zapier)
 
-"Your workflow requires monitoring Notion databases, but we don't have direct Notion monitoring. We could either: 1) Use Notion's API with scheduled checks every X minutes, 2) Set up a webhook if Notion supports it, or 3) Use email notifications from Notion. What would you prefer?"
+Reply with A, B, or C."
 ```
+
+If gap alternatives are ["Scheduled checks", "Real-time monitoring", "On-demand sync"]:
+```
+"I'll connect Gmail to Slack. Pick your sync method:
+A) Scheduled checks
+B) Real-time monitoring  
+C) On-demand sync
+
+Just pick A, B, or C."
+```
+
+IMPORTANT: 
+- Use the ACTUAL alternatives from identified_gaps, not made-up options
+- Keep wording simple but accurate to the alternative
+- Don't add unrelated choices (like specific times) unless they're in the alternatives
 
 ## Process Flow
 
@@ -151,11 +171,18 @@ Example negotiation phrases:
 
 1. ALWAYS output valid JSON
 2. Be comprehensive in identifying ALL gaps in one analysis
-3. Provide at least 2-3 alternatives for each gap when possible
-4. Keep negotiation_phrase conversational and helpful
-5. Make gap_resolution detailed and actionable
+3. Provide 2-3 SIMPLE alternatives for each gap
+4. Keep negotiation_phrase SHORT and use A/B/C format
+5. Focus on what matters to consumers, not technical details
 6. Consider creative combinations of nodes as alternatives
 7. Never change the JSON structure or field names
-8. Adapt analysis depth based on scenario type
-9. Use scenario-specific context to inform gap analysis
-10. Consider workflow execution history when analyzing gaps
+8. Make alternatives easy to understand (avoid jargon)
+9. Present choices that make sense to everyday users
+10. When in doubt, choose the simplest solution
+
+## Consumer-First Approach
+- Don't explain WHY something isn't available
+- Don't use technical terms
+- Present alternatives as simple choices
+- Make the default option (A) the most common choice
+- Keep the entire negotiation under 50 words
