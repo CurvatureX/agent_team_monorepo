@@ -111,6 +111,7 @@ def create_application() -> FastAPI:
         allow_headers=["*"],
         expose_headers=[
             "X-Request-ID",
+            "X-Trace-ID",
             "X-RateLimit-Limit",
             "X-RateLimit-Remaining",
             "X-RateLimit-Reset",
@@ -118,7 +119,9 @@ def create_application() -> FastAPI:
     )
 
     # 初始化遥测系统
-    setup_telemetry(app, service_name="api-gateway", service_version=settings.VERSION)
+    # 从环境变量获取 OTLP 端点，默认使用 otel-collector
+    otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4317")
+    setup_telemetry(app, service_name="api-gateway", service_version=settings.VERSION, otlp_endpoint=otlp_endpoint)
 
     # 注册中间件（顺序很重要）
     # 1. 追踪中间件（最外层，为每个请求生成 tracking_id）
@@ -152,9 +155,10 @@ async def request_logging_middleware(request: Request, call_next):
     """请求日志中间件"""
     start_time = time.time()
 
-    # 生成请求ID
-    request_id = f"{int(time.time() * 1000)}-{hash(str(request.url)) % 10000:04d}"
-    request.state.request_id = request_id
+    # 生成请求ID（作为 trace_id）
+    trace_id = f"{int(time.time() * 1000)}-{hash(str(request.url)) % 10000:04d}"
+    request.state.request_id = trace_id
+    request.state.trace_id = trace_id  # 同时存储为 trace_id
 
     # 记录请求开始
     client_ip = (
@@ -164,7 +168,7 @@ async def request_logging_middleware(request: Request, call_next):
         if request.client
         else "unknown"
     )
-    logger.info(f"📨 {request.method} {request.url.path} [ID:{request_id}] [IP:{client_ip}]")
+    logger.info(f"📨 {request.method} {request.url.path} [Trace:{trace_id}] [IP:{client_ip}]")
 
     # 处理请求
     response = await call_next(request)
@@ -173,12 +177,12 @@ async def request_logging_middleware(request: Request, call_next):
     process_time = time.time() - start_time
 
     # 添加响应头
-    # X-Tracking-ID is already set by TrackingMiddleware
+    response.headers["X-Trace-ID"] = trace_id  # 添加 trace_id 到响应头
     response.headers["X-Process-Time"] = str(round(process_time * 1000, 2))
 
     # 记录响应
     logger.info(
-        f"📤 {request.method} {request.url.path} -> {response.status_code} [{round(process_time * 1000, 2)}ms]"
+        f"📤 {request.method} {request.url.path} -> {response.status_code} [{round(process_time * 1000, 2)}ms] [Trace:{trace_id}]"
     )
 
     return response

@@ -1,6 +1,6 @@
 """
 LangGraph state management for Workflow Agent
-Simplified architecture with only necessary classes
+State definitions for the 4-node architecture
 """
 
 from enum import Enum
@@ -8,34 +8,33 @@ from typing import Any, Dict, List, NotRequired, TypedDict
 
 
 class WorkflowStage(str, Enum):
-    """Simplified workflow stages based on new architecture"""
+    """Workflow stages for 4-node architecture"""
 
     CLARIFICATION = "clarification"
-    NEGOTIATION = "negotiation"
     GAP_ANALYSIS = "gap_analysis"
-    ALTERNATIVE_GENERATION = "alternative_generation"
     WORKFLOW_GENERATION = "workflow_generation"
     DEBUG = "debug"
     COMPLETED = "completed"
 
 
 class WorkflowOrigin(str, Enum):
-    """Workflow origin types - 对应proto的origin字段值"""
+    """Workflow origin types"""
     CREATE = "create"
     EDIT = "edit"
     COPY = "copy"
 
 
 class ClarificationPurpose(str, Enum):
-    """澄清目的类型 - 对应proto的purpose字段值"""
+    """Purpose of clarification"""
     
     INITIAL_INTENT = "initial_intent"
     TEMPLATE_MODIFICATION = "template_modification"
-    GAP_RESOLUTION = "gap_resolution"
+    GAP_NEGOTIATION = "gap_negotiation"  # When negotiating gap alternatives with user
+    DEBUG_ISSUE = "debug_issue"
 
 
 class Conversation(TypedDict):
-    """Conversation message - 完全对应proto.Conversation"""
+    """Conversation message"""
 
     role: str  # user, assistant, system
     text: str
@@ -44,68 +43,78 @@ class Conversation(TypedDict):
 
 
 class ClarificationContext(TypedDict):
-    """Context for clarification stage - 完全对应proto.ClarificationContext"""
+    """Context for clarification stage"""
 
-    purpose: NotRequired[ClarificationPurpose]  # 对应proto.purpose
-    collected_info: NotRequired[Dict[str, str]]  # 对应proto.collected_info
-    pending_questions: List[str]  # 对应proto.pending_questions
-    origin: WorkflowOrigin  # 对应proto.origin
+    purpose: NotRequired[str]  # purpose of clarification
+    collected_info: NotRequired[Dict[str, str]]  # collected information
+    pending_questions: NotRequired[List[str]]  # questions awaiting user response
+    origin: NotRequired[str]  # workflow origin
 
 
 class RetrievedDocument(TypedDict):
-    """RAG检索结果 - 对应proto.RAGResult"""
+    """RAG retrieval result"""
     
-    id: str  # 对应proto.id
-    node_type: NotRequired[str]  # 对应proto.node_type
-    title: NotRequired[str]  # 对应proto.title
-    description: NotRequired[str]  # 对应proto.description
-    content: str  # 对应proto.content
-    similarity: float  # 对应proto.similarity
-    metadata: NotRequired[Dict[str, str]]  # 对应proto.metadata
+    id: str
+    node_type: NotRequired[str]
+    title: NotRequired[str]
+    description: NotRequired[str]
+    content: str
+    similarity: float
+    metadata: NotRequired[Dict[str, str]]
 
 
 class RAGContext(TypedDict):
+    """RAG context with retrieval results"""
     results: List[RetrievedDocument] 
     query: str  
     timestamp: NotRequired[int]
     metadata: NotRequired[Dict[str, str]] 
 
 
-class AlternativeOption(TypedDict):
-    """Alternative solution option - 对应proto.AlternativeOption"""
-    
-    id: str
-    title: str
-    description: str
-    approach: str  # 技术方案描述
-    trade_offs: List[str]  # 权衡说明
-    complexity: str  # simple, medium, complex
+class GapDetail(TypedDict):
+    """Detailed gap information from gap analysis"""
+    required_capability: str
+    missing_component: str
+    alternatives: List[str]
 
 
 class WorkflowState(TypedDict):
+    """Complete workflow state for LangGraph processing in 4-node architecture"""
+    
+    # Session and user info
     session_id: str
     user_id: str
     created_at: int  # timestamp in milliseconds
     updated_at: int  # timestamp in milliseconds
 
-    # 当前阶段 (对应proto: stage, previous_stage)
+    # Stage tracking
     stage: WorkflowStage
     previous_stage: NotRequired[WorkflowStage]
+    
+    # Core workflow data
     intent_summary: str
-
-    execution_history: NotRequired[List[str]]
-    clarification_context: ClarificationContext
-
     conversations: List[Conversation]
-
-    gaps: List[str]
-    alternatives: List[AlternativeOption]  # 改为对象列表而非字符串
-
-    current_workflow: object  # 将序列化为current_workflow_json
-    debug_result: str
-    debug_loop_count: int
-
-    workflow_context: NotRequired[Dict[str, Any]]  # 将映射到WorkflowContext
-
-    # RAG上下文 (对应proto: rag_context)
+    execution_history: NotRequired[List[str]]
+    
+    # Clarification context
+    clarification_context: ClarificationContext
+    
+    # Gap analysis results
+    gap_status: NotRequired[str]  # "has_gap" or "no_gap"
+    identified_gaps: NotRequired[List[GapDetail]]  # detailed gap information
+    # gap_resolution removed - using gap_status: "gap_resolved" instead
+    
+    # Workflow data
+    current_workflow: NotRequired[Any]  # workflow JSON object
+    template_workflow: NotRequired[Any]  # template workflow if editing
+    workflow_context: NotRequired[Dict[str, Any]]  # workflow metadata
+    
+    # Debug information
+    debug_result: NotRequired[str]
+    debug_loop_count: NotRequired[int]
+    
+    # RAG context
     rag: NotRequired[RAGContext]
+    
+    # Template information
+    template_id: NotRequired[str]  # template ID if using template
