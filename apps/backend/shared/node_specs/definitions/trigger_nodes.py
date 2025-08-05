@@ -371,3 +371,124 @@ CALENDAR_TRIGGER_SPEC = NodeSpec(
         )
     ],
 )
+
+
+# GitHub trigger - repository event based
+GITHUB_TRIGGER_SPEC = NodeSpec(
+    node_type="TRIGGER_NODE",
+    subtype="TRIGGER_GITHUB",
+    description="GitHub repository trigger for code events and workflows",
+    parameters=[
+        ParameterDef(
+            name="github_app_installation_id",
+            type=ParameterType.STRING,
+            required=True,
+            description="GitHub App installation ID for the connected repository",
+        ),
+        ParameterDef(
+            name="repository",
+            type=ParameterType.STRING,
+            required=True,
+            description="Repository in format 'owner/repo' (e.g., 'microsoft/vscode')",
+            validation_pattern=r"^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$",
+        ),
+        ParameterDef(
+            name="events",
+            type=ParameterType.ARRAY,
+            required=True,
+            description="GitHub webhook events to listen for",
+            enum_values=[
+                "push",
+                "pull_request",
+                "pull_request_review",
+                "issues",
+                "issue_comment",
+                "release",
+                "deployment",
+                "deployment_status",
+                "create",
+                "delete",
+                "fork",
+                "star",
+                "watch",
+                "repository",
+                "member",
+                "team_add",
+                "workflow_run",
+                "workflow_dispatch",
+                "schedule",
+                "check_run",
+                "check_suite",
+            ],
+        ),
+        ParameterDef(
+            name="branches",
+            type=ParameterType.ARRAY,
+            required=False,
+            description="Branch filter (only for push/pull_request events). Empty means all branches",
+        ),
+        ParameterDef(
+            name="paths",
+            type=ParameterType.ARRAY,
+            required=False,
+            description="File path filters using glob patterns (e.g., ['src/**', '*.md'])",
+        ),
+        ParameterDef(
+            name="action_filter",
+            type=ParameterType.ARRAY,
+            required=False,
+            description="Action types to filter on (e.g., ['opened', 'closed', 'synchronize'] for PRs)",
+        ),
+        ParameterDef(
+            name="author_filter",
+            type=ParameterType.STRING,
+            required=False,
+            description="Filter by commit/PR author (username or regex pattern)",
+        ),
+        ParameterDef(
+            name="label_filter",
+            type=ParameterType.ARRAY,
+            required=False,
+            description="Filter by issue/PR labels (any match triggers)",
+        ),
+        ParameterDef(
+            name="ignore_bots",
+            type=ParameterType.BOOLEAN,
+            required=False,
+            default_value=True,
+            description="Ignore events from bot accounts",
+        ),
+        ParameterDef(
+            name="require_signature_verification",
+            type=ParameterType.BOOLEAN,
+            required=False,
+            default_value=True,
+            description="Verify GitHub webhook signature for security",
+        ),
+        ParameterDef(
+            name="draft_pr_handling",
+            type=ParameterType.ENUM,
+            required=False,
+            default_value="ignore",
+            enum_values=["ignore", "include", "only"],
+            description="How to handle draft pull requests",
+        ),
+    ],
+    input_ports=[],
+    output_ports=[
+        OutputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            description="GitHub event data",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"event": "string", "action": "string", "repository": "object", "sender": "object", "payload": "object", "timestamp": "string"}',
+                examples=[
+                    '{"event": "push", "action": null, "repository": {"name": "my-repo", "owner": {"login": "user"}}, "sender": {"login": "developer"}, "payload": {"commits": [{"message": "Fix bug"}]}, "timestamp": "2025-01-28T10:30:00Z"}',
+                    '{"event": "pull_request", "action": "opened", "repository": {"name": "my-repo", "owner": {"login": "user"}}, "sender": {"login": "contributor"}, "payload": {"number": 42, "title": "New feature"}, "timestamp": "2025-01-28T10:30:00Z"}',
+                ],
+            ),
+            validation_schema='{"type": "object", "properties": {"event": {"type": "string"}, "action": {"type": ["string", "null"]}, "repository": {"type": "object"}, "sender": {"type": "object"}, "payload": {"type": "object"}, "timestamp": {"type": "string"}}, "required": ["event", "repository", "sender", "payload", "timestamp"]}',
+        )
+    ],
+)

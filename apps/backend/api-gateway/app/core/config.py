@@ -99,14 +99,19 @@ class ServiceSettings(BaseSettings):
     # HTTP Services Configuration
     WORKFLOW_AGENT_HOST: str = Field(default="localhost", description="工作流代理主机")
     WORKFLOW_ENGINE_HOST: str = Field(default="localhost", description="工作流引擎主机")
+    WORKFLOW_SCHEDULER_HOST: str = Field(default="localhost", description="工作流调度器主机")
     WORKFLOW_AGENT_URL: Optional[str] = Field(
         default=None, description="工作流代理HTTP URL (优先于HOST:PORT)"
     )
     WORKFLOW_ENGINE_URL: Optional[str] = Field(
         default=None, description="工作流引擎HTTP URL (优先于HOST:PORT)"
     )
+    WORKFLOW_SCHEDULER_URL: Optional[str] = Field(
+        default=None, description="工作流调度器HTTP URL (优先于HOST:PORT)"
+    )
     WORKFLOW_AGENT_HTTP_PORT: int = Field(default=8001, description="工作流代理HTTP端口")
     WORKFLOW_ENGINE_HTTP_PORT: int = Field(default=8002, description="工作流引擎HTTP端口")
+    WORKFLOW_SCHEDULER_HTTP_PORT: int = Field(default=8003, description="工作流调度器HTTP端口")
     # HTTP client is the only option now - gRPC removed
 
     @property
@@ -122,6 +127,13 @@ class ServiceSettings(BaseSettings):
         if self.WORKFLOW_ENGINE_URL:
             return self.WORKFLOW_ENGINE_URL
         return f"http://{self.WORKFLOW_ENGINE_HOST}:{self.WORKFLOW_ENGINE_HTTP_PORT}"
+
+    @property
+    def workflow_scheduler_http_url(self) -> str:
+        """获取工作流调度器的 HTTP URL"""
+        if self.WORKFLOW_SCHEDULER_URL:
+            return self.WORKFLOW_SCHEDULER_URL
+        return f"http://{self.WORKFLOW_SCHEDULER_HOST}:{self.WORKFLOW_SCHEDULER_HTTP_PORT}"
 
     # MCP Services
     NODE_KNOWLEDGE_SUPABASE_URL: str = Field(default="", description="节点知识库Supabase URL")
@@ -259,6 +271,7 @@ class Settings(
         return {
             "workflow_agent_url": self.workflow_agent_http_url,
             "workflow_engine_url": self.workflow_engine_http_url,
+            "workflow_scheduler_url": self.workflow_scheduler_http_url,
         }
 
     def get_redis_config(self) -> Dict[str, Union[str, int, Dict[str, int]]]:

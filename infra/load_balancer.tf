@@ -111,6 +111,35 @@ resource "aws_lb_target_group" "workflow_engine_http" {
   }
 }
 
+# Target Group for Workflow Scheduler (HTTP)
+resource "aws_lb_target_group" "workflow_scheduler" {
+  name        = "${local.name_prefix}-scheduler-tg"
+  port        = 8003
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip"
+
+  health_check {
+    enabled             = true
+    healthy_threshold   = 2
+    interval            = 30
+    matcher             = "200"
+    path                = "/health"
+    port                = "traffic-port"
+    protocol            = "HTTP"
+    timeout             = 5
+    unhealthy_threshold = 2
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-workflow-scheduler-tg"
+  })
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
 # ALB Listener for HTTP/HTTPS
 resource "aws_lb_listener" "main" {
   load_balancer_arn = aws_lb.main.arn
@@ -173,6 +202,24 @@ resource "aws_lb_listener_rule" "workflow_engine" {
   condition {
     path_pattern {
       values = ["/v1/workflows*", "/v1/triggers*", "/v1/executions*"]
+    }
+  }
+
+  tags = local.common_tags
+}
+
+resource "aws_lb_listener_rule" "workflow_scheduler" {
+  listener_arn = aws_lb_listener.internal.arn
+  priority     = 300
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.workflow_scheduler.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/api/v1/deployment*", "/api/v1/triggers*"]
     }
   }
 

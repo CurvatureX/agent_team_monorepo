@@ -78,6 +78,18 @@ variable "workflow_agent_memory" {
   default     = 2048
 }
 
+variable "workflow_scheduler_cpu" {
+  description = "CPU units for Workflow Scheduler service"
+  type        = number
+  default     = 512
+}
+
+variable "workflow_scheduler_memory" {
+  description = "Memory for Workflow Scheduler service"
+  type        = number
+  default     = 1024
+}
+
 variable "desired_count" {
   description = "Desired number of tasks"
   type        = number
@@ -127,6 +139,42 @@ variable "database_url" {
   description = "Database connection URL"
   type        = string
   sensitive   = true
+}
+
+# Workflow Scheduler Configuration
+variable "smtp_username" {
+  description = "SMTP username for Migadu email service"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "smtp_password" {
+  description = "SMTP password for Migadu email service"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "github_app_id" {
+  description = "GitHub App ID for GitHub trigger integration"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "github_app_private_key" {
+  description = "GitHub App private key for GitHub trigger integration"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "github_webhook_secret" {
+  description = "GitHub webhook secret for GitHub trigger integration"
+  type        = string
+  sensitive   = true
+  default     = ""
 }
 
 # Monitoring Configuration

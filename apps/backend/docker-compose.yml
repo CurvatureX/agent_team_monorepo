@@ -117,6 +117,43 @@ services:
     networks:
       - agent-team-network
 
+  # Workflow Scheduler - Workflow trigger management (FastAPI service on port 8003)
+  workflow-scheduler:
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    build:
+      context: .
+      dockerfile: ./workflow_scheduler/Dockerfile
+    container_name: agent-team-workflow-scheduler
+    ports:
+      - "8003:8003"
+    env_file:
+      - ./.env
+    environment:
+      # Override specific settings
+      PYTHONPATH: "/app"
+      PYTHONUNBUFFERED: "1"
+      REDIS_URL: "redis://redis:6379/1"  # Use different Redis DB
+      SERVICE_NAME: "workflow-scheduler"
+      # Service URLs for internal communication
+      WORKFLOW_ENGINE_URL: "http://workflow-engine:8002"
+      API_GATEWAY_URL: "http://api-gateway:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - workflow_scheduler_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s # Scheduler needs time to initialize triggers
+    restart: unless-stopped
+    networks:
+      - agent-team-network
+
   # ======================
   # Frontend Gateway (HTTP)
   # ======================
@@ -140,6 +177,8 @@ services:
       - WORKFLOW_ENGINE_PORT=8002
       - WORKFLOW_AGENT_HOST=workflow-agent
       - WORKFLOW_AGENT_PORT=8001
+      - WORKFLOW_SCHEDULER_HOST=workflow-scheduler
+      - WORKFLOW_SCHEDULER_HTTP_PORT=8003
       - USE_HTTP_CLIENT=true
     dns:
       - 8.8.8.8
@@ -174,6 +213,8 @@ volumes:
   workflow_agent_logs:
     driver: local
   workflow_engine_logs:
+    driver: local
+  workflow_scheduler_logs:
     driver: local
   api_gateway_logs:
     driver: local
