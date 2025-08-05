@@ -1,6 +1,5 @@
 """
 Workflow Agent Service - FastAPI-based AI Agent for workflow generation
-Migrated from gRPC to FastAPI while preserving the same logic
 """
 
 import asyncio
@@ -55,13 +54,13 @@ class FastAPIServer:
             )
             self.server = uvicorn.Server(config)
             
-            logger.info(f"FastAPI server started successfully on port {port}")
+            logger.info("FastAPI server started successfully", extra={"port": port})
             await self.server.serve()
             
         except Exception as e:
-            logger.error(f"Failed to start FastAPI server: {str(e)}")
+            logger.error("Failed to start FastAPI server", extra={"error": str(e)})
             import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
+            logger.error("Traceback details", extra={"traceback": traceback.format_exc()})
             raise
             
     async def stop(self):
@@ -87,7 +86,7 @@ async def main():
 
     # Setup graceful shutdown
     def signal_handler(signum, frame):
-        logger.info(f"Received shutdown signal {signum}")
+        logger.info("Received shutdown signal", extra={"signum": signum})
         asyncio.create_task(server.stop())
 
     signal.signal(signal.SIGINT, signal_handler)
@@ -96,16 +95,16 @@ async def main():
     try:
         logger.info("Starting FastAPI server...")
         await server.start()
-        logger.info(f"Workflow Agent Service started successfully on port {settings.FASTAPI_PORT}")
+        logger.info("Workflow Agent Service started successfully", extra={"port": settings.FASTAPI_PORT})
 
         # Keep the server running
         logger.info("Waiting for server termination...")
         await server.wait_for_termination()
 
     except Exception as e:
-        logger.error(f"Failed to start Workflow Agent Service: {str(e)}")
+        logger.error("Failed to start Workflow Agent Service", extra={"error": str(e)})
         import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
+        logger.error("Traceback details", extra={"traceback": traceback.format_exc()})
         sys.exit(1)
     finally:
         logger.info("Workflow Agent Service stopped")

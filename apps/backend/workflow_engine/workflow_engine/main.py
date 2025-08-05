@@ -3,6 +3,7 @@ Main gRPC server application.
 """
 
 import logging
+import os
 import sys
 import time
 from pathlib import Path
@@ -10,7 +11,7 @@ from typing import Optional
 
 import grpc
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 # Add backend directory to Python path for shared models
@@ -54,7 +55,9 @@ app = FastAPI(
 )
 
 # 初始化遥测系统
-setup_telemetry(app, service_name="workflow-engine", service_version="1.0.0")
+# 从环境变量获取 OTLP 端点，默认使用 otel-collector
+otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4317")
+setup_telemetry(app, service_name="workflow-engine", service_version="1.0.0", otlp_endpoint=otlp_endpoint)
 
 # 添加遥测中间件
 app.add_middleware(TrackingMiddleware)  # type: ignore
@@ -63,6 +66,32 @@ app.add_middleware(MetricsMiddleware, service_name="workflow-engine")  # type: i
 @app.on_event("startup")
 def on_startup():
     logger.info("Workflow Engine service starting up")
+    
+
+# Trace ID middleware
+@app.middleware("http")
+async def trace_id_middleware(request: Request, call_next):
+    """Extract and propagate trace_id from request headers"""
+    trace_id = request.headers.get("x-trace-id") or request.headers.get("X-Trace-ID")
+    
+    if trace_id:
+        # Store trace_id in request state for access in endpoints
+        request.state.trace_id = trace_id
+        
+        # Configure logging to include trace_id
+        import contextvars
+        trace_id_context = contextvars.ContextVar('trace_id', default=None)
+        trace_id_context.set(trace_id)
+        
+        logger.info(f"Request received with trace_id: {trace_id}")
+    
+    response = await call_next(request)
+    
+    # Optionally add trace_id to response headers
+    if trace_id:
+        response.headers["X-Trace-ID"] = trace_id
+    
+    return response
 
 
 @app.on_event("shutdown")
