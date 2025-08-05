@@ -20,6 +20,7 @@ from app.models import (
     WorkflowUpdate,
 )
 from app.services.workflow_engine_http_client import get_workflow_engine_client
+from app.utils.node_converter import convert_nodes_for_workflow_engine, convert_connections_for_workflow_engine
 from fastapi import APIRouter, Depends, HTTPException
 
 logger = logging.getLogger(__name__)
@@ -67,14 +68,27 @@ async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Dep
 
         http_client = await get_workflow_engine_client()
 
+        # Convert nodes from API Gateway format to Workflow Engine format
+        nodes_list = []
+        if request.nodes:
+            # Convert WorkflowNode objects to dicts
+            nodes_list = [node.model_dump() for node in request.nodes]
+            # Convert to Workflow Engine format
+            nodes_list = convert_nodes_for_workflow_engine(nodes_list)
+        
+        # Convert connections if needed
+        connections_dict = request.connections or {}
+        if connections_dict and nodes_list:
+            connections_dict = convert_connections_for_workflow_engine(connections_dict, nodes_list)
+
         # Create workflow via HTTP
         result = await http_client.create_workflow(
             name=request.name,
             description=request.description,
-            nodes=request.nodes or [],
-            connections=request.connections or {},
+            nodes=nodes_list,
+            connections=connections_dict,
             settings=request.settings or {},
-            static_data=request.static_data or {},
+            static_data=getattr(request, 'static_data', None) or {},
             tags=request.tags or [],
             user_id=deps.current_user.sub,
         )
