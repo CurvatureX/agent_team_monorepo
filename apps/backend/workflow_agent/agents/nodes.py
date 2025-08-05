@@ -232,6 +232,10 @@ class WorkflowAgentNodes:
                     if "rag" not in state:
                         state["rag"] = {"query": user_input, "results": []}
 
+            # Track clarification rounds
+            clarification_round = state.get("clarification_round", 0)
+            state["clarification_round"] = clarification_round + 1
+            
             # Use separate system and user prompt files for clarification
             template_context = {
                 "origin": origin,
@@ -245,6 +249,8 @@ class WorkflowAgentNodes:
                 "identified_gaps": state.get("identified_gaps", []),
                 "template_workflow": state.get("template_workflow"),
                 "rag_context": state.get("rag"),
+                "clarification_context": clarification_context,
+                "clarification_round": clarification_round,
             }
 
             system_prompt = await self.prompt_engine.render_prompt(
@@ -290,11 +296,34 @@ class WorkflowAgentNodes:
 
                 logger.info("Clarification analysis", extra={"analysis": analysis})
 
-                # clarification_f2 format: clarification_question, is_complete, intent_summary
+                # clarification_f2 format: clarification_question, is_complete, intent_summary, gap_resolution
                 clarification_question = analysis.get("clarification_question", "")
                 is_complete = analysis.get("is_complete", False)
                 intent_summary = analysis.get("intent_summary", "")
+                gap_resolution = analysis.get("gap_resolution", {})
+                
+                # Handle gap resolution
+                if purpose == "gap_negotiation" and gap_resolution.get("user_selected_alternative", False):
+                    confidence = gap_resolution.get("confidence", 0)
+                    selected_index = gap_resolution.get("selected_index")
+                    
+                    if confidence > 0.7 and selected_index is not None:
+                        logger.info("User selected alternative", extra={
+                            "selected_index": selected_index,
+                            "confidence": confidence
+                        })
+                        state["selected_alternative_index"] = selected_index
+                        state["gap_status"] = "gap_resolved"
+                        # Skip further clarification and go directly to workflow generation
+                        return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
 
+                # Force completion after 1 round for consumer experience
+                if clarification_round >= 1 and not is_complete:
+                    logger.info("Forcing completion after 1 round", extra={"round": clarification_round})
+                    is_complete = True
+                    if not intent_summary:
+                        intent_summary = f"{intent_summary or 'User workflow request'}. Using smart defaults for configuration."
+                
                 # Determine if we need more clarification
                 needs_clarification = not is_complete
                 questions = [clarification_question] if clarification_question and not is_complete else []
@@ -313,6 +342,11 @@ class WorkflowAgentNodes:
                 )
                 needs_clarification = "?" in response_text or "clarif" in response_text.lower()
                 questions = []
+                gap_resolution = {"user_selected_alternative": False, "selected_index": None, "confidence": 0.0}
+                
+                # Force completion after 1 round even in fallback
+                if clarification_round >= 1:
+                    needs_clarification = False
 
             # Update state
             state["intent_summary"] = intent_summary
@@ -346,9 +380,12 @@ class WorkflowAgentNodes:
         try:
             intent_summary = state.get("intent_summary", "")
             
-            # Check if gaps have been resolved
+            # Check if gaps have been resolved (user selected an alternative)
             if state.get("gap_status") == "gap_resolved":
                 logger.info("Gaps have been resolved, proceeding to workflow generation")
+                selected_index = state.get("selected_alternative_index")
+                if selected_index is not None:
+                    logger.info("User selected alternative", extra={"index": selected_index})
                 return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
 
             # Use separate system and user prompt files for capability gap analysis
@@ -425,6 +462,12 @@ class WorkflowAgentNodes:
             # Update state with gap analysis results
             state["gap_status"] = gap_status
             state["identified_gaps"] = identified_gaps
+            
+            logger.info("Gap analysis results", extra={
+                "gap_status": gap_status,
+                "gaps_count": len(identified_gaps),
+                "has_negotiation": bool(negotiation_phrase)
+            })
 
             if gap_status == "has_gap" and identified_gaps:
                 # We have gaps with alternatives - send negotiation phrase to user
@@ -436,6 +479,13 @@ class WorkflowAgentNodes:
                 clarification_context["purpose"] = "gap_negotiation"
                 clarification_context["pending_questions"] = [negotiation_phrase] if negotiation_phrase else []
                 state["clarification_context"] = clarification_context
+                
+                # Log the gaps for debugging
+                for i, gap in enumerate(identified_gaps):
+                    logger.info(f"Gap {i}", extra={
+                        "capability": gap.get("required_capability"),
+                        "alternatives_count": len(gap.get("alternatives", []))
+                    })
                 
                 # Go back to clarification to get user's choice
                 return {**state, "stage": WorkflowStage.CLARIFICATION}
