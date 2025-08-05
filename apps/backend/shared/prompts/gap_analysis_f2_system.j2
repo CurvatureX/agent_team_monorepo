@@ -79,7 +79,6 @@ You must ALWAYS output in the following JSON format:
 {
   "gap_status": "no_gap|has_gap|gap_resolved",
   "negotiation_phrase": "string or null",
-  "gap_resolution": "string or null",
   "identified_gaps": [
     {
       "required_capability": "string",
@@ -99,10 +98,6 @@ You must ALWAYS output in the following JSON format:
 
 - **negotiation_phrase**:
   - When `gap_status` is `"has_gap"`: Friendly negotiation message proposing alternatives
-  - Otherwise: `null`
-
-- **gap_resolution**:
-  - When `gap_status` is `"gap_resolved"`: Complete resolution plan based on user's choice
   - Otherwise: `null`
 
 - **identified_gaps**: Array of gap objects (empty when no gaps)

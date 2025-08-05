@@ -169,6 +169,7 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                     user_id=deps.current_user.sub,
                     workflow_context=workflow_context,
                     access_token=deps.access_token,
+                    trace_id=getattr(deps.request.state, "trace_id", None),
                 ):
                     logger.info(f"🔄 Received response: {response}")
 
@@ -281,11 +282,11 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                             event_type=SSEEventType.WORKFLOW,
                             data={"text": workflow_message, "workflow": workflow_data},
                             session_id=chat_request.session_id,
-                            is_final=response.get("is_final", True)
+                            is_final=response.get("is_final", False)
                         )
                         yield format_sse_event(workflow_event.model_dump())
 
-                        if response.get("is_final", True):
+                        if response.get("is_final", False):
                             break
 
                     # Handle unknown response types
@@ -327,7 +328,9 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
     except (ValidationError, NotFoundError, HTTPException):
         raise
     except Exception as e:
+        import traceback
         logger.error(f"❌ Error in chat stream: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
