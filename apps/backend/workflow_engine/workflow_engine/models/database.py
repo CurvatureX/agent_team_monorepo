@@ -64,10 +64,14 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_db() -> Generator[Session, None, None]:
     """Get database session."""
+    import sys
+    print(f"[DB] Creating database session", file=sys.stderr, flush=True)
     db = SessionLocal()
+    print(f"[DB] Database session created: {type(db)}", file=sys.stderr, flush=True)
     try:
         yield db
     finally:
+        print(f"[DB] Closing database session", file=sys.stderr, flush=True)
         db.close()
 
 

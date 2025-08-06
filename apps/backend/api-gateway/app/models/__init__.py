@@ -47,9 +47,11 @@ try:
         WorkflowResponse,
         NodeTemplateListResponse,
     )
-    from shared.models import WorkflowCreateRequest as WorkflowCreate
-    from shared.models import WorkflowEntity as Workflow
-    from shared.models import WorkflowUpdateRequest as WorkflowUpdate
+    # 使用 Workflow Engine 的模型定义
+    from shared.models import CreateWorkflowRequest as WorkflowCreate
+    from shared.models import WorkflowData as Workflow
+    from shared.models import UpdateWorkflowRequest as WorkflowUpdate
+    from shared.models import NodeData, PositionData, WorkflowSettingsData
 except ImportError:
     # 如果直接导入失败，尝试添加路径后导入
     import sys
@@ -100,9 +102,11 @@ except ImportError:
         WorkflowResponse,
         NodeTemplateListResponse,
     )
-    from shared.models import WorkflowCreateRequest as WorkflowCreate
-    from shared.models import WorkflowEntity as Workflow
-    from shared.models import WorkflowUpdateRequest as WorkflowUpdate
+    # 使用 Workflow Engine 的模型定义
+    from shared.models import CreateWorkflowRequest as WorkflowCreate
+    from shared.models import WorkflowData as Workflow
+    from shared.models import UpdateWorkflowRequest as WorkflowUpdate
+    from shared.models import NodeData, PositionData, WorkflowSettingsData
 
 # 向后兼容别名
 HealthResponse = HealthCheckModel
@@ -135,6 +139,9 @@ __all__ = [
     "WorkflowExecutionResponse",
     "WorkflowResponse",
     "NodeTemplateListResponse",
+    "NodeData",
+    "PositionData",
+    "WorkflowSettingsData",
     # Conversation models
     "ConversationRequest",
     "ConversationResponse",

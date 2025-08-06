@@ -141,6 +141,10 @@ __all__ = [
     # execution.py
     "ExecutionStatus",
     "ExecutionLog",
+    "NodePerformanceMetrics",
+    "NodeExecutionResult", 
+    "ExecutionPerformanceMetrics",
+    "ExecutionRunData",
     "Execution",
     # trigger.py
     "TriggerType",
