@@ -29,7 +29,11 @@ jobs:
           node-version: '18'
 
       - name: Install Supabase CLI
-        run: npm install -g supabase
+        run: |
+          curl -L https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz -o supabase.tar.gz
+          tar -xzf supabase.tar.gz
+          sudo mv supabase /usr/local/bin/supabase
+          chmod +x /usr/local/bin/supabase
 
       - name: Check pending migrations
         run: ./scripts/supabase-migrate.sh check
@@ -50,7 +54,11 @@ jobs:
           node-version: '18'
 
       - name: Install Supabase CLI
-        run: npm install -g supabase
+        run: |
+          curl -L https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz -o supabase.tar.gz
+          tar -xzf supabase.tar.gz
+          sudo mv supabase /usr/local/bin/supabase
+          chmod +x /usr/local/bin/supabase
 
       - name: Apply migrations
         run: ./scripts/supabase-migrate.sh migrate
