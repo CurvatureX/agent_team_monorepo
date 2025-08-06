@@ -30,10 +30,17 @@ jobs:
 
       - name: Install Supabase CLI
         run: |
-          curl -L https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz -o supabase.tar.gz
-          tar -xzf supabase.tar.gz
-          sudo mv supabase /usr/local/bin/supabase
-          chmod +x /usr/local/bin/supabase
+          if ! command -v supabase &> /dev/null; then
+            echo "Installing Supabase CLI..."
+            curl -L https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz -o supabase.tar.gz
+            tar -xzf supabase.tar.gz
+            sudo mv supabase /usr/local/bin/supabase
+            chmod +x /usr/local/bin/supabase
+            rm supabase.tar.gz
+          else
+            echo "Supabase CLI already installed"
+            supabase --version
+          fi
 
       - name: Check pending migrations
         run: ./scripts/supabase-migrate.sh check
@@ -55,10 +62,17 @@ jobs:
 
       - name: Install Supabase CLI
         run: |
-          curl -L https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz -o supabase.tar.gz
-          tar -xzf supabase.tar.gz
-          sudo mv supabase /usr/local/bin/supabase
-          chmod +x /usr/local/bin/supabase
+          if ! command -v supabase &> /dev/null; then
+            echo "Installing Supabase CLI..."
+            curl -L https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz -o supabase.tar.gz
+            tar -xzf supabase.tar.gz
+            sudo mv supabase /usr/local/bin/supabase
+            chmod +x /usr/local/bin/supabase
+            rm supabase.tar.gz
+          else
+            echo "Supabase CLI already installed"
+            supabase --version
+          fi
 
       - name: Apply migrations
         run: ./scripts/supabase-migrate.sh migrate
