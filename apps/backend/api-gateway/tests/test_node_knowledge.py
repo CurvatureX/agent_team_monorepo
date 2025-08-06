@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
 Test script for the Node Knowledge MCP Server implementation.
+
+NOTE: This test is excluded from pre-commit hooks (.pre-commit-config.yaml)
+because it requires external dependencies and specific environment setup
+that may not be available in CI/CD environments.
 """
 
 import asyncio
-import json
-import os
 import sys
 from pathlib import Path
 
@@ -14,9 +16,11 @@ current_dir = Path(__file__).parent
 shared_path = current_dir / "../../../shared"
 sys.path.insert(0, str(shared_path))
 
+import pytest
 from app.api.mcp.tools import NodeKnowledgeMCPService
 
 
+@pytest.mark.asyncio
 async def test_node_knowledge_mcp():
     """Test all MCP tools for node knowledge access."""
 
@@ -39,9 +43,9 @@ async def test_node_knowledge_mcp():
     print("\n2. Testing get_node_types (all types)")
     print("-" * 40)
     result = await service.invoke_tool("get_node_types", {})
-    print(f"Success: {result.success}")
-    if result.success:
-        node_types = result.result
+    print(f"Success: {not result.isError}")
+    if not result.isError:
+        node_types = result.structuredContent
         print(f"Found {len(node_types)} node types:")
         for node_type, subtypes in node_types.items():
             print(f"  {node_type}: {len(subtypes)} subtypes")
@@ -52,9 +56,9 @@ async def test_node_knowledge_mcp():
     print("\n3. Testing get_node_types (ACTION_NODE filter)")
     print("-" * 40)
     result = await service.invoke_tool("get_node_types", {"type_filter": "ACTION_NODE"})
-    print(f"Success: {result.success}")
-    if result.success and result.result:
-        action_nodes = result.result.get("ACTION_NODE", [])
+    print(f"Success: {not result.isError}")
+    if not result.isError and result.structuredContent:
+        action_nodes = result.structuredContent.get("ACTION_NODE", [])
         print(f"ACTION_NODE subtypes ({len(action_nodes)}): {action_nodes}")
 
     # Test 4: Search nodes
@@ -66,10 +70,11 @@ async def test_node_knowledge_mcp():
         result = await service.invoke_tool(
             "search_nodes", {"query": query, "max_results": 3, "include_details": False}
         )
-        print(f"Query '{query}': {result.success}")
-        if result.success and result.result:
-            print(f"  Found {len(result.result)} matches:")
-            for match in result.result:
+        print(f"Query '{query}': {not result.isError}")
+        if not result.isError and result.structuredContent:
+            matches = result.structuredContent.get("data", [])
+            print(f"  Found {len(matches)} matches:")
+            for match in matches:
                 print(
                     f"    {match['node_type']}.{match['subtype']} (score: {match['relevance_score']})"
                 )
@@ -90,9 +95,10 @@ async def test_node_knowledge_mcp():
         {"nodes": test_nodes, "include_examples": True, "include_schemas": False},
     )
 
-    print(f"Success: {result.success}")
-    if result.success and result.result:
-        for node_detail in result.result:
+    print(f"Success: {not result.isError}")
+    if not result.isError and result.structuredContent:
+        node_details = result.structuredContent.get("nodes", [])
+        for node_detail in node_details:
             if "error" in node_detail:
                 print(
                     f"  {node_detail['node_type']}.{node_detail['subtype']}: {node_detail['error']}"
@@ -112,16 +118,19 @@ async def test_node_knowledge_mcp():
 
     # Test invalid tool
     result = await service.invoke_tool("invalid_tool", {})
-    print(f"Invalid tool result: success={result.success}, error='{result.error}'")
+    error_msg = result.content[0].text if result.content else "No error message"
+    print(f"Invalid tool result: success={not result.isError}, error='{error_msg}'")
 
     # Test invalid node
     result = await service.invoke_tool(
         "get_node_details", {"nodes": [{"node_type": "INVALID_NODE", "subtype": "INVALID_SUBTYPE"}]}
     )
-    print(f"Invalid node result: success={result.success}")
-    if result.success and result.result:
-        invalid_result = result.result[0]
-        print(f"  Error: {invalid_result.get('error', 'No error message')}")
+    print(f"Invalid node result: success={not result.isError}")
+    if not result.isError and result.structuredContent:
+        node_details = result.structuredContent.get("nodes", [])
+        if node_details:
+            invalid_result = node_details[0]
+            print(f"  Error: {invalid_result.get('error', 'No error message')}")
 
     # Test 7: Health check
     print("\n7. Testing health_check")
