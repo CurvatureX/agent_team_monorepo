@@ -9,11 +9,11 @@ import sys
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
-load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".env"))
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-from shared.email_client import EmailMessage, MigaduEmailClient
+from shared.sdks.email_client import EmailMessage, MigaduEmailClient
 
 
 def test_migadu_connection():

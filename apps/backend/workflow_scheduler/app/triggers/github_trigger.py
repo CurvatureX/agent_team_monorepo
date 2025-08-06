@@ -13,6 +13,15 @@ from ..core.config import settings
 from ..models.triggers import ExecutionResult, TriggerStatus
 from .base import BaseTrigger
 
+# Import our GitHub SDK for enhanced functionality
+try:
+    from shared.sdks.github_sdk import GitHubSDK
+
+    GITHUB_SDK_AVAILABLE = True
+except ImportError:
+    GITHUB_SDK_AVAILABLE = False
+    logging.warning("GitHub SDK not available, using basic PyGithub client")
+
 logger = logging.getLogger(__name__)
 
 
@@ -46,6 +55,7 @@ class GitHubTrigger(BaseTrigger):
         self._github_client: Optional[Github] = None
         self._access_token: Optional[str] = None
         self._token_expires_at: Optional[float] = None
+        self._github_sdk: Optional[GitHubSDK] = None
 
     @property
     def trigger_type(self) -> str:
@@ -63,6 +73,16 @@ class GitHubTrigger(BaseTrigger):
             self._integration = GithubIntegration(
                 integration_id=int(self.app_id), private_key=self.private_key
             )
+
+            # Initialize GitHub SDK if available
+            if GITHUB_SDK_AVAILABLE:
+                try:
+                    self._github_sdk = GitHubSDK(app_id=self.app_id, private_key=self.private_key)
+                    logger.info(f"GitHub SDK initialized for workflow {self.workflow_id}")
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to initialize GitHub SDK: {e}, falling back to PyGithub"
+                    )
 
             # Test access token generation
             access_token = await self._get_access_token()
@@ -92,6 +112,15 @@ class GitHubTrigger(BaseTrigger):
             self.status = TriggerStatus.STOPPED
             self._access_token = None
             self._token_expires_at = None
+
+            # Clean up GitHub SDK
+            if self._github_sdk:
+                try:
+                    await self._github_sdk.close()
+                except Exception as e:
+                    logger.warning(f"Error closing GitHub SDK: {e}")
+                finally:
+                    self._github_sdk = None
 
             logger.info(f"GitHub trigger stopped for workflow {self.workflow_id}")
 
@@ -349,12 +378,51 @@ class GitHubTrigger(BaseTrigger):
     async def _get_pr_context(self, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Get additional PR context using GitHub API"""
         try:
-            access_token = await self._get_access_token()
-            if not access_token:
-                return None
-
             pr_number = payload.get("pull_request", {}).get("number")
             if not pr_number:
+                return None
+
+            # Use GitHub SDK if available for enhanced functionality
+            if self._github_sdk and GITHUB_SDK_AVAILABLE:
+                try:
+                    # Get comprehensive PR context using our SDK
+                    pr_data = await self._github_sdk.get_pull_request(
+                        self.installation_id, self.repository, pr_number
+                    )
+
+                    pr_files = await self._github_sdk.get_pull_request_files(
+                        self.installation_id, self.repository, pr_number
+                    )
+
+                    pr_comments = await self._github_sdk.list_pull_request_comments(
+                        self.installation_id, self.repository, pr_number
+                    )
+
+                    # Try to get PR diff
+                    pr_diff = None
+                    try:
+                        pr_diff = await self._github_sdk.get_pull_request_diff(
+                            self.installation_id, self.repository, pr_number
+                        )
+                    except Exception as e:
+                        logger.debug(f"Could not get PR diff: {e}")
+
+                    return {
+                        "pr_details": pr_data.dict(),
+                        "files": pr_files,
+                        "comments": [comment.dict() for comment in pr_comments],
+                        "diff": pr_diff,
+                        "source": "github_sdk",
+                    }
+
+                except Exception as e:
+                    logger.warning(
+                        f"GitHub SDK failed to get PR context, falling back to httpx: {e}"
+                    )
+
+            # Fallback to direct API calls
+            access_token = await self._get_access_token()
+            if not access_token:
                 return None
 
             async with httpx.AsyncClient() as client:
@@ -368,7 +436,8 @@ class GitHubTrigger(BaseTrigger):
                 )
 
                 pr_context = {
-                    "pr_details": pr_response.json() if pr_response.status_code == 200 else None
+                    "pr_details": pr_response.json() if pr_response.status_code == 200 else None,
+                    "source": "direct_api",
                 }
 
                 # Get PR files
@@ -461,6 +530,8 @@ class GitHubTrigger(BaseTrigger):
             "events": self.events,
             "has_access_token": self._access_token is not None,
             "token_expires_soon": False,
+            "github_sdk_available": GITHUB_SDK_AVAILABLE,
+            "using_github_sdk": self._github_sdk is not None,
         }
 
         # Check token expiration

@@ -6,9 +6,9 @@ Example usage of Migadu email client for Starmates AI services
 import os
 import sys
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-from shared.email_client import BulkEmailMessage, EmailMessage, MigaduEmailClient
+from shared.sdks.email_client import BulkEmailMessage, EmailMessage, MigaduEmailClient
 
 # Starmates AI email configuration
 STARMATES_EMAIL_CONFIG = {

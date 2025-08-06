@@ -863,4 +863,416 @@ pytest tests/
 docker build -t workflow-scheduler --platform linux/amd64 .
 ```
 
-这个设计专注于workflow_scheduler的实现，完全移除了workflow_runtime的历史包袱，提供了清晰、可实现的架构方案。
+## 10. 触发器反查和匹配机制
+
+### 10.1. 问题分析
+
+**核心挑战**：当外部事件发生时（如GitHub webhook、邮件到达、定时任务触发），系统需要快速找到所有匹配的workflow触发器。
+
+**现有问题**：
+- Workflow定义中触发器配置分散，难以建立反向索引
+- 事件过滤逻辑复杂（分支、路径、作者等），无法预计算
+- 需要遍历所有部署的workflow才能找到匹配项，性能低下
+
+### 10.2. 触发器索引设计
+
+**数据库索引表**：
+```sql
+-- 触发器快速查找索引表
+CREATE TABLE trigger_index (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workflow_id UUID NOT NULL,
+    trigger_type TEXT NOT NULL, -- 'cron', 'webhook', 'email', 'github', 'manual'
+    trigger_config JSONB NOT NULL, -- 触发器完整配置
+
+    -- 快速匹配字段
+    cron_expression TEXT, -- cron表达式 (仅cron类型)
+    webhook_path TEXT, -- webhook路径 (仅webhook类型)
+    email_filter TEXT, -- 邮件过滤器 (仅email类型)
+
+    -- GitHub触发器索引字段
+    github_repository TEXT, -- 仓库名 'owner/repo' (仅github类型)
+    github_events TEXT[], -- 事件类型数组 (仅github类型)
+    github_installation_id BIGINT, -- GitHub App安装ID (仅github类型)
+
+    -- 元数据
+    deployment_status TEXT DEFAULT 'active', -- 'active', 'paused', 'stopped'
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 索引优化
+CREATE INDEX idx_trigger_type ON trigger_index(trigger_type);
+CREATE INDEX idx_github_repo_events ON trigger_index(github_repository, github_events)
+    WHERE trigger_type = 'github';
+CREATE INDEX idx_webhook_path ON trigger_index(webhook_path)
+    WHERE trigger_type = 'webhook';
+CREATE INDEX idx_deployment_status ON trigger_index(deployment_status);
+```
+
+### 10.3. 快速匹配算法
+
+**事件路由器 (EventRouter)**：
+```python
+class EventRouter:
+    def __init__(self, db_session):
+        self.db = db_session
+
+    async def find_matching_workflows(self, event_type: str, event_data: dict) -> List[TriggerMatch]:
+        """根据事件类型和数据快速找到匹配的触发器"""
+
+        if event_type == "github":
+            return await self._find_github_matches(event_data)
+        elif event_type == "webhook":
+            return await self._find_webhook_matches(event_data)
+        elif event_type == "email":
+            return await self._find_email_matches(event_data)
+        elif event_type == "cron":
+            return await self._find_cron_matches(event_data)
+
+        return []
+
+    async def _find_github_matches(self, event_data: dict) -> List[TriggerMatch]:
+        """GitHub事件快速匹配"""
+        repository = event_data["repository"]["full_name"]
+        event_type = event_data["event"]
+
+        # 1. 基础索引查询 - 快速筛选
+        base_query = """
+        SELECT workflow_id, trigger_config
+        FROM trigger_index
+        WHERE trigger_type = 'github'
+          AND deployment_status = 'active'
+          AND github_repository = %s
+          AND %s = ANY(github_events)
+        """
+
+        candidates = await self.db.fetch_all(base_query, repository, event_type)
+
+        # 2. 高级过滤 - 详细匹配
+        matches = []
+        for candidate in candidates:
+            trigger_config = candidate["trigger_config"]
+
+            if self._matches_github_filters(event_data, trigger_config):
+                matches.append(TriggerMatch(
+                    workflow_id=candidate["workflow_id"],
+                    trigger_config=trigger_config,
+                    match_score=self._calculate_match_score(event_data, trigger_config)
+                ))
+
+        return matches
+
+    def _matches_github_filters(self, event_data: dict, config: dict) -> bool:
+        """应用GitHub高级过滤器"""
+        # 分支过滤
+        if config.get("branches"):
+            if event_data["event"] == "push":
+                branch = event_data["payload"]["ref"].replace("refs/heads/", "")
+            elif event_data["event"] == "pull_request":
+                branch = event_data["payload"]["pull_request"]["base"]["ref"]
+            else:
+                branch = None
+
+            if branch and branch not in config["branches"]:
+                return False
+
+        # 路径过滤
+        if config.get("paths"):
+            changed_files = self._extract_changed_files(event_data)
+            if not self._matches_path_patterns(changed_files, config["paths"]):
+                return False
+
+        # 作者过滤
+        if config.get("author_filter"):
+            author = self._extract_author(event_data)
+            if not re.match(config["author_filter"], author):
+                return False
+
+        # 动作过滤
+        if config.get("action_filter"):
+            action = event_data.get("action")
+            if action and action not in config["action_filter"]:
+                return False
+
+        return True
+
+    async def _find_webhook_matches(self, event_data: dict) -> List[TriggerMatch]:
+        """Webhook路径直接匹配"""
+        webhook_path = event_data["path"]
+
+        query = """
+        SELECT workflow_id, trigger_config
+        FROM trigger_index
+        WHERE trigger_type = 'webhook'
+          AND deployment_status = 'active'
+          AND webhook_path = %s
+        """
+
+        results = await self.db.fetch_all(query, webhook_path)
+
+        return [
+            TriggerMatch(
+                workflow_id=result["workflow_id"],
+                trigger_config=result["trigger_config"],
+                match_score=1.0  # 精确匹配
+            )
+            for result in results
+        ]
+```
+
+### 10.4. 触发器注册管理
+
+**TriggerIndexManager**：
+```python
+class TriggerIndexManager:
+    def __init__(self, db_session):
+        self.db = db_session
+
+    async def register_workflow_triggers(self, workflow_id: str, workflow_spec: dict):
+        """注册workflow的所有触发器到索引表"""
+
+        # 清除旧的索引记录
+        await self.db.execute(
+            "DELETE FROM trigger_index WHERE workflow_id = %s",
+            workflow_id
+        )
+
+        # 解析workflow中的触发器节点
+        trigger_nodes = self._extract_trigger_nodes(workflow_spec)
+
+        for trigger_node in trigger_nodes:
+            await self._index_trigger(workflow_id, trigger_node)
+
+    async def _index_trigger(self, workflow_id: str, trigger_node: dict):
+        """将单个触发器添加到索引"""
+        trigger_type = trigger_node["subtype"].replace("TRIGGER_", "").lower()
+        trigger_config = trigger_node["parameters"]
+
+        index_data = {
+            "workflow_id": workflow_id,
+            "trigger_type": trigger_type,
+            "trigger_config": trigger_config,
+            "deployment_status": "active"
+        }
+
+        # 根据触发器类型填充索引字段
+        if trigger_type == "github":
+            index_data.update({
+                "github_repository": trigger_config["repository"],
+                "github_events": trigger_config["events"],
+                "github_installation_id": trigger_config["github_app_installation_id"]
+            })
+        elif trigger_type == "webhook":
+            index_data.update({
+                "webhook_path": trigger_config.get("webhook_path", f"/webhook/{workflow_id}")
+            })
+        elif trigger_type == "email":
+            index_data.update({
+                "email_filter": trigger_config.get("email_filter", "")
+            })
+        elif trigger_type == "cron":
+            index_data.update({
+                "cron_expression": trigger_config["cron_expression"]
+            })
+
+        await self.db.execute(
+            """
+            INSERT INTO trigger_index (
+                workflow_id, trigger_type, trigger_config,
+                github_repository, github_events, github_installation_id,
+                webhook_path, email_filter, cron_expression, deployment_status
+            ) VALUES (
+                %(workflow_id)s, %(trigger_type)s, %(trigger_config)s,
+                %(github_repository)s, %(github_events)s, %(github_installation_id)s,
+                %(webhook_path)s, %(email_filter)s, %(cron_expression)s, %(deployment_status)s
+            )
+            """,
+            index_data
+        )
+
+    def _extract_trigger_nodes(self, workflow_spec: dict) -> List[dict]:
+        """从workflow定义中提取所有触发器节点"""
+        trigger_nodes = []
+
+        for node in workflow_spec.get("nodes", []):
+            if node.get("node_type") == "TRIGGER_NODE":
+                trigger_nodes.append(node)
+
+        return trigger_nodes
+```
+
+## 11. 内测模式 - 邮件通知系统
+
+### 11.1. 内测配置
+
+**环境变量配置**：
+```bash
+# 内测模式配置
+TESTING_MODE="true"
+TESTING_EMAIL_RECIPIENT="z1771485029@gmail.com"
+SKIP_WORKFLOW_EXECUTION="true"
+
+# 邮件客户端配置 (使用shared/email_client)
+EMAIL_CLIENT_TYPE="migadu"  # 或 "smtp"
+```
+
+### 11.2. 内测触发器实现
+
+**测试模式基础类**：
+```python
+class BaseTriggerTesting(BaseTrigger):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.testing_mode = os.getenv("TESTING_MODE", "false").lower() == "true"
+        self.testing_email = os.getenv("TESTING_EMAIL_RECIPIENT")
+
+        if self.testing_mode:
+            from shared.email_client import get_email_client
+            self.email_client = get_email_client()
+
+    async def _trigger_workflow(self, trigger_data: dict):
+        """重写触发方法 - 内测模式发送邮件通知"""
+
+        if self.testing_mode:
+            await self._send_testing_notification(trigger_data)
+            return {"status": "testing_notification_sent", "email": self.testing_email}
+        else:
+            # 生产模式 - 调用workflow_engine
+            return await super()._trigger_workflow(trigger_data)
+
+    async def _send_testing_notification(self, trigger_data: dict):
+        """发送内测邮件通知"""
+
+        # 构造邮件内容
+        subject = f"🚀 Workflow Trigger Alert - {self.trigger_type.upper()}"
+
+        # 邮件正文
+        email_body = f"""
+        <h2>Workflow Scheduler 内测通知</h2>
+
+        <p><strong>触发详情：</strong></p>
+        <ul>
+            <li><strong>Workflow ID:</strong> {self.workflow_id}</li>
+            <li><strong>触发器类型:</strong> {self.trigger_type}</li>
+            <li><strong>触发时间:</strong> {datetime.now().isoformat()}</li>
+        </ul>
+
+        <p><strong>触发数据:</strong></p>
+        <pre style="background: #f5f5f5; padding: 10px; border-radius: 5px;">
+{json.dumps(trigger_data, indent=2, ensure_ascii=False)}
+        </pre>
+
+        <p><strong>触发器配置:</strong></p>
+        <pre style="background: #f5f5f5; padding: 10px; border-radius: 5px;">
+{json.dumps(self.config.__dict__ if hasattr(self.config, '__dict__') else str(self.config), indent=2, ensure_ascii=False)}
+        </pre>
+
+        <hr>
+        <p><em>这是内测模式通知，实际workflow并未执行。</em></p>
+        <p><em>系统时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}</em></p>
+        """
+
+        try:
+            await self.email_client.send_email(
+                to_email=self.testing_email,
+                subject=subject,
+                html_body=email_body,
+                from_name="Workflow Scheduler Testing"
+            )
+
+            logger.info(f"Testing notification sent to {self.testing_email} for workflow {self.workflow_id}")
+
+        except Exception as e:
+            logger.error(f"Failed to send testing notification: {e}")
+```
+
+### 11.3. 各触发器的内测实现
+
+**GitHub触发器内测**：
+```python
+class GitHubTrigger(BaseTriggerTesting):
+    async def _send_testing_notification(self, trigger_data: dict):
+        """GitHub触发器专用邮件通知"""
+        event_type = trigger_data.get("event")
+        repository = trigger_data.get("repository", {}).get("full_name", "unknown")
+        action = trigger_data.get("action")
+
+        subject = f"🐙 GitHub {event_type.title()} Trigger - {repository}"
+
+        # GitHub特定的邮件内容
+        github_info = f"""
+        <h3>GitHub Event Details</h3>
+        <ul>
+            <li><strong>Repository:</strong> {repository}</li>
+            <li><strong>Event:</strong> {event_type}</li>
+            <li><strong>Action:</strong> {action or 'N/A'}</li>
+            <li><strong>Sender:</strong> {trigger_data.get('sender', {}).get('login', 'unknown')}</li>
+        </ul>
+        """
+
+        if event_type == "pull_request":
+            pr_info = trigger_data.get("payload", {})
+            github_info += f"""
+            <h4>Pull Request Info</h4>
+            <ul>
+                <li><strong>PR #:</strong> {pr_info.get('number', 'unknown')}</li>
+                <li><strong>Title:</strong> {pr_info.get('title', 'unknown')}</li>
+                <li><strong>Base Branch:</strong> {pr_info.get('base', {}).get('ref', 'unknown')}</li>
+            </ul>
+            """
+
+        # 调用基类方法，传入增强的内容
+        base_body = await super()._send_testing_notification(trigger_data)
+        enhanced_body = base_body.replace(
+            "<h2>Workflow Scheduler 内测通知</h2>",
+            f"<h2>Workflow Scheduler 内测通知</h2>{github_info}"
+        )
+
+        await self.email_client.send_email(
+            to_email=self.testing_email,
+            subject=subject,
+            html_body=enhanced_body,
+            from_name="GitHub Workflow Scheduler"
+        )
+```
+
+### 11.4. 性能优化建议
+
+**索引查询优化**：
+- 使用数据库连接池减少连接开销
+- 预计算常用过滤器组合
+- 使用Redis缓存热点查询结果
+- 批量处理多个事件
+
+**匹配算法优化**：
+```python
+class OptimizedEventRouter(EventRouter):
+    def __init__(self, db_session, redis_client):
+        super().__init__(db_session)
+        self.redis = redis_client
+        self.cache_ttl = 300  # 5分钟缓存
+
+    async def find_matching_workflows(self, event_type: str, event_data: dict) -> List[TriggerMatch]:
+        # 构造缓存键
+        cache_key = self._build_cache_key(event_type, event_data)
+
+        # 尝试从缓存获取
+        cached_result = await self.redis.get(cache_key)
+        if cached_result:
+            return json.loads(cached_result)
+
+        # 缓存未命中，执行查询
+        matches = await super().find_matching_workflows(event_type, event_data)
+
+        # 缓存结果
+        await self.redis.setex(
+            cache_key,
+            self.cache_ttl,
+            json.dumps([m.to_dict() for m in matches])
+        )
+
+        return matches
+```
+
+这个设计解决了触发器反查的核心问题，并提供了完整的内测邮件通知方案。

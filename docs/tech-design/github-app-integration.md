@@ -7,18 +7,24 @@ This document outlines the technical design for a centralized GitHub App that en
 ## Architecture Components
 
 ```
-┌─────────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│   GitHub App    │────▶│  Event Processor │────▶│ Workflow Engine  │
-│   (Webhooks)    │     │   (API Gateway)  │     │   (Execution)    │
-└─────────────────┘     └──────────────────┘     └──────────────────┘
-        │                        │                        │
-        │                        │                        │
-        ▼                        ▼                        ▼
-┌─────────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│   GitHub API    │     │    Supabase      │     │   User Workflows │
-│ (Code Access)   │     │ (Auth & State)   │     │   (Triggered)    │
-└─────────────────┘     └──────────────────┘     └──────────────────┘
+┌─────────────────┐     ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│   GitHub App    │────▶│   API Gateway    │────▶│ Workflow         │────▶│ Workflow Engine  │
+│   (Webhooks)    │     │ (Event Reception)│     │ Scheduler        │     │   (Execution)    │
+└─────────────────┘     └──────────────────┘     └──────────────────┘     └──────────────────┘
+        │                        │                        │                        │
+        │                        │                        │                        │
+        ▼                        ▼                        ▼                        ▼
+┌─────────────────┐     ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│   GitHub API    │     │    Supabase      │     │   Trigger Match  │     │   User Workflows │
+│ (Code Access)   │     │ (Auth & State)   │     │   & Filtering    │     │   (Triggered)    │
+└─────────────────┘     └──────────────────┘     └──────────────────┘     └──────────────────┘
 ```
+
+**Flow Description:**
+1. **GitHub App** receives webhook events from repositories
+2. **API Gateway** handles webhook reception, authentication, and signature verification
+3. **Workflow Scheduler** checks if any workflows have matching GitHub triggers
+4. **Workflow Engine** executes triggered workflows with repository context
 
 ## 1. GitHub App Registration & Setup
 
@@ -77,9 +83,94 @@ Webhook Secret: "generate_secure_random_string_here"
 - Enable webhook signature verification
 - Regularly rotate credentials
 
-### Step 4: App Distribution & Discovery
+### Step 4: Development & Testing (Before Public Release)
 
-**GitHub Marketplace (Recommended):**
+**Private App Testing Setup:**
+```yaml
+# Development App Configuration (Private)
+App Name: "AI Workflow Teams (Dev)"
+Description: "Development version for testing GitHub integration"
+Homepage URL: "https://dev-api.aiworkflowteams.com"
+Callback URL: "https://dev-api.aiworkflowteams.com/auth/github/callback"
+Webhook URL: "https://dev-api.aiworkflowteams.com/webhooks/github"
+Webhook Secret: "dev_webhook_secret_here"
+
+# Privacy Settings for Development
+- ❌ **Private** - Only you can install (for testing)
+- ✅ **Allow installation on personal account only** (initially)
+```
+
+**Testing Workflow:**
+
+1. **Create Development App:**
+   ```bash
+   # Create separate dev app at https://github.com/settings/apps
+   # Use different webhook URLs and secrets for dev environment
+   ```
+
+2. **Install on Personal Repositories:**
+   ```bash
+   # Install your dev app on test repositories
+   # Direct installation URL: https://github.com/apps/ai-workflow-teams-dev/installations/new
+   ```
+
+3. **Test Webhook Reception:**
+   ```python
+   # Test webhook endpoint with ngrok for local development
+   pip install pyngrok
+   ngrok http 8000
+
+   # Update GitHub App webhook URL to ngrok URL
+   # Example: https://abc123.ngrok.io/webhooks/github
+   ```
+
+4. **Verify Event Processing:**
+   ```bash
+   # Monitor logs for webhook events
+   tail -f logs/github-webhooks.log
+
+   # Test different GitHub events:
+   # - Create a PR in test repo
+   # - Push commits
+   # - Add comments
+   # - Close/reopen issues
+   ```
+
+5. **Test Repository Access:**
+   ```python
+   # Test GitHub API access with installation token
+   async def test_github_access():
+       client = GitHubSDK(app_id, private_key)
+
+       # Test getting installation token
+       token = await client.get_installation_token(installation_id)
+
+       # Test repository operations
+       repos = await client.list_repositories(installation_id)
+       pr_data = await client.get_pull_request(installation_id, "owner/repo", 1)
+
+       print(f"Successfully accessed {len(repos)} repositories")
+   ```
+
+6. **Test Workflow Triggers:**
+   ```bash
+   # Create test workflows with GitHub triggers
+   # Verify they execute when GitHub events occur
+   # Check workflow execution logs
+   ```
+
+**Testing Checklist:**
+- [ ] Webhook signature verification works
+- [ ] Installation tokens are correctly generated
+- [ ] Repository data can be accessed (private repos)
+- [ ] Workflow triggers activate on GitHub events
+- [ ] Filtering (branches, paths, actions) works correctly
+- [ ] Rate limiting doesn't cause issues
+- [ ] Error handling works for invalid events
+
+### Step 5: App Distribution & Discovery
+
+**GitHub Marketplace (After Testing):**
 1. **Prepare for Marketplace**: Complete app description, screenshots, pricing
 2. **Submit for Review**: GitHub reviews public apps for quality/security
 3. **App Store Listing**: Users can discover and install from GitHub Marketplace
@@ -125,7 +216,7 @@ CREATE TABLE github_repository_configs (
 
 ## 2. Webhook Event Processing
 
-### Event Reception Pipeline
+### Step 1: API Gateway Event Reception
 
 ```python
 # API Gateway webhook endpoint
@@ -144,36 +235,176 @@ async def github_webhook_handler(
     # 2. Parse event data
     event_data = json.loads(payload)
 
-    # 3. Route to event processor
-    await process_github_event(
+    # 3. Log webhook event for debugging/monitoring
+    await log_webhook_event(x_github_delivery, x_github_event, event_data)
+
+    # 4. Forward to Workflow Scheduler
+    await forward_to_workflow_scheduler(
         event_type=x_github_event,
         delivery_id=x_github_delivery,
         payload=event_data
     )
+
+    return {"status": "received", "delivery_id": x_github_delivery}
 ```
 
-### Event Processing Service
+### Step 2: Forward to Workflow Scheduler
 
 ```python
-class GitHubEventProcessor:
-    async def process_event(self, event_type: str, payload: dict):
-        # 1. Extract installation and repository info
-        installation_id = payload.get("installation", {}).get("id")
-        repository = payload.get("repository", {})
+async def forward_to_workflow_scheduler(event_type: str, delivery_id: str, payload: dict):
+    """Forward GitHub webhook to Workflow Scheduler service"""
 
-        # 2. Find matching workflow triggers
-        triggers = await self.find_matching_triggers(
-            installation_id, repository["full_name"], event_type, payload
+    scheduler_payload = {
+        "trigger_type": "github",
+        "event_type": event_type,
+        "delivery_id": delivery_id,
+        "github_payload": payload,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+    # Call Workflow Scheduler API
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{WORKFLOW_SCHEDULER_URL}/triggers/github",
+            json=scheduler_payload,
+            headers={"Authorization": f"Bearer {INTERNAL_SERVICE_TOKEN}"}
         )
 
-        # 3. For each matching trigger, initiate workflow
-        for trigger in triggers:
-            await self.execute_workflow_trigger(trigger, payload)
+        if response.status_code != 200:
+            logger.error(f"Failed to forward to scheduler: {response.text}")
+            raise HTTPException(500, "Failed to process webhook")
+```
 
-    async def find_matching_triggers(self, installation_id, repo_name, event_type, payload):
-        # Query active triggers for this repository and event type
+### Step 3: Workflow Scheduler Processing
+
+```python
+# In Workflow Scheduler service
+@app.post("/triggers/github")
+async def handle_github_trigger(trigger_request: GitHubTriggerRequest):
+    """Process GitHub webhook and check for matching workflow triggers"""
+
+    # 1. Extract installation and repository info
+    payload = trigger_request.github_payload
+    installation_id = payload.get("installation", {}).get("id")
+    repository = payload.get("repository", {})
+
+    # 2. Find workflows with matching GitHub triggers
+    matching_workflows = await find_workflows_with_github_triggers(
+        installation_id=installation_id,
+        repository_name=repository["full_name"],
+        event_type=trigger_request.event_type,
+        payload=payload
+    )
+
+    # 3. For each matching workflow, invoke Workflow Engine
+    for workflow in matching_workflows:
+        await invoke_workflow_engine(workflow, trigger_request)
+
+async def find_workflows_with_github_triggers(
+    installation_id: int,
+    repository_name: str,
+    event_type: str,
+    payload: dict
+) -> List[WorkflowDefinition]:
+    """Find workflows that have GitHub triggers matching this event"""
+
+    # Query database for workflows with GitHub triggers
+    workflows = await db.execute("""
+        SELECT w.*, t.trigger_config
+        FROM workflows w
+        JOIN workflow_triggers t ON w.id = t.workflow_id
+        WHERE t.trigger_type = 'TRIGGER_GITHUB'
+        AND JSON_EXTRACT(t.trigger_config, '$.repository') = ?
+        AND JSON_EXTRACT(t.trigger_config, '$.events') LIKE ?
+    """, [repository_name, f'%{event_type}%'])
+
+    matching_workflows = []
+
+    for workflow_row in workflows:
+        trigger_config = json.loads(workflow_row.trigger_config)
+
         # Apply filters (branches, paths, actions, authors, labels)
-        return matching_triggers
+        if await matches_github_filters(trigger_config, payload):
+            matching_workflows.append(WorkflowDefinition.from_row(workflow_row))
+
+    return matching_workflows
+
+async def matches_github_filters(trigger_config: dict, payload: dict) -> bool:
+    """Check if GitHub event matches all configured filters"""
+
+    # Branch filter
+    if trigger_config.get("branches"):
+        if not matches_branch_filter(trigger_config["branches"], payload):
+            return False
+
+    # Path filter
+    if trigger_config.get("paths"):
+        if not matches_path_filter(trigger_config["paths"], payload):
+            return False
+
+    # Action filter (for PR/issue events)
+    if trigger_config.get("action_filter"):
+        action = payload.get("action")
+        if action not in trigger_config["action_filter"]:
+            return False
+
+    # Author filter
+    if trigger_config.get("author_filter"):
+        if not matches_author_filter(trigger_config["author_filter"], payload):
+            return False
+
+    # Label filter (for PR/issue events)
+    if trigger_config.get("label_filter"):
+        if not matches_label_filter(trigger_config["label_filter"], payload):
+            return False
+
+    # Bot filter
+    if trigger_config.get("ignore_bots", True):
+        sender = payload.get("sender", {})
+        if sender.get("type") == "Bot":
+            return False
+
+    return True
+```
+
+### Step 4: Invoke Workflow Engine
+
+```python
+async def invoke_workflow_engine(workflow: WorkflowDefinition, trigger_request: GitHubTriggerRequest):
+    """Invoke Workflow Engine to execute the workflow"""
+
+    # Prepare workflow execution context with GitHub data
+    execution_context = {
+        "workflow_id": workflow.id,
+        "trigger_type": "github",
+        "trigger_data": {
+            "event": trigger_request.event_type,
+            "action": trigger_request.github_payload.get("action"),
+            "repository": trigger_request.github_payload.get("repository"),
+            "sender": trigger_request.github_payload.get("sender"),
+            "payload": trigger_request.github_payload,
+            "timestamp": trigger_request.timestamp,
+            "delivery_id": trigger_request.delivery_id
+        }
+    }
+
+    # Call Workflow Engine
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{WORKFLOW_ENGINE_URL}/workflows/execute",
+            json={
+                "workflow_definition": workflow.to_dict(),
+                "execution_context": execution_context,
+                "priority": "normal"
+            },
+            headers={"Authorization": f"Bearer {INTERNAL_SERVICE_TOKEN}"}
+        )
+
+        if response.status_code == 200:
+            execution_result = response.json()
+            logger.info(f"Workflow {workflow.id} triggered successfully: {execution_result['execution_id']}")
+        else:
+            logger.error(f"Failed to execute workflow {workflow.id}: {response.text}")
 ```
 
 ## 3. Repository Data Access
@@ -275,6 +506,29 @@ class GitHubRepositoryService:
             "diff": commit_data["files"],  # GitHub API includes diff in commit
             "repository": await client.get_repository(installation_id, repo)
         }
+```
+
+### GitHub SDK Implementation
+
+**Location:** `apps/backend/shared/sdks/github_sdk/`
+
+The GitHub SDK provides a comprehensive interface for all GitHub App operations, including repository management, PR/issue operations, and code manipulation.
+
+**SDK Structure:**
+```
+github_sdk/
+├── __init__.py
+├── client.py          # Main GitHub SDK client
+├── auth.py           # JWT and token management
+├── repositories.py   # Repository operations
+├── pulls.py          # Pull request operations
+├── issues.py         # Issue operations
+├── branches.py       # Branch and code operations
+├── webhooks.py       # Webhook utilities
+├── exceptions.py     # Custom exceptions
+├── models.py         # Data models
+├── requirements.txt  # Dependencies
+└── README.md        # Usage documentation
 ```
 
 ## 4. Workflow Integration
