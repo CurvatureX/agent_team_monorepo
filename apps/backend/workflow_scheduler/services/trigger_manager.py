@@ -2,9 +2,16 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
-from ..models.triggers import ExecutionResult, TriggerSpec, TriggerStatus, TriggerType
-from ..triggers.base import BaseTrigger
-from .lock_manager import DistributedLockManager
+from workflow_scheduler.models.triggers import (
+    ExecutionResult,
+    TriggerSpec,
+    TriggerStatus,
+    TriggerType,
+)
+from workflow_scheduler.services.event_router import EventRouter
+from workflow_scheduler.services.lock_manager import DistributedLockManager
+from workflow_scheduler.services.notification_service import NotificationService
+from workflow_scheduler.triggers.base import BaseTrigger
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +21,8 @@ class TriggerManager:
 
     def __init__(self, lock_manager: DistributedLockManager):
         self.lock_manager = lock_manager
+        self.event_router = EventRouter()
+        self.notification_service = NotificationService()
         self._triggers: Dict[str, List[BaseTrigger]] = {}  # workflow_id -> list of triggers
         self._trigger_registry: Dict[TriggerType, type] = {}
 
@@ -338,6 +347,241 @@ class TriggerManager:
 
         except Exception as e:
             logger.error(f"Error processing GitHub webhook {event_type}: {e}", exc_info=True)
+            raise
+
+    async def route_and_trigger_cron_event(
+        self, cron_expression: str, timezone: str = "UTC"
+    ) -> Dict[str, Any]:
+        """
+        Use EventRouter to find and trigger workflows matching a cron expression
+
+        Args:
+            cron_expression: Cron expression that triggered
+            timezone: Timezone for the cron execution
+
+        Returns:
+            Dictionary with trigger results
+        """
+        try:
+            logger.info(f"Processing cron event via EventRouter: {cron_expression}")
+
+            # Use EventRouter for fast trigger matching
+            matching_workflows = await self.event_router.route_cron_event(cron_expression, timezone)
+
+            results = []
+            for workflow_match in matching_workflows:
+                workflow_id = workflow_match["workflow_id"]
+                trigger_data = workflow_match["trigger_data"]
+
+                # In testing mode, send notification instead of executing
+                result = await self.notification_service.send_trigger_notification(
+                    workflow_id=workflow_id, trigger_type="CRON_TRIGGER", trigger_data=trigger_data
+                )
+
+                results.append(
+                    {
+                        "workflow_id": workflow_id,
+                        "status": result.status,
+                        "message": result.message,
+                        "trigger_data": trigger_data,
+                    }
+                )
+
+                logger.info(f"Cron trigger processed for workflow {workflow_id}: {result.status}")
+
+            return {
+                "processed_workflows": len(results),
+                "results": results,
+                "cron_expression": cron_expression,
+                "timezone": timezone,
+            }
+
+        except Exception as e:
+            logger.error(f"Error processing cron event {cron_expression}: {e}", exc_info=True)
+            raise
+
+    async def route_and_trigger_webhook_event(
+        self,
+        path: str,
+        method: str,
+        headers: Dict[str, str],
+        payload: Dict[str, Any],
+        remote_addr: str,
+    ) -> Dict[str, Any]:
+        """
+        Use EventRouter to find and trigger workflows matching a webhook request
+
+        Args:
+            path: Webhook URL path
+            method: HTTP method
+            headers: Request headers
+            payload: Request payload
+            remote_addr: Remote IP address
+
+        Returns:
+            Dictionary with trigger results
+        """
+        try:
+            logger.info(f"Processing webhook event via EventRouter: {method} {path}")
+
+            # Use EventRouter for fast trigger matching
+            matching_workflows = await self.event_router.route_webhook_event(
+                path, method, headers, payload, remote_addr
+            )
+
+            results = []
+            for workflow_match in matching_workflows:
+                workflow_id = workflow_match["workflow_id"]
+                trigger_data = workflow_match["trigger_data"]
+
+                # In testing mode, send notification instead of executing
+                result = await self.notification_service.send_trigger_notification(
+                    workflow_id=workflow_id,
+                    trigger_type="WEBHOOK_TRIGGER",
+                    trigger_data=trigger_data,
+                )
+
+                results.append(
+                    {
+                        "workflow_id": workflow_id,
+                        "status": result.status,
+                        "message": result.message,
+                        "trigger_data": trigger_data,
+                    }
+                )
+
+                logger.info(
+                    f"Webhook trigger processed for workflow {workflow_id}: {result.status}"
+                )
+
+            return {
+                "processed_workflows": len(results),
+                "results": results,
+                "path": path,
+                "method": method,
+            }
+
+        except Exception as e:
+            logger.error(f"Error processing webhook event {path}: {e}", exc_info=True)
+            raise
+
+    async def route_and_trigger_github_event(
+        self,
+        event_type: str,
+        delivery_id: str,
+        payload: Dict[str, Any],
+        signature: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Use EventRouter to find and trigger workflows matching a GitHub webhook
+
+        Args:
+            event_type: GitHub event type (push, pull_request, etc.)
+            delivery_id: GitHub delivery ID
+            payload: GitHub webhook payload
+            signature: GitHub webhook signature
+
+        Returns:
+            Dictionary with trigger results
+        """
+        try:
+            logger.info(
+                f"Processing GitHub event via EventRouter: {event_type} (delivery: {delivery_id})"
+            )
+
+            # Use EventRouter for fast trigger matching
+            matching_workflows = await self.event_router.route_github_event(
+                event_type, delivery_id, payload, signature
+            )
+
+            results = []
+            for workflow_match in matching_workflows:
+                workflow_id = workflow_match["workflow_id"]
+                trigger_data = workflow_match["trigger_data"]
+
+                # In testing mode, send notification instead of executing
+                result = await self.notification_service.send_trigger_notification(
+                    workflow_id=workflow_id,
+                    trigger_type="GITHUB_TRIGGER",
+                    trigger_data=trigger_data,
+                )
+
+                results.append(
+                    {
+                        "workflow_id": workflow_id,
+                        "status": result.status,
+                        "message": result.message,
+                        "trigger_data": trigger_data,
+                    }
+                )
+
+                logger.info(f"GitHub trigger processed for workflow {workflow_id}: {result.status}")
+
+            return {
+                "processed_workflows": len(results),
+                "results": results,
+                "event_type": event_type,
+                "delivery_id": delivery_id,
+            }
+
+        except Exception as e:
+            logger.error(f"Error processing GitHub event {event_type}: {e}", exc_info=True)
+            raise
+
+    async def route_and_trigger_email_event(
+        self, sender: str, subject: str, body: str, recipients: List[str], headers: Dict[str, str]
+    ) -> Dict[str, Any]:
+        """
+        Use EventRouter to find and trigger workflows matching an email
+
+        Args:
+            sender: Email sender address
+            subject: Email subject line
+            body: Email body content
+            recipients: List of recipient addresses
+            headers: Email headers
+
+        Returns:
+            Dictionary with trigger results
+        """
+        try:
+            logger.info(f"Processing email event via EventRouter from: {sender}")
+
+            # Use EventRouter for fast trigger matching
+            matching_workflows = await self.event_router.route_email_event(
+                sender, subject, body, recipients, headers
+            )
+
+            results = []
+            for workflow_match in matching_workflows:
+                workflow_id = workflow_match["workflow_id"]
+                trigger_data = workflow_match["trigger_data"]
+
+                # In testing mode, send notification instead of executing
+                result = await self.notification_service.send_trigger_notification(
+                    workflow_id=workflow_id, trigger_type="EMAIL_TRIGGER", trigger_data=trigger_data
+                )
+
+                results.append(
+                    {
+                        "workflow_id": workflow_id,
+                        "status": result.status,
+                        "message": result.message,
+                        "trigger_data": trigger_data,
+                    }
+                )
+
+                logger.info(f"Email trigger processed for workflow {workflow_id}: {result.status}")
+
+            return {
+                "processed_workflows": len(results),
+                "results": results,
+                "sender": sender,
+                "subject": subject,
+            }
+
+        except Exception as e:
+            logger.error(f"Error processing email event from {sender}: {e}", exc_info=True)
             raise
 
     async def _create_trigger(self, workflow_id: str, spec: TriggerSpec) -> Optional[BaseTrigger]:

@@ -13,9 +13,8 @@ from typing import Any, Dict, Optional
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from shared.sdks.slack_sdk import SlackAPIError, SlackBlockBuilder, SlackWebClient
-
-from ..core.config import settings
-from ..models.triggers import ExecutionResult
+from workflow_scheduler.core.config import settings
+from workflow_scheduler.models.triggers import ExecutionResult
 
 logger = logging.getLogger(__name__)
 

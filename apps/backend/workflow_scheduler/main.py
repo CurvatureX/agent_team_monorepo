@@ -8,18 +8,23 @@ import uvicorn
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import deployment, github, triggers
-from .core.config import settings
-from .dependencies import get_lock_manager, get_trigger_manager, set_global_services
-from .models.triggers import TriggerType
-from .services.deployment_service import DeploymentService
-from .services.lock_manager import DistributedLockManager
-from .services.trigger_manager import TriggerManager
-from .triggers.cron_trigger import CronTrigger
-from .triggers.email_trigger import EmailTrigger
-from .triggers.github_trigger import GitHubTrigger
-from .triggers.manual_trigger import ManualTrigger
-from .triggers.webhook_trigger import WebhookTrigger
+from workflow_scheduler.api import deployment, github, slack, triggers
+from workflow_scheduler.core.config import settings
+from workflow_scheduler.dependencies import (
+    get_lock_manager,
+    get_trigger_manager,
+    set_global_services,
+)
+from workflow_scheduler.models.triggers import TriggerType
+from workflow_scheduler.services.deployment_service import DeploymentService
+from workflow_scheduler.services.lock_manager import DistributedLockManager
+from workflow_scheduler.services.trigger_manager import TriggerManager
+from workflow_scheduler.triggers.cron_trigger import CronTrigger
+from workflow_scheduler.triggers.email_trigger import EmailTrigger
+from workflow_scheduler.triggers.github_trigger import GitHubTrigger
+from workflow_scheduler.triggers.manual_trigger import ManualTrigger
+from workflow_scheduler.triggers.slack_trigger import SlackTrigger
+from workflow_scheduler.triggers.webhook_trigger import WebhookTrigger
 
 # Configure logging
 logging.basicConfig(
@@ -55,6 +60,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         trigger_manager.register_trigger_class(TriggerType.WEBHOOK, WebhookTrigger)
         trigger_manager.register_trigger_class(TriggerType.EMAIL, EmailTrigger)
         trigger_manager.register_trigger_class(TriggerType.GITHUB, GitHubTrigger)
+        trigger_manager.register_trigger_class(TriggerType.SLACK, SlackTrigger)
 
         # Initialize deployment service
         deployment_service = DeploymentService(trigger_manager)
@@ -107,6 +113,7 @@ app.add_middleware(
 app.include_router(deployment.router, prefix="/api/v1")
 app.include_router(triggers.router, prefix="/api/v1")
 app.include_router(github.router, prefix="/api/v1")
+app.include_router(slack.router)
 
 
 @app.get("/")
@@ -202,7 +209,7 @@ async def get_metrics():
 def main():
     """Main entry point"""
     uvicorn.run(
-        "workflow_scheduler.app.main:app",
+        "workflow_scheduler.main:app",
         host=settings.host,
         port=settings.port,
         reload=settings.debug,

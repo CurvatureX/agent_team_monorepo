@@ -7,8 +7,8 @@ import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger as APCronTrigger
 
-from ..models.triggers import TriggerStatus
-from .base import BaseTrigger
+from workflow_scheduler.models.triggers import TriggerStatus
+from workflow_scheduler.triggers.base import BaseTrigger
 
 logger = logging.getLogger(__name__)
 

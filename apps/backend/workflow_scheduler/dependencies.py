@@ -6,9 +6,9 @@ from typing import Generator
 
 from fastapi import Depends, HTTPException
 
-from .services.deployment_service import DeploymentService
-from .services.lock_manager import DistributedLockManager
-from .services.trigger_manager import TriggerManager
+from workflow_scheduler.services.deployment_service import DeploymentService
+from workflow_scheduler.services.lock_manager import DistributedLockManager
+from workflow_scheduler.services.trigger_manager import TriggerManager
 
 # Global service instances - will be set during app startup
 _deployment_service: DeploymentService = None

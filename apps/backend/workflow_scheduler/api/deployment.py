@@ -4,9 +4,9 @@ from typing import Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from ..dependencies import get_deployment_service
-from ..models.triggers import DeploymentResult, DeploymentStatus
-from ..services.deployment_service import DeploymentService
+from workflow_scheduler.dependencies import get_deployment_service
+from workflow_scheduler.models.triggers import DeploymentResult, DeploymentStatus
+from workflow_scheduler.services.deployment_service import DeploymentService
 
 logger = logging.getLogger(__name__)
 

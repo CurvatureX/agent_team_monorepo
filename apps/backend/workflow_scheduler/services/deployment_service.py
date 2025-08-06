@@ -3,7 +3,13 @@ import uuid
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from ..models.triggers import DeploymentResult, DeploymentStatus, TriggerSpec, TriggerType
+from workflow_scheduler.models.triggers import (
+    DeploymentResult,
+    DeploymentStatus,
+    TriggerSpec,
+    TriggerType,
+)
+from workflow_scheduler.services.trigger_index_manager import TriggerIndexManager
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +19,7 @@ class DeploymentService:
 
     def __init__(self, trigger_manager):
         self.trigger_manager = trigger_manager
+        self.trigger_index_manager = TriggerIndexManager()
         self._deployments: Dict[str, Dict] = {}  # In-memory storage for now
 
     async def deploy_workflow(self, workflow_id: str, workflow_spec: Dict) -> DeploymentResult:
@@ -61,7 +68,21 @@ class DeploymentService:
                     message="Failed to register triggers",
                 )
 
-            # 4. Store deployment record
+            # 4. Register triggers in the trigger index for fast lookup
+            index_registration_result = await self.trigger_index_manager.register_workflow_triggers(
+                workflow_id, trigger_specs, deployment_status="active"
+            )
+
+            if not index_registration_result:
+                # Cleanup TriggerManager registration if index registration fails
+                await self.trigger_manager.unregister_triggers(workflow_id)
+                return DeploymentResult(
+                    deployment_id=deployment_id,
+                    status=DeploymentStatus.FAILED,
+                    message="Failed to register triggers in index",
+                )
+
+            # 5. Store deployment record
             deployment_record = {
                 "deployment_id": deployment_id,
                 "workflow_id": workflow_id,
@@ -103,16 +124,21 @@ class DeploymentService:
         try:
             logger.info(f"Undeploying workflow {workflow_id}")
 
-            # 1. Unregister triggers
+            # 1. Unregister triggers from TriggerManager
             unregister_result = await self.trigger_manager.unregister_triggers(workflow_id)
 
-            # 2. Update deployment record
+            # 2. Unregister triggers from trigger index
+            index_unregister_result = await self.trigger_index_manager.unregister_workflow_triggers(
+                workflow_id
+            )
+
+            # 3. Update deployment record
             if workflow_id in self._deployments:
                 self._deployments[workflow_id]["status"] = DeploymentStatus.UNDEPLOYED
                 self._deployments[workflow_id]["updated_at"] = datetime.utcnow()
 
             logger.info(f"Workflow {workflow_id} undeployed successfully")
-            return unregister_result
+            return unregister_result and index_unregister_result
 
         except Exception as e:
             logger.error(f"Failed to undeploy workflow {workflow_id}: {e}", exc_info=True)
@@ -170,6 +196,9 @@ class DeploymentService:
         # Get current trigger status
         trigger_status = await self.trigger_manager.get_trigger_status(workflow_id)
 
+        # Get indexed trigger information
+        indexed_triggers = await self.trigger_index_manager.get_workflow_triggers(workflow_id)
+
         return {
             "deployment_id": deployment["deployment_id"],
             "workflow_id": workflow_id,
@@ -178,6 +207,8 @@ class DeploymentService:
             "updated_at": deployment["updated_at"].isoformat(),
             "trigger_count": len(deployment["trigger_specs"]),
             "trigger_status": trigger_status,
+            "indexed_triggers": len(indexed_triggers),
+            "trigger_details": indexed_triggers,
         }
 
     async def list_deployments(self) -> List[Dict]:
@@ -190,6 +221,120 @@ class DeploymentService:
                 deployments.append(status_info)
 
         return deployments
+
+    async def pause_workflow(self, workflow_id: str) -> bool:
+        """
+        Pause a deployed workflow (set triggers to paused status)
+
+        Args:
+            workflow_id: Workflow to pause
+
+        Returns:
+            bool: True if successfully paused
+        """
+        try:
+            logger.info(f"Pausing workflow {workflow_id}")
+
+            # Update trigger status in index
+            success = await self.trigger_index_manager.update_trigger_status(workflow_id, "paused")
+
+            # Update deployment record
+            if workflow_id in self._deployments:
+                self._deployments[workflow_id]["status"] = DeploymentStatus.PAUSED
+                self._deployments[workflow_id]["updated_at"] = datetime.utcnow()
+
+            if success:
+                logger.info(f"Workflow {workflow_id} paused successfully")
+            return success
+
+        except Exception as e:
+            logger.error(f"Failed to pause workflow {workflow_id}: {e}", exc_info=True)
+            return False
+
+    async def resume_workflow(self, workflow_id: str) -> bool:
+        """
+        Resume a paused workflow (set triggers to active status)
+
+        Args:
+            workflow_id: Workflow to resume
+
+        Returns:
+            bool: True if successfully resumed
+        """
+        try:
+            logger.info(f"Resuming workflow {workflow_id}")
+
+            # Update trigger status in index
+            success = await self.trigger_index_manager.update_trigger_status(workflow_id, "active")
+
+            # Update deployment record
+            if workflow_id in self._deployments:
+                self._deployments[workflow_id]["status"] = DeploymentStatus.DEPLOYED
+                self._deployments[workflow_id]["updated_at"] = datetime.utcnow()
+
+            if success:
+                logger.info(f"Workflow {workflow_id} resumed successfully")
+            return success
+
+        except Exception as e:
+            logger.error(f"Failed to resume workflow {workflow_id}: {e}", exc_info=True)
+            return False
+
+    async def get_index_statistics(self) -> Dict[str, Any]:
+        """
+        Get trigger index statistics
+
+        Returns:
+            Dictionary with index statistics
+        """
+        return await self.trigger_index_manager.get_index_statistics()
+
+    async def register_github_installation(
+        self,
+        installation_id: int,
+        account_id: int,
+        account_login: str,
+        account_type: str,
+        repositories: List[Dict[str, Any]],
+        permissions: Dict[str, str],
+        user_id: Optional[str] = None,
+    ) -> bool:
+        """
+        Register a GitHub App installation
+
+        Args:
+            installation_id: GitHub installation ID
+            account_id: GitHub account ID
+            account_login: GitHub account login name
+            account_type: 'User' or 'Organization'
+            repositories: List of accessible repositories
+            permissions: Installation permissions
+            user_id: Associated user ID (optional)
+
+        Returns:
+            bool: True if successfully registered
+        """
+        return await self.trigger_index_manager.register_github_installation(
+            installation_id=installation_id,
+            account_id=account_id,
+            account_login=account_login,
+            account_type=account_type,
+            repositories=repositories,
+            permissions=permissions,
+            user_id=user_id,
+        )
+
+    async def get_github_installations(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Get GitHub installations, optionally filtered by user
+
+        Args:
+            user_id: Optional user ID to filter by
+
+        Returns:
+            List of installation information
+        """
+        return await self.trigger_index_manager.get_github_installations(user_id)
 
     async def _validate_workflow_definition(self, workflow_spec: Dict) -> Dict:
         """

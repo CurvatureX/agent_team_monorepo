@@ -102,33 +102,227 @@ graph TD
 
 ### 3.1. DeploymentService
 
-**职责**：管理 Workflow 的部署生命周期
+**职责**：管理 Workflow 的完整部署生命周期
+
+**部署状态管理**：
+- `DRAFT` - 工作流已创建但未部署
+- `DEPLOYING` - 正在部署中（触发器注册进行中）
+- `DEPLOYED` - 已成功部署，触发器正在运行
+- `DEPLOYMENT_FAILED` - 部署失败
+- `UNDEPLOYING` - 正在取消部署
+- `UNDEPLOYED` - 已取消部署，触发器已停止
+- `DEPRECATED` - 已弃用但未删除
 
 **核心功能**：
-- 验证 Workflow 定义的有效性（基本结构验证）
-- 创建/更新/删除部署记录
-- 配置触发器（Cron 表达式、Webhook 路径、Email 过滤器）
-- 与 TriggerManager 协调，注册/注销触发器
+- 验证 Workflow 定义的有效性（节点结构、触发器配置等）
+- 管理部署状态转换和版本控制
+- 协调触发器的注册/注销操作
+- 记录部署历史和审计日志
+- 处理部署回滚和错误恢复
+
+**数据库设计**（新增迁移：`supabase/migrations/20250806190000_add_workflow_deployment_fields.sql`）：
+```sql
+-- workflows 表新增字段
+ALTER TABLE workflows
+ADD COLUMN deployment_status TEXT DEFAULT 'DRAFT',
+ADD COLUMN deployed_at TIMESTAMP WITH TIME ZONE,
+ADD COLUMN deployed_by UUID REFERENCES users(id),
+ADD COLUMN deployment_version INTEGER DEFAULT 1,
+ADD COLUMN deployment_config JSONB DEFAULT '{}';
+
+-- 部署历史跟踪表
+CREATE TABLE workflow_deployment_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workflow_id UUID NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+    deployment_action TEXT NOT NULL, -- 'DEPLOY', 'UNDEPLOY', 'UPDATE', 'ROLLBACK'
+    from_status TEXT NOT NULL,
+    to_status TEXT NOT NULL,
+    deployment_version INTEGER NOT NULL,
+    triggered_by UUID REFERENCES users(id),
+    started_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    completed_at TIMESTAMP WITH TIME ZONE,
+    error_message TEXT,
+    deployment_logs JSONB DEFAULT '{}'
+);
+```
 
 **API接口**：
 ```python
 class DeploymentService:
-    async def deploy_workflow(self, workflow_id: str, workflow_spec: dict) -> DeploymentResult
-    async def undeploy_workflow(self, workflow_id: str) -> bool
-    async def update_deployment(self, workflow_id: str, workflow_spec: dict) -> DeploymentResult
+    async def deploy_workflow(self, workflow_id: str, user_id: str, deployment_config: dict = None) -> DeploymentResult
+    async def undeploy_workflow(self, workflow_id: str, user_id: str) -> DeploymentResult
+    async def update_deployment(self, workflow_id: str, user_id: str, deployment_config: dict = None) -> DeploymentResult
+    async def rollback_deployment(self, workflow_id: str, target_version: int, user_id: str) -> DeploymentResult
     async def get_deployment_status(self, workflow_id: str) -> DeploymentStatus
+    async def get_deployment_history(self, workflow_id: str) -> List[DeploymentEvent]
+    async def list_deployed_workflows(self, user_id: str = None) -> List[WorkflowDeployment]
+
+    # 内部辅助方法
+    async def _transition_status(self, workflow_id: str, from_status: str, to_status: str, action: str, user_id: str) -> bool
+    async def _log_deployment_event(self, workflow_id: str, action: str, from_status: str, to_status: str, user_id: str, logs: dict = None) -> None
+    async def _validate_workflow_definition(self, workflow_spec: dict) -> ValidationResult
+```
+
+**实现示例**：
+```python
+class DeploymentService:
+    def __init__(self, db_session, trigger_manager, trigger_index_manager):
+        self.db = db_session
+        self.trigger_manager = trigger_manager
+        self.trigger_index = trigger_index_manager
+
+    async def deploy_workflow(self, workflow_id: str, user_id: str, deployment_config: dict = None) -> DeploymentResult:
+        """部署工作流 - 完整的状态管理和事务处理"""
+
+        async with self.db.begin():  # 开启数据库事务
+            try:
+                # 1. 检查当前状态
+                current_status = await self._get_workflow_status(workflow_id)
+                if current_status not in ['DRAFT', 'DEPLOYMENT_FAILED', 'UNDEPLOYED']:
+                    raise DeploymentError(f"Cannot deploy workflow in status: {current_status}")
+
+                # 2. 更新状态为部署中
+                await self._transition_status(workflow_id, current_status, 'DEPLOYING', 'DEPLOY', user_id)
+
+                # 3. 获取workflow定义并验证
+                workflow_spec = await self._get_workflow_spec(workflow_id)
+                validation_result = await self._validate_workflow_definition(workflow_spec)
+
+                if not validation_result.is_valid:
+                    await self._transition_status(workflow_id, 'DEPLOYING', 'DEPLOYMENT_FAILED', 'DEPLOY', user_id)
+                    return DeploymentResult(
+                        success=False,
+                        status='DEPLOYMENT_FAILED',
+                        errors=validation_result.errors
+                    )
+
+                # 4. 注册触发器到索引表
+                await self.trigger_index.register_workflow_triggers(workflow_id, workflow_spec)
+
+                # 5. 启动实际的触发器
+                trigger_result = await self.trigger_manager.register_triggers(
+                    workflow_id,
+                    self._extract_trigger_specs(workflow_spec)
+                )
+
+                if not trigger_result.success:
+                    # 回滚触发器索引
+                    await self.trigger_index.clear_workflow_triggers(workflow_id)
+                    await self._transition_status(workflow_id, 'DEPLOYING', 'DEPLOYMENT_FAILED', 'DEPLOY', user_id)
+                    return DeploymentResult(
+                        success=False,
+                        status='DEPLOYMENT_FAILED',
+                        errors=['Trigger registration failed: ' + trigger_result.error]
+                    )
+
+                # 6. 成功部署 - 更新最终状态
+                deployment_version = await self._increment_deployment_version(workflow_id)
+                await self._mark_deployment_complete(workflow_id, user_id, deployment_version, deployment_config or {})
+
+                return DeploymentResult(
+                    success=True,
+                    status='DEPLOYED',
+                    deployment_version=deployment_version,
+                    deployed_at=datetime.utcnow()
+                )
+
+            except Exception as e:
+                # 异常处理 - 自动回滚到失败状态
+                await self._transition_status(workflow_id, 'DEPLOYING', 'DEPLOYMENT_FAILED', 'DEPLOY', user_id)
+                await self._log_deployment_event(
+                    workflow_id, 'DEPLOY', 'DEPLOYING', 'DEPLOYMENT_FAILED', user_id,
+                    {'error_message': str(e)}
+                )
+                raise DeploymentError(f"Deployment failed: {e}")
+
+    async def _transition_status(self, workflow_id: str, from_status: str, to_status: str, action: str, user_id: str) -> bool:
+        """安全的状态转换 - 带历史记录"""
+
+        # 更新workflows表状态
+        result = await self.db.execute(
+            """
+            UPDATE workflows
+            SET deployment_status = %s,
+                updated_at = EXTRACT(epoch FROM NOW()) * 1000
+            WHERE id = %s AND deployment_status = %s
+            """,
+            to_status, workflow_id, from_status
+        )
+
+        if result.rowcount == 0:
+            raise DeploymentError(f"Status transition failed: workflow {workflow_id} not in expected status {from_status}")
+
+        # 记录部署历史
+        await self._log_deployment_event(workflow_id, action, from_status, to_status, user_id)
+        return True
+
+    async def _log_deployment_event(self, workflow_id: str, action: str, from_status: str, to_status: str, user_id: str, logs: dict = None):
+        """记录部署历史事件"""
+        deployment_version = await self._get_current_deployment_version(workflow_id)
+
+        await self.db.execute(
+            """
+            INSERT INTO workflow_deployment_history (
+                workflow_id, deployment_action, from_status, to_status,
+                deployment_version, triggered_by, deployment_logs
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """,
+            workflow_id, action, from_status, to_status,
+            deployment_version, user_id, json.dumps(logs or {})
+        )
+
+    async def list_deployed_workflows(self, user_id: str = None) -> List[WorkflowDeployment]:
+        """列出所有已部署的工作流"""
+        query = """
+        SELECT
+            w.id,
+            w.name,
+            w.deployment_status,
+            w.deployed_at,
+            w.deployment_version,
+            u.name as deployed_by_name,
+            COUNT(ti.id) as active_triggers
+        FROM workflows w
+        LEFT JOIN users u ON w.deployed_by = u.id
+        LEFT JOIN trigger_index ti ON w.id = ti.workflow_id AND ti.deployment_status = 'active'
+        WHERE w.deployment_status = 'DEPLOYED'
+        """
+
+        params = []
+        if user_id:
+            query += " AND w.user_id = %s"
+            params.append(user_id)
+
+        query += " GROUP BY w.id, w.name, w.deployment_status, w.deployed_at, w.deployment_version, u.name"
+        query += " ORDER BY w.deployed_at DESC"
+
+        results = await self.db.fetch_all(query, *params)
+
+        return [
+            WorkflowDeployment(
+                workflow_id=row['id'],
+                name=row['name'],
+                status=row['deployment_status'],
+                deployed_at=row['deployed_at'],
+                deployment_version=row['deployment_version'],
+                deployed_by=row['deployed_by_name'],
+                active_triggers=row['active_triggers']
+            )
+            for row in results
+        ]
 ```
 
 ### 3.2. TriggerManager
 
 **职责**：统一管理所有类型的触发器
 
-**支持的触发器类型**：
-- **Cron触发器**：基于cron表达式的定时执行
-- **Manual触发器**：用户手动触发，支持确认机制
-- **Webhook触发器**：HTTP端点触发，每个workflow独立路径
-- **Email触发器**：邮件监控触发，支持过滤器和附件处理
-- **GitHub触发器**：GitHub仓库事件触发，支持App集成和代码访问
+**支持的触发器类型**（与 `shared/node_specs/trigger_nodes.py` 保持一致）：
+- **TRIGGER_MANUAL**：用户手动触发，支持确认机制
+- **TRIGGER_CRON**：基于cron表达式的定时执行
+- **TRIGGER_WEBHOOK**：HTTP端点触发，每个workflow独立路径
+- **TRIGGER_SLACK**：Slack交互触发，支持消息、提及、斜杠命令等事件
+- **TRIGGER_EMAIL**：邮件监控触发，支持过滤器和附件处理
+- **TRIGGER_GITHUB**：GitHub仓库事件触发，支持App集成和代码访问
 
 **核心功能**：
 - 管理触发器生命周期（启动/停止/重启）
@@ -306,7 +500,121 @@ class EmailTrigger(BaseTrigger):
             await asyncio.sleep(self.check_interval)
 ```
 
-### 4.5. GitHub触发器 (GitHubTrigger)
+### 4.5. Slack触发器 (SlackTrigger)
+
+**技术实现**：
+- 基于 Slack Events API 和 Slack Bot Token 集成
+- 支持多种 Slack 事件类型：消息、提及、反应、文件分享等
+- 灵活的过滤机制：工作空间、频道、用户、事件类型
+- 支持斜杠命令和交互式消息
+
+**核心配置示例**：
+```json
+{
+  "node_type": "TRIGGER_NODE",
+  "subtype": "TRIGGER_SLACK",
+  "parameters": {
+    "workspace_id": "T1234567890",
+    "channel_filter": "C1234567890",
+    "event_types": ["message", "app_mention"],
+    "mention_required": false,
+    "command_prefix": "!",
+    "user_filter": "U1234567890",
+    "ignore_bots": true,
+    "require_thread": false
+  }
+}
+```
+
+**实现细节**：
+```python
+class SlackTrigger(BaseTrigger):
+    trigger_type = "TRIGGER_SLACK"
+
+    def __init__(self, workflow_id: str, trigger_config: dict):
+        super().__init__(workflow_id, trigger_config)
+        self.workspace_id = trigger_config.get("workspace_id")
+        self.channel_filter = trigger_config.get("channel_filter")
+        self.event_types = trigger_config.get("event_types", ["message", "app_mention"])
+        self.mention_required = trigger_config.get("mention_required", False)
+        self.user_filter = trigger_config.get("user_filter")
+        self.ignore_bots = trigger_config.get("ignore_bots", True)
+        self.slack_client = SlackWebClient()
+
+    async def start(self) -> bool:
+        """启动Slack事件监听"""
+        try:
+            # 注册webhook处理器到全局Slack事件路由器
+            await self.slack_event_router.register_trigger(
+                workspace_id=self.workspace_id,
+                trigger=self
+            )
+            self.status = TriggerStatus.ACTIVE
+            return True
+        except Exception as e:
+            logger.error(f"Failed to start Slack trigger: {e}")
+            self.status = TriggerStatus.FAILED
+            return False
+
+    async def process_slack_event(self, event_data: dict) -> bool:
+        """处理Slack事件"""
+        event_type = event_data.get("type")
+
+        # 过滤事件类型
+        if event_type not in self.event_types:
+            return False
+
+        # 频道过滤
+        channel_id = event_data.get("channel")
+        if self.channel_filter and not self._matches_channel_filter(channel_id):
+            return False
+
+        # 用户过滤
+        user_id = event_data.get("user")
+        if self.user_filter and not self._matches_user_filter(user_id):
+            return False
+
+        # Bot过滤
+        if self.ignore_bots and event_data.get("bot_id"):
+            return False
+
+        # 提及过滤
+        if self.mention_required and not self._has_bot_mention(event_data):
+            return False
+
+        # 构建触发数据
+        trigger_data = {
+            "event_type": event_type,
+            "message": event_data.get("text", ""),
+            "user_id": user_id,
+            "channel_id": channel_id,
+            "team_id": event_data.get("team"),
+            "timestamp": event_data.get("ts"),
+            "thread_ts": event_data.get("thread_ts"),
+            "event_data": event_data
+        }
+
+        # 触发workflow
+        await self._trigger_workflow(trigger_data)
+        return True
+
+    def _matches_channel_filter(self, channel_id: str) -> bool:
+        """检查频道是否匹配过滤器"""
+        if not self.channel_filter:
+            return True
+
+        # 支持精确匹配、正则表达式或频道名
+        import re
+        try:
+            if self.channel_filter.startswith("C"):  # 频道ID
+                return channel_id == self.channel_filter
+            else:  # 作为正则表达式处理
+                return bool(re.match(self.channel_filter, channel_id))
+        except re.error:
+            return False
+```
+
+### 4.6. GitHub触发器 (GitHubTrigger)
 
 **技术实现**：
 - 基于 GitHub App 集成，通过webhook接收事件
@@ -456,24 +764,85 @@ sequenceDiagram
     participant Gateway as API Gateway
     participant Deploy as DeploymentService
     participant TriggerMgr as TriggerManager
+    participant TriggerIndex as TriggerIndexManager
     participant DB as PostgreSQL
 
     Client->>Gateway: POST /workflows/{id}/deploy
-    Gateway->>Deploy: deploy_workflow(workflow_spec)
+    Gateway->>Deploy: deploy_workflow(workflow_id, user_id, config)
+
+    Deploy->>DB: BEGIN TRANSACTION
+    Deploy->>DB: UPDATE workflows SET deployment_status='DEPLOYING'
+    Deploy->>DB: INSERT deployment_history (action='DEPLOY', from_status='DRAFT', to_status='DEPLOYING')
 
     Deploy->>Deploy: validate_workflow_definition()
-    Deploy->>DB: UPDATE workflows SET deployment_status='DEPLOYED'
 
-    Deploy->>TriggerMgr: register_triggers(workflow_id, trigger_specs)
+    alt Validation successful
+        Deploy->>TriggerIndex: register_workflow_triggers(workflow_id, workflow_spec)
+        TriggerIndex->>DB: DELETE FROM trigger_index WHERE workflow_id=?
+        TriggerIndex->>DB: INSERT INTO trigger_index (extracted triggers)
 
-    loop For each trigger
-        TriggerMgr->>TriggerMgr: create_trigger_instance()
-        TriggerMgr->>TriggerMgr: start_trigger()
+        Deploy->>TriggerMgr: register_triggers(workflow_id, trigger_specs)
+
+        loop For each trigger
+            TriggerMgr->>TriggerMgr: create_trigger_instance()
+            TriggerMgr->>TriggerMgr: start_trigger()
+        end
+
+        TriggerMgr-->>Deploy: All triggers registered successfully
+
+        Deploy->>DB: UPDATE workflows SET deployment_status='DEPLOYED', deployed_at=NOW(), deployed_by=user_id
+        Deploy->>DB: UPDATE deployment_history SET completed_at=NOW(), to_status='DEPLOYED'
+        Deploy->>DB: COMMIT TRANSACTION
+
+        Deploy-->>Gateway: Deployment successful
+        Gateway-->>Client: 200 OK {status: 'DEPLOYED', deployment_version: N}
+
+    else Validation failed
+        Deploy->>DB: UPDATE workflows SET deployment_status='DEPLOYMENT_FAILED'
+        Deploy->>DB: UPDATE deployment_history SET completed_at=NOW(), to_status='DEPLOYMENT_FAILED', error_message=error
+        Deploy->>DB: ROLLBACK TRANSACTION
+
+        Deploy-->>Gateway: Deployment failed
+        Gateway-->>Client: 400 Bad Request {error: validation_errors}
+    end
+```
+
+### 5.1.1. Workflow 取消部署流程
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Gateway as API Gateway
+    participant Deploy as DeploymentService
+    participant TriggerMgr as TriggerManager
+    participant TriggerIndex as TriggerIndexManager
+    participant DB as PostgreSQL
+
+    Client->>Gateway: POST /workflows/{id}/undeploy
+    Gateway->>Deploy: undeploy_workflow(workflow_id, user_id)
+
+    Deploy->>DB: BEGIN TRANSACTION
+    Deploy->>DB: UPDATE workflows SET deployment_status='UNDEPLOYING'
+    Deploy->>DB: INSERT deployment_history (action='UNDEPLOY', from_status='DEPLOYED', to_status='UNDEPLOYING')
+
+    Deploy->>TriggerMgr: unregister_triggers(workflow_id)
+
+    loop For each active trigger
+        TriggerMgr->>TriggerMgr: stop_trigger()
+        TriggerMgr->>TriggerMgr: cleanup_trigger_resources()
     end
 
-    TriggerMgr-->>Deploy: All triggers registered
-    Deploy-->>Gateway: Deployment successful
-    Gateway-->>Client: 200 OK (deployment_id)
+    TriggerMgr-->>Deploy: All triggers stopped
+
+    Deploy->>TriggerIndex: clear_workflow_triggers(workflow_id)
+    TriggerIndex->>DB: DELETE FROM trigger_index WHERE workflow_id=?
+
+    Deploy->>DB: UPDATE workflows SET deployment_status='UNDEPLOYED', undeployed_at=NOW()
+    Deploy->>DB: UPDATE deployment_history SET completed_at=NOW(), to_status='UNDEPLOYED'
+    Deploy->>DB: COMMIT TRANSACTION
+
+    Deploy-->>Gateway: Undeployment successful
+    Gateway-->>Client: 200 OK {status: 'UNDEPLOYED'}
 ```
 
 ### 5.2. Cron 触发执行流程
@@ -753,32 +1122,175 @@ SCHEDULER_MAX_WORKERS="10"
 - workflow_engine 通过 AWS ECS 独立部署和伸缩
 - **简化架构**：无需复杂的执行状态同步，只需管理触发器状态
 
-## 7. 安全考虑
+## 7. Slack 集成架构
 
-### 7.1. 身份验证
+### 7.1. Slack App 配置
+
+**必要权限和范围**：
+- `app_mentions:read` - 监听 @bot 提及
+- `channels:read` - 读取频道信息
+- `chat:write` - 发送消息响应
+- `im:read` - 读取私信
+- `users:read` - 读取用户信息
+- `files:read` - 读取共享文件
+- `reactions:read` - 读取消息反应
+
+**事件订阅设置**：
+```json
+{
+  "event_subscriptions": {
+    "url": "https://api.your-domain.com/slack/events",
+    "bot_events": [
+      "message.channels",
+      "message.groups",
+      "message.im",
+      "app_mention",
+      "reaction_added",
+      "pin_added",
+      "file_shared"
+    ]
+  },
+  "slash_commands": [
+    {
+      "command": "/workflow",
+      "url": "https://api.your-domain.com/slack/commands",
+      "description": "Trigger workflows"
+    }
+  ]
+}
+```
+
+### 7.2. Slack 事件路由系统
+
+**全局事件处理器**：
+```python
+class SlackEventRouter:
+    def __init__(self):
+        self.workspace_triggers = {}  # {workspace_id: [triggers]}
+        self.global_triggers = []     # 监听所有工作空间的触发器
+
+    async def register_trigger(self, workspace_id: str = None, trigger: SlackTrigger):
+        """注册 Slack 触发器到路由系统"""
+        if workspace_id:
+            if workspace_id not in self.workspace_triggers:
+                self.workspace_triggers[workspace_id] = []
+            self.workspace_triggers[workspace_id].append(trigger)
+        else:
+            self.global_triggers.append(trigger)
+
+    async def route_event(self, event_data: dict) -> List[ExecutionResult]:
+        """将Slack事件路由到匹配的触发器"""
+        workspace_id = event_data.get("team_id")
+        results = []
+
+        # 处理工作空间特定的触发器
+        if workspace_id in self.workspace_triggers:
+            for trigger in self.workspace_triggers[workspace_id]:
+                try:
+                    if await trigger.process_slack_event(event_data):
+                        result = await trigger._trigger_workflow({
+                            "slack_event": event_data,
+                            "workspace_id": workspace_id
+                        })
+                        results.append(result)
+                except Exception as e:
+                    logger.error(f"Slack trigger error: {e}")
+
+        # 处理全局触发器
+        for trigger in self.global_triggers:
+            try:
+                if await trigger.process_slack_event(event_data):
+                    result = await trigger._trigger_workflow({
+                        "slack_event": event_data,
+                        "workspace_id": workspace_id
+                    })
+                    results.append(result)
+            except Exception as e:
+                logger.error(f"Global Slack trigger error: {e}")
+
+        return results
+```
+
+### 7.3. Slack 事件处理流程
+
+```mermaid
+sequenceDiagram
+    participant Slack as Slack Platform
+    participant Gateway as API Gateway
+    participant Router as SlackEventRouter
+    participant SlackTrigger
+    participant Engine as workflow_engine
+
+    Slack->>Gateway: POST /slack/events (workspace event)
+    Gateway->>Gateway: verify_slack_signature()
+    Gateway->>Router: route_event(event_data)
+
+    Router->>Router: find_matching_triggers(workspace_id, event_type)
+
+    loop For each matching trigger
+        Router->>SlackTrigger: process_slack_event(event_data)
+        SlackTrigger->>SlackTrigger: apply_filters()
+
+        alt Event matches all filters
+            SlackTrigger->>SlackTrigger: extract_trigger_data()
+            SlackTrigger->>Engine: POST /v1/workflows/{id}/execute
+            Engine-->>SlackTrigger: 202 Accepted (execution_id)
+        end
+
+        SlackTrigger-->>Router: execution_result
+    end
+
+    Router-->>Gateway: List[ExecutionResult]
+    Gateway-->>Slack: 200 OK
+```
+
+### 7.4. 快速事件匹配优化
+
+使用简化的触发器索引表进行快速匹配：
+
+```sql
+-- 查找监听特定工作空间的触发器 (粗筛选)
+SELECT workflow_id, trigger_config
+FROM trigger_index
+WHERE trigger_type = 'TRIGGER_SLACK'
+  AND deployment_status = 'active'
+  AND (index_key = %s OR index_key IS NULL OR index_key = '')
+```
+
+**优化策略**：
+- **粗筛选**: `index_key` 只存储 `workspace_id` 用于快速过滤工作空间
+- **精确匹配**: 从 `trigger_config` JSONB 字段中进行详细的事件类型、频道、用户等过滤
+- **统一索引**: `idx_trigger_index_key` 支持所有触发器类型的快速查询
+- **可扩展性**: 新增触发器类型不会增加额外字段
+
+## 8. 安全考虑
+
+### 8.1. 身份验证
 
 - **Manual触发器**: JWT token验证
 - **Webhook触发器**: 可选的API密钥或签名验证
+- **Slack触发器**: Slack签名验证和Bot Token管理
 - **Email触发器**: 安全的IMAP连接和凭据管理
 - **内部服务**: HTTP API之间的服务间认证
 
-### 7.2. 权限控制
+### 8.2. 权限控制
 
 - 基于用户角色的workflow触发权限
 - Webhook端点的访问控制
+- Slack工作空间和频道的访问控制
 - 邮箱监控的权限隔离
 - 审计日志记录所有触发事件
 
-### 7.3. 数据安全
+### 8.3. 数据安全
 
 - 敏感配置加密存储
 - 邮件内容的安全处理
 - 网络传输TLS加密
 - 分布式锁的安全实现
 
-## 8. 监控与可观测性
+## 9. 监控与可观测性
 
-### 8.1. 关键指标
+### 9.1. 关键指标
 
 - 部署的 Workflow 数量和状态分布
 - 各类触发器的调度成功率和失败率
@@ -786,7 +1298,7 @@ SCHEDULER_MAX_WORKERS="10"
 - 系统资源使用情况（CPU、内存、数据库连接）
 - 邮件监控延迟和处理量
 
-### 8.2. 日志结构
+### 9.2. 日志结构
 
 ```json
 {
@@ -824,27 +1336,48 @@ SCHEDULER_MAX_WORKERS="10"
 
 ```
 workflow_scheduler/
-├── app/
-│   ├── main.py                    # FastAPI应用入口
-│   ├── api/                       # REST API端点
-│   │   ├── deployment.py         # 部署管理API
-│   │   └── triggers.py           # 触发器管理API
-│   ├── services/
-│   │   ├── deployment_service.py # 部署服务
-│   │   ├── trigger_manager.py    # 触发器管理器
-│   │   └── github_client.py     # GitHub App客户端
-│   ├── triggers/
-│   │   ├── base.py               # 基础触发器类
-│   │   ├── cron_trigger.py       # Cron触发器
-│   │   ├── manual_trigger.py     # 手动触发器
-│   │   ├── webhook_trigger.py    # Webhook触发器
-│   │   ├── email_trigger.py      # 邮件触发器
-│   │   └── github_trigger.py     # GitHub触发器
-│   ├── models/                   # 数据模型
-│   └── core/                     # 核心配置
+├── main.py                       # FastAPI应用入口
+├── api/                          # REST API端点
+│   ├── __init__.py
+│   ├── deployment.py            # 部署管理API
+│   ├── github.py                # GitHub webhook处理API
+│   └── triggers.py              # 触发器管理API
+├── services/                     # 业务服务层
+│   ├── __init__.py
+│   ├── deployment_service.py    # 部署服务
+│   ├── trigger_manager.py       # 触发器管理器
+│   ├── trigger_index_manager.py # 触发器索引管理
+│   ├── event_router.py          # 事件路由服务
+│   ├── lock_manager.py          # 分布式锁管理
+│   └── notification_service.py  # Slack通知服务
+├── triggers/                     # 触发器实现
+│   ├── __init__.py
+│   ├── base.py                  # 基础触发器类
+│   ├── cron_trigger.py          # Cron触发器
+│   ├── manual_trigger.py        # 手动触发器
+│   ├── webhook_trigger.py       # Webhook触发器
+│   ├── email_trigger.py         # 邮件触发器
+│   └── github_trigger.py        # GitHub触发器
+├── models/                       # 数据模型
+│   ├── __init__.py
+│   ├── database.py              # 数据库模型
+│   ├── triggers.py              # 触发器模型
+│   └── trigger_index.py         # 触发器索引模型
+├── core/                         # 核心配置
+│   ├── __init__.py
+│   ├── config.py                # 配置管理
+│   └── database.py              # 数据库连接
 ├── tests/                        # 单元测试
-├── requirements.txt              # Python依赖
-└── Dockerfile                    # 容器化配置
+│   ├── __init__.py
+│   ├── test_basic.py
+│   └── test_notification.py
+├── dependencies.py               # FastAPI依赖注入
+├── pyproject.toml               # Python项目配置
+├── start.sh                     # 启动脚本
+├── test_trigger_system.py       # 触发器系统测试
+├── README.md                    # 项目说明
+├── TESTING_MODE.md              # 内测模式说明
+└── Dockerfile                   # 容器化配置
 ```
 
 ### 9.3. 开发命令
@@ -854,10 +1387,15 @@ workflow_scheduler/
 uv sync
 
 # 运行服务
-python -m workflow_scheduler.app.main
+python -m workflow_scheduler.main
+# 或者使用启动脚本
+./start.sh
 
 # 运行测试
 pytest tests/
+
+# 测试触发器系统
+python test_trigger_system.py
 
 # 构建Docker镜像
 docker build -t workflow-scheduler --platform linux/amd64 .
@@ -876,39 +1414,47 @@ docker build -t workflow-scheduler --platform linux/amd64 .
 
 ### 10.2. 触发器索引设计
 
-**数据库索引表**：
+创建专门的 `trigger_index` 表来支持**所有类型触发器**的快速反查：
+
+**优化后的简化设计**（已创建：`supabase/migrations/20250806200000_add_trigger_index_table.sql`）：
 ```sql
--- 触发器快速查找索引表
+-- 创建触发器索引表 - 支持所有触发器类型的统一快速筛选
 CREATE TABLE trigger_index (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     workflow_id UUID NOT NULL,
-    trigger_type TEXT NOT NULL, -- 'cron', 'webhook', 'email', 'github', 'manual'
+    trigger_type TEXT NOT NULL, -- 'TRIGGER_MANUAL', 'TRIGGER_CRON', 'TRIGGER_WEBHOOK', 'TRIGGER_SLACK', 'TRIGGER_EMAIL', 'TRIGGER_GITHUB'
     trigger_config JSONB NOT NULL, -- 触发器完整配置
 
-    -- 快速匹配字段
-    cron_expression TEXT, -- cron表达式 (仅cron类型)
-    webhook_path TEXT, -- webhook路径 (仅webhook类型)
-    email_filter TEXT, -- 邮件过滤器 (仅email类型)
+    -- 统一的快速匹配字段 (每个触发器类型只用一个核心字段进行粗筛选)
+    index_key TEXT, -- 统一的快速匹配字段
+    -- TRIGGER_CRON: cron_expression
+    -- TRIGGER_WEBHOOK: webhook_path
+    -- TRIGGER_SLACK: workspace_id
+    -- TRIGGER_EMAIL: email_address
+    -- TRIGGER_GITHUB: repository_name
 
-    -- GitHub触发器索引字段
-    github_repository TEXT, -- 仓库名 'owner/repo' (仅github类型)
-    github_events TEXT[], -- 事件类型数组 (仅github类型)
-    github_installation_id BIGINT, -- GitHub App安装ID (仅github类型)
+    -- 部署状态
+    deployment_status TEXT DEFAULT 'active', -- 'active', 'testing', 'inactive'
 
-    -- 元数据
-    deployment_status TEXT DEFAULT 'active', -- 'active', 'paused', 'stopped'
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 索引优化
-CREATE INDEX idx_trigger_type ON trigger_index(trigger_type);
-CREATE INDEX idx_github_repo_events ON trigger_index(github_repository, github_events)
-    WHERE trigger_type = 'github';
-CREATE INDEX idx_webhook_path ON trigger_index(webhook_path)
-    WHERE trigger_type = 'webhook';
-CREATE INDEX idx_deployment_status ON trigger_index(deployment_status);
+-- 统一的快速匹配索引 (支持所有触发器类型)
+CREATE INDEX idx_trigger_index_key ON trigger_index(trigger_type, index_key)
+    WHERE index_key IS NOT NULL;
+
+-- 复合索引用于最常见的查询模式
+CREATE INDEX idx_trigger_index_lookup ON trigger_index(trigger_type, index_key, deployment_status)
+    WHERE index_key IS NOT NULL;
 ```
+
+**简化设计的优势**：
+- **可扩展性**：新增触发器类型不会导致字段爆炸，只需要确定一个核心筛选字段
+- **统一索引**：所有触发器类型使用同一套索引结构，简化维护
+- **粗筛选策略**：索引表只负责快速粗筛选，详细匹配由trigger_config中的完整配置处理
+- **性能优化**：避免了多字段查询，使用单一index_key进行快速匹配
+- **未来扩展**：每个新的触发器类型只需要定义一个主要的筛选维度
 
 ### 10.3. 快速匹配算法
 
@@ -929,31 +1475,36 @@ class EventRouter:
             return await self._find_email_matches(event_data)
         elif event_type == "cron":
             return await self._find_cron_matches(event_data)
+        elif event_type == "chat":
+            return await self._find_chat_matches(event_data)
+        elif event_type == "form":
+            return await self._find_form_matches(event_data)
+        elif event_type == "calendar":
+            return await self._find_calendar_matches(event_data)
 
         return []
 
     async def _find_github_matches(self, event_data: dict) -> List[TriggerMatch]:
-        """GitHub事件快速匹配"""
+        """GitHub事件快速匹配 - 使用统一index_key进行粗筛选"""
         repository = event_data["repository"]["full_name"]
-        event_type = event_data["event"]
 
-        # 1. 基础索引查询 - 快速筛选
+        # 1. 基础索引查询 - 快速粗筛选 (只匹配repository)
         base_query = """
         SELECT workflow_id, trigger_config
         FROM trigger_index
-        WHERE trigger_type = 'github'
+        WHERE trigger_type = 'TRIGGER_GITHUB'
           AND deployment_status = 'active'
-          AND github_repository = %s
-          AND %s = ANY(github_events)
+          AND index_key = %s
         """
 
-        candidates = await self.db.fetch_all(base_query, repository, event_type)
+        candidates = await self.db.fetch_all(base_query, repository)
 
-        # 2. 高级过滤 - 详细匹配
+        # 2. 详细匹配 - 在trigger_config中进行精确过滤
         matches = []
         for candidate in candidates:
             trigger_config = candidate["trigger_config"]
 
+            # 从完整配置中进行详细匹配
             if self._matches_github_filters(event_data, trigger_config):
                 matches.append(TriggerMatch(
                     workflow_id=candidate["workflow_id"],
@@ -964,49 +1515,41 @@ class EventRouter:
         return matches
 
     def _matches_github_filters(self, event_data: dict, config: dict) -> bool:
-        """应用GitHub高级过滤器"""
-        # 分支过滤
-        if config.get("branches"):
-            if event_data["event"] == "push":
-                branch = event_data["payload"]["ref"].replace("refs/heads/", "")
-            elif event_data["event"] == "pull_request":
-                branch = event_data["payload"]["pull_request"]["base"]["ref"]
-            else:
-                branch = None
+        """从trigger_config中应用GitHub详细过滤器"""
+        # 事件类型过滤
+        if event_data["event"] not in config.get("events", []):
+            return False
 
-            if branch and branch not in config["branches"]:
+        # 分支过滤 (如果适用)
+        if "ref" in event_data and config.get("branches"):
+            branch_name = event_data["ref"].replace("refs/heads/", "")
+            if not any(fnmatch(branch_name, pattern) for pattern in config["branches"]):
                 return False
 
-        # 路径过滤
-        if config.get("paths"):
-            changed_files = self._extract_changed_files(event_data)
-            if not self._matches_path_patterns(changed_files, config["paths"]):
+        # 路径过滤 (如果适用)
+        if config.get("paths") and "commits" in event_data:
+            # 检查提交中的文件路径是否匹配
+            if not self._matches_path_filters(event_data["commits"], config["paths"]):
                 return False
 
         # 作者过滤
         if config.get("author_filter"):
-            author = self._extract_author(event_data)
+            author = event_data.get("sender", {}).get("login", "")
             if not re.match(config["author_filter"], author):
-                return False
-
-        # 动作过滤
-        if config.get("action_filter"):
-            action = event_data.get("action")
-            if action and action not in config["action_filter"]:
                 return False
 
         return True
 
     async def _find_webhook_matches(self, event_data: dict) -> List[TriggerMatch]:
-        """Webhook路径直接匹配"""
+        """Webhook路径直接匹配 - 使用统一index_key"""
         webhook_path = event_data["path"]
 
         query = """
         SELECT workflow_id, trigger_config
         FROM trigger_index
-        WHERE trigger_type = 'webhook'
+        WHERE trigger_type = 'TRIGGER_WEBHOOK'
           AND deployment_status = 'active'
-          AND webhook_path = %s
+          AND index_key = %s
         """
 
         results = await self.db.fetch_all(query, webhook_path)
@@ -1019,7 +1562,67 @@ class EventRouter:
             )
             for result in results
         ]
-```
+
+    async def _find_slack_matches(self, event_data: dict) -> List[TriggerMatch]:
+        """Slack事件快速匹配 - 使用workspace_id进行粗筛选"""
+        workspace_id = event_data.get("team_id", "")
+
+        # 1. 基础索引查询 - 快速粗筛选 (只匹配workspace)
+        query = """
+        SELECT workflow_id, trigger_config
+        FROM trigger_index
+        WHERE trigger_type = 'TRIGGER_SLACK'
+          AND deployment_status = 'active'
+          AND (index_key = %s OR index_key IS NULL OR index_key = '')
+        """
+
+        candidates = await self.db.fetch_all(query, workspace_id)
+
+        # 2. 详细匹配 - 在trigger_config中进行精确过滤
+        matches = []
+        for candidate in candidates:
+            trigger_config = candidate["trigger_config"]
+
+            # 从完整配置中进行详细匹配
+            if self._matches_slack_filters(event_data, trigger_config):
+                matches.append(TriggerMatch(
+                    workflow_id=candidate["workflow_id"],
+                    trigger_config=trigger_config,
+                    match_score=self._calculate_slack_match_score(event_data, trigger_config)
+                ))
+
+        return matches
+
+    def _matches_slack_filters(self, event_data: dict, config: dict) -> bool:
+        """从trigger_config中应用Slack详细过滤器"""
+        # 事件类型过滤
+        event_type = event_data.get("type", "")
+        if config.get("event_types") and event_type not in config["event_types"]:
+            return False
+
+        # 频道过滤
+        channel_id = event_data.get("channel", "")
+        if config.get("channel_filter"):
+            if not self._matches_channel_pattern(channel_id, config["channel_filter"]):
+                return False
+
+        # 用户过滤
+        user_id = event_data.get("user", "")
+        if config.get("user_filter"):
+            if not re.match(config["user_filter"], user_id):
+                return False
+
+        # Bot过滤
+        if config.get("ignore_bots", True) and event_data.get("bot_id"):
+            return False
+
+        # 提及过滤
+        if config.get("mention_required", False):
+            message_text = event_data.get("text", "")
+            if not self._has_bot_mention(message_text):
+                return False
+
+        return True
 
 ### 10.4. 触发器注册管理
 
@@ -1046,7 +1649,7 @@ class TriggerIndexManager:
 
     async def _index_trigger(self, workflow_id: str, trigger_node: dict):
         """将单个触发器添加到索引"""
-        trigger_type = trigger_node["subtype"].replace("TRIGGER_", "").lower()
+        trigger_type = trigger_node["subtype"]  # 直接使用subtype，如 'TRIGGER_GITHUB'
         trigger_config = trigger_node["parameters"]
 
         index_data = {
@@ -1056,36 +1659,25 @@ class TriggerIndexManager:
             "deployment_status": "active"
         }
 
-        # 根据触发器类型填充索引字段
-        if trigger_type == "github":
-            index_data.update({
-                "github_repository": trigger_config["repository"],
-                "github_events": trigger_config["events"],
-                "github_installation_id": trigger_config["github_app_installation_id"]
-            })
-        elif trigger_type == "webhook":
-            index_data.update({
-                "webhook_path": trigger_config.get("webhook_path", f"/webhook/{workflow_id}")
-            })
-        elif trigger_type == "email":
-            index_data.update({
-                "email_filter": trigger_config.get("email_filter", "")
-            })
-        elif trigger_type == "cron":
-            index_data.update({
-                "cron_expression": trigger_config["cron_expression"]
-            })
+        # 根据触发器类型填充统一的index_key字段 (粗筛选)
+        if trigger_type == "TRIGGER_GITHUB":
+            index_data["index_key"] = trigger_config["repository"]  # 只用repository进行粗筛选
+        elif trigger_type == "TRIGGER_WEBHOOK":
+            index_data["index_key"] = trigger_config.get("webhook_path", f"/webhook/{workflow_id}")
+        elif trigger_type == "TRIGGER_SLACK":
+            index_data["index_key"] = trigger_config.get("workspace_id", "")  # 只用workspace_id进行粗筛选
+        elif trigger_type == "TRIGGER_EMAIL":
+            index_data["index_key"] = trigger_config.get("email_filter", "")  # 使用邮箱地址或过滤器进行粗筛选
+        elif trigger_type == "TRIGGER_CRON":
+            index_data["index_key"] = trigger_config["cron_expression"]
+        # TRIGGER_MANUAL 不需要index_key，因为不需要快速匹配
 
         await self.db.execute(
             """
             INSERT INTO trigger_index (
-                workflow_id, trigger_type, trigger_config,
-                github_repository, github_events, github_installation_id,
-                webhook_path, email_filter, cron_expression, deployment_status
+                workflow_id, trigger_type, trigger_config, index_key, deployment_status
             ) VALUES (
-                %(workflow_id)s, %(trigger_type)s, %(trigger_config)s,
-                %(github_repository)s, %(github_events)s, %(github_installation_id)s,
-                %(webhook_path)s, %(email_filter)s, %(cron_expression)s, %(deployment_status)s
+                %(workflow_id)s, %(trigger_type)s, %(trigger_config)s, %(index_key)s, %(deployment_status)s
             )
             """,
             index_data
@@ -1102,142 +1694,226 @@ class TriggerIndexManager:
         return trigger_nodes
 ```
 
-## 11. 内测模式 - 邮件通知系统
+## 11. 内测模式 - Slack 通知系统
 
 ### 11.1. 内测配置
 
+当前 workflow_scheduler 处于**内测模式**，所有触发器在满足条件时会发送 Slack 通知而不是实际执行 workflow。
+
 **环境变量配置**：
 ```bash
-# 内测模式配置
-TESTING_MODE="true"
-TESTING_EMAIL_RECIPIENT="z1771485029@gmail.com"
-SKIP_WORKFLOW_EXECUTION="true"
-
-# 邮件客户端配置 (使用shared/email_client)
-EMAIL_CLIENT_TYPE="migadu"  # 或 "smtp"
+# Slack 通知配置
+SLACK_BOT_TOKEN="xoxb-your-bot-token-here"  # Slack Bot Token
+SLACK_TARGET_CHANNEL="#webhook-test"        # 默认通知频道
 ```
+
+**Slack Bot 配置要求**：
+- Bot Token 权限：`chat:write`, `channels:read`
+- Bot 必须加入到目标频道
+- 支持 Block Kit 格式的富文本消息
 
 ### 11.2. 内测触发器实现
 
-**测试模式基础类**：
+**基础触发器类**（来自 `triggers/base.py`）：
 ```python
-class BaseTriggerTesting(BaseTrigger):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.testing_mode = os.getenv("TESTING_MODE", "false").lower() == "true"
-        self.testing_email = os.getenv("TESTING_EMAIL_RECIPIENT")
+class BaseTrigger(ABC):
+    def __init__(self, workflow_id: str, trigger_config: Dict[str, Any]):
+        self.workflow_id = workflow_id
+        self.config = trigger_config
+        self._notification_service = NotificationService()
 
-        if self.testing_mode:
-            from shared.email_client import get_email_client
-            self.email_client = get_email_client()
+    async def _trigger_workflow(self, trigger_data: Optional[Dict[str, Any]] = None) -> ExecutionResult:
+        """内测模式：发送 Slack 通知而不是执行 workflow"""
 
-    async def _trigger_workflow(self, trigger_data: dict):
-        """重写触发方法 - 内测模式发送邮件通知"""
-
-        if self.testing_mode:
-            await self._send_testing_notification(trigger_data)
-            return {"status": "testing_notification_sent", "email": self.testing_email}
-        else:
-            # 生产模式 - 调用workflow_engine
-            return await super()._trigger_workflow(trigger_data)
-
-    async def _send_testing_notification(self, trigger_data: dict):
-        """发送内测邮件通知"""
-
-        # 构造邮件内容
-        subject = f"🚀 Workflow Trigger Alert - {self.trigger_type.upper()}"
-
-        # 邮件正文
-        email_body = f"""
-        <h2>Workflow Scheduler 内测通知</h2>
-
-        <p><strong>触发详情：</strong></p>
-        <ul>
-            <li><strong>Workflow ID:</strong> {self.workflow_id}</li>
-            <li><strong>触发器类型:</strong> {self.trigger_type}</li>
-            <li><strong>触发时间:</strong> {datetime.now().isoformat()}</li>
-        </ul>
-
-        <p><strong>触发数据:</strong></p>
-        <pre style="background: #f5f5f5; padding: 10px; border-radius: 5px;">
-{json.dumps(trigger_data, indent=2, ensure_ascii=False)}
-        </pre>
-
-        <p><strong>触发器配置:</strong></p>
-        <pre style="background: #f5f5f5; padding: 10px; border-radius: 5px;">
-{json.dumps(self.config.__dict__ if hasattr(self.config, '__dict__') else str(self.config), indent=2, ensure_ascii=False)}
-        </pre>
-
-        <hr>
-        <p><em>这是内测模式通知，实际workflow并未执行。</em></p>
-        <p><em>系统时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}</em></p>
-        """
+        if not self.enabled:
+            return ExecutionResult(status="skipped", message="Trigger is disabled")
 
         try:
-            await self.email_client.send_email(
-                to_email=self.testing_email,
-                subject=subject,
-                html_body=email_body,
-                from_name="Workflow Scheduler Testing"
+            # 发送 Slack 通知代替执行 workflow
+            result = await self._notification_service.send_trigger_notification(
+                workflow_id=self.workflow_id,
+                trigger_type=self.trigger_type,
+                trigger_data=trigger_data or {},
             )
 
-            logger.info(f"Testing notification sent to {self.testing_email} for workflow {self.workflow_id}")
+            logger.info(f"✅ Trigger notification sent for workflow {self.workflow_id}")
+            return result
 
         except Exception as e:
-            logger.error(f"Failed to send testing notification: {e}")
+            logger.error(f"Error sending trigger notification: {str(e)}")
+            return ExecutionResult(status="notification_error", message=str(e))
+
+    async def _trigger_workflow_original(self, trigger_data: Optional[Dict[str, Any]] = None) -> ExecutionResult:
+        """生产模式：实际调用 workflow_engine（当前被禁用）"""
+        # 这是原始的 workflow 执行逻辑，内测期间暂时禁用
+        # 生产部署时需要将此方法重命名为 _trigger_workflow
+        pass
 ```
 
-### 11.3. 各触发器的内测实现
+### 11.3. Slack 通知服务实现
 
-**GitHub触发器内测**：
+**NotificationService**（来自 `services/notification_service.py`）：
 ```python
-class GitHubTrigger(BaseTriggerTesting):
-    async def _send_testing_notification(self, trigger_data: dict):
-        """GitHub触发器专用邮件通知"""
-        event_type = trigger_data.get("event")
-        repository = trigger_data.get("repository", {}).get("full_name", "unknown")
-        action = trigger_data.get("action")
+class NotificationService:
+    def __init__(self):
+        self.target_channel = "#webhook-test"
+        self.slack_client = SlackWebClient(os.getenv("SLACK_BOT_TOKEN"))
 
-        subject = f"🐙 GitHub {event_type.title()} Trigger - {repository}"
+    async def send_trigger_notification(self, workflow_id: str, trigger_type: str, trigger_data: Dict[str, Any]) -> ExecutionResult:
+        """发送 Slack 通知"""
+        try:
+            logger.info(f"🔔 Trigger notification: {workflow_id} triggered by {trigger_type}")
 
-        # GitHub特定的邮件内容
-        github_info = f"""
-        <h3>GitHub Event Details</h3>
-        <ul>
-            <li><strong>Repository:</strong> {repository}</li>
-            <li><strong>Event:</strong> {event_type}</li>
-            <li><strong>Action:</strong> {action or 'N/A'}</li>
-            <li><strong>Sender:</strong> {trigger_data.get('sender', {}).get('login', 'unknown')}</li>
-        </ul>
-        """
+            if self.slack_client:
+                success = await self._send_slack_notification(workflow_id, trigger_type, trigger_data)
 
-        if event_type == "pull_request":
-            pr_info = trigger_data.get("payload", {})
-            github_info += f"""
-            <h4>Pull Request Info</h4>
-            <ul>
-                <li><strong>PR #:</strong> {pr_info.get('number', 'unknown')}</li>
-                <li><strong>Title:</strong> {pr_info.get('title', 'unknown')}</li>
-                <li><strong>Base Branch:</strong> {pr_info.get('base', {}).get('ref', 'unknown')}</li>
-            </ul>
-            """
+                if success:
+                    logger.info(f"💬 Slack notification sent to {self.target_channel}")
+                    return ExecutionResult(status="notified_slack", message=f"Slack notification sent for {trigger_type} trigger")
+                else:
+                    logger.warning(f"💬 Slack notification failed for workflow {workflow_id}")
+                    return ExecutionResult(status="notified_log_only", message="Slack failed, logged trigger")
+            else:
+                logger.info(f"📝 Logged trigger notification (Slack not configured)")
+                return ExecutionResult(status="notified_log_only", message="Logged trigger (Slack not configured)")
 
-        # 调用基类方法，传入增强的内容
-        base_body = await super()._send_testing_notification(trigger_data)
-        enhanced_body = base_body.replace(
-            "<h2>Workflow Scheduler 内测通知</h2>",
-            f"<h2>Workflow Scheduler 内测通知</h2>{github_info}"
-        )
+        except Exception as e:
+            logger.error(f"Failed to send trigger notification: {e}")
+            return ExecutionResult(status="notification_failed", message=str(e))
 
-        await self.email_client.send_email(
-            to_email=self.testing_email,
-            subject=subject,
-            html_body=enhanced_body,
-            from_name="GitHub Workflow Scheduler"
-        )
+    async def _send_slack_notification(self, workflow_id: str, trigger_type: str, trigger_data: Dict[str, Any]) -> bool:
+        """使用 Slack Block Kit 发送富格式通知"""
+        try:
+            display_trigger_type = trigger_type.replace("TRIGGER_", "").title()
+            blocks = self._generate_slack_blocks(workflow_id, display_trigger_type, trigger_data)
+            fallback_text = f"🚀 Workflow {workflow_id} triggered by {display_trigger_type}"
+
+            response = self.slack_client.send_message(
+                channel=self.target_channel,
+                text=fallback_text,
+                blocks=blocks
+            )
+
+            return response.get("ok", False)
+
+        except Exception as e:
+            logger.error(f"Error sending Slack notification: {e}")
+            return False
+
+    def _generate_slack_blocks(self, workflow_id: str, display_trigger_type: str, trigger_data: Dict[str, Any]) -> list:
+        """生成 Slack Block Kit 消息块"""
+        blocks = [
+            SlackBlockBuilder.header("🚀 Workflow Triggered"),
+            SlackBlockBuilder.section(
+                f"*Workflow ID:* `{workflow_id}`\n*Trigger Type:* {display_trigger_type}\n*Time:* {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+            ),
+        ]
+
+        # 根据触发器类型添加详细信息
+        if "GITHUB" in workflow_id.upper():
+            event_type = trigger_data.get("event_type", "Unknown")
+            payload = trigger_data.get("payload", {})
+            repository = payload.get("repository", {}).get("full_name", "Unknown")
+            sender = payload.get("sender", {}).get("login", "Unknown")
+
+            blocks.append(SlackBlockBuilder.section(
+                f"*GitHub Event:* {event_type}\n*Repository:* {repository}\n*User:* @{sender}"
+            ))
+
+        elif "WEBHOOK" in workflow_id.upper():
+            method = trigger_data.get("method", "Unknown")
+            path = trigger_data.get("path", "Unknown")
+            blocks.append(SlackBlockBuilder.section(
+                f"*HTTP Method:* {method}\n*Path:* `{path}`"
+            ))
+
+        # 添加测试模式说明
+        blocks.extend([
+            SlackBlockBuilder.divider(),
+            SlackBlockBuilder.section("💡 *Note:* This is a test notification. The actual workflow was not executed."),
+            SlackBlockBuilder.context([
+                SlackBlockBuilder.text_element("🔧 Workflow Scheduler | 📍 workflow_scheduler service")
+            ])
+        ])
+
+        return blocks
 ```
 
-### 11.4. 性能优化建议
+### 11.4. 切换到生产模式
+
+要启用实际的 workflow 执行，需要修改 `triggers/base.py`：
+
+```python
+# 1. 将当前的 _trigger_workflow 方法重命名为 _trigger_workflow_testing
+async def _trigger_workflow_testing(self, trigger_data: Optional[Dict[str, Any]] = None) -> ExecutionResult:
+    # 当前的 Slack 通知逻辑...
+
+# 2. 将 _trigger_workflow_original 方法重命名为 _trigger_workflow
+async def _trigger_workflow(self, trigger_data: Optional[Dict[str, Any]] = None) -> ExecutionResult:
+    # 原始的 workflow_engine 调用逻辑...
+
+# 3. 移除 NotificationService 依赖
+# 从 BaseTrigger.__init__ 中删除:
+# self._notification_service = NotificationService()
+```
+
+### 11.5. 监控和测试
+
+**健康检查**：
+```bash
+# 服务健康检查
+curl http://localhost:8003/health
+
+# Slack 连接状态
+curl http://localhost:8003/api/v1/triggers/health
+```
+
+**测试触发器**：
+```bash
+# 手动触发
+curl -X POST http://localhost:8003/api/v1/triggers/workflows/test-workflow/manual \
+  -H "Content-Type: application/json" \
+  -d '{"confirmation": true}'
+
+# Webhook 触发
+curl -X POST http://localhost:8000/api/v1/public/webhook/test-workflow \
+  -H "Content-Type: application/json" \
+  -d '{"event": "test", "data": "sample"}'
+```
+
+**日志监控**：
+```bash
+# 查看触发器日志
+tail -f logs/workflow_scheduler.log
+
+# 查看 Slack 通知状态
+grep "Slack notification" logs/workflow_scheduler.log
+```
+
+### 11.6. 当前实现状态
+
+根据 `TESTING_MODE.md` 和现有代码，当前实现包含：
+
+1. **✅ 已实现**：
+   - Slack 通知服务 (`NotificationService`)
+   - 基础触发器的内测模式 (`BaseTrigger._trigger_workflow`)
+   - 富格式 Slack 消息 (Block Kit)
+   - 健康检查和状态监控
+   - 所有触发器类型支持 (Cron, Manual, Webhook, GitHub, Email)
+
+2. **📝 配置要求**：
+   ```bash
+   # .env 文件配置
+   SLACK_BOT_TOKEN=xoxb-your-bot-token-here
+   WORKFLOW_ENGINE_URL=http://workflow-engine:8002
+   ```
+
+3. **🔧 生产模式切换**：
+   - 当前 `_trigger_workflow` = 内测模式 (Slack 通知)
+   - 当前 `_trigger_workflow_original` = 生产模式 (调用 workflow_engine)
+   - 切换：重命名方法并移除 NotificationService 依赖
+
+### 11.7. 性能优化建议
 
 **索引查询优化**：
 - 使用数据库连接池减少连接开销
@@ -1275,4 +1951,4 @@ class OptimizedEventRouter(EventRouter):
         return matches
 ```
 
-这个设计解决了触发器反查的核心问题，并提供了完整的内测邮件通知方案。
+这个设计完整地集成了现有的 Slack 通知系统，确保与当前实现保持一致。

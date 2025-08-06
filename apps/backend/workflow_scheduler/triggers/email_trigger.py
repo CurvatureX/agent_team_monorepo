@@ -10,9 +10,9 @@ from typing import Any, Dict, List, Optional
 
 import aioimaplib
 
-from ..core.config import settings
-from ..models.triggers import ExecutionResult, TriggerStatus
-from .base import BaseTrigger
+from workflow_scheduler.core.config import settings
+from workflow_scheduler.models.triggers import ExecutionResult, TriggerStatus
+from workflow_scheduler.triggers.base import BaseTrigger
 
 logger = logging.getLogger(__name__)
 

@@ -12,6 +12,7 @@ class TriggerType(str, Enum):
     WEBHOOK = "TRIGGER_WEBHOOK"
     EMAIL = "TRIGGER_EMAIL"
     GITHUB = "TRIGGER_GITHUB"
+    SLACK = "TRIGGER_SLACK"
 
 
 class TriggerStatus(str, Enum):
@@ -73,6 +74,18 @@ class GitHubTriggerSpec(BaseModel):
     label_filter: Optional[List[str]] = None
     ignore_bots: bool = True
     draft_pr_handling: str = "ignore"
+    enabled: bool = True
+
+
+class SlackTriggerSpec(BaseModel):
+    workspace_id: Optional[str] = None
+    channel_filter: Optional[str] = None
+    event_types: List[str] = ["message", "app_mention"]
+    mention_required: bool = False
+    command_prefix: Optional[str] = None
+    user_filter: Optional[str] = None
+    ignore_bots: bool = True
+    require_thread: bool = False
     enabled: bool = True
 
 

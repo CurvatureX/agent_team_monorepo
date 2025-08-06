@@ -6,7 +6,7 @@ from typing import AsyncGenerator, Optional
 
 import redis.asyncio as redis
 
-from ..core.config import settings
+from workflow_scheduler.core.config import settings
 
 logger = logging.getLogger(__name__)
 
