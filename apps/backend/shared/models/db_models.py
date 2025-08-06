@@ -75,7 +75,8 @@ if SQLALCHEMY_AVAILABLE:
         
         # JSON fields
         run_data = Column(JSON, nullable=True)  # Runtime data
-        workflow_metadata = Column("metadata", JSON, default=dict)  # General metadata
+        # NOTE: "metadata" is mapped to workflow_metadata to avoid conflict with SQLAlchemy's metadata attribute
+        workflow_metadata = Column("metadata", JSON, default=dict, nullable=True)  # General metadata
         execution_metadata = Column(
             JSON, default=dict
         )  # Additional metadata (avoid SQLAlchemy reserved word)
@@ -90,6 +91,12 @@ if SQLALCHEMY_AVAILABLE:
 
         def to_dict(self):
             """Convert model to dictionary."""
+            # Use getattr to safely access attributes that might conflict with SQLAlchemy internals
+            workflow_metadata = getattr(self, 'workflow_metadata', None)
+            execution_metadata = getattr(self, 'execution_metadata', None)
+            run_data = getattr(self, 'run_data', None)
+            error_details = getattr(self, 'error_details', None)
+            
             return {
                 "id": str(self.id) if self.id else None,
                 "execution_id": self.execution_id,
@@ -100,11 +107,11 @@ if SQLALCHEMY_AVAILABLE:
                 "parent_execution_id": self.parent_execution_id,
                 "start_time": self.start_time,
                 "end_time": self.end_time,
-                "metadata": self.metadata,
-                "execution_metadata": self.execution_metadata,
-                "run_data": self.run_data,
+                "metadata": dict(workflow_metadata) if workflow_metadata is not None else {},
+                "execution_metadata": dict(execution_metadata) if execution_metadata is not None else {},
+                "run_data": dict(run_data) if run_data is not None else None,
                 "error_message": self.error_message,
-                "error_details": self.error_details,
+                "error_details": dict(error_details) if error_details is not None else None,
                 "created_at": self.created_at.isoformat() if self.created_at else None,
             }
 

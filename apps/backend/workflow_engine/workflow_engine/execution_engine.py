@@ -58,7 +58,7 @@ class EnhancedWorkflowExecutionEngine:
             # Validate workflow
             validation_errors = self._validate_workflow(workflow_definition)
             if validation_errors:
-                execution_state["status"] = "error"
+                execution_state["status"] = "ERROR"
                 execution_state["errors"] = validation_errors
                 self._record_execution_error(execution_id, "validation", validation_errors)
                 return execution_state
@@ -86,19 +86,19 @@ class EnhancedWorkflowExecutionEngine:
                 self._record_execution_path_step(execution_id, node_id, node_result, workflow_definition)
                 
                 # Stop execution if node failed and error handling requires it
-                if node_result["status"] == "error":
+                if node_result["status"] == "ERROR":
                     node_def = self._get_node_by_id(workflow_definition, node_id)
                     if node_def:
                         error_handling = node_def.get("on_error", "STOP_WORKFLOW_ON_ERROR")
                         
                         if error_handling == "STOP_WORKFLOW_ON_ERROR":
-                            execution_state["status"] = "error"
+                            execution_state["status"] = "ERROR"
                             execution_state["errors"].append(f"Node {node_id} failed: {node_result.get('error_message', 'Unknown error')}")
                             self._record_execution_error(execution_id, "node_execution", [f"Node {node_id} failed"])
                             break
             
             # Set final status
-            if execution_state["status"] == "running":
+            if execution_state["status"] == "RUNNING":
                 execution_state["status"] = "completed"
             
             execution_state["end_time"] = datetime.now().isoformat()
@@ -113,7 +113,7 @@ class EnhancedWorkflowExecutionEngine:
             
         except Exception as e:
             self.logger.error(f"Error executing workflow {workflow_id}: {str(e)}")
-            execution_state["status"] = "error"
+            execution_state["status"] = "ERROR"
             execution_state["errors"].append(f"Execution error: {str(e)}")
             execution_state["end_time"] = datetime.now().isoformat()
             self._record_execution_error(execution_id, "execution", [str(e)])
@@ -202,7 +202,7 @@ class EnhancedWorkflowExecutionEngine:
         # Get executor
         node_type = node_def["type"]
         node_subtype = node_def.get("subtype", "")
-        executor = self.factory.get_executor(node_type, node_subtype)
+        executor = self.factory.create_executor(node_type, node_subtype)
         if not executor:
             return {
                 "status": "ERROR",
@@ -308,42 +308,31 @@ class EnhancedWorkflowExecutionEngine:
         connections = workflow_definition.get("connections", {})
         node_results = execution_state.get("node_results", {})
         
-        # Get node name for this node_id
-        node_name = None
-        for node in workflow_definition.get("nodes", []):
-            if node.get("id") == node_id:
-                node_name = node.get("name")
-                break
-        
-        if not node_name:
-            return initial_data
-        
         # Find incoming connections with enhanced tracking
         incoming_connections = []
         connections_dict = connections
         
-        for source_node_name, node_connections in connections_dict.items():
+        for source_node_id, node_connections in connections_dict.items():
             connection_types = node_connections.get("connection_types", {})
             for connection_type, connection_array in connection_types.items():
                 connections_list = connection_array.get("connections", [])
                 
                 for connection in connections_list:
-                    if connection.get("node") == node_name:
-                        # Find source node ID
-                        source_node_id = None
+                    if connection.get("node") == node_id:
+                        # Get source node name for tracking
+                        source_node_name = None
                         for node in workflow_definition.get("nodes", []):
-                            if node.get("name") == source_node_name:
-                                source_node_id = node.get("id")
+                            if node.get("id") == source_node_id:
+                                source_node_name = node.get("name")
                                 break
                         
-                        if source_node_id:
-                            incoming_connections.append({
-                                "source_node_id": source_node_id,
-                                "source_node_name": source_node_name,
-                                "connection_type": connection_type,
-                                "connection_info": connection,
-                                "data_available": source_node_id in node_results
-                            })
+                        incoming_connections.append({
+                            "source_node_id": source_node_id,
+                            "source_node_name": source_node_name or source_node_id,
+                            "connection_type": connection_type,
+                            "connection_info": connection,
+                            "data_available": source_node_id in node_results
+                        })
         
         # If no incoming connections, use initial data
         if not incoming_connections:
@@ -667,7 +656,7 @@ class EnhancedWorkflowExecutionEngine:
             # Get executor and validate
             node_subtype = node.get("subtype", "")
             try:
-                executor = self.factory.get_executor(node_type, node_subtype)
+                executor = self.factory.create_executor(node_type, node_subtype)
                 if not executor:
                     errors.append(f"No executor found for node type: {node_type}")
                     continue
@@ -682,7 +671,7 @@ class EnhancedWorkflowExecutionEngine:
         
         # Validate ConnectionsMap
         if connections:
-            errors.extend(self._validate_connections_map(connections, node_names))
+            errors.extend(self._validate_connections_map(connections, node_ids))
         
         # Check for circular dependencies
         if not errors:  # Only check if basic validation passes
@@ -691,16 +680,16 @@ class EnhancedWorkflowExecutionEngine:
         
         return errors
     
-    def _validate_connections_map(self, connections: Dict[str, Any], node_names: Set[str]) -> List[str]:
+    def _validate_connections_map(self, connections: Dict[str, Any], node_ids: Set[str]) -> List[str]:
         """Validate ConnectionsMap structure."""
         errors = []
         
         # Get connections dict
         connections_dict = connections
         
-        for source_node_name, node_connections in connections_dict.items():
-            if source_node_name not in node_names:
-                errors.append(f"Connection source node '{source_node_name}' does not exist")
+        for source_node_id, node_connections in connections_dict.items():
+            if source_node_id not in node_ids:
+                errors.append(f"Connection source node '{source_node_id}' does not exist")
                 continue
             
             # Validate connection types
@@ -709,9 +698,9 @@ class EnhancedWorkflowExecutionEngine:
                 connections_list = connection_array.get("connections", [])
                 
                 for connection in connections_list:
-                    target_node_name = connection.get("node")
-                    if target_node_name not in node_names:
-                        errors.append(f"Connection target node '{target_node_name}' does not exist")
+                    target_node_id = connection.get("node")
+                    if target_node_id not in node_ids:
+                        errors.append(f"Connection target node '{target_node_id}' does not exist")
                     
                     # Validate connection type
                     conn_type = connection.get("type")
@@ -737,23 +726,19 @@ class EnhancedWorkflowExecutionEngine:
         nodes = workflow_definition.get("nodes", [])
         connections = workflow_definition.get("connections", {})
         
-        # Build dependency graph using node names
+        # Build dependency graph using node IDs
         graph = defaultdict(list)
         in_degree = defaultdict(int)
         
-        # Create mapping from node names to IDs
-        name_to_id = {}
+        # Initialize in_degree for all nodes
         for node in nodes:
             node_id = node["id"]
-            node_name = node["name"]
-            name_to_id[node_name] = node_id
             in_degree[node_id] = 0
         
         # Build graph from connections
         connections_dict = connections
-        for source_node_name, node_connections in connections_dict.items():
-            source_node_id = name_to_id.get(source_node_name)
-            if not source_node_id:
+        for source_node_id, node_connections in connections_dict.items():
+            if source_node_id not in in_degree:
                 continue
                 
             connection_types = node_connections.get("connection_types", {})
@@ -761,10 +746,9 @@ class EnhancedWorkflowExecutionEngine:
                 connections_list = connection_array.get("connections", [])
                 
                 for connection in connections_list:
-                    target_node_name = connection.get("node")
-                    target_node_id = name_to_id.get(target_node_name)
+                    target_node_id = connection.get("node")
                     
-                    if target_node_id:
+                    if target_node_id and target_node_id in in_degree:
                         graph[source_node_id].append(target_node_id)
                         in_degree[target_node_id] += 1
         
@@ -786,21 +770,19 @@ class EnhancedWorkflowExecutionEngine:
     def _has_circular_dependencies(self, nodes: List[Dict], connections: Dict[str, Any]) -> bool:
         """Check if workflow has circular dependencies with ConnectionsMap support."""
         
-        # Build adjacency list using node names
+        # Build adjacency list using node IDs
         graph = defaultdict(list)
-        name_to_id = {}
+        node_ids = set()
         
         for node in nodes:
             node_id = node["id"]
-            node_name = node["name"]
-            name_to_id[node_name] = node_id
+            node_ids.add(node_id)
             graph[node_id] = []
         
         # Build graph from connections
         connections_dict = connections
-        for source_node_name, node_connections in connections_dict.items():
-            source_node_id = name_to_id.get(source_node_name)
-            if not source_node_id:
+        for source_node_id, node_connections in connections_dict.items():
+            if source_node_id not in node_ids:
                 continue
                 
             connection_types = node_connections.get("connection_types", {})
@@ -808,10 +790,9 @@ class EnhancedWorkflowExecutionEngine:
                 connections_list = connection_array.get("connections", [])
                 
                 for connection in connections_list:
-                    target_node_name = connection.get("node")
-                    target_node_id = name_to_id.get(target_node_name)
+                    target_node_id = connection.get("node")
                     
-                    if target_node_id:
+                    if target_node_id and target_node_id in node_ids:
                         graph[source_node_id].append(target_node_id)
         
         # DFS to detect cycles

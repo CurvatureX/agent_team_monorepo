@@ -35,7 +35,8 @@ from workflow_engine.execution_engine import (
 from workflow_engine.models import ExecutionModel
 
 logger = logging.getLogger(__name__)
-settings = get_settings()
+# Don't initialize settings at module level - it might be None
+# settings = get_settings()
 
 
 class ExecutionService:
@@ -82,8 +83,69 @@ class ExecutionService:
             self.db.add(db_execution)
             self.db.commit()
 
-            # Placeholder for starting the execution in the background
-            self.logger.info(f"Workflow execution created: {execution_id}")
+            # Get workflow definition
+            from workflow_engine.services.workflow_service import WorkflowService
+            workflow_service = WorkflowService(self.db)
+            self.logger.info(f"About to get workflow {request.workflow_id} for user {request.user_id}")
+            workflow = workflow_service.get_workflow(request.workflow_id, request.user_id)
+            
+            if not workflow:
+                self.logger.error(f"Workflow {request.workflow_id} not found for user {request.user_id}")
+                self.db.rollback()
+                raise ValueError(f"Workflow {request.workflow_id} not found")
+            
+            self.logger.info(f"Workflow found: {workflow.name}")
+            # Convert workflow to dict for execution engine
+            self.logger.info(f"About to call model_dump() on workflow")
+            workflow_dict = workflow.model_dump()
+            self.logger.info(f"Model dump completed, keys: {list(workflow_dict.keys())}")
+            
+            # Start workflow execution in background (TODO: make async)
+            try:
+                self.logger.info(f"Starting workflow execution: {execution_id}")
+                
+                # Update status to RUNNING (uppercase to match DB constraint)
+                db_execution.status = "RUNNING"
+                self.db.commit()
+                
+                # Execute workflow
+                execution_result = self.execution_engine.execute_workflow(
+                    workflow_id=request.workflow_id,
+                    execution_id=execution_id,
+                    workflow_definition=workflow_dict,
+                    initial_data=request.trigger_data,
+                    credentials={}  # TODO: Get credentials from request or user profile
+                )
+                
+                # Update execution record with results
+                if execution_result["status"] == "completed":
+                    db_execution.status = "SUCCESS"
+                elif execution_result["status"] == "ERROR":
+                    db_execution.status = "ERROR"
+                    db_execution.error_message = "; ".join(execution_result.get("errors", []))
+                else:
+                    db_execution.status = execution_result["status"].upper()
+                
+                db_execution.end_time = int(datetime.now().timestamp())
+                
+                # Store execution results
+                if "node_results" in execution_result:
+                    db_execution.run_data = {
+                        "node_results": execution_result["node_results"],
+                        "execution_order": execution_result.get("execution_order", []),
+                        "performance_metrics": execution_result.get("performance_metrics", {})
+                    }
+                
+                self.db.commit()
+                self.logger.info(f"Workflow execution completed: {execution_id} with status {db_execution.status}")
+                
+            except Exception as e:
+                self.logger.error(f"Error during workflow execution: {str(e)}")
+                db_execution.status = "ERROR"
+                db_execution.error_message = str(e)
+                db_execution.end_time = int(datetime.now().timestamp())
+                self.db.commit()
+                raise
 
             return execution_id
 
@@ -106,10 +168,193 @@ class ExecutionService:
             if not db_execution:
                 return None
 
-            return Execution(**db_execution.to_dict())
+            self.logger.info(f"Found execution record for {execution_id}")
+            
+            # Try to access the problematic field directly
+            try:
+                # Test accessing workflow_metadata
+                wf_metadata = getattr(db_execution, 'workflow_metadata', None)
+                self.logger.info(f"workflow_metadata access result: {wf_metadata}")
+            except Exception as e:
+                self.logger.error(f"Error accessing workflow_metadata: {str(e)}")
+                # Use raw SQL to get the data
+                result = self.db.execute(
+                    "SELECT * FROM workflow_executions WHERE execution_id = :exec_id",
+                    {"exec_id": execution_id}
+                ).fetchone()
+                if result:
+                    self.logger.info(f"Raw SQL result columns: {result.keys()}")
+                    self.logger.info(f"Raw metadata value: {result['metadata']}")
+            
+            # Convert database model to API model - avoid to_dict() for now
+            self.logger.info("Converting database model to dict manually")
+            
+            # Manually create dict to debug the issue
+            exec_dict = {
+                "id": str(db_execution.id) if db_execution.id else None,
+                "execution_id": db_execution.execution_id,
+                "workflow_id": str(db_execution.workflow_id) if db_execution.workflow_id else None,
+                "status": db_execution.status,
+                "mode": getattr(db_execution, 'mode', 'MANUAL'),
+                "triggered_by": getattr(db_execution, 'triggered_by', None),
+                "parent_execution_id": getattr(db_execution, 'parent_execution_id', None),
+                "start_time": getattr(db_execution, 'start_time', None),
+                "end_time": getattr(db_execution, 'end_time', None),
+                "metadata": {},  # Skip for now
+                "execution_metadata": dict(getattr(db_execution, 'execution_metadata', {})) if getattr(db_execution, 'execution_metadata', None) else {},
+                "run_data": getattr(db_execution, 'run_data', None),
+                "error_message": getattr(db_execution, 'error_message', None),
+                "error_details": dict(getattr(db_execution, 'error_details', {})) if getattr(db_execution, 'error_details', None) else None,
+                "created_at": db_execution.created_at.isoformat() if hasattr(db_execution, 'created_at') and db_execution.created_at else None,
+            }
+            
+            self.logger.info(f"Manual exec_dict created successfully")
+            self.logger.info(f"exec_dict status: {exec_dict['status']}")
+            self.logger.info(f"exec_dict execution_metadata: {exec_dict['execution_metadata']}")
+            
+            # Extract user_id from metadata or run_data
+            user_id = None
+            if exec_dict.get('execution_metadata') and isinstance(exec_dict['execution_metadata'], dict):
+                user_id = exec_dict['execution_metadata'].get('user_id')
+            if not user_id and exec_dict.get('run_data') and isinstance(exec_dict['run_data'], dict):
+                user_id = exec_dict['run_data'].get('user_id')
+            if not user_id:
+                # Try to get from workflow
+                from workflow_engine.models import WorkflowModel
+                workflow = self.db.query(WorkflowModel).filter(
+                    WorkflowModel.id == db_execution.workflow_id
+                ).first()
+                if workflow:
+                    user_id = workflow.user_id
+            
+            # Map fields to match Execution model
+            self.logger.info("About to create Execution model")
+            
+            # Handle run_data safely
+            run_data = exec_dict.get('run_data')
+            input_data = {}
+            output_data = {}
+            execution_run_data = None
+            
+            if run_data is not None:
+                if isinstance(run_data, str):
+                    # Parse JSON string to dict
+                    try:
+                        import json
+                        run_data = json.loads(run_data)
+                        self.logger.info("Successfully parsed run_data from JSON string")
+                    except Exception as e:
+                        self.logger.error(f"Failed to parse run_data JSON: {str(e)}")
+                        run_data = {}
+                
+                if isinstance(run_data, dict):
+                    # Extract traditional input/output_data for backward compatibility
+                    input_data = run_data.get('input_data', {})
+                    output_data = run_data.get('output_data', {})
+                    
+                    # Parse detailed execution data for new run_data field
+                    try:
+                        from shared.models import (
+                            ExecutionRunData, NodeExecutionResult, 
+                            ExecutionPerformanceMetrics, NodePerformanceMetrics
+                        )
+                        
+                        # Parse node results
+                        parsed_node_results = {}
+                        if 'node_results' in run_data:
+                            for node_id, node_result in run_data['node_results'].items():
+                                # Parse performance metrics
+                                perf_data = node_result.get('performance_metrics', {})
+                                node_perf = NodePerformanceMetrics(
+                                    execution_time=perf_data.get('execution_time', 0.0),
+                                    memory_usage=perf_data.get('memory_usage', {}),
+                                    cpu_usage=perf_data.get('cpu_usage', {})
+                                )
+                                
+                                # Create NodeExecutionResult
+                                parsed_node_results[node_id] = NodeExecutionResult(
+                                    status=node_result.get('status', 'unknown'),
+                                    logs=node_result.get('logs', []),
+                                    metadata=node_result.get('metadata', {}),
+                                    output_data=node_result.get('output_data', {}),
+                                    error_details=node_result.get('error_details'),
+                                    error_message=node_result.get('error_message'),
+                                    execution_time=node_result.get('execution_time', 0.0),
+                                    input_data_summary=node_result.get('input_data_summary'),
+                                    output_data_summary=node_result.get('output_data_summary'),
+                                    performance_metrics=node_perf
+                                )
+                        
+                        # Parse overall performance metrics
+                        overall_perf_data = run_data.get('performance_metrics', {})
+                        overall_perf = ExecutionPerformanceMetrics(
+                            total_execution_time=overall_perf_data.get('total_execution_time', 0.0),
+                            node_execution_times=overall_perf_data.get('node_execution_times', {}),
+                            memory_usage=overall_perf_data.get('memory_usage', {}),
+                            cpu_usage=overall_perf_data.get('cpu_usage', {})
+                        )
+                        
+                        # Create ExecutionRunData
+                        execution_run_data = ExecutionRunData(
+                            node_results=parsed_node_results,
+                            execution_order=run_data.get('execution_order', []),
+                            performance_metrics=overall_perf
+                        )
+                        
+                        self.logger.info(f"Successfully parsed detailed run_data with {len(parsed_node_results)} nodes")
+                        
+                    except Exception as e:
+                        self.logger.error(f"Failed to parse detailed run_data: {str(e)}")
+                        self.logger.error(f"run_data keys: {list(run_data.keys()) if isinstance(run_data, dict) else 'not dict'}")
+                        execution_run_data = None
+            
+            # Handle execution_metadata safely
+            execution_metadata = exec_dict.get('execution_metadata')
+            if execution_metadata is None:
+                session_id = None
+            elif isinstance(execution_metadata, dict):
+                session_id = execution_metadata.get('session_id')
+            else:
+                session_id = None
+            
+            # Add error message to logs if present
+            logs = []
+            if exec_dict.get('error_message'):
+                from shared.models import ExecutionLog
+                logs.append(ExecutionLog(
+                    timestamp=int(time.time()),
+                    level="ERROR",
+                    message=exec_dict['error_message']
+                ))
+            
+            print(f"[DEBUG] Creating Execution with: id={exec_dict['execution_id']}, status={exec_dict['status']}, user_id={user_id}", file=sys.stderr, flush=True)
+            
+            # Create the Execution object
+            try:
+                execution = Execution(
+                    id=exec_dict['execution_id'],  # Use execution_id as id
+                    workflow_id=exec_dict['workflow_id'],
+                    status=exec_dict['status'],
+                    started_at=exec_dict['start_time'] or int(time.time()),
+                    ended_at=exec_dict['end_time'],
+                    input_data=input_data,
+                    output_data=output_data,
+                    logs=logs,  # Include error message in logs
+                    user_id=user_id or "unknown",
+                    session_id=session_id,
+                    run_data=execution_run_data  # Add parsed detailed execution data
+                )
+                print(f"[DEBUG] Execution object created successfully", file=sys.stderr, flush=True)
+                return execution
+            except Exception as e:
+                print(f"[DEBUG] Error creating Execution object: {str(e)}", file=sys.stderr, flush=True)
+                print(f"[DEBUG] Execution data: id={exec_dict['execution_id']}, workflow_id={exec_dict['workflow_id']}, status={exec_dict['status']}", file=sys.stderr, flush=True)
+                raise
 
         except Exception as e:
+            import traceback
             self.logger.error(f"Error getting execution status: {str(e)}")
+            self.logger.error(f"Stack trace: {traceback.format_exc()}")
             raise
 
     def cancel_execution(self, execution_id: str) -> bool:

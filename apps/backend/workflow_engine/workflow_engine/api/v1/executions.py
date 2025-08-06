@@ -34,14 +34,17 @@ async def execute_workflow(
     service: ExecutionService = Depends(get_execution_service)
 ):
     try:
+        import logging
+        logger = logging.getLogger(__name__)
+        
         # 获取 trace_id
         trace_id = getattr(request_obj.state, 'trace_id', None)
         if trace_id:
-            import logging
-            logger = logging.getLogger(__name__)
             logger.info(f"Executing workflow with trace_id: {trace_id}")
             
+        logger.info(f"About to call service.execute_workflow for {request.workflow_id}")
         execution_id = service.execute_workflow(request)
+        logger.info(f"service.execute_workflow returned execution_id: {execution_id}")
         return ExecuteWorkflowResponse(
             execution_id=execution_id,
             status="NEW",  # Changed from PENDING to NEW
@@ -61,7 +64,12 @@ async def get_execution_status(
         if not execution:
             raise HTTPException(status_code=404, detail="Execution not found")
         return execution
+    except HTTPException:
+        raise
     except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error in get_execution_status endpoint: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

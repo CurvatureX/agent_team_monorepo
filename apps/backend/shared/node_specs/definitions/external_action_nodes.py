@@ -9,7 +9,7 @@ from ..base import (
     ConnectionType,
     DataFormat,
     InputPortSpec,
-    NodeSpec,
+    NodeSpenc,
     OutputPortSpec,
     ParameterDef,
     ParameterType,

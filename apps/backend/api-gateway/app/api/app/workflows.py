@@ -20,7 +20,7 @@ from app.models import (
     WorkflowUpdate,
 )
 from app.services.workflow_engine_http_client import get_workflow_engine_client
-from app.utils.node_converter import convert_nodes_for_workflow_engine, convert_connections_for_workflow_engine
+# 不再需要节点转换器，直接使用统一的模型
 from fastapi import APIRouter, Depends, HTTPException
 
 logger = logging.getLogger(__name__)
@@ -68,27 +68,18 @@ async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Dep
 
         http_client = await get_workflow_engine_client()
 
-        # Convert nodes from API Gateway format to Workflow Engine format
-        nodes_list = []
-        if request.nodes:
-            # Convert WorkflowNode objects to dicts
-            nodes_list = [node.model_dump() for node in request.nodes]
-            # Convert to Workflow Engine format
-            nodes_list = convert_nodes_for_workflow_engine(nodes_list)
-        
-        # Convert connections if needed
+        # 直接使用请求中的节点和连接数据（已经是统一格式）
+        nodes_list = request.nodes
         connections_dict = request.connections or {}
-        if connections_dict and nodes_list:
-            connections_dict = convert_connections_for_workflow_engine(connections_dict, nodes_list)
 
-        # Create workflow via HTTP
+        # Create workflow via HTTP - 使用统一的模型结构
         result = await http_client.create_workflow(
             name=request.name,
             description=request.description,
-            nodes=nodes_list,
+            nodes=[node.model_dump() for node in nodes_list],  # 转换为字典
             connections=connections_dict,
-            settings=request.settings or {},
-            static_data=getattr(request, 'static_data', None) or {},
+            settings=request.settings.model_dump() if request.settings else {},
+            static_data=request.static_data or {},
             tags=request.tags or [],
             user_id=deps.current_user.sub,
             trace_id=getattr(deps.request.state, "trace_id", None),
