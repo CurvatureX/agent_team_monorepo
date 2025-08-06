@@ -46,7 +46,9 @@ class NodeIdGenerator:
         seen_ids: Set[str] = set()
         
         for node in nodes:
-            current_id = node.get('id', '').strip()
+            current_id = node.get('id') or ''
+            if current_id:
+                current_id = current_id.strip()
             
             # Check if ID needs to be generated
             needs_new_id = (
@@ -216,6 +218,80 @@ class NodeIdGenerator:
             node['id'] = new_id
         
         return id_mapping
+    
+    @classmethod
+    def create_name_to_id_mapping(cls, nodes: List[Dict[str, Any]]) -> Dict[str, str]:
+        """
+        Create a mapping from node names to node IDs.
+        
+        Args:
+            nodes: List of node dictionaries with 'name' and 'id' fields
+            
+        Returns:
+            Dictionary mapping node names to node IDs
+        """
+        return {node['name']: node['id'] for node in nodes if node.get('name') and node.get('id')}
+    
+    @classmethod
+    def resolve_connection_references(
+        cls,
+        connections: Dict[str, Any],
+        name_to_id_mapping: Dict[str, str],
+        node_ids: Set[str]
+    ) -> Dict[str, Any]:
+        """
+        Resolve connection references from names to IDs.
+        
+        This method handles both name-based and ID-based references:
+        - If a reference matches a node name, it's converted to the corresponding ID
+        - If a reference is already an ID, it's kept as is
+        - Invalid references are preserved (will be caught by validation)
+        
+        Args:
+            connections: Connection configuration (may use names or IDs)
+            name_to_id_mapping: Mapping from node names to IDs
+            node_ids: Set of all valid node IDs
+            
+        Returns:
+            Updated connections using only IDs
+        """
+        updated_connections = {}
+        
+        for source_ref, connection_data in connections.items():
+            # Resolve source reference (name or ID) to ID
+            source_id = source_ref
+            if source_ref in name_to_id_mapping:
+                source_id = name_to_id_mapping[source_ref]
+            elif source_ref not in node_ids:
+                # Keep the reference as is (validation will catch invalid refs)
+                pass
+            
+            # Update target references in connections
+            updated_connection_data = {
+                "connection_types": {}
+            }
+            
+            for conn_type, conn_list in connection_data.get("connection_types", {}).items():
+                updated_conn_list = {
+                    "connections": []
+                }
+                
+                for conn in conn_list.get("connections", []):
+                    updated_conn = dict(conn)
+                    target_ref = conn.get("node")
+                    
+                    # Resolve target reference to ID
+                    if target_ref in name_to_id_mapping:
+                        updated_conn["node"] = name_to_id_mapping[target_ref]
+                    # else: keep as is (already an ID or invalid)
+                    
+                    updated_conn_list["connections"].append(updated_conn)
+                
+                updated_connection_data["connection_types"][conn_type] = updated_conn_list
+            
+            updated_connections[source_id] = updated_connection_data
+        
+        return updated_connections
     
     @classmethod
     def update_connection_references(

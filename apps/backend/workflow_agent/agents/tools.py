@@ -20,7 +20,7 @@ class RAGTool:
             self.rag_available = True
             logger.info("RAG system initialized successfully")
         except Exception as e:
-            logger.warning(f"RAG system unavailable: {e}")
+            logger.warning("RAG system unavailable", extra={"error": str(e)})
             self.vector_store = None
             self.rag_available = False
 
@@ -39,7 +39,7 @@ class RAGTool:
             The updated workflow state.
         """
         if not self.rag_available:
-            logger.warning(f"RAG system unavailable, returning empty results for query: {query}")
+            logger.warning("RAG system unavailable, returning empty results", extra={"query": query})
             # Initialize empty RAG context
             if "rag" not in state or state["rag"] is None:
                 state["rag"] = RAGContext(query="", results=[])
@@ -47,10 +47,45 @@ class RAGTool:
             state["rag"]["results"] = []
             return state
 
-        logger.info(f"Retrieving knowledge from Supabase for query: {query}")
+        logger.info("Retrieving knowledge from Supabase", extra={"query": query})
 
-        # 1. Call the real vector store function
-        retrieved_entries = await self.vector_store.similarity_search(query, max_results=top_k)
+        try:
+            # 1. Call the real vector store function with cancellation protection
+            # Create a task for the similarity search
+            search_task = asyncio.create_task(
+                self.vector_store.similarity_search(query, max_results=top_k)
+            )
+            
+            try:
+                # Shield the search from cancellation to ensure it completes
+                retrieved_entries = await asyncio.shield(search_task)
+                logger.info("Successfully retrieved entries", extra={"entry_count": len(retrieved_entries)})
+            except asyncio.CancelledError:
+                logger.warning("Main context was cancelled during RAG retrieval, waiting for search to complete...")
+                # Try to get the result even if cancelled
+                try:
+                    retrieved_entries = await asyncio.wait_for(search_task, timeout=3.0)
+                    logger.info("Retrieved entries despite cancellation", extra={"entry_count": len(retrieved_entries)})
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    logger.warning("Could not complete RAG search after cancellation")
+                    # Cancel the task if still running
+                    if not search_task.done():
+                        search_task.cancel()
+                    # Re-raise to maintain cancellation semantics
+                    raise asyncio.CancelledError()
+                    
+        except asyncio.CancelledError:
+            # Re-raise cancellation errors
+            logger.warning("RAG retrieval cancelled")
+            raise
+        except Exception as e:
+            logger.warning("Failed to retrieve knowledge, continuing without RAG", extra={"error": str(e), "query": query, "error_type": type(e).__name__})
+            # Return empty results on error - this is not a fatal error
+            if "rag" not in state or state["rag"] is None:
+                state["rag"] = RAGContext(query="", results=[])
+            state["rag"]["query"] = query
+            state["rag"]["results"] = []
+            return state
 
         # 2. Convert NodeKnowledgeEntry objects to RetrievedDocument typed dicts
         retrieved_docs = [
@@ -70,6 +105,6 @@ class RAGTool:
         state["rag"]["query"] = query
         state["rag"]["results"] = retrieved_docs
 
-        logger.info(f"Updated state with RAG context, retrieved {len(retrieved_docs)} documents")
+        logger.info("Updated state with RAG context", extra={"document_count": len(retrieved_docs)})
 
         return state

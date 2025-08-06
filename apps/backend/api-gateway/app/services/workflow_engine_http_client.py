@@ -62,10 +62,10 @@ class WorkflowEngineHTTPClient:
             if type_filter:
                 params["type_filter"] = type_filter
 
-            log_info(f"📨 HTTP request to {self.base_url}/v1/node-templates")
+            log_info(f"📨 HTTP request to {self.base_url}/v1/workflows/node-templates")
 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.get(f"{self.base_url}/v1/node-templates", params=params)
+                response = await client.get(f"{self.base_url}/v1/workflows/node-templates", params=params)
                 response.raise_for_status()
 
                 data = response.json()
@@ -92,6 +92,7 @@ class WorkflowEngineHTTPClient:
         tags: Optional[List[str]] = None,
         user_id: str = "anonymous",
         session_id: Optional[str] = None,
+        trace_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Create a new workflow via HTTP"""
         if not self.connected:
@@ -112,8 +113,12 @@ class WorkflowEngineHTTPClient:
 
             log_info(f"📨 HTTP request to create workflow: {name}")
 
+            headers = {}
+            if trace_id:
+                headers["X-Trace-ID"] = trace_id
+                
             async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(f"{self.base_url}/v1/workflows", json=request_data)
+                response = await client.post(f"{self.base_url}/v1/workflows", json=request_data, headers=headers)
                 response.raise_for_status()
 
                 data = response.json()
@@ -153,7 +158,8 @@ class WorkflowEngineHTTPClient:
             return {"success": False, "error": str(e)}
 
     async def execute_workflow(
-        self, workflow_id: str, user_id: str, input_data: Optional[Dict[str, Any]] = None
+        self, workflow_id: str, user_id: str, input_data: Optional[Dict[str, Any]] = None,
+        trace_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Execute workflow via HTTP"""
         if not self.connected:
@@ -168,9 +174,13 @@ class WorkflowEngineHTTPClient:
 
             log_info(f"📨 HTTP request to execute workflow: {workflow_id}")
 
+            headers = {}
+            if trace_id:
+                headers["X-Trace-ID"] = trace_id
+                
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
-                    f"{self.base_url}/v1/workflows/{workflow_id}/execute", json=request_data
+                    f"{self.base_url}/v1/workflows/{workflow_id}/execute", json=request_data, headers=headers
                 )
                 response.raise_for_status()
 
