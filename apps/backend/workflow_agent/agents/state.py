@@ -1,6 +1,7 @@
 """
 LangGraph state management for Workflow Agent
 State definitions for the 4-node architecture
+Based on main branch, updated for MCP integration
 """
 
 from enum import Enum
@@ -51,26 +52,6 @@ class ClarificationContext(TypedDict):
     origin: NotRequired[str]  # workflow origin
 
 
-class RetrievedDocument(TypedDict):
-    """RAG retrieval result"""
-    
-    id: str
-    node_type: NotRequired[str]
-    title: NotRequired[str]
-    description: NotRequired[str]
-    content: str
-    similarity: float
-    metadata: NotRequired[Dict[str, str]]
-
-
-class RAGContext(TypedDict):
-    """RAG context with retrieval results"""
-    results: List[RetrievedDocument] 
-    query: str  
-    timestamp: NotRequired[int]
-    metadata: NotRequired[Dict[str, str]] 
-
-
 class GapDetail(TypedDict):
     """Detailed gap information from gap analysis"""
     required_capability: str
@@ -98,24 +79,56 @@ class WorkflowState(TypedDict):
     
     # Clarification context
     clarification_context: ClarificationContext
-    clarification_round: NotRequired[int]  # track clarification rounds for limiting
+    clarification_ready: NotRequired[bool]  # Whether clarification is complete and ready to proceed
     
     # Gap analysis results
-    gap_status: NotRequired[str]  # "has_gap", "no_gap", or "gap_resolved"
+    gap_status: NotRequired[str]  # "no_gap", "has_gap", "gap_resolved"
     identified_gaps: NotRequired[List[GapDetail]]  # detailed gap information
-    selected_alternative_index: NotRequired[int]  # which alternative user selected
     
     # Workflow data
     current_workflow: NotRequired[Any]  # workflow JSON object
     template_workflow: NotRequired[Any]  # template workflow if editing
     workflow_context: NotRequired[Dict[str, Any]]  # workflow metadata
     
-    # Debug information
-    debug_result: NotRequired[str]
+    # Debug information - updated to support structured output
+    debug_result: NotRequired[Dict[str, Any]]  # structured debug result from prompt
     debug_loop_count: NotRequired[int]
-    
-    # RAG context
-    rag: NotRequired[RAGContext]
     
     # Template information
     template_id: NotRequired[str]  # template ID if using template
+
+
+# Helper functions for extracting data from state
+def get_user_message(state: WorkflowState) -> str:
+    """Get latest user message from conversations"""
+    for conv in reversed(state.get("conversations", [])):
+        if conv.get("role") == "user":
+            return conv.get("text", "")
+    return ""
+
+
+def get_intent_summary(state: WorkflowState) -> str:
+    """Get intent summary from state"""
+    return state.get("intent_summary", "")
+
+
+def get_gap_status(state: WorkflowState) -> str:
+    """Get gap status from state"""
+    return state.get("gap_status", "no_gap")
+
+
+def get_identified_gaps(state: WorkflowState) -> List[Dict[str, Any]]:
+    """Get identified gaps from state"""
+    gaps = state.get("identified_gaps", [])
+    return [dict(gap) for gap in gaps]
+
+
+def get_current_workflow(state: WorkflowState) -> Any:
+    """Get current workflow from state"""
+    return state.get("current_workflow")
+
+
+def get_debug_errors(state: WorkflowState) -> List[str]:
+    """Get debug errors from structured debug result"""
+    debug_result = state.get("debug_result", {})
+    return debug_result.get("errors", [])

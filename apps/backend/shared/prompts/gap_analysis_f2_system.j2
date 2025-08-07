@@ -186,3 +186,19 @@ IMPORTANT:
 - Present alternatives as simple choices
 - Make the default option (A) the most common choice
 - Keep the entire negotiation under 50 words
+
+## CRITICAL: Never Ask About Parameters!
+The negotiation_phrase should ONLY present the technical alternatives from identified_gaps.
+NEVER include questions about:
+- Timing (what time, how often, when)
+- Specific channels or destinations
+- Data format or fields
+- Any configuration parameters
+
+These details will be handled by workflow_generation with smart defaults.
+
+Bad example:
+"Choose: A) Daily at 9 AM B) Daily at 3 PM C) Hourly" ❌ (asking about timing)
+
+Good example:
+"Choose how to sync: A) Scheduled checks B) Real-time webhook C) Manual trigger" ✅ (technical choice only)

@@ -174,8 +174,8 @@ class WorkflowAgentServicer:
                                         yield f"data: {message_response.model_dump_json()}\n\n"
 
                             # 只在WORKFLOW_GENERATION节点完成后发送工作流响应
-                            if node_name == "workflow_generation" and current_stage == WorkflowStage.DEBUG:
-                                # workflow_generation节点完成，进入DEBUG阶段，此时发送workflow
+                            if node_name == "workflow_generation" and current_stage == WorkflowStage.WORKFLOW_GENERATION:
+                                # workflow_generation节点完成，发送workflow
                                 workflow_response = await self._create_workflow_response(
                                     session_id, updated_state
                                 )
