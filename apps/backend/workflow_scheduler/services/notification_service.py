@@ -22,25 +22,22 @@ logger = logging.getLogger(__name__)
 class NotificationService:
     """Service for sending notifications when workflows are triggered"""
 
-    def __init__(self):
+    def __init__(self, slack_bot_token: Optional[str] = None):
         self.target_channel = "#webhook-test"  # Target Slack channel
         self.slack_client: Optional[SlackWebClient] = None
-        self._initialize_slack_client()
+        self._initialize_slack_client(slack_bot_token)
 
-    def _initialize_slack_client(self):
-        """Initialize Slack client with bot token from environment variables"""
+    def _initialize_slack_client(self, bot_token: Optional[str] = None):
+        """Initialize Slack client with bot token"""
         try:
-            # Get Slack bot token from environment
-            bot_token = os.getenv("SLACK_BOT_TOKEN")
+            # Use provided token or fall back to config default
+            if bot_token is None:
+                from workflow_scheduler.core.config import settings
+
+                bot_token = settings.slack_bot_token
 
             if not bot_token:
-                logger.warning("SLACK_BOT_TOKEN not configured - notifications will be logged only")
-                logger.info(
-                    "To enable Slack notifications, set SLACK_BOT_TOKEN environment variable"
-                )
-                logger.info(
-                    "Bot token should start with 'xoxb-' (e.g., xoxb-1234567890-1234567890-abcdefghijk)"
-                )
+                logger.warning("No Slack bot token available - notifications will be logged only")
                 return
 
             # Create Slack client

@@ -28,8 +28,8 @@ if [[ -z "${SUPABASE_DB_PASSWORD:-}" ]]; then
     exit 1
 fi
 
-# Database connection string
-DB_URL="postgresql://postgres:${SUPABASE_DB_PASSWORD}@db.${PROJECT_ID}.supabase.co:5432/postgres"
+# Database connection string - use pooler for better connectivity
+DB_URL="postgresql://postgres.mkrczzgjeduruwxpanbj:${SUPABASE_DB_PASSWORD}@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres"
 
 case "${1:-check}" in
     "check")
