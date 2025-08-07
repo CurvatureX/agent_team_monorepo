@@ -1,0 +1,4 @@
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0 93  1936    0     0  100  1807      0   2197 --:--:-- --:--:-- --:--:--  2195100  1936  100   129  100  1807    156   2197 --:--:-- --:--:-- --:--:--  2352
+{"error":"unauthorized","message":"Authentication failed: invalid_token","required_auth":"Bearer token via Authorization header"}

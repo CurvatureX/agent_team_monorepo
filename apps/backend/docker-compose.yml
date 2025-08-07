@@ -76,6 +76,7 @@ services:
     ports:
       - "16686:16686"  # Jaeger UI
       - "14250:14250"  # gRPC
+
     restart: unless-stopped
     networks:
       - agent-team-network
@@ -227,6 +228,7 @@ services:
       - WORKFLOW_AGENT_PORT=8001
       - WORKFLOW_SCHEDULER_HOST=workflow-scheduler
       - WORKFLOW_SCHEDULER_HTTP_PORT=8003
+
       - USE_HTTP_CLIENT=true
       # OpenTelemetry configuration
       # - OTEL_SDK_DISABLED=true

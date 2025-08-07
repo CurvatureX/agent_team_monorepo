@@ -29,21 +29,7 @@ jobs:
           node-version: '18'
 
       - name: Install Supabase CLI
-        run: |
-          if ! command -v supabase &> /dev/null; then
-            echo "Installing Supabase CLI..."
-            mkdir -p /tmp/supabase-install
-            cd /tmp/supabase-install
-            curl -L https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz -o supabase.tar.gz
-            tar -xzf supabase.tar.gz
-            sudo mv supabase /usr/local/bin/supabase
-            chmod +x /usr/local/bin/supabase
-            cd -
-            rm -rf /tmp/supabase-install
-          else
-            echo "Supabase CLI already installed"
-            supabase --version
-          fi
+        run: npm install -g supabase
 
       - name: Check pending migrations
         run: ./scripts/supabase-migrate.sh check
@@ -64,21 +50,7 @@ jobs:
           node-version: '18'
 
       - name: Install Supabase CLI
-        run: |
-          if ! command -v supabase &> /dev/null; then
-            echo "Installing Supabase CLI..."
-            mkdir -p /tmp/supabase-install
-            cd /tmp/supabase-install
-            curl -L https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz -o supabase.tar.gz
-            tar -xzf supabase.tar.gz
-            sudo mv supabase /usr/local/bin/supabase
-            chmod +x /usr/local/bin/supabase
-            cd -
-            rm -rf /tmp/supabase-install
-          else
-            echo "Supabase CLI already installed"
-            supabase --version
-          fi
+        run: npm install -g supabase
 
       - name: Apply migrations
         run: ./scripts/supabase-migrate.sh migrate
