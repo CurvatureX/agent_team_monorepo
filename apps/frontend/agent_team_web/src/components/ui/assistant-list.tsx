@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, X, Star, Zap, Workflow, Eye } from "lucide-react";
 import Image from "next/image";
 import { Assistant } from "@/lib/assistant-data";
-import WorkflowCanvas from "@/components/workflow/WorkflowCanvas";
+import { EnhancedWorkflowCanvas } from "@/components/workflow/EnhancedWorkflowCanvas";
 
 interface AssistantListProps {
   assistants: Assistant[];
@@ -201,10 +201,9 @@ const AssistantList = ({ assistants }: AssistantListProps) => {
                     
                     {/* Embedded workflow canvas */}
                     <div className="h-[300px] border border-border/50 rounded-lg overflow-hidden bg-muted/10">
-                      <WorkflowCanvas
+                      <EnhancedWorkflowCanvas
                         workflowData={selectedAssistant.workflow}
-                        isExpanded={false}
-                        isSimpleView={true}
+                        readOnly={true}
                       />
                     </div>
                   </div>

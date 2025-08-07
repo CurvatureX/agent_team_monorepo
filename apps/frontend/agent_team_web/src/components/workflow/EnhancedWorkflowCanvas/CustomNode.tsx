@@ -20,9 +20,8 @@ export const CustomNode = memo<CustomNodeProps>(({ data, selected }) => {
     <TooltipProvider>
       <Card
         className={cn(
-          'min-w-[200px] max-w-[280px] border-2 transition-all duration-200',
-          colorScheme.border,
-          selected && 'ring-2 ring-primary ring-offset-2 ring-offset-background',
+          'min-w-[200px] max-w-[280px] border-2 transition-all duration-200 shadow-lg',
+          selected ? 'border-primary shadow-xl' : colorScheme.border,
           data.status === 'running' && 'animate-pulse',
           data.status === 'error' && 'border-destructive bg-destructive/5',
           data.status === 'success' && 'border-green-500 bg-green-500/5'

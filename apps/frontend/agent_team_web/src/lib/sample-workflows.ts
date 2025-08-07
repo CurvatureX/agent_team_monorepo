@@ -1,15 +1,23 @@
-import { WorkflowData } from '@/types/workflow';
+import { Workflow } from '@/types/workflow';
+import { WorkflowType, WorkflowStatus, ErrorPolicy, CallerPolicy } from '@/types/workflow-enums';
 
-export const exampleWorkflow: WorkflowData = {
+export const exampleWorkflow: Workflow = {
+  "created_at": new Date().toISOString(),
+  "updated_at": new Date().toISOString(),
   "id": "example_workflow",
+  "user_id": "user_123",
   "name": "Example Workflow",
-  "active": true,
+  "description": "An example workflow demonstrating various node types",
+  "type": WorkflowType.Sequential,
+  "status": WorkflowStatus.Active,
+  "version": 1,
+  "execution_count": 0,
   "nodes": [
     {
       "id": "trigger_0",
       "name": "When calendar event occurs",
-      "type": "TRIGGER_NODE",
-      "subtype": "TRIGGER_CALENDAR",
+      "type": "trigger",
+      "subtype": "calendar",
       "type_version": 1,
       "position": {
         "x": -200,
@@ -18,7 +26,7 @@ export const exampleWorkflow: WorkflowData = {
       "disabled": false,
       "parameters": {},
       "credentials": {},
-      "on_error": "STOP_WORKFLOW_ON_ERROR",
+      "on_error": ErrorPolicy.Stop,
       "retry_policy": {
         "max_tries": 1,
         "wait_between_tries": 0
@@ -29,8 +37,8 @@ export const exampleWorkflow: WorkflowData = {
     {
       "id": "ai_agent_0",
       "name": "AI Agent Processing",
-      "type": "AI_AGENT_NODE",
-      "subtype": "AI_AGENT",
+      "type": "ai_agent",
+      "subtype": "agent",
       "type_version": 1,
       "position": {
         "x": 1020,
@@ -39,7 +47,7 @@ export const exampleWorkflow: WorkflowData = {
       "disabled": false,
       "parameters": {},
       "credentials": {},
-      "on_error": "STOP_WORKFLOW_ON_ERROR",
+      "on_error": ErrorPolicy.Stop,
       "retry_policy": {
         "max_tries": 1,
         "wait_between_tries": 0
@@ -50,8 +58,8 @@ export const exampleWorkflow: WorkflowData = {
     {
       "id": "action_2",
       "name": "Action Node",
-      "type": "ACTION_NODE",
-      "subtype": "ACTION_DATA_TRANSFORMATION",
+      "type": "action",
+      "subtype": "data_transform",
       "type_version": 1,
       "position": {
         "x": 460,
@@ -60,7 +68,7 @@ export const exampleWorkflow: WorkflowData = {
       "disabled": false,
       "parameters": {},
       "credentials": {},
-      "on_error": "STOP_WORKFLOW_ON_ERROR",
+      "on_error": ErrorPolicy.Stop,
       "retry_policy": {
         "max_tries": 1,
         "wait_between_tries": 0
@@ -71,8 +79,8 @@ export const exampleWorkflow: WorkflowData = {
     {
       "id": "external_action_0",
       "name": "External Action",
-      "type": "EXTERNAL_ACTION_NODE",
-      "subtype": "EXTERNAL_GITHUB",
+      "type": "external_action",
+      "subtype": "github",
       "type_version": 1,
       "position": {
         "x": 160,
@@ -81,7 +89,7 @@ export const exampleWorkflow: WorkflowData = {
       "disabled": false,
       "parameters": {},
       "credentials": {},
-      "on_error": "STOP_WORKFLOW_ON_ERROR",
+      "on_error": ErrorPolicy.Stop,
       "retry_policy": {
         "max_tries": 1,
         "wait_between_tries": 0
@@ -92,8 +100,8 @@ export const exampleWorkflow: WorkflowData = {
     {
       "id": "flow_0",
       "name": "Flow Control",
-      "type": "FLOW_NODE",
-      "subtype": "FLOW_FILTER",
+      "type": "flow",
+      "subtype": "filter",
       "type_version": 1,
       "position": {
         "x": 740,
@@ -102,7 +110,7 @@ export const exampleWorkflow: WorkflowData = {
       "disabled": false,
       "parameters": {},
       "credentials": {},
-      "on_error": "STOP_WORKFLOW_ON_ERROR",
+      "on_error": ErrorPolicy.Stop,
       "retry_policy": {
         "max_tries": 1,
         "wait_between_tries": 0
@@ -113,8 +121,8 @@ export const exampleWorkflow: WorkflowData = {
     {
       "id": "human_in_the_loop_0",
       "name": "Human Input via Discord",
-      "type": "HUMAN_IN_THE_LOOP_NODE",
-      "subtype": "HUMAN_DISCORD",
+      "type": "human_in_the_loop",
+      "subtype": "discord",
       "type_version": 1,
       "position": {
         "x": 1380,
@@ -123,7 +131,7 @@ export const exampleWorkflow: WorkflowData = {
       "disabled": false,
       "parameters": {},
       "credentials": {},
-      "on_error": "STOP_WORKFLOW_ON_ERROR",
+      "on_error": ErrorPolicy.Stop,
       "retry_policy": {
         "max_tries": 1,
         "wait_between_tries": 0
@@ -134,8 +142,8 @@ export const exampleWorkflow: WorkflowData = {
     {
       "id": "human_in_the_loop_1",
       "name": "Human Input via Gmail",
-      "type": "HUMAN_IN_THE_LOOP_NODE",
-      "subtype": "HUMAN_GMAIL",
+      "type": "human_in_the_loop",
+      "subtype": "gmail",
       "type_version": 1,
       "position": {
         "x": 400,
@@ -144,7 +152,7 @@ export const exampleWorkflow: WorkflowData = {
       "disabled": false,
       "parameters": {},
       "credentials": {},
-      "on_error": "STOP_WORKFLOW_ON_ERROR",
+      "on_error": ErrorPolicy.Stop,
       "retry_policy": {
         "max_tries": 1,
         "wait_between_tries": 0
@@ -153,81 +161,51 @@ export const exampleWorkflow: WorkflowData = {
       "webhooks": []
     }
   ],
-  "connections": {
-    "connections": {
-      "trigger_0": {
-        "output": {
-          "connections": [
-            {
-              "node": "external_action_0",
-              "type": "MAIN",
-              "index": 0
-            }
-          ]
-        }
-      },
-      "external_action_0": {
-        "output": {
-          "connections": [
-            {
-              "node": "action_2",
-              "type": "MAIN",
-              "index": 0
-            },
-            {
-              "node": "human_in_the_loop_1",
-              "type": "MAIN",
-              "index": 1
-            }
-          ]
-        }
-      },
-      "action_2": {
-        "output": {
-          "connections": [
-            {
-              "node": "flow_0",
-              "type": "MAIN",
-              "index": 0
-            }
-          ]
-        }
-      },
-      "flow_0": {
-        "output": {
-          "connections": [
-            {
-              "node": "ai_agent_0",
-              "type": "MAIN",
-              "index": 0
-            }
-          ]
-        }
-      },
-      "ai_agent_0": {
-        "output": {
-          "connections": [
-            {
-              "node": "human_in_the_loop_0",
-              "type": "MAIN",
-              "index": 0
-            }
-          ]
-        }
-      },
-      "human_in_the_loop_1": {
-        "output": {
-          "connections": [
-            {
-              "node": "ai_agent_0",
-              "type": "MAIN",
-              "index": 0
-            }
-          ]
-        }
-      }
+  "edges": [
+    {
+      "id": "e-trigger_0-external_action_0",
+      "source": "trigger_0",
+      "target": "external_action_0",
+      "type": "default"
+    },
+    {
+      "id": "e-external_action_0-action_2",
+      "source": "external_action_0",
+      "target": "action_2",
+      "type": "default"
+    },
+    {
+      "id": "e-external_action_0-human_in_the_loop_1",
+      "source": "external_action_0",
+      "target": "human_in_the_loop_1",
+      "type": "default"
+    },
+    {
+      "id": "e-action_2-flow_0",
+      "source": "action_2",
+      "target": "flow_0",
+      "type": "default"
+    },
+    {
+      "id": "e-flow_0-ai_agent_0",
+      "source": "flow_0",
+      "target": "ai_agent_0",
+      "type": "default"
+    },
+    {
+      "id": "e-ai_agent_0-human_in_the_loop_0",
+      "source": "ai_agent_0",
+      "target": "human_in_the_loop_0",
+      "type": "default"
+    },
+    {
+      "id": "e-human_in_the_loop_1-ai_agent_0",
+      "source": "human_in_the_loop_1",
+      "target": "ai_agent_0",
+      "type": "default"
     }
-  },
+  ],
+  "variables": {},
   "settings": {
     "timezone": {
       "default": "UTC"
@@ -235,16 +213,11 @@ export const exampleWorkflow: WorkflowData = {
     "save_execution_progress": true,
     "save_manual_executions": true,
     "timeout": 300,
-    "error_policy": "STOP_WORKFLOW",
-    "caller_policy": "WORKFLOW_MAIN"
+    "error_policy": ErrorPolicy.Stop,
+    "caller_policy": CallerPolicy.Workflow
   },
-  "static_data": {},
-  "pin_data": {},
-  "created_at": 1752851205,
-  "updated_at": 1752851364,
-  "version": "1.0.0",
   "tags": [
     "example",
     "workflow"
   ]
-}; 
+};

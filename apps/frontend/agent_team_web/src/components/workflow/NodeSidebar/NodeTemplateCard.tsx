@@ -34,19 +34,19 @@ export const NodeTemplateCard: React.FC<NodeTemplateCardProps> = ({
 
   return (
     <motion.div
-      draggable
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-      onClick={onClick}
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
-      className="cursor-move group"
     >
-      <Card className={cn(
-        'p-3 transition-all',
-        'hover:bg-accent/50',
-        'hover:border-primary/50'
-      )}>
+      <Card 
+        draggable
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onClick={onClick}
+        className={cn(
+          'p-3 transition-all cursor-move group',
+          'hover:bg-accent/50',
+          'hover:border-primary/50'
+        )}>
         <div className="flex items-start gap-3">
           <div
             className={cn(

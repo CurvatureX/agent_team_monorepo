@@ -1,71 +1,95 @@
-import { WorkflowData, NodeType, NodeSubtype } from '@/types/workflow';
+import { Workflow, WorkflowNode, WorkflowEdge } from '@/types/workflow';
+import { WorkflowType, WorkflowStatus, ErrorPolicy, CallerPolicy, NodeType } from '@/types/workflow-enums';
 
 interface WorkflowStep {
-  type: NodeType;
-  subtype: NodeSubtype;
+  type: string;
+  subtype: string;
   name: string;
   description?: string;
 }
 
-// Mapping keywords to node types
+// Mapping keywords to node types (using new API format)
 const keywordToNodeType: Record<string, WorkflowStep> = {
   // Trigger related
-  'start': { type: 'TRIGGER_NODE', subtype: 'TRIGGER_CALENDAR', name: 'Start' },
-  'trigger': { type: 'TRIGGER_NODE', subtype: 'TRIGGER_WEBHOOK', name: 'Trigger' },
-  'schedule': { type: 'TRIGGER_NODE', subtype: 'TRIGGER_SCHEDULE', name: 'Schedule' },
-  'calendar': { type: 'TRIGGER_NODE', subtype: 'TRIGGER_CALENDAR', name: 'Calendar Event' },
+  'start': { type: 'trigger', subtype: 'calendar', name: 'Start' },
+  'trigger': { type: 'trigger', subtype: 'webhook', name: 'Trigger' },
+  'schedule': { type: 'trigger', subtype: 'schedule', name: 'Schedule' },
+  'calendar': { type: 'trigger', subtype: 'calendar', name: 'Calendar Event' },
+  'webhook': { type: 'trigger', subtype: 'webhook', name: 'Webhook Trigger' },
   
   // AI related
-  'ai': { type: 'AI_AGENT_NODE', subtype: 'AI_AGENT', name: 'AI Processing' },
-  'intelligence': { type: 'AI_AGENT_NODE', subtype: 'AI_AGENT', name: 'Intelligent Processing' },
-  'analysis': { type: 'AI_AGENT_NODE', subtype: 'AI_AGENT', name: 'AI Analysis' },
-  'generate': { type: 'AI_AGENT_NODE', subtype: 'AI_AGENT', name: 'AI Generation' },
+  'ai': { type: 'ai_agent', subtype: 'agent', name: 'AI Processing' },
+  'intelligence': { type: 'ai_agent', subtype: 'agent', name: 'Intelligent Processing' },
+  'analysis': { type: 'ai_agent', subtype: 'agent', name: 'AI Analysis' },
+  'generate': { type: 'ai_agent', subtype: 'agent', name: 'AI Generation' },
+  'analyze': { type: 'ai_agent', subtype: 'agent', name: 'AI Analysis' },
   
   // Action related
-  'process': { type: 'ACTION_NODE', subtype: 'ACTION_DATA_TRANSFORMATION', name: 'Data Processing' },
-  'transform': { type: 'ACTION_NODE', subtype: 'ACTION_DATA_TRANSFORMATION', name: 'Data Transformation' },
-  'request': { type: 'ACTION_NODE', subtype: 'ACTION_HTTP_REQUEST', name: 'HTTP Request' },
-  'send': { type: 'ACTION_NODE', subtype: 'ACTION_HTTP_REQUEST', name: 'Send Request' },
+  'process': { type: 'action', subtype: 'data_transform', name: 'Data Processing' },
+  'transform': { type: 'action', subtype: 'data_transform', name: 'Data Transformation' },
+  'request': { type: 'action', subtype: 'http_request', name: 'HTTP Request' },
+  'send': { type: 'action', subtype: 'http_request', name: 'Send Request' },
+  'fetch': { type: 'action', subtype: 'http_request', name: 'Fetch Data' },
+  'data': { type: 'action', subtype: 'data_transform', name: 'Data Processing' },
   
   // External services
-  'github': { type: 'EXTERNAL_ACTION_NODE', subtype: 'EXTERNAL_GITHUB', name: 'GitHub Action' },
-  'slack': { type: 'EXTERNAL_ACTION_NODE', subtype: 'EXTERNAL_SLACK', name: 'Slack Notification' },
-  'notification': { type: 'EXTERNAL_ACTION_NODE', subtype: 'EXTERNAL_SLACK', name: 'Send Notification' },
+  'github': { type: 'external_action', subtype: 'github', name: 'GitHub Action' },
+  'slack': { type: 'external_action', subtype: 'slack', name: 'Slack Notification' },
+  'notification': { type: 'external_action', subtype: 'slack', name: 'Send Notification' },
+  'notify': { type: 'external_action', subtype: 'slack', name: 'Send Notification' },
   
   // Flow control
-  'condition': { type: 'FLOW_NODE', subtype: 'FLOW_FILTER', name: 'Condition Check' },
-  'filter': { type: 'FLOW_NODE', subtype: 'FLOW_FILTER', name: 'Data Filter' },
-  'branch': { type: 'FLOW_NODE', subtype: 'FLOW_SWITCH', name: 'Branch Selection' },
+  'condition': { type: 'flow', subtype: 'filter', name: 'Condition Check' },
+  'filter': { type: 'flow', subtype: 'filter', name: 'Data Filter' },
+  'branch': { type: 'flow', subtype: 'switch', name: 'Branch Selection' },
+  'check': { type: 'flow', subtype: 'filter', name: 'Check Condition' },
+  'switch': { type: 'flow', subtype: 'switch', name: 'Switch Flow' },
   
   // Human intervention
-  'review': { type: 'HUMAN_IN_THE_LOOP_NODE', subtype: 'HUMAN_DISCORD', name: 'Human Review' },
-  'confirm': { type: 'HUMAN_IN_THE_LOOP_NODE', subtype: 'HUMAN_GMAIL', name: 'Human Confirmation' },
-  'human': { type: 'HUMAN_IN_THE_LOOP_NODE', subtype: 'HUMAN_DISCORD', name: 'Human Processing' },
+  'review': { type: 'human_in_the_loop', subtype: 'discord', name: 'Human Review' },
+  'confirm': { type: 'human_in_the_loop', subtype: 'gmail', name: 'Human Confirmation' },
+  'human': { type: 'human_in_the_loop', subtype: 'discord', name: 'Human Processing' },
+  'approval': { type: 'human_in_the_loop', subtype: 'gmail', name: 'Human Approval' },
   
   // Tools and memory
-  'store': { type: 'MEMORY_NODE', subtype: 'MEMORY_STORE', name: 'Store Data' },
-  'save': { type: 'MEMORY_NODE', subtype: 'MEMORY_STORE', name: 'Save Results' },
-  'tool': { type: 'TOOL_NODE', subtype: 'TOOL_FUNCTION', name: 'Tool Invocation' },
+  'store': { type: 'memory', subtype: 'store', name: 'Store Data' },
+  'save': { type: 'memory', subtype: 'store', name: 'Save Results' },
+  'tool': { type: 'tool', subtype: 'function', name: 'Tool Invocation' },
+  'function': { type: 'tool', subtype: 'function', name: 'Function Call' },
+  'memory': { type: 'memory', subtype: 'store', name: 'Memory Storage' },
 };
 
 export function parseWorkflowDescription(description: string): WorkflowStep[] {
   const steps: WorkflowStep[] = [];
   const lowerDescription = description.toLowerCase();
   
-  // Always add a trigger node as the starting point
-  steps.push({ type: 'TRIGGER_NODE', subtype: 'TRIGGER_CALENDAR', name: 'Start' });
+  // Split description by common separators
+  const phrases = lowerDescription.split(/[,;.]/);
   
-  // Match nodes based on keywords
-  for (const [keyword, nodeInfo] of Object.entries(keywordToNodeType)) {
-    if (lowerDescription.includes(keyword) && !steps.some(s => s.type === nodeInfo.type)) {
-      steps.push(nodeInfo);
+  // Process each phrase to find relevant nodes
+  phrases.forEach(phrase => {
+    for (const [keyword, nodeInfo] of Object.entries(keywordToNodeType)) {
+      if (phrase.includes(keyword)) {
+        // Avoid duplicates of the same type+subtype combination
+        const exists = steps.some(s => 
+          s.type === nodeInfo.type && s.subtype === nodeInfo.subtype
+        );
+        if (!exists) {
+          steps.push({ ...nodeInfo });
+        }
+      }
     }
+  });
+  
+  // Ensure we have a trigger node at the start
+  if (steps.length === 0 || steps[0].type !== 'trigger') {
+    steps.unshift({ type: 'trigger', subtype: 'webhook', name: 'Start Trigger' });
   }
   
-  // If no nodes were found, add some default nodes
+  // If only trigger exists, add some default nodes
   if (steps.length === 1) {
-    steps.push({ type: 'AI_AGENT_NODE', subtype: 'AI_AGENT', name: 'AI Processing' });
-    steps.push({ type: 'ACTION_NODE', subtype: 'ACTION_DATA_TRANSFORMATION', name: 'Process Results' });
+    steps.push({ type: 'ai_agent', subtype: 'agent', name: 'AI Processing' });
+    steps.push({ type: 'action', subtype: 'data_transform', name: 'Process Results' });
   }
   
   return steps;
@@ -74,14 +98,14 @@ export function parseWorkflowDescription(description: string): WorkflowStep[] {
 export function generateWorkflowFromDescription(
   description: string,
   workflowId: string = `workflow_${Date.now()}`
-): WorkflowData {
+): Workflow {
   const steps = parseWorkflowDescription(description);
-  const nodes: WorkflowData['nodes'] = [];
-  const connections: WorkflowData['connections'] = { connections: {} };
+  const nodes: WorkflowNode[] = [];
+  const edges: WorkflowEdge[] = [];
   
   // Generate nodes
   steps.forEach((step, index) => {
-    const nodeId = `${step.type.toLowerCase()}_${index}`;
+    const nodeId = `${step.type}_${index}`;
     
     nodes.push({
       id: nodeId,
@@ -96,7 +120,7 @@ export function generateWorkflowFromDescription(
       disabled: false,
       parameters: {},
       credentials: {},
-      on_error: 'STOP_WORKFLOW_ON_ERROR',
+      on_error: ErrorPolicy.Stop,
       retry_policy: {
         max_tries: 1,
         wait_between_tries: 0,
@@ -105,40 +129,40 @@ export function generateWorkflowFromDescription(
       webhooks: [],
     });
     
-    // Create connections (linear connections)
+    // Create edges (linear connections)
     if (index > 0) {
-      const prevNodeId = `${steps[index - 1].type.toLowerCase()}_${index - 1}`;
-      connections.connections[prevNodeId] = {
-        output: {
-          connections: [{
-            node: nodeId,
-            type: 'MAIN',
-            index: 0,
-          }],
-        },
-      };
+      const prevNodeId = `${steps[index - 1].type}_${index - 1}`;
+      edges.push({
+        id: `e-${prevNodeId}-${nodeId}`,
+        source: prevNodeId,
+        target: nodeId,
+        type: 'default',
+      });
     }
   });
   
   return {
     id: workflowId,
+    user_id: 'auto_generated',
     name: 'Auto-generated Workflow',
-    active: true,
+    description: `Generated from: ${description}`,
+    type: WorkflowType.Sequential,
+    status: WorkflowStatus.Draft,
+    version: 1,
     nodes,
-    connections,
+    edges,
+    variables: {},
     settings: {
       timezone: { default: 'UTC' },
       save_execution_progress: true,
       save_manual_executions: true,
       timeout: 300,
-      error_policy: 'STOP_WORKFLOW',
-      caller_policy: 'WORKFLOW_MAIN',
+      error_policy: ErrorPolicy.Stop,
+      caller_policy: CallerPolicy.Workflow,
     },
-    static_data: {},
-    pin_data: {},
-    created_at: Date.now() / 1000,
-    updated_at: Date.now() / 1000,
-    version: '1.0.0',
     tags: ['auto-generated'],
+    execution_count: 0,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   };
-} 
+}
