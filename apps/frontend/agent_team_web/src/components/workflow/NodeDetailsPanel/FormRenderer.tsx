@@ -47,29 +47,29 @@ export const FormRenderer: React.FC<FormRendererProps> = ({
           return (
             <SelectField
               {...commonProps}
-              value={value || ''}
+              value={typeof value === 'string' ? value : ''}
               options={property.enum}
             />
           );
         }
-        return <TextField {...commonProps} value={value || ''} />;
+        return <TextField {...commonProps} value={typeof value === 'string' ? value : ''} />;
 
       case 'boolean':
-        return <BooleanField {...commonProps} value={value || false} />;
+        return <BooleanField {...commonProps} value={typeof value === 'boolean' ? value : false} />;
 
       case 'integer':
       case 'number':
         return (
           <NumberField
             {...commonProps}
-            value={value || 0}
+            value={typeof value === 'number' ? value : 0}
             step={property.type === 'integer' ? 1 : 0.01}
           />
         );
 
       case 'array':
         // For now, assume string array. Could be enhanced for other types
-        return <ArrayField {...commonProps} value={value || []} />;
+        return <ArrayField {...commonProps} value={Array.isArray(value) ? value : []} />;
 
       case 'object':
         // For complex objects, we could recursively render

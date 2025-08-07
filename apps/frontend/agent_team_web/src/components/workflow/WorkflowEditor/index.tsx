@@ -8,18 +8,18 @@ import { EnhancedWorkflowCanvas } from '../EnhancedWorkflowCanvas';
 import { NodeDetailsPanel } from '../NodeDetailsPanel';
 import { useWorkflow, useEditorUI } from '@/store/hooks';
 import type { NodeTemplate } from '@/types/node-template';
-import type { WorkflowData } from '@/types/workflow';
+import type { Workflow, WorkflowApiResponse } from '@/types/workflow';
 
 interface WorkflowEditorProps {
   workflowId?: string;
-  initialData?: WorkflowData;
-  onSave?: (workflow: WorkflowData) => void;
+  initialWorkflow?: Workflow;  // 直接使用API的Workflow格式
+  onSave?: (workflow: Workflow) => void;
   readOnly?: boolean;
   className?: string;
 }
 
 const WorkflowEditorContent: React.FC<WorkflowEditorProps> = ({
-  initialData,
+  initialWorkflow,
   onSave,
   readOnly = false,
   className,
@@ -49,7 +49,7 @@ const WorkflowEditorContent: React.FC<WorkflowEditorProps> = ({
       {/* Center - Canvas */}
       <div className="flex-1 relative">
         <EnhancedWorkflowCanvas
-          workflowData={initialData}
+          workflow={initialWorkflow}
           onWorkflowChange={onSave}
           readOnly={readOnly}
         />

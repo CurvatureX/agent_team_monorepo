@@ -1,4 +1,4 @@
-import { WorkflowData } from '@/types/workflow';
+import { Workflow } from '@/types/workflow';
 import { exampleWorkflow } from './sample-workflows';
 import { generateWorkflowFromDescription } from '@/utils/workflowGenerator';
 
@@ -14,7 +14,7 @@ export interface Assistant {
   description: string;
   skills: string[];
   imagePath: string;
-  workflow?: WorkflowData;
+  workflow?: Workflow;
 }
 
 export const assistants: Assistant[] = [

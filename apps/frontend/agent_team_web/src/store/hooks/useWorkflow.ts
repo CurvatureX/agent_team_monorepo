@@ -15,18 +15,18 @@ import {
 } from '../atoms/workflow';
 import type { NodeTemplate } from '@/types/node-template';
 import type { WorkflowEdge } from '@/types/workflow-editor';
-import type { WorkflowData, Node as WorkflowDataNode } from '@/types/workflow';
+import type { Workflow, WorkflowNode } from '@/types/workflow';
 
 export const useWorkflow = () => {
   const [nodes, setNodes] = useAtom(workflowNodesAtom);
   const [edges, setEdges] = useAtom(workflowEdgesAtom);
   const [metadata, setMetadata] = useAtom(workflowMetadataAtom);
-  
+
   const addNode = useSetAtom(addNodeAtom);
   const updateNodeParameters = useSetAtom(updateNodeParametersAtom);
   const updateNodeData = useSetAtom(updateNodeDataAtom);
   const deleteNode = useSetAtom(deleteNodeAtom);
-  
+
   const selectedNode = useAtomValue(selectedNodeAtom);
   const nodeCountByType = useAtomValue(nodeCountByTypeAtom);
   const validation = useAtomValue(workflowValidationAtom);
@@ -105,14 +105,17 @@ export const useWorkflow = () => {
 
   // Import workflow
   const importWorkflow = useCallback(
-    (workflowData: WorkflowData, templates: NodeTemplate[]) => {
+    (workflowData: Workflow, templates: NodeTemplate[]) => {
       // Clear existing workflow
       clearWorkflow();
 
-      // Set metadata
-      if (workflowData.metadata) {
-        setMetadata(workflowData.metadata);
-      }
+      // Set metadata from workflow
+      setMetadata({
+        name: workflowData.name || 'Untitled Workflow',
+        description: workflowData.description || '',
+        version: workflowData.version?.toString() || '1',
+        tags: workflowData.tags || [],
+      });
 
       // Create template map for quick lookup
       const templateMap = new Map<string, NodeTemplate>();
@@ -122,10 +125,10 @@ export const useWorkflow = () => {
       });
 
       // Import nodes
-      const newNodes = workflowData.nodes.map((node: WorkflowDataNode) => {
+      const newNodes = workflowData.nodes.map((node: WorkflowNode) => {
         const templateKey = `${node.type}_${node.subtype}`;
         const template = templateMap.get(templateKey);
-        
+
         if (!template) {
           console.error(`Template not found for ${templateKey}`);
           return null;
@@ -162,7 +165,7 @@ export const useWorkflow = () => {
     selectedNode,
     nodeCountByType,
     validation,
-    
+
     // Actions
     addNode,
     updateNodeParameters,
@@ -173,7 +176,7 @@ export const useWorkflow = () => {
     clearWorkflow,
     exportWorkflow,
     importWorkflow,
-    
+
     // Setters
     setNodes,
     setEdges,

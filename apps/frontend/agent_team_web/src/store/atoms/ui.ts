@@ -1,5 +1,6 @@
 import { atom } from 'jotai';
 import type { XYPosition } from 'reactflow';
+import type { NodeCategory } from '@/types/node-template';
 
 // Selected node ID
 export const selectedNodeIdAtom = atom<string | null>(null);
@@ -14,7 +15,7 @@ export const detailsPanelOpenAtom = atom(false);
 export const searchQueryAtom = atom('');
 
 // Selected category filter
-export const selectedCategoryAtom = atom<string | null>(null);
+export const selectedCategoryAtom = atom<NodeCategory | null>(null);
 
 // Canvas zoom level
 export const canvasZoomAtom = atom(1);

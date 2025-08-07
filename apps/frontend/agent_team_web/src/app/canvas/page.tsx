@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { PromptInputBox } from "@/components/ui/ai-prompt-box";
 import { PanelResizer } from "@/components/ui/panel-resizer";
 import AssistantList from "@/components/ui/assistant-list";
-import WorkflowCanvas from "@/components/workflow/WorkflowCanvas";
+import { WorkflowEditor } from "@/components/workflow/WorkflowEditor";
 import { User, Bot, Workflow, Maximize2, ArrowLeft } from "lucide-react";
 import { useResizablePanel } from "@/hooks";
 import { assistants } from "@/lib/assistant-data";
@@ -193,14 +193,13 @@ const CanvasPage = () => {
                 </motion.button>
               </motion.div>
 
-              {/* Workflow Canvas */}
+              {/* Workflow Editor */}
               <div className="flex-1 bg-muted/20 rounded-lg border border-border overflow-hidden">
-                <WorkflowCanvas
-                  workflowData={currentWorkflow}
-                  onWorkflowChange={handleWorkflowChange}
-                  isExpanded={isWorkflowExpanded}
-                  onToggleExpand={() => setIsWorkflowExpanded(!isWorkflowExpanded)}
-                  isSimpleView={false}
+                <WorkflowEditor
+                  initialData={currentWorkflow}
+                  onSave={handleWorkflowChange}
+                  readOnly={false}
+                  className="h-full"
                 />
               </div>
             </div>
@@ -330,13 +329,12 @@ const CanvasPage = () => {
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-background z-50"
           >
-            <div className="w-full h-full p-8">
-              <WorkflowCanvas
-                workflowData={currentWorkflow}
-                onWorkflowChange={handleWorkflowChange}
-                isExpanded={true}
-                onToggleExpand={() => setIsWorkflowExpanded(false)}
-                isSimpleView={false}
+            <div className="w-full h-full">
+              <WorkflowEditor
+                initialData={currentWorkflow}
+                onSave={handleWorkflowChange}
+                readOnly={false}
+                className="h-full"
               />
             </div>
           </motion.div>

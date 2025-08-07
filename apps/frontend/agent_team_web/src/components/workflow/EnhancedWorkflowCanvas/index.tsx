@@ -20,13 +20,14 @@ import { cn } from '@/lib/utils';
 import { useWorkflow, useEditorUI, useNodeTemplates } from '@/store/hooks';
 import { CustomNode } from './CustomNode';
 import { CanvasControls } from './CanvasControls';
-import type { WorkflowData } from '@/types/workflow';
+import type { Workflow } from '@/types/workflow';
 import type { WorkflowNode, WorkflowEdge } from '@/types/workflow-editor';
 import type { NodeTemplate } from '@/types/node-template';
 import { isValidConnection } from '@/utils/nodeHelpers';
 
 interface EnhancedWorkflowCanvasProps {
-  workflowData?: WorkflowData;
+  workflow?: Workflow;
+  onWorkflowChange?: (workflow: Workflow) => void;
   readOnly?: boolean;
   className?: string;
 }
@@ -37,7 +38,8 @@ const nodeTypes: NodeTypes = {
 };
 
 const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
-  workflowData,
+  workflow,
+  onWorkflowChange,
   readOnly = false,
   className,
 }) => {
@@ -68,10 +70,10 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
 
   // Import workflow data on mount if provided
   useEffect(() => {
-    if (workflowData && templates.length > 0) {
-      importWorkflow(workflowData, templates);
+    if (workflow && templates.length > 0) {
+      importWorkflow(workflow, templates);
     }
-  }, [workflowData, templates, importWorkflow]);
+  }, [workflow, templates, importWorkflow]);
 
   // Handle node changes
   const onNodesChange = useCallback(
