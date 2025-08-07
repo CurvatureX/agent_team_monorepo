@@ -35,6 +35,9 @@ class NotificationService:
                 from workflow_scheduler.core.config import settings
 
                 bot_token = settings.slack_bot_token
+                logger.debug(
+                    f"Slack bot token from config: {'[PRESENT]' if bot_token else '[EMPTY]'}"
+                )
 
             if not bot_token:
                 logger.warning("No Slack bot token available - notifications will be logged only")
@@ -64,7 +67,7 @@ class NotificationService:
         except Exception as e:
             logger.error(f"Failed to initialize Slack client: {e}")
             logger.info(
-                "Make sure SLACK_BOT_TOKEN is a valid bot token with appropriate permissions"
+                "Make sure DEFAULT_SLACK_BOT_TOKEN is a valid bot token with appropriate permissions"
             )
             self.slack_client = None
 

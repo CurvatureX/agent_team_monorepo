@@ -6,7 +6,7 @@ import os
 from functools import lru_cache
 from typing import Any, Dict
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -64,6 +64,13 @@ class Settings(BaseSettings):
     github_app_id: str = Field(default="", description="GitHub App ID")
     github_app_private_key: str = Field(default="", description="GitHub App private key")
     github_webhook_secret: str = Field(default="", description="GitHub webhook secret")
+
+    # Slack Configuration
+    slack_bot_token: str = Field(
+        default="",
+        description="Slack bot token",
+        validation_alias=AliasChoices("DEFAULT_SLACK_BOT_TOKEN", "slack_bot_token"),
+    )
 
     # APScheduler Configuration
     scheduler_timezone: str = Field(default="UTC", description="Scheduler timezone")

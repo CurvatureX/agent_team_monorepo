@@ -48,6 +48,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     deployment_service = None
 
     logger.info("Starting workflow_scheduler service")
+    logger.info(f"Redis URL configured: {settings.redis_url}")
 
     try:
         # Initialize distributed lock manager
