@@ -1,5 +1,5 @@
 # Multi-stage build for workflow_scheduler
-FROM python:3.11-slim as builder
+FROM python:3.11-slim AS builder
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy requirements and install dependencies
-COPY workflow_scheduler/pyproject.toml ./
+COPY apps/backend/workflow_scheduler/pyproject.toml ./
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir setuptools wheel && \
     pip install --no-cache-dir .
@@ -47,8 +47,8 @@ COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
-COPY workflow_scheduler/ ./workflow_scheduler/
-COPY shared/ ./shared/
+COPY apps/backend/workflow_scheduler/ ./workflow_scheduler/
+COPY apps/backend/shared/ ./shared/
 
 # Set ownership
 RUN chown -R appuser:appuser /app
