@@ -62,10 +62,10 @@ Workflow Scheduler 是一个专门用于管理和调度工作流触发器的服�
 uv sync
 
 # 运行服务
-python -m workflow_scheduler.app.main
+python -m workflow_scheduler.main
 
 # 或使用 uvicorn
-uvicorn workflow_scheduler.app.main:app --host 0.0.0.0 --port 8003 --reload
+uvicorn workflow_scheduler.main:app --host 0.0.0.0 --port 8003 --reload
 ```
 
 ### Docker 运行

@@ -54,7 +54,7 @@ python test_notification.py
 
 ### 1. 修改 BaseTrigger 类
 
-在 `workflow_scheduler/app/triggers/base.py` 中：
+在 `workflow_scheduler/triggers/base.py` 中：
 
 ```python
 # 将当前的 _trigger_workflow 方法重命名为 _trigger_workflow_testing
@@ -90,7 +90,7 @@ WORKFLOW_ENGINE_URL=http://workflow-engine:8002
 tail -f logs/workflow_scheduler.log
 
 # 或者运行时查看
-python -m workflow_scheduler.app.main
+python -m workflow_scheduler.main
 ```
 
 ## 触发器状态

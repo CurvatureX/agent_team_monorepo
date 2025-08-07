@@ -8,10 +8,10 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from workflow_scheduler.app.models.triggers import TriggerSpec, TriggerType
-from workflow_scheduler.app.services.deployment_service import DeploymentService
-from workflow_scheduler.app.services.trigger_manager import TriggerManager
-from workflow_scheduler.app.triggers.manual_trigger import ManualTrigger
+from shared.models.trigger import TriggerSpec, TriggerType
+from workflow_scheduler.services.deployment_service import DeploymentService
+from workflow_scheduler.services.trigger_manager import TriggerManager
+from workflow_scheduler.triggers.manual_trigger import ManualTrigger
 
 
 class TestTriggerTypes:
@@ -180,7 +180,7 @@ class TestConfiguration:
 
     def test_settings_import(self):
         """Test that settings can be imported"""
-        from workflow_scheduler.app.core.config import settings
+        from workflow_scheduler.core.config import settings
 
         assert settings is not None
         assert hasattr(settings, "port")

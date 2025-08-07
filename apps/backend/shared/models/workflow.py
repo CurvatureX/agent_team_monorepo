@@ -462,7 +462,7 @@ class ExecuteSingleNodeRequest(BaseModel):
     )
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "user_id": "00000000-0000-0000-0000-000000000123",
                 "input_data": {"url": "https://api.example.com", "method": "GET"},
@@ -489,7 +489,7 @@ class SingleNodeExecutionResponse(BaseModel):
     error_message: Optional[str] = Field(None, description="错误信息")
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "execution_id": "single-node-exec-123",
                 "node_id": "http_request_node",

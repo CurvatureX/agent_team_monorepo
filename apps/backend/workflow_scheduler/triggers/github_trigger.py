@@ -9,8 +9,8 @@ import httpx
 import jwt
 from github import Github, GithubIntegration
 
+from shared.models.trigger import ExecutionResult, TriggerStatus
 from workflow_scheduler.core.config import settings
-from workflow_scheduler.models.triggers import ExecutionResult, TriggerStatus
 from workflow_scheduler.triggers.base import BaseTrigger
 
 # Import our GitHub SDK for enhanced functionality

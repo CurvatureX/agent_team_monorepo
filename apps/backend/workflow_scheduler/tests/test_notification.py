@@ -12,9 +12,9 @@ import sys
 # Add current directory to Python path
 sys.path.insert(0, os.path.dirname(__file__))
 
-from workflow_scheduler.app.services.notification_service import NotificationService
-from workflow_scheduler.app.triggers.cron_trigger import CronTrigger
-from workflow_scheduler.app.triggers.manual_trigger import ManualTrigger
+from workflow_scheduler.services.notification_service import NotificationService
+from workflow_scheduler.triggers.cron_trigger import CronTrigger
+from workflow_scheduler.triggers.manual_trigger import ManualTrigger
 
 # Configure logging
 logging.basicConfig(

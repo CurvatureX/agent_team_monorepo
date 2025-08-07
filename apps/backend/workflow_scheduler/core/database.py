@@ -9,8 +9,8 @@ from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import QueuePool
 
+from shared.models.db_models import Base
 from workflow_scheduler.core.config import settings
-from workflow_scheduler.models.database import Base
 
 logger = logging.getLogger(__name__)
 

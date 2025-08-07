@@ -9,6 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create working directory
@@ -32,6 +33,7 @@ ENV PATH="/app/.local/bin:$PATH"
 RUN apt-get update && apt-get install -y \
     curl \
     netcat-openbsd \
+    libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -65,4 +67,4 @@ EXPOSE 8003
 ENV PYTHONPATH=/app:$PYTHONPATH
 
 # Start application
-CMD ["python", "-m", "workflow_scheduler.app.main"]
+CMD ["python", "-m", "workflow_scheduler.main"]

@@ -1,5 +1,6 @@
 """
 Trigger index database models for fast trigger matching
+Specialized models for workflow trigger indexing and GitHub integration
 """
 
 import uuid
@@ -9,7 +10,7 @@ from typing import List, Optional
 from sqlalchemy import ARRAY, JSON, BigInteger, Column, DateTime, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 
-from workflow_scheduler.models.database import Base
+from .db_models import Base
 
 
 class TriggerIndex(Base):

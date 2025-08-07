@@ -5,9 +5,9 @@
 
 set -euo pipefail
 
-# Check if Supabase CLI is installed
-if ! command -v supabase &> /dev/null; then
-    echo "❌ Supabase CLI not found. Install with: npm install -g supabase"
+# Check if we can run Supabase CLI via npx
+if ! npx supabase --version &> /dev/null; then
+    echo "❌ Supabase CLI not found. Install with: npm install supabase --save-dev"
     exit 1
 fi
 
@@ -34,15 +34,15 @@ DB_URL="postgresql://postgres.mkrczzgjeduruwxpanbj:${SUPABASE_DB_PASSWORD}@aws-0
 case "${1:-check}" in
     "check")
         echo "🔍 Checking for pending migrations..."
-        supabase migration list --db-url "$DB_URL"
+        npx supabase migration list --db-url "$DB_URL"
         ;;
     "migrate")
         echo "🚀 Applying migrations..."
-        supabase db push --db-url "$DB_URL"
+        npx supabase db push --db-url "$DB_URL"
         ;;
     "status")
         echo "📊 Migration status:"
-        supabase migration list --db-url "$DB_URL"
+        npx supabase migration list --db-url "$DB_URL"
         ;;
     *)
         echo "Usage: $0 [check|migrate|status]"

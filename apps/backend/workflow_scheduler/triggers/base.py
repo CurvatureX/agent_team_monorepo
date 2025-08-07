@@ -7,8 +7,8 @@ from typing import Any, Dict, Optional
 
 import httpx
 
+from shared.models.trigger import ExecutionResult, TriggerStatus
 from workflow_scheduler.core.config import settings
-from workflow_scheduler.models.triggers import ExecutionResult, TriggerStatus
 from workflow_scheduler.services.notification_service import NotificationService
 
 logger = logging.getLogger(__name__)

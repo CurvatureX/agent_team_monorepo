@@ -122,13 +122,13 @@ echo ""
 if [ "$DEBUG" = "true" ]; then
     echo -e "${YELLOW}🐛 Running in DEBUG mode with auto-reload${NC}"
     if command -v uv &> /dev/null; then
-        exec uv run uvicorn workflow_scheduler.app.main:app \
+        exec uv run uvicorn workflow_scheduler.main:app \
             --host $HOST \
             --port $PORT \
             --reload \
             --log-level debug
     else
-        exec python -m uvicorn workflow_scheduler.app.main:app \
+        exec python -m uvicorn workflow_scheduler.main:app \
             --host $HOST \
             --port $PORT \
             --reload \
@@ -137,12 +137,12 @@ if [ "$DEBUG" = "true" ]; then
 else
     echo -e "${GREEN}🚀 Running in PRODUCTION mode${NC}"
     if command -v uv &> /dev/null; then
-        exec uv run uvicorn workflow_scheduler.app.main:app \
+        exec uv run uvicorn workflow_scheduler.main:app \
             --host $HOST \
             --port $PORT \
             --workers 1
     else
-        exec python -m uvicorn workflow_scheduler.app.main:app \
+        exec python -m uvicorn workflow_scheduler.main:app \
             --host $HOST \
             --port $PORT \
             --workers 1

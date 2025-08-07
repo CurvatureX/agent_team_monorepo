@@ -28,8 +28,8 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Install Supabase CLI
-        run: npm install -g supabase
+      - name: Install dependencies
+        run: npm install
 
       - name: Check pending migrations
         run: ./scripts/supabase-migrate.sh check
@@ -49,8 +49,8 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Install Supabase CLI
-        run: npm install -g supabase
+      - name: Install dependencies
+        run: npm install
 
       - name: Apply migrations
         run: ./scripts/supabase-migrate.sh migrate

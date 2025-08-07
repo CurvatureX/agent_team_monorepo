@@ -155,6 +155,9 @@ jobs:
           TF_VAR_database_url: ${{ secrets.DATABASE_URL }}
           TF_VAR_grafana_cloud_api_key: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
           TF_VAR_grafana_cloud_tenant_id: ${{ secrets.GRAFANA_CLOUD_TENANT_ID }}
+          TF_VAR_github_app_id: ${{ secrets.GITAPP_APP_ID }}
+          TF_VAR_github_app_private_key: ${{ secrets.GITAPP_PRIVATE_KEY }}
+          TF_VAR_github_webhook_secret: ${{ secrets.GITAPP_WEBHOOK_SECRET }}
         run: terraform plan -out=tfplan
 
       - name: Handle Service Discovery cleanup if needed
@@ -188,6 +191,9 @@ jobs:
           TF_VAR_database_url: ${{ secrets.DATABASE_URL }}
           TF_VAR_grafana_cloud_api_key: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
           TF_VAR_grafana_cloud_tenant_id: ${{ secrets.GRAFANA_CLOUD_TENANT_ID }}
+          TF_VAR_github_app_id: ${{ secrets.GITAPP_APP_ID }}
+          TF_VAR_github_app_private_key: ${{ secrets.GITAPP_PRIVATE_KEY }}
+          TF_VAR_github_webhook_secret: ${{ secrets.GITAPP_WEBHOOK_SECRET }}
         run: terraform apply -auto-approve tfplan
 
       - name: Update ECS Service - API Gateway

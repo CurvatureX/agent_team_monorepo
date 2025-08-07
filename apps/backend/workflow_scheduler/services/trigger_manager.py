@@ -2,12 +2,7 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
-from workflow_scheduler.models.triggers import (
-    ExecutionResult,
-    TriggerSpec,
-    TriggerStatus,
-    TriggerType,
-)
+from shared.models.trigger import ExecutionResult, TriggerSpec, TriggerStatus, TriggerType
 from workflow_scheduler.services.event_router import EventRouter
 from workflow_scheduler.services.lock_manager import DistributedLockManager
 from workflow_scheduler.services.notification_service import NotificationService

@@ -54,7 +54,7 @@ resource "aws_ssm_parameter" "database_url" {
 resource "aws_ssm_parameter" "smtp_username" {
   name  = "/${local.name_prefix}/smtp/username"
   type  = "SecureString"
-  value = length(var.smtp_username) > 0 ? var.smtp_username : "placeholder"
+  value = var.smtp_username
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-smtp-username"
@@ -64,7 +64,7 @@ resource "aws_ssm_parameter" "smtp_username" {
 resource "aws_ssm_parameter" "smtp_password" {
   name  = "/${local.name_prefix}/smtp/password"
   type  = "SecureString"
-  value = length(var.smtp_password) > 0 ? var.smtp_password : "placeholder"
+  value = var.smtp_password
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-smtp-password"
@@ -74,7 +74,7 @@ resource "aws_ssm_parameter" "smtp_password" {
 resource "aws_ssm_parameter" "github_app_id" {
   name  = "/${local.name_prefix}/github/app-id"
   type  = "SecureString"
-  value = length(var.github_app_id) > 0 ? var.github_app_id : "placeholder"
+  value = var.github_app_id
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-github-app-id"
@@ -84,7 +84,7 @@ resource "aws_ssm_parameter" "github_app_id" {
 resource "aws_ssm_parameter" "github_app_private_key" {
   name  = "/${local.name_prefix}/github/app-private-key"
   type  = "SecureString"
-  value = length(var.github_app_private_key) > 0 ? var.github_app_private_key : "placeholder"
+  value = var.github_app_private_key
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-github-app-private-key"
@@ -94,7 +94,7 @@ resource "aws_ssm_parameter" "github_app_private_key" {
 resource "aws_ssm_parameter" "github_webhook_secret" {
   name  = "/${local.name_prefix}/github/webhook-secret"
   type  = "SecureString"
-  value = length(var.github_webhook_secret) > 0 ? var.github_webhook_secret : "placeholder"
+  value = var.github_webhook_secret
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-github-webhook-secret"

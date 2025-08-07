@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict
 
-from workflow_scheduler.models.triggers import ExecutionResult, TriggerStatus
+from shared.models.trigger import ExecutionResult, TriggerStatus
 from workflow_scheduler.triggers.base import BaseTrigger
 
 logger = logging.getLogger(__name__)

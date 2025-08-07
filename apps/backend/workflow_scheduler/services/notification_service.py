@@ -12,9 +12,9 @@ from typing import Any, Dict, Optional
 # Add shared path for Slack SDK
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
+from shared.models.trigger import ExecutionResult
 from shared.sdks.slack_sdk import SlackAPIError, SlackBlockBuilder, SlackWebClient
 from workflow_scheduler.core.config import settings
-from workflow_scheduler.models.triggers import ExecutionResult
 
 logger = logging.getLogger(__name__)
 

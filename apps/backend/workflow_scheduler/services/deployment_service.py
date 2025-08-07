@@ -1,14 +1,9 @@
 import logging
 import uuid
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-from workflow_scheduler.models.triggers import (
-    DeploymentResult,
-    DeploymentStatus,
-    TriggerSpec,
-    TriggerType,
-)
+from shared.models.trigger import DeploymentResult, DeploymentStatus, TriggerSpec, TriggerType
 from workflow_scheduler.services.trigger_index_manager import TriggerIndexManager
 
 logger = logging.getLogger(__name__)

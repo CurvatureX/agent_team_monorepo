@@ -13,9 +13,10 @@ from sqlalchemy import and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 
-from workflow_scheduler.models.database import get_database_engine
-from workflow_scheduler.models.trigger_index import GitHubWebhookEvent, TriggerIndex
-from workflow_scheduler.models.triggers import ExecutionResult
+from shared.models.db_models import get_database_engine
+from shared.models.trigger import ExecutionResult
+from shared.models.trigger_index import GitHubWebhookEvent, TriggerIndex
+from workflow_scheduler.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ class EventRouter:
 
     def __init__(self):
         """Initialize the EventRouter with database session"""
-        self.engine = get_database_engine()
+        self.engine = get_database_engine(settings.database_url, echo=settings.debug)
         self.session_factory = sessionmaker(
             bind=self.engine, class_=AsyncSession, expire_on_commit=False
         )

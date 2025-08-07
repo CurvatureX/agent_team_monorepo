@@ -4,8 +4,8 @@ from typing import Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
+from shared.models.trigger import ExecutionResult, TriggerType
 from workflow_scheduler.dependencies import get_trigger_manager
-from workflow_scheduler.models.triggers import ExecutionResult, TriggerType
 from workflow_scheduler.services.trigger_manager import TriggerManager
 
 logger = logging.getLogger(__name__)

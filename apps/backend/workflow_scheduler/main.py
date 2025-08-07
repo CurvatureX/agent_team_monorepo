@@ -8,6 +8,7 @@ import uvicorn
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from shared.models.trigger import TriggerType
 from workflow_scheduler.api import deployment, github, slack, triggers
 from workflow_scheduler.core.config import settings
 from workflow_scheduler.dependencies import (
@@ -15,7 +16,6 @@ from workflow_scheduler.dependencies import (
     get_trigger_manager,
     set_global_services,
 )
-from workflow_scheduler.models.triggers import TriggerType
 from workflow_scheduler.services.deployment_service import DeploymentService
 from workflow_scheduler.services.lock_manager import DistributedLockManager
 from workflow_scheduler.services.trigger_manager import TriggerManager
@@ -42,7 +42,10 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager"""
-    # Service instances will be managed locally in lifespan
+    # Initialize variables outside try block to ensure they're accessible in finally
+    lock_manager = None
+    trigger_manager = None
+    deployment_service = None
 
     logger.info("Starting workflow_scheduler service")
 
