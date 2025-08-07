@@ -37,6 +37,8 @@ dependencies = [
     "opentelemetry-instrumentation-psycopg2>=0.42b0",
     "opentelemetry-exporter-otlp>=1.21.0",
     "opentelemetry-exporter-prometheus",
+    "aiohttp>=3.9.0",
+    "openai>=1.0.0",
 ]
 
 [project.optional-dependencies]

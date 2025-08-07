@@ -91,19 +91,23 @@ class WorkflowAgentStateManager:
                 "created_at": current_time,
                 "updated_at": current_time,
                 "stage": initial_stage,
+                "previous_stage": None,
                 "execution_history": [],
                 "intent_summary": "",
                 "workflow_context": workflow_context,
                 "conversations": [],
                 "identified_gaps": [],
-                "current_workflow_json": "",
-                "debug_result": "",
+                "gap_status": "no_gap",
+                "current_workflow": None,
+                "template_workflow": None,
+                "debug_result": None,
                 "debug_loop_count": 0,
+                "template_id": None,
                 "clarification_context": {
                     "purpose": "initial_intent",
-                    "origin": workflow_context.get("origin", "create"),
+                    "collected_info": {},
                     "pending_questions": [],
-                    "collected_info": {}
+                    "origin": "create"
                 }
             }
             
@@ -146,17 +150,19 @@ class WorkflowAgentStateManager:
                 # 返回最新的状态记录
                 latest_state = max(result.data, key=lambda x: x.get("updated_at", 0))
                 
-                # 处理 current_workflow_json 字段
-                if "current_workflow_json" in latest_state and latest_state["current_workflow_json"]:
-                    try:
-                        latest_state["current_workflow"] = json.loads(latest_state["current_workflow_json"])
-                    except json.JSONDecodeError:
-                        latest_state["current_workflow"] = {}
-                else:
-                    latest_state["current_workflow"] = {}
+                # 处理 current_workflow 字段 (现在直接是JSONB，不需要解析)
+                if "current_workflow" not in latest_state:
+                    latest_state["current_workflow"] = None
                 
-                # Set default values for new fields not in database
-                latest_state["gap_status"] = latest_state.get("gap_status", "no_gap")
+                # 处理 debug_result 字段
+                if "debug_result" in latest_state and latest_state["debug_result"]:
+                    try:
+                        if isinstance(latest_state["debug_result"], str):
+                            latest_state["debug_result"] = json.loads(latest_state["debug_result"])
+                    except json.JSONDecodeError:
+                        pass  # Keep as string if not valid JSON
+                
+                # All fields should exist in database, no defaults needed
                 
                 logger.debug("Retrieved workflow_agent_state", extra={"session_id": session_id})
                 return latest_state
@@ -314,32 +320,29 @@ class WorkflowAgentStateManager:
         """
         db_state = {}
         
-        # 直接字段映射
+        # 直接字段映射 (基于state.py的WorkflowState)
         field_mappings = {
             "session_id": "session_id",
             "user_id": "user_id", 
             "created_at": "created_at",
             "updated_at": "updated_at",
             "stage": "stage",
+            "previous_stage": "previous_stage",
             "execution_history": "execution_history",
             "intent_summary": "intent_summary",
             "identified_gaps": "identified_gaps",
             "gap_status": "gap_status",
-            "debug_result": "debug_result",
             "debug_loop_count": "debug_loop_count",
+            "template_id": "template_id",
+            "current_workflow": "current_workflow",
+            "template_workflow": "template_workflow",
         }
         
         for state_key, db_key in field_mappings.items():
             if state_key in workflow_state:
                 db_state[db_key] = workflow_state[state_key]
         
-        # 处理 current_workflow
-        if "current_workflow" in workflow_state:
-            value = workflow_state["current_workflow"]
-            if isinstance(value, dict):
-                db_state["current_workflow_json"] = json.dumps(value)
-            else:
-                db_state["current_workflow_json"] = str(value) if value else ""
+        # current_workflow 现在直接存为JSONB，不需要转换
         
         # 处理 WorkflowStage 枚举类型
         if "stage" in workflow_state:
@@ -348,6 +351,26 @@ class WorkflowAgentStateManager:
                 db_state["stage"] = stage_value.value
             else:
                 db_state["stage"] = str(stage_value)
+        
+        if "previous_stage" in workflow_state:
+            prev_stage_value = workflow_state["previous_stage"]
+            if prev_stage_value is not None:
+                if hasattr(prev_stage_value, 'value'):  # 是枚举类型
+                    db_state["previous_stage"] = prev_stage_value.value
+                else:
+                    db_state["previous_stage"] = str(prev_stage_value)
+        
+        # 处理 GapStatus 枚举类型
+        if "gap_status" in workflow_state:
+            gap_value = workflow_state["gap_status"]
+            if hasattr(gap_value, 'value'):  # 是枚举类型
+                db_state["gap_status"] = gap_value.value
+            else:
+                db_state["gap_status"] = str(gap_value)
+        
+        # debug_result 现在直接存为JSONB，不需要转换
+        if "debug_result" in workflow_state:
+            db_state["debug_result"] = workflow_state["debug_result"]
         
         # JSON 字段
         json_fields = {
@@ -369,17 +392,24 @@ class WorkflowAgentStateManager:
             "session_id": session_id,
             "user_id": "anonymous",
             "stage": "clarification",
+            "previous_stage": None,
             "conversations": [],
             "intent_summary": "",
             "current_workflow": None,
+            "template_workflow": None,
             "identified_gaps": [],
-            "workflow_context": {"origin": "create", "source_workflow_id": ""},
+            "gap_status": "no_gap",
+            "workflow_context": {"origin": "create", "requirements": {}},
             "clarification_context": {
                 "purpose": "initial_intent",
-                "origin": "create", 
+                "collected_info": {},
                 "pending_questions": [],
-                "collected_info": {}
+                "origin": "create"
             },
+            "debug_result": None,
+            "debug_loop_count": 0,
+            "execution_history": [],
+            "template_id": None,
             "created_at": int(time.time() * 1000),
             "updated_at": int(time.time() * 1000)
         }

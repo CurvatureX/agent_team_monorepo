@@ -1,14 +1,15 @@
 """
 LangGraph nodes for simplified Workflow Agent architecture
-Implements the 4 core nodes: Clarification, Gap Analysis,
-Workflow Generation, and Debug
+Implements the 4 core nodes: Clarification, Gap Analysis, Workflow Generation, and Debug
+Based on main branch structure, updated for MCP integration
 """
 
 import asyncio
 import json
 import time
 import uuid
-from typing import List
+from typing import List, Dict, Any
+from openai import AsyncOpenAI
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -17,11 +18,17 @@ from langchain_openai import ChatOpenAI
 from .state import (
     ClarificationContext,
     Conversation,
-    WorkflowOrigin,
     WorkflowStage,
     WorkflowState,
+    GapDetail,
+    get_user_message,
+    get_intent_summary,
+    get_gap_status,
+    get_identified_gaps,
+    get_current_workflow,
+    get_debug_errors,
 )
-from .tools import RAGTool
+from .mcp_tools import MCPToolCaller, create_openai_function_definitions
 from core.config import settings
 import logging
 from core.prompt_engine import get_prompt_engine
@@ -29,26 +36,30 @@ from core.prompt_engine import get_prompt_engine
 logger = logging.getLogger(__name__)
 
 class WorkflowAgentNodes:
-    """Simplified LangGraph nodes for workflow generation"""
+    """Simplified LangGraph nodes for workflow generation with MCP integration"""
 
     def __init__(self):
         self.llm = self._setup_llm()
         self.prompt_engine = get_prompt_engine()
-        self.rag_tool = RAGTool()
+        self.mcp_client = MCPToolCaller()
+        self.openai_functions = create_openai_function_definitions()
+        self.openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY) if settings.OPENAI_API_KEY else None
 
     def _setup_llm(self):
         """Setup the language model based on configuration"""
         if settings.DEFAULT_MODEL_PROVIDER == "openai":
             return ChatOpenAI(
-                model=settings.DEFAULT_MODEL_NAME, api_key=settings.OPENAI_API_KEY, temperature=0.1
+                model=settings.DEFAULT_MODEL_NAME, 
+                api_key=settings.OPENAI_API_KEY, 
+                temperature=0  # Zero temperature for maximum determinism
             )
         elif settings.DEFAULT_MODEL_PROVIDER == "anthropic":
             return ChatAnthropic(
                 model_name=settings.DEFAULT_MODEL_NAME,
                 api_key=settings.ANTHROPIC_API_KEY,
-                temperature=0.1,
+                temperature=0,  # Zero temperature for maximum determinism
                 timeout=10,
-                stop=["\n\n"],
+                stop=["\\n\\n"],
             )
         else:
             raise ValueError(f"Unsupported model provider: {settings.DEFAULT_MODEL_PROVIDER}")
@@ -56,25 +67,30 @@ class WorkflowAgentNodes:
     def _get_session_id(self, state: WorkflowState) -> str:
         """Get session ID from state"""
         return state.get("session_id", "")
-
-    def _update_conversations(self, state: WorkflowState, role: str, text: str) -> None:
-        """Update conversations list in state"""
+    
+    def _add_conversation(self, state: WorkflowState, role: str, text: str) -> None:
+        """Add a new message to conversations"""
         if "conversations" not in state:
             state["conversations"] = []
-
-        state["conversations"].append(Conversation(role=role, text=text))
+        
+        state["conversations"].append(Conversation(
+            role=role, 
+            text=text,
+            timestamp=int(time.time() * 1000)
+        ))
 
     def _get_current_scenario(self, state: WorkflowState) -> str:
         """Determine the current scenario based on state"""
         stage = state.get("stage")
         previous_stage = state.get("previous_stage")
+        workflow_context = state.get("workflow_context", {})
 
         if stage == WorkflowStage.CLARIFICATION:
             if previous_stage == WorkflowStage.DEBUG:
                 return "Debug Recovery"
             elif previous_stage == WorkflowStage.GAP_ANALYSIS:
                 return "Gap Analysis Feedback Processing"
-            elif state.get("template_workflow"):
+            elif workflow_context.get("template_workflow") or state.get("template_workflow"):
                 return "Template Customization"
             else:
                 return "Initial Clarification"
@@ -85,503 +101,528 @@ class WorkflowAgentNodes:
         scenario = self._get_current_scenario(state)
 
         if scenario == "Debug Recovery":
-            return "Understand debug failures and gather information needed to fix workflow issues"
+            return "Understand what went wrong and gather ONLY the missing critical information"
         elif scenario == "Gap Analysis Feedback Processing":
-            return "Process user feedback after gap analysis and alternative solution presentation"
+            return "Process user's choice from the alternatives presented"
         elif scenario == "Template Customization":
-            return "Understand how the user wants to modify an existing template workflow to meet their specific needs"
+            return "Understand the specific modifications needed for the template"
         else:
-            return "Understand the user's workflow automation needs and capture all essential requirements through strategic questioning"
+            return "Quickly understand WHAT the user wants to automate - avoid asking for details"
 
     def _get_scenario_type(self, state: WorkflowState) -> str:
         """Determine the scenario type for template conditional logic"""
-        stage = state.get("stage")
         previous_stage = state.get("previous_stage")
+        workflow_context = state.get("workflow_context", {})
 
+        # Debug recovery has priority
         if previous_stage == WorkflowStage.DEBUG:
             return "debug_recovery"
         elif previous_stage == WorkflowStage.GAP_ANALYSIS:
             return "gap_analysis_feedback"
-        elif state.get("template_workflow"):
+        elif workflow_context.get("template_workflow") or state.get("template_workflow"):
             return "template_customization"
         else:
-            return "initial_creation"
+            return "initial_clarification"
 
-    def _get_gap_analysis_scenario(self, state: WorkflowState) -> str:
-        """Determine the gap analysis scenario based on state"""
-        stage = state.get("stage")
-        previous_stage = state.get("previous_stage")
+    def _get_conversation_context(self, state: WorkflowState) -> str:
+        """Get conversation history for prompts"""
+        conversations = state.get("conversations", [])
 
-        if stage == WorkflowStage.GAP_ANALYSIS:
-            # Check if we're re-analyzing after user feedback on gaps
-            if previous_stage == WorkflowStage.CLARIFICATION and state.get("gap_status") == "has_gap":
-                return "Post-Gap Resolution Analysis"
-            elif state.get("template_workflow"):
-                return "Template Capability Analysis"
-            elif previous_stage == WorkflowStage.DEBUG:
-                return "Debug Failure Gap Analysis"
-            else:
-                return "Initial Gap Analysis"
-        return "Initial Gap Analysis"
+        if not conversations:
+            return "No previous conversation"
 
-    def _get_gap_analysis_goal(self, state: WorkflowState) -> str:
-        """Determine the gap analysis goal based on scenario"""
-        scenario = self._get_gap_analysis_scenario(state)
+        # Format conversation history
+        history = []
+        for conv in conversations[-10:]:  # Last 10 messages for context
+            role = conv.get("role", "unknown")
+            text = conv.get("text", "")
+            history.append(f"{role.upper()}: {text}")
 
-        if scenario == "Post-Gap Resolution Analysis":
-            return "Review user feedback and selected approach to resolve identified gaps"
-        elif scenario == "Template Capability Analysis":
-            return "Analyze template requirements against available capabilities"
-        elif scenario == "Debug Failure Gap Analysis":
-            return "Identify capability gaps that caused workflow failure"
-        else:
-            return "Analyze user requirements against available node capabilities and identify missing components"
-
-    def _get_gap_analysis_scenario_type(self, state: WorkflowState) -> str:
-        """Determine the scenario type for gap analysis template conditional logic"""
-        previous_stage = state.get("previous_stage")
-
-        # Check if we're re-analyzing after user feedback on gaps
-        if previous_stage == WorkflowStage.CLARIFICATION and state.get("gap_status") == "has_gap":
-            return "post_gap_resolution"
-        elif state.get("template_workflow"):
-            return "template_analysis"
-        elif previous_stage == WorkflowStage.DEBUG:
-            return "debug_analysis"
-        else:
-            return "initial_analysis"
-
-    def _get_latest_user_input(self, state: WorkflowState) -> str:
-        """Get the latest user input from conversations"""
-        if state.get("conversations"):
-            for conv in reversed(state["conversations"]):
-                if conv["role"] == "user":
-                    return conv["text"]
-        return ""
+        return "\\n".join(history)
 
     async def clarification_node(self, state: WorkflowState) -> WorkflowState:
         """
-        Clarification Node - 解析和澄清用户意图
-        支持多种澄清目的：初始意图、模板选择、模板修改、能力差距解决、调试问题
-        现在也处理之前 Negotiation node 的功能：等待用户回答问题或选择方案
+        Clarification Node - 理解用户需求，提出澄清问题
+        Maps prompt output to main branch state structure
         """
         logger.info("Processing clarification node")
+        
+        # Store the current stage as previous before updating
+        current_stage = state.get("stage", WorkflowStage.CLARIFICATION)
+        
+        # Set stage to CLARIFICATION
+        state["stage"] = WorkflowStage.CLARIFICATION
 
         try:
-            # Get clarification context (now required)
-            clarification_context = state["clarification_context"]
-            origin = clarification_context.get("origin", "create")
-            purpose = clarification_context.get("purpose", "initial_intent")
+            # Check if we're coming from gap_analysis with pending questions
+            clarification_context = state.get("clarification_context", {})
             pending_questions = clarification_context.get("pending_questions", [])
+            previous_stage = state.get("previous_stage")
             
-            logger.info("Clarification context", extra={"origin": origin, "purpose": purpose, "pending_questions_count": len(pending_questions)})
-            if pending_questions:
-                logger.info("Pending questions", extra={"pending_questions": pending_questions})
+            logger.info(f"Clarification node check: previous_stage={previous_stage}, pending_questions={len(pending_questions) if pending_questions else 0}, context_purpose={clarification_context.get('purpose')}")
+            
+            # If we're coming from gap_analysis with pending questions, just wait for user input
+            if previous_stage == WorkflowStage.GAP_ANALYSIS and pending_questions:
+                logger.info("Coming from gap_analysis with pending questions, waiting for user input")
+                # Keep the pending questions and wait for user response
+                # IMPORTANT: Don't set clarification_ready to avoid infinite loop
+                state["clarification_ready"] = False
+                # Keep previous_stage so routing knows we came from gap_analysis
+                state["previous_stage"] = WorkflowStage.GAP_ANALYSIS
+                return {**state, "stage": WorkflowStage.CLARIFICATION}
+            
+            # Get user message from conversations
+            user_message = get_user_message(state)
+            if not user_message:
+                user_message = "Continue with the workflow creation process"
+            
+            conversation_context = self._get_conversation_context(state)
+            workflow_context = state.get("workflow_context", {})
+            template_workflow = workflow_context.get("template_workflow") or state.get("template_workflow")
 
-            # Get user input from conversations
-            user_input = ""
-            latest_user_message_index = -1
-            conversations = state.get("conversations", [])
-            logger.info("Total conversations in state", extra={"conversation_count": len(conversations)})
+            # Get scenario-specific prompt
+            scenario_type = self._get_scenario_type(state)
             
-            if conversations:
-                # Get the latest user message and its index
-                for i in range(len(conversations) - 1, -1, -1):
-                    conv = conversations[i]
-                    if conv["role"] == "user":
-                        user_input = conv["text"]
-                        latest_user_message_index = i
-                        break
-            
-            # Check if this is a response to pending questions
-            is_response_to_pending_questions = False
-            if pending_questions and latest_user_message_index >= 0:
-                # If we have pending questions and a new user input, it's likely a response
-                # Check if there's an assistant message before this user message
-                for i in range(latest_user_message_index - 1, -1, -1):
-                    conv = state["conversations"][i]
-                    if conv["role"] == "assistant":
-                        # Found the previous assistant message
-                        is_response_to_pending_questions = True
-                        logger.info("Found user input after assistant message with pending questions")
-                        logger.info("Pending questions details", extra={"pending_questions": pending_questions})
-                        user_preview = user_input[:100] + "..." if len(user_input) > 100 else user_input
-                        logger.info("User response", extra={"user_input_preview": user_preview})
-                        break
-            
-            # Clear pending questions if this is a response
-            if is_response_to_pending_questions and pending_questions:
-                logger.info("Clearing pending questions as we have user response")
-                clarification_context["pending_questions"] = []
-                # Update the state with cleared pending questions
-                state["clarification_context"] = clarification_context
-                
-                # If this is a gap resolution response, mark that we need to re-run gap analysis
-                if purpose == "gap_negotiation" and user_input:
-                    logger.info("User responded to gap negotiation", extra={"user_input": user_input})
-                    # The gap analysis will run again to check if gaps are resolved
-
-            # If we have user input, use RAG to retrieve knowledge
-            if user_input:
-                logger.info("Retrieving knowledge with RAG tool")
-                try:
-                    state = await self.rag_tool.retrieve_knowledge(state, query=user_input)
-                except Exception as rag_error:
-                    logger.warning("RAG retrieval failed, continuing without RAG context", extra={"error": str(rag_error)})
-                    # Continue without RAG context - the workflow should still function
-                    if "rag" not in state:
-                        state["rag"] = {"query": user_input, "results": []}
-
-            # Track clarification rounds
-            clarification_round = state.get("clarification_round", 0)
-            state["clarification_round"] = clarification_round + 1
-            
-            # Use separate system and user prompt files for clarification
+            # Prepare context for template, including gap negotiation info
             template_context = {
-                "origin": origin,
-                "user_input": user_input,
-                "execution_history": state.get("execution_history", []),
+                "user_message": user_message,
+                "user_input": user_message,  # For the user template
+                "conversation_context": conversation_context,
+                "template_workflow": template_workflow,
                 "current_scenario": self._get_current_scenario(state),
-                "goal": self._get_current_goal(state),
-                "scenario_type": self._get_scenario_type(state),
-                "current_workflow": state.get("current_workflow"),
-                "debug_result": state.get("debug_result"),
+                "current_goal": self._get_current_goal(state),
+                "goal": self._get_current_goal(state),  # For the user template
+                "purpose": clarification_context.get("purpose", ""),
                 "identified_gaps": state.get("identified_gaps", []),
-                "template_workflow": state.get("template_workflow"),
-                "rag_context": state.get("rag"),
+                "gap_status": state.get("gap_status", "no_gap"),
+                "scenario_type": scenario_type,
                 "clarification_context": clarification_context,
-                "clarification_round": clarification_round,
+                "execution_history": state.get("execution_history", [])
             }
 
+            # Use the f2 template system - both system and user prompts
             system_prompt = await self.prompt_engine.render_prompt(
-                "clarification_f2_system", **template_context
+                "clarification_f2_system",
+                **template_context
             )
+            
             user_prompt = await self.prompt_engine.render_prompt(
-                "clarification_f2_user", **template_context
+                "clarification_f2_user",
+                **template_context
+            )
+            
+            # Debug: Log the actual prompt being sent
+            logger.info("Clarification prompt details", extra={
+                "user_message": user_message,
+                "prompt_length": len(user_prompt)
+            })
+
+            messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
+            
+            # For OpenAI, use response_format to enforce JSON
+            if settings.DEFAULT_MODEL_PROVIDER == "openai":
+                response = await self.llm.ainvoke(
+                    messages,
+                    response_format={"type": "json_object"}
+                )
+            else:
+                response = await self.llm.ainvoke(messages)
+
+            # Parse response
+            response_text = (
+                response.content if isinstance(response.content, str) else str(response.content)
             )
 
-            # Build messages with conversation history as separate messages
-            messages = [SystemMessage(content=system_prompt)]
-
-            # Add conversation history as separate messages (better for LLM understanding)
-            conversations = state.get("conversations", [])
-            for conv in conversations:
-                if conv["role"] == "user":
-                    messages.append(HumanMessage(content=conv["text"]))
-                elif conv["role"] == "assistant":
-                    messages.append(AIMessage(content=conv["text"]))
-
-            # Add current clarification request
-            messages.append(HumanMessage(content=user_prompt))
-
-            response = await self.llm.ainvoke(messages)
-
-            # Parse response using clarification_f2 format
+            # Try to parse as JSON for structured response
             try:
-                response_text = (
-                    response.content if isinstance(response.content, str) else str(response.content)
-                )
-                
                 # Remove markdown code blocks if present
-                if response_text.strip().startswith("```json"):
-                    response_text = response_text.strip()[7:]  # Remove ```json
-                    if response_text.endswith("```"):
-                        response_text = response_text[:-3]  # Remove trailing ```
-                elif response_text.strip().startswith("```"):
-                    response_text = response_text.strip()[3:]  # Remove ```
-                    if response_text.endswith("```"):
-                        response_text = response_text[:-3]  # Remove trailing ```
-                
-                analysis = json.loads(response_text.strip())
+                clean_text = response_text.strip()
+                if clean_text.startswith("```json"):
+                    clean_text = clean_text[7:]
+                    if clean_text.endswith("```"):
+                        clean_text = clean_text[:-3]
+                elif clean_text.startswith("```"):
+                    clean_text = clean_text[3:]
+                    if clean_text.endswith("```"):
+                        clean_text = clean_text[:-3]
 
-                logger.info("Clarification analysis", extra={"analysis": analysis})
+                clarification_output = json.loads(clean_text.strip())
+                is_ready = clarification_output.get("is_complete", False)
 
-                # clarification_f2 format: clarification_question, is_complete, intent_summary, gap_resolution
-                clarification_question = analysis.get("clarification_question", "")
-                is_complete = analysis.get("is_complete", False)
-                intent_summary = analysis.get("intent_summary", "")
-                gap_resolution = analysis.get("gap_resolution", {})
+                # Map to main branch state structure
+                state["intent_summary"] = clarification_output.get("intent_summary", "")
                 
-                # Handle gap resolution
-                if purpose == "gap_negotiation" and gap_resolution.get("user_selected_alternative", False):
-                    confidence = gap_resolution.get("confidence", 0)
-                    selected_index = gap_resolution.get("selected_index")
-                    
-                    if confidence > 0.7 and selected_index is not None:
-                        logger.info("User selected alternative", extra={
-                            "selected_index": selected_index,
-                            "confidence": confidence
-                        })
-                        state["selected_alternative_index"] = selected_index
-                        state["gap_status"] = "gap_resolved"
-                        # Skip further clarification and go directly to workflow generation
-                        return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
-
-                # Force completion after 1 round for consumer experience
-                if clarification_round >= 1 and not is_complete:
-                    logger.info("Forcing completion after 1 round", extra={"round": clarification_round})
-                    is_complete = True
-                    if not intent_summary:
-                        intent_summary = f"{intent_summary or 'User workflow request'}. Using smart defaults for configuration."
+                # Check if user selected an alternative from gap negotiation
+                gap_resolution = clarification_output.get("gap_resolution", {})
+                if gap_resolution.get("user_selected_alternative", False):
+                    # User made a choice, mark gap as resolved
+                    state["gap_status"] = "gap_resolved"
+                    logger.info(f"User selected alternative {gap_resolution.get('selected_index')} with confidence {gap_resolution.get('confidence')}")
                 
-                # Determine if we need more clarification
-                needs_clarification = not is_complete
-                questions = [clarification_question] if clarification_question and not is_complete else []
+                # Update clarification context - preserve purpose if in gap negotiation
+                existing_purpose = clarification_context.get("purpose", "initial_intent")
+                new_purpose = "gap_resolved" if gap_resolution.get("user_selected_alternative", False) else existing_purpose
                 
-                # Use provided intent_summary or create default
-                if not intent_summary:
-                    intent_summary = "用户需求已澄清" if is_complete else "需要进一步澄清用户需求"
+                clarification_context = ClarificationContext(
+                    purpose=new_purpose,
+                    collected_info={"intent": clarification_output.get("intent_summary", "")},
+                    pending_questions=[clarification_output.get("clarification_question", "")] if clarification_output.get("clarification_question") else [],
+                    origin=clarification_context.get("origin", "create")
+                )
+                state["clarification_context"] = clarification_context
 
             except json.JSONDecodeError:
-                # Fallback parsing
-                response_text = (
-                    response.content if isinstance(response.content, str) else str(response.content)
+                # Fallback to simple format
+                state["intent_summary"] = response_text[:200]
+                state["clarification_context"] = ClarificationContext(
+                    purpose="initial_intent",
+                    collected_info={"intent": response_text[:200]},
+                    pending_questions=[response_text],
+                    origin="create"
                 )
-                intent_summary = (
-                    response_text[:200] + "..." if len(response_text) > 200 else response_text
-                )
-                needs_clarification = "?" in response_text or "clarif" in response_text.lower()
-                questions = []
-                gap_resolution = {"user_selected_alternative": False, "selected_index": None, "confidence": 0.0}
-                
-                # Force completion after 1 round even in fallback
-                if clarification_round >= 1:
-                    needs_clarification = False
+                is_ready = False
 
-            # Update state
-            state["intent_summary"] = intent_summary
+            # Add to conversations
+            self._add_conversation(state, "assistant", response_text)
 
-            if needs_clarification and questions:
-                # Need more clarification - store questions and wait for user input
-                clarification_context = state.get("clarification_context")
-                if clarification_context:
-                    clarification_context["pending_questions"] = questions
-                self._update_conversations(state, "assistant", "\n".join(questions))
-                # Stay in clarification stage but return END to wait for user
-                return {**state, "stage": WorkflowStage.CLARIFICATION}
-            else:
-                return {**state, "stage": WorkflowStage.GAP_ANALYSIS}
+            # Keep stage as CLARIFICATION - routing logic will decide next step
+            # Store whether we're ready to continue for routing decision
+            state["clarification_ready"] = is_ready
+            # Set previous_stage for next node to know where we came from
+            state["previous_stage"] = WorkflowStage.CLARIFICATION
+            return {**state, "stage": WorkflowStage.CLARIFICATION}
 
         except Exception as e:
             logger.error("Clarification node failed", extra={"error": str(e)})
             return {
                 **state,
                 "stage": WorkflowStage.CLARIFICATION,
-                "debug_result": f"Clarification error: {str(e)}",
             }
-
 
     async def gap_analysis_node(self, state: WorkflowState) -> WorkflowState:
         """
-        Gap Analysis Node - 分析需求与现有能力之间的差距
+        Gap Analysis Node - 分析需求可行性，识别gap
+        Maps prompt output to main branch state structure
         """
         logger.info("Processing gap analysis node")
+        
+        # Set stage to GAP_ANALYSIS
+        state["stage"] = WorkflowStage.GAP_ANALYSIS
 
         try:
-            intent_summary = state.get("intent_summary", "")
+            intent_summary = get_intent_summary(state)
+            conversation_context = self._get_conversation_context(state)
             
-            # Check if gaps have been resolved (user selected an alternative)
-            if state.get("gap_status") == "gap_resolved":
-                logger.info("Gaps have been resolved, proceeding to workflow generation")
-                selected_index = state.get("selected_alternative_index")
-                if selected_index is not None:
-                    logger.info("User selected alternative", extra={"index": selected_index})
-                return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
+            # Check if we're coming back from clarification after user made a choice
+            clarification_context = state.get("clarification_context", {})
+            previous_stage = state.get("previous_stage")
+            logger.info(f"Gap analysis check: previous_stage={previous_stage}, clarification_purpose={clarification_context.get('purpose')}")
+            
+            # If coming from clarification after gap negotiation, mark as resolved
+            if previous_stage == WorkflowStage.CLARIFICATION and clarification_context.get("purpose") in ["gap_negotiation", "gap_resolved"]:
+                # User has already chosen from alternatives, mark gap as resolved
+                logger.info("User has made choice from gap alternatives, marking as resolved")
+                state["gap_status"] = "gap_resolved"
+                # Clear the pending questions since user responded
+                clarification_context["pending_questions"] = []
+                clarification_context["purpose"] = "gap_resolved"  # Update purpose
+                state["clarification_context"] = clarification_context
+                # Set previous_stage for routing
+                state["previous_stage"] = WorkflowStage.GAP_ANALYSIS
+                # Don't need to run LLM again, just return with gap_resolved
+                return {**state, "stage": WorkflowStage.GAP_ANALYSIS}
 
-            # Use separate system and user prompt files for capability gap analysis
+            # Determine scenario type for gap analysis
+            if clarification_context.get("purpose") == "gap_negotiation":
+                scenario_type = "post_negotiation"
+            else:
+                scenario_type = "initial_analysis"
+
+            # Prepare context for both templates
             template_context = {
                 "intent_summary": intent_summary,
-                "conversations": state.get("conversations", []),
-                "execution_history": state.get("execution_history", []),
-                "current_scenario": self._get_gap_analysis_scenario(state),
-                "goal": self._get_gap_analysis_goal(state),
-                "scenario_type": self._get_gap_analysis_scenario_type(state),
-                "user_feedback": self._get_latest_user_input(state),
+                "conversation_context": conversation_context,
+                "scenario_type": scenario_type,
+                "current_scenario": self._get_current_scenario(state),
+                "goal": self._get_current_goal(state),
                 "template_workflow": state.get("template_workflow"),
                 "current_workflow": state.get("current_workflow"),
                 "debug_result": state.get("debug_result"),
-                "rag_context": state.get("rag"),
+                "execution_history": state.get("execution_history", []),
+                "user_feedback": get_user_message(state) if scenario_type == "post_negotiation" else None,
+                "selected_alternative": None  # TODO: Extract from user message if needed
             }
 
+            # Use both system and user templates
             system_prompt = await self.prompt_engine.render_prompt(
-                "gap_analysis_f2_system", **template_context
+                "gap_analysis_f2_system",
+                **template_context
             )
+            
             user_prompt = await self.prompt_engine.render_prompt(
-                "gap_analysis_f2_user", **template_context
+                "gap_analysis_f2_user",
+                **template_context
             )
 
-            # Build messages with conversation history as separate messages
-            messages = [SystemMessage(content=system_prompt)]
-
-            # Add conversation history as separate messages (better for LLM understanding)
-            conversations = state.get("conversations", [])
-            for conv in conversations:
-                if conv["role"] == "user":
-                    messages.append(HumanMessage(content=conv["text"]))
-                elif conv["role"] == "assistant":
-                    messages.append(AIMessage(content=conv["text"]))
-
-            # Add current analysis request
-            messages.append(HumanMessage(content=user_prompt))
-
+            messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
             response = await self.llm.ainvoke(messages)
 
+            response_text = (
+                response.content if isinstance(response.content, str) else str(response.content)
+            )
+
+            # Try to parse structured response
             try:
-                response_text = (
-                    response.content if isinstance(response.content, str) else str(response.content)
-                )
-                
                 # Remove markdown code blocks if present
-                if response_text.strip().startswith("```json"):
-                    response_text = response_text.strip()[7:]  # Remove ```json
-                    if response_text.endswith("```"):
-                        response_text = response_text[:-3]  # Remove trailing ```
-                elif response_text.strip().startswith("```"):
-                    response_text = response_text.strip()[3:]  # Remove ```
-                    if response_text.endswith("```"):
-                        response_text = response_text[:-3]  # Remove trailing ```
+                clean_text = response_text.strip()
+                if clean_text.startswith("```json"):
+                    clean_text = clean_text[7:]
+                    if clean_text.endswith("```"):
+                        clean_text = clean_text[:-3]
+                elif clean_text.startswith("```"):
+                    clean_text = clean_text[3:]
+                    if clean_text.endswith("```"):
+                        clean_text = clean_text[:-3]
+
+                gap_analysis_output = json.loads(clean_text.strip())
+                gap_status = gap_analysis_output.get("gap_status", "no_gap")
+                negotiation_phrase = gap_analysis_output.get("negotiation_phrase", "")
                 
-                analysis = json.loads(response_text.strip())
-                logger.info("Gap analysis", extra={"analysis": analysis})
+                logger.info(f"Gap analysis result: gap_status={gap_status}, has_negotiation_phrase={bool(negotiation_phrase)}")
+
+                # Map to main branch state structure
+                state["gap_status"] = gap_status
                 
-                # Extract gap analysis results
-                gap_status = analysis.get("gap_status", "no_gap")
-                negotiation_phrase = analysis.get("negotiation_phrase", "")
-                identified_gaps = analysis.get("identified_gaps", [])
-                
-            except json.JSONDecodeError:
-                # Fallback to simple analysis
-                response_text = (
-                    response.content if isinstance(response.content, str) else str(response.content)
-                )
-                response_lower = response_text.lower()
-                gap_status = "has_gap" if ("gap" in response_lower or "missing" in response_lower) else "no_gap"
-                negotiation_phrase = "We identified some gaps in the workflow requirements."
+                # Convert identified_gaps format
+                identified_gaps_data = gap_analysis_output.get("identified_gaps", [])
                 identified_gaps = []
+                for gap in identified_gaps_data:
+                    identified_gaps.append(GapDetail(
+                        required_capability=gap.get("required_capability", ""),
+                        missing_component=gap.get("missing_component", ""),
+                        alternatives=gap.get("alternatives", [])
+                    ))
+                state["identified_gaps"] = identified_gaps
+                
+                # If we have gaps, set up for user input
+                if gap_status == "has_gap":
+                    # If no negotiation phrase provided, create a default one
+                    if not negotiation_phrase:
+                        negotiation_phrase = "I've identified some gaps in the workflow. Please choose from the alternatives provided or specify your preference."
+                    
+                    # Add negotiation phrase to conversations
+                    self._add_conversation(state, "assistant", negotiation_phrase)
+                    
+                    # Set up clarification context to wait for user's choice
+                    clarification_context = state.get("clarification_context", {})
+                    clarification_context["purpose"] = "gap_negotiation"
+                    clarification_context["pending_questions"] = [negotiation_phrase]
+                    state["clarification_context"] = clarification_context
+                else:
+                    # For other cases, just add the full response
+                    self._add_conversation(state, "assistant", response_text)
 
-            # Update state with gap analysis results
-            state["gap_status"] = gap_status
-            state["identified_gaps"] = identified_gaps
-            
-            logger.info("Gap analysis results", extra={
-                "gap_status": gap_status,
-                "gaps_count": len(identified_gaps),
-                "has_negotiation": bool(negotiation_phrase)
-            })
+            except json.JSONDecodeError:
+                # Fallback
+                state["gap_status"] = "no_gap"
+                state["identified_gaps"] = []
+                # Add fallback response
+                self._add_conversation(state, "assistant", response_text)
 
-            if gap_status == "has_gap" and identified_gaps:
-                # We have gaps with alternatives - send negotiation phrase to user
-                if negotiation_phrase:
-                    self._update_conversations(state, "assistant", negotiation_phrase)
-                
-                # Set up clarification context for user choice
-                clarification_context = state.get("clarification_context", {})
-                clarification_context["purpose"] = "gap_negotiation"
-                clarification_context["pending_questions"] = [negotiation_phrase] if negotiation_phrase else []
-                state["clarification_context"] = clarification_context
-                
-                # Log the gaps for debugging
-                for i, gap in enumerate(identified_gaps):
-                    logger.info(f"Gap {i}", extra={
-                        "capability": gap.get("required_capability"),
-                        "alternatives_count": len(gap.get("alternatives", []))
-                    })
-                
-                # Go back to clarification to get user's choice
-                return {**state, "stage": WorkflowStage.CLARIFICATION}
-            else:
-                # No gaps or gaps resolved - proceed to workflow generation
-                return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
+            # Keep stage as GAP_ANALYSIS and let routing logic decide based on gap_status
+            # The prompt returns: "no_gap", "has_gap", or "gap_resolved"
+            # Set previous_stage so clarification knows we're coming from gap_analysis
+            state["previous_stage"] = WorkflowStage.GAP_ANALYSIS
+            return {**state, "stage": WorkflowStage.GAP_ANALYSIS}
 
         except Exception as e:
             logger.error("Gap analysis node failed", extra={"error": str(e)})
             return {
                 **state,
                 "stage": WorkflowStage.GAP_ANALYSIS,
-                "debug_result": f"Gap analysis error: {str(e)}",
             }
 
     async def workflow_generation_node(self, state: WorkflowState) -> WorkflowState:
         """
-        Workflow Generation Node - 根据确定的需求生成工作流
+        Workflow Generation Node - Uses MCP tools to generate accurate workflows
         """
-        logger.info("Processing workflow generation node")
+        logger.info("Processing workflow generation node with MCP tools")
+        
+        # Set stage to WORKFLOW_GENERATION
+        state["stage"] = WorkflowStage.WORKFLOW_GENERATION
 
         try:
-            intent_summary = state.get("intent_summary", "")
-            identified_gaps = state.get("identified_gaps", [])
-            gap_status = state.get("gap_status", "no_gap")
-            template_workflow = state.get("template_workflow")
+            intent_summary = get_intent_summary(state)
+            gap_status = get_gap_status(state)
+            identified_gaps = get_identified_gaps(state)
+            conversation_context = self._get_conversation_context(state)
+            workflow_context = state.get("workflow_context", {})
 
-            # Use prompt to generate workflow
-            prompt_text = await self.prompt_engine.render_prompt(
-                "workflow_architecture",
+            # Load the workflow generation prompt
+            workflow_gen_prompt = await self.prompt_engine.render_prompt(
+                "workflow_gen_f1",
                 intent_summary=intent_summary,
-                identified_gaps=identified_gaps,
-                gap_status=gap_status,
-                template_workflow=template_workflow,
+                conversation_context=conversation_context
             )
 
-            system_prompt = (
-                "You are a workflow generation specialist. Create complete, functional workflows."
+            # Use OpenAI with function calling for MCP tools
+            if not self.openai_client:
+                # Fallback to original implementation if OpenAI client not available
+                logger.warning("OpenAI client not available, using fallback generation")
+                return await self._fallback_workflow_generation(state)
+
+            messages = [
+                {"role": "system", "content": workflow_gen_prompt},
+                {"role": "user", "content": f"Create a comprehensive workflow based on these requirements:\\n\\n{intent_summary}\\n\\nConversation context:\\n{conversation_context}\\n\\nIMPORTANT: First call get_node_types to discover available nodes, then use get_node_details for the specific nodes you need, and finally generate the complete workflow JSON."}
+            ]
+
+            # Phase 1: Discovery
+            logger.info("Starting MCP-based workflow generation - Phase 1: Discovery")
+            response = await self.openai_client.chat.completions.create(
+                model="gpt-4",
+                messages=messages,
+                tools=self.openai_functions,
+                tool_choice="auto"
             )
-            user_prompt = prompt_text
 
-            messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
-            response = await self.llm.ainvoke(messages)
-
+            workflow_json = await self._process_mcp_workflow_generation(messages, response)
+            
+            # Parse the workflow JSON
             try:
-                response_text = (
-                    response.content if isinstance(response.content, str) else str(response.content)
-                )
-                
-                logger.info("workflow_generation response", extra={"response_text": response_text})
-                # Remove markdown code blocks if present
-                if response_text.strip().startswith("```json"):
-                    response_text = response_text.strip()[7:]  # Remove ```json
-                    if response_text.endswith("```"):
-                        response_text = response_text[:-3]  # Remove trailing ```
-                elif response_text.strip().startswith("```"):
-                    response_text = response_text.strip()[3:]  # Remove ```
-                    if response_text.endswith("```"):
-                        response_text = response_text[:-3]  # Remove trailing ```
-                
-                workflow = json.loads(response_text.strip())
-                logger.info("workflow_generation result", extra={"workflow": workflow})
-            except json.JSONDecodeError:
-                # Fallback workflow structure
-                workflow = {
-                    "id": f"workflow-{uuid.uuid4().hex[:8]}",
-                    "name": f"Generated Workflow",
-                    "description": intent_summary,
-                    "nodes": [
-                        {"id": "start", "type": "trigger", "name": "Start", "parameters": {}},
-                        {"id": "process", "type": "action", "name": "Process", "parameters": {}},
-                    ],
-                    "connections": [{"from": "start", "to": "process"}],
-                    "created_at": int(time.time()),
-                }
+                # Clean up the response
+                workflow_json = workflow_json.strip()
+                if workflow_json.startswith("```json"):
+                    workflow_json = workflow_json[7:]
+                    if workflow_json.endswith("```"):
+                        workflow_json = workflow_json[:-3]
+                elif workflow_json.startswith("```"):
+                    workflow_json = workflow_json[3:]
+                    if workflow_json.endswith("```"):
+                        workflow_json = workflow_json[:-3]
 
+                workflow = json.loads(workflow_json.strip())
+                logger.info("Successfully generated workflow using MCP tools")
+
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse workflow JSON: {e}")
+                logger.error(f"Raw response was: {workflow_json[:500]}...")
+                # Use fallback workflow
+                workflow = self._create_fallback_workflow(intent_summary)
+
+            # Store in main branch state structure
             state["current_workflow"] = workflow
-            return {**state, "stage": WorkflowStage.DEBUG}
+            # Keep stage as WORKFLOW_GENERATION so routing goes to debug node
+            return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
 
         except Exception as e:
             logger.error("Workflow generation node failed", extra={"error": str(e)})
             return {
                 **state,
                 "stage": WorkflowStage.WORKFLOW_GENERATION,
-                "debug_result": f"Workflow generation error: {str(e)}",
             }
+
+    async def _process_mcp_workflow_generation(self, messages: List[Dict], response) -> str:
+        """Process MCP tool calls for workflow generation"""
+        message = response.choices[0].message
+        
+        if not message.tool_calls:
+            return message.content or ""
+
+        # Add assistant message with tool calls
+        messages.append({
+            "role": "assistant",
+            "content": message.content,
+            "tool_calls": message.tool_calls
+        })
+
+        # Execute tool calls
+        for tool_call in message.tool_calls:
+            function_name = tool_call.function.name
+            function_args = json.loads(tool_call.function.arguments)
+
+            logger.info(f"Executing MCP tool: {function_name}")
+
+            # Call the appropriate MCP tool
+            if function_name == "get_node_types":
+                result = await self.mcp_client.get_node_types(
+                    function_args.get("type_filter")
+                )
+            elif function_name == "get_node_details":
+                result = await self.mcp_client.get_node_details(
+                    function_args.get("nodes", []),
+                    function_args.get("include_examples", True),
+                    function_args.get("include_schemas", True)
+                )
+            else:
+                result = {"error": f"Unknown tool: {function_name}"}
+
+            # Add tool response
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": json.dumps(result)
+            })
+
+        # Final generation call
+        messages.append({
+            "role": "user",
+            "content": "Generate the complete workflow JSON using the node specifications you retrieved. Output ONLY JSON."
+        })
+
+        final_response = await self.openai_client.chat.completions.create(
+            model="gpt-4",
+            messages=messages
+        )
+
+        return final_response.choices[0].message.content or ""
+
+    async def _fallback_workflow_generation(self, state: WorkflowState) -> WorkflowState:
+        """Fallback to original workflow generation without MCP tools"""
+        logger.info("Using fallback workflow generation without MCP tools")
+
+        intent_summary = get_intent_summary(state)
+        workflow = self._create_fallback_workflow(intent_summary)
+
+        # Store in main branch state structure
+        state["current_workflow"] = workflow
+        # Keep stage as WORKFLOW_GENERATION so routing goes to debug node
+        return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
+
+    def _create_fallback_workflow(self, intent_summary: str) -> dict:
+        """Create a basic fallback workflow structure"""
+        return {
+            "id": f"workflow-{uuid.uuid4().hex[:8]}",
+            "name": "Generated Workflow",
+            "description": intent_summary,
+            "nodes": [
+                {"id": "start", "type": "trigger", "name": "Start", "parameters": {}},
+                {"id": "process", "type": "action", "name": "Process", "parameters": {}},
+            ],
+            "connections": [{"from": "start", "to": "process"}],
+            "created_at": int(time.time()),
+        }
 
     async def debug_node(self, state: WorkflowState) -> WorkflowState:
         """
         Debug Node - 测试生成的工作流，发现并尝试修复错误
-        根据失败类型决定是回到 Workflow Generation 还是 Clarification
+        Maps structured prompt output to main branch debug_result
         """
         logger.info("Processing debug node")
+        
+        # Update stage to DEBUG
+        state["stage"] = WorkflowStage.DEBUG
 
         try:
-            current_workflow = state.get("current_workflow", {})
+            current_workflow = get_current_workflow(state)
+            if not current_workflow:
+                # No workflow to debug
+                state["debug_result"] = {
+                    "success": False,
+                    "errors": ["No workflow to debug"],
+                    "timestamp": int(time.time() * 1000)
+                }
+                return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
+            
             debug_loop_count = state.get("debug_loop_count", 0)
 
             # Use the debug prompt for sophisticated validation
@@ -590,7 +631,7 @@ class WorkflowAgentNodes:
                     "debug",
                     current_workflow=current_workflow,
                     debug_loop_count=debug_loop_count,
-                    previous_errors=state.get("previous_errors", []),
+                    previous_errors=get_debug_errors(state),
                 )
 
                 system_prompt = (
@@ -607,7 +648,7 @@ class WorkflowAgentNodes:
                     if isinstance(llm_response.content, str)
                     else str(llm_response.content)
                 )
-                
+
                 # Remove markdown code blocks if present
                 if response_text.strip().startswith("```json"):
                     response_text = response_text.strip()[7:]  # Remove ```json
@@ -617,136 +658,204 @@ class WorkflowAgentNodes:
                     response_text = response_text.strip()[3:]  # Remove ```
                     if response_text.endswith("```"):
                         response_text = response_text[:-3]  # Remove trailing ```
-                
-                debug_analysis = json.loads(response_text.strip())
-                logger.info("debug_analysis result", extra={"debug_analysis": debug_analysis})
 
-                # Extract key information from LLM analysis
-                errors = debug_analysis.get("issues_found", {}).get("critical_errors", [])
-                warnings = debug_analysis.get("issues_found", {}).get("warnings", [])
+                debug_output = json.loads(response_text.strip())
+                logger.info("debug_analysis result", extra={"debug_analysis": debug_output})
+
+                # Normalize the debug output format for main branch
                 success = (
-                    debug_analysis.get("validation_summary", {}).get("overall_status") == "valid"
+                    debug_output.get("success", False) or
+                    debug_output.get("validation_summary", {}).get("overall_status") == "valid"
                 )
-
-                debug_result = {
-                    "success": success,
-                    "errors": [error.get("description", str(error)) for error in errors],
-                    "warnings": [warning.get("description", str(warning)) for warning in warnings],
-                    "iteration": debug_loop_count + 1,
-                    "full_analysis": debug_analysis,
-                }
-
-            except (json.JSONDecodeError, Exception) as e:
-                # Fallback to basic validation if prompt-based analysis fails
-                logger.warning(
-                    "Debug prompt analysis failed, using fallback validation", extra={"error": str(e)}
-                )
-
+                
                 errors = []
-                warnings = []
+                if "errors" in debug_output:
+                    errors = debug_output["errors"]
+                elif "issues_found" in debug_output:
+                    critical_errors = debug_output["issues_found"].get("critical_errors", [])
+                    errors = [error.get("description", str(error)) for error in critical_errors]
 
-                # Check workflow structure
-                if not current_workflow:
-                    errors.append("Empty workflow")
-                else:
-                    workflow_dict = current_workflow if isinstance(current_workflow, dict) else {}
-                    nodes = workflow_dict.get("nodes", [])
-                    connections = workflow_dict.get("connections", [])
-
-                    if not nodes:
-                        errors.append("No nodes in workflow")
-
-                    if len(nodes) > 1 and not connections:
-                        warnings.append("Multi-node workflow without connections")
-
-                    # Check node parameters
-                    for node in nodes:
-                        if not node.get("parameters"):
-                            warnings.append(f"Node {node.get('id', 'unknown')} missing parameters")
-
-                # Simulate more complex validation
-                if debug_loop_count > 0:
-                    # On retry, add some randomness to simulate fixes
-                    import random
-
-                    if random.random() > 0.3:  # 70% chance of success on retry
-                        errors = []
-
-                debug_result = {
-                    "success": len(errors) == 0,
+                # Store structured debug result in main branch format
+                state["debug_result"] = {
+                    "success": success,
                     "errors": errors,
-                    "warnings": warnings,
-                    "iteration": debug_loop_count + 1,
+                    "warnings": debug_output.get("warnings", []),
+                    "suggestions": debug_output.get("suggestions", []),
+                    "iteration_count": debug_loop_count,
+                    "timestamp": int(time.time() * 1000)
                 }
 
-            state["debug_result"] = json.dumps(debug_result)
+            except Exception as e:
+                logger.warning("LLM debug analysis failed, using basic validation", extra={"error": str(e)})
+                # Fallback to basic validation
+                debug_result = self._basic_workflow_validation(current_workflow)
+                state["debug_result"] = debug_result
+                success = debug_result["success"]
+                errors = debug_result["errors"]
+
+            # Update debug loop count
             state["debug_loop_count"] = debug_loop_count + 1
 
-            if errors:
-                # Analyze error type to determine where to go
-                error_text = " ".join(errors).lower()
-
-                if (
-                    "empty" in error_text
-                    or "no nodes" in error_text
-                    or "structure" in error_text
-                    or "parameters" in error_text
-                ):
-                    # Implementation issues - back to workflow generation
-                    logger.info("Debug found implementation issues, returning to generation")
-                    return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
-                else:
-                    # Requirement understanding issues - back to clarification
-                    logger.info("Debug found requirement issues, returning to clarification")
-                    state["clarification_context"] = ClarificationContext(
-                        origin=state.get("clarification_context", {}).get(
-                            "origin", WorkflowOrigin.CREATE
-                        ),
-                        pending_questions=[f"工作流验证失败：{'; '.join(errors)}。请提供更多信息以修复这些问题。"],
-                    )
-                    return {**state, "stage": WorkflowStage.CLARIFICATION}
-            else:
-                # Success - workflow is ready
-                logger.info("Debug successful, workflow is ready")
-                workflow_dict = current_workflow if isinstance(current_workflow, dict) else {}
-                success_message = f"工作流生成成功！包含 {len(workflow_dict.get('nodes', []))} 个节点。"
-                self._update_conversations(state, "assistant", success_message)
+            # Determine next action based on debug result
+            if success:
+                logger.info("Workflow validation successful")
                 return {**state, "stage": WorkflowStage.COMPLETED}
+
+            # If we've tried too many times, give up
+            if debug_loop_count >= 3:
+                logger.warning("Max debug attempts reached, ending with current workflow")
+                return {**state, "stage": WorkflowStage.COMPLETED}
+
+            # Analyze error type to decide next stage
+            error_types = self._analyze_error_types(errors)
+
+            if error_types["missing_requirements"]:
+                # Need more information from user
+                logger.info("Missing requirements detected, returning to clarification")
+                # Reset clarification_ready since we need more info
+                state["clarification_ready"] = False
+                return {
+                    **state,
+                    "stage": WorkflowStage.CLARIFICATION,
+                    "previous_stage": WorkflowStage.DEBUG,
+                }
+            else:
+                # Can fix with regeneration
+                logger.info("Fixable errors detected, returning to workflow generation")
+                return {
+                    **state,
+                    "stage": WorkflowStage.WORKFLOW_GENERATION,
+                    "previous_stage": WorkflowStage.DEBUG,
+                }
 
         except Exception as e:
             logger.error("Debug node failed", extra={"error": str(e)})
-            return {
-                **state,
-                "stage": WorkflowStage.DEBUG,
-                "debug_result": f"Debug error: {str(e)}",
-            }
+            # On debug failure, assume workflow is acceptable
+            return {**state, "stage": WorkflowStage.COMPLETED}
+
+    def _basic_workflow_validation(self, workflow: dict) -> dict:
+        """Basic workflow validation when LLM analysis fails"""
+        errors = []
+        warnings = []
+
+        # Check required fields - be lenient about ID/name
+        if not workflow.get("id") and not workflow.get("name"):
+            warnings.append("No workflow ID or name")
+        if not workflow.get("nodes"):
+            errors.append("No nodes defined in workflow")
+        if not workflow.get("connections"):
+            warnings.append("No connections defined between nodes")
+
+        # Check node structure
+        nodes = workflow.get("nodes", [])
+        for node in nodes:
+            if not node.get("id"):
+                errors.append(f"Node missing ID: {node}")
+            if not node.get("type"):
+                errors.append(f"Node missing type: {node.get('id', 'unknown')}")
+
+        return {
+            "success": len(errors) == 0,
+            "errors": errors,
+            "warnings": warnings,
+            "suggestions": [],
+            "timestamp": int(time.time() * 1000)
+        }
+
+    def _analyze_error_types(self, errors: List[str]) -> dict:
+        """Analyze error types to determine the appropriate recovery action"""
+        error_types = {
+            "missing_requirements": False,
+            "structural_issues": False,
+            "logic_errors": False,
+        }
+
+        for error in errors:
+            error_lower = error.lower()
+            if any(
+                keyword in error_lower
+                for keyword in ["missing", "undefined", "not specified", "unclear", "ambiguous"]
+            ):
+                error_types["missing_requirements"] = True
+            elif any(
+                keyword in error_lower
+                for keyword in ["invalid", "structure", "format", "schema", "connection"]
+            ):
+                error_types["structural_issues"] = True
+            elif any(keyword in error_lower for keyword in ["logic", "flow", "sequence", "loop"]):
+                error_types["logic_errors"] = True
+
+        return error_types
 
     def should_continue(self, state: WorkflowState) -> str:
-        """Determine the next node based on current stage"""
-        stage = state.get("stage", "clarification")
-
-        # Special handling for clarification stage
+        """
+        Determine the next step based on current state
+        Used by LangGraph for conditional routing
+        """
+        stage = state.get("stage", WorkflowStage.CLARIFICATION)
+        logger.info(f"should_continue called with stage: {stage}")
+        
+        # Map stage to next action
         if stage == WorkflowStage.CLARIFICATION:
-            # Check if we need to wait for user input
+            # Check if we have pending questions that need user response
             clarification_context = state.get("clarification_context", {})
             pending_questions = clarification_context.get("pending_questions", [])
             
+            # Also check the clarification_ready flag for backward compatibility
+            clarification_ready = state.get("clarification_ready", False)
+            
+            logger.info(f"Clarification routing check: pending_questions={len(pending_questions)}, ready={clarification_ready}")
+            
+            # If we have pending questions, wait for user input
             if pending_questions:
-                # We have pending questions - wait for user input
-                logger.info("Clarification has pending questions, waiting for user input")
+                logger.info("Have pending questions, waiting for user input")
                 return "END"
-            # Otherwise continue to process in clarification or move to next stage
-
-        # Map stages to node names
-        stage_mapping = {
-            WorkflowStage.CLARIFICATION: "clarification",
-            WorkflowStage.GAP_ANALYSIS: "gap_analysis",
-            WorkflowStage.WORKFLOW_GENERATION: "workflow_generation",
-            WorkflowStage.DEBUG: "debug",
-            WorkflowStage.COMPLETED: "END",
-        }
-
-        next_node = stage_mapping.get(stage, "END")
-        logger.info("Stage transition", extra={"current_stage": stage, "next_node": next_node})
-
-        return next_node
+            # Otherwise, check if we're ready to proceed
+            elif clarification_ready:
+                return "gap_analysis"
+            else:
+                return "END"  # Wait for user input
+                
+        elif stage == WorkflowStage.GAP_ANALYSIS:
+            # From gap analysis, check gap status
+            # The prompt returns: "no_gap", "has_gap", or "gap_resolved"
+            gap_status = state.get("gap_status", "no_gap")
+            logger.info(f"Gap analysis routing check: gap_status={gap_status}")
+            
+            if gap_status == "has_gap":
+                # We have gaps and need user to choose from alternatives
+                return "clarification"  # Go back to clarification for user choice
+            elif gap_status == "gap_resolved" or gap_status == "no_gap":
+                # Either no gaps or gaps have been resolved
+                return "workflow_generation"  # Proceed to generation
+            else:
+                # Fallback for any unexpected status
+                return "workflow_generation"
+                
+        elif stage == WorkflowStage.WORKFLOW_GENERATION:
+            # From workflow generation, always go to debug
+            logger.info("Routing from WORKFLOW_GENERATION to debug")
+            return "debug"
+            
+        elif stage == WorkflowStage.DEBUG:
+            # From debug, check if successful
+            debug_result = state.get("debug_result", {})
+            if debug_result.get("success", False):
+                return "END"  # Workflow is complete
+            else:
+                debug_loop_count = state.get("debug_loop_count", 0)
+                if debug_loop_count >= 3:
+                    return "END"  # Max attempts reached
+                # Check error types to determine next step
+                errors = debug_result.get("errors", [])
+                error_types = self._analyze_error_types(errors)
+                if error_types["missing_requirements"]:
+                    return "clarification"  # Need more info
+                else:
+                    return "workflow_generation"  # Try regenerating
+                    
+        elif stage == WorkflowStage.COMPLETED:
+            return "END"
+            
+        # Default to END if unknown state
+        return "END"

@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Core Development
 - **Install dependencies:** `uv pip install --system -e .` (requires Python 3.11+)
 - **Run main service:** `python main.py` (starts FastAPI server on port 8001)
+- **IMPORTANT:** Use the backend's shared venv at `/apps/backend/.venv` - do NOT create a separate venv in workflow_agent
 - **Run debug server:** `python debug_server.py` (for LangGraph Studio integration)
 - **Run tests:** `pytest tests/` or `pytest tests/test_specific.py::test_function`
 - **Start LangGraph:** `langgraph up` (uses langgraph.json config)
