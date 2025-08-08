@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     curl \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv with retry and increased timeout
@@ -34,6 +35,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     redis-tools \
     netcat-openbsd \
+    libpq5 \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 

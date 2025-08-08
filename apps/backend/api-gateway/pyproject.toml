@@ -19,6 +19,9 @@ dependencies = [
     "email-validator>=2.0.0",
     # Database and Auth
     "supabase>=2.9.0", # Supabase client with auth support
+    "sqlalchemy>=2.0.23",
+    "psycopg2-binary>=2.9.7",
+    "asyncpg>=0.29.0",
     "python-jose[cryptography]==3.3.0",
     "passlib[bcrypt]==1.7.4",
     "python-dotenv==1.0.0",

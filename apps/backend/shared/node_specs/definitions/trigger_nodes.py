@@ -163,24 +163,40 @@ WEBHOOK_TRIGGER_SPEC = NodeSpec(
 )
 
 
-# Chat trigger - messaging platform integration
-CHAT_TRIGGER_SPEC = NodeSpec(
+# Slack trigger - Slack interaction trigger
+SLACK_TRIGGER_SPEC = NodeSpec(
     node_type="TRIGGER_NODE",
-    subtype="TRIGGER_CHAT",
-    description="Chat message trigger from messaging platforms",
+    subtype="TRIGGER_SLACK",
+    description="Slack trigger that responds to Slack interactions and events",
     parameters=[
         ParameterDef(
-            name="platform",
-            type=ParameterType.ENUM,
-            required=True,
-            enum_values=["slack", "discord", "telegram", "teams", "generic"],
-            description="Chat platform to monitor",
+            name="workspace_id",
+            type=ParameterType.STRING,
+            required=False,
+            description="Slack workspace ID to monitor (default: all connected workspaces)",
         ),
         ParameterDef(
             name="channel_filter",
             type=ParameterType.STRING,
             required=False,
-            description="Channel or room filter (regex pattern)",
+            description="Channel filter (channel ID, name, or regex pattern)",
+        ),
+        ParameterDef(
+            name="event_types",
+            type=ParameterType.ARRAY,
+            required=False,
+            default_value=["message", "app_mention"],
+            enum_values=[
+                "message",
+                "app_mention",
+                "reaction_added",
+                "pin_added",
+                "file_shared",
+                "slash_command",
+                "interactive_message",
+                "button_click",
+            ],
+            description="Slack event types to listen for",
         ),
         ParameterDef(
             name="mention_required",
@@ -195,21 +211,42 @@ CHAT_TRIGGER_SPEC = NodeSpec(
             required=False,
             description="Command prefix to respond to (e.g., '!', '/')",
         ),
+        ParameterDef(
+            name="user_filter",
+            type=ParameterType.STRING,
+            required=False,
+            description="Filter by user ID or username (regex pattern)",
+        ),
+        ParameterDef(
+            name="ignore_bots",
+            type=ParameterType.BOOLEAN,
+            required=False,
+            default_value=True,
+            description="Ignore messages from bot users",
+        ),
+        ParameterDef(
+            name="require_thread",
+            type=ParameterType.BOOLEAN,
+            required=False,
+            default_value=False,
+            description="Only trigger on messages in threads",
+        ),
     ],
     input_ports=[],
     output_ports=[
         OutputPortSpec(
             name="main",
             type=ConnectionType.MAIN,
-            description="Chat message data",
+            description="Slack event data",
             data_format=DataFormat(
                 mime_type="application/json",
-                schema='{"message": "string", "user_id": "string", "channel_id": "string", "platform": "string", "timestamp": "string"}',
+                schema='{"event_type": "string", "message": "string", "user_id": "string", "channel_id": "string", "team_id": "string", "timestamp": "string", "thread_ts": "string", "event_data": "object"}',
                 examples=[
-                    '{"message": "Hello bot!", "user_id": "user123", "channel_id": "general", "platform": "slack", "timestamp": "2025-01-28T10:30:00Z"}'
+                    '{"event_type": "message", "message": "Hello bot!", "user_id": "U1234567890", "channel_id": "C1234567890", "team_id": "T1234567890", "timestamp": "2025-01-28T10:30:00Z", "thread_ts": null, "event_data": {"client_msg_id": "xxx", "text": "Hello bot!"}}',
+                    '{"event_type": "app_mention", "message": "@bot help me", "user_id": "U1234567890", "channel_id": "C1234567890", "team_id": "T1234567890", "timestamp": "2025-01-28T10:30:00Z", "thread_ts": "1642505400.123456", "event_data": {"text": "<@U0BOTUSER> help me"}}',
                 ],
             ),
-            validation_schema='{"type": "object", "properties": {"message": {"type": "string"}, "user_id": {"type": "string"}, "channel_id": {"type": "string"}, "platform": {"type": "string"}, "timestamp": {"type": "string"}}, "required": ["message", "user_id", "platform", "timestamp"]}',
+            validation_schema='{"type": "object", "properties": {"event_type": {"type": "string"}, "message": {"type": "string"}, "user_id": {"type": "string"}, "channel_id": {"type": "string"}, "team_id": {"type": "string"}, "timestamp": {"type": "string"}, "thread_ts": {"type": ["string", "null"]}, "event_data": {"type": "object"}}, "required": ["event_type", "user_id", "channel_id", "team_id", "timestamp"]}',
         )
     ],
 )
@@ -269,89 +306,105 @@ EMAIL_TRIGGER_SPEC = NodeSpec(
 )
 
 
-# Form trigger - web form submission
-FORM_TRIGGER_SPEC = NodeSpec(
+# GitHub trigger - repository event based
+GITHUB_TRIGGER_SPEC = NodeSpec(
     node_type="TRIGGER_NODE",
-    subtype="TRIGGER_FORM",
-    description="Web form submission trigger",
+    subtype="TRIGGER_GITHUB",
+    description="GitHub repository trigger for code events and workflows",
     parameters=[
         ParameterDef(
-            name="form_name",
+            name="github_app_installation_id",
             type=ParameterType.STRING,
             required=True,
-            description="Name identifier for the form",
+            description="GitHub App installation ID for the connected repository",
         ),
         ParameterDef(
-            name="validation_schema",
-            type=ParameterType.JSON,
+            name="repository",
+            type=ParameterType.STRING,
+            required=True,
+            description="Repository in format 'owner/repo' (e.g., 'microsoft/vscode')",
+            validation_pattern=r"^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$",
+        ),
+        ParameterDef(
+            name="events",
+            type=ParameterType.ARRAY,
+            required=True,
+            description="GitHub webhook events to listen for",
+            enum_values=[
+                "push",
+                "pull_request",
+                "pull_request_review",
+                "issues",
+                "issue_comment",
+                "release",
+                "deployment",
+                "deployment_status",
+                "create",
+                "delete",
+                "fork",
+                "star",
+                "watch",
+                "repository",
+                "member",
+                "team_add",
+                "workflow_run",
+                "workflow_dispatch",
+                "schedule",
+                "check_run",
+                "check_suite",
+            ],
+        ),
+        ParameterDef(
+            name="branches",
+            type=ParameterType.ARRAY,
             required=False,
-            description="JSON schema for form validation",
+            description="Branch filter (only for push/pull_request events). Empty means all branches",
         ),
         ParameterDef(
-            name="success_redirect",
-            type=ParameterType.URL,
+            name="paths",
+            type=ParameterType.ARRAY,
             required=False,
-            description="URL to redirect after successful submission",
+            description="File path filters using glob patterns (e.g., ['src/**', '*.md'])",
         ),
         ParameterDef(
-            name="require_captcha",
+            name="action_filter",
+            type=ParameterType.ARRAY,
+            required=False,
+            description="Action types to filter on (e.g., ['opened', 'closed', 'synchronize'] for PRs)",
+        ),
+        ParameterDef(
+            name="author_filter",
+            type=ParameterType.STRING,
+            required=False,
+            description="Filter by commit/PR author (username or regex pattern)",
+        ),
+        ParameterDef(
+            name="label_filter",
+            type=ParameterType.ARRAY,
+            required=False,
+            description="Filter by issue/PR labels (any match triggers)",
+        ),
+        ParameterDef(
+            name="ignore_bots",
             type=ParameterType.BOOLEAN,
             required=False,
-            default_value=False,
-            description="Whether to require CAPTCHA verification",
+            default_value=True,
+            description="Ignore events from bot accounts",
         ),
-    ],
-    input_ports=[],
-    output_ports=[
-        OutputPortSpec(
-            name="main",
-            type=ConnectionType.MAIN,
-            description="Form submission data",
-            data_format=DataFormat(
-                mime_type="application/json",
-                schema='{"form_data": "object", "submitter_ip": "string", "timestamp": "string", "user_agent": "string"}',
-                examples=[
-                    '{"form_data": {"name": "John Doe", "email": "john@example.com"}, "submitter_ip": "192.168.1.1", "timestamp": "2025-01-28T10:30:00Z", "user_agent": "Mozilla/5.0..."}'
-                ],
-            ),
-            validation_schema='{"type": "object", "properties": {"form_data": {"type": "object"}, "submitter_ip": {"type": "string"}, "timestamp": {"type": "string"}, "user_agent": {"type": "string"}}, "required": ["form_data", "timestamp"]}',
-        )
-    ],
-)
-
-
-# Calendar trigger - calendar event based
-CALENDAR_TRIGGER_SPEC = NodeSpec(
-    node_type="TRIGGER_NODE",
-    subtype="TRIGGER_CALENDAR",
-    description="Calendar event trigger for meetings and appointments",
-    parameters=[
         ParameterDef(
-            name="calendar_id",
-            type=ParameterType.STRING,
+            name="require_signature_verification",
+            type=ParameterType.BOOLEAN,
             required=False,
-            description="Specific calendar ID to monitor (default: primary)",
+            default_value=True,
+            description="Verify GitHub webhook signature for security",
         ),
         ParameterDef(
-            name="event_type",
+            name="draft_pr_handling",
             type=ParameterType.ENUM,
             required=False,
-            default_value="upcoming",
-            enum_values=["upcoming", "starting", "ending", "cancelled"],
-            description="Type of calendar event to trigger on",
-        ),
-        ParameterDef(
-            name="advance_minutes",
-            type=ParameterType.INTEGER,
-            required=False,
-            default_value="15",
-            description="Minutes before event to trigger (for upcoming events)",
-        ),
-        ParameterDef(
-            name="event_filter",
-            type=ParameterType.STRING,
-            required=False,
-            description="Filter events by title or description (regex)",
+            default_value="ignore",
+            enum_values=["ignore", "include", "only"],
+            description="How to handle draft pull requests",
         ),
     ],
     input_ports=[],
@@ -359,15 +412,16 @@ CALENDAR_TRIGGER_SPEC = NodeSpec(
         OutputPortSpec(
             name="main",
             type=ConnectionType.MAIN,
-            description="Calendar event data",
+            description="GitHub event data",
             data_format=DataFormat(
                 mime_type="application/json",
-                schema='{"event_id": "string", "title": "string", "start_time": "string", "end_time": "string", "attendees": "array", "description": "string"}',
+                schema='{"event": "string", "action": "string", "repository": "object", "sender": "object", "payload": "object", "timestamp": "string"}',
                 examples=[
-                    '{"event_id": "evt_123", "title": "Team Meeting", "start_time": "2025-01-28T14:00:00Z", "end_time": "2025-01-28T15:00:00Z", "attendees": ["alice@example.com"], "description": "Weekly team sync"}'
+                    '{"event": "push", "action": null, "repository": {"name": "my-repo", "owner": {"login": "user"}}, "sender": {"login": "developer"}, "payload": {"commits": [{"message": "Fix bug"}]}, "timestamp": "2025-01-28T10:30:00Z"}',
+                    '{"event": "pull_request", "action": "opened", "repository": {"name": "my-repo", "owner": {"login": "user"}}, "sender": {"login": "contributor"}, "payload": {"number": 42, "title": "New feature"}, "timestamp": "2025-01-28T10:30:00Z"}',
                 ],
             ),
-            validation_schema='{"type": "object", "properties": {"event_id": {"type": "string"}, "title": {"type": "string"}, "start_time": {"type": "string"}, "end_time": {"type": "string"}, "attendees": {"type": "array"}, "description": {"type": "string"}}, "required": ["event_id", "title", "start_time"]}',
+            validation_schema='{"type": "object", "properties": {"event": {"type": "string"}, "action": {"type": ["string", "null"]}, "repository": {"type": "object"}, "sender": {"type": "object"}, "payload": {"type": "object"}, "timestamp": {"type": "string"}}, "required": ["event", "repository", "sender", "payload", "timestamp"]}',
         )
     ],
 )
