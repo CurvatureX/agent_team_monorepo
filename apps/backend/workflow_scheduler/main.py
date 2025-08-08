@@ -128,7 +128,13 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Simple health check endpoint for load balancer"""
+    return {"service": "workflow_scheduler", "status": "healthy", "version": "0.1.0"}
+
+
+@app.get("/health/detailed")
+async def detailed_health_check():
+    """Detailed health check endpoint with component status"""
     try:
         health_status = {
             "service": "workflow_scheduler",
