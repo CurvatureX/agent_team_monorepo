@@ -68,9 +68,31 @@ resource "aws_service_discovery_service" "workflow_agent" {
     routing_policy = "MULTIVALUE"
   }
 
-
-
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-workflow-agent-discovery"
+  })
+}
+
+# Service Discovery Service for Workflow Scheduler
+resource "aws_service_discovery_service" "workflow_scheduler" {
+  name = "workflow-scheduler"
+
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.main.id
+
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+
+    routing_policy = "MULTIVALUE"
+  }
+
+  health_check_custom_config {
+    failure_threshold = 1
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-workflow-scheduler-discovery"
   })
 }

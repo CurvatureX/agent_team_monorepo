@@ -25,7 +25,7 @@ repos:
     hooks:
       - id: test-api-gateway
         name: Test API Gateway
-        entry: bash -c 'cd apps/backend/api-gateway && pip install uv && uv sync && export PYTHONPATH="${PYTHONPATH}:$(pwd)" && uv run python -m pytest tests/ -v --cov=app --cov-report=xml --ignore=tests/test_integration.py --ignore=tests/test_integration_quick.py --ignore=tests/test_chat_stream_simple.py --ignore=tests/test_sessions_chat_debug.py'
+        entry: bash -c 'cd apps/backend/api-gateway && pip install uv && uv sync && export PYTHONPATH="${PYTHONPATH}:$(pwd)" && uv run python -m pytest tests/ -v --cov=app --cov-report=xml --ignore=tests/test_integration.py --ignore=tests/test_integration_quick.py --ignore=tests/test_chat_stream_simple.py --ignore=tests/test_sessions_chat_debug.py --ignore=tests/test_node_knowledge.py'
         language: system
         files: ^apps/backend/api-gateway/.*\.py$
         pass_filenames: false

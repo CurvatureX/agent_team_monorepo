@@ -179,8 +179,6 @@ EOF
 
 # Grafana Cloud API Key 存储在 AWS SSM Parameter Store
 resource "aws_ssm_parameter" "grafana_cloud_api_key" {
-  count = var.grafana_cloud_api_key != "" ? 1 : 0
-  
   name  = "/ai-teams/${var.environment}/monitoring/grafana-cloud-api-key"
   type  = "SecureString"
   value = var.grafana_cloud_api_key
@@ -190,8 +188,7 @@ resource "aws_ssm_parameter" "grafana_cloud_api_key" {
 
 # Grafana Cloud 配置信息
 resource "aws_ssm_parameter" "grafana_cloud_config" {
-  count = var.grafana_cloud_tenant_id != "" ? 1 : 0
-  
+
   name = "/ai-teams/${var.environment}/monitoring/grafana-cloud-config"
   type = "String"
   value = jsonencode({

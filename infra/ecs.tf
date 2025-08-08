@@ -489,3 +489,146 @@ resource "aws_ecs_service" "workflow_agent" {
 
   tags = local.common_tags
 }
+
+# Workflow Scheduler Task Definition
+resource "aws_ecs_task_definition" "workflow_scheduler" {
+  family                   = "${local.name_prefix}-workflow-scheduler"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = var.workflow_scheduler_cpu
+  memory                   = var.workflow_scheduler_memory
+  execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
+  task_role_arn           = aws_iam_role.ecs_task_role.arn
+
+  container_definitions = jsonencode([
+    {
+      name  = "workflow-scheduler"
+      image = "${aws_ecr_repository.workflow_scheduler.repository_url}:${var.image_tag}"
+
+      portMappings = [
+        {
+          containerPort = 8003
+          protocol      = "tcp"
+        }
+      ]
+
+      environment = [
+        {
+          name  = "DEBUG"
+          value = "false"
+        },
+        {
+          name  = "HOST"
+          value = "0.0.0.0"
+        },
+        {
+          name  = "PORT"
+          value = "8003"
+        },
+        {
+          name  = "WORKFLOW_ENGINE_URL"
+          value = "http://${aws_lb.internal.dns_name}/v1"
+        },
+        {
+          name  = "API_GATEWAY_URL"
+          value = "http://${aws_lb.main.dns_name}"
+        },
+        {
+          name  = "redis_url"
+          value = "redis://${aws_elasticache_cluster.redis.cache_nodes[0].address}:6379/1"
+        },
+        {
+          name  = "ENVIRONMENT"
+          value = var.environment
+        },
+        {
+          name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
+          value = "http://localhost:4317"
+        },
+        {
+          name  = "OTEL_SERVICE_NAME"
+          value = "workflow-scheduler"
+        },
+        {
+          name  = "OTEL_RESOURCE_ATTRIBUTES"
+          value = "service.name=workflow-scheduler,service.version=1.0.0,deployment.environment=${var.environment},project=starmates-ai-team"
+        }
+      ]
+
+      secrets = [
+        {
+          name      = "DATABASE_URL"
+          valueFrom = aws_ssm_parameter.database_url.arn
+        },
+        {
+          name      = "SMTP_USERNAME"
+          valueFrom = aws_ssm_parameter.smtp_username.arn
+        },
+        {
+          name      = "SMTP_PASSWORD"
+          valueFrom = aws_ssm_parameter.smtp_password.arn
+        },
+        {
+          name      = "GITHUB_APP_ID"
+          valueFrom = aws_ssm_parameter.github_app_id.arn
+        },
+        {
+          name      = "GITHUB_APP_PRIVATE_KEY"
+          valueFrom = aws_ssm_parameter.github_app_private_key.arn
+        },
+        {
+          name      = "GITHUB_WEBHOOK_SECRET"
+          valueFrom = aws_ssm_parameter.github_webhook_secret.arn
+        }
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.ecs.name
+          awslogs-region        = var.aws_region
+          awslogs-stream-prefix = "workflow-scheduler"
+        }
+      }
+
+      healthCheck = {
+        command     = ["CMD-SHELL", "curl -f http://localhost:8003/health || exit 1"]
+        interval    = 30
+        timeout     = 15
+        retries     = 3
+        startPeriod = 180
+      }
+    }
+  ])
+
+  tags = local.common_tags
+}
+
+# ECS Service for Workflow Scheduler
+resource "aws_ecs_service" "workflow_scheduler" {
+  name            = "workflow-scheduler-service"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.workflow_scheduler.arn
+  desired_count   = var.desired_count
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    security_groups  = [aws_security_group.ecs_tasks.id]
+    subnets          = aws_subnet.private[*].id
+    assign_public_ip = false
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.workflow_scheduler.arn
+    container_name   = "workflow-scheduler"
+    container_port   = 8003
+  }
+
+  service_registries {
+    registry_arn = aws_service_discovery_service.workflow_scheduler.arn
+  }
+
+  depends_on = [aws_lb_listener.internal]
+
+  tags = local.common_tags
+}

@@ -15,7 +15,7 @@ workflow_engine_cpu = 1024
 workflow_engine_memory = 2048
 workflow_agent_cpu = 512
 workflow_agent_memory = 1024
-desired_count = 2
+desired_count = 1
 
 # Database Configuration
 db_instance_class = "db.t3.micro"

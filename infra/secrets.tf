@@ -50,6 +50,57 @@ resource "aws_ssm_parameter" "database_url" {
   })
 }
 
+# Workflow Scheduler SSM Parameters
+resource "aws_ssm_parameter" "smtp_username" {
+  name  = "/${local.name_prefix}/smtp/username"
+  type  = "SecureString"
+  value = var.smtp_username
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-smtp-username"
+  })
+}
+
+resource "aws_ssm_parameter" "smtp_password" {
+  name  = "/${local.name_prefix}/smtp/password"
+  type  = "SecureString"
+  value = var.smtp_password
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-smtp-password"
+  })
+}
+
+resource "aws_ssm_parameter" "github_app_id" {
+  name  = "/${local.name_prefix}/github/app-id"
+  type  = "SecureString"
+  value = var.github_app_id
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-github-app-id"
+  })
+}
+
+resource "aws_ssm_parameter" "github_app_private_key" {
+  name  = "/${local.name_prefix}/github/app-private-key"
+  type  = "SecureString"
+  value = var.github_app_private_key
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-github-app-private-key"
+  })
+}
+
+resource "aws_ssm_parameter" "github_webhook_secret" {
+  name  = "/${local.name_prefix}/github/webhook-secret"
+  type  = "SecureString"
+  value = var.github_webhook_secret
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-github-webhook-secret"
+  })
+}
+
 # IAM policy for ECS tasks to access SSM parameters
 resource "aws_iam_policy" "ecs_ssm_policy" {
   name        = "${local.name_prefix}-ecs-ssm-policy"

@@ -110,6 +110,14 @@ resource "aws_security_group" "ecs_tasks" {
   }
 
   ingress {
+    description     = "HTTP from Internal ALB - Workflow Scheduler"
+    from_port       = 8003
+    to_port         = 8003
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb_internal.id]
+  }
+
+  ingress {
     description = "HTTP inter-service communication"
     from_port   = 8000
     to_port     = 8000
@@ -129,6 +137,14 @@ resource "aws_security_group" "ecs_tasks" {
     description = "HTTP inter-service communication - Workflow Engine"
     from_port   = 8002
     to_port     = 8002
+    protocol    = "tcp"
+    self        = true
+  }
+
+  ingress {
+    description = "HTTP inter-service communication - Workflow Scheduler"
+    from_port   = 8003
+    to_port     = 8003
     protocol    = "tcp"
     self        = true
   }

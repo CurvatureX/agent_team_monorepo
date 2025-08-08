@@ -40,6 +40,20 @@ resource "aws_ecr_repository" "workflow_engine" {
   })
 }
 
+# ECR Repository for Workflow Scheduler
+resource "aws_ecr_repository" "workflow_scheduler" {
+  name                 = "agent-team/workflow-scheduler"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-workflow-scheduler-ecr"
+  })
+}
+
 # ECR Lifecycle Policy for API Gateway
 resource "aws_ecr_lifecycle_policy" "api_gateway" {
   repository = aws_ecr_repository.api_gateway.name
@@ -115,6 +129,42 @@ resource "aws_ecr_lifecycle_policy" "workflow_agent" {
 # ECR Lifecycle Policy for Workflow Engine
 resource "aws_ecr_lifecycle_policy" "workflow_engine" {
   repository = aws_ecr_repository.workflow_engine.name
+
+  policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Keep last 10 images"
+        selection = {
+          tagStatus     = "tagged"
+          tagPrefixList = ["v"]
+          countType     = "imageCountMoreThan"
+          countNumber   = 10
+        }
+        action = {
+          type = "expire"
+        }
+      },
+      {
+        rulePriority = 2
+        description  = "Delete untagged images older than 1 day"
+        selection = {
+          tagStatus   = "untagged"
+          countType   = "sinceImagePushed"
+          countUnit   = "days"
+          countNumber = 1
+        }
+        action = {
+          type = "expire"
+        }
+      }
+    ]
+  })
+}
+
+# ECR Lifecycle Policy for Workflow Scheduler
+resource "aws_ecr_lifecycle_policy" "workflow_scheduler" {
+  repository = aws_ecr_repository.workflow_scheduler.name
 
   policy = jsonencode({
     rules = [
