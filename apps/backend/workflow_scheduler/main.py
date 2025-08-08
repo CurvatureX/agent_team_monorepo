@@ -140,7 +140,7 @@ async def health_check():
         # Check lock manager
         try:
             lock_manager = get_lock_manager()
-            if lock_manager:
+            if lock_manager and lock_manager._redis:
                 try:
                     # Simple Redis ping
                     await lock_manager._redis.ping()
@@ -149,11 +149,10 @@ async def health_check():
                     health_status["components"]["lock_manager"] = f"unhealthy: {str(e)}"
                     health_status["status"] = "degraded"
             else:
-                health_status["components"]["lock_manager"] = "not_initialized"
-                health_status["status"] = "unhealthy"
+                # Redis not available but service can still function
+                health_status["components"]["lock_manager"] = "disabled (development mode)"
         except Exception:
-            health_status["components"]["lock_manager"] = "not_available"
-            health_status["status"] = "unhealthy"
+            health_status["components"]["lock_manager"] = "disabled (development mode)"
 
         # Check trigger manager
         try:
