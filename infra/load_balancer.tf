@@ -127,8 +127,8 @@ resource "aws_lb_target_group" "workflow_scheduler" {
     path                = "/health"
     port                = "traffic-port"
     protocol            = "HTTP"
-    timeout             = 5
-    unhealthy_threshold = 2
+    timeout             = 15
+    unhealthy_threshold = 3
   }
 
   tags = merge(local.common_tags, {
