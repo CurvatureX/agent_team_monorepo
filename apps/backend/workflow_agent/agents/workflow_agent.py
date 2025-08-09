@@ -45,6 +45,7 @@ class WorkflowAgent:
             {
                 "clarification": "clarification",  # Continue clarification if needs more info
                 "gap_analysis": "gap_analysis",
+                "workflow_generation": "workflow_generation",  # Skip to workflow generation when gap resolved
                 "END": END,  # Wait for user input
             },
         )

@@ -174,14 +174,26 @@ class WorkflowAgentServicer:
                                         yield f"data: {message_response.model_dump_json()}\n\n"
 
                             # 只在WORKFLOW_GENERATION节点完成后发送工作流响应
-                            if node_name == "workflow_generation" and current_stage == WorkflowStage.DEBUG:
-                                # workflow_generation节点完成，进入DEBUG阶段，此时发送workflow
+                            if node_name == "workflow_generation" and current_stage == WorkflowStage.WORKFLOW_GENERATION:
+                                # workflow_generation节点完成，发送workflow
                                 workflow_response = await self._create_workflow_response(
                                     session_id, updated_state
                                 )
                                 if workflow_response:
                                     logger.info("Sending workflow response after workflow_generation node completed")
                                     yield f"data: {workflow_response.model_dump_json()}\n\n"
+                            
+                            # Send debug result when debug node completes
+                            if node_name == "debug" and updated_state.get("debug_result"):
+                                debug_result = updated_state.get("debug_result", {})
+                                debug_response = ConversationResponse(
+                                    session_id=session_id,
+                                    response_type=ResponseType.DEBUG_RESULT,
+                                    debug_result=debug_result,
+                                    is_final=False
+                                )
+                                logger.info("Sending debug result after debug node completed")
+                                yield f"data: {debug_response.model_dump_json()}\n\n"
 
                             # 更新状态跟踪
                             previous_stage = current_stage
