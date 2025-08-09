@@ -55,6 +55,8 @@ Please clarify the specific customizations needed.
 {% else %}
 Please help clarify the workflow requirements and gather all necessary information to create a comprehensive workflow summary.
 
+**User's request:** {{ user_message }}
+
 {% endif %}
 
 {% if execution_history %}
@@ -63,4 +65,23 @@ Please help clarify the workflow requirements and gather all necessary informati
 
 {% if rag_context %}
 ## Available Knowledge: {{ rag_context.summary if rag_context.summary else "Retrieved relevant documentation and examples" }}
+{% endif %}
+
+{% if identified_gaps and clarification_context.purpose == "gap_negotiation" %}
+## Gap Resolution Context
+The user was previously presented with these alternatives to resolve workflow gaps:
+
+{% for gap in identified_gaps %}
+### Gap: {{ gap.required_capability }}
+Missing: {{ gap.missing_component }}
+
+Alternatives presented:
+{% for i in range(gap.alternatives|length) %}
+{{ loop.index }}. {{ gap.alternatives[i] }}
+{% endfor %}
+{% endfor %}
+
+User's current response: "{{ user_input }}"
+
+Please analyze if the user is selecting one of the alternatives and set gap_resolution accordingly.
 {% endif %}

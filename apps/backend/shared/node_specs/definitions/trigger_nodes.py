@@ -72,7 +72,7 @@ CRON_TRIGGER_SPEC = NodeSpec(
             type=ParameterType.CRON_EXPRESSION,
             required=True,
             description="Cron time expression (e.g., '0 9 * * MON-FRI')",
-            validation_pattern=r"^(\*|[0-9,\-/]+)\s+(\*|[0-9,\-/]+)\s+(\*|[0-9,\-/]+)\s+(\*|[0-9,\-/]+)\s+(\*|[0-9,\-/]+)$",
+            validation_pattern=None,  # Use croniter validation in validator.py instead of regex
         ),
         ParameterDef(
             name="timezone",

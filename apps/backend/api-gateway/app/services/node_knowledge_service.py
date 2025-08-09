@@ -10,15 +10,8 @@ import sys
 from typing import Any, Dict, List, Optional
 
 # Import from shared module - Docker has shared/ in /app/shared/
-try:
-    from shared.node_specs.base import NodeSpec
-    from shared.node_specs.registry import node_spec_registry
-except ImportError as e:
-    # Fallback for development/testing
-    print(f"Warning: Could not import node_specs: {e}")
-    node_spec_registry = None
-    NodeSpec = None
-
+from shared.node_specs.base import NodeSpec
+from shared.node_specs.registry import node_spec_registry
 
 class NodeKnowledgeService:
     """Service for accessing workflow node specifications and knowledge."""
@@ -191,7 +184,7 @@ class NodeKnowledgeService:
             return []
 
     def _serialize_node_spec(
-        self, spec: "NodeSpec", include_examples: bool, include_schemas: bool
+        self, spec: NodeSpec, include_examples: bool, include_schemas: bool
     ) -> Dict[str, Any]:
         """
         Convert NodeSpec to serializable dictionary.
