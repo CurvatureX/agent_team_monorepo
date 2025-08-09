@@ -297,10 +297,10 @@ class WorkflowAgentNodes:
 
     async def gap_analysis_node(self, state: WorkflowState) -> WorkflowState:
         """
-        Gap Analysis Node - 分析需求可行性，识别gap
-        Maps prompt output to main branch state structure
+        Gap Analysis Node - 使用 MCP 分析需求可行性，智能识别和解决 gaps
+        Enhanced with real capability checking and intelligent alternatives
         """
-        logger.info("Processing gap analysis node")
+        logger.info("Processing enhanced gap analysis node with MCP")
         
         # Set stage to GAP_ANALYSIS
         state["stage"] = WorkflowStage.GAP_ANALYSIS
@@ -328,13 +328,26 @@ class WorkflowAgentNodes:
                 # Don't need to run LLM again, just return with gap_resolved
                 return {**state, "stage": WorkflowStage.GAP_ANALYSIS}
 
+            # Check negotiation count to limit rounds
+            gap_negotiation_count = state.get("gap_negotiation_count", 0)
+            max_rounds = settings.GAP_ANALYSIS_MAX_ROUNDS
+            
             # Determine scenario type for gap analysis
             if clarification_context.get("purpose") == "gap_negotiation":
                 scenario_type = "post_negotiation"
             else:
                 scenario_type = "initial_analysis"
+            
+            # NEW: Use MCP to get real available capabilities if enabled
+            available_nodes = None
+            if settings.GAP_ANALYSIS_USE_MCP:
+                logger.info("Fetching real node capabilities from MCP")
+                available_nodes = await self._get_available_nodes_from_mcp()
+                logger.info(f"Retrieved {len(available_nodes) if available_nodes else 0} node types from MCP")
+            else:
+                logger.info("MCP disabled, using prompt-based capability analysis")
 
-            # Prepare context for both templates
+            # Prepare context for both templates - now with MCP data
             template_context = {
                 "intent_summary": intent_summary,
                 "conversation_context": conversation_context,
@@ -346,7 +359,9 @@ class WorkflowAgentNodes:
                 "debug_result": state.get("debug_result"),
                 "execution_history": state.get("execution_history", []),
                 "user_feedback": get_user_message(state) if scenario_type == "post_negotiation" else None,
-                "selected_alternative": None  # TODO: Extract from user message if needed
+                "selected_alternative": None,  # TODO: Extract from user message if needed
+                "available_nodes": available_nodes,  # NEW: Real MCP capabilities
+                "negotiation_count": gap_negotiation_count  # NEW: Track negotiation rounds
             }
 
             # Use both system and user templates
@@ -400,20 +415,35 @@ class WorkflowAgentNodes:
                     ))
                 state["identified_gaps"] = identified_gaps
                 
-                # If we have gaps, set up for user input
+                # If we have gaps, set up for user input with smart handling
                 if gap_status == "has_gap":
-                    # If no negotiation phrase provided, create a default one
-                    if not negotiation_phrase:
-                        negotiation_phrase = "I've identified some gaps in the workflow. Please choose from the alternatives provided or specify your preference."
+                    # Track negotiation count
+                    state["gap_negotiation_count"] = gap_negotiation_count + 1
                     
-                    # Add negotiation phrase to conversations
-                    self._add_conversation(state, "assistant", negotiation_phrase)
-                    
-                    # Set up clarification context to wait for user's choice
-                    clarification_context = state.get("clarification_context", {})
-                    clarification_context["purpose"] = "gap_negotiation"
-                    clarification_context["pending_questions"] = [negotiation_phrase]
-                    state["clarification_context"] = clarification_context
+                    # Check if we've reached max negotiation rounds (configurable)
+                    if state["gap_negotiation_count"] > max_rounds:
+                        # Auto-select recommended alternative
+                        logger.info("Max negotiation rounds reached, using recommended alternative")
+                        state["gap_status"] = "gap_resolved"
+                        # Select first alternative as default
+                        if identified_gaps and identified_gaps[0].alternatives:
+                            state["selected_alternative"] = identified_gaps[0].alternatives[0]
+                            self._add_conversation(state, "assistant", 
+                                f"I'll proceed with the recommended approach: {identified_gaps[0].alternatives[0]}")
+                    else:
+                        # First negotiation - present alternatives with smart recommendation
+                        negotiation_phrase = await self._create_smart_negotiation_message(
+                            identified_gaps, intent_summary, negotiation_phrase
+                        )
+                        
+                        # Add negotiation phrase to conversations
+                        self._add_conversation(state, "assistant", negotiation_phrase)
+                        
+                        # Set up clarification context to wait for user's choice
+                        clarification_context = state.get("clarification_context", {})
+                        clarification_context["purpose"] = "gap_negotiation"
+                        clarification_context["pending_questions"] = [negotiation_phrase]
+                        state["clarification_context"] = clarification_context
                 else:
                     # For other cases, just add the full response
                     self._add_conversation(state, "assistant", response_text)
@@ -965,6 +995,109 @@ You MUST use the exact node types, subtypes, and parameters from the MCP respons
 
         return error_types
 
+    async def _get_available_nodes_from_mcp(self) -> dict:
+        """
+        Get real available node types and capabilities from MCP
+        Returns a structured dict of available nodes
+        """
+        try:
+            # Use MCP to get all available node types
+            node_types = await self.mcp_client.get_node_types()
+            logger.info(f"MCP returned node types: {node_types}")
+            return node_types
+        except Exception as e:
+            logger.warning(f"Failed to get MCP node types, using fallback: {e}")
+            # Fallback to basic node types if MCP fails
+            return self._get_fallback_node_types()
+    
+    def _get_fallback_node_types(self) -> dict:
+        """Fallback node types when MCP is unavailable"""
+        return {
+            "TRIGGER_NODE": ["schedule", "webhook", "manual", "email"],
+            "AI_AGENT_NODE": ["ai_agent"],
+            "ACTION_NODE": ["http_request", "database", "file_operation"],
+            "FLOW_NODE": ["if", "loop", "wait"],
+            "EXTERNAL_ACTION_NODE": ["github", "slack", "email", "api_call"]
+        }
+    
+    async def _create_smart_negotiation_message(self, identified_gaps, intent_summary, default_phrase):
+        """
+        Create an intelligent negotiation message with recommendations
+        """
+        if not identified_gaps:
+            return default_phrase or "I'll help you create this workflow."
+        
+        # Analyze alternatives to find the best recommendation
+        recommendation = self._analyze_best_alternative(identified_gaps, intent_summary)
+        
+        # Build the message
+        message_parts = []
+        message_parts.append(f"I found {len(identified_gaps)} capability {'gap' if len(identified_gaps) == 1 else 'gaps'} for your workflow.\n")
+        
+        for i, gap in enumerate(identified_gaps):
+            if gap.alternatives:
+                message_parts.append(f"\nFor {gap.required_capability}:")
+                for j, alt in enumerate(gap.alternatives[:3]):  # Limit to 3 alternatives
+                    star = "⭐ " if j == recommendation.get(gap.required_capability, 0) else ""
+                    message_parts.append(f"{star}{chr(65+j)}) {alt}")
+        
+        message_parts.append(f"\n{chr(65 + recommendation.get('overall', 0))} is recommended based on your requirements.")
+        message_parts.append("\nChoose an option (A/B/C) or describe your preference:")
+        
+        return "\n".join(message_parts)
+    
+    def _analyze_best_alternative(self, identified_gaps, intent_summary):
+        """
+        Analyze and recommend the best alternative based on user intent
+        """
+        recommendation = {}
+        
+        # Simple heuristic: prefer first alternative as it's usually the most straightforward
+        # In production, this could use more sophisticated analysis
+        for gap in identified_gaps:
+            if gap.alternatives:
+                # Score alternatives based on simplicity and reliability
+                scores = []
+                for alt in gap.alternatives:
+                    score = self._score_alternative(alt, intent_summary)
+                    scores.append(score)
+                
+                best_idx = scores.index(max(scores)) if scores else 0
+                recommendation[gap.required_capability] = best_idx
+        
+        # Overall recommendation (simplified: use most common recommendation)
+        if recommendation:
+            recommendation['overall'] = max(set(recommendation.values()), key=list(recommendation.values()).count)
+        else:
+            recommendation['overall'] = 0
+            
+        return recommendation
+    
+    def _score_alternative(self, alternative, intent_summary):
+        """
+        Score an alternative based on various factors
+        """
+        score = 0
+        alt_lower = alternative.lower()
+        
+        # Prefer simpler solutions
+        if any(word in alt_lower for word in ['simple', 'basic', 'standard']):
+            score += 2
+        
+        # Prefer scheduled/automated solutions for automation requests
+        if 'automat' in intent_summary.lower() and 'schedule' in alt_lower:
+            score += 3
+        
+        # Prefer webhook for real-time needs
+        if any(word in intent_summary.lower() for word in ['real-time', 'instant', 'immediate']) and 'webhook' in alt_lower:
+            score += 3
+        
+        # Penalize complex solutions
+        if any(word in alt_lower for word in ['complex', 'advanced', 'custom']):
+            score -= 1
+            
+        return score
+
     def should_continue(self, state: WorkflowState) -> str:
         """
         Determine the next step based on current state
@@ -995,17 +1128,24 @@ You MUST use the exact node types, subtypes, and parameters from the MCP respons
                 return "END"  # Wait for user input
                 
         elif stage == WorkflowStage.GAP_ANALYSIS:
-            # From gap analysis, check gap status
-            # The prompt returns: "no_gap", "has_gap", or "gap_resolved"
+            # From gap analysis, check gap status and negotiation count
             gap_status = state.get("gap_status", "no_gap")
-            logger.info(f"Gap analysis routing check: gap_status={gap_status}")
+            gap_negotiation_count = state.get("gap_negotiation_count", 0)
+            logger.info(f"Gap analysis routing: gap_status={gap_status}, negotiation_count={gap_negotiation_count}")
             
             if gap_status == "has_gap":
-                # We have gaps and need user to choose from alternatives
-                return "clarification"  # Go back to clarification for user choice
+                # Check if we've reached max negotiation rounds (configurable)
+                max_rounds = settings.GAP_ANALYSIS_MAX_ROUNDS
+                if gap_negotiation_count >= max_rounds:
+                    # Already negotiated once, proceed with recommendation
+                    logger.info("Max negotiation rounds reached, proceeding with recommended alternative")
+                    return "workflow_generation"
+                else:
+                    # First time finding gaps, go to clarification for user choice
+                    return "clarification"
             elif gap_status == "gap_resolved" or gap_status == "no_gap":
                 # Either no gaps or gaps have been resolved
-                return "workflow_generation"  # Proceed to generation
+                return "workflow_generation"
             else:
                 # Fallback for any unexpected status
                 return "workflow_generation"
