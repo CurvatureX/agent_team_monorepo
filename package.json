@@ -1,0 +1,12 @@
+{
+  "name": "agent-team-monorepo",
+  "version": "1.0.0",
+  "description": "Monorepo for 24/7 AI Teams",
+  "private": true,
+  "scripts": {
+    "supabase": "supabase"
+  },
+  "devDependencies": {
+    "supabase": "^1.200.3"
+  }
+}

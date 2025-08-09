@@ -38,6 +38,11 @@ output "workflow_agent_service_name" {
   value       = aws_ecs_service.workflow_agent.name
 }
 
+output "workflow_scheduler_service_name" {
+  description = "Name of the Workflow Scheduler ECS service"
+  value       = aws_ecs_service.workflow_scheduler.name
+}
+
 output "load_balancer_dns_name" {
   description = "DNS name of the load balancer"
   value       = aws_lb.main.dns_name
@@ -56,9 +61,10 @@ output "api_gateway_url" {
 output "ecr_repository_urls" {
   description = "URLs of the ECR repositories"
   value = {
-    api_gateway     = aws_ecr_repository.api_gateway.repository_url
-    workflow_engine = aws_ecr_repository.workflow_engine.repository_url
-    workflow_agent  = aws_ecr_repository.workflow_agent.repository_url
+    api_gateway        = aws_ecr_repository.api_gateway.repository_url
+    workflow_engine    = aws_ecr_repository.workflow_engine.repository_url
+    workflow_agent     = aws_ecr_repository.workflow_agent.repository_url
+    workflow_scheduler = aws_ecr_repository.workflow_scheduler.repository_url
   }
 }
 
