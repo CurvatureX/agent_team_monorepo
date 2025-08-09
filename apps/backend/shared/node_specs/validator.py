@@ -123,9 +123,11 @@ class NodeSpecValidator:
                 errors.append(f"Parameter {param_def.name} must be a valid email address")
 
         elif param_def.type == ParameterType.CRON_EXPRESSION:
-            # Basic cron expression validation (5 or 6 parts)
-            cron_pattern = r"^(\*|[0-9,\-/]+)\s+(\*|[0-9,\-/]+)\s+(\*|[0-9,\-/]+)\s+(\*|[0-9,\-/]+)\s+(\*|[0-9,\-/]+)(\s+(\*|[0-9,\-/]+))?$"
-            if not re.match(cron_pattern, str(value)):
+            # Use croniter for proper cron expression validation
+            try:
+                from croniter import croniter
+                croniter(str(value))
+            except (ImportError, ValueError, TypeError):
                 errors.append(f"Parameter {param_def.name} must be a valid cron expression")
 
         # Validate custom regex pattern if provided

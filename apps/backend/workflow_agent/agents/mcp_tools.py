@@ -49,14 +49,31 @@ class MCPToolCaller:
     Provides tools for workflow node discovery and specification retrieval.
     """
 
-    def __init__(self, server_url: str = "http://localhost:8000/api/v1/mcp", api_key: str = "dev_default"):
-        self.server_url = server_url
+    def __init__(self, server_url: str = None, api_key: str = "dev_default"):
+        # Use API_GATEWAY_URL if set (for AWS/production), otherwise check Docker/local
+        import os
+        
+        if server_url:
+            # Use explicitly provided URL
+            self.server_url = server_url
+        elif os.getenv("API_GATEWAY_URL"):
+            # Use configured API Gateway URL (AWS/production)
+            api_gateway_url = os.getenv("API_GATEWAY_URL").rstrip("/")
+            self.server_url = f"{api_gateway_url}/api/v1/mcp"
+        elif os.getenv("WORKFLOW_ENGINE_URL", "").startswith("http://workflow-engine"):
+            # We're in Docker, use service name
+            self.server_url = "http://api-gateway:8000/api/v1/mcp"
+        else:
+            # Local development
+            self.server_url = "http://localhost:8000/api/v1/mcp"
         self.api_key = api_key
         self.headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json"
         }
+        
+        logger.info(f"MCP Tool initialized with server URL: {self.server_url}")
 
     async def get_node_types(self, type_filter: Optional[str] = None) -> Dict[str, Any]:
         """
