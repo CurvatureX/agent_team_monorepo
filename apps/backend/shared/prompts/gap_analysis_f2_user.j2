@@ -57,6 +57,16 @@ Please analyze the capability gaps that caused the workflow failure:
 ## Execution History: {{ execution_history | join(" -> ") }}
 {% endif %}
 
+{% if available_nodes %}
+## Real-time Capability Check
+Based on MCP, we have {{ available_nodes|length }} node types available with their specific subtypes.
+{% endif %}
+
+{% if negotiation_count and negotiation_count > 0 %}
+## Negotiation Status
+This is round {{ negotiation_count }} of gap negotiation. Consider auto-selecting the recommended option if user hasn't made a clear choice.
+{% endif %}
+
 {% if rag_context %}
 ## Available Knowledge: {{ rag_context.summary if rag_context.summary else "Retrieved relevant documentation and examples" }}
 {% endif %}
