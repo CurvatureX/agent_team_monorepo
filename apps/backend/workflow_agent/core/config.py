@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     # Workflow generation settings
     MAX_WORKFLOW_NODES: int = int(os.getenv("MAX_WORKFLOW_NODES", "50"))
     DEFAULT_TIMEOUT: int = int(os.getenv("DEFAULT_TIMEOUT", "300"))  # 5 minutes
+    
+    # Workflow Engine settings
+    WORKFLOW_ENGINE_URL: str = os.getenv("WORKFLOW_ENGINE_URL", "http://localhost:8002")
+    WORKFLOW_ENGINE_TIMEOUT: int = int(os.getenv("WORKFLOW_ENGINE_TIMEOUT", "60"))  # 60 seconds
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

@@ -104,6 +104,8 @@ services:
       PYTHONUNBUFFERED: "1"
       REDIS_URL: "redis://redis:6379/0"
       SERVICE_NAME: "workflow-agent"
+      # Workflow Engine URL for debug node integration
+      WORKFLOW_ENGINE_URL: "http://workflow-engine:8002"
       # OpenTelemetry configuration
       # OTEL_SDK_DISABLED: "true"
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
