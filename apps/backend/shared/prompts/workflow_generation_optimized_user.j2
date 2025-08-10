@@ -24,11 +24,12 @@ Generate an optimal workflow that fulfills the user's requirements using the ava
 If certain capabilities are not directly available:
 1. Automatically select the best alternative approach
 2. Combine multiple nodes to achieve the desired outcome
-3. Include a brief explanation of your decisions in the response
 
-Output the complete workflow in DSL format with:
+**CRITICAL**: Your response must contain ONLY valid JSON workflow configuration. No explanatory text, no DSL format, no markdown blocks, no explanations.
+
+Output the complete workflow as pure JSON with:
 - All necessary nodes and connections
 - Proper configuration for each node
-- Metadata section explaining any automatic decisions or substitutions
+- Start your response with { and end with }
 
-Focus on delivering a working solution immediately rather than discussing limitations.
+Focus on delivering a working JSON solution immediately.
