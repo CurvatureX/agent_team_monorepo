@@ -44,19 +44,24 @@ try:
         StatusChangeEventData,
     )
     from shared.models import WorkflowCreateRequest as WorkflowCreate
+    from shared.models import WorkflowData
+    from shared.models import WorkflowData as Workflow
     from shared.models import WorkflowEntity as Workflow
     from shared.models import (
         WorkflowEventData,
         WorkflowExecutionRequest,
         WorkflowExecutionResponse,
         WorkflowResponse,
-        NodeTemplateListResponse,
-        WorkflowData,
     )
-    from shared.models import WorkflowCreateRequest as WorkflowCreate
-    from shared.models import WorkflowData as Workflow
     from shared.models import WorkflowUpdateRequest as WorkflowUpdate
-    from shared.models.trigger import ExecutionResult, ManualTriggerSpec, TriggerStatus, TriggerType
+    from shared.models.trigger import (
+        DeploymentResult,
+        DeploymentStatus,
+        ExecutionResult,
+        ManualTriggerSpec,
+        TriggerStatus,
+        TriggerType,
+    )
 except ImportError:
     # 如果直接导入失败，尝试添加路径后导入
     import sys
@@ -102,13 +107,9 @@ except ImportError:
         SessionUpdate,
         SSEEventType,
         StatusChangeEventData,
-        WorkflowExecutionRequest,
-        WorkflowExecutionResponse,
-        WorkflowResponse,
-        NodeTemplateListResponse,
-        WorkflowData,
     )
     from shared.models import WorkflowCreateRequest as WorkflowCreate
+    from shared.models import WorkflowData
     from shared.models import WorkflowData as Workflow
     from shared.models import (
         WorkflowEventData,
@@ -117,7 +118,14 @@ except ImportError:
         WorkflowResponse,
     )
     from shared.models import WorkflowUpdateRequest as WorkflowUpdate
-    from shared.models.trigger import ExecutionResult, ManualTriggerSpec, TriggerStatus, TriggerType
+    from shared.models.trigger import (
+        DeploymentResult,
+        DeploymentStatus,
+        ExecutionResult,
+        ManualTriggerSpec,
+        TriggerStatus,
+        TriggerType,
+    )
 
 # 向后兼容别名
 HealthResponse = HealthCheckModel
@@ -151,6 +159,8 @@ __all__ = [
     "WorkflowResponse",
     "NodeTemplateListResponse",
     # Trigger models
+    "DeploymentResult",
+    "DeploymentStatus",
     "ExecutionResult",
     "ManualTriggerSpec",
     "TriggerType",
