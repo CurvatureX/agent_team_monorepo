@@ -17,7 +17,7 @@ from ..base import (
 
 # GitHub - GitHub operations
 GITHUB_SPEC = NodeSpec(
-    node_type="EXTERNAL_ACTION_NODE",
+    node_type="EXTERNAL_ACTION",
     subtype="GITHUB",
     description="Execute GitHub operations via GitHub API",
     parameters=[
@@ -124,7 +124,7 @@ GITHUB_SPEC = NodeSpec(
 
 # Email - email operations
 EMAIL_SPEC = NodeSpec(
-    node_type="EXTERNAL_ACTION_NODE",
+    node_type="EXTERNAL_ACTION",
     subtype="EMAIL",
     description="Send emails via SMTP server",
     parameters=[
@@ -246,7 +246,7 @@ EMAIL_SPEC = NodeSpec(
 
 # Slack - Slack operations
 SLACK_SPEC = NodeSpec(
-    node_type="EXTERNAL_ACTION_NODE",
+    node_type="EXTERNAL_ACTION",
     subtype="SLACK",
     description="Send messages and interact with Slack",
     parameters=[
@@ -445,7 +445,7 @@ GOOGLE_CALENDAR_SPEC = NodeSpec(
 
 # API Call - generic API calls
 API_CALL_SPEC = NodeSpec(
-    node_type="EXTERNAL_ACTION_NODE",
+    node_type="EXTERNAL_ACTION",
     subtype="API_CALL",
     description="Make generic HTTP API calls",
     parameters=[

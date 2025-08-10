@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useTheme } from "next-themes"
+import { useEffect, useState } from "react"
 import { Moon, Sun } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -9,41 +10,22 @@ interface ThemeToggleProps {
 }
 
 export function ThemeToggle({ className }: ThemeToggleProps) {
-  const [isDark, setIsDark] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  const { theme, setTheme } = useTheme()
 
-  // 初始化主题
+  // useEffect only runs on the client, so now we can safely show the UI
   useEffect(() => {
-    // 检查localStorage中的主题设置
-    const savedTheme = localStorage.getItem("theme")
-    // 检查系统偏好
-    const systemPrefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches
-    
-    // 确定初始主题
-    const shouldBeDark = savedTheme === "dark" || (!savedTheme && systemPrefersDark)
-    
-    setIsDark(shouldBeDark)
-    applyTheme(shouldBeDark)
+    setMounted(true)
   }, [])
 
-  // 应用主题到DOM
-  const applyTheme = (dark: boolean) => {
-    const root = document.documentElement
-    
-    if (dark) {
-      root.classList.add("dark")
-    } else {
-      root.classList.remove("dark")
-    }
+  if (!mounted) {
+    return null
   }
 
-  // 切换主题
+  const isDark = theme === "dark"
+
   const toggleTheme = () => {
-    const newTheme = !isDark
-    setIsDark(newTheme)
-    applyTheme(newTheme)
-    
-    // 保存到localStorage
-    localStorage.setItem("theme", newTheme ? "dark" : "light")
+    setTheme(isDark ? "light" : "dark")
   }
 
   return (

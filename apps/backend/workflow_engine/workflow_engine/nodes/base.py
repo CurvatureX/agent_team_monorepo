@@ -58,14 +58,15 @@ class NodeExecutionContext:
         # Handle case where parameters might be a string (JSON)
         if isinstance(self.node.parameters, str):
             import json
+
             try:
                 parameters = json.loads(self.node.parameters)
             except:
                 return default
         else:
             parameters = self.node.parameters
-            
-        if hasattr(parameters, 'get'):
+
+        if hasattr(parameters, "get"):
             return parameters.get(key, default)
         else:
             return default
@@ -118,17 +119,25 @@ class BaseNodeExecutor(ABC):
     def validate(self, node: Any) -> List[str]:  # workflow_pb2.Node when available
         """Validate node configuration using node specifications."""
         errors = []
-        
+
+        print(f"🐛 DEBUG: BaseNodeExecutor.validate() called")
+        print(f"🐛 DEBUG: Executor self._subtype BEFORE: {getattr(self, '_subtype', 'NOT_SET')}")
+        print(f"🐛 DEBUG: Node.subtype: {getattr(node, 'subtype', 'NO_SUBTYPE')}")
+
         # Store subtype for dynamic spec retrieval
-        if hasattr(node, 'subtype'):
+        if hasattr(node, "subtype"):
             self._subtype = node.subtype
+            print(f"🐛 DEBUG: Set self._subtype TO: {self._subtype}")
             # Get the specific spec for this subtype
-            if node_spec_registry and hasattr(node, 'type'):
+            if node_spec_registry and hasattr(node, "type"):
                 self.spec = node_spec_registry.get_spec(node.type, node.subtype)
 
         # Use node spec validation if available
         if node_spec_registry:
             try:
+                print(
+                    f"🐛 DEBUG: About to call validate_node with node.subtype = {getattr(node, 'subtype', 'NO_SUBTYPE')}"
+                )
                 spec_errors = node_spec_registry.validate_node(node)
                 errors.extend(spec_errors)
             except Exception as e:
@@ -272,20 +281,20 @@ class BaseNodeExecutor(ABC):
             if cred not in context.credentials or not context.credentials[cred]:
                 errors.append(f"Missing required credential: {cred}")
         return errors
-    
+
     def get_parameter_with_spec(self, context: NodeExecutionContext, param_name: str) -> Any:
         """Get parameter value with type conversion based on spec."""
         raw_value = context.get_parameter(param_name)
-        
+
         if self.spec:
             param_def = self.spec.get_parameter(param_name)
             if param_def:
                 # Use default value if not provided
                 if raw_value is None and param_def.default_value is not None:
                     raw_value = param_def.default_value
-                
+
                 # Type conversion based on spec
-                if raw_value is not None and hasattr(param_def, 'type'):
+                if raw_value is not None and hasattr(param_def, "type"):
                     try:
                         if param_def.type == ParameterType.INTEGER:
                             return int(raw_value)
@@ -293,7 +302,7 @@ class BaseNodeExecutor(ABC):
                             return float(raw_value)
                         elif param_def.type == ParameterType.BOOLEAN:
                             if isinstance(raw_value, str):
-                                return raw_value.lower() in ('true', '1', 'yes')
+                                return raw_value.lower() in ("true", "1", "yes")
                             return bool(raw_value)
                         elif param_def.type == ParameterType.JSON:
                             if isinstance(raw_value, str):
@@ -302,12 +311,12 @@ class BaseNodeExecutor(ABC):
                     except (ValueError, json.JSONDecodeError) as e:
                         self.logger.warning(f"Failed to convert parameter {param_name}: {e}")
                         return raw_value
-        
+
         return raw_value
-    
+
     def validate_parameters_with_spec(self, node: Any) -> List[str]:
         """Validate parameters using node specification."""
         if not self.spec or not node_spec_registry:
             return []
-        
+
         return node_spec_registry.validate_parameters(node, self.spec)
