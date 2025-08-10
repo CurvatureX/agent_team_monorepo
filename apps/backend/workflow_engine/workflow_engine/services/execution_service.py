@@ -33,6 +33,7 @@ from workflow_engine.execution_engine import (
     EnhancedWorkflowExecutionEngine as WorkflowExecutionEngine,
 )
 from workflow_engine.models import ExecutionModel
+from workflow_engine.services.workflow_service import WorkflowService
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -45,6 +46,7 @@ class ExecutionService:
         self.logger = logger
         self.db = db_session
         self.execution_engine = WorkflowExecutionEngine()
+        self.workflow_service = WorkflowService(db_session)
 
     def execute_workflow(self, request: ExecuteWorkflowRequest) -> str:
         """Execute a workflow and return the execution ID."""
@@ -82,8 +84,62 @@ class ExecutionService:
             self.db.add(db_execution)
             self.db.commit()
 
-            # Placeholder for starting the execution in the background
-            self.logger.info(f"Workflow execution created: {execution_id}")
+            # Get workflow definition for execution
+            workflow = self.workflow_service.get_workflow(request.workflow_id, request.user_id)
+            if not workflow:
+                raise ValueError(f"Workflow not found: {request.workflow_id}")
+
+            self.logger.info(f"Starting workflow execution: {execution_id}")
+            
+            # Start workflow execution in the background
+            try:
+                # Update status to RUNNING before starting execution
+                db_execution.status = "RUNNING"
+                self.db.commit()
+                
+                # Execute the workflow using the execution engine
+                execution_result = self.execution_engine.execute_workflow(
+                    workflow_id=request.workflow_id,
+                    execution_id=execution_id,
+                    workflow_definition=workflow.dict(),
+                    initial_data=request.trigger_data,
+                    credentials={}  # TODO: Add credential handling
+                )
+                
+                # Update execution record with results
+                if execution_result["status"] == "completed":
+                    db_execution.status = "SUCCESS"
+                elif execution_result["status"] == "ERROR":
+                    db_execution.status = "ERROR"
+                    db_execution.error_message = "; ".join(execution_result.get("errors", []))
+                else:
+                    db_execution.status = execution_result["status"].upper()
+                
+                db_execution.end_time = int(datetime.now().timestamp())
+                
+                # Store execution results
+                if "node_results" in execution_result:
+                    db_execution.run_data = {
+                        "node_results": execution_result["node_results"],
+                        "execution_order": execution_result.get("execution_order", []),
+                        "performance_metrics": execution_result.get("performance_metrics", {})
+                    }
+                
+                if execution_result.get("error"):
+                    db_execution.error_message = execution_result["error"]
+                    db_execution.error_details = execution_result.get("error_details", {})
+                
+                self.db.commit()
+                self.logger.info(f"Workflow execution completed: {execution_id}")
+                
+            except Exception as exec_error:
+                # Update status to ERROR if execution fails
+                db_execution.status = "ERROR"
+                db_execution.error_message = str(exec_error)
+                db_execution.end_time = int(datetime.now().timestamp())
+                self.db.commit()
+                self.logger.error(f"Workflow execution failed: {execution_id} - {exec_error}")
+                # Don't re-raise the exception, just log it and return the execution_id
 
             return execution_id
 
