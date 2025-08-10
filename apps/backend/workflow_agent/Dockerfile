@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
@@ -8,28 +8,57 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.cargo/bin:$PATH"
+# Install uv with timeout and retry
+RUN pip install --default-timeout=120 --retries 5 uv
+ENV PATH="/root/.local/bin:$PATH"
 
 # Copy pyproject.toml first for better Docker layer caching
-COPY pyproject.toml .
+COPY workflow_agent/pyproject.toml .
 
-# Install Python dependencies using uv
-RUN uv pip install --system -e .
+# Install Python dependencies using uv with timeout
+RUN UV_HTTP_TIMEOUT=120 uv pip install --system -e .
+
+# Production stage
+FROM python:3.11-slim AS production
+
+WORKDIR /app
+
+# Install runtime dependencies only
+RUN apt-get update && apt-get install -y \
+    curl \
+    netcat-traditional \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Copy Python environment from builder
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy the application code
-COPY . .
+COPY workflow_agent/ .
+COPY shared/ ./shared/
 
-# Create proto directory and copy generated files
-RUN mkdir -p proto
+# Create the prompts directory where the prompt engine expects it
+RUN mkdir -p /shared/prompts && cp -r ./shared/prompts/* /shared/prompts/
 
-# Expose the gRPC port
-EXPOSE 50051
+# FastAPI 不需要 protobuf 生成
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash --uid 1000 app && \
+    chown -R app:app /app
+USER app
 
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+ENV FASTAPI_PORT=8001
 
-# Run the application
-CMD ["python", "-m", "main"]
+# Expose the FastAPI port
+EXPOSE 8001
+
+# Health check for FastAPI service
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8001/health || exit 1
+
+# Run the FastAPI application
+CMD ["python", "main.py"]

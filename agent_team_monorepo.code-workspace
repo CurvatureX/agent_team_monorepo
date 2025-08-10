@@ -1,0 +1,53 @@
+{
+  "folders": [
+    {
+      "name": "Root",
+      "path": "."
+    },
+    {
+      "name": "Workflow Agent",
+      "path": "./apps/backend/workflow_agent"
+    },
+    {
+      "name": "API Gateway",
+      "path": "./apps/backend/api-gateway"
+    },
+    {
+      "name": "Frontend",
+      "path": "./apps/frontend"
+    }
+  ],
+  "settings": {
+    "python.defaultInterpreterPath": "./apps/backend/.venv/bin/python",
+    "python.terminal.activateEnvironment": true,
+    "python.analysis.extraPaths": [
+      "./apps/backend/workflow_agent",
+      "./apps/backend/api-gateway",
+      "./apps/backend/shared"
+    ],
+    "python.analysis.autoSearchPaths": true,
+    "python.analysis.autoImportCompletions": true,
+    "pyright.include": [
+      "./apps/backend/workflow_agent",
+      "./apps/backend/api-gateway"
+    ],
+    "pyright.extraPaths": [
+      "./apps/backend/workflow_agent",
+      "./apps/backend/api-gateway",
+      "./apps/backend/shared"
+    ],
+    "pylsp.plugins.jedi.extra_paths": [
+      "./apps/backend/workflow_agent",
+      "./apps/backend/api-gateway",
+      "./apps/backend/shared"
+    ]
+  },
+  "extensions": {
+    "recommendations": [
+      "ms-python.python",
+      "ms-python.pylint",
+      "ms-python.black-formatter",
+      "charliermarsh.ruff"
+    ]
+  }
+}

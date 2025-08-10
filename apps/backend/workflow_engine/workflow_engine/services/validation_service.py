@@ -9,11 +9,18 @@ from typing import Dict, Any, List, Set
 
 import grpc
 
-from workflow_engine.proto import workflow_service_pb2
-from workflow_engine.proto import workflow_pb2
-from workflow_engine.nodes.factory import NodeExecutorFactory
-from workflow_engine.nodes.base import NodeExecutionContext, ExecutionStatus
-from workflow_engine.core.config import get_settings
+try:
+    from workflow_engine.core.config import get_settings
+except ImportError:
+    get_settings = lambda: type('obj', (object,), {})()
+
+try:
+    from workflow_engine.nodes.factory import get_node_executor_factory
+    from workflow_engine.nodes.base import NodeExecutionContext, ExecutionStatus
+except ImportError:
+    get_node_executor_factory = None
+    NodeExecutionContext = None
+    ExecutionStatus = None
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -24,7 +31,7 @@ class ValidationService:
 
     def __init__(self):
         self.logger = logger
-        self.node_factory = NodeExecutorFactory()
+        self.node_factory = get_node_executor_factory() if get_node_executor_factory else None
 
     def validate_workflow(
         self, 
@@ -73,14 +80,19 @@ class ValidationService:
                     continue
                 
                 try:
-                    executor = self.node_factory.get_executor(node.type, node.subtype)
-                    # Validate node parameters
-                    validation_result = executor.validate_parameters(dict(node.parameters))
-                    if not validation_result.get("valid", True):
-                        errors.extend([f"Node {node.id}: {error}" for error in validation_result.get("errors", [])])
-                        warnings.extend([f"Node {node.id}: {warning}" for warning in validation_result.get("warnings", [])])
+                    if self.node_factory:
+                        executor = self.node_factory.create_executor(node.type, node.subtype)
+                        if executor:
+                            # Use the new validate method that supports spec-based validation
+                            node_errors = executor.validate(node)
+                            if node_errors:
+                                errors.extend([f"Node {node.id}: {error}" for error in node_errors])
+                        else:
+                            errors.append(f"Node {node.id}: No executor found for type {node.type}, subtype {node.subtype}")
+                    else:
+                        warnings.append(f"Node {node.id}: Node factory not available, skipping validation")
                 except Exception as e:
-                    errors.append(f"Node {node.id}: Invalid node type/subtype - {str(e)}")
+                    errors.append(f"Node {node.id}: Validation error - {str(e)}")
             
             # ConnectionsMap validation
             if request.workflow.connections:
@@ -178,7 +190,20 @@ class ValidationService:
             
             # Get node executor
             try:
-                executor = self.node_factory.get_executor(request.node.type, request.node.subtype)
+                if not self.node_factory:
+                    return workflow_service_pb2.TestNodeResponse(
+                        success=False,
+                        error="Node factory not available",
+                        message="Node test failed"
+                    )
+                    
+                executor = self.node_factory.create_executor(request.node.type, request.node.subtype)
+                if not executor:
+                    return workflow_service_pb2.TestNodeResponse(
+                        success=False,
+                        error=f"No executor found for type {request.node.type}, subtype {request.node.subtype}",
+                        message="Node test failed"
+                    )
             except Exception as e:
                 return workflow_service_pb2.TestNodeResponse(
                     success=False,
@@ -237,8 +262,8 @@ class ValidationService:
             name_to_id[node.name] = node.id
             graph[node.id] = []
         
-        # Build graph from ConnectionsMap
-        for source_node_name, node_connections in workflow.connections.connections.items():
+        # Build graph from connections
+        for source_node_name, node_connections in workflow.connections.items():
             source_node_id = name_to_id.get(source_node_name)
             if not source_node_id:
                 continue

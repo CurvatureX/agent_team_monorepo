@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package workflow_engine;
+package proto;
 
 option go_package = "github.com/agent-team/workflow_engine/proto";
 
@@ -31,6 +31,7 @@ service WorkflowService {
   // 工作流验证和调试
   rpc ValidateWorkflow(ValidateWorkflowRequest) returns (ValidateWorkflowResponse);
   rpc TestNode(TestNodeRequest) returns (TestNodeResponse);
+  rpc ListAllNodeTemplates(ListAllNodeTemplatesRequest) returns (ListAllNodeTemplatesResponse);
 }
 
 // AI Agent 服务
@@ -85,6 +86,7 @@ message CreateWorkflowRequest {
   map<string, string> static_data = 6;
   repeated string tags = 7;
   string user_id = 8;
+  string session_id = 9;  // 新增：会话ID
 }
 
 // 创建工作流响应
@@ -119,6 +121,7 @@ message UpdateWorkflowRequest {
   repeated string tags = 8;
   bool active = 9;
   string user_id = 10;
+  string session_id = 11;  // 新增：会话ID
 }
 
 // 更新工作流响应
@@ -155,6 +158,24 @@ message ListWorkflowsResponse {
   int32 total_count = 2;
   bool has_more = 3;
 }
+
+// ============================================================================
+// 节点模板请求和响应消息
+// ============================================================================
+
+// 列出所有节点模板请求
+message ListAllNodeTemplatesRequest {
+  // 可以添加过滤参数，例如按类别、类型等
+  string category_filter = 1;
+  NodeType type_filter = 2;
+  bool include_system_templates = 3;
+}
+
+// 列出所有节点模板响应
+message ListAllNodeTemplatesResponse {
+  repeated NodeTemplate node_templates = 1;
+}
+
 
 // ============================================================================
 // 触发器管理请求和响应消息

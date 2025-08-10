@@ -132,14 +132,14 @@ def generate_python_code():
     proto_dir = Path(__file__).parent
     
     # Find .proto files in shared/proto/engine directory
-    shared_proto_dir = Path("/Users/bytedance/personal/agent_team_monorepo/apps/backend/shared/proto/engine")
+    shared_proto_dir = Path("/Users/bytedance/Workspace/agent_team_monorepo/apps/backend/shared/proto/engine")
     
     if not shared_proto_dir.exists():
         print(f"Error: Shared proto directory not found: {shared_proto_dir}")
         return
     
     # Output directory for generated Python files
-    output_dir = proto_dir.parent / "workflow_engine" / "proto"
+    output_dir = proto_dir.parent / "proto"
     output_dir.mkdir(exist_ok=True)
     
     # Create __init__.py in the output directory
@@ -203,8 +203,8 @@ def main():
     
     print("\nDone! You can now import the generated modules in your Python code.")
     print("Example:")
-    print("  from workflow_engine.proto import workflow_pb2")
-    print("  from workflow_engine.proto import workflow_service_pb2_grpc")
+    print("  from proto import workflow_pb2")
+    print("  from proto import workflow_service_pb2_grpc")
 
 
 if __name__ == "__main__":

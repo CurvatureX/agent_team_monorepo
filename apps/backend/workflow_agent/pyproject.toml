@@ -15,33 +15,37 @@ dependencies = [
     "langchain-openai>=0.2.0",
     "langchain-anthropic>=0.2.0",
     "langchain-core>=0.3.0,<1.0.0",
-    "grpcio==1.59.0",
-    "grpcio-tools==1.59.0",
-    "protobuf==4.25.0",
+    # Using FastAPI + Pydantic
     "fastapi>=0.104.1",
     "uvicorn[standard]>=0.26.0",
-    "pydantic>=2.7.4",
+    "pydantic[email]>=2.7.4",
     "pydantic-settings==2.1.0",
     "python-dotenv==1.0.0",
     "structlog>=23.2.0",
     "redis==5.0.1",
-    "psycopg2-binary==2.9.9",
+    "psycopg2-binary>=2.9.10",
     "sqlalchemy==2.0.23",
     "alembic==1.13.1",
     "jinja2>=3.1.0",
+    "supabase>=2.0.0",
+    # OpenTelemetry dependencies
+    "opentelemetry-api>=1.21.0",
+    "opentelemetry-sdk>=1.21.0",
+    "opentelemetry-instrumentation-fastapi>=0.42b0",
+    "opentelemetry-instrumentation-requests>=0.42b0",
+    "opentelemetry-instrumentation-httpx>=0.42b0",
+    "opentelemetry-instrumentation-psycopg2>=0.42b0",
+    "opentelemetry-exporter-otlp>=1.21.0",
+    "opentelemetry-exporter-prometheus",
+    "aiohttp>=3.9.0",
+    "openai>=1.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest==7.4.3",
-    "pytest-asyncio==0.21.1",
-    "httpx==0.25.2",
-    "black==23.11.0",
-    "isort==5.12.0",
-    "flake8==6.1.0",
-    "mypy==1.7.1",
-    "grpcio-status==1.59.0",
+    # Development dependencies
     "langgraph-cli>=0.1.0",
+    "httpx>=0.24.0",  # 用于测试 FastAPI 客户端
 ]
 
 [build-system]
@@ -56,20 +60,8 @@ packages = [
 [tool.hatch.build.targets.wheel.sources]
 "." = "workflow_agent"
 
-[tool.black]
-line-length = 100
-target-version = ['py311']
-
-[tool.isort]
-profile = "black"
-line_length = 100
-
-[tool.mypy]
-python_version = "3.11"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-
+# Tool configurations inherited from workspace root
+# Service-specific pytest configuration
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
@@ -82,4 +74,6 @@ dev = [
     "langgraph-api",
     "langgraph-cli[inmem]>=0.3.4",
     "workflow-agent",
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
 ]
