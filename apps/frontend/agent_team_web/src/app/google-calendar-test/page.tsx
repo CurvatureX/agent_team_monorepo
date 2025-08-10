@@ -9,10 +9,10 @@ import {
   Play, 
   CheckCircle, 
   XCircle, 
-  AlertCircle,
+  // AlertCircle,
   Loader2,
-  Shield,
-  ExternalLink
+  Shield
+  // ExternalLink
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -25,7 +25,7 @@ const USER_ID = '7ba36345-a2bb-4ec9-a001-bb46d79d629d'; // 固定用户ID
 interface ExecutionResult {
   execution_id: string;
   status: string;
-  output_data: any;
+  output_data: unknown;
   error_message?: string;
   logs: string[];
 }
@@ -53,7 +53,7 @@ export default function GoogleCalendarTestPage() {
         const result = await response.json();
         setHasCredentials(result.has_credentials);
       }
-    } catch (error) {
+    } catch {
       console.log('Credentials check failed, assuming no credentials');
       setHasCredentials(false);
     }
@@ -111,7 +111,7 @@ export default function GoogleCalendarTestPage() {
       }
 
       // 构建执行请求
-      const requestBody: any = {
+      const requestBody: Record<string, unknown> = {
         user_id: USER_ID,
         input_data: {
           calendar_id: 'primary',
@@ -215,7 +215,7 @@ export default function GoogleCalendarTestPage() {
               resolve(code);
             }
           }
-        } catch (e) {
+        } catch {
           // 忽略跨域错误，继续检查
         }
       }, 1000);
@@ -313,11 +313,11 @@ export default function GoogleCalendarTestPage() {
         });
       }
 
-    } catch (error: any) {
+    } catch (error) {
       console.error('Execution error:', error);
       toast({
         title: "执行失败",
-        description: error.message || "发生未知错误",
+        description: error instanceof Error ? error.message : "发生未知错误",
         variant: "destructive"
       });
     } finally {

@@ -11,11 +11,18 @@ const compat = new FlatCompat({
 
 const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
-  // {
-  //   rules: {
-  //     "@typescript-eslint/no-explicit-any": "off",
-  //   },
-  // },
+  {
+    rules: {
+      "@typescript-eslint/no-explicit-any": "warn",  // 警告而非错误，允许在必要时使用
+      "@typescript-eslint/no-unused-vars": ["error", { 
+        "argsIgnorePattern": "^_",  // 允许 _开头的未使用变量
+        "varsIgnorePattern": "^_"
+      }],
+      "@next/next/no-img-element": "warn",  // 保留警告，提醒性能优化
+      "react-hooks/exhaustive-deps": "warn",  // 保留警告，避免潜在bug
+      "jsx-a11y/alt-text": "warn",  // 保留警告，保持可访问性
+    },
+  },
 ];
 
 export default eslintConfig;
