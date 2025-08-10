@@ -7,12 +7,26 @@ from pydantic import BaseModel, Field
 
 
 class TriggerType(str, Enum):
-    CRON = "TRIGGER_CRON"
-    MANUAL = "TRIGGER_MANUAL"
-    WEBHOOK = "TRIGGER_WEBHOOK"
-    EMAIL = "TRIGGER_EMAIL"
-    GITHUB = "TRIGGER_GITHUB"
-    SLACK = "TRIGGER_SLACK"
+    """
+    Legacy trigger type enum - DEPRECATED
+    Use shared.models.node_enums.TriggerSubtype instead for new code.
+    This is kept for backward compatibility with workflow scheduler.
+    """
+
+    CRON = "CRON"  # Updated to unified format
+    MANUAL = "MANUAL"  # Updated to unified format
+    WEBHOOK = "WEBHOOK"  # Updated to unified format
+    EMAIL = "EMAIL"  # Updated to unified format
+    GITHUB = "GITHUB"  # Updated to unified format
+    SLACK = "SLACK"  # Updated to unified format
+
+    # Keep legacy values as aliases for backward compatibility
+    TRIGGER_CRON = "CRON"
+    TRIGGER_MANUAL = "MANUAL"
+    TRIGGER_WEBHOOK = "WEBHOOK"
+    TRIGGER_EMAIL = "EMAIL"
+    TRIGGER_GITHUB = "GITHUB"
+    TRIGGER_SLACK = "SLACK"
 
 
 class TriggerStatus(str, Enum):
@@ -31,7 +45,7 @@ class DeploymentStatus(str, Enum):
 
 
 class TriggerSpec(BaseModel):
-    node_type: str = "TRIGGER_NODE"
+    node_type: str = "TRIGGER"  # Updated to unified format (was "TRIGGER_NODE")
     subtype: TriggerType
     parameters: Dict[str, Any]
     enabled: bool = True

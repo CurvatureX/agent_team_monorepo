@@ -18,7 +18,7 @@ from ..base import (
 
 # VECTOR_DB Memory Node
 VECTOR_STORE_MEMORY_SPEC = NodeSpec(
-    node_type="MEMORY_NODE",
+    node_type="MEMORY",
     subtype="MEMORY_VECTOR_STORE",
     description="Store and search vectors in a vector database for semantic similarity",
     parameters=[
@@ -126,7 +126,7 @@ VECTOR_STORE_MEMORY_SPEC = NodeSpec(
 
 # KEY_VALUE Memory Node
 SIMPLE_MEMORY_SPEC = NodeSpec(
-    node_type="MEMORY_NODE",
+    node_type="MEMORY",
     subtype="MEMORY_SIMPLE",
     description="Store simple key-value memory",
     parameters=[
@@ -218,7 +218,7 @@ SIMPLE_MEMORY_SPEC = NodeSpec(
 
 # DOCUMENT Memory Node
 DOCUMENT_MEMORY_SPEC = NodeSpec(
-    node_type="MEMORY_NODE",
+    node_type="MEMORY",
     subtype="MEMORY_DOCUMENT",
     description="Store, retrieve, and manage documents with full-text search capabilities",
     parameters=[
@@ -321,7 +321,7 @@ DOCUMENT_MEMORY_SPEC = NodeSpec(
 
 # BUFFER Memory Node
 BUFFER_MEMORY_SPEC = NodeSpec(
-    node_type="MEMORY_NODE",
+    node_type="MEMORY",
     subtype="MEMORY_BUFFER",
     description="Store recent history or conversation buffer",
     parameters=[
@@ -390,7 +390,7 @@ BUFFER_MEMORY_SPEC = NodeSpec(
 
 # KNOWLEDGE Memory Node
 KNOWLEDGE_MEMORY_SPEC = NodeSpec(
-    node_type="MEMORY_NODE",
+    node_type="MEMORY",
     subtype="MEMORY_KNOWLEDGE",
     description="Save structured knowledge for later retrieval",
     parameters=[
@@ -463,7 +463,7 @@ KNOWLEDGE_MEMORY_SPEC = NodeSpec(
 
 # EMBEDDING Memory Node
 EMBEDDING_MEMORY_SPEC = NodeSpec(
-    node_type="MEMORY_NODE",
+    node_type="MEMORY",
     subtype="MEMORY_EMBEDDING",
     description="Embed content into vector space for AI tasks",
     parameters=[

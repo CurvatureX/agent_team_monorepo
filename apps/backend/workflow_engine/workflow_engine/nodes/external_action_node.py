@@ -5,10 +5,10 @@ Handles external action operations for integrating with third-party systems
 like GitHub, Google Calendar, Trello, Slack, etc.
 """
 
-import json
-import time
-import logging
 import asyncio
+import json
+import logging
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -22,21 +22,11 @@ except ImportError:
     NodeSpec = None
 
 try:
-    from ..services.api_adapters.base import APIAdapterRegistry
-    from ..services.oauth2_service import OAuth2Service
-    from ..services.api_adapters.google_calendar import GoogleCalendarAdapter
-    from ..services.api_adapters.github import GitHubAdapter
-    from ..services.api_adapters.slack import SlackAdapter
-    from ..services.api_call_logger import get_api_call_logger, APICallTracker
+    from ..services.api_call_logger import APICallTracker, get_api_call_logger
+    from ..services.oauth2_service_lite import OAuth2ServiceLite as OAuth2Service
 except ImportError as e:
     logging.warning(f"Failed to import API adapters or logger: {e}")
     APIAdapterRegistry = None
-    OAuth2Service = None
-    GoogleCalendarAdapter = None
-    GitHubAdapter = None
-    SlackAdapter = None
-    get_api_call_logger = None
-    APICallTracker = None
 
 
 class ExternalActionNodeExecutor(BaseNodeExecutor):

@@ -3,7 +3,7 @@
 import React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { ArrowUp, Paperclip, Square, X, StopCircle, Mic, Globe, BrainCog, FolderCode } from "lucide-react";
+import { ArrowUp, Paperclip, Square, X, Mic, Globe, BrainCog, FolderCode } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 // Utility function for className merging
@@ -186,10 +186,15 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
   isRecording,
   onStartRecording,
   onStopRecording,
-  visualizerBars = 32,
+  visualizerBars = 48,
 }) => {
   const [time, setTime] = React.useState(0);
   const timerRef = React.useRef<NodeJS.Timeout | null>(null);
+  const [isClient, setIsClient] = React.useState(false);
+
+  React.useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   React.useEffect(() => {
     if (isRecording) {
@@ -217,27 +222,42 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center w-full transition-all duration-300 py-3",
+        "relative w-full flex items-center flex-col gap-2 py-2",
         isRecording ? "opacity-100" : "opacity-0 h-0"
       )}
     >
-      <div className="flex items-center gap-2 mb-3">
-        <div className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
-        <span className="font-mono text-sm text-foreground/80">{formatTime(time)}</span>
-      </div>
-      <div className="w-full h-10 flex items-center justify-center gap-0.5 px-4">
+      <span
+        className={cn(
+          "font-mono text-sm transition-opacity duration-300",
+          "text-black/70 dark:text-white/70"
+        )}
+      >
+        {formatTime(time)}
+      </span>
+
+      <div className="h-4 w-64 flex items-center justify-center gap-0.5">
         {[...Array(visualizerBars)].map((_, i) => (
           <div
             key={i}
-            className="w-0.5 rounded-full bg-foreground/50 animate-pulse"
-            style={{
-              height: `${Math.max(15, Math.random() * 100)}%`,
-              animationDelay: `${i * 0.05}s`,
-              animationDuration: `${0.5 + Math.random() * 0.5}s`,
-            }}
+            className={cn(
+              "w-0.5 rounded-full transition-all duration-300",
+              "bg-black/50 dark:bg-white/50 animate-pulse"
+            )}
+            style={
+              isClient
+                ? {
+                    height: `${20 + Math.random() * 80}%`,
+                    animationDelay: `${i * 0.05}s`,
+                  }
+                : undefined
+            }
           />
         ))}
       </div>
+
+      <p className="h-4 text-xs text-black/70 dark:text-white/70">
+        Listening...
+      </p>
     </div>
   );
 };
@@ -794,15 +814,15 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
             }
           >
             <Button
-              variant="default"
+              variant={isRecording || !hasContent ? "ghost" : "default"}
               size="icon"
               className={cn(
                 "h-8 w-8 rounded-full transition-all duration-200",
                 isRecording
-                  ? "bg-transparent hover:bg-accent text-red-500 hover:text-red-400"
+                  ? "bg-transparent hover:bg-transparent"
                   : hasContent
                   ? "bg-primary hover:bg-primary/90 text-primary-foreground"
-                  : "bg-muted text-muted-foreground hover:scale-105 hover:opacity-80 transition-all duration-200"
+                  : "bg-transparent text-black/70 dark:text-white/70 hover:bg-black/10 dark:hover:bg-white/10"
               )}
               onClick={() => {
                 if (isRecording) setIsRecording(false);
@@ -814,11 +834,14 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
               {isLoading ? (
                 <Square className="h-4 w-4 fill-current animate-pulse" />
               ) : isRecording ? (
-                <StopCircle className="h-5 w-5 text-red-500" />
+                <div
+                  className="w-6 h-6 rounded-sm animate-spin bg-black dark:bg-white cursor-pointer pointer-events-auto"
+                  style={{ animationDuration: "3s" }}
+                />
               ) : hasContent ? (
                 <ArrowUp className="h-4 w-4" />
               ) : (
-                <Mic className="h-5 w-5 transition-colors" />
+                <Mic className="w-6 h-6 text-black/70 dark:text-white/70" />
               )}
             </Button>
           </PromptInputAction>

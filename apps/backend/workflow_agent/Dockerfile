@@ -13,7 +13,10 @@ RUN pip install --default-timeout=120 --retries 5 uv
 ENV PATH="/root/.local/bin:$PATH"
 
 # Copy pyproject.toml first for better Docker layer caching
-COPY workflow_agent/pyproject.toml .
+COPY workflow_agent/pyproject.toml ./pyproject.toml
+
+# Copy the workflow_agent module for installation
+COPY workflow_agent/ ./workflow_agent/
 
 # Install Python dependencies using uv with timeout
 RUN UV_HTTP_TIMEOUT=120 uv pip install --system -e .
@@ -35,7 +38,7 @@ COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy the application code
-COPY workflow_agent/ .
+COPY workflow_agent/ ./workflow_agent/
 COPY shared/ ./shared/
 
 # Create the prompts directory where the prompt engine expects it
@@ -61,4 +64,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8001/health || exit 1
 
 # Run the FastAPI application
-CMD ["python", "main.py"]
+CMD ["python", "-m", "workflow_agent.main"]

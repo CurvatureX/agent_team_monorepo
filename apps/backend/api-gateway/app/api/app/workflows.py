@@ -10,6 +10,8 @@ from app.core.config import get_settings
 from app.dependencies import AuthenticatedDeps
 from app.exceptions import NotFoundError, ValidationError
 from app.models import (
+    ExecutionResult,
+    ManualTriggerSpec,
     NodeTemplateListResponse,
     ResponseModel,
     Workflow,
@@ -20,7 +22,9 @@ from app.models import (
     WorkflowUpdate,
 )
 from app.services.workflow_engine_http_client import get_workflow_engine_client
-from app.utils.node_converter import convert_nodes_for_workflow_engine, convert_connections_for_workflow_engine
+from app.services.workflow_scheduler_http_client import get_workflow_scheduler_client
+
+# Node converter no longer needed - using unified models directly
 from fastapi import APIRouter, Depends, HTTPException
 
 logger = logging.getLogger(__name__)
@@ -68,18 +72,13 @@ async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Dep
 
         http_client = await get_workflow_engine_client()
 
-        # Convert nodes from API Gateway format to Workflow Engine format
+        # Convert WorkflowNode objects to dicts (no format conversion needed - using unified models)
         nodes_list = []
         if request.nodes:
-            # Convert WorkflowNode objects to dicts
             nodes_list = [node.model_dump() for node in request.nodes]
-            # Convert to Workflow Engine format
-            nodes_list = convert_nodes_for_workflow_engine(nodes_list)
-        
-        # Convert connections if needed
+
+        # Use connections as-is (no conversion needed - using unified models)
         connections_dict = request.connections or {}
-        if connections_dict and nodes_list:
-            connections_dict = convert_connections_for_workflow_engine(connections_dict, nodes_list)
 
         # Create workflow via HTTP
         result = await http_client.create_workflow(
@@ -88,7 +87,7 @@ async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Dep
             nodes=nodes_list,
             connections=connections_dict,
             settings=request.settings or {},
-            static_data=getattr(request, 'static_data', None) or {},
+            static_data=getattr(request, "static_data", None) or {},
             tags=request.tags or [],
             user_id=deps.current_user.sub,
             trace_id=getattr(deps.request.state, "trace_id", None),
@@ -308,11 +307,76 @@ async def execute_workflow(
 
         # Add workflow_id to the result for the response model
         result['workflow_id'] = workflow_id
-        
+
         return WorkflowExecutionResponse(**result)
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"❌ Error executing workflow {workflow_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/{workflow_id}/trigger/manual", response_model=ExecutionResult)
+async def trigger_manual_workflow(
+    workflow_id: str,
+    request: ManualTriggerSpec,
+    deps: AuthenticatedDeps = Depends(),
+):
+    """
+    Manually trigger a workflow execution
+    手动触发工作流执行
+    """
+    try:
+        logger.info(
+            f"🚀 Manual trigger request for workflow {workflow_id} by user {deps.current_user.sub}"
+        )
+
+        # Get workflow scheduler client
+        scheduler_client = await get_workflow_scheduler_client()
+
+        # Trigger manual workflow
+        result = await scheduler_client.trigger_manual_workflow(
+            workflow_id=workflow_id,
+            user_id=deps.current_user.sub,
+            confirmation=request.require_confirmation,
+            trace_id=getattr(deps.request.state, "trace_id", None),
+        )
+
+        # Handle confirmation required case
+        if result.get("status") == "confirmation_required":
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "message": result.get("message", "Confirmation required"),
+                    "confirmation_required": True,
+                    "trigger_data": result.get("trigger_data", {}),
+                },
+            )
+
+        # Handle errors
+        if not result.get("success", True) and result.get("error"):
+            error_msg = result.get("error", "Unknown error")
+            if "not found" in error_msg.lower():
+                raise HTTPException(
+                    status_code=404, detail="Workflow not found or no manual triggers configured"
+                )
+            raise HTTPException(status_code=500, detail=f"Manual trigger failed: {error_msg}")
+
+        logger.info(
+            f"✅ Manual trigger successful: {workflow_id}, execution_id: {result.get('execution_id', 'N/A')}"
+        )
+
+        # Return ExecutionResult
+        return ExecutionResult(
+            execution_id=result.get("execution_id", ""),
+            status=result.get("status", "unknown"),
+            message=result.get("message", "Manual trigger completed"),
+            trigger_data=result.get("trigger_data", {}),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error triggering manual workflow {workflow_id}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

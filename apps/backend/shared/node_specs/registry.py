@@ -119,10 +119,22 @@ class NodeSpecRegistry:
 
     def validate_node(self, node) -> List[str]:
         """Validate a node against its specification."""
+        # Debug logging to trace the exact node being validated
+        import traceback
+
+        print(f"🐛 DEBUG: Validating node with type='{node.type}', subtype='{node.subtype}'")
+        print(f"🐛 DEBUG: Node has id: {getattr(node, 'id', 'NO_ID')}")
+        print(f"🐛 DEBUG: Node has name: {getattr(node, 'name', 'NO_NAME')}")
+        print(f"🐛 DEBUG: Call stack:")
+        for line in traceback.format_stack()[-3:]:  # Show last 3 stack frames
+            print(f"🐛 DEBUG: {line.strip()}")
+
         spec = self.get_spec(node.type, node.subtype)
         if not spec:
+            print(f"🐛 DEBUG: No spec found for {node.type}.{node.subtype}")
             return [f"Unknown node type: {node.type}.{node.subtype}"]
 
+        print(f"🐛 DEBUG: Found spec for {node.type}.{node.subtype}")
         return self._validate_against_spec(node, spec)
 
     def _validate_against_spec(self, node, spec: NodeSpec) -> List[str]:
