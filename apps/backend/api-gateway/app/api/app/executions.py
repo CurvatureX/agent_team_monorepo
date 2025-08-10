@@ -11,16 +11,14 @@ from app.exceptions import NotFoundError, ValidationError
 from app.models import ResponseModel
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional
-
-# Local models for execution endpoints
-class ExecutionStatusResponse(BaseModel):
-    execution_id: str = Field(description="Execution ID")
-    status: str = Field(description="Execution status")
-    workflow_id: Optional[str] = Field(default=None, description="Workflow ID")
-    started_at: Optional[str] = Field(default=None, description="Start time")
-    completed_at: Optional[str] = Field(default=None, description="Completion time")
-    result: Optional[Dict[str, Any]] = Field(default=None, description="Execution result")
-    error: Optional[str] = Field(default=None, description="Error message if failed")
+try:
+    from shared.models import Execution
+except ImportError:
+    import sys
+    from pathlib import Path
+    backend_dir = Path(__file__).parent.parent.parent.parent.parent
+    sys.path.insert(0, str(backend_dir))
+    from shared.models import Execution
 
 class ExecutionCancelResponse(BaseModel):
     success: bool = Field(description="Whether cancellation was successful")
@@ -34,7 +32,7 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
-@router.get("/executions/{execution_id}", response_model=ExecutionStatusResponse)
+@router.get("/executions/{execution_id}", response_model=Execution)
 async def get_execution_status(execution_id: str, deps: AuthenticatedDeps = Depends()):
     """
     Get execution status with user access control
@@ -54,8 +52,38 @@ async def get_execution_status(execution_id: str, deps: AuthenticatedDeps = Depe
             raise NotFoundError("Execution")
 
         logger.info(f"✅ Execution status retrieved: {execution_id}")
+        
+        # Map workflow-engine status to shared/models ExecutionStatus
+        status_mapping = {
+            "NEW": "pending",
+            "PENDING": "pending",
+            "RUNNING": "running",
+            "SUCCESS": "completed",
+            "COMPLETED": "completed",
+            "ERROR": "failed",
+            "FAILED": "failed",
+            "CANCELLED": "cancelled"
+        }
+        
+        # Convert workflow-engine response to Execution model
+        execution_data = {
+            "id": result.get("id", execution_id),
+            "workflow_id": result.get("workflow_id", ""),
+            "status": status_mapping.get(result.get("status", "NEW"), "pending"),
+            "started_at": result.get("start_time", result.get("started_at", 0)),
+            "ended_at": result.get("end_time", result.get("ended_at")),
+            "input_data": result.get("input_data", {}),
+            "output_data": result.get("result", result.get("output_data", {})),
+            "logs": [],  # TODO: Convert logs format if needed
+            "user_id": result.get("triggered_by", result.get("user_id", deps.current_user.sub)),
+            "session_id": result.get("session_id")
+        }
+        
+        # Handle run_data if present (contains detailed execution results)
+        if result.get("run_data"):
+            execution_data["run_data"] = result["run_data"]
 
-        return ExecutionStatusResponse(**result)
+        return Execution(**execution_data)
 
     except (NotFoundError, HTTPException):
         raise

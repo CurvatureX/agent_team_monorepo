@@ -50,7 +50,11 @@ try:
         WorkflowExecutionRequest,
         WorkflowExecutionResponse,
         WorkflowResponse,
+        NodeTemplateListResponse,
+        WorkflowData,
     )
+    from shared.models import WorkflowCreateRequest as WorkflowCreate
+    from shared.models import WorkflowData as Workflow
     from shared.models import WorkflowUpdateRequest as WorkflowUpdate
     from shared.models.trigger import ExecutionResult, ManualTriggerSpec, TriggerStatus, TriggerType
 except ImportError:
@@ -98,9 +102,14 @@ except ImportError:
         SessionUpdate,
         SSEEventType,
         StatusChangeEventData,
+        WorkflowExecutionRequest,
+        WorkflowExecutionResponse,
+        WorkflowResponse,
+        NodeTemplateListResponse,
+        WorkflowData,
     )
     from shared.models import WorkflowCreateRequest as WorkflowCreate
-    from shared.models import WorkflowEntity as Workflow
+    from shared.models import WorkflowData as Workflow
     from shared.models import (
         WorkflowEventData,
         WorkflowExecutionRequest,
