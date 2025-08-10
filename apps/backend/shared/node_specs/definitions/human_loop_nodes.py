@@ -17,7 +17,7 @@ from ..base import (
 
 # GMAIL Human Loop Node
 GMAIL_HUMAN_LOOP_SPEC = NodeSpec(
-    node_type="HUMAN_IN_THE_LOOP_NODE",
+    node_type="HUMAN_IN_THE_LOOP",
     subtype="HUMAN_GMAIL",
     description="Send email via Gmail and wait for human response or approval",
     parameters=[
@@ -113,7 +113,7 @@ GMAIL_HUMAN_LOOP_SPEC = NodeSpec(
 
 # SLACK Human Loop Node
 SLACK_HUMAN_LOOP_SPEC = NodeSpec(
-    node_type="HUMAN_IN_THE_LOOP_NODE",
+    node_type="HUMAN_IN_THE_LOOP",
     subtype="HUMAN_SLACK",
     description="Send Slack message and wait for human response or approval",
     parameters=[
@@ -178,7 +178,7 @@ SLACK_HUMAN_LOOP_SPEC = NodeSpec(
 
 # DISCORD Human Loop Node
 DISCORD_HUMAN_LOOP_SPEC = NodeSpec(
-    node_type="HUMAN_IN_THE_LOOP_NODE",
+    node_type="HUMAN_IN_THE_LOOP",
     subtype="HUMAN_DISCORD",
     description="Send Discord message and wait for human response",
     parameters=[
@@ -227,7 +227,7 @@ DISCORD_HUMAN_LOOP_SPEC = NodeSpec(
 
 # TELEGRAM Human Loop Node
 TELEGRAM_HUMAN_LOOP_SPEC = NodeSpec(
-    node_type="HUMAN_IN_THE_LOOP_NODE",
+    node_type="HUMAN_IN_THE_LOOP",
     subtype="HUMAN_TELEGRAM",
     description="Send Telegram message and wait for human response",
     parameters=[
@@ -276,7 +276,7 @@ TELEGRAM_HUMAN_LOOP_SPEC = NodeSpec(
 
 # APP Human Loop Node
 APP_HUMAN_LOOP_SPEC = NodeSpec(
-    node_type="HUMAN_IN_THE_LOOP_NODE",
+    node_type="HUMAN_IN_THE_LOOP",
     subtype="HUMAN_APP",
     description="Send in-app notification and wait for human interaction",
     parameters=[

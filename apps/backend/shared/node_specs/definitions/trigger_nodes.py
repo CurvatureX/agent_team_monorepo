@@ -17,8 +17,8 @@ from ..base import (
 
 # Manual trigger - started by user action
 MANUAL_TRIGGER_SPEC = NodeSpec(
-    node_type="TRIGGER_NODE",
-    subtype="TRIGGER_MANUAL",
+    node_type="TRIGGER",
+    subtype="MANUAL",
     description="Manual trigger activated by user action",
     parameters=[
         ParameterDef(
@@ -63,8 +63,8 @@ MANUAL_TRIGGER_SPEC = NodeSpec(
 
 # Cron trigger - scheduled execution
 CRON_TRIGGER_SPEC = NodeSpec(
-    node_type="TRIGGER_NODE",
-    subtype="TRIGGER_CRON",
+    node_type="TRIGGER",
+    subtype="CRON",
     description="Scheduled trigger based on cron expressions",
     parameters=[
         ParameterDef(
@@ -110,8 +110,8 @@ CRON_TRIGGER_SPEC = NodeSpec(
 
 # Webhook trigger - HTTP endpoint
 WEBHOOK_TRIGGER_SPEC = NodeSpec(
-    node_type="TRIGGER_NODE",
-    subtype="TRIGGER_WEBHOOK",
+    node_type="TRIGGER",
+    subtype="WEBHOOK",
     description="HTTP webhook trigger that responds to incoming requests",
     parameters=[
         ParameterDef(
@@ -165,8 +165,8 @@ WEBHOOK_TRIGGER_SPEC = NodeSpec(
 
 # Slack trigger - Slack interaction trigger
 SLACK_TRIGGER_SPEC = NodeSpec(
-    node_type="TRIGGER_NODE",
-    subtype="TRIGGER_SLACK",
+    node_type="TRIGGER",
+    subtype="CHAT",
     description="Slack trigger that responds to Slack interactions and events",
     parameters=[
         ParameterDef(
@@ -183,7 +183,7 @@ SLACK_TRIGGER_SPEC = NodeSpec(
         ),
         ParameterDef(
             name="event_types",
-            type=ParameterType.ARRAY,
+            type=ParameterType.JSON,
             required=False,
             default_value=["message", "app_mention"],
             enum_values=[
@@ -254,8 +254,8 @@ SLACK_TRIGGER_SPEC = NodeSpec(
 
 # Email trigger - email monitoring
 EMAIL_TRIGGER_SPEC = NodeSpec(
-    node_type="TRIGGER_NODE",
-    subtype="TRIGGER_EMAIL",
+    node_type="TRIGGER",
+    subtype="EMAIL",
     description="Email trigger that monitors incoming emails",
     parameters=[
         ParameterDef(
@@ -308,8 +308,8 @@ EMAIL_TRIGGER_SPEC = NodeSpec(
 
 # GitHub trigger - repository event based
 GITHUB_TRIGGER_SPEC = NodeSpec(
-    node_type="TRIGGER_NODE",
-    subtype="TRIGGER_GITHUB",
+    node_type="TRIGGER",
+    subtype="WEBHOOK",
     description="GitHub repository trigger for code events and workflows",
     parameters=[
         ParameterDef(
@@ -327,7 +327,7 @@ GITHUB_TRIGGER_SPEC = NodeSpec(
         ),
         ParameterDef(
             name="events",
-            type=ParameterType.ARRAY,
+            type=ParameterType.JSON,
             required=True,
             description="GitHub webhook events to listen for",
             enum_values=[
@@ -356,19 +356,19 @@ GITHUB_TRIGGER_SPEC = NodeSpec(
         ),
         ParameterDef(
             name="branches",
-            type=ParameterType.ARRAY,
+            type=ParameterType.JSON,
             required=False,
             description="Branch filter (only for push/pull_request events). Empty means all branches",
         ),
         ParameterDef(
             name="paths",
-            type=ParameterType.ARRAY,
+            type=ParameterType.JSON,
             required=False,
             description="File path filters using glob patterns (e.g., ['src/**', '*.md'])",
         ),
         ParameterDef(
             name="action_filter",
-            type=ParameterType.ARRAY,
+            type=ParameterType.JSON,
             required=False,
             description="Action types to filter on (e.g., ['opened', 'closed', 'synchronize'] for PRs)",
         ),
@@ -380,7 +380,7 @@ GITHUB_TRIGGER_SPEC = NodeSpec(
         ),
         ParameterDef(
             name="label_filter",
-            type=ParameterType.ARRAY,
+            type=ParameterType.JSON,
             required=False,
             description="Filter by issue/PR labels (any match triggers)",
         ),

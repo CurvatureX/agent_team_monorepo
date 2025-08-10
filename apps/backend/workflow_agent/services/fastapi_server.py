@@ -5,6 +5,7 @@ FastAPI Server for Workflow Agent
 
 import asyncio
 import json
+import logging
 import os
 
 # Import shared models
@@ -12,14 +13,13 @@ import sys
 import time
 from typing import AsyncGenerator, Optional
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import StreamingResponse
 from agents.state import WorkflowStage, WorkflowState
 
 # Import workflow agent components
 from agents.workflow_agent import WorkflowAgent
 from core.config import settings
-import logging
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from services.state_manager import get_workflow_agent_state_manager
 
 # Add parent directory to path for shared models
@@ -29,22 +29,32 @@ sys.path.insert(0, parent_dir)
 
 # 遥测组件
 try:
-    from shared.telemetry import setup_telemetry, TrackingMiddleware, MetricsMiddleware  # type: ignore[assignment]
+    from shared.telemetry import (  # type: ignore[assignment]
+        MetricsMiddleware,
+        TrackingMiddleware,
+        setup_telemetry,
+    )
 except ImportError:
     # Fallback for deployment - create dummy implementations
     print("Warning: Could not import telemetry components, using stubs")
+
     def setup_telemetry(*args, **kwargs):  # type: ignore[misc]
         pass
+
     class TrackingMiddleware:  # type: ignore[misc]
         def __init__(self, app):
             self.app = app
+
         async def __call__(self, scope, receive, send):
             await self.app(scope, receive, send)
+
     class MetricsMiddleware:  # type: ignore[misc]
         def __init__(self, app, **kwargs):
             self.app = app
+
         async def __call__(self, scope, receive, send):
             await self.app(scope, receive, send)
+
 
 # shared models导入（两种环境都相同）
 from shared.models.conversation import (
@@ -70,7 +80,9 @@ class WorkflowAgentServicer:
         self.state_manager = get_workflow_agent_state_manager()
         logger.info("WorkflowAgentServicer initialized with database state management")
 
-    async def process_conversation(self, request: ConversationRequest, request_obj: Optional[Request] = None) -> AsyncGenerator[str, None]:
+    async def process_conversation(
+        self, request: ConversationRequest, request_obj: Optional[Request] = None
+    ) -> AsyncGenerator[str, None]:
         """
         处理对话的统一接口 - 支持所有工作流生成阶段
         内部管理 workflow_agent_state，对外提供流式响应
@@ -78,13 +90,16 @@ class WorkflowAgentServicer:
         generator_created = False
         try:
             # 获取 trace_id（如果有的话）
-            trace_id = getattr(request_obj.state, 'trace_id', None) if request_obj else None
-            
-            logger.info("Processing conversation request", extra={
-                "request_session_id": request.session_id, 
-                "request_user_id": request.user_id,
-                "trace_id": trace_id
-            })
+            trace_id = getattr(request_obj.state, "trace_id", None) if request_obj else None
+
+            logger.info(
+                "Processing conversation request",
+                extra={
+                    "request_session_id": request.session_id,
+                    "request_user_id": request.user_id,
+                    "trace_id": trace_id,
+                },
+            )
             session_id = request.session_id
             generator_created = True
             current_state = self.state_manager.get_state_by_session(
@@ -116,7 +131,9 @@ class WorkflowAgentServicer:
                 )
                 logger.info("Created new workflow_agent_state", extra={"session_id": session_id})
             else:
-                logger.info("Retrieved existing workflow_agent_state", extra={"session_id": session_id})
+                logger.info(
+                    "Retrieved existing workflow_agent_state", extra={"session_id": session_id}
+                )
 
             # 添加用户消息到对话历史
             conversations = current_state.get("conversations", [])
@@ -135,11 +152,14 @@ class WorkflowAgentServicer:
                 # 转换状态格式为 LangGraph WorkflowState
                 workflow_state = self._convert_to_workflow_state(current_state)
                 previous_stage = workflow_state.get("stage")
-                
+
                 # 使用 LangGraph 流式处理
-                logger.info("Starting LangGraph streaming", extra={"session_id": session_id, "initial_stage": workflow_state.get('stage')})
+                logger.info(
+                    "Starting LangGraph streaming",
+                    extra={"session_id": session_id, "initial_stage": workflow_state.get("stage")},
+                )
                 stream_iterator = self.workflow_agent.graph.astream(workflow_state)
-                
+
                 # Shield the entire stream iteration from cancellation
                 try:
                     async for step_state in stream_iterator:
@@ -149,10 +169,10 @@ class WorkflowAgentServicer:
                                 extra={
                                     "session_id": session_id,
                                     "node_name": node_name,
-                                    "current_stage": updated_state.get("stage")
-                                }
+                                    "current_stage": updated_state.get("stage"),
+                                },
                             )
-                            
+
                             # 发送状态变化信息
                             status_change_response = self._create_status_change_response(
                                 session_id, node_name, previous_stage, updated_state
@@ -164,8 +184,12 @@ class WorkflowAgentServicer:
                             current_stage = updated_state.get("stage", WorkflowStage.CLARIFICATION)
                             if current_stage == WorkflowStage.CLARIFICATION:
                                 # Check if we have pending questions to send
-                                clarification_context = updated_state.get("clarification_context", {})
-                                pending_questions = clarification_context.get("pending_questions", [])
+                                clarification_context = updated_state.get(
+                                    "clarification_context", {}
+                                )
+                                pending_questions = clarification_context.get(
+                                    "pending_questions", []
+                                )
                                 if pending_questions:
                                     message_response = await self._create_message_response(
                                         session_id, updated_state
@@ -174,29 +198,33 @@ class WorkflowAgentServicer:
                                         yield f"data: {message_response.model_dump_json()}\n\n"
 
                             # 只在WORKFLOW_GENERATION节点完成后发送工作流响应
-                            if node_name == "workflow_generation" and current_stage == WorkflowStage.DEBUG:
+                            if (
+                                node_name == "workflow_generation"
+                                and current_stage == WorkflowStage.DEBUG
+                            ):
                                 # workflow_generation节点完成，进入DEBUG阶段，此时发送workflow
                                 workflow_response = await self._create_workflow_response(
                                     session_id, updated_state
                                 )
                                 if workflow_response:
-                                    logger.info("Sending workflow response after workflow_generation node completed")
+                                    logger.info(
+                                        "Sending workflow response after workflow_generation node completed"
+                                    )
                                     yield f"data: {workflow_response.model_dump_json()}\n\n"
 
                             # 更新状态跟踪
                             previous_stage = current_stage
                             current_state = self._convert_from_workflow_state(updated_state)
-                            
+
                 except asyncio.CancelledError:
-                    logger.warning("LangGraph stream was cancelled", extra={"session_id": session_id})
+                    logger.warning(
+                        "LangGraph stream was cancelled", extra={"session_id": session_id}
+                    )
                     raise
-                    
+
                 logger.info(
                     "LangGraph streaming completed - async for loop exited",
-                    extra={
-                        "session_id": session_id,
-                        "final_stage": current_state.get("stage")
-                    }
+                    extra={"session_id": session_id, "final_stage": current_state.get("stage")},
                 )
 
                 # 保存更新后的状态到数据库
@@ -206,9 +234,13 @@ class WorkflowAgentServicer:
                     access_token=request.access_token,
                 )
                 if success:
-                    logger.info("Saved updated workflow_agent_state", extra={"session_id": session_id})
+                    logger.info(
+                        "Saved updated workflow_agent_state", extra={"session_id": session_id}
+                    )
                 else:
-                    logger.error("Failed to save workflow_agent_state", extra={"session_id": session_id})
+                    logger.error(
+                        "Failed to save workflow_agent_state", extra={"session_id": session_id}
+                    )
 
             except (GeneratorExit, asyncio.CancelledError) as cancel_error:
                 # 客户端断开连接时的正常处理
@@ -217,30 +249,29 @@ class WorkflowAgentServicer:
                     extra={
                         "session_id": session_id,
                         "current_stage": current_state.get("stage"),
-                        "error_type": type(cancel_error).__name__
-                    }
+                        "error_type": type(cancel_error).__name__,
+                    },
                 )
                 # 保存当前状态
                 try:
                     self.state_manager.save_full_state(
                         session_id=session_id,
                         workflow_state=current_state,
-                        access_token=request.access_token
+                        access_token=request.access_token,
                     )
                 except Exception as save_error:
-                    logger.error("Failed to save state on disconnect", extra={"error": str(save_error)})
+                    logger.error(
+                        "Failed to save state on disconnect", extra={"error": str(save_error)}
+                    )
                 raise  # 重新抛出 GeneratorExit/CancelledError
-                
+
             except Exception as processing_error:
                 # Handle AttributeError specifically for END constant
                 error_msg = str(processing_error)
                 if isinstance(processing_error, AttributeError) and "END" in error_msg:
                     logger.warning(
                         "Handled END constant AttributeError",
-                        extra={
-                            "session_id": session_id,
-                            "error": error_msg
-                        }
+                        extra={"session_id": session_id, "error": error_msg},
                     )
                     # This is expected when workflow reaches END - not a real error
                 else:
@@ -249,10 +280,10 @@ class WorkflowAgentServicer:
                         extra={
                             "session_id": session_id,
                             "error": error_msg,
-                            "error_type": type(processing_error).__name__
-                        }
+                            "error_type": type(processing_error).__name__,
+                        },
                     )
-                
+
                 # 尝试保存错误状态
                 try:
                     current_state["error"] = str(processing_error)
@@ -260,11 +291,11 @@ class WorkflowAgentServicer:
                     self.state_manager.save_full_state(
                         session_id=session_id,
                         workflow_state=current_state,
-                        access_token=request.access_token
+                        access_token=request.access_token,
                     )
                 except Exception as save_error:
                     logger.error("Failed to save error state", extra={"error": str(save_error)})
-                
+
                 error_response = ConversationResponse(
                     session_id=session_id,
                     response_type=ResponseType.ERROR,
@@ -277,7 +308,7 @@ class WorkflowAgentServicer:
                     is_final=True,
                 )
                 yield f"data: {error_response.model_dump_json()}\n\n"
-            
+
             finally:
                 # 清理逻辑
                 logger.info(
@@ -285,8 +316,8 @@ class WorkflowAgentServicer:
                     extra={
                         "session_id": session_id,
                         "final_stage": current_state.get("stage"),
-                        "generator_created": generator_created
-                    }
+                        "generator_created": generator_created,
+                    },
                 )
 
         except Exception as e:
@@ -298,8 +329,8 @@ class WorkflowAgentServicer:
                 extra={
                     "error": str(e),
                     "session_id": request.session_id,
-                    "traceback": error_traceback
-                }
+                    "traceback": error_traceback,
+                },
             )
 
             # 发送错误响应
@@ -371,7 +402,7 @@ class WorkflowAgentServicer:
     ) -> ConversationResponse:
         """创建状态变化响应"""
         current_stage = current_state.get("stage", WorkflowStage.CLARIFICATION)
-        
+
         # 准备 stage_state 内容（不包含敏感信息）
         stage_state = {
             "session_id": current_state.get("session_id", session_id),
@@ -420,11 +451,11 @@ class WorkflowAgentServicer:
             if conv.get("role") == "assistant":
                 # Only set is_final=True when we're in the final stages or when workflow is complete
                 is_final = current_stage in [
-                    WorkflowStage.WORKFLOW_GENERATION, 
+                    WorkflowStage.WORKFLOW_GENERATION,
                     WorkflowStage.DEBUG,
-                    "__end__"
+                    "__end__",
                 ]
-                
+
                 return ConversationResponse(
                     session_id=session_id,
                     response_type=ResponseType.MESSAGE,
@@ -446,7 +477,10 @@ class WorkflowAgentServicer:
             and current_workflow.get("nodes")
         ):
             workflow_json = json.dumps(current_workflow)
-            logger.info("Creating workflow response", extra={"node_count": len(current_workflow.get('nodes', []))})
+            logger.info(
+                "Creating workflow response",
+                extra={"node_count": len(current_workflow.get("nodes", []))},
+            )
             return ConversationResponse(
                 session_id=session_id,
                 response_type=ResponseType.WORKFLOW,
@@ -457,7 +491,6 @@ class WorkflowAgentServicer:
             logger.debug("No workflow to send", extra={"current_workflow": current_workflow})
 
         return None
-    
 
 
 # 创建 FastAPI 应用
@@ -468,13 +501,31 @@ app = FastAPI(
 )
 
 # 初始化遥测系统
-# 从环境变量获取 OTLP 端点，默认使用 otel-collector
-otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4317")
-setup_telemetry(app, service_name="workflow-agent", service_version="1.0.0", otlp_endpoint=otlp_endpoint)
+# 检查是否禁用OpenTelemetry
+otel_disabled = os.getenv("OTEL_SDK_DISABLED", "false").lower() == "true"
+environment = os.getenv("ENVIRONMENT", "development")
 
-# 添加遥测中间件
-app.add_middleware(TrackingMiddleware)  # type: ignore
-app.add_middleware(MetricsMiddleware, service_name="workflow-agent")  # type: ignore
+if not otel_disabled:
+    # AWS生产环境使用localhost:4317 (AWS OTEL Collector sidecar)
+    # 开发环境使用otel-collector:4317 (Docker Compose service)
+    if environment in ["production", "staging"]:
+        otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
+    else:
+        otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4317")
+
+    setup_telemetry(
+        app, service_name="workflow-agent", service_version="1.0.0", otlp_endpoint=otlp_endpoint
+    )
+
+    # 添加遥测中间件
+    app.add_middleware(TrackingMiddleware)  # type: ignore
+    app.add_middleware(MetricsMiddleware, service_name="workflow-agent")  # type: ignore
+
+    print(
+        f"OpenTelemetry configured for workflow-agent in {environment} environment with endpoint: {otlp_endpoint}"
+    )
+else:
+    print("OpenTelemetry disabled for workflow-agent via OTEL_SDK_DISABLED environment variable")
 
 # 创建服务器实例
 servicer = WorkflowAgentServicer()
@@ -487,16 +538,17 @@ async def process_conversation(request: ConversationRequest, request_obj: Reques
     返回流式响应
     """
     import time
+
     start_time = time.time()
     session_id = request.session_id
-    
+
     # 获取 trace_id
     trace_id = request_obj.headers.get("x-trace-id") or request_obj.headers.get("X-Trace-ID")
     if trace_id:
         logger.info(f"Processing conversation with trace_id: {trace_id}")
         # 将 trace_id 存储到 request state，供后续使用
         request_obj.state.trace_id = trace_id
-    
+
     async def wrapped_generator():
         """Wrapper to track client disconnection"""
         try:
@@ -504,21 +556,40 @@ async def process_conversation(request: ConversationRequest, request_obj: Reques
             async for chunk in servicer.process_conversation(request, request_obj):
                 # Check if client is still connected
                 if await request_obj.is_disconnected():
-                    logger.warning("Client disconnected", extra={"session_id": session_id, "elapsed_seconds": round(time.time() - start_time, 2)})
+                    logger.warning(
+                        "Client disconnected",
+                        extra={
+                            "session_id": session_id,
+                            "elapsed_seconds": round(time.time() - start_time, 2),
+                        },
+                    )
                     break
                 yield chunk
         except asyncio.CancelledError:
             elapsed = time.time() - start_time
-            logger.warning("Streaming cancelled", extra={"session_id": session_id, "elapsed_seconds": round(elapsed, 2)})
+            logger.warning(
+                "Streaming cancelled",
+                extra={"session_id": session_id, "elapsed_seconds": round(elapsed, 2)},
+            )
             raise
         except Exception as e:
             elapsed = time.time() - start_time
-            logger.error("Error in streaming", extra={"session_id": session_id, "elapsed_seconds": round(elapsed, 2), "error": str(e)})
+            logger.error(
+                "Error in streaming",
+                extra={
+                    "session_id": session_id,
+                    "elapsed_seconds": round(elapsed, 2),
+                    "error": str(e),
+                },
+            )
             raise
         finally:
             elapsed = time.time() - start_time
-            logger.info("Streaming ended", extra={"session_id": session_id, "elapsed_seconds": round(elapsed, 2)})
-    
+            logger.info(
+                "Streaming ended",
+                extra={"session_id": session_id, "elapsed_seconds": round(elapsed, 2)},
+            )
+
     return StreamingResponse(
         wrapped_generator(),
         media_type="text/event-stream",
