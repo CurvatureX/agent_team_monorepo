@@ -34,18 +34,28 @@ def get_workflow_service(db: Session = Depends(get_db)):
 
 @router.post("/workflows", response_model=CreateWorkflowResponse)
 async def create_workflow(
-    request: CreateWorkflowRequest, 
+    request: CreateWorkflowRequest,
     request_obj: Request,
-    service: WorkflowService = Depends(get_workflow_service)
+    service: WorkflowService = Depends(get_workflow_service),
 ):
     try:
+        # DEBUG: Log the FastAPI request
+        print(f"🐛 DEBUG: FastAPI create_workflow endpoint called")
+        print(f"🐛 DEBUG: Request name: {request.name}")
+        print(f"🐛 DEBUG: Request has {len(request.nodes)} nodes")
+        for i, node in enumerate(request.nodes):
+            print(
+                f"🐛 DEBUG: FastAPI node {i}: id='{node.id}', type='{node.type}', subtype='{node.subtype}'"
+            )
+
         # 获取 trace_id
         trace_id = request_obj.headers.get("x-trace-id") or request_obj.headers.get("X-Trace-ID")
         if trace_id:
             import logging
+
             logger = logging.getLogger(__name__)
             logger.info(f"Creating workflow with trace_id: {trace_id}")
-            
+
         workflow = service.create_workflow_from_data(request)
         return CreateWorkflowResponse(
             workflow=workflow, success=True, message="Workflow created successfully"

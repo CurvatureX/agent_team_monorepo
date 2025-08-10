@@ -1,0 +1,127 @@
+{
+  "family": "agent-team-service-template",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/AgentTeamTaskRole",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "containerDefinitions": [
+    {
+      "name": "SERVICE_NAME",
+      "image": "ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/agent-team/SERVICE_NAME:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "ENVIRONMENT",
+          "value": "production"
+        },
+        {
+          "name": "OTEL_SDK_DISABLED",
+          "value": "false"
+        },
+        {
+          "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
+          "value": "http://localhost:4317"
+        },
+        {
+          "name": "OTEL_EXPORTER_OTLP_INSECURE",
+          "value": "true"
+        },
+        {
+          "name": "OTEL_SERVICE_NAME",
+          "value": "SERVICE_NAME"
+        },
+        {
+          "name": "OTEL_RESOURCE_ATTRIBUTES",
+          "value": "service.namespace=agent-team,deployment.environment=production"
+        },
+        {
+          "name": "AWS_DEFAULT_REGION",
+          "value": "REGION"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "DATABASE_URL",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:agent-team/database-url-XXXXX"
+        },
+        {
+          "name": "SUPABASE_SECRET_KEY",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:agent-team/supabase-secret-key-XXXXX"
+        },
+        {
+          "name": "OPENAI_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:agent-team/openai-api-key-XXXXX"
+        },
+        {
+          "name": "ANTHROPIC_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT_ID:secret:agent-team/anthropic-api-key-XXXXX"
+        }
+      ],
+      "dependsOn": [
+        {
+          "containerName": "aws-otel-collector",
+          "condition": "START"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/agent-team-SERVICE_NAME",
+          "awslogs-region": "REGION",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 120
+      }
+    },
+    {
+      "name": "aws-otel-collector",
+      "image": "public.ecr.aws/aws-observability/aws-otel-collector:latest",
+      "essential": false,
+      "portMappings": [
+        {
+          "containerPort": 4317,
+          "protocol": "tcp"
+        },
+        {
+          "containerPort": 4318,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "AOT_CONFIG_CONTENT",
+          "value": "receivers:\n  otlp:\n    protocols:\n      grpc:\n        endpoint: 0.0.0.0:4317\n      http:\n        endpoint: 0.0.0.0:4318\n\nprocessors:\n  batch:\n    timeout: 1s\n    send_batch_size: 1024\n  memory_limiter:\n    limit_mib: 256\n\nexporters:\n  awsxray:\n    region: REGION\n  awscloudwatchmetrics:\n    region: REGION\n    namespace: AgentTeam\n    dimension_rollup_option: NoDimensionRollup\n  awscloudwatchlogs:\n    region: REGION\n    log_group_name: '/agent-team/otel-logs'\n\nservice:\n  pipelines:\n    traces:\n      receivers: [otlp]\n      processors: [memory_limiter, batch]\n      exporters: [awsxray]\n    metrics:\n      receivers: [otlp]\n      processors: [memory_limiter, batch]\n      exporters: [awscloudwatchmetrics]\n    logs:\n      receivers: [otlp]\n      processors: [memory_limiter, batch]\n      exporters: [awscloudwatchlogs]"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/agent-team-otel-collector",
+          "awslogs-region": "REGION",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:13133/ || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 30
+      }
+    }
+  ]
+}

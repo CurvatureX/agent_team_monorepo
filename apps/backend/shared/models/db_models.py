@@ -87,14 +87,22 @@ class TriggerStatusEnum(str, enum.Enum):
 
 
 class TriggerTypeEnum(str, enum.Enum):
-    """Trigger type enumeration"""
+    """Trigger type enumeration - UPDATED TO UNIFIED FORMAT"""
 
-    CRON = "TRIGGER_CRON"
-    MANUAL = "TRIGGER_MANUAL"
-    WEBHOOK = "TRIGGER_WEBHOOK"
-    EMAIL = "TRIGGER_EMAIL"
-    GITHUB = "TRIGGER_GITHUB"
-    SLACK = "TRIGGER_SLACK"
+    CRON = "CRON"  # Updated from "TRIGGER_CRON"
+    MANUAL = "MANUAL"  # Updated from "TRIGGER_MANUAL"
+    WEBHOOK = "WEBHOOK"  # Updated from "TRIGGER_WEBHOOK"
+    EMAIL = "EMAIL"  # Updated from "TRIGGER_EMAIL"
+    GITHUB = "GITHUB"  # Updated from "TRIGGER_GITHUB"
+    SLACK = "SLACK"  # Updated from "TRIGGER_SLACK"
+
+    # Legacy aliases for backward compatibility
+    TRIGGER_CRON = "CRON"
+    TRIGGER_MANUAL = "MANUAL"
+    TRIGGER_WEBHOOK = "WEBHOOK"
+    TRIGGER_EMAIL = "EMAIL"
+    TRIGGER_GITHUB = "GITHUB"
+    TRIGGER_SLACK = "SLACK"
 
 
 class WorkflowStatusEnum(str, enum.Enum):

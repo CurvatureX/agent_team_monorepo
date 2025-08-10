@@ -21,6 +21,13 @@ except ImportError:
     node_spec_registry = None
     NodeSpec = None
 
+try:
+    from shared.enums import TriggerSubtype, normalize_subtype
+except ImportError:
+    # Fallback if shared enums not available
+    TriggerSubtype = None
+    normalize_subtype = lambda x: x
+
 
 class TriggerNodeExecutor(BaseNodeExecutor):
     """Executor for TRIGGER_NODE type."""
@@ -28,31 +35,36 @@ class TriggerNodeExecutor(BaseNodeExecutor):
     def _get_node_spec(self) -> Optional[NodeSpec]:
         """Get the node specification for trigger nodes."""
         if node_spec_registry and self._subtype:
-            # Return the specific spec for current subtype
-            return node_spec_registry.get_spec("TRIGGER_NODE", self._subtype)
+            # Use unified format - remove TRIGGER_ prefix if present for compatibility
+            normalized_subtype = self._subtype
+            if self._subtype.startswith("TRIGGER_"):
+                normalized_subtype = self._subtype[8:]  # Remove "TRIGGER_" prefix
+            # Return the specific spec for current subtype using unified format
+            return node_spec_registry.get_spec("TRIGGER", normalized_subtype)
         return None
 
     def get_supported_subtypes(self) -> List[str]:
         """Get supported trigger subtypes."""
-        return [
-            "TRIGGER_MANUAL",
-            "TRIGGER_WEBHOOK",
-            "TRIGGER_CRON",
-            "TRIGGER_CHAT",
-            "TRIGGER_EMAIL",
-            "TRIGGER_FORM",
-            "TRIGGER_CALENDAR",
-        ]
+        if TriggerSubtype:
+            # Use unified enum values - support both legacy and unified formats
+            unified_subtypes = [subtype.value for subtype in TriggerSubtype]
+            legacy_subtypes = [f"TRIGGER_{subtype.value}" for subtype in TriggerSubtype]
+            return unified_subtypes + legacy_subtypes
+        else:
+            # Fallback to both legacy and unified formats
+            unified = ["MANUAL", "WEBHOOK", "CRON", "EMAIL", "GITHUB", "SLACK"]
+            legacy = [f"TRIGGER_{subtype}" for subtype in unified]
+            return unified + legacy
 
     def validate(self, node: Any) -> List[str]:
         """Validate trigger node configuration using spec-based validation."""
         # First use the base class validation which includes spec validation
         errors = super().validate(node)
-        
+
         # If spec validation passed, we're done
         if not errors and self.spec:
             return errors
-        
+
         # Fallback if spec not available
         if not node.subtype:
             errors.append("Trigger subtype is required")
@@ -62,26 +74,26 @@ class TriggerNodeExecutor(BaseNodeExecutor):
             errors.append(f"Unsupported trigger subtype: {node.subtype}")
 
         return errors
-    
+
     def _validate_legacy(self, node: Any) -> List[str]:
         """Legacy validation for backward compatibility."""
         errors = []
-        
-        if not hasattr(node, 'subtype'):
+
+        if not hasattr(node, "subtype"):
             return errors
-            
+
         subtype = node.subtype
 
         if subtype == "TRIGGER_WEBHOOK":
             # Note: The spec uses webhook_path and http_method, not method and path
-            if hasattr(node, 'parameters'):
+            if hasattr(node, "parameters"):
                 http_method = node.parameters.get("http_method", "").upper()
                 if http_method and http_method not in ["GET", "POST", "PUT", "DELETE", "PATCH"]:
                     errors.append(f"Invalid HTTP method: {http_method}")
 
         elif subtype == "TRIGGER_CRON":
             errors.extend(self._validate_required_parameters(node, ["cron_expression"]))
-            if hasattr(node, 'parameters'):
+            if hasattr(node, "parameters"):
                 cron_expr = node.parameters.get("cron_expression", "")
                 if cron_expr and not self._is_valid_cron(cron_expr):
                     errors.append(f"Invalid cron expression: {cron_expr}")
@@ -94,22 +106,22 @@ class TriggerNodeExecutor(BaseNodeExecutor):
         logs = []
 
         try:
-            subtype = context.node.subtype
+            subtype = normalize_subtype(context.node.subtype)
             logs.append(f"Executing trigger node with subtype: {subtype}")
 
-            if subtype == "TRIGGER_MANUAL":
+            if subtype == TriggerSubtype.MANUAL.value if TriggerSubtype else "MANUAL":
                 return self._execute_manual_trigger(context, logs, start_time)
-            elif subtype == "TRIGGER_WEBHOOK":
+            elif subtype == TriggerSubtype.WEBHOOK.value if TriggerSubtype else "WEBHOOK":
                 return self._execute_webhook_trigger(context, logs, start_time)
-            elif subtype == "TRIGGER_CRON":
+            elif subtype == TriggerSubtype.CRON.value if TriggerSubtype else "CRON":
                 return self._execute_cron_trigger(context, logs, start_time)
-            elif subtype == "TRIGGER_CHAT":
+            elif subtype == TriggerSubtype.CHAT.value if TriggerSubtype else "CHAT":
                 return self._execute_chat_trigger(context, logs, start_time)
-            elif subtype == "TRIGGER_EMAIL":
+            elif subtype == TriggerSubtype.EMAIL.value if TriggerSubtype else "EMAIL":
                 return self._execute_email_trigger(context, logs, start_time)
-            elif subtype == "TRIGGER_FORM":
+            elif subtype == TriggerSubtype.FORM.value if TriggerSubtype else "FORM":
                 return self._execute_form_trigger(context, logs, start_time)
-            elif subtype == "TRIGGER_CALENDAR":
+            elif subtype == TriggerSubtype.CALENDAR.value if TriggerSubtype else "CALENDAR":
                 return self._execute_calendar_trigger(context, logs, start_time)
             else:
                 return self._create_error_result(
