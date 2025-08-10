@@ -137,9 +137,9 @@ export default function GoogleCalendarTestPage() {
         setWorkflowId(currentWorkflowId);
       }
 
-      // 构建事件的开始和结束时间
-      const startDateTime = `${eventForm.startDate}T${eventForm.startTime}:00`;
-      const endDateTime = `${eventForm.endDate}T${eventForm.endTime}:00`;
+      // 构建事件的开始和结束时间 - Google Calendar API需要时区信息
+      const startDateTime = `${eventForm.startDate}T${eventForm.startTime}:00+08:00`;
+      const endDateTime = `${eventForm.endDate}T${eventForm.endTime}:00+08:00`;
 
       // 构建执行请求
       const requestBody: Record<string, unknown> = {
@@ -152,8 +152,8 @@ export default function GoogleCalendarTestPage() {
             summary: eventForm.summary,
             description: eventForm.description,
             location: eventForm.location,
-            start_datetime: startDateTime,
-            end_datetime: endDateTime
+            start: startDateTime,
+            end: endDateTime
           }
         }
       };
