@@ -53,37 +53,9 @@ async def get_execution_status(execution_id: str, deps: AuthenticatedDeps = Depe
 
         logger.info(f"✅ Execution status retrieved: {execution_id}")
         
-        # Map workflow-engine status to shared/models ExecutionStatus
-        status_mapping = {
-            "NEW": "pending",
-            "PENDING": "pending",
-            "RUNNING": "running",
-            "SUCCESS": "completed",
-            "COMPLETED": "completed",
-            "ERROR": "failed",
-            "FAILED": "failed",
-            "CANCELLED": "cancelled"
-        }
-        
-        # Convert workflow-engine response to Execution model
-        execution_data = {
-            "id": result.get("id", execution_id),
-            "workflow_id": result.get("workflow_id", ""),
-            "status": status_mapping.get(result.get("status", "NEW"), "pending"),
-            "started_at": result.get("start_time", result.get("started_at", 0)),
-            "ended_at": result.get("end_time", result.get("ended_at")),
-            "input_data": result.get("input_data", {}),
-            "output_data": result.get("result", result.get("output_data", {})),
-            "logs": [],  # TODO: Convert logs format if needed
-            "user_id": result.get("triggered_by", result.get("user_id", deps.current_user.sub)),
-            "session_id": result.get("session_id")
-        }
-        
-        # Handle run_data if present (contains detailed execution results)
-        if result.get("run_data"):
-            execution_data["run_data"] = result["run_data"]
-
-        return Execution(**execution_data)
+        # The result from workflow-engine should already match the Execution model
+        # since both use the same shared models
+        return Execution(**result)
 
     except (NotFoundError, HTTPException):
         raise
