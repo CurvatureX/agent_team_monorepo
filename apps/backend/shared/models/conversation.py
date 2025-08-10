@@ -44,6 +44,7 @@ class ResponseType(str, Enum):
     WORKFLOW = "RESPONSE_TYPE_WORKFLOW"
     ERROR = "RESPONSE_TYPE_ERROR"
     STATUS_CHANGE = "RESPONSE_TYPE_STATUS_CHANGE"
+    DEBUG_RESULT = "RESPONSE_TYPE_DEBUG_RESULT"
 
 
 class ErrorContent(BaseModel):
@@ -73,6 +74,7 @@ class ConversationResponse(BaseModel):
     workflow: Optional[str] = Field(default=None, description="工作流JSON字符串")
     error: Optional[ErrorContent] = Field(default=None, description="错误内容")
     status_change: Optional[StatusChangeContent] = Field(default=None, description="状态变化内容")
+    debug_result: Optional[Dict[str, Any]] = Field(default=None, description="调试结果")
 
     class Config:
         json_schema_extra = {

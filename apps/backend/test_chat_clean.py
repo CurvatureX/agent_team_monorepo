@@ -174,7 +174,7 @@ class CleanChatTester:
             return
             
         print(f"\n{Fore.YELLOW}Ready to chat. Type 'exit' to quit.{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}Example: I want to sync unread gmail to slack{Style.RESET_ALL}\n")
+        print(f"{Fore.YELLOW}Example: Send a HTTP request to https://google.com every 5 minutes{Style.RESET_ALL}\n")
         
         while True:
             try:

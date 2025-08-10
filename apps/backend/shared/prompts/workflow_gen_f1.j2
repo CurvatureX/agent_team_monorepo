@@ -48,7 +48,19 @@ Step 2: Discover Components (MANDATORY)
 2. **Identify Required Nodes**: Based on user requirements, identify specific node_type.subtype combinations you need
 3. **Get Detailed Specifications**: Call get_node_details() for ALL nodes you plan to use - THIS IS MANDATORY
 4. **Use Exact Specifications**: Only use node subtypes and parameters that exist in the MCP responses
+   - ⚠️ **PARAMETER NAMES MUST MATCH EXACTLY**: If MCP says "cron_expression", DO NOT use "expression"
+   - ⚠️ **PARAMETER VALUES - ALL MUST BE STRINGS**:
+     * ALL parameter values must be JSON strings, regardless of type
+     * boolean type → use string: "true" or "false"
+     * integer type → use string: "30"
+     * float type → use string: "0.7"
+     * string type → use string: "value"
+     * Examples: "enabled": "true", "timeout": "30", "temperature": "0.7", "name": "task"
 5. **Generate Workflow**: Create JSON using ONLY the actual specifications from get_node_details
+
+🔴 CRITICAL SUBTYPE RULES - VIOLATIONS WILL CAUSE WORKFLOW FAILURE:
+- **ONLY use EXACT subtypes returned by MCP**
+- **When in doubt, use get_node_types() to verify**: Never assume a subtype exists
 
 Example discovery flow:
 User: "Send a Slack message when a new file is uploaded to Google Drive"
@@ -156,6 +168,11 @@ FINAL RESPONSE MUST BE JSON ONLY:
 - Every parameter name EXACTLY matches the MCP get_node_details response
 - AI nodes use "system_prompt" parameter (not "prompt")
 - All required parameters have non-null values from MCP specifications
+- **CRITICAL: ALL PARAMETERS MUST BE STRINGS**:
+  * Boolean parameters: Use string "true"/"false"
+  * Integer parameters: Use string "30"
+  * Float parameters: Use string "0.7"
+  * ALL parameter values must be wrapped in quotes as strings
 - Node positions use float coordinates: {"x": float, "y": float}
 - type_version is integer (default: 1)
 - on_error is either "continue" or "stop"
@@ -284,8 +301,9 @@ FINAL RESPONSE MUST BE JSON ONLY:
   - Chinese: Max 20 characters, meaningful semantic description
   - Examples: "slack-message-trigger", "calendar-api-call", "task-priority-check", "任务优先级检查"
   - Used in connections mapping (connections reference node names, not IDs)
-- `type`: string (required) - node type (TRIGGER, AI_AGENT, EXTERNAL_ACTION, ACTION, FLOW, HUMAN_IN_THE_LOOP, TOOL, MEMORY)
-- `subtype`: string (required) - node subtype from MCP specs
+- `type`: string (required) - node type (TRIGGER_NODE, AI_AGENT_NODE, etc.)
+- `subtype`: string (required) - ⚠️ MUST BE EXACT SUBTYPE FROM MCP RESPONSE:
+  - **NEVER modify or invent subtypes**: Use EXACTLY what MCP returns
 - `type_version`: int (default: 1) - type version number
 - `position`: PositionData (required) - `{"x": float, "y": float}` coordinates
 - `parameters`: Dict[str, str] (default: {}) - node-specific parameters from MCP specs
@@ -490,5 +508,5 @@ FINAL RESPONSE MUST BE JSON ONLY:
 - `save_execution_progress`: boolean (default: true) - save execution progress
 - `save_manual_executions`: boolean (default: true) - save manual executions
 - `timeout`: number (default: 3600) - global timeout in seconds
-- `error_policy`: string (default: "continue") - "continue" | "stop" | "retry"
-- `caller_policy`: string (default: "workflow") - caller policy setting
+- `error_policy`: string (default: "continue") - ⚠️ MUST BE EXACTLY "continue" or "stop" (NOT "continue_after_error", "retry", etc.)
+- `caller_policy`: string (default: "workflow") - ⚠️ MUST BE EXACTLY "workflow" or "user"

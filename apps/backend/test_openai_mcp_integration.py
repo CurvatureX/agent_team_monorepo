@@ -423,6 +423,7 @@ def interactive_chat():
                 assistant_message = final_response.choices[0].message.content
                 messages.append({"role": "assistant", "content": assistant_message})
                 print(f"🤖 Assistant: {assistant_message}")
+                print("done!")
 
             else:
                 # No function calls, just add the response
