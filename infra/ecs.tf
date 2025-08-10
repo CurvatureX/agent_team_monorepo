@@ -105,6 +105,46 @@ resource "aws_iam_role_policy_attachment" "ecs_task_service_discovery" {
   policy_arn = aws_iam_policy.service_discovery.arn
 }
 
+# IAM Policy for OpenTelemetry X-Ray and CloudWatch
+resource "aws_iam_policy" "otel_observability" {
+  name        = "${local.name_prefix}-otel-observability"
+  description = "Policy for OpenTelemetry X-Ray and CloudWatch access"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "xray:PutTraceSegments",
+          "xray:PutTelemetryRecords"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "cloudwatch:PutMetricData"
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "cloudwatch:namespace" = "AgentTeam"
+          }
+        }
+      }
+    ]
+  })
+
+  tags = local.common_tags
+}
+
+# Attach OTEL policy to ECS task role
+resource "aws_iam_role_policy_attachment" "ecs_task_otel" {
+  role       = aws_iam_role.ecs_task_role.name
+  policy_arn = aws_iam_policy.otel_observability.arn
+}
+
 # API Gateway Task Definition
 resource "aws_ecs_task_definition" "api_gateway" {
   family                   = "${local.name_prefix}-api-gateway"
@@ -181,6 +221,13 @@ resource "aws_ecs_task_definition" "api_gateway" {
         }
       ]
 
+      dependsOn = [
+        {
+          containerName = "aws-otel-collector"
+          condition     = "START"
+        }
+      ]
+
       logConfiguration = {
         logDriver = "awslogs"
         options = {
@@ -196,6 +243,35 @@ resource "aws_ecs_task_definition" "api_gateway" {
         timeout     = 5
         retries     = 3
         startPeriod = 60
+      }
+    },
+    {
+      name  = "aws-otel-collector"
+      image = "public.ecr.aws/aws-observability/aws-otel-collector:latest"
+
+      essential = false
+
+      portMappings = [
+        {
+          containerPort = 4317
+          protocol      = "tcp"
+        }
+      ]
+
+      environment = [
+        {
+          name = "AOT_CONFIG_CONTENT"
+          value = "receivers:\n  otlp:\n    protocols:\n      grpc:\n        endpoint: 0.0.0.0:4317\n      http:\n        endpoint: 0.0.0.0:4318\n\nprocessors:\n  batch:\n    timeout: 1s\n    send_batch_size: 1024\n  memory_limiter:\n    limit_mib: 256\n\nexporters:\n  awsxray:\n    region: ${var.aws_region}\n  awscloudwatchmetrics:\n    region: ${var.aws_region}\n    namespace: AgentTeam\n    dimension_rollup_option: NoDimensionRollup\n\nservice:\n  pipelines:\n    traces:\n      receivers: [otlp]\n      processors: [memory_limiter, batch]\n      exporters: [awsxray]\n    metrics:\n      receivers: [otlp]\n      processors: [memory_limiter, batch]\n      exporters: [awscloudwatchmetrics]"
+        }
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.ecs.name
+          awslogs-region        = var.aws_region
+          awslogs-stream-prefix = "otel-collector-api-gateway"
+        }
       }
     }
   ])
@@ -279,6 +355,13 @@ resource "aws_ecs_task_definition" "workflow_engine" {
         }
       ]
 
+      dependsOn = [
+        {
+          containerName = "aws-otel-collector"
+          condition     = "START"
+        }
+      ]
+
       logConfiguration = {
         logDriver = "awslogs"
         options = {
@@ -294,6 +377,35 @@ resource "aws_ecs_task_definition" "workflow_engine" {
         timeout     = 5
         retries     = 3
         startPeriod = 120
+      }
+    },
+    {
+      name  = "aws-otel-collector"
+      image = "public.ecr.aws/aws-observability/aws-otel-collector:latest"
+
+      essential = false
+
+      portMappings = [
+        {
+          containerPort = 4317
+          protocol      = "tcp"
+        }
+      ]
+
+      environment = [
+        {
+          name = "AOT_CONFIG_CONTENT"
+          value = "receivers:\n  otlp:\n    protocols:\n      grpc:\n        endpoint: 0.0.0.0:4317\n      http:\n        endpoint: 0.0.0.0:4318\n\nprocessors:\n  batch:\n    timeout: 1s\n    send_batch_size: 1024\n  memory_limiter:\n    limit_mib: 256\n\nexporters:\n  awsxray:\n    region: ${var.aws_region}\n  awscloudwatchmetrics:\n    region: ${var.aws_region}\n    namespace: AgentTeam\n    dimension_rollup_option: NoDimensionRollup\n\nservice:\n  pipelines:\n    traces:\n      receivers: [otlp]\n      processors: [memory_limiter, batch]\n      exporters: [awsxray]\n    metrics:\n      receivers: [otlp]\n      processors: [memory_limiter, batch]\n      exporters: [awscloudwatchmetrics]"
+        }
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.ecs.name
+          awslogs-region        = var.aws_region
+          awslogs-stream-prefix = "otel-collector-workflow-engine"
+        }
       }
     }
   ])
@@ -418,6 +530,13 @@ resource "aws_ecs_task_definition" "workflow_agent" {
         }
       ]
 
+      dependsOn = [
+        {
+          containerName = "aws-otel-collector"
+          condition     = "START"
+        }
+      ]
+
       logConfiguration = {
         logDriver = "awslogs"
         options = {
@@ -433,6 +552,35 @@ resource "aws_ecs_task_definition" "workflow_agent" {
         timeout     = 5
         retries     = 3
         startPeriod = 120
+      }
+    },
+    {
+      name  = "aws-otel-collector"
+      image = "public.ecr.aws/aws-observability/aws-otel-collector:latest"
+
+      essential = false
+
+      portMappings = [
+        {
+          containerPort = 4317
+          protocol      = "tcp"
+        }
+      ]
+
+      environment = [
+        {
+          name = "AOT_CONFIG_CONTENT"
+          value = "receivers:\n  otlp:\n    protocols:\n      grpc:\n        endpoint: 0.0.0.0:4317\n      http:\n        endpoint: 0.0.0.0:4318\n\nprocessors:\n  batch:\n    timeout: 1s\n    send_batch_size: 1024\n  memory_limiter:\n    limit_mib: 256\n\nexporters:\n  awsxray:\n    region: ${var.aws_region}\n  awscloudwatchmetrics:\n    region: ${var.aws_region}\n    namespace: AgentTeam\n    dimension_rollup_option: NoDimensionRollup\n\nservice:\n  pipelines:\n    traces:\n      receivers: [otlp]\n      processors: [memory_limiter, batch]\n      exporters: [awsxray]\n    metrics:\n      receivers: [otlp]\n      processors: [memory_limiter, batch]\n      exporters: [awscloudwatchmetrics]"
+        }
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.ecs.name
+          awslogs-region        = var.aws_region
+          awslogs-stream-prefix = "otel-collector-workflow-agent"
+        }
       }
     }
   ])
@@ -590,6 +738,13 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
         }
       ]
 
+      dependsOn = [
+        {
+          containerName = "aws-otel-collector"
+          condition     = "START"
+        }
+      ]
+
       logConfiguration = {
         logDriver = "awslogs"
         options = {
@@ -605,6 +760,35 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
         timeout     = 15
         retries     = 3
         startPeriod = 180
+      }
+    },
+    {
+      name  = "aws-otel-collector"
+      image = "public.ecr.aws/aws-observability/aws-otel-collector:latest"
+
+      essential = false
+
+      portMappings = [
+        {
+          containerPort = 4317
+          protocol      = "tcp"
+        }
+      ]
+
+      environment = [
+        {
+          name = "AOT_CONFIG_CONTENT"
+          value = "receivers:\n  otlp:\n    protocols:\n      grpc:\n        endpoint: 0.0.0.0:4317\n      http:\n        endpoint: 0.0.0.0:4318\n\nprocessors:\n  batch:\n    timeout: 1s\n    send_batch_size: 1024\n  memory_limiter:\n    limit_mib: 256\n\nexporters:\n  awsxray:\n    region: ${var.aws_region}\n  awscloudwatchmetrics:\n    region: ${var.aws_region}\n    namespace: AgentTeam\n    dimension_rollup_option: NoDimensionRollup\n\nservice:\n  pipelines:\n    traces:\n      receivers: [otlp]\n      processors: [memory_limiter, batch]\n      exporters: [awsxray]\n    metrics:\n      receivers: [otlp]\n      processors: [memory_limiter, batch]\n      exporters: [awscloudwatchmetrics]"
+        }
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.ecs.name
+          awslogs-region        = var.aws_region
+          awslogs-stream-prefix = "otel-collector-workflow-scheduler"
+        }
       }
     }
   ])
