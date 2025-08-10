@@ -11,9 +11,9 @@ import os
 # Import shared models
 import sys
 import time
-from typing import AsyncGenerator, Optional
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Optional
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 
 from workflow_agent.agents.state import WorkflowStage, WorkflowState
@@ -28,43 +28,54 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(os.path.dirname(current_dir))  # Go to apps/backend
 sys.path.insert(0, parent_dir)
 
-# 遥测组件
-try:
-    from shared.telemetry import (  # type: ignore[assignment]
-        MetricsMiddleware,
-        TrackingMiddleware,
-        setup_telemetry,
-    )
-except ImportError:
-    # Fallback for deployment - create dummy implementations
-    print("Warning: Could not import telemetry components, using stubs")
-
-    def setup_telemetry(*args, **kwargs):  # type: ignore[misc]
-        pass
-
-    class TrackingMiddleware:  # type: ignore[misc]
-        def __init__(self, app):
-            self.app = app
-
-        async def __call__(self, scope, receive, send):
-            await self.app(scope, receive, send)
-
-    class MetricsMiddleware:  # type: ignore[misc]
-        def __init__(self, app, **kwargs):
-            self.app = app
-
-        async def __call__(self, scope, receive, send):
-            await self.app(scope, receive, send)
-
-
 # shared models导入（两种环境都相同）
-from shared.models.conversation import (
+from shared.models.conversation import (  # noqa: E402
     ConversationRequest,
     ConversationResponse,
     ErrorContent,
     ResponseType,
     StatusChangeContent,
 )
+
+# Initialize TELEMETRY_AVAILABLE variable
+TELEMETRY_AVAILABLE = False
+
+if TYPE_CHECKING:
+    from shared.telemetry import MetricsMiddleware as TelemetryMetricsMiddleware
+    from shared.telemetry import TrackingMiddleware as TelemetryTrackingMiddleware
+    from shared.telemetry import setup_telemetry as telemetry_setup
+
+    MetricsMiddleware = TelemetryMetricsMiddleware
+    TrackingMiddleware = TelemetryTrackingMiddleware
+    setup_telemetry = telemetry_setup
+else:
+    try:
+        from shared.telemetry import (
+            MetricsMiddleware,
+            TrackingMiddleware,
+            setup_telemetry,
+        )
+        TELEMETRY_AVAILABLE = True
+    except ImportError:
+        # Fallback for deployment - create dummy implementations
+        print("Warning: Could not import telemetry components, using stubs")
+
+        def setup_telemetry(*args: Any, **kwargs: Any) -> None:
+            pass
+
+        class TrackingMiddleware:
+            def __init__(self, app: Any) -> None:
+                self.app = app
+
+            async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+                await self.app(scope, receive, send)
+
+        class MetricsMiddleware:
+            def __init__(self, app: Any, **kwargs: Any) -> None:
+                self.app = app
+
+            async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+                await self.app(scope, receive, send)
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +148,20 @@ class WorkflowAgentServicer:
                 )
 
             # 添加用户消息到对话历史
+            # Handle case where current_state is None due to database access issues
+            if current_state is None:
+                current_state = {
+                    "session_id": session_id,
+                    "user_id": request.user_id or "anonymous",
+                    "stage": "clarification",
+                    "intent_summary": "",
+                    "conversations": [],
+                    "current_workflow": {},
+                    "debug_loop_count": 0,
+                }
+                logger.warning("Using fallback state due to database access failure", 
+                             extra={"session_id": session_id})
+            
             conversations = current_state.get("conversations", [])
             if request.user_message:
                 conversations.append(
@@ -208,21 +233,29 @@ class WorkflowAgentServicer:
                                     session_id, updated_state
                                 )
                                 if workflow_response:
-                                    logger.info(
-                                        "Sending workflow response after workflow_generation node completed"
-                                    )
+                                    msg = "Sending workflow response after workflow_gen completed"
+                                    logger.info(msg)
                                     yield f"data: {workflow_response.model_dump_json()}\n\n"
-
-                            # Send debug result when debug node completes
+                            # Send debug result as message when debug node completes
                             if node_name == "debug" and updated_state.get("debug_result"):
                                 debug_result = updated_state.get("debug_result", {})
+                                # 构建debug消息
+                                if isinstance(debug_result, dict):
+                                    if debug_result.get("success"):
+                                        debug_message = "✅ SUCCESS: 工作流验证通过"
+                                    else:
+                                        error_msg = debug_result.get("error", "工作流存在问题")
+                                        debug_message = f"❌ ERROR: {error_msg}"
+                                else:
+                                    debug_message = "调试完成"
+
                                 debug_response = ConversationResponse(
                                     session_id=session_id,
-                                    response_type=ResponseType.DEBUG_RESULT,
-                                    debug_result=debug_result,
-                                    is_final=False,
+                                    response_type=ResponseType.MESSAGE,
+                                    message=debug_message,
+                                    is_final=debug_result.get("success", False)
                                 )
-                                logger.info("Sending debug result after debug node completed")
+                                logger.info("Sending debug result as message after debug completed")
                                 yield f"data: {debug_response.model_dump_json()}\n\n"
 
                             # 更新状态跟踪
@@ -374,9 +407,7 @@ class WorkflowAgentServicer:
                 "clarification_context", {"origin": "create", "pending_questions": []}
             ),
             "conversations": db_state.get("conversations", []),
-            "identified_gaps": db_state.get("identified_gaps", []),
-            "gap_status": db_state.get("gap_status", "no_gap"),
-            # gap_resolution removed
+            # gap fields removed in optimized architecture
             "current_workflow": {},
             "debug_result": db_state.get("debug_result", ""),
             "debug_loop_count": db_state.get("debug_loop_count", 0),
@@ -425,7 +456,6 @@ class WorkflowAgentServicer:
                 else str(current_stage)
             ),
             "intent_summary": current_state.get("intent_summary", ""),
-            "identified_gaps": current_state.get("identified_gaps", []),
             "debug_result": current_state.get("debug_result", ""),
             "debug_loop_count": current_state.get("debug_loop_count", 0),
             "conversations_count": len(current_state.get("conversations", [])),
@@ -481,19 +511,33 @@ class WorkflowAgentServicer:
     async def _create_workflow_response(
         self, session_id: str, state: WorkflowState
     ) -> Optional[ConversationResponse]:
-        """创建工作流响应"""
+        """创建工作流响应，包含workflow_id"""
         current_workflow = state.get("current_workflow", {})
+        workflow_id = state.get("workflow_id")
 
         if (
             current_workflow
             and isinstance(current_workflow, dict)
             and current_workflow.get("nodes")
         ):
-            workflow_json = json.dumps(current_workflow)
-            logger.info(
-                "Creating workflow response",
-                extra={"node_count": len(current_workflow.get("nodes", []))},
-            )
+            # Add workflow_id to the workflow data if available
+            workflow_data = current_workflow.copy()
+            if workflow_id:
+                workflow_data["workflow_id"] = workflow_id
+                logger.info(
+                    "Creating workflow response with workflow_id",
+                    extra={
+                        "node_count": len(current_workflow.get("nodes", [])),
+                        "workflow_id": workflow_id
+                    },
+                )
+            else:
+                logger.warning(
+                    "Creating workflow response without workflow_id",
+                    extra={"node_count": len(current_workflow.get("nodes", []))},
+                )
+            
+            workflow_json = json.dumps(workflow_data)
             return ConversationResponse(
                 session_id=session_id,
                 response_type=ResponseType.WORKFLOW,
@@ -531,12 +575,12 @@ if not otel_disabled:
     )
 
     # 添加遥测中间件
-    app.add_middleware(TrackingMiddleware)  # type: ignore
-    app.add_middleware(MetricsMiddleware, service_name="workflow-agent")  # type: ignore
+    app.add_middleware(TrackingMiddleware)
+    app.add_middleware(MetricsMiddleware, service_name="workflow-agent")
 
-    print(
-        f"OpenTelemetry configured for workflow-agent in {environment} environment with endpoint: {otlp_endpoint}"
-    )
+    msg = f"OpenTelemetry configured for workflow-agent in {environment}"
+    msg += f" with endpoint: {otlp_endpoint}"
+    print(msg)
 else:
     print("OpenTelemetry disabled for workflow-agent via OTEL_SDK_DISABLED environment variable")
 

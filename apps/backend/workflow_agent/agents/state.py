@@ -1,7 +1,7 @@
 """
 LangGraph state management for Workflow Agent
-State definitions for the 4-node architecture
-Based on main branch, updated for MCP integration
+State definitions for the optimized 3-node architecture
+Simplified for better user experience with automatic gap handling
 """
 
 from enum import Enum
@@ -9,13 +9,13 @@ from typing import Any, Dict, List, NotRequired, TypedDict
 
 
 class WorkflowStage(str, Enum):
-    """Workflow stages for 4-node architecture"""
+    """Workflow stages for 3-node architecture"""
 
     CLARIFICATION = "clarification"
-    GAP_ANALYSIS = "gap_analysis"
     WORKFLOW_GENERATION = "workflow_generation"
     DEBUG = "debug"
     COMPLETED = "completed"
+    FAILED = "failed"  # Workflow generation failed after max attempts
 
 
 class WorkflowOrigin(str, Enum):
@@ -30,7 +30,6 @@ class ClarificationPurpose(str, Enum):
     
     INITIAL_INTENT = "initial_intent"
     TEMPLATE_MODIFICATION = "template_modification"
-    GAP_NEGOTIATION = "gap_negotiation"  # When negotiating gap alternatives with user
     DEBUG_ISSUE = "debug_issue"
 
 
@@ -52,15 +51,8 @@ class ClarificationContext(TypedDict):
     origin: NotRequired[str]  # workflow origin
 
 
-class GapDetail(TypedDict):
-    """Detailed gap information from gap analysis"""
-    required_capability: str
-    missing_component: str
-    alternatives: List[str]
-
-
 class WorkflowState(TypedDict):
-    """Complete workflow state for LangGraph processing in 4-node architecture"""
+    """Complete workflow state for LangGraph processing in 3-node architecture"""
     
     # Session and user info
     session_id: str
@@ -79,11 +71,6 @@ class WorkflowState(TypedDict):
     
     # Clarification context
     clarification_context: ClarificationContext
-    clarification_ready: NotRequired[bool]  # Whether clarification is complete and ready to proceed
-    
-    # Gap analysis results
-    gap_status: NotRequired[str]  # "no_gap", "has_gap", "gap_resolved"
-    identified_gaps: NotRequired[List[GapDetail]]  # detailed gap information
     
     # Workflow data
     current_workflow: NotRequired[Any]  # workflow JSON object
@@ -93,6 +80,17 @@ class WorkflowState(TypedDict):
     # Debug information - updated to support structured output
     debug_result: NotRequired[Dict[str, Any]]  # structured debug result from prompt
     debug_loop_count: NotRequired[int]
+    debug_error_for_regeneration: NotRequired[str]  # Error message to pass to workflow generation
+    
+    # Workflow creation tracking (new fields for moved workflow creation)
+    workflow_id: NotRequired[str]  # ID of created workflow in workflow_engine
+    workflow_creation_result: NotRequired[Dict[str, Any]]  # Full creation result from workflow_engine
+    workflow_creation_error: NotRequired[str]  # Error message if workflow creation failed
+    generation_loop_count: NotRequired[int]  # Counter for workflow generation retry attempts
+    
+    # Failure information
+    workflow_generation_failed: NotRequired[bool]  # True if generation failed after max attempts
+    final_error_message: NotRequired[str]  # Final error message for failed generation
     
     # Template information
     template_id: NotRequired[str]  # template ID if using template
@@ -112,16 +110,6 @@ def get_intent_summary(state: WorkflowState) -> str:
     return state.get("intent_summary", "")
 
 
-def get_gap_status(state: WorkflowState) -> str:
-    """Get gap status from state"""
-    return state.get("gap_status", "no_gap")
-
-
-def get_identified_gaps(state: WorkflowState) -> List[Dict[str, Any]]:
-    """Get identified gaps from state"""
-    gaps = state.get("identified_gaps", [])
-    return [dict(gap) for gap in gaps]
-
 
 def get_current_workflow(state: WorkflowState) -> Any:
     """Get current workflow from state"""
@@ -132,3 +120,30 @@ def get_debug_errors(state: WorkflowState) -> List[str]:
     """Get debug errors from structured debug result"""
     debug_result = state.get("debug_result", {})
     return debug_result.get("errors", [])
+
+
+def is_clarification_ready(state: WorkflowState) -> bool:
+    """
+    Determine if clarification is ready to proceed to next stage.
+    This is derived from the state rather than stored.
+    
+    Returns True when:
+    - No pending questions in clarification_context
+    - Intent summary is not empty
+    - Not coming from gap analysis with unresolved gaps
+    """
+    clarification_context = state.get("clarification_context", {})
+    pending_questions = clarification_context.get("pending_questions", [])
+    intent_summary = state.get("intent_summary", "")
+    
+    # If there are pending questions, not ready
+    if pending_questions:
+        return False
+    
+    # If no intent summary collected yet, not ready
+    if not intent_summary:
+        return False
+    
+    
+    # Otherwise, we're ready to proceed
+    return True
