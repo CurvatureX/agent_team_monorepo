@@ -183,16 +183,26 @@ class WorkflowAgentServicer:
                                     logger.info("Sending workflow response after workflow_generation node completed")
                                     yield f"data: {workflow_response.model_dump_json()}\n\n"
                             
-                            # Send debug result when debug node completes
+                            # Send debug result as message when debug node completes
                             if node_name == "debug" and updated_state.get("debug_result"):
                                 debug_result = updated_state.get("debug_result", {})
+                                # 构建debug消息
+                                if isinstance(debug_result, dict):
+                                    if debug_result.get("success"):
+                                        debug_message = "✅ SUCCESS: 工作流验证通过"
+                                    else:
+                                        error_msg = debug_result.get("error", "工作流存在问题")
+                                        debug_message = f"❌ ERROR: {error_msg}"
+                                else:
+                                    debug_message = "调试完成"
+                                
                                 debug_response = ConversationResponse(
                                     session_id=session_id,
-                                    response_type=ResponseType.DEBUG_RESULT,
-                                    debug_result=debug_result,
-                                    is_final=False
+                                    response_type=ResponseType.MESSAGE,
+                                    message=debug_message,
+                                    is_final=debug_result.get("success", False)
                                 )
-                                logger.info("Sending debug result after debug node completed")
+                                logger.info("Sending debug result as message after debug node completed")
                                 yield f"data: {debug_response.model_dump_json()}\n\n"
 
                             # 更新状态跟踪

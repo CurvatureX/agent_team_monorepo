@@ -3,18 +3,19 @@ Workflow Agent State Manager
 在 workflow_agent 服务中管理 workflow_agent_state 的 CRUD 操作
 """
 
-import json
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-from core.config import settings
 import logging
+
+from workflow_agent.core.config import settings
+from workflow_agent.models.workflow_agent_state import WorkflowAgentStateModel, WorkflowStageEnum
 
 logger = logging.getLogger(__name__)
 
 # Import Supabase client
 try:
-    from supabase import create_client, Client
+    from supabase import create_client
     SUPABASE_AVAILABLE = True
 except ImportError:
     SUPABASE_AVAILABLE = False
@@ -55,8 +56,6 @@ class WorkflowAgentStateManager:
         session_id: str,
         user_id: str = "anonymous",
         initial_stage: str = "clarification",
-        workflow_context: Optional[Dict[str, Any]] = None,
-        access_token: Optional[str] = None,
     ) -> Optional[str]:
         """
         创建新的 workflow_agent_state 记录
@@ -76,42 +75,21 @@ class WorkflowAgentStateManager:
                 logger.warning("Supabase not available, using mock state", extra={"session_id": session_id})
                 return session_id  # 返回 mock ID
             
-            current_time = int(time.time() * 1000)
+            # Create model instance for validation
+            state_model = WorkflowAgentStateModel(
+                session_id=session_id,
+                user_id=user_id,
+                stage=WorkflowStageEnum(initial_stage),
+                previous_stage=None,
+                intent_summary="",
+                conversations=[],
+                current_workflow=None,
+                debug_loop_count=0,
+                final_error_message=None
+            )
             
-            # 默认的工作流上下文
-            if workflow_context is None:
-                workflow_context = {
-                    "origin": "create",
-                    "source_workflow_id": ""
-                }
-            
-            state_data = {
-                "session_id": session_id,
-                "user_id": user_id,
-                "created_at": current_time,
-                "updated_at": current_time,
-                "stage": initial_stage,
-                "previous_stage": None,
-                "execution_history": [],
-                "intent_summary": "",
-                "workflow_context": workflow_context,
-                "conversations": [],
-                "identified_gaps": [],
-                "gap_status": "no_gap",
-                "current_workflow": None,
-                "template_workflow": None,
-                "debug_result": None,
-                "debug_loop_count": 0,
-                "template_id": None,
-                "clarification_context": {
-                    "purpose": "initial_intent",
-                    "collected_info": {},
-                    "pending_questions": [],
-                    "origin": "create"
-                },
-                "gap_negotiation_count": 0,
-                "selected_alternative": None
-            }
+            # Convert to DB format
+            state_data = state_model.to_db_dict()
             
             result = self.supabase_client.table(self.table_name).insert(state_data).execute()
             
@@ -152,22 +130,14 @@ class WorkflowAgentStateManager:
                 # 返回最新的状态记录
                 latest_state = max(result.data, key=lambda x: x.get("updated_at", 0))
                 
-                # 处理 current_workflow 字段 (现在直接是JSONB，不需要解析)
-                if "current_workflow" not in latest_state:
-                    latest_state["current_workflow"] = None
+                # Create model from DB data for validation
+                state_model = WorkflowAgentStateModel(**latest_state)
                 
-                # 处理 debug_result 字段
-                if "debug_result" in latest_state and latest_state["debug_result"]:
-                    try:
-                        if isinstance(latest_state["debug_result"], str):
-                            latest_state["debug_result"] = json.loads(latest_state["debug_result"])
-                    except json.JSONDecodeError:
-                        pass  # Keep as string if not valid JSON
-                
-                # All fields should exist in database, no defaults needed
+                # Convert to WorkflowState format with derived fields
+                workflow_state = state_model.to_workflow_state()
                 
                 logger.debug("Retrieved workflow_agent_state", extra={"session_id": session_id})
-                return latest_state
+                return workflow_state
             else:
                 logger.debug("No workflow_agent_state found", extra={"session_id": session_id})
                 return None
@@ -206,11 +176,19 @@ class WorkflowAgentStateManager:
             
             state_id = current_state["id"]
             
+            # Filter updates to only include persistent fields
+            persistent_fields = [
+                "stage", "previous_stage", "intent_summary", "conversations",
+                "current_workflow", "debug_loop_count", "final_error_message"
+            ]
+            
+            filtered_updates = {k: v for k, v in updates.items() if k in persistent_fields}
+            
             # 确保更新时间戳
-            updates["updated_at"] = int(time.time() * 1000)
+            filtered_updates["updated_at"] = int(time.time() * 1000)
             
             result = self.supabase_client.table(self.table_name)\
-                .update(updates)\
+                .update(filtered_updates)\
                 .eq("id", state_id)\
                 .execute()
             
@@ -243,29 +221,27 @@ class WorkflowAgentStateManager:
             保存成功返回 True，失败返回 False
         """
         try:
+            # Create model from workflow state
+            state_model = WorkflowAgentStateModel.from_workflow_state(workflow_state)
+            
             # 检查状态是否存在
             existing_state = self.get_state_by_session(session_id, access_token)
             
             if existing_state:
-                # 更新现有状态
-                updates = self._prepare_state_for_db(workflow_state)
+                # 更新现有状态 - only update persistent fields
+                updates = state_model.to_db_dict()
                 return self.update_state(session_id, updates, access_token)
             else:
                 # 创建新状态
-                user_id = workflow_state.get("user_id", "anonymous")
-                workflow_context = workflow_state.get("workflow_context")
-                
                 state_id = self.create_state(
                     session_id=session_id,
-                    user_id=user_id,
-                    initial_stage=workflow_state.get("stage", "clarification"),
-                    workflow_context=workflow_context,
-                    access_token=access_token,
+                    user_id=state_model.user_id or "anonymous",
+                    initial_stage=state_model.stage.value,
                 )
                 
                 if state_id:
                     # 用完整状态数据更新
-                    updates = self._prepare_state_for_db(workflow_state)
+                    updates = state_model.to_db_dict()
                     return self.update_state(session_id, updates, access_token)
                 
                 return False
@@ -320,105 +296,27 @@ class WorkflowAgentStateManager:
         Returns:
             准备好的数据库字段字典
         """
-        db_state = {}
-        
-        # 直接字段映射 (基于state.py的WorkflowState)
-        field_mappings = {
-            "session_id": "session_id",
-            "user_id": "user_id", 
-            "created_at": "created_at",
-            "updated_at": "updated_at",
-            "stage": "stage",
-            "previous_stage": "previous_stage",
-            "execution_history": "execution_history",
-            "intent_summary": "intent_summary",
-            "identified_gaps": "identified_gaps",
-            "gap_status": "gap_status",
-            "debug_loop_count": "debug_loop_count",
-            "template_id": "template_id",
-            "current_workflow": "current_workflow",
-            "template_workflow": "template_workflow",
-            "gap_negotiation_count": "gap_negotiation_count",
-            "selected_alternative": "selected_alternative",
-        }
-        
-        for state_key, db_key in field_mappings.items():
-            if state_key in workflow_state:
-                db_state[db_key] = workflow_state[state_key]
-        
-        # current_workflow 现在直接存为JSONB，不需要转换
-        
-        # 处理 WorkflowStage 枚举类型
-        if "stage" in workflow_state:
-            stage_value = workflow_state["stage"]
-            if hasattr(stage_value, 'value'):  # 是枚举类型
-                db_state["stage"] = stage_value.value
-            else:
-                db_state["stage"] = str(stage_value)
-        
-        if "previous_stage" in workflow_state:
-            prev_stage_value = workflow_state["previous_stage"]
-            if prev_stage_value is not None:
-                if hasattr(prev_stage_value, 'value'):  # 是枚举类型
-                    db_state["previous_stage"] = prev_stage_value.value
-                else:
-                    db_state["previous_stage"] = str(prev_stage_value)
-        
-        # 处理 GapStatus 枚举类型
-        if "gap_status" in workflow_state:
-            gap_value = workflow_state["gap_status"]
-            if hasattr(gap_value, 'value'):  # 是枚举类型
-                db_state["gap_status"] = gap_value.value
-            else:
-                db_state["gap_status"] = str(gap_value)
-        
-        # debug_result 现在直接存为JSONB，不需要转换
-        if "debug_result" in workflow_state:
-            db_state["debug_result"] = workflow_state["debug_result"]
-        
-        # JSON 字段
-        json_fields = {
-            "workflow_context": "workflow_context",
-            "conversations": "conversations", 
-            "clarification_context": "clarification_context"
-        }
-        
-        for state_key, db_key in json_fields.items():
-            if state_key in workflow_state:
-                db_state[db_key] = workflow_state[state_key]
-        
-        return db_state
+        # Use model to handle conversion
+        state_model = WorkflowAgentStateModel.from_workflow_state(workflow_state)
+        return state_model.to_db_dict()
 
     def _get_mock_state(self, session_id: str) -> Dict[str, Any]:
         """返回模拟状态（用于没有 Supabase 的情况）"""
-        return {
-            "id": f"mock_{session_id}",
-            "session_id": session_id,
-            "user_id": "anonymous",
-            "stage": "clarification",
-            "previous_stage": None,
-            "conversations": [],
-            "intent_summary": "",
-            "current_workflow": None,
-            "template_workflow": None,
-            "identified_gaps": [],
-            "gap_status": "no_gap",
-            "workflow_context": {"origin": "create", "requirements": {}},
-            "clarification_context": {
-                "purpose": "initial_intent",
-                "collected_info": {},
-                "pending_questions": [],
-                "origin": "create"
-            },
-            "debug_result": None,
-            "debug_loop_count": 0,
-            "execution_history": [],
-            "template_id": None,
-            "gap_negotiation_count": 0,
-            "selected_alternative": None,
-            "created_at": int(time.time() * 1000),
-            "updated_at": int(time.time() * 1000)
-        }
+        # Create a mock model with minimal data
+        mock_model = WorkflowAgentStateModel(
+            session_id=session_id,
+            user_id="anonymous",
+            stage=WorkflowStageEnum.CLARIFICATION,
+            previous_stage=None,
+            intent_summary="",
+            conversations=[],
+            current_workflow=None,
+            debug_loop_count=0,
+            final_error_message=None
+        )
+        
+        # Return as WorkflowState format with derived fields
+        return mock_model.to_workflow_state()
 
 
 # 全局状态管理器实例

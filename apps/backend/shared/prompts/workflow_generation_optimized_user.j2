@@ -1,0 +1,34 @@
+## User Requirements
+{{ intent_summary }}
+
+## Conversation Context
+{% if conversation_context %}
+{{ conversation_context }}
+{% endif %}
+
+## Current Workflow Status
+{% if current_workflow %}
+Current workflow that needs modification:
+{{ current_workflow | tojson(indent=2) }}
+{% endif %}
+
+{% if debug_result %}
+Debug feedback to address:
+{{ debug_result }}
+{% endif %}
+
+## Task
+
+Generate an optimal workflow that fulfills the user's requirements using the available node capabilities.
+
+If certain capabilities are not directly available:
+1. Automatically select the best alternative approach
+2. Combine multiple nodes to achieve the desired outcome
+3. Include a brief explanation of your decisions in the response
+
+Output the complete workflow in DSL format with:
+- All necessary nodes and connections
+- Proper configuration for each node
+- Metadata section explaining any automatic decisions or substitutions
+
+Focus on delivering a working solution immediately rather than discussing limitations.
