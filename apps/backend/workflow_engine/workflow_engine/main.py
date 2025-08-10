@@ -37,7 +37,7 @@ except ImportError:
         async def __call__(self, scope, receive, send):
             await self.app(scope, receive, send)
 from shared.models.common import HealthResponse, HealthStatus
-from workflow_engine.api.v1 import executions, triggers, workflows
+from workflow_engine.api.v1 import credentials, executions, triggers, workflows
 from workflow_engine.core.config import get_settings
 from workflow_engine.models.database import close_db
 
@@ -111,6 +111,7 @@ app.add_middleware(
 app.include_router(workflows.router, prefix="/v1", tags=["Workflows"])
 app.include_router(executions.router, prefix="/v1", tags=["Executions"])
 app.include_router(triggers.router, prefix="/v1", tags=["Triggers"])
+app.include_router(credentials.router, prefix="/api/v1", tags=["Credentials"])
 
 
 @app.get("/health", response_model=HealthResponse)
