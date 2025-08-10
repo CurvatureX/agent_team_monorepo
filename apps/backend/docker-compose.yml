@@ -134,6 +134,8 @@ services:
     dns:
       - 1.1.1.1
       - 8.8.8.8
+    extra_hosts:
+      - "aws-0-ap-southeast-1.pooler.supabase.com:54.255.219.82"
     build:
       context: .
       dockerfile: ./workflow_engine/Dockerfile
@@ -176,6 +178,8 @@ services:
     dns:
       - 1.1.1.1
       - 8.8.8.8
+    extra_hosts:
+      - "aws-0-ap-southeast-1.pooler.supabase.com:54.255.219.82"
     build:
       context: .
       dockerfile: ./workflow_scheduler/Dockerfile
