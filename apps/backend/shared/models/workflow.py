@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, field_validator
 
 from .common import BaseResponse, EntityModel
+from .node_enums import NodeType
 
 
 class PositionData(BaseModel):
@@ -30,7 +31,7 @@ class NodeData(BaseModel):
     subtype: str
     type_version: int = Field(default=1)
     position: PositionData
-    parameters: Dict[str, str] = Field(default_factory=dict)
+    parameters: Dict[str, Any] = Field(default_factory=dict)
     credentials: Dict[str, str] = Field(default_factory=dict)
     disabled: bool = False
     on_error: str = Field(default="continue", pattern="^(continue|stop)$")
@@ -251,17 +252,8 @@ class WorkflowType(str, Enum):
     HYBRID = "hybrid"
 
 
-class NodeType(str, Enum):
-    """节点类型枚举"""
-
-    TRIGGER = "trigger"
-    ACTION = "action"
-    CONDITION = "condition"
-    LOOP = "loop"
-    WEBHOOK = "webhook"
-    API_CALL = "api_call"
-    EMAIL = "email"
-    DELAY = "delay"
+# Legacy NodeType removed - now using authoritative enums from shared.models.node_enums
+# All services should import NodeType from shared.models directly
 
 
 class WorkflowNode(BaseModel):

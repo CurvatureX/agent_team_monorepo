@@ -25,6 +25,13 @@ except ImportError:
     node_spec_registry = None
     NodeSpec = None
 
+try:
+    from shared.enums import ActionSubtype, normalize_subtype
+except ImportError:
+    # Fallback if shared enums not available
+    ActionSubtype = None
+    normalize_subtype = lambda x: x
+
 
 class ActionNodeExecutor(BaseNodeExecutor):
     """Executor for ACTION_NODE type."""
@@ -38,17 +45,22 @@ class ActionNodeExecutor(BaseNodeExecutor):
 
     def get_supported_subtypes(self) -> List[str]:
         """Get supported action subtypes."""
-        return ["RUN_CODE", "HTTP_REQUEST", "DATA_TRANSFORMATION", "FILE_OPERATION"]
+        if ActionSubtype:
+            # Use unified enum values
+            return [subtype.value for subtype in ActionSubtype]
+        else:
+            # Fallback to current format
+            return ["RUN_CODE", "HTTP_REQUEST", "DATA_TRANSFORMATION", "FILE_OPERATION"]
 
     def validate(self, node: Any) -> List[str]:
         """Validate action node configuration using spec-based validation."""
         # First use the base class validation which includes spec validation
         errors = super().validate(node)
-        
+
         # If spec validation passed, we're done
         if not errors and self.spec:
             return errors
-        
+
         # Fallback to basic validation if spec not available
         if not node.subtype:
             errors.append("Action subtype is required")
@@ -58,40 +70,53 @@ class ActionNodeExecutor(BaseNodeExecutor):
             errors.append(f"Unsupported action subtype: {node.subtype}")
 
         return errors
-    
+
     def _validate_legacy(self, node: Any) -> List[str]:
         """Legacy validation for backward compatibility."""
         errors = []
-        
-        if not hasattr(node, 'subtype'):
+
+        if not hasattr(node, "subtype"):
             return errors
-            
+
         subtype = node.subtype
 
         if subtype == "RUN_CODE":
             errors.extend(self._validate_required_parameters(node, ["code", "language"]))
-            if hasattr(node, 'parameters'):
+            if hasattr(node, "parameters"):
                 language = node.parameters.get("language", "")
                 if language not in ["python", "javascript", "bash", "sql", "r", "julia"]:
                     errors.append(f"Unsupported language: {language}")
 
         elif subtype == "HTTP_REQUEST":
             errors.extend(self._validate_required_parameters(node, ["method", "url"]))
-            if hasattr(node, 'parameters'):
+            if hasattr(node, "parameters"):
                 method = node.parameters.get("method", "").upper()
                 if method not in ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]:
                     errors.append(f"Invalid HTTP method: {method}")
 
         elif subtype == "DATA_TRANSFORMATION":
-            errors.extend(self._validate_required_parameters(node, ["transformation_type", "transformation_rule"]))
-            if hasattr(node, 'parameters'):
+            errors.extend(
+                self._validate_required_parameters(
+                    node, ["transformation_type", "transformation_rule"]
+                )
+            )
+            if hasattr(node, "parameters"):
                 transform_type = node.parameters.get("transformation_type", "")
-                if transform_type not in ["filter", "map", "reduce", "sort", "group", "join", "aggregate", "custom"]:
+                if transform_type not in [
+                    "filter",
+                    "map",
+                    "reduce",
+                    "sort",
+                    "group",
+                    "join",
+                    "aggregate",
+                    "custom",
+                ]:
                     errors.append(f"Invalid transformation type: {transform_type}")
 
         elif subtype == "FILE_OPERATION":
             errors.extend(self._validate_required_parameters(node, ["operation", "file_path"]))
-            if hasattr(node, 'parameters'):
+            if hasattr(node, "parameters"):
                 operation = node.parameters.get("operation", "")
                 if operation not in ["read", "write", "copy", "move", "delete", "list"]:
                     errors.append(f"Invalid file operation: {operation}")
@@ -195,7 +220,7 @@ class ActionNodeExecutor(BaseNodeExecutor):
         timeout = self.get_parameter_with_spec(context, "timeout")
         authentication = self.get_parameter_with_spec(context, "authentication")
         retry_attempts = self.get_parameter_with_spec(context, "retry_attempts")
-        
+
         # Convert method to uppercase
         if method:
             method = method.upper()
@@ -210,12 +235,12 @@ class ActionNodeExecutor(BaseNodeExecutor):
             if isinstance(headers, str):
                 headers = {}
                 logs.append("WARNING: headers was a string, using empty dict")
-                
+
             # Also ensure data is a dictionary
             if isinstance(data, str):
                 data = {}
                 logs.append("WARNING: data was a string, using empty dict")
-                
+
             response = requests.request(
                 method=method,
                 url=url,
