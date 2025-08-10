@@ -91,7 +91,7 @@ export const loadNodeTemplatesAtom = atom(
       // Fallback to local JSON file
       try {
         const localData = await import('@/lib/node-template.json');
-        set(nodeTemplatesAtom, localData.default.node_templates);
+        set(nodeTemplatesAtom, localData.default.node_templates as unknown as NodeTemplate[]);
       } catch (localError) {
         console.error('Failed to load local node templates:', localError);
         set(nodeTemplatesErrorAtom, 'Failed to load node templates');

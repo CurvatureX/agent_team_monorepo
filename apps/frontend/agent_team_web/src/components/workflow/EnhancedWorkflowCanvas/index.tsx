@@ -39,7 +39,6 @@ const nodeTypes: NodeTypes = {
 
 const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
   workflow,
-  onWorkflowChange,
   readOnly = false,
   className,
 }) => {
