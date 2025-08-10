@@ -25,6 +25,7 @@ from .state import (
     get_identified_gaps,
     get_current_workflow,
     get_debug_errors,
+    is_clarification_ready,
 )
 from .mcp_tools import MCPToolCaller
 from core.config import settings
@@ -164,8 +165,6 @@ class WorkflowAgentNodes:
             if previous_stage == WorkflowStage.GAP_ANALYSIS and pending_questions:
                 logger.info("Coming from gap_analysis with pending questions, waiting for user input")
                 # Keep the pending questions and wait for user response
-                # IMPORTANT: Don't set clarification_ready to avoid infinite loop
-                state["clarification_ready"] = False
                 # Keep previous_stage so routing knows we came from gap_analysis
                 state["previous_stage"] = WorkflowStage.GAP_ANALYSIS
                 return {**state, "stage": WorkflowStage.CLARIFICATION}
@@ -282,8 +281,7 @@ class WorkflowAgentNodes:
             self._add_conversation(state, "assistant", response_text)
 
             # Keep stage as CLARIFICATION - routing logic will decide next step
-            # Store whether we're ready to continue for routing decision
-            state["clarification_ready"] = is_ready
+            # Note: clarification readiness is now derived from state, not stored
             # Set previous_stage for next node to know where we came from
             state["previous_stage"] = WorkflowStage.CLARIFICATION
             return {**state, "stage": WorkflowStage.CLARIFICATION}
@@ -319,10 +317,14 @@ class WorkflowAgentNodes:
                 # User has already chosen from alternatives, mark gap as resolved
                 logger.info("User has made choice from gap alternatives, marking as resolved")
                 state["gap_status"] = "gap_resolved"
-                # Clear the pending questions since user responded
-                clarification_context["pending_questions"] = []
-                clarification_context["purpose"] = "gap_resolved"  # Update purpose
-                state["clarification_context"] = clarification_context
+                # Create a new clarification context with updated values
+                updated_context = ClarificationContext(
+                    purpose="gap_resolved",
+                    collected_info=clarification_context.get("collected_info", {}),
+                    pending_questions=[],  # Clear the pending questions since user responded
+                    origin=clarification_context.get("origin", "create")
+                )
+                state["clarification_context"] = updated_context
                 # Set previous_stage for routing
                 state["previous_stage"] = WorkflowStage.GAP_ANALYSIS
                 # Don't need to run LLM again, just return with gap_resolved
@@ -440,10 +442,14 @@ class WorkflowAgentNodes:
                         self._add_conversation(state, "assistant", negotiation_phrase)
                         
                         # Set up clarification context to wait for user's choice
-                        clarification_context = state.get("clarification_context", {})
-                        clarification_context["purpose"] = "gap_negotiation"
-                        clarification_context["pending_questions"] = [negotiation_phrase]
-                        state["clarification_context"] = clarification_context
+                        existing_context = state.get("clarification_context", {})
+                        updated_context = ClarificationContext(
+                            purpose="gap_negotiation",
+                            collected_info=existing_context.get("collected_info", {}),
+                            pending_questions=[negotiation_phrase],
+                            origin=existing_context.get("origin", "create")
+                        )
+                        state["clarification_context"] = updated_context
                 else:
                     # For other cases, just add the full response
                     self._add_conversation(state, "assistant", response_text)
@@ -907,8 +913,7 @@ You MUST use the exact node types, subtypes, and parameters from the MCP respons
             if error_types["missing_requirements"]:
                 # Need more information from user
                 logger.info("Missing requirements detected, returning to clarification")
-                # Reset clarification_ready since we need more info
-                state["clarification_ready"] = False
+                # Note: clarification readiness will be derived from pending questions
                 return {
                     **state,
                     "stage": WorkflowStage.CLARIFICATION,
@@ -1112,8 +1117,8 @@ You MUST use the exact node types, subtypes, and parameters from the MCP respons
             clarification_context = state.get("clarification_context", {})
             pending_questions = clarification_context.get("pending_questions", [])
             
-            # Also check the clarification_ready flag for backward compatibility
-            clarification_ready = state.get("clarification_ready", False)
+            # Derive clarification readiness from state
+            clarification_ready = is_clarification_ready(state)
             
             logger.info(f"Clarification routing check: pending_questions={len(pending_questions)}, ready={clarification_ready}")
             

@@ -79,11 +79,12 @@ class WorkflowState(TypedDict):
     
     # Clarification context
     clarification_context: ClarificationContext
-    clarification_ready: NotRequired[bool]  # Whether clarification is complete and ready to proceed
     
     # Gap analysis results
     gap_status: NotRequired[str]  # "no_gap", "has_gap", "gap_resolved"
     identified_gaps: NotRequired[List[GapDetail]]  # detailed gap information
+    gap_negotiation_count: NotRequired[int]  # number of gap negotiation rounds
+    selected_alternative: NotRequired[str]  # user-selected alternative from gap analysis
     
     # Workflow data
     current_workflow: NotRequired[Any]  # workflow JSON object
@@ -132,3 +133,33 @@ def get_debug_errors(state: WorkflowState) -> List[str]:
     """Get debug errors from structured debug result"""
     debug_result = state.get("debug_result", {})
     return debug_result.get("errors", [])
+
+
+def is_clarification_ready(state: WorkflowState) -> bool:
+    """
+    Determine if clarification is ready to proceed to next stage.
+    This is derived from the state rather than stored.
+    
+    Returns True when:
+    - No pending questions in clarification_context
+    - Intent summary is not empty
+    - Not coming from gap analysis with unresolved gaps
+    """
+    clarification_context = state.get("clarification_context", {})
+    pending_questions = clarification_context.get("pending_questions", [])
+    intent_summary = state.get("intent_summary", "")
+    
+    # If there are pending questions, not ready
+    if pending_questions:
+        return False
+    
+    # If no intent summary collected yet, not ready
+    if not intent_summary:
+        return False
+    
+    # If we're in gap negotiation, not ready (need user response)
+    if clarification_context.get("purpose") == "gap_negotiation":
+        return False
+    
+    # Otherwise, we're ready to proceed
+    return True
