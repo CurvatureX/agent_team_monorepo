@@ -47,6 +47,7 @@ dependencies = [
     "protobuf>=6.0.0",
     "pytest>=7.4.3",
     "pytest-cov>=4.1.0",
+    "pyjwt>=2.10.1",
 ]
 
 [project.optional-dependencies]

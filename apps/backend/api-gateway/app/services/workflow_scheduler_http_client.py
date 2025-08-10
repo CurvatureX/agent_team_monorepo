@@ -190,8 +190,25 @@ class WorkflowSchedulerHTTPClient:
                 return data
 
         except httpx.HTTPStatusError as e:
-            log_error(f"❌ HTTP error deploying workflow: {e.response.status_code}")
-            return {"success": False, "error": f"HTTP {e.response.status_code}"}
+            # Try to extract detailed error message from response
+            error_detail = f"HTTP {e.response.status_code}"
+            try:
+                error_response = e.response.json()
+                if "detail" in error_response:
+                    error_detail = error_response["detail"]
+                elif "message" in error_response:
+                    error_detail = error_response["message"]
+                else:
+                    error_detail = str(error_response)
+            except Exception:
+                # Fallback to text response if JSON parsing fails
+                try:
+                    error_detail = e.response.text or error_detail
+                except Exception:
+                    pass
+
+            log_error(f"❌ HTTP error deploying workflow: {e.response.status_code} - {error_detail}")
+            return {"success": False, "error": error_detail}
         except Exception as e:
             log_error(f"❌ Error deploying workflow: {e}")
             return {"success": False, "error": str(e)}
