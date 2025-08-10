@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, field_validator
 
 from .common import BaseResponse, EntityModel
+from .node_enums import NodeType
 
 
 class PositionData(BaseModel):
@@ -30,7 +31,7 @@ class NodeData(BaseModel):
     subtype: str
     type_version: int = Field(default=1)
     position: PositionData
-    parameters: Dict[str, str] = Field(default_factory=dict)
+    parameters: Dict[str, Any] = Field(default_factory=dict)
     credentials: Dict[str, str] = Field(default_factory=dict)
     disabled: bool = False
     on_error: str = Field(default="continue", pattern="^(continue|stop)$")
@@ -251,17 +252,8 @@ class WorkflowType(str, Enum):
     HYBRID = "hybrid"
 
 
-class NodeType(str, Enum):
-    """节点类型枚举"""
-
-    TRIGGER = "trigger"
-    ACTION = "action"
-    CONDITION = "condition"
-    LOOP = "loop"
-    WEBHOOK = "webhook"
-    API_CALL = "api_call"
-    EMAIL = "email"
-    DELAY = "delay"
+# Legacy NodeType removed - now using authoritative enums from shared.models.node_enums
+# All services should import NodeType from shared.models directly
 
 
 class WorkflowNode(BaseModel):
@@ -379,7 +371,7 @@ class WorkflowResponse(BaseModel):
     工作流响应模型
     """
 
-    workflow: WorkflowEntity = Field(description="工作流信息")
+    workflow: WorkflowData = Field(description="工作流信息")
     message: Optional[str] = Field(default=None, description="响应消息")
 
 
@@ -388,7 +380,7 @@ class WorkflowListResponse(BaseModel):
     工作流列表响应模型
     """
 
-    workflows: List[WorkflowEntity] = Field(default_factory=list, description="工作流列表")
+    workflows: List[WorkflowData] = Field(default_factory=list, description="工作流列表")
     total_count: int = Field(default=0, description="总数量")
     page: int = Field(default=1, description="当前页码")
     page_size: int = Field(default=20, description="每页大小")

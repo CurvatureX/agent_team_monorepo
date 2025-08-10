@@ -15,17 +15,12 @@ try:
         ChatMessage,
         ChatRequest,
         ChatSSEEvent,
-        SSEEventType,
-        MessageEventData,
-        StatusChangeEventData,
-        WorkflowEventData,
-        ErrorEventData,
-        DebugEventData,
         ChatStreamResponse,
         ConversationRequest,
         ConversationResponse,
-        ResponseType,
+        DebugEventData,
         ErrorContent,
+        ErrorEventData,
         ErrorModel,
         HealthCheckModel,
         MCPContentItem,
@@ -35,30 +30,42 @@ try:
         MCPInvokeResponse,
         MCPTool,
         MCPToolsResponse,
+        MessageEventData,
         MessageType,
+        NodeTemplateListResponse,
         ResponseModel,
+        ResponseType,
         Session,
         SessionCreate,
         SessionListResponse,
         SessionResponse,
         SessionUpdate,
+        SSEEventType,
+        StatusChangeEventData,
+    )
+    from shared.models import WorkflowCreateRequest as WorkflowCreate
+    from shared.models import WorkflowEntity as Workflow
+    from shared.models import (
+        WorkflowEventData,
         WorkflowExecutionRequest,
         WorkflowExecutionResponse,
         WorkflowResponse,
         NodeTemplateListResponse,
+        WorkflowData,
     )
     from shared.models import WorkflowCreateRequest as WorkflowCreate
-    from shared.models import WorkflowEntity as Workflow
+    from shared.models import WorkflowData as Workflow
     from shared.models import WorkflowUpdateRequest as WorkflowUpdate
+    from shared.models.trigger import ExecutionResult, ManualTriggerSpec, TriggerStatus, TriggerType
 except ImportError:
     # 如果直接导入失败，尝试添加路径后导入
     import sys
     from pathlib import Path
-    
+
     # 添加backend目录到Python路径
     backend_dir = Path(__file__).parent.parent.parent.parent
     sys.path.insert(0, str(backend_dir))
-    
+
     from shared.models import (
         AuthClient,
         AuthResult,
@@ -68,17 +75,12 @@ except ImportError:
         ChatMessage,
         ChatRequest,
         ChatSSEEvent,
-        SSEEventType,
-        MessageEventData,
-        StatusChangeEventData,
-        WorkflowEventData,
-        ErrorEventData,
-        DebugEventData,
         ChatStreamResponse,
         ConversationRequest,
         ConversationResponse,
-        ResponseType,
+        DebugEventData,
         ErrorContent,
+        ErrorEventData,
         ErrorModel,
         HealthCheckModel,
         MCPContentItem,
@@ -88,21 +90,34 @@ except ImportError:
         MCPInvokeResponse,
         MCPTool,
         MCPToolsResponse,
+        MessageEventData,
         MessageType,
+        NodeTemplateListResponse,
         ResponseModel,
+        ResponseType,
         Session,
         SessionCreate,
         SessionListResponse,
         SessionResponse,
         SessionUpdate,
+        SSEEventType,
+        StatusChangeEventData,
         WorkflowExecutionRequest,
         WorkflowExecutionResponse,
         WorkflowResponse,
         NodeTemplateListResponse,
+        WorkflowData,
     )
     from shared.models import WorkflowCreateRequest as WorkflowCreate
-    from shared.models import WorkflowEntity as Workflow
+    from shared.models import WorkflowData as Workflow
+    from shared.models import (
+        WorkflowEventData,
+        WorkflowExecutionRequest,
+        WorkflowExecutionResponse,
+        WorkflowResponse,
+    )
     from shared.models import WorkflowUpdateRequest as WorkflowUpdate
+    from shared.models.trigger import ExecutionResult, ManualTriggerSpec, TriggerStatus, TriggerType
 
 # 向后兼容别名
 HealthResponse = HealthCheckModel
@@ -135,6 +150,11 @@ __all__ = [
     "WorkflowExecutionResponse",
     "WorkflowResponse",
     "NodeTemplateListResponse",
+    # Trigger models
+    "ExecutionResult",
+    "ManualTriggerSpec",
+    "TriggerType",
+    "TriggerStatus",
     # Conversation models
     "ConversationRequest",
     "ConversationResponse",

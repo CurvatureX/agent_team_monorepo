@@ -46,7 +46,7 @@ class CredentialStoreResponse(BaseModel):
     user_id: str
 
 
-@router.post("/api/v1/credentials/check", response_model=CredentialCheckResponse)
+@router.post("/credentials/check", response_model=CredentialCheckResponse)
 async def check_credentials(request: CredentialCheckRequest):
     """
     Check if user has stored credentials for a specific provider
@@ -83,7 +83,7 @@ async def check_credentials(request: CredentialCheckRequest):
         )
 
 
-@router.post("/api/v1/credentials/store", response_model=CredentialStoreResponse)
+@router.post("/credentials/store", response_model=CredentialStoreResponse)
 async def store_credentials(request: CredentialStoreRequest):
     """
     Store OAuth2 credentials after exchanging authorization code for tokens
@@ -141,7 +141,7 @@ async def store_credentials(request: CredentialStoreRequest):
         )
 
 
-@router.delete("/api/v1/credentials/{user_id}/{provider}")
+@router.delete("/credentials/{user_id}/{provider}")
 async def delete_credentials(user_id: str, provider: str):
     """
     Delete stored credentials for a specific user and provider

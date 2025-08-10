@@ -26,7 +26,7 @@ class TestNodeKnowledgeServiceIntegration:
         assert len(result) > 0
 
         # Should contain expected real node types
-        expected_types = ["ACTION_NODE", "AI_AGENT_NODE", "FLOW_NODE"]
+        expected_types = ["ACTION", "AI_AGENT", "FLOW"]
         for expected_type in expected_types:
             assert expected_type in result
             assert isinstance(result[expected_type], list)
@@ -36,9 +36,9 @@ class TestNodeKnowledgeServiceIntegration:
         """Test getting real node details"""
         # Use actual nodes that exist in the registry
         real_nodes = [
-            {"node_type": "ACTION_NODE", "subtype": "HTTP_REQUEST"},
-            {"node_type": "AI_AGENT_NODE", "subtype": "OPENAI_NODE"},
-            {"node_type": "FLOW_NODE", "subtype": "IF"},
+            {"node_type": "ACTION", "subtype": "HTTP_REQUEST"},
+            {"node_type": "AI_AGENT", "subtype": "OPENAI_NODE"},
+            {"node_type": "FLOW", "subtype": "IF"},
         ]
 
         result = service.get_node_details(real_nodes)
@@ -130,16 +130,16 @@ class TestNodeKnowledgeServiceIntegration:
     def test_node_types_filtering(self, service):
         """Test filtering node types"""
         # Test filtering by specific type
-        result = service.get_node_types("ACTION_NODE")
+        result = service.get_node_types("ACTION")
 
         assert isinstance(result, dict)
         assert len(result) == 1
-        assert "ACTION_NODE" in result
-        assert len(result["ACTION_NODE"]) > 0
+        assert "ACTION" in result
+        assert len(result["ACTION"]) > 0
 
         # Should not contain other types
-        assert "AI_AGENT_NODE" not in result
-        assert "FLOW_NODE" not in result
+        assert "AI_AGENT" not in result
+        assert "FLOW" not in result
 
     def test_detailed_search_results(self, service):
         """Test search with detailed results"""

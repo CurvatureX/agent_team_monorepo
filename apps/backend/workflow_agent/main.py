@@ -3,13 +3,14 @@ Workflow Agent Service - FastAPI-based AI Agent for workflow generation
 """
 
 import asyncio
+import os
 import signal
 import sys
-import os
 from pathlib import Path
 
 # Load environment variables early
 from dotenv import load_dotenv
+
 load_dotenv()
 
 # Note: 遥测组件现在在 services/fastapi_server.py 中定义
@@ -17,52 +18,51 @@ load_dotenv()
 # Import logging
 import logging
 
-from core.config import settings
-from services.fastapi_server import app
 import uvicorn
+
+from workflow_agent.core.config import settings
+from workflow_agent.services.fastapi_server import app
 
 logger = logging.getLogger(__name__)
 
 
 class FastAPIServer:
     """FastAPI 服务器包装器，提供优雅关闭功能"""
-    
+
     def __init__(self):
         self.server = None
-        
+
     async def start(self):
         """启动 FastAPI 服务器"""
         try:
             port = settings.FASTAPI_PORT
             host = settings.HOST
-            
+
             logger.info("🚀 Starting Workflow Agent FastAPI Server")
             logger.info(f"   Address: http://{host}:{port}")
             logger.info(f"   Docs: http://{host}:{port}/docs")
             logger.info(f"   Health Check: http://{host}:{port}/health")
-            
+
             # 在 Docker 环境中禁用 reload 模式
-            reload_mode = os.getenv('DEBUG', 'false').lower() == 'true' and not os.path.exists('/app/shared')
-            
+            reload_mode = os.getenv("DEBUG", "false").lower() == "true" and not os.path.exists(
+                "/app/shared"
+            )
+
             config = uvicorn.Config(
-                app,
-                host=host,
-                port=port,
-                reload=reload_mode,
-                access_log=True,
-                log_level="info"
+                app, host=host, port=port, reload=reload_mode, access_log=True, log_level="info"
             )
             self.server = uvicorn.Server(config)
-            
+
             logger.info("FastAPI server started successfully", extra={"port": port})
             await self.server.serve()
-            
+
         except Exception as e:
             logger.error("Failed to start FastAPI server", extra={"error": str(e)})
             import traceback
+
             logger.error("Traceback details", extra={"traceback": traceback.format_exc()})
             raise
-            
+
     async def stop(self):
         """停止 FastAPI 服务器"""
         if self.server:
@@ -95,7 +95,9 @@ async def main():
     try:
         logger.info("Starting FastAPI server...")
         await server.start()
-        logger.info("Workflow Agent Service started successfully", extra={"port": settings.FASTAPI_PORT})
+        logger.info(
+            "Workflow Agent Service started successfully", extra={"port": settings.FASTAPI_PORT}
+        )
 
         # Keep the server running
         logger.info("Waiting for server termination...")
@@ -104,6 +106,7 @@ async def main():
     except Exception as e:
         logger.error("Failed to start Workflow Agent Service", extra={"error": str(e)})
         import traceback
+
         logger.error("Traceback details", extra={"traceback": traceback.format_exc()})
         sys.exit(1)
     finally:
