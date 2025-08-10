@@ -130,7 +130,7 @@ async def get_workflow(workflow_id: str, deps: AuthenticatedDeps = Depends()):
 
         # Get workflow via HTTP
         result = await http_client.get_workflow(workflow_id, deps.current_user.sub)
-        if not result.get("success", False) or not result.get("workflow"):
+        if not result.get("found", False) or not result.get("workflow"):
             raise NotFoundError("Workflow")
 
         # Create workflow object
@@ -300,7 +300,7 @@ async def execute_workflow(
         result = await http_client.execute_workflow(
             workflow_id,
             deps.current_user.sub,
-            execution_request.input_data,
+            execution_request.inputs,
             trace_id=getattr(deps.request.state, "trace_id", None),
         )
 
@@ -308,6 +308,9 @@ async def execute_workflow(
             raise HTTPException(status_code=500, detail="Failed to execute workflow")
 
         logger.info(f"✅ Workflow execution started: {result['execution_id']}")
+
+        # Add workflow_id to the result for the response model
+        result["workflow_id"] = workflow_id
 
         return WorkflowExecutionResponse(**result)
 

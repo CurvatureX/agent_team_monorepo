@@ -44,6 +44,8 @@ try:
         StatusChangeEventData,
     )
     from shared.models import WorkflowCreateRequest as WorkflowCreate
+    from shared.models import WorkflowData
+    from shared.models import WorkflowData as Workflow
     from shared.models import WorkflowEntity as Workflow
     from shared.models import (
         WorkflowEventData,
@@ -107,7 +109,8 @@ except ImportError:
         StatusChangeEventData,
     )
     from shared.models import WorkflowCreateRequest as WorkflowCreate
-    from shared.models import WorkflowEntity as Workflow
+    from shared.models import WorkflowData
+    from shared.models import WorkflowData as Workflow
     from shared.models import (
         WorkflowEventData,
         WorkflowExecutionRequest,

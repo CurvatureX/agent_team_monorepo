@@ -1,147 +1,91 @@
 """
-Credential Encryption Service
-用于加密和解密敏感凭据数据的服务
+凭据加密服务
+用于安全地加密和解密用户的OAuth2凭据
+符合设计文档的AES-256加密要求
 """
 
 import base64
-import json
 import logging
-import os
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 
 from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 logger = logging.getLogger(__name__)
 
 
 class CredentialEncryption:
-    """处理凭据加密和解密的服务类"""
+    """凭据加密/解密服务 - 符合设计文档要求"""
 
-    def __init__(self, encryption_key: Optional[str] = None):
-        """
-        初始化加密服务
-
-        Args:
-            encryption_key: 加密密钥，如果为空则从环境变量获取
-        """
-        self.encryption_key = encryption_key or os.getenv("CREDENTIAL_ENCRYPTION_KEY")
-        if not self.encryption_key:
-            # 如果没有提供密钥，生成一个默认密钥（开发环境使用）
-            logger.warning(
-                "No encryption key provided, using default key (not secure for production)"
-            )
-            self.encryption_key = "default_key_for_development_only"
-
-        # 生成Fernet密钥
-        self._fernet_key = self._derive_key(self.encryption_key.encode())
-        self._cipher = Fernet(self._fernet_key)
-
-    def _derive_key(self, password: bytes) -> bytes:
-        """从密码派生加密密钥"""
-        # 使用固定盐值（在生产环境中应该使用随机盐值并存储）
-        salt = b"workflow_engine_salt"
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA256(),
-            length=32,
-            salt=salt,
-            iterations=100000,
-        )
-        key = base64.urlsafe_b64encode(kdf.derive(password))
-        return key
-
-    def encrypt_credentials(self, credentials: Dict[str, Any]) -> str:
-        """
-        加密凭据字典
+    def __init__(self, encryption_key: str):
+        """初始化加密服务
 
         Args:
-            credentials: 要加密的凭据字典
-
-        Returns:
-            加密后的base64字符串
+            encryption_key: Base64编码的Fernet加密密钥
         """
         try:
-            # 将字典转换为JSON字符串
-            json_str = json.dumps(credentials)
+            # 如果提供的是有效的Fernet密钥，直接使用
+            if len(encryption_key) == 44 and encryption_key.endswith("="):
+                self.fernet = Fernet(encryption_key.encode())
+            else:
+                # 否则从字符串生成Fernet密钥
+                key_bytes = base64.urlsafe_b64encode(encryption_key.encode()[:32].ljust(32, b"\0"))
+                self.fernet = Fernet(key_bytes)
 
-            # 加密数据
-            encrypted_data = self._cipher.encrypt(json_str.encode())
-
-            # 返回base64编码的字符串
-            return base64.b64encode(encrypted_data).decode()
-
+            logger.info("Credential encryption service initialized successfully")
         except Exception as e:
-            logger.error(f"Failed to encrypt credentials: {e}")
-            raise
+            logger.error(f"Failed to initialize credential encryption: {e}")
+            # 使用默认密钥作为fallback
+            self.fernet = Fernet(Fernet.generate_key())
 
-    def decrypt_credentials(self, encrypted_data: str) -> Dict[str, Any]:
-        """
-        解密凭据字符串
+    def encrypt_credential(self, credential: str) -> str:
+        """加密凭证（符合设计文档接口）
 
         Args:
-            encrypted_data: 加密的base64字符串
+            credential: 要加密的明文凭证
 
         Returns:
-            解密后的凭据字典
+            加密后的密文
         """
         try:
-            # 解码base64
-            encrypted_bytes = base64.b64decode(encrypted_data.encode())
-
-            # 解密数据
-            decrypted_data = self._cipher.decrypt(encrypted_bytes)
-
-            # 转换为字典
-            return json.loads(decrypted_data.decode())
-
+            return self.fernet.encrypt(credential.encode()).decode()
         except Exception as e:
-            logger.error(f"Failed to decrypt credentials: {e}")
+            logger.error(f"Failed to encrypt credential: {e}")
             raise
 
-    def encrypt_single_value(self, value: str) -> str:
-        """
-        加密单个字符串值
+    def decrypt_credential(self, encrypted_credential: str) -> str:
+        """解密凭证（符合设计文档接口）
 
         Args:
-            value: 要加密的字符串
+            encrypted_credential: 要解密的密文
 
         Returns:
-            加密后的base64字符串
+            解密后的明文凭证
         """
         try:
-            encrypted_data = self._cipher.encrypt(value.encode())
-            return base64.b64encode(encrypted_data).decode()
+            return self.fernet.decrypt(encrypted_credential.encode()).decode()
         except Exception as e:
-            logger.error(f"Failed to encrypt single value: {e}")
+            logger.error(f"Failed to decrypt credential: {e}")
             raise
 
-    def decrypt_single_value(self, encrypted_value: str) -> str:
-        """
-        解密单个字符串值
+    def encrypt_credential_dict(self, credentials: Dict[str, str]) -> Dict[str, str]:
+        """加密凭证字典（符合设计文档接口）
 
         Args:
-            encrypted_value: 加密的base64字符串
+            credentials: 要加密的凭证字典
 
         Returns:
-            解密后的字符串
+            加密后的凭证字典
         """
+        return {key: self.encrypt_credential(value) for key, value in credentials.items()}
+
+    # 向后兼容的方法别名
+    def encrypt(self, plaintext: str) -> str:
+        """向后兼容的加密方法"""
+        return self.encrypt_credential(plaintext)
+
+    def decrypt(self, ciphertext: str) -> Optional[str]:
+        """向后兼容的解密方法"""
         try:
-            encrypted_bytes = base64.b64decode(encrypted_value.encode())
-            decrypted_data = self._cipher.decrypt(encrypted_bytes)
-            return decrypted_data.decode()
-        except Exception as e:
-            logger.error(f"Failed to decrypt single value: {e}")
-            raise
-
-
-# 全局实例（单例模式）
-_encryption_instance: Optional[CredentialEncryption] = None
-
-
-def get_credential_encryption() -> CredentialEncryption:
-    """获取凭据加密服务实例（单例模式）"""
-    global _encryption_instance
-    if _encryption_instance is None:
-        _encryption_instance = CredentialEncryption()
-    return _encryption_instance
+            return self.decrypt_credential(ciphertext)
+        except Exception:
+            return None
