@@ -222,6 +222,7 @@ class OAuth2ServiceLite:
                     SET encrypted_access_token = :access_token,
                         encrypted_refresh_token = :refresh_token,
                         token_expires_at = :expires_at,
+                        refresh_token_expires_at = :refresh_expires_at,
                         scope = :scope,
                         token_type = :token_type,
                         is_valid = true,
@@ -230,12 +231,16 @@ class OAuth2ServiceLite:
                         updated_at = CURRENT_TIMESTAMP
                     WHERE user_id = :user_id AND provider = :provider
                 """)
+                # Calculate refresh token expiration (provider-specific)
+                refresh_expires_at = self._calculate_refresh_token_expiration(provider, token_response)
+                
                 self.db.execute(update_query, {
                     "user_id": user_id,
                     "provider": provider,
                     "access_token": encrypted_access_token,
                     "refresh_token": encrypted_refresh_token,
                     "expires_at": token_response.expires_at,
+                    "refresh_expires_at": refresh_expires_at,
                     "scope": scope_array,
                     "token_type": token_response.token_type
                 })
@@ -245,21 +250,25 @@ class OAuth2ServiceLite:
                     INSERT INTO user_external_credentials (
                         user_id, provider, credential_type,
                         encrypted_access_token, encrypted_refresh_token,
-                        token_expires_at, scope, token_type,
+                        token_expires_at, refresh_token_expires_at, scope, token_type,
                         is_valid, last_validated_at
                     ) VALUES (
                         :user_id, :provider, 'oauth2',
                         :access_token, :refresh_token,
-                        :expires_at, :scope, :token_type,
+                        :expires_at, :refresh_expires_at, :scope, :token_type,
                         true, CURRENT_TIMESTAMP
                     )
                 """)
+                # Calculate refresh token expiration (provider-specific)
+                refresh_expires_at = self._calculate_refresh_token_expiration(provider, token_response)
+                
                 self.db.execute(insert_query, {
                     "user_id": user_id,
                     "provider": provider,
                     "access_token": encrypted_access_token,
                     "refresh_token": encrypted_refresh_token,
                     "expires_at": token_response.expires_at,
+                    "refresh_expires_at": refresh_expires_at,
                     "scope": scope_array,
                     "token_type": token_response.token_type
                 })
@@ -274,20 +283,23 @@ class OAuth2ServiceLite:
             return False
     
     async def get_valid_token(self, user_id: str, provider: str) -> Optional[str]:
-        """获取有效的访问令牌
+        """获取有效的访问令牌，如果过期则自动刷新
         
         Args:
             user_id: 用户ID
             provider: 提供商名称
             
         Returns:
-            有效的访问令牌，如果没有则返回None
+            有效的访问令牌，如果没有或无法刷新则返回None
         """
         try:
             query = text("""
-                SELECT encrypted_access_token, token_expires_at, is_valid
+                SELECT encrypted_access_token, encrypted_refresh_token, 
+                       token_expires_at, is_valid, refresh_token_expires_at
                 FROM user_external_credentials 
                 WHERE user_id = :user_id AND provider = :provider
+                ORDER BY updated_at DESC
+                LIMIT 1
             """)
             result = self.db.execute(query, {
                 "user_id": user_id,
@@ -298,27 +310,195 @@ class OAuth2ServiceLite:
                 self.logger.debug(f"No credentials found for user {user_id}, provider {provider}")
                 return None
             
-            encrypted_access_token, expires_at, is_valid = result
+            encrypted_access_token, encrypted_refresh_token, expires_at, is_valid, refresh_expires_at = result
             
             if not is_valid:
                 self.logger.debug(f"Credentials marked as invalid for user {user_id}, provider {provider}")
                 return None
             
-            # 检查是否过期
+            # 检查访问令牌是否过期
+            now = datetime.now(timezone.utc)
+            token_expired = False
+            
             if expires_at:
-                now = datetime.now(timezone.utc)
                 if isinstance(expires_at, str):
                     expires_at = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
                 
-                if expires_at <= now:
-                    self.logger.debug(f"Token expired for user {user_id}, provider {provider}")
+                # 提前5分钟判断过期，避免API调用时刚好过期
+                buffer_time = timedelta(minutes=5)
+                if expires_at <= (now + buffer_time):
+                    token_expired = True
+                    self.logger.info(f"Access token expired or about to expire for user {user_id}, provider {provider}")
+            
+            # 如果访问令牌未过期，直接返回
+            if not token_expired:
+                access_token = self.encryption.decrypt_credential(encrypted_access_token)
+                self.logger.debug(f"Retrieved valid token for user {user_id}, provider {provider}")
+                return access_token
+            
+            # 访问令牌已过期，尝试使用刷新令牌自动刷新
+            if not encrypted_refresh_token:
+                self.logger.warning(f"Access token expired but no refresh token for user {user_id}, provider {provider}")
+                return None
+            
+            # 检查刷新令牌是否过期（如果有过期时间）
+            if refresh_expires_at:
+                if isinstance(refresh_expires_at, str):
+                    refresh_expires_at = datetime.fromisoformat(refresh_expires_at.replace('Z', '+00:00'))
+                
+                if refresh_expires_at <= now:
+                    self.logger.warning(f"Refresh token expired for user {user_id}, provider {provider}")
+                    # 标记凭据为无效，需要用户重新授权
+                    await self._mark_credentials_invalid(user_id, provider, "refresh_token_expired")
                     return None
             
-            # 解密并返回访问令牌
-            access_token = self.encryption.decrypt_credential(encrypted_access_token)
-            self.logger.debug(f"Retrieved valid token for user {user_id}, provider {provider}")
-            return access_token
+            # 尝试刷新访问令牌
+            refresh_token = self.encryption.decrypt_credential(encrypted_refresh_token)
+            new_token_response = await self._refresh_access_token(refresh_token, provider)
             
+            if new_token_response:
+                # 保存新的令牌信息
+                await self.store_user_credentials(user_id, provider, new_token_response)
+                self.logger.info(f"Successfully refreshed token for user {user_id}, provider {provider}")
+                return new_token_response.access_token
+            else:
+                self.logger.warning(f"Failed to refresh token for user {user_id}, provider {provider}")
+                # 标记凭据为无效，需要用户重新授权
+                await self._mark_credentials_invalid(user_id, provider, "refresh_failed")
+                return None
+                
         except Exception as e:
             self.logger.error(f"Failed to get valid token for user {user_id}, provider {provider}: {e}")
             return None
+
+    async def _refresh_access_token(self, refresh_token: str, provider: str) -> Optional[TokenResponse]:
+        """使用刷新令牌获取新的访问令牌
+        
+        Args:
+            refresh_token: 刷新令牌
+            provider: 提供商名称
+            
+        Returns:
+            新的TokenResponse对象，失败返回None
+        """
+        try:
+            provider_config = self.provider_configs.get(provider)
+            if not provider_config:
+                self.logger.error(f"No configuration found for provider: {provider}")
+                return None
+            
+            # 构建刷新令牌请求
+            data = {
+                'grant_type': 'refresh_token',
+                'refresh_token': refresh_token,
+                'client_id': provider_config['client_id'],
+                'client_secret': provider_config['client_secret']
+            }
+            
+            headers = {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Accept': 'application/json'
+            }
+            
+            # 不同提供商的特殊处理
+            if provider == 'slack':
+                # Slack使用不同的刷新方式
+                headers['Authorization'] = f"Basic {self._encode_basic_auth(provider_config['client_id'], provider_config['client_secret'])}"
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    provider_config['token_url'],
+                    data=data,
+                    headers=headers,
+                    timeout=30.0
+                )
+                
+                if response.status_code != 200:
+                    self.logger.error(f"Token refresh failed for provider {provider}: {response.status_code} - {response.text}")
+                    return None
+                
+                token_response = response.json()
+                access_token = token_response.get('access_token')
+                
+                if not access_token:
+                    self.logger.error(f"No access token in refresh response for provider {provider}")
+                    return None
+                
+                # 构建新的TokenResponse
+                new_refresh_token = token_response.get('refresh_token', refresh_token)  # 有些提供商不返回新的refresh token
+                token_type = token_response.get('token_type', 'Bearer')
+                expires_in = token_response.get('expires_in')
+                scope = token_response.get('scope', '')
+                
+                expires_at = None
+                if expires_in:
+                    expires_at = datetime.now(timezone.utc) + timedelta(seconds=int(expires_in))
+                
+                return TokenResponse(
+                    access_token=access_token,
+                    refresh_token=new_refresh_token,
+                    token_type=token_type,
+                    expires_at=expires_at,
+                    scope=scope
+                )
+                
+        except Exception as e:
+            self.logger.error(f"Exception during token refresh for provider {provider}: {e}")
+            return None
+    
+    async def _mark_credentials_invalid(self, user_id: str, provider: str, reason: str):
+        """标记凭据为无效
+        
+        Args:
+            user_id: 用户ID
+            provider: 提供商名称
+            reason: 失效原因
+        """
+        try:
+            update_query = text("""
+                UPDATE user_external_credentials 
+                SET is_valid = false,
+                    validation_error = :reason,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE user_id = :user_id AND provider = :provider
+            """)
+            self.db.execute(update_query, {
+                "user_id": user_id,
+                "provider": provider,
+                "reason": reason
+            })
+            self.db.commit()
+            self.logger.info(f"Marked credentials as invalid for user {user_id}, provider {provider}, reason: {reason}")
+        except Exception as e:
+            self.logger.error(f"Failed to mark credentials invalid for user {user_id}, provider {provider}: {e}")
+    
+    def _encode_basic_auth(self, username: str, password: str) -> str:
+        """编码Basic Auth头"""
+        import base64
+        credentials = f"{username}:{password}"
+        return base64.b64encode(credentials.encode()).decode()
+    
+    def _calculate_refresh_token_expiration(self, provider: str, token_response: TokenResponse) -> Optional[datetime]:
+        """计算refresh token的过期时间
+        
+        Args:
+            provider: 提供商名称
+            token_response: 令牌响应对象
+            
+        Returns:
+            refresh token过期时间，如果无法确定则返回None
+        """
+        # 不同提供商的refresh token过期策略
+        refresh_token_lifetimes = {
+            'google_calendar': timedelta(days=180),  # Google refresh tokens expire in 6 months if unused
+            'github': None,  # GitHub refresh tokens don't expire
+            'slack': None,   # Slack refresh tokens don't expire  
+            'email': timedelta(days=90),  # Generic email provider - 3 months
+            'api_call': timedelta(days=90)  # Generic API - 3 months
+        }
+        
+        lifetime = refresh_token_lifetimes.get(provider)
+        if lifetime:
+            return datetime.now(timezone.utc) + lifetime
+        
+        return None  # No expiration for this provider

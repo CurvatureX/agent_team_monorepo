@@ -138,39 +138,129 @@ async def get_authorization_status(request: CredentialStatusRequest):
             
             for provider in supported_providers:
                 try:
-                    # Check if user has valid stored token
-                    access_token = await oauth2_service.get_valid_token(request.user_id, provider)
-                    has_credentials = access_token is not None
+                    # Get detailed credential status
+                    from sqlalchemy import text
+                    from datetime import datetime, timezone, timedelta
                     
-                    # Get additional credential info if available
-                    if has_credentials:
-                        from sqlalchemy import text
-                        query = text("""
-                            SELECT client_id, token_expires_at, created_at, updated_at
-                            FROM user_external_credentials 
-                            WHERE user_id = :user_id AND provider = :provider
-                            ORDER BY updated_at DESC
-                            LIMIT 1
-                        """)
-                        
-                        result = db.execute(query, {
-                            "user_id": request.user_id,
-                            "provider": provider
-                        }).fetchone()
-                        
-                        providers_status[provider] = {
-                            "authorized": True,
-                            "client_id": result.client_id if result else None,
-                            "expires_at": result.token_expires_at.isoformat() if result and result.token_expires_at else None,
-                            "last_updated": result.updated_at.isoformat() if result and result.updated_at else None
-                        }
-                    else:
+                    query = text("""
+                        SELECT client_id, token_expires_at, created_at, updated_at, 
+                               is_valid, validation_error, encrypted_refresh_token, 
+                               refresh_token_expires_at
+                        FROM user_external_credentials 
+                        WHERE user_id = :user_id AND provider = :provider
+                        ORDER BY updated_at DESC
+                        LIMIT 1
+                    """)
+                    
+                    result = db.execute(query, {
+                        "user_id": request.user_id,
+                        "provider": provider
+                    }).fetchone()
+                    
+                    if not result:
+                        # No credentials stored
                         providers_status[provider] = {
                             "authorized": False,
+                            "status": "not_authorized",
+                            "message": "No authorization found. Please authorize this provider.",
+                            "requires_auth": True,
                             "client_id": None,
                             "expires_at": None,
                             "last_updated": None
                         }
+                        continue
+                    
+                    client_id, expires_at, created_at, updated_at, is_valid, validation_error, encrypted_refresh_token, refresh_expires_at = result
+                    
+                    # Check if credentials are marked as invalid
+                    if not is_valid:
+                        requires_reauth = True
+                        status = "invalid"
+                        
+                        if validation_error == "refresh_token_expired":
+                            message = "Authorization expired. Please re-authorize this provider."
+                            status = "refresh_expired"
+                        elif validation_error == "refresh_failed":
+                            message = "Authorization refresh failed. Please re-authorize this provider."
+                            status = "refresh_failed"
+                        else:
+                            message = f"Authorization invalid: {validation_error or 'Unknown reason'}"
+                        
+                        providers_status[provider] = {
+                            "authorized": False,
+                            "status": status,
+                            "message": message,
+                            "requires_auth": requires_reauth,
+                            "client_id": client_id,
+                            "expires_at": expires_at.isoformat() if expires_at else None,
+                            "last_updated": updated_at.isoformat() if updated_at else None,
+                            "error": validation_error
+                        }
+                        continue
+                    
+                    # Check if access token is expired or about to expire
+                    now = datetime.now(timezone.utc)
+                    token_status = "valid"
+                    message = "Authorization is valid and active."
+                    
+                    if expires_at:
+                        if isinstance(expires_at, str):
+                            expires_at = datetime.fromisoformat(expires_at.replace('Z', '+00:00'))
+                        
+                        buffer_time = timedelta(minutes=5)
+                        if expires_at <= (now + buffer_time):
+                            # Access token expired, check refresh token
+                            if not encrypted_refresh_token:
+                                token_status = "expired_no_refresh"
+                                message = "Access token expired and no refresh token available. Please re-authorize."
+                                authorized = False
+                                requires_auth = True
+                            else:
+                                # Check refresh token expiration
+                                if refresh_expires_at:
+                                    if isinstance(refresh_expires_at, str):
+                                        refresh_expires_at = datetime.fromisoformat(refresh_expires_at.replace('Z', '+00:00'))
+                                    
+                                    if refresh_expires_at <= now:
+                                        token_status = "refresh_expired"
+                                        message = "Refresh token expired. Please re-authorize this provider."
+                                        authorized = False
+                                        requires_auth = True
+                                    else:
+                                        token_status = "will_refresh"
+                                        message = "Access token expired but will be automatically refreshed."
+                                        authorized = True
+                                        requires_auth = False
+                                else:
+                                    # No refresh expiration time, assume it's still valid
+                                    token_status = "will_refresh"
+                                    message = "Access token expired but will be automatically refreshed."
+                                    authorized = True
+                                    requires_auth = False
+                        else:
+                            authorized = True
+                            requires_auth = False
+                            time_to_expire = expires_at - now
+                            if time_to_expire.total_seconds() < 3600:  # Less than 1 hour
+                                message = f"Authorization valid, expires in {int(time_to_expire.total_seconds()/60)} minutes."
+                            elif time_to_expire.days < 1:
+                                message = f"Authorization valid, expires in {int(time_to_expire.total_seconds()/3600)} hours."
+                            else:
+                                message = f"Authorization valid, expires in {time_to_expire.days} days."
+                    else:
+                        # No expiration time
+                        authorized = True
+                        requires_auth = False
+                    
+                    providers_status[provider] = {
+                        "authorized": authorized,
+                        "status": token_status,
+                        "message": message,
+                        "requires_auth": requires_auth,
+                        "client_id": client_id,
+                        "expires_at": expires_at.isoformat() if expires_at else None,
+                        "last_updated": updated_at.isoformat() if updated_at else None
+                    }
                         
                 except Exception as e:
                     logger.warning(f"Failed to check status for provider {provider}: {e}")
