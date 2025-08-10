@@ -157,7 +157,7 @@ class ExecutionService:
             self.logger.error(f"Error getting execution history: {str(e)}")
             raise
 
-    def execute_single_node(
+    async def execute_single_node(
         self,
         workflow_id: str,
         node_id: str,
@@ -256,10 +256,13 @@ class ExecutionService:
             
             try:
                 factory = get_node_executor_factory()
-                # Map node type to executor type (adding _NODE suffix)
-                executor_type = f"{target_node.type}_NODE"
+                # Map node type to executor type (add _NODE suffix only if not already present)
+                if target_node.type.endswith("_NODE"):
+                    executor_type = target_node.type
+                else:
+                    executor_type = f"{target_node.type}_NODE"
                 self.logger.info(f"Looking for executor type: {executor_type}")
-                executor = factory.create_executor(executor_type)
+                executor = factory.create_executor(executor_type, target_node.subtype)
             except Exception as e:
                 self.logger.error(f"Error getting executor: {str(e)}")
                 raise
@@ -332,7 +335,13 @@ class ExecutionService:
             
             # 6. Execute the node
             start_time = time.time()
-            result = executor.execute(context)
+            # Handle both sync and async executors
+            import inspect
+            if inspect.iscoroutinefunction(executor.execute):
+                import asyncio
+                result = await executor.execute(context)
+            else:
+                result = executor.execute(context)
             execution_time = time.time() - start_time
             
             # 7. Update execution record

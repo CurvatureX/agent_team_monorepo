@@ -23,8 +23,9 @@ GITHUB_SPEC = NodeSpec(
     parameters=[
         ParameterDef(
             name="action",
-            type=ParameterType.STRING,
+            type=ParameterType.ENUM,
             required=True,
+            enum_values=["create_issue", "create_pull_request", "add_comment", "close_issue", "merge_pr", "list_issues", "get_issue"],
             description="GitHub action type",
         ),
         ParameterDef(
@@ -43,19 +44,46 @@ GITHUB_SPEC = NodeSpec(
             name="branch",
             type=ParameterType.STRING,
             required=False,
+            default_value="main",
             description="Branch name",
         ),
         ParameterDef(
             name="title",
             type=ParameterType.STRING,
             required=False,
-            description="Title (issues or PR)",
+            description="Title for issues or pull requests",
         ),
         ParameterDef(
             name="body",
             type=ParameterType.STRING,
             required=False,
-            description="Content (issues or PR)",
+            description="Body content for issues or pull requests",
+        ),
+        ParameterDef(
+            name="issue_number",
+            type=ParameterType.INTEGER,
+            required=False,
+            description="Issue or PR number for operations",
+        ),
+        ParameterDef(
+            name="labels",
+            type=ParameterType.JSON,
+            required=False,
+            default_value=[],
+            description="Labels to apply (array of strings)",
+        ),
+        ParameterDef(
+            name="assignees",
+            type=ParameterType.JSON,
+            required=False,
+            default_value=[],
+            description="Assignees (array of usernames)",
+        ),
+        ParameterDef(
+            name="milestone",
+            type=ParameterType.INTEGER,
+            required=False,
+            description="Milestone number",
         ),
     ],
     input_ports=[
@@ -98,13 +126,13 @@ GITHUB_SPEC = NodeSpec(
 EMAIL_SPEC = NodeSpec(
     node_type="EXTERNAL_ACTION_NODE",
     subtype="EMAIL",
-    description="Send emails through various providers",
+    description="Send emails via SMTP server",
     parameters=[
         ParameterDef(
             name="to",
             type=ParameterType.JSON,
             required=True,
-            description="Recipient list",
+            description="Recipient email addresses (array of strings)",
         ),
         ParameterDef(
             name="subject",
@@ -116,35 +144,68 @@ EMAIL_SPEC = NodeSpec(
             name="body",
             type=ParameterType.STRING,
             required=True,
-            description="Email body",
+            description="Email body content",
+        ),
+        ParameterDef(
+            name="smtp_server",
+            type=ParameterType.STRING,
+            required=True,
+            description="SMTP server hostname",
+        ),
+        ParameterDef(
+            name="port",
+            type=ParameterType.INTEGER,
+            required=False,
+            default_value=587,
+            description="SMTP server port",
+        ),
+        ParameterDef(
+            name="username",
+            type=ParameterType.STRING,
+            required=True,
+            description="SMTP username",
+        ),
+        ParameterDef(
+            name="password",
+            type=ParameterType.STRING,
+            required=True,
+            description="SMTP password (sensitive)",
+        ),
+        ParameterDef(
+            name="use_tls",
+            type=ParameterType.BOOLEAN,
+            required=False,
+            default_value=True,
+            description="Use TLS encryption",
         ),
         ParameterDef(
             name="cc",
             type=ParameterType.JSON,
             required=False,
             default_value=[],
-            description="CC list",
+            description="CC email addresses (array of strings)",
         ),
         ParameterDef(
             name="bcc",
             type=ParameterType.JSON,
             required=False,
             default_value=[],
-            description="BCC list",
+            description="BCC email addresses (array of strings)",
+        ),
+        ParameterDef(
+            name="content_type",
+            type=ParameterType.ENUM,
+            required=False,
+            default_value="text/html",
+            enum_values=["text/plain", "text/html"],
+            description="Email content type",
         ),
         ParameterDef(
             name="attachments",
             type=ParameterType.JSON,
             required=False,
             default_value=[],
-            description="Attachment list",
-        ),
-        ParameterDef(
-            name="html_body",
-            type=ParameterType.BOOLEAN,
-            required=False,
-            default_value=False,
-            description="Whether body is HTML format",
+            description="Email attachments (array of file objects)",
         ),
     ],
     input_ports=[
@@ -218,7 +279,32 @@ SLACK_SPEC = NodeSpec(
             name="thread_ts",
             type=ParameterType.STRING,
             required=False,
-            description="Thread timestamp",
+            description="Thread timestamp for reply",
+        ),
+        ParameterDef(
+            name="username",
+            type=ParameterType.STRING,
+            required=False,
+            description="Custom username for bot message",
+        ),
+        ParameterDef(
+            name="icon_emoji",
+            type=ParameterType.STRING,
+            required=False,
+            description="Emoji icon for bot message",
+        ),
+        ParameterDef(
+            name="icon_url",
+            type=ParameterType.STRING,
+            required=False,
+            description="URL icon for bot message",
+        ),
+        ParameterDef(
+            name="blocks",
+            type=ParameterType.JSON,
+            required=False,
+            default_value=[],
+            description="Slack Block Kit blocks",
         ),
     ],
     input_ports=[
@@ -253,6 +339,106 @@ SLACK_SPEC = NodeSpec(
             name="error",
             type=ConnectionType.ERROR,
             description="Error output when Slack operation fails",
+        ),
+    ],
+)
+
+# Google Calendar - Google Calendar operations
+GOOGLE_CALENDAR_SPEC = NodeSpec(
+    node_type="EXTERNAL_ACTION_NODE",
+    subtype="GOOGLE_CALENDAR",
+    description="Interact with Google Calendar API",
+    parameters=[
+        ParameterDef(
+            name="action",
+            type=ParameterType.ENUM,
+            required=True,
+            enum_values=["list_events", "create_event", "update_event", "delete_event", "get_event"],
+            description="Google Calendar action type",
+        ),
+        ParameterDef(
+            name="calendar_id",
+            type=ParameterType.STRING,
+            required=False,
+            default_value="primary",
+            description="Calendar ID",
+        ),
+        ParameterDef(
+            name="summary",
+            type=ParameterType.STRING,
+            required=False,
+            description="Event title/summary",
+        ),
+        ParameterDef(
+            name="description",
+            type=ParameterType.STRING,
+            required=False,
+            description="Event description",
+        ),
+        ParameterDef(
+            name="location",
+            type=ParameterType.STRING,
+            required=False,
+            description="Event location",
+        ),
+        ParameterDef(
+            name="start_datetime",
+            type=ParameterType.STRING,
+            required=False,
+            description="Event start datetime (ISO format)",
+        ),
+        ParameterDef(
+            name="end_datetime",
+            type=ParameterType.STRING,
+            required=False,
+            description="Event end datetime (ISO format)",
+        ),
+        ParameterDef(
+            name="event_id",
+            type=ParameterType.STRING,
+            required=False,
+            description="Event ID for update/delete operations",
+        ),
+        ParameterDef(
+            name="max_results",
+            type=ParameterType.STRING,
+            required=False,
+            default_value="10",
+            description="Maximum number of events to return",
+        ),
+    ],
+    input_ports=[
+        InputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            required=False,
+            description="Dynamic calendar event data",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"event_data": "object", "filter_params": "object"}',
+                examples=[
+                    '{"event_data": {"attendees": ["user@example.com"]}, "filter_params": {"time_min": "2025-01-01T00:00:00Z"}}'
+                ],
+            ),
+        )
+    ],
+    output_ports=[
+        OutputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            description="Google Calendar operation result",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"success": "boolean", "event": "object", "events": "array", "event_id": "string"}',
+                examples=[
+                    '{"success": true, "event": {"id": "event123", "summary": "Meeting"}, "event_id": "event123"}'
+                ],
+            ),
+        ),
+        OutputPortSpec(
+            name="error",
+            type=ConnectionType.ERROR,
+            description="Error output when Google Calendar operation fails",
         ),
     ],
 )

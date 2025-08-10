@@ -49,7 +49,7 @@ class Settings(BaseSettings):
         return v
 
     class Config:
-        env_file = ".env"
+        env_file = "../../.env"  # 指向正确的.env文件路径
         env_file_encoding = "utf-8"
         # 允许额外的字段，保持兼容性
         extra = "ignore"
