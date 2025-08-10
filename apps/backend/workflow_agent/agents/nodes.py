@@ -1,17 +1,16 @@
 """
-LangGraph nodes for simplified Workflow Agent architecture
-Implements the 4 core nodes: Clarification, Gap Analysis, Workflow Generation, and Debug
-Based on main branch structure, updated for MCP integration
+LangGraph nodes for optimized Workflow Agent architecture
+Implements the 3 core nodes: Clarification, Workflow Generation, and Debug
+Simplified architecture with automatic gap handling for better user experience
 """
 
-import asyncio
 import json
 import logging
 import time
 import uuid
-from typing import Any, Dict, List
+from typing import List
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from workflow_agent.core.config import settings
@@ -21,15 +20,12 @@ from .mcp_tools import MCPToolCaller
 from .state import (
     ClarificationContext,
     Conversation,
-    GapDetail,
     WorkflowStage,
     WorkflowState,
-    get_current_workflow,
-    get_debug_errors,
-    get_gap_status,
-    get_identified_gaps,
-    get_intent_summary,
     get_user_message,
+    get_intent_summary,
+    get_current_workflow,
+    is_clarification_ready,
 )
 
 logger = logging.getLogger(__name__)
@@ -83,8 +79,6 @@ class WorkflowAgentNodes:
         if stage == WorkflowStage.CLARIFICATION:
             if previous_stage == WorkflowStage.DEBUG:
                 return "Debug Recovery"
-            elif previous_stage == WorkflowStage.GAP_ANALYSIS:
-                return "Gap Analysis Feedback Processing"
             elif workflow_context.get("template_workflow") or state.get("template_workflow"):
                 return "Template Customization"
             else:
@@ -92,110 +86,161 @@ class WorkflowAgentNodes:
         return "Initial Clarification"
 
     def _get_current_goal(self, state: WorkflowState) -> str:
-        """Determine the current goal based on scenario"""
+        """Determine the current goal based on the scenario"""
         scenario = self._get_current_scenario(state)
-
-        if scenario == "Debug Recovery":
-            return "Understand what went wrong and gather ONLY the missing critical information"
-        elif scenario == "Gap Analysis Feedback Processing":
-            return "Process user's choice from the alternatives presented"
-        elif scenario == "Template Customization":
-            return "Understand the specific modifications needed for the template"
-        else:
-            return "Quickly understand WHAT the user wants to automate - avoid asking for details"
-
-    def _get_scenario_type(self, state: WorkflowState) -> str:
-        """Determine the scenario type for template conditional logic"""
-        previous_stage = state.get("previous_stage")
-        workflow_context = state.get("workflow_context", {})
-
-        # Debug recovery has priority
-        if previous_stage == WorkflowStage.DEBUG:
-            return "debug_recovery"
-        elif previous_stage == WorkflowStage.GAP_ANALYSIS:
-            return "gap_analysis_feedback"
-        elif workflow_context.get("template_workflow") or state.get("template_workflow"):
-            return "template_customization"
-        else:
-            return "initial_clarification"
+        goals = {
+            "Initial Clarification": "Understand the user's workflow requirements thoroughly",
+            "Debug Recovery": "Fix the workflow issues found during debugging",
+            "Template Customization": "Customize the template workflow to meet user needs",
+        }
+        return goals.get(scenario, "Create a workflow based on the requirements")
 
     def _get_conversation_context(self, state: WorkflowState) -> str:
-        """Get conversation history for prompts"""
+        """Extract conversation context from state"""
         conversations = state.get("conversations", [])
+        context_parts = []
+        for conv in conversations[-5:]:  # Last 5 messages for context
+            context_parts.append(f"{conv.get('role')}: {conv.get('text', '')}")
+        return "\n".join(context_parts)
 
-        if not conversations:
-            return "No previous conversation"
+    async def _get_available_nodes_from_mcp(self) -> list:
+        """Get available node types from MCP for gap analysis"""
+        try:
+            # Call MCP to get node types
+            node_types_response = await self.mcp_client.call_tool("get_node_types", {})
+            if node_types_response and isinstance(node_types_response, dict):
+                return node_types_response.get("node_types", [])
+            return []
+        except Exception as e:
+            logger.warning(f"Could not fetch node types from MCP: {e}")
+            return []
 
-        # Format conversation history
-        history = []
-        for conv in conversations[-10:]:  # Last 10 messages for context
-            role = conv.get("role", "unknown")
-            text = conv.get("text", "")
-            history.append(f"{role.upper()}: {text}")
+    def _create_fallback_workflow(self, intent_summary: str) -> dict:
+        """Create a simple fallback workflow when generation fails"""
+        return {
+            "name": "Fallback Workflow",
+            "description": f"Basic workflow for: {intent_summary[:100]}",
+            "nodes": [
+                {
+                    "id": str(uuid.uuid4()),
+                    "name": "Start",
+                    "type": "trigger",
+                    "subtype": "manual",
+                    "properties": {},
+                    "inputs": {},
+                    "outputs": {"trigger_data": {"type": "object"}},
+                    "metadata": {"position": {"x": 100, "y": 100}},
+                }
+            ],
+            "connections": {},
+            "settings": {"error_handling": "stop_on_error", "timeout": 300},
+            "static_data": {},
+            "tags": ["fallback"],
+        }
 
-        return "\\n".join(history)
+    def should_continue(self, state: WorkflowState) -> str:
+        """
+        Determine the next step based on current state
+        Used by LangGraph for conditional routing in optimized 3-node architecture
+        """
+        stage = state.get("stage", WorkflowStage.CLARIFICATION)
+        logger.info(f"should_continue called with stage: {stage}")
+
+        # Map stage to next action
+        if stage == WorkflowStage.CLARIFICATION:
+            # Check if we have pending questions that need user response
+            clarification_context = state.get("clarification_context", {})
+            pending_questions = clarification_context.get("pending_questions", [])
+
+            # Derive clarification readiness from state
+            clarification_ready = is_clarification_ready(state)
+
+            pq_count = len(pending_questions)
+            logger.info(f"Clarification routing: pq={pq_count}, ready={clarification_ready}")
+
+            # If we have pending questions, wait for user input
+            if pending_questions:
+                logger.info("Have pending questions, waiting for user input")
+                return "END"
+            # Otherwise, check if we're ready to proceed
+            elif clarification_ready:
+                # In optimized architecture, go directly to workflow generation
+                return "workflow_generation"
+            else:
+                return "END"  # Wait for user input
+
+        elif stage == WorkflowStage.WORKFLOW_GENERATION:
+            # After workflow generation, always go to debug
+            return "debug"
+
+        elif stage == WorkflowStage.DEBUG:
+            # Check debug result
+            debug_result = state.get("debug_result", {})
+            success = debug_result.get("success", False)
+            debug_loop_count = state.get("debug_loop_count", 0)
+            max_debug_iterations = settings.DEBUG_MAX_ITERATIONS
+
+            logger.info(f"Debug routing: success={success}, loop_count={debug_loop_count}")
+
+            if success:
+                # Workflow validated successfully
+                logger.info("Debug successful, workflow complete")
+                return "END"
+            elif debug_loop_count >= max_debug_iterations:
+                # Max iterations reached
+                logger.info(f"Max debug iterations ({max_debug_iterations}) reached")
+                return "END"
+            else:
+                # Debug failed, regenerate workflow
+                logger.info("Debug failed, regenerating workflow")
+                return "workflow_generation"
+
+        # Default case
+        logger.warning(f"Unknown stage in should_continue: {stage}")
+        return "END"
 
     async def clarification_node(self, state: WorkflowState) -> WorkflowState:
         """
-        Clarification Node - 理解用户需求，提出澄清问题
+        Clarification Node - Ask clarifying questions to the user
         Maps prompt output to main branch state structure
         """
         logger.info("Processing clarification node")
 
-        # Store the current stage as previous before updating
-        current_stage = state.get("stage", WorkflowStage.CLARIFICATION)
+        # Get user message
+        user_message = get_user_message(state)
+        session_id = self._get_session_id(state)
+        existing_intent = get_intent_summary(state)
+        clarification_context = state.get("clarification_context", {})
+
+        logger.info(
+            "Clarification context",
+            extra={
+                "session_id": session_id,
+                "user_message": user_message[:100] if user_message else None,
+                "existing_intent": existing_intent[:100] if existing_intent else None,
+                "clarification_purpose": clarification_context.get("purpose"),
+            },
+        )
 
         # Set stage to CLARIFICATION
         state["stage"] = WorkflowStage.CLARIFICATION
 
         try:
-            # Check if we're coming from gap_analysis with pending questions
-            clarification_context = state.get("clarification_context", {})
-            pending_questions = clarification_context.get("pending_questions", [])
-            previous_stage = state.get("previous_stage")
-
-            logger.info(
-                f"Clarification node check: previous_stage={previous_stage}, pending_questions={len(pending_questions) if pending_questions else 0}, context_purpose={clarification_context.get('purpose')}"
-            )
-
-            # If we're coming from gap_analysis with pending questions, just wait for user input
-            if previous_stage == WorkflowStage.GAP_ANALYSIS and pending_questions:
-                logger.info(
-                    "Coming from gap_analysis with pending questions, waiting for user input"
-                )
-                # Keep the pending questions and wait for user response
-                # IMPORTANT: Don't set clarification_ready to avoid infinite loop
-                state["clarification_ready"] = False
-                # Keep previous_stage so routing knows we came from gap_analysis
-                state["previous_stage"] = WorkflowStage.GAP_ANALYSIS
-                return {**state, "stage": WorkflowStage.CLARIFICATION}
-
-            # Get user message from conversations
-            user_message = get_user_message(state)
-            if not user_message:
-                user_message = "Continue with the workflow creation process"
-
+            # Determine scenario type
+            scenario_type = self._get_current_scenario(state)
             conversation_context = self._get_conversation_context(state)
-            workflow_context = state.get("workflow_context", {})
-            template_workflow = workflow_context.get("template_workflow") or state.get(
-                "template_workflow"
-            )
 
-            # Get scenario-specific prompt
-            scenario_type = self._get_scenario_type(state)
-
-            # Prepare context for template, including gap negotiation info
+            # Create structured template context
             template_context = {
                 "user_message": user_message,
-                "user_input": user_message,  # For the user template
+                "existing_intent": existing_intent,
                 "conversation_context": conversation_context,
-                "template_workflow": template_workflow,
-                "current_scenario": self._get_current_scenario(state),
-                "current_goal": self._get_current_goal(state),
-                "goal": self._get_current_goal(state),  # For the user template
+                "current_scenario": scenario_type,
+                "goal": self._get_current_goal(state),
+                "template_workflow": state.get("template_workflow"),
+                "current_workflow": state.get("current_workflow"),
+                "debug_result": state.get("debug_result"),
                 "purpose": clarification_context.get("purpose", ""),
-                "identified_gaps": state.get("identified_gaps", []),
-                "gap_status": state.get("gap_status", "no_gap"),
                 "scenario_type": scenario_type,
                 "clarification_context": clarification_context,
                 "execution_history": state.get("execution_history", []),
@@ -240,7 +285,8 @@ class WorkflowAgentNodes:
                         clean_text = clean_text[:-3]
 
                 clarification_output = json.loads(clean_text.strip())
-                is_ready = clarification_output.get("is_complete", False)
+                # Check if clarification is ready (for future routing logic)
+                is_ready = clarification_output.get("is_complete", False)  # noqa: F841
 
                 # Map to main branch state structure
                 state["intent_summary"] = clarification_output.get("intent_summary", "")
@@ -248,22 +294,16 @@ class WorkflowAgentNodes:
                 # Check if user selected an alternative from gap negotiation
                 gap_resolution = clarification_output.get("gap_resolution", {})
                 if gap_resolution.get("user_selected_alternative", False):
-                    # User made a choice, mark gap as resolved
-                    state["gap_status"] = "gap_resolved"
-                    logger.info(
-                        f"User selected alternative {gap_resolution.get('selected_index')} with confidence {gap_resolution.get('confidence')}"
-                    )
+                    # User made a choice
+                    alt_idx = gap_resolution.get('selected_index')
+                    confidence = gap_resolution.get('confidence')
+                    logger.info(f"User selected alternative {alt_idx} with confidence {confidence}")
 
-                # Update clarification context - preserve purpose if in gap negotiation
+                # Update clarification context
                 existing_purpose = clarification_context.get("purpose", "initial_intent")
-                new_purpose = (
-                    "gap_resolved"
-                    if gap_resolution.get("user_selected_alternative", False)
-                    else existing_purpose
-                )
 
                 clarification_context = ClarificationContext(
-                    purpose=new_purpose,
+                    purpose=existing_purpose,
                     collected_info={"intent": clarification_output.get("intent_summary", "")},
                     pending_questions=[clarification_output.get("clarification_question", "")]
                     if clarification_output.get("clarification_question")
@@ -281,14 +321,13 @@ class WorkflowAgentNodes:
                     pending_questions=[response_text],
                     origin="create",
                 )
-                is_ready = False
+                is_ready = False  # noqa: F841
 
             # Add to conversations
             self._add_conversation(state, "assistant", response_text)
 
             # Keep stage as CLARIFICATION - routing logic will decide next step
-            # Store whether we're ready to continue for routing decision
-            state["clarification_ready"] = is_ready
+            # Note: clarification readiness is now derived from state, not stored
             # Set previous_stage for next node to know where we came from
             state["previous_stage"] = WorkflowStage.CLARIFICATION
             return {**state, "stage": WorkflowStage.CLARIFICATION}
@@ -300,163 +339,15 @@ class WorkflowAgentNodes:
                 "stage": WorkflowStage.CLARIFICATION,
             }
 
-    async def gap_analysis_node(self, state: WorkflowState) -> WorkflowState:
-        """
-        Gap Analysis Node - 分析需求可行性，识别gap
-        Maps prompt output to main branch state structure
-        """
-        logger.info("Processing gap analysis node")
-
-        # Set stage to GAP_ANALYSIS
-        state["stage"] = WorkflowStage.GAP_ANALYSIS
-
-        try:
-            intent_summary = get_intent_summary(state)
-            conversation_context = self._get_conversation_context(state)
-
-            # Check if we're coming back from clarification after user made a choice
-            clarification_context = state.get("clarification_context", {})
-            previous_stage = state.get("previous_stage")
-            logger.info(
-                f"Gap analysis check: previous_stage={previous_stage}, clarification_purpose={clarification_context.get('purpose')}"
-            )
-
-            # If coming from clarification after gap negotiation, mark as resolved
-            if previous_stage == WorkflowStage.CLARIFICATION and clarification_context.get(
-                "purpose"
-            ) in ["gap_negotiation", "gap_resolved"]:
-                # User has already chosen from alternatives, mark gap as resolved
-                logger.info("User has made choice from gap alternatives, marking as resolved")
-                state["gap_status"] = "gap_resolved"
-                # Clear the pending questions since user responded
-                clarification_context["pending_questions"] = []
-                clarification_context["purpose"] = "gap_resolved"  # Update purpose
-                state["clarification_context"] = clarification_context
-                # Set previous_stage for routing
-                state["previous_stage"] = WorkflowStage.GAP_ANALYSIS
-                # Don't need to run LLM again, just return with gap_resolved
-                return {**state, "stage": WorkflowStage.GAP_ANALYSIS}
-
-            # Determine scenario type for gap analysis
-            if clarification_context.get("purpose") == "gap_negotiation":
-                scenario_type = "post_negotiation"
-            else:
-                scenario_type = "initial_analysis"
-
-            # Prepare context for both templates
-            template_context = {
-                "intent_summary": intent_summary,
-                "conversation_context": conversation_context,
-                "scenario_type": scenario_type,
-                "current_scenario": self._get_current_scenario(state),
-                "goal": self._get_current_goal(state),
-                "template_workflow": state.get("template_workflow"),
-                "current_workflow": state.get("current_workflow"),
-                "debug_result": state.get("debug_result"),
-                "execution_history": state.get("execution_history", []),
-                "user_feedback": get_user_message(state)
-                if scenario_type == "post_negotiation"
-                else None,
-                "selected_alternative": None,  # TODO: Extract from user message if needed
-            }
-
-            # Use both system and user templates
-            system_prompt = await self.prompt_engine.render_prompt(
-                "gap_analysis_f2_system", **template_context
-            )
-
-            user_prompt = await self.prompt_engine.render_prompt(
-                "gap_analysis_f2_user", **template_context
-            )
-
-            messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
-            response = await self.llm.ainvoke(messages)
-
-            response_text = (
-                response.content if isinstance(response.content, str) else str(response.content)
-            )
-
-            # Try to parse structured response
-            try:
-                # Remove markdown code blocks if present
-                clean_text = response_text.strip()
-                if clean_text.startswith("```json"):
-                    clean_text = clean_text[7:]
-                    if clean_text.endswith("```"):
-                        clean_text = clean_text[:-3]
-                elif clean_text.startswith("```"):
-                    clean_text = clean_text[3:]
-                    if clean_text.endswith("```"):
-                        clean_text = clean_text[:-3]
-
-                gap_analysis_output = json.loads(clean_text.strip())
-                gap_status = gap_analysis_output.get("gap_status", "no_gap")
-                negotiation_phrase = gap_analysis_output.get("negotiation_phrase", "")
-
-                logger.info(
-                    f"Gap analysis result: gap_status={gap_status}, has_negotiation_phrase={bool(negotiation_phrase)}"
-                )
-
-                # Map to main branch state structure
-                state["gap_status"] = gap_status
-
-                # Convert identified_gaps format
-                identified_gaps_data = gap_analysis_output.get("identified_gaps", [])
-                identified_gaps = []
-                for gap in identified_gaps_data:
-                    identified_gaps.append(
-                        GapDetail(
-                            required_capability=gap.get("required_capability", ""),
-                            missing_component=gap.get("missing_component", ""),
-                            alternatives=gap.get("alternatives", []),
-                        )
-                    )
-                state["identified_gaps"] = identified_gaps
-
-                # If we have gaps, set up for user input
-                if gap_status == "has_gap":
-                    # If no negotiation phrase provided, create a default one
-                    if not negotiation_phrase:
-                        negotiation_phrase = "I've identified some gaps in the workflow. Please choose from the alternatives provided or specify your preference."
-
-                    # Add negotiation phrase to conversations
-                    self._add_conversation(state, "assistant", negotiation_phrase)
-
-                    # Set up clarification context to wait for user's choice
-                    clarification_context = state.get("clarification_context", {})
-                    clarification_context["purpose"] = "gap_negotiation"
-                    clarification_context["pending_questions"] = [negotiation_phrase]
-                    state["clarification_context"] = clarification_context
-                else:
-                    # For other cases, just add the full response
-                    self._add_conversation(state, "assistant", response_text)
-
-            except json.JSONDecodeError:
-                # Fallback
-                state["gap_status"] = "no_gap"
-                state["identified_gaps"] = []
-                # Add fallback response
-                self._add_conversation(state, "assistant", response_text)
-
-            # Keep stage as GAP_ANALYSIS and let routing logic decide based on gap_status
-            # The prompt returns: "no_gap", "has_gap", or "gap_resolved"
-            # Set previous_stage so clarification knows we're coming from gap_analysis
-            state["previous_stage"] = WorkflowStage.GAP_ANALYSIS
-            return {**state, "stage": WorkflowStage.GAP_ANALYSIS}
-
-        except Exception as e:
-            logger.error("Gap analysis node failed", extra={"error": str(e)})
-            return {
-                **state,
-                "stage": WorkflowStage.GAP_ANALYSIS,
-            }
-
     async def workflow_generation_node(self, state: WorkflowState) -> WorkflowState:
         """
-        Workflow Generation Node - Uses MCP tools to generate accurate workflows
-        Now enhanced to handle error-based regeneration from debug node
+        Optimized Workflow Generation Node - Automatically handles capability gaps
+        Uses MCP tools to generate accurate workflows with smart substitutions
+        Now also creates the workflow in workflow_engine immediately after generation
         """
-        logger.info("Processing workflow generation node with MCP tools")
+        from workflow_agent.services.workflow_engine_client import WorkflowEngineClient
+        
+        logger.info("Processing optimized workflow generation node")
 
         # Set stage to WORKFLOW_GENERATION
         state["stage"] = WorkflowStage.WORKFLOW_GENERATION
@@ -465,67 +356,68 @@ class WorkflowAgentNodes:
             intent_summary = get_intent_summary(state)
             conversation_context = self._get_conversation_context(state)
 
-            # Check if we're coming from debug with errors
+            # Check if we're coming from debug with errors or previous generation failures
+            debug_error = state.get("debug_error_for_regeneration")
             debug_result = state.get("debug_result") or {}
-            previous_errors = debug_result.get("errors", []) if debug_result else []
-            previous_suggestions = debug_result.get("suggestions", []) if debug_result else []
-            debug_loop_count = state.get("debug_loop_count", 0)
+            creation_error = state.get("workflow_creation_error")  # New field for creation failures
+            generation_loop_count = state.get("generation_loop_count", 0)
 
-            # Build enhanced context if we have debug feedback
-            error_context = ""
-            if previous_errors:
-                error_context = f"""
+            # Get available nodes from MCP if enabled
+            available_nodes = None
+            if settings.GAP_ANALYSIS_USE_MCP:
+                logger.info("Fetching node capabilities from MCP")
+                try:
+                    available_nodes = await self._get_available_nodes_from_mcp()
+                    msg = f"Retrieved {len(available_nodes) if available_nodes else 0} node types"
+                    logger.info(msg)
+                except Exception as e:
+                    logger.warning(f"Failed to get MCP nodes, proceeding without: {e}")
 
-IMPORTANT: Previous attempt failed with these errors:
-Errors: {json.dumps(previous_errors, indent=2)}
-Suggestions: {json.dumps(previous_suggestions, indent=2) if previous_suggestions else 'None'}
+            # Prepare template context with creation error if available
+            error_context = None
+            if creation_error:
+                error_context = f"Previous workflow creation failed with error: {creation_error}. Please fix the issues and regenerate."
+            elif debug_error:
+                error_context = debug_error
+            elif debug_result.get("error") and not debug_result.get("success", True):
+                error_context = debug_result.get("error")
 
-Please fix these issues in the regenerated workflow:
-1. Address each error specifically
-2. Apply the suggestions if provided
-3. Ensure all node parameters are correctly configured
-4. Verify connection logic is sound
-"""
+            template_context = {
+                "intent_summary": intent_summary,
+                "conversation_context": conversation_context,
+                "available_nodes": available_nodes,
+                "current_workflow": state.get("current_workflow"),
+                "debug_result": error_context
+            }
 
-            # Load the workflow generation prompt
-            workflow_gen_prompt = await self.prompt_engine.render_prompt(
+            # Use the original f1 template system - the working approach
+            system_prompt = await self.prompt_engine.render_prompt(
                 "workflow_gen_f1",
+                **template_context
             )
 
-            # Build the user message with error context if available
-            user_message = f"Create a comprehensive workflow based on these requirements:\\n\\n{intent_summary}\\n\\nConversation context:\\n{conversation_context}"
+            # Create user prompt for workflow generation
+            user_prompt_content = f"""Create a comprehensive workflow based on these EXACT requirements:
 
+{intent_summary}
+
+IMPLEMENT ALL REQUIREMENTS MENTIONED ABOVE.
+
+FIRST: Call get_node_types() to see all available node types and subtypes
+THEN: Call get_node_details() for ALL nodes you plan to use  
+FINALLY: Output ONLY the complete JSON workflow configuration using the actual node specifications. No text, no explanations, no markdown - just pure JSON starting with {{ and ending with }}."""
+
+            # Add error context to prompt if we're regenerating due to creation failure
             if error_context:
-                user_message += error_context
-                logger.info(
-                    f"Regenerating workflow after debug failure (attempt {debug_loop_count + 1})"
-                )
-
-            user_message += """
-
-IMPORTANT WORKFLOW GENERATION PROCESS:
-1. First, use get_node_types to discover all available node types
-2. Then, use get_node_details to get specifications for the nodes you need
-3. Finally, generate a COMPLETE workflow JSON with this structure:
-{
-  "name": "...",
-  "description": "...",
-  "nodes": [...],
-  "connections": {...},
-  "settings": {...},
-  "static_data": {},
-  "tags": []
-}
-
-You MUST use the exact node types, subtypes, and parameters from the MCP responses."""
+                user_prompt_content += f"\n\nIMPORTANT: {error_context}"
 
             messages = [
-                SystemMessage(content=workflow_gen_prompt),
-                HumanMessage(content=user_message),
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt_content)
             ]
 
-            # Generate workflow using OpenAI with tools
-            workflow_json = await self._generate_with_tools(messages)
+            # Generate workflow using OpenAI with multi-turn tool calling (like the test file)
+            workflow_json = await self._generate_with_multi_turn_tools(messages)
 
             # Check if we got an empty response
             if not workflow_json or workflow_json.strip() == "":
@@ -557,10 +449,49 @@ You MUST use the exact node types, subtypes, and parameters from the MCP respons
                     # Use fallback workflow on parse error
                     workflow = self._create_fallback_workflow(intent_summary)
 
-            # Store in main branch state structure
-            state["current_workflow"] = workflow
-            # Keep stage as WORKFLOW_GENERATION so routing goes to debug node
-            return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
+            # NEW: Create workflow in workflow_engine immediately after generation
+            logger.info("Creating workflow in workflow_engine")
+            engine_client = WorkflowEngineClient()
+            user_id = state.get("user_id", "test_user")
+            
+            creation_result = await engine_client.create_workflow(workflow, user_id)
+            
+            if creation_result.get("success", True) and creation_result.get("workflow", {}).get("id"):
+                # Creation successful - store workflow and workflow_id
+                workflow_id = creation_result["workflow"]["id"]
+                state["current_workflow"] = workflow
+                state["workflow_id"] = workflow_id
+                state["workflow_creation_result"] = creation_result
+                
+                # Clear any previous creation errors
+                if "workflow_creation_error" in state:
+                    del state["workflow_creation_error"]
+                
+                logger.info(f"Workflow created successfully with ID: {workflow_id}")
+                # Keep stage as WORKFLOW_GENERATION so routing goes to debug node
+                return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
+                
+            else:
+                # Creation failed - check if we should retry generation
+                creation_error = creation_result.get("error", "Unknown creation error")
+                max_generation_retries = settings.WORKFLOW_GENERATION_MAX_RETRIES
+                
+                logger.error(f"Workflow creation failed: {creation_error}")
+                
+                if generation_loop_count < max_generation_retries:
+                    # Store error for regeneration and increment loop count
+                    state["workflow_creation_error"] = creation_error
+                    state["generation_loop_count"] = generation_loop_count + 1
+                    
+                    logger.info(f"Retrying workflow generation (attempt {generation_loop_count + 1}/{max_generation_retries})")
+                    # Return to workflow generation with error context
+                    return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
+                else:
+                    # Max retries reached, store error and proceed to debug for user feedback
+                    state["workflow_creation_error"] = creation_error
+                    state["current_workflow"] = workflow  # Store the workflow even if creation failed
+                    logger.error(f"Max workflow generation retries ({max_generation_retries}) reached, proceeding with error")
+                    return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
 
         except Exception as e:
             logger.error("Workflow generation node failed", extra={"error": str(e)})
@@ -568,6 +499,107 @@ You MUST use the exact node types, subtypes, and parameters from the MCP respons
                 **state,
                 "stage": WorkflowStage.WORKFLOW_GENERATION,
             }
+
+    async def _generate_with_multi_turn_tools(self, messages: List) -> str:
+        """
+        Multi-turn workflow generation following the working pattern from test file.
+        
+        This matches the successful approach:
+        1. First call with tools - LLM uses get_node_types
+        2. Process tool responses
+        3. Continue conversation to get node_details  
+        4. Final generation with complete JSON output
+        """
+        try:
+            # Convert LangChain messages to OpenAI format
+            openai_messages = []
+            for msg in messages:
+                if hasattr(msg, 'content'):
+                    role = "system" if type(msg).__name__ == "SystemMessage" else "user"
+                    openai_messages.append({"role": role, "content": msg.content})
+                    
+            logger.info("Starting multi-turn workflow generation with OpenAI")
+            
+            # Step 1: First call - let LLM call get_node_types  
+            # Use the LLM with tools bound (not passing tools parameter directly)
+            response = await self.llm_with_tools.ainvoke(messages)
+            
+            # Convert back to openai format for processing
+            if hasattr(response, 'content') and response.content:
+                openai_messages.append({"role": "assistant", "content": response.content})
+            
+            # Process tool calls if any
+            if hasattr(response, "tool_calls") and response.tool_calls:
+                logger.info(f"Processing {len(response.tool_calls)} tool calls from first response")
+                
+                # Add tool call responses
+                for tool_call in response.tool_calls:
+                    tool_name = getattr(tool_call, 'name', tool_call.get('name', ''))
+                    tool_args = getattr(tool_call, 'args', tool_call.get('args', {}))
+                    
+                    logger.info(f"Calling tool: {tool_name}")
+                    result = await self.mcp_client.call_tool(tool_name, tool_args)
+                    
+                    # Format as string for conversation
+                    result_str = json.dumps(result, indent=2) if isinstance(result, dict) else str(result)
+                    
+                    openai_messages.append({
+                        "role": "tool", 
+                        "tool_call_id": getattr(tool_call, 'id', str(uuid.uuid4())),
+                        "content": result_str
+                    })
+                
+                # Step 2: Continue conversation to get node_details and final JSON
+                openai_messages.append({
+                    "role": "user",
+                    "content": "FIRST: Call get_node_details for ALL the nodes you identified. THEN: Output ONLY the complete JSON workflow configuration using the actual node specifications. No text, no explanations, no markdown - just pure JSON starting with { and ending with }."
+                })
+                
+                # Convert back to LangChain format
+                langchain_messages = []
+                for msg in openai_messages:
+                    if msg["role"] == "system":
+                        langchain_messages.append(SystemMessage(content=msg["content"]))
+                    elif msg["role"] == "user":  
+                        langchain_messages.append(HumanMessage(content=msg["content"]))
+                    elif msg["role"] == "assistant":
+                        langchain_messages.append(SystemMessage(content=f"Assistant: {msg['content']}"))
+                    elif msg["role"] == "tool":
+                        langchain_messages.append(HumanMessage(content=f"Tool result: {msg['content']}"))
+                
+                # Step 3: Final generation call
+                final_response = await self.llm_with_tools.ainvoke(langchain_messages)
+                
+                # Handle any additional tool calls for node_details
+                if hasattr(final_response, "tool_calls") and final_response.tool_calls:
+                    logger.info(f"Processing {len(final_response.tool_calls)} additional tool calls")
+                    
+                    # Process additional tool calls
+                    for tool_call in final_response.tool_calls:
+                        tool_name = getattr(tool_call, 'name', tool_call.get('name', ''))
+                        tool_args = getattr(tool_call, 'args', tool_call.get('args', {}))
+                        
+                        logger.info(f"Calling additional tool: {tool_name}")
+                        result = await self.mcp_client.call_tool(tool_name, tool_args)
+                        
+                        result_str = json.dumps(result, indent=2) if isinstance(result, dict) else str(result)
+                        langchain_messages.append(HumanMessage(content=f"Tool result: {result_str}"))
+                    
+                    # Final call to get the JSON workflow
+                    langchain_messages.append(HumanMessage(content="Now output ONLY the complete JSON workflow configuration. Start with { and end with }."))
+                    
+                    final_json_response = await self.llm_with_tools.ainvoke(langchain_messages)
+                    return str(final_json_response.content) if hasattr(final_json_response, 'content') else ""
+                
+                # Return the final response content
+                return str(final_response.content) if hasattr(final_response, 'content') else ""
+            
+            # No tool calls in first response - return content directly  
+            return str(response.content) if hasattr(response, 'content') else ""
+            
+        except Exception as e:
+            logger.error(f"Multi-turn tool generation failed: {e}", exc_info=True)
+            return ""
 
     async def _generate_with_tools(self, messages: List) -> str:
         """
@@ -643,101 +675,141 @@ You MUST use the exact node types, subtypes, and parameters from the MCP respons
 
     async def _execute_tool_call(self, tool_call: dict, conversation_messages: list):
         """Execute a tool call in the new LangChain format"""
-        from langchain_core.messages import ToolMessage
+        try:
+            # Extract tool info from the new format
+            if hasattr(tool_call, "name"):
+                tool_name = tool_call.name
+                tool_args = tool_call.args
+                tool_id = getattr(tool_call, "id", str(uuid.uuid4()))
+            else:
+                # Fallback for dict format
+                tool_name = tool_call.get("name", "")
+                tool_args = tool_call.get("args", {})
+                tool_id = tool_call.get("id", str(uuid.uuid4()))
 
-        tool_name = tool_call.get("name", "")
-        tool_args = tool_call.get("args", {})
-        tool_id = tool_call.get("id", "")
+            logger.info(f"Executing tool: {tool_name} with args keys: {tool_args.keys()}")
 
-        logger.info(f"Executing tool: {tool_name} with args: {tool_args}")
+            # Execute the tool via MCP
+            result = await self.mcp_client.call_tool(tool_name, tool_args)
 
-        # Find and execute the tool
-        tool_result = await self._run_tool(tool_name, tool_args)
+            # Format result as a string for the conversation
+            if isinstance(result, dict):
+                result_str = json.dumps(result, indent=2)
+            else:
+                result_str = str(result)
 
-        # Add tool result as ToolMessage
-        tool_message = ToolMessage(content=str(tool_result), tool_call_id=tool_id, name=tool_name)
-        conversation_messages.append(tool_message)
-        logger.info(f"Tool {tool_name} result added to conversation")
+            # Create tool response message
+            from langchain_core.messages import ToolMessage
+
+            tool_message = ToolMessage(
+                content=result_str, tool_call_id=tool_id, name=tool_name  # Match the tool call ID
+            )
+
+            # Add to conversation
+            conversation_messages.append(tool_message)
+
+            logger.info(f"Tool {tool_name} execution completed")
+
+        except Exception as e:
+            logger.error(f"Tool execution failed for {tool_name}: {e}")
+            # Add error message to conversation
+            from langchain_core.messages import ToolMessage
+
+            error_message = ToolMessage(
+                content=f"Error executing tool: {str(e)}",
+                tool_call_id=tool_id if "tool_id" in locals() else str(uuid.uuid4()),
+                name=tool_name if "tool_name" in locals() else "unknown",
+            )
+            conversation_messages.append(error_message)
 
     async def _execute_tool_call_legacy(self, tool_call: dict, conversation_messages: list):
-        """Execute a tool call in the legacy format"""
-        from langchain_core.messages import ToolMessage
+        """Execute a tool call in the legacy format (for compatibility)"""
+        try:
+            tool_name = tool_call.get("function", {}).get("name", "")
+            tool_args_str = tool_call.get("function", {}).get("arguments", "{}")
+            tool_id = tool_call.get("id", str(uuid.uuid4()))
 
-        tool_name = tool_call.get("function", {}).get("name", "")
-        tool_args_str = tool_call.get("function", {}).get("arguments", "{}")
-        tool_args = json.loads(tool_args_str) if tool_args_str else {}
-        tool_id = tool_call.get("id", "")
+            # Parse arguments
+            tool_args = json.loads(tool_args_str) if tool_args_str else {}
 
-        logger.info(f"Executing tool: {tool_name} with args: {tool_args}")
+            logger.info(f"Executing tool (legacy): {tool_name}")
 
-        # Find and execute the tool
-        tool_result = await self._run_tool(tool_name, tool_args)
+            # Execute the tool via MCP
+            result = await self.mcp_client.call_tool(tool_name, tool_args)
 
-        # Add tool result as ToolMessage
-        tool_message = ToolMessage(content=str(tool_result), tool_call_id=tool_id, name=tool_name)
-        conversation_messages.append(tool_message)
-        logger.info(f"Tool {tool_name} result added to conversation")
+            # Format result
+            if isinstance(result, dict):
+                result_str = json.dumps(result, indent=2)
+            else:
+                result_str = str(result)
 
-    async def _run_tool(self, tool_name: str, tool_args: dict) -> str:
-        """Execute a tool by name with given arguments"""
-        for tool in self.mcp_tools:
-            if tool.name == tool_name:
-                try:
-                    # LangChain tools have either coroutine (async) or func (sync)
-                    if tool.coroutine:
-                        # Async function - await it
-                        result = await tool.coroutine(**tool_args)
-                    elif tool.func:
-                        # Sync function - call it directly (no await)
-                        result = tool.func(**tool_args)
-                    else:
-                        result = f"Error: Tool {tool_name} has no implementation"
-                    return str(result)
-                except Exception as e:
-                    logger.error(f"Error executing tool {tool_name}: {e}")
-                    return f"Error executing tool: {str(e)}"
+            # Create tool response message
+            from langchain_core.messages import ToolMessage
 
-        return f"Error: Tool {tool_name} not found"
+            tool_message = ToolMessage(content=result_str, tool_call_id=tool_id, name=tool_name)
 
-    def _create_fallback_workflow(self, intent_summary: str) -> dict:
-        """Create a basic fallback workflow structure"""
-        return {
-            "id": f"workflow-{uuid.uuid4().hex[:8]}",
-            "name": "Generated Workflow",
-            "description": intent_summary,
-            "nodes": [
-                {"id": "start", "type": "trigger", "name": "Start", "parameters": {}},
-                {"id": "process", "type": "action", "name": "Process", "parameters": {}},
-            ],
-            "connections": [{"from": "start", "to": "process"}],
-            "created_at": int(time.time()),
-        }
+            # Add to conversation
+            conversation_messages.append(tool_message)
+
+        except Exception as e:
+            logger.error(f"Legacy tool execution failed: {e}")
+            # Add error message
+            from langchain_core.messages import ToolMessage
+
+            error_message = ToolMessage(
+                content=f"Error: {str(e)}",
+                tool_call_id=tool_id if "tool_id" in locals() else str(uuid.uuid4()),
+                name=tool_name if "tool_name" in locals() else "unknown",
+            )
+            conversation_messages.append(error_message)
 
     async def debug_node(self, state: WorkflowState) -> WorkflowState:
         """
-        Debug Node - 测试生成的工作流，发现并尝试修复错误
-        Now integrates with workflow_engine to actually execute and test workflows
+        Debug Node - Validate workflow using workflow_engine with real execution test
+        Now only handles test data generation and execution since workflow is already created
+        Returns debug result with either success or error message
         """
-        logger.info("Processing debug node with workflow engine integration")
+        from workflow_agent.services.workflow_engine_client import WorkflowEngineClient
+        from workflow_agent.agents.workflow_data_generator import WorkflowDataGenerator
 
-        # Update stage to DEBUG
+        logger.info("Processing debug node with workflow_engine validation")
+
+        # Set stage to DEBUG
         state["stage"] = WorkflowStage.DEBUG
-
-        # Import dependencies here to avoid circular imports
-        from services.workflow_engine_client import WorkflowEngineClient
-
-        from .workflow_data_generator import WorkflowDataGenerator
 
         try:
             current_workflow = get_current_workflow(state)
-            if not current_workflow:
-                # No workflow to debug
+            workflow_id = state.get("workflow_id")
+            
+            # Check if we have workflow creation error from previous workflow generation
+            creation_error = state.get("workflow_creation_error")
+            if creation_error:
+                logger.warning(f"Workflow creation failed previously: {creation_error}")
                 state["debug_result"] = {
                     "success": False,
-                    "errors": ["No workflow to debug"],
+                    "error": f"Workflow creation failed: {creation_error}",
                     "timestamp": int(time.time() * 1000),
                 }
-                return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
+                # Keep stage as DEBUG - the routing logic will handle this
+                return {**state, "stage": WorkflowStage.DEBUG}
+
+            if not current_workflow:
+                logger.warning("No workflow to debug")
+                state["debug_result"] = {
+                    "success": False,
+                    "error": "No workflow to debug",
+                    "timestamp": int(time.time() * 1000),
+                }
+                return {**state, "stage": WorkflowStage.DEBUG}
+                
+            if not workflow_id:
+                logger.warning("No workflow_id available, workflow may not have been created successfully")
+                state["debug_result"] = {
+                    "success": False,
+                    "error": "No workflow_id available - workflow creation may have failed",
+                    "timestamp": int(time.time() * 1000),
+                }
+                return {**state, "stage": WorkflowStage.DEBUG}
 
             debug_loop_count = state.get("debug_loop_count", 0)
 
@@ -746,320 +818,56 @@ You MUST use the exact node types, subtypes, and parameters from the MCP respons
             test_generator = WorkflowDataGenerator()
             test_data = await test_generator.generate_test_data(current_workflow)
 
-            # Step 2: Create and execute the workflow using workflow_engine
-            logger.info("Creating and executing workflow in workflow_engine")
+            # Step 2: Execute the already created workflow using workflow_id
+            logger.info(f"Executing existing workflow in workflow_engine (ID: {workflow_id})")
             engine_client = WorkflowEngineClient()
 
             # Get user_id from state or use default
             user_id = state.get("user_id", "test_user")
 
-            # Execute the workflow with test data
-            execution_result = await engine_client.validate_and_execute_workflow(
-                workflow_data=current_workflow, test_data=test_data, user_id=user_id
+            # Execute the workflow directly using workflow_id (no creation needed)
+            execution_result = await engine_client.execute_workflow(
+                workflow_id=workflow_id, trigger_data=test_data, user_id=user_id
             )
 
-            # Step 3: Analyze execution results
-            if not execution_result:
-                # Handle None or empty result
-                logger.error("No execution result returned from workflow engine")
-                execution_result = {"success": False, "error": "No response from workflow engine"}
+            # Step 3: Check if execution succeeded (no field assumptions)
+            success = False
+            error_message = "ERROR"
 
-            success = execution_result.get("success", False)
-            errors = []
-            warnings = []
-
-            if not success:
-                # Execution failed - analyze the error
-                stage = execution_result.get("stage", "unknown")
-                error_msg = execution_result.get("error", "Unknown error")
-
-                if stage == "creation":
-                    # Workflow creation failed - likely structural issues
-                    errors.append(f"Workflow creation failed: {error_msg}")
-                    # Parse detailed error if available
-                    details = execution_result.get("details", {})
-                    if details.get("status_code") == 400:
-                        errors.append("Invalid workflow structure or parameters")
-                    elif details.get("status_code") == 500:
-                        errors.append("Internal error in workflow engine")
-
-                elif stage == "execution":
-                    # Workflow created but execution failed
-                    errors.append(f"Workflow execution failed: {error_msg}")
-                    workflow_id = execution_result.get("workflow_id")
-                    if workflow_id:
-                        warnings.append(f"Workflow was created with ID: {workflow_id}")
-                    # This might indicate missing parameters or logic errors
-                    errors.append("Check node parameters and connection logic")
+            if execution_result and isinstance(execution_result, dict):
+                # Check for success indicator
+                success = execution_result.get("success", False)
+                if not success:
+                    # Extract error message if available, otherwise use default
+                    error_message = execution_result.get("error", "ERROR")
+                    logger.info(f"Workflow execution failed: {error_message}")
+                else:
+                    # Success! Log the execution details
+                    execution_id = execution_result.get("execution_id")
+                    logger.info(f"Workflow executed successfully (execution_id: {execution_id})")
             else:
-                # Success! Log the execution details
-                logger.info(
-                    "Workflow executed successfully",
-                    extra={
-                        "workflow_id": execution_result.get("workflow_id"),
-                        "execution_id": execution_result.get("execution_id"),
-                    },
-                )
+                # No valid result returned
+                logger.error("Invalid or no execution result returned from workflow engine")
+                error_message = "ERROR"
 
-            # Step 4: If there are errors, also run static validation for more insights
-            if errors or debug_loop_count == 0:
-                # Use the existing LLM-based validation for additional insights
-                try:
-                    prompt_text = await self.prompt_engine.render_prompt(
-                        "debug",
-                        current_workflow=current_workflow,
-                        debug_loop_count=debug_loop_count,
-                        previous_errors=errors,
-                    )
-
-                    system_prompt = "You are a workflow debugging specialist. Analyze the workflow and any execution errors."
-                    user_prompt = prompt_text
-
-                    messages = [
-                        SystemMessage(content=system_prompt),
-                        HumanMessage(content=user_prompt),
-                    ]
-                    llm_response = await self.llm.ainvoke(messages)
-
-                    # Parse LLM response
-                    response_text = (
-                        llm_response.content
-                        if isinstance(llm_response.content, str)
-                        else str(llm_response.content)
-                    )
-
-                    # Clean JSON
-                    if response_text.strip().startswith("```json"):
-                        response_text = response_text.strip()[7:]
-                        if response_text.endswith("```"):
-                            response_text = response_text[:-3]
-                    elif response_text.strip().startswith("```"):
-                        response_text = response_text.strip()[3:]
-                        if response_text.endswith("```"):
-                            response_text = response_text[:-3]
-
-                    debug_output = json.loads(response_text.strip())
-
-                    # Merge LLM insights with execution results
-                    if "issues_found" in debug_output:
-                        additional_errors = debug_output["issues_found"].get("critical_errors", [])
-                        for error in additional_errors:
-                            error_desc = error.get("description", str(error))
-                            if error_desc not in errors:
-                                errors.append(error_desc)
-
-                    if "warnings" in debug_output:
-                        warnings.extend(debug_output.get("warnings", []))
-
-                    suggestions = debug_output.get("suggestions", [])
-
-                except Exception as e:
-                    logger.warning(f"LLM analysis failed: {str(e)}")
-                    suggestions = []
-            else:
-                suggestions = []
-
-            # Store the complete debug result
+            # Store the simplified debug result
             state["debug_result"] = {
                 "success": success,
-                "errors": errors,
-                "warnings": warnings,
-                "suggestions": suggestions,
-                "execution_result": execution_result if not success else None,
-                "test_data_used": test_data,
-                "iteration_count": debug_loop_count,
+                "error": error_message if not success else None,
                 "timestamp": int(time.time() * 1000),
             }
 
             # Update debug loop count
             state["debug_loop_count"] = debug_loop_count + 1
 
-            # Determine next action based on debug result
-            if success:
-                logger.info("Workflow validation successful")
-                return {**state, "stage": WorkflowStage.COMPLETED}
-
-            # If we've tried too many times, give up
-            if debug_loop_count >= 3:
-                logger.warning("Max debug attempts reached, ending with current workflow")
-                return {**state, "stage": WorkflowStage.COMPLETED}
-
-            # Analyze error type to decide next stage
-            error_types = self._analyze_error_types(errors)
-
-            if error_types["missing_requirements"]:
-                # Need more information from user
-                logger.info("Missing requirements detected, returning to clarification")
-                # Reset clarification_ready since we need more info
-                state["clarification_ready"] = False
-                return {
-                    **state,
-                    "stage": WorkflowStage.CLARIFICATION,
-                    "previous_stage": WorkflowStage.DEBUG,
-                }
-            else:
-                # Can fix with regeneration - keep stage as DEBUG
-                # The routing logic will handle sending it to workflow_generation
-                logger.info("Fixable errors detected, will route to workflow generation")
-                return {
-                    **state,
-                    "stage": WorkflowStage.DEBUG,  # Keep as DEBUG, let routing handle it
-                    "previous_stage": WorkflowStage.DEBUG,
-                }
+            # Keep stage as DEBUG - routing logic will decide based on success
+            return {**state, "stage": WorkflowStage.DEBUG}
 
         except Exception as e:
             logger.error("Debug node failed", extra={"error": str(e)})
-            # On debug failure, assume workflow is acceptable
-            return {**state, "stage": WorkflowStage.COMPLETED}
-
-    def _basic_workflow_validation(self, workflow: dict) -> dict:
-        """Basic workflow validation when LLM analysis fails"""
-        errors = []
-        warnings = []
-
-        # Check required fields - be lenient about ID/name
-        if not workflow.get("id") and not workflow.get("name"):
-            warnings.append("No workflow ID or name")
-        if not workflow.get("nodes"):
-            errors.append("No nodes defined in workflow")
-        if not workflow.get("connections"):
-            warnings.append("No connections defined between nodes")
-
-        # Check node structure
-        nodes = workflow.get("nodes", [])
-        for node in nodes:
-            if not node.get("id"):
-                errors.append(f"Node missing ID: {node}")
-            if not node.get("type"):
-                errors.append(f"Node missing type: {node.get('id', 'unknown')}")
-
-        return {
-            "success": len(errors) == 0,
-            "errors": errors,
-            "warnings": warnings,
-            "suggestions": [],
-            "timestamp": int(time.time() * 1000),
-        }
-
-    def _analyze_error_types(self, errors: List[str]) -> dict:
-        """Analyze error types to determine the appropriate recovery action"""
-        error_types = {
-            "missing_requirements": False,
-            "structural_issues": False,
-            "logic_errors": False,
-        }
-
-        for error in errors:
-            error_lower = error.lower()
-            # Check for parameter-related errors first (these are structural, not missing requirements)
-            if "missing required parameter" in error_lower or "field required" in error_lower:
-                # Missing required parameter/field is a structural issue (wrong parameter name)
-                # This can be fixed by regeneration with correct MCP specs
-                error_types["structural_issues"] = True
-            elif any(
-                keyword in error_lower
-                for keyword in [
-                    "parameter",
-                    "must be",
-                    "integer",
-                    "string",
-                    "type",
-                    "float",
-                    "boolean",
-                    "dict_type",
-                    "position",
-                    "subtype",
-                ]
-            ):
-                # Parameter type mismatches and missing fields are structural issues
-                error_types["structural_issues"] = True
-            elif any(
-                keyword in error_lower
-                for keyword in ["missing", "undefined", "not specified", "unclear", "ambiguous"]
-            ):
-                # Only treat as missing requirements if it's about user intent, not structure
-                error_types["missing_requirements"] = True
-            elif any(
-                keyword in error_lower
-                for keyword in ["invalid", "structure", "format", "schema", "connection"]
-            ):
-                error_types["structural_issues"] = True
-            elif any(keyword in error_lower for keyword in ["logic", "flow", "sequence", "loop"]):
-                error_types["logic_errors"] = True
-
-        return error_types
-
-    def should_continue(self, state: WorkflowState) -> str:
-        """
-        Determine the next step based on current state
-        Used by LangGraph for conditional routing
-        """
-        stage = state.get("stage", WorkflowStage.CLARIFICATION)
-        logger.info(f"should_continue called with stage: {stage}")
-
-        # Map stage to next action
-        if stage == WorkflowStage.CLARIFICATION:
-            # Check if we have pending questions that need user response
-            clarification_context = state.get("clarification_context", {})
-            pending_questions = clarification_context.get("pending_questions", [])
-
-            # Also check the clarification_ready flag for backward compatibility
-            clarification_ready = state.get("clarification_ready", False)
-
-            logger.info(
-                f"Clarification routing check: pending_questions={len(pending_questions)}, ready={clarification_ready}"
-            )
-
-            # If we have pending questions, wait for user input
-            if pending_questions:
-                logger.info("Have pending questions, waiting for user input")
-                return "END"
-            # Otherwise, check if we're ready to proceed
-            elif clarification_ready:
-                return "gap_analysis"
-            else:
-                return "END"  # Wait for user input
-
-        elif stage == WorkflowStage.GAP_ANALYSIS:
-            # From gap analysis, check gap status
-            # The prompt returns: "no_gap", "has_gap", or "gap_resolved"
-            gap_status = state.get("gap_status", "no_gap")
-            logger.info(f"Gap analysis routing check: gap_status={gap_status}")
-
-            if gap_status == "has_gap":
-                # We have gaps and need user to choose from alternatives
-                return "clarification"  # Go back to clarification for user choice
-            elif gap_status == "gap_resolved" or gap_status == "no_gap":
-                # Either no gaps or gaps have been resolved
-                return "workflow_generation"  # Proceed to generation
-            else:
-                # Fallback for any unexpected status
-                return "workflow_generation"
-
-        elif stage == WorkflowStage.WORKFLOW_GENERATION:
-            # From workflow generation, always go to debug
-            logger.info("Routing from WORKFLOW_GENERATION to debug")
-            return "debug"
-
-        elif stage == WorkflowStage.DEBUG:
-            # From debug, check if successful
-            debug_result = state.get("debug_result", {})
-            if debug_result.get("success", False):
-                return "END"  # Workflow is complete
-            else:
-                debug_loop_count = state.get("debug_loop_count", 0)
-                if debug_loop_count >= 3:
-                    return "END"  # Max attempts reached
-                # Check error types to determine next step
-                errors = debug_result.get("errors", [])
-                error_types = self._analyze_error_types(errors)
-                if error_types["missing_requirements"]:
-                    return "clarification"  # Need more info
-                else:
-                    return "workflow_generation"  # Try regenerating
-
-        elif stage == WorkflowStage.COMPLETED:
-            return "END"
-
-        # Default to END if unknown state
-        return "END"
+            state["debug_result"] = {
+                "success": False,
+                "error": f"Debug validation failed: {str(e)}",
+                "timestamp": int(time.time() * 1000),
+            }
+            return {**state, "stage": WorkflowStage.DEBUG}

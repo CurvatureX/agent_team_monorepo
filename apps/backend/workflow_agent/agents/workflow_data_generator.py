@@ -15,7 +15,7 @@ except ImportError:
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
-from core.config import settings
+from workflow_agent.core.config import settings
 
 logger = logging.getLogger(__name__)
 
