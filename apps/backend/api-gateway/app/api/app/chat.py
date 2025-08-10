@@ -255,6 +255,26 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                             logger.warning(f"Failed to parse workflow data: {e}")
                             workflow_data = {"raw": workflow_content}
 
+                        # Extract workflow_id if available
+                        workflow_id = workflow_data.get("workflow_id")
+
+                        # Update session with workflow_id if available
+                        if workflow_id:
+                            try:
+                                session_update_result = (
+                                    admin_client.table("sessions")
+                                    .update({"workflow_id": workflow_id})
+                                    .eq("id", chat_request.session_id)
+                                    .eq("user_id", deps.current_user.sub)
+                                    .execute()
+                                )
+                                if session_update_result.data:
+                                    logger.info(f"✅ Updated session {chat_request.session_id} with workflow_id: {workflow_id}")
+                                else:
+                                    logger.warning(f"Failed to update session with workflow_id: {workflow_id}")
+                            except Exception as e:
+                                logger.warning(f"Failed to update session with workflow_id: {e}")
+
                         # Store workflow message in database immediately
                         workflow_message = "Workflow generated successfully!"
                         sequence_counter += 1

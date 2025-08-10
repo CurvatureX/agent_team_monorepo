@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     # Workflow generation settings
     MAX_WORKFLOW_NODES: int = int(os.getenv("MAX_WORKFLOW_NODES", "50"))
     DEFAULT_TIMEOUT: int = int(os.getenv("DEFAULT_TIMEOUT", "300"))  # 5 minutes
+    DEBUG_MAX_ITERATIONS: int = int(os.getenv("DEBUG_MAX_ITERATIONS", "3"))  # Max debug retry attempts
+    WORKFLOW_GENERATION_MAX_RETRIES: int = int(os.getenv("WORKFLOW_GENERATION_MAX_RETRIES", "2"))  # Max workflow generation retry attempts
     
     # Gap Analysis settings
     GAP_ANALYSIS_MAX_ROUNDS: int = int(os.getenv("GAP_ANALYSIS_MAX_ROUNDS", "1"))  # Max negotiation rounds
