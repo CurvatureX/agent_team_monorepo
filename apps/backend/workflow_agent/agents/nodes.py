@@ -748,7 +748,7 @@ You MUST use the exact node types, subtypes, and parameters from the MCP respons
         
         # Import dependencies here to avoid circular imports
         from services.workflow_engine_client import WorkflowEngineClient
-        from .test_data_generator import TestDataGenerator
+        from .workflow_data_generator import WorkflowDataGenerator
         
         try:
             current_workflow = get_current_workflow(state)
@@ -765,7 +765,7 @@ You MUST use the exact node types, subtypes, and parameters from the MCP respons
             
             # Step 1: Generate test data for the workflow
             logger.info("Generating test data for workflow execution")
-            test_generator = TestDataGenerator()
+            test_generator = WorkflowDataGenerator()
             test_data = await test_generator.generate_test_data(current_workflow)
             
             # Step 2: Create and execute the workflow using workflow_engine
