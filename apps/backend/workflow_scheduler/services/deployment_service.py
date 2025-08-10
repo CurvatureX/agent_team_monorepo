@@ -354,8 +354,12 @@ class DeploymentService:
             if not isinstance(nodes, list):
                 return {"valid": False, "error": "'nodes' must be a list"}
 
-            # Check for at least one trigger node
-            trigger_nodes = [node for node in nodes if node.get("node_type") == "TRIGGER_NODE"]
+            # Check for at least one trigger node (node_type or type field)
+            trigger_nodes = [
+                node
+                for node in nodes
+                if node.get("node_type") == "TRIGGER_NODE" or node.get("type") == "TRIGGER"
+            ]
 
             if not trigger_nodes:
                 return {"valid": False, "error": "Workflow must contain at least one trigger node"}
@@ -395,9 +399,9 @@ class DeploymentService:
             nodes = workflow_spec.get("nodes", [])
 
             for node in nodes:
-                if node.get("node_type") == "TRIGGER_NODE":
+                if node.get("node_type") == "TRIGGER_NODE" or node.get("type") == "TRIGGER":
                     trigger_spec = TriggerSpec(
-                        node_type=node["node_type"],
+                        node_type=node.get("node_type", node.get("type")),
                         subtype=TriggerType(node["subtype"]),
                         parameters=node.get("parameters", {}),
                         enabled=node.get("enabled", True),

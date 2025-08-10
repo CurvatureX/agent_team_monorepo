@@ -12,12 +12,11 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import and_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import sessionmaker
 
-from shared.models.db_models import get_database_engine
 from shared.models.trigger import TriggerSpec, TriggerType
 from shared.models.trigger_index import GitHubInstallation, TriggerIndex
 from workflow_scheduler.core.config import settings
+from workflow_scheduler.core.database import async_session_factory
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +31,8 @@ class TriggerIndexManager:
 
     def __init__(self):
         """Initialize the TriggerIndexManager with database session"""
-        self.engine = get_database_engine(settings.database_url, echo=settings.debug)
-        self.session_factory = sessionmaker(
-            bind=self.engine, class_=AsyncSession, expire_on_commit=False
-        )
+        # Use centralized async database configuration
+        self.session_factory = async_session_factory
 
     async def register_workflow_triggers(
         self, workflow_id: str, trigger_specs: List[TriggerSpec], deployment_status: str = "active"

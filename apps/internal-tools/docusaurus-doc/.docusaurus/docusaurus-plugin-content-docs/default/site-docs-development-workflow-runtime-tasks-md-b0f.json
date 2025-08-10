@@ -1,0 +1,20 @@
+{
+  "id": "development/workflow_runtime_tasks",
+  "title": "Workflow Runtime Development Tasks",
+  "description": "Based on workflow-runtime-architecture.md, here are the detailed development tasks for implementing workflow_runtime service.",
+  "source": "@site/../../../docs/development/workflow_runtime_tasks.md",
+  "sourceDirName": "development",
+  "slug": "/development/workflow_runtime_tasks",
+  "permalink": "/docs/development/workflow_runtime_tasks",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/curvaturex/agent_team_monorepo/tree/main/docs/../../../docs/development/workflow_runtime_tasks.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {},
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "Workflow Agent MVP 实现计划",
+    "permalink": "/docs/development/workflow_agent_mvp_plan"
+  }
+}

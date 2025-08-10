@@ -1,0 +1,24 @@
+{
+  "id": "tech-design/node_spec",
+  "title": "节点规范系统技术设计",
+  "description": "📋 概述",
+  "source": "@site/../../../docs/tech-design/node_spec.md",
+  "sourceDirName": "tech-design",
+  "slug": "/tech-design/node_spec",
+  "permalink": "/docs/tech-design/node_spec",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/curvaturex/agent_team_monorepo/tree/main/docs/../../../docs/tech-design/node_spec.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {},
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "Node Structure Definition",
+    "permalink": "/docs/tech-design/node-structure"
+  },
+  "next": {
+    "title": "Workflow Generation API Documentation",
+    "permalink": "/docs/tech-design/workflow-agent-api-doc"
+  }
+}

@@ -1,0 +1,158 @@
+{
+  "docusaurus-plugin-content-docs": {
+    "default": {
+      "path": "/docs",
+      "versions": [
+        {
+          "name": "current",
+          "label": "Next",
+          "isLast": true,
+          "path": "/docs",
+          "mainDocId": "intro",
+          "docs": [
+            {
+              "id": "development/agent_development_one_pager",
+              "path": "/docs/development/agent_development_one_pager",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "development/api_workflow_integration",
+              "path": "/docs/development/api_workflow_integration",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "development/DEPLOYMENT",
+              "path": "/docs/development/DEPLOYMENT",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "development/mvp-workflow-planning",
+              "path": "/docs/tech-design/mvp-workflow-planning",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "development/NODE_SPEC_IMPLEMENTATION_PLAN",
+              "path": "/docs/development/NODE_SPEC_IMPLEMENTATION_PLAN",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "development/README",
+              "path": "/docs/development/",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "development/workflow_agent_mvp_plan",
+              "path": "/docs/development/workflow_agent_mvp_plan",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "development/workflow_runtime_tasks",
+              "path": "/docs/development/workflow_runtime_tasks",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "intro",
+              "path": "/docs/",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "product-design/core-product-design",
+              "path": "/docs/product-design/core-product-design",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "product-design/product-design-intro",
+              "path": "/docs/product-design/",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "tech-design/api-gateway-architecture",
+              "path": "/docs/tech-design/api-gateway-architecture",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "tech-design/data_mapping_system",
+              "path": "/docs/tech-design/data_mapping_system",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "tech-design/db-design",
+              "path": "/docs/tech-design/db-design",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "tech-design/distributed-tracing-system",
+              "path": "/docs/tech-design/distributed-tracing-system",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "tech-design/grpc-to-fastapi-migration",
+              "path": "/docs/tech-design/grpc-to-fastapi-migration",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "tech-design/grpc-to-fastapi-migration-zh",
+              "path": "/docs/tech-design/grpc-to-fastapi-migration-zh",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "tech-design/mcp-node-knowledge-server",
+              "path": "/docs/tech-design/mcp-node-knowledge-server",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "tech-design/mvp-workflow-data-structure-definition",
+              "path": "/docs/tech-design/mvp-workflow-data-structure-definition",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "tech-design/node_spec",
+              "path": "/docs/tech-design/node_spec",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "tech-design/node-structure",
+              "path": "/docs/tech-design/node-structure",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "tech-design/tech-design-intro",
+              "path": "/docs/tech-design/",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "tech-design/workflow-agent-api-doc",
+              "path": "/docs/tech-design/workflow-agent-api-doc",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "tech-design/workflow-agent-architecture",
+              "path": "/docs/tech-design/workflow-agent-architecture",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "tech-design/workflow-engine-architecure",
+              "path": "/docs/tech-design/workflow-engine-architecure",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "tech-design/workflow-runtime-architecture",
+              "path": "/docs/tech-design/workflow-runtime-architecture",
+              "sidebar": "tutorialSidebar"
+            }
+          ],
+          "draftIds": [],
+          "sidebars": {
+            "tutorialSidebar": {
+              "link": {
+                "path": "/docs/",
+                "label": "Introduction"
+              }
+            }
+          }
+        }
+      ],
+      "breadcrumbs": true
+    }
+  }
+}

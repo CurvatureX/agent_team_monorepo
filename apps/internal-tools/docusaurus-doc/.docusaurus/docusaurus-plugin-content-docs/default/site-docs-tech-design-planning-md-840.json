@@ -1,0 +1,25 @@
+{
+  "id": "tech-design/mvp-workflow-planning",
+  "title": "自然语言生成工作流程产品 MVP 规划",
+  "description": "项目概述",
+  "source": "@site/../../../docs/tech-design/planning.md",
+  "sourceDirName": "tech-design",
+  "slug": "/tech-design/mvp-workflow-planning",
+  "permalink": "/agent_team_monorepo/docs/tech-design/mvp-workflow-planning",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/curvaturex/agent_team_monorepo/tree/main/docs/../../../docs/tech-design/planning.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {
+    "id": "mvp-workflow-planning",
+    "title": "自然语言生成工作流程产品 MVP 规划",
+    "sidebar_label": "MVP 产品规划和排期",
+    "slug": "/tech-design/mvp-workflow-planning"
+  },
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "Node Structure Definition",
+    "permalink": "/agent_team_monorepo/docs/tech-design/node-structure"
+  }
+}

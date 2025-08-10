@@ -7,29 +7,50 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import QueuePool
 
 from shared.models.db_models import Base
 from workflow_scheduler.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Create async engine
+# Create async engine with pgbouncer-compatible settings
+# Use URL parameters to force statement_cache_size=0 at the asyncpg level
+pgbouncer_url = settings.database_url.replace("postgresql://", "postgresql+asyncpg://")
+if "?" not in pgbouncer_url:
+    pgbouncer_url += "?prepared_statement_cache_size=0&statement_cache_size=0"
+else:
+    pgbouncer_url += "&prepared_statement_cache_size=0&statement_cache_size=0"
+
 engine = create_async_engine(
-    settings.database_url.replace("postgresql://", "postgresql+asyncpg://"),
+    pgbouncer_url,
     echo=settings.debug,
-    poolclass=QueuePool,
-    pool_size=10,
-    max_overflow=20,
+    # Connection pool settings
+    pool_size=5,
+    max_overflow=10,
     pool_pre_ping=True,
     pool_recycle=300,
+    # Critical: pgbouncer compatibility - must disable prepared statements at all levels
+    connect_args={
+        "statement_cache_size": 0,  # asyncpg parameter
+        "prepared_statement_cache_size": 0,  # asyncpg parameter
+        "command_timeout": 30,  # Prevent hanging connections
+        "server_settings": {
+            "application_name": "workflow_scheduler_pgbouncer",
+        },
+    },
+    # Additional SQLAlchemy-level optimizations for pgbouncer
+    pool_reset_on_return="commit",
+    # Force immediate connection cleanup
+    pool_timeout=30,
 )
 
-# Create session factory
+# Create session factory with pgbouncer-compatible settings
 async_session_factory = async_sessionmaker(
     engine,
     class_=AsyncSession,
     expire_on_commit=False,
+    # Prevent session-level prepared statement caching
+    autoflush=False,
 )
 
 
