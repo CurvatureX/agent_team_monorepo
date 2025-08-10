@@ -30,6 +30,7 @@ from .db_models import *
 from .execution import *
 from .mcp import *
 from .node import *
+from .node_enums import *  # Import authoritative node enums
 from .session import *
 from .trigger import *
 from .workflow import *
@@ -78,7 +79,21 @@ __all__ = [
     # API Gateway工作流模型
     "WorkflowStatus",
     "WorkflowType",
+    # Authoritative Node Enums (from node_enums.py - single source of truth)
     "NodeType",
+    "TriggerSubtype",
+    "AIAgentSubtype",
+    "ExternalActionSubtype",
+    "ActionSubtype",
+    "FlowSubtype",
+    "HumanLoopSubtype",
+    "ToolSubtype",
+    "MemorySubtype",
+    "VALID_SUBTYPES",
+    "get_valid_subtypes",
+    "is_valid_node_subtype_combination",
+    "get_all_node_types",
+    "get_all_subtypes",
     "WorkflowNode",
     "WorkflowEdge",
     "WorkflowCreateRequest",

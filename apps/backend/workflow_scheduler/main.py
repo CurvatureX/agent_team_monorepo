@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import sys
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
@@ -7,6 +8,35 @@ from typing import AsyncGenerator
 import uvicorn
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+# 遥测组件
+try:
+    from shared.telemetry import (  # type: ignore[assignment]
+        MetricsMiddleware,
+        TrackingMiddleware,
+        setup_telemetry,
+    )
+except ImportError:
+    # Fallback for deployment - create dummy implementations
+    print("Warning: Could not import telemetry components, using stubs")
+
+    def setup_telemetry(*args, **kwargs):  # type: ignore[misc]
+        pass
+
+    class TrackingMiddleware:  # type: ignore[misc]
+        def __init__(self, app):
+            self.app = app
+
+        async def __call__(self, scope, receive, send):
+            await self.app(scope, receive, send)
+
+    class MetricsMiddleware:  # type: ignore[misc]
+        def __init__(self, app, **kwargs):
+            self.app = app
+
+        async def __call__(self, scope, receive, send):
+            await self.app(scope, receive, send)
+
 
 from shared.models.trigger import TriggerType
 from workflow_scheduler.api import deployment, github, slack, triggers
@@ -100,6 +130,35 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# 初始化遥测系统
+# 检查是否禁用OpenTelemetry
+otel_disabled = os.getenv("OTEL_SDK_DISABLED", "false").lower() == "true"
+environment = os.getenv("ENVIRONMENT", "development")
+
+if not otel_disabled:
+    # AWS生产环境使用localhost:4317 (AWS OTEL Collector sidecar)
+    # 开发环境使用otel-collector:4317 (Docker Compose service)
+    if environment in ["production", "staging"]:
+        otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
+    else:
+        otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4317")
+
+    setup_telemetry(
+        app, service_name="workflow-scheduler", service_version="0.1.0", otlp_endpoint=otlp_endpoint
+    )
+
+    # 添加遥测中间件
+    app.add_middleware(TrackingMiddleware)  # type: ignore
+    app.add_middleware(MetricsMiddleware, service_name="workflow-scheduler")  # type: ignore
+
+    logger.info(
+        f"OpenTelemetry configured for workflow-scheduler in {environment} environment with endpoint: {otlp_endpoint}"
+    )
+else:
+    logger.info(
+        "OpenTelemetry disabled for workflow-scheduler via OTEL_SDK_DISABLED environment variable"
+    )
 
 # Add CORS middleware
 app.add_middleware(

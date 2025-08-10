@@ -1,0 +1,59 @@
+{
+  "name": "Basic Manual Trigger Test",
+  "description": "Simple manual trigger that logs activation",
+  "nodes": [
+    {
+      "id": "manual-trigger-basic",
+      "name": "basic-manual-trigger",
+      "type": "trigger",
+      "subtype": "MANUAL",
+      "type_version": 1,
+      "parameters": {
+        "trigger_name": "Basic Manual Test",
+        "description": "Test manual trigger without confirmation",
+        "require_confirmation": "false"
+      },
+      "position": {"x": 100.0, "y": 100.0},
+      "credentials": {},
+      "disabled": false,
+      "on_error": "stop",
+      "retry_policy": {"max_tries": 1, "wait_between_tries": 1},
+      "notes": {"description": "Basic manual trigger for testing"},
+      "webhooks": []
+    },
+    {
+      "id": "log-action-basic",
+      "name": "basic-log-action",
+      "type": "action",
+      "subtype": "RUN_CODE",
+      "type_version": 1,
+      "parameters": {
+        "language": "python",
+        "code": "print('Manual trigger activated! Data:', input_data)"
+      },
+      "position": {"x": 300.0, "y": 100.0},
+      "credentials": {},
+      "disabled": false,
+      "on_error": "stop",
+      "retry_policy": {"max_tries": 3, "wait_between_tries": 1},
+      "notes": {"description": "Log action to record trigger activation"},
+      "webhooks": []
+    }
+  ],
+  "connections": {
+    "basic-manual-trigger": {
+      "main": [{"node": "basic-log-action", "type": "main", "index": 0}]
+    }
+  },
+  "settings": {
+    "timeout": 60,
+    "timezone": {"name": "UTC"},
+    "save_execution_progress": true,
+    "save_manual_executions": true,
+    "error_policy": "stop",
+    "caller_policy": "workflow"
+  },
+  "static_data": {},
+  "pin_data": {},
+  "user_id": "7ba36345-a2bb-4ec9-a001-bb46d79d629d"
+}

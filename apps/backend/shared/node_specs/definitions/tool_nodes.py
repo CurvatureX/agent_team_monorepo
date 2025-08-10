@@ -17,7 +17,7 @@ from ..base import (
 
 # HTTP Tool Node
 HTTP_TOOL_SPEC = NodeSpec(
-    node_type="TOOL_NODE",
+    node_type="TOOL",
     subtype="TOOL_HTTP",
     description="HTTP request tool",
     parameters=[
@@ -101,7 +101,7 @@ HTTP_TOOL_SPEC = NodeSpec(
 
 # Code Execution Tool Node
 CODE_EXECUTION_TOOL_SPEC = NodeSpec(
-    node_type="TOOL_NODE",
+    node_type="TOOL",
     subtype="TOOL_CODE_EXECUTION",
     description="Safe code execution environment",
     parameters=[
@@ -176,7 +176,7 @@ CODE_EXECUTION_TOOL_SPEC = NodeSpec(
 
 # Google Calendar MCP Tool Node
 GOOGLE_CALENDAR_MCP_TOOL_SPEC = NodeSpec(
-    node_type="TOOL_NODE",
+    node_type="TOOL",
     subtype="TOOL_GOOGLE_CALENDAR_MCP",
     description="Access Google Calendar through MCP protocol",
     parameters=[
