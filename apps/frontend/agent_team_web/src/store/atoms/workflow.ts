@@ -18,6 +18,7 @@ export const workflowMetadataAtom = atom({
   version: '1.0.0',
   created_at: Date.now(),
   updated_at: Date.now(),
+  tags: [] as string[],
 });
 
 // Add node action atom

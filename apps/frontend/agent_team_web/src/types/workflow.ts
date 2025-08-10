@@ -33,21 +33,21 @@ export interface WorkflowNode {
   type: NodeType | string;              // 节点类型 (使用枚举或字符串以支持扩展)
   name: string;                          // 节点名称
   description?: string | null;          // 节点描述
-  config?: Record<string, any>;         // 节点配置
+  config?: Record<string, unknown>;     // 节点配置
   position?: PositionData;              // 节点位置
-  inputs?: Record<string, any>;         // 输入参数
-  outputs?: Record<string, any>;        // 输出参数
-  metadata?: Record<string, any>;       // 元数据
+  inputs?: Record<string, unknown>;     // 输入参数
+  outputs?: Record<string, unknown>;    // 输出参数
+  metadata?: Record<string, unknown>;   // 元数据
   
   // Additional fields for compatibility with existing code
   subtype?: string;                     // 节点子类型
   type_version?: number;                // 类型版本
-  parameters?: Record<string, any>;     // 参数（兼容旧版）
-  credentials?: Record<string, any>;    // 凭证
+  parameters?: Record<string, unknown>; // 参数（兼容旧版）
+  credentials?: Record<string, unknown>;// 凭证
   disabled?: boolean;                   // 是否禁用
   on_error?: ErrorPolicy | string;      // 错误处理策略
   retry_policy?: RetryPolicy;           // 重试策略
-  notes?: Record<string, any>;          // 备注
+  notes?: Record<string, unknown>;      // 备注
   webhooks?: string[];                  // Webhook列表
 }
 
@@ -65,7 +65,7 @@ export interface WorkflowEdge {
   type?: string;                        // 边的类型（如 'default', 'smoothstep'）
   sourceHandle?: string | null;         // 源节点句柄
   targetHandle?: string | null;         // 目标节点句柄
-  data?: Record<string, any>;          // 自定义数据
+  data?: Record<string, unknown>;      // 自定义数据
 }
 
 // ============== Workflow Settings ==============
@@ -104,8 +104,8 @@ export interface WorkflowEntity {
   edges: WorkflowEdge[];                // 工作流连接边列表
   
   // Additional data
-  variables?: Record<string, any>;      // 工作流变量
-  settings?: Record<string, any>;       // 工作流设置
+  variables?: Record<string, unknown>;  // 工作流变量
+  settings?: Record<string, unknown>;   // 工作流设置
   tags?: string[];                      // 标签列表
   
   // Execution info
@@ -120,9 +120,9 @@ export interface CreateWorkflowRequest {
   name: string;
   description?: string;
   nodes: Omit<WorkflowNode, 'id'>[];   // 创建时节点可能没有ID
-  connections?: Record<string, any>;    // 连接信息（旧格式兼容）
+  connections?: Record<string, unknown>;    // 连接信息（旧格式兼容）
   settings?: WorkflowSettingsData;
-  static_data?: Record<string, any>;
+  static_data?: Record<string, unknown>;
   tags?: string[];
   user_id?: string;
   session_id?: string;
@@ -134,9 +134,9 @@ export interface UpdateWorkflowRequest {
   name?: string;
   description?: string;
   nodes?: WorkflowNode[];
-  connections?: Record<string, any>;
+  connections?: Record<string, unknown>;
   settings?: WorkflowSettingsData;
-  static_data?: Record<string, any>;
+  static_data?: Record<string, unknown>;
   tags?: string[];
   active?: boolean;
   user_id?: string;
@@ -151,9 +151,9 @@ export interface WorkflowResponse {
 
 // 工作流执行请求
 export interface WorkflowExecutionRequest {
-  inputs?: Record<string, any>;         // 执行时的输入参数
-  settings?: Record<string, any> | null; // 执行时的特殊设置
-  metadata?: Record<string, any> | null; // 执行元数据
+  inputs?: Record<string, unknown>;     // 执行时的输入参数
+  settings?: Record<string, unknown> | null; // 执行时的特殊设置
+  metadata?: Record<string, unknown> | null; // 执行元数据
 }
 
 // 工作流执行响应
@@ -174,4 +174,4 @@ export type Workflow = WorkflowEntity;
 export type WorkflowData = Workflow;
 
 // 连接类型（用于兼容旧代码）
-export type WorkflowConnections = Record<string, any>;
+export type WorkflowConnections = Record<string, unknown>;

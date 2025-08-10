@@ -8,7 +8,7 @@ import { EnhancedWorkflowCanvas } from '../EnhancedWorkflowCanvas';
 import { NodeDetailsPanel } from '../NodeDetailsPanel';
 import { useWorkflow, useEditorUI } from '@/store/hooks';
 import type { NodeTemplate } from '@/types/node-template';
-import type { Workflow, WorkflowApiResponse } from '@/types/workflow';
+import type { Workflow } from '@/types/workflow';
 
 interface WorkflowEditorProps {
   workflowId?: string;

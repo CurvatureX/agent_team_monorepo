@@ -1,5 +1,5 @@
 import { Workflow, WorkflowNode, WorkflowEdge } from '@/types/workflow';
-import { WorkflowType, WorkflowStatus, ErrorPolicy, CallerPolicy, NodeType } from '@/types/workflow-enums';
+import { WorkflowType, WorkflowStatus, ErrorPolicy, CallerPolicy } from '@/types/workflow-enums';
 
 interface WorkflowStep {
   type: string;

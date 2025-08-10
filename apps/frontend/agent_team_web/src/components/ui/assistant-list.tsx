@@ -202,7 +202,7 @@ const AssistantList = ({ assistants }: AssistantListProps) => {
                     {/* Embedded workflow canvas */}
                     <div className="h-[300px] border border-border/50 rounded-lg overflow-hidden bg-muted/10">
                       <EnhancedWorkflowCanvas
-                        workflowData={selectedAssistant.workflow}
+                        workflow={selectedAssistant.workflow}
                         readOnly={true}
                       />
                     </div>

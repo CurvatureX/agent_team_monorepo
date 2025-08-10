@@ -14,8 +14,14 @@ import {
   workflowValidationAtom,
 } from '../atoms/workflow';
 import type { NodeTemplate } from '@/types/node-template';
-import type { WorkflowEdge } from '@/types/workflow-editor';
-import type { Workflow, WorkflowNode } from '@/types/workflow';
+import type { 
+  WorkflowEdge as EditorWorkflowEdge 
+} from '@/types/workflow-editor';
+import type { Workflow } from '@/types/workflow';
+import { 
+  apiWorkflowToEditor, 
+  generateEdgeId 
+} from '@/utils/workflow-converter';
 
 export const useWorkflow = () => {
   const [nodes, setNodes] = useAtom(workflowNodesAtom);
@@ -36,8 +42,8 @@ export const useWorkflow = () => {
     (connection: Connection) => {
       if (!connection.source || !connection.target) return;
 
-      const newEdge: WorkflowEdge = {
-        id: `${connection.source}-${connection.target}`,
+      const newEdge: EditorWorkflowEdge = {
+        id: generateEdgeId(connection.source, connection.target),
         source: connection.source,
         target: connection.target,
         sourceHandle: connection.sourceHandle,
@@ -81,6 +87,7 @@ export const useWorkflow = () => {
       version: '1.0.0',
       created_at: Date.now(),
       updated_at: Date.now(),
+      tags: [],
     });
   }, [setNodes, setEdges, setMetadata]);
 
@@ -109,50 +116,15 @@ export const useWorkflow = () => {
       // Clear existing workflow
       clearWorkflow();
 
-      // Set metadata from workflow
-      setMetadata({
-        name: workflowData.name || 'Untitled Workflow',
-        description: workflowData.description || '',
-        version: workflowData.version?.toString() || '1',
-        tags: workflowData.tags || [],
-      });
+      // Use the converter to transform API format to editor format
+      const { nodes: editorNodes, edges: editorEdges, metadata } = apiWorkflowToEditor(workflowData, templates);
 
-      // Create template map for quick lookup
-      const templateMap = new Map<string, NodeTemplate>();
-      templates.forEach((template) => {
-        const key = `${template.node_type}_${template.node_subtype}`;
-        templateMap.set(key, template);
-      });
+      // Set metadata
+      setMetadata(metadata);
 
-      // Import nodes
-      const newNodes = workflowData.nodes.map((node: WorkflowNode) => {
-        const templateKey = `${node.type}_${node.subtype}`;
-        const template = templateMap.get(templateKey);
-
-        if (!template) {
-          console.error(`Template not found for ${templateKey}`);
-          return null;
-        }
-
-        return {
-          id: node.id,
-          type: 'custom',
-          position: node.position,
-          data: {
-            label: template.name,
-            template,
-            parameters: { ...template.default_parameters, ...node.parameters },
-            status: 'idle',
-          },
-        };
-      }).filter(Boolean);
-
-      setNodes(newNodes);
-
-      // Import edges
-      if (workflowData.edges) {
-        setEdges(workflowData.edges);
-      }
+      // Set nodes and edges
+      setNodes(editorNodes);
+      setEdges(editorEdges);
     },
     [clearWorkflow, setMetadata, setNodes, setEdges]
   );

@@ -196,7 +196,7 @@ const CanvasPage = () => {
               {/* Workflow Editor */}
               <div className="flex-1 bg-muted/20 rounded-lg border border-border overflow-hidden">
                 <WorkflowEditor
-                  initialData={currentWorkflow}
+                  initialWorkflow={currentWorkflow}
                   onSave={handleWorkflowChange}
                   readOnly={false}
                   className="h-full"
@@ -331,7 +331,7 @@ const CanvasPage = () => {
           >
             <div className="w-full h-full">
               <WorkflowEditor
-                initialData={currentWorkflow}
+                initialWorkflow={currentWorkflow}
                 onSave={handleWorkflowChange}
                 readOnly={false}
                 className="h-full"
