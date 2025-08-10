@@ -5,12 +5,15 @@ Handles external action operations for integrating with third-party systems
 like GitHub, Google Calendar, Trello, Slack, etc.
 """
 
-import json
-import time
-import logging
 import asyncio
+import json
+import logging
+import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..services.oauth2_service_lite import OAuth2ServiceLite
 
 from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
 
@@ -22,21 +25,24 @@ except ImportError:
     NodeSpec = None
 
 try:
-    from ..services.api_adapters.base import APIAdapterRegistry
-    from ..services.oauth2_service import OAuth2Service
+    from ..services.api_adapters.base import get_adapter, register_adapter
+    from ..services.oauth2_service_lite import OAuth2ServiceLite
     from ..services.api_adapters.google_calendar import GoogleCalendarAdapter
-    from ..services.api_adapters.github import GitHubAdapter
-    from ..services.api_adapters.slack import SlackAdapter
     from ..services.api_call_logger import get_api_call_logger, APICallTracker
 except ImportError as e:
     logging.warning(f"Failed to import API adapters or logger: {e}")
-    APIAdapterRegistry = None
+    get_adapter = None
+    register_adapter = None
+    OAuth2ServiceLite = None
+    GoogleCalendarAdapter = None
+    get_api_call_logger = None
+    APICallTracker = None
 
 
 class ExternalActionNodeExecutor(BaseNodeExecutor):
     """Executor for EXTERNAL_ACTION_NODE type."""
 
-    def __init__(self, oauth2_service: Optional[OAuth2Service] = None, subtype: Optional[str] = None):
+    def __init__(self, oauth2_service: Optional['OAuth2ServiceLite'] = None, subtype: Optional[str] = None):
         """Initialize the external action executor.
         
         Args:
@@ -49,12 +55,10 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         
         # Initialize API adapters
         self._adapters = {}
-        if APIAdapterRegistry:
+        if GoogleCalendarAdapter:
             try:
                 self._adapters = {
                     "google_calendar": GoogleCalendarAdapter(),
-                    "github": GitHubAdapter(), 
-                    "slack": SlackAdapter()
                 }
                 self.logger.info("Initialized real API adapters for external actions")
             except Exception as e:
@@ -145,7 +149,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
         return errors
 
-    def execute(self, context: NodeExecutionContext) -> NodeExecutionResult:
+    async def execute(self, context: NodeExecutionContext) -> NodeExecutionResult:
         """Execute external action node."""
         start_time = time.time()
         logs = []
@@ -163,7 +167,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
             if subtype == "GITHUB":
                 return self._execute_github_action(context, logs, start_time)
             elif subtype == "GOOGLE_CALENDAR":
-                return self._execute_google_calendar_action(context, logs, start_time)
+                return await self._execute_google_calendar_action(context, logs, start_time)
             elif subtype == "TRELLO":
                 return self._execute_trello_action(context, logs, start_time)
             elif subtype == "EMAIL":
@@ -171,7 +175,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
             elif subtype == "SLACK":
                 return self._execute_slack_action(context, logs, start_time)
             elif subtype == "API_CALL":
-                return self._execute_api_call_action(context, logs, start_time)
+                return await self._execute_api_call_action(context, logs, start_time)
             elif subtype == "WEBHOOK":
                 return self._execute_webhook_action(context, logs, start_time)
             elif subtype == "NOTIFICATION":
@@ -568,7 +572,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
             output_data=output_data, execution_time=time.time() - start_time, logs=logs
         )
 
-    def _execute_google_calendar_action(
+    async def _execute_google_calendar_action(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute Google Calendar action."""
@@ -614,35 +618,10 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
         # Call real Google Calendar API
         try:
-            import asyncio
-            
-            # Handle async call in sync context
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # If already in async context, create new task
-                    import concurrent.futures
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
-                        future = executor.submit(
-                            asyncio.run,
-                            self._call_external_api("google_calendar", action, api_parameters, user_id,
-                                                   context.metadata.get('workflow_execution_id'),
-                                                   context.metadata.get('node_id'), context)
-                        )
-                        output_data = future.result()
-                else:
-                    output_data = loop.run_until_complete(
-                        self._call_external_api("google_calendar", action, api_parameters, user_id,
-                                               context.metadata.get('workflow_execution_id'),
-                                               context.metadata.get('node_id'), context)
-                    )
-            except RuntimeError:
-                # No event loop, create new one
-                output_data = asyncio.run(
-                    self._call_external_api("google_calendar", action, api_parameters, user_id,
+            # Direct async call since method is now async
+            output_data = await self._call_external_api("google_calendar", action, api_parameters, user_id,
                                            context.metadata.get('workflow_execution_id'),
                                            context.metadata.get('node_id'), context)
-                )
         except Exception as e:
             logs.append(f"Failed to call Google Calendar API: {str(e)}")
             # Fallback to mock data with error info
@@ -806,30 +785,88 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
             output_data=output_data, execution_time=time.time() - start_time, logs=logs
         )
 
-    def _execute_api_call_action(
+    async def _execute_api_call_action(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
-        """Execute generic API call action."""
+        """Execute generic API call action using the APICallAdapter."""
         # Use spec-based parameter retrieval
         method = self.get_parameter_with_spec(context, "method")
         url = self.get_parameter_with_spec(context, "url")
-        headers = self.get_parameter_with_spec(context, "headers")
+        headers = self.get_parameter_with_spec(context, "headers") or {}
+        query_params = self.get_parameter_with_spec(context, "query_params") or {}
+        body = self.get_parameter_with_spec(context, "body")
+        timeout = self.get_parameter_with_spec(context, "timeout") or 30
+        authentication = self.get_parameter_with_spec(context, "authentication") or "none"
+        auth_token = self.get_parameter_with_spec(context, "auth_token")
+        api_key_header = self.get_parameter_with_spec(context, "api_key_header") or "X-API-Key"
         
         # Convert method to uppercase
         if method:
             method = method.upper()
 
-        logs.append(f"API call: {method} {url}")
+        logs.append(f"Generic API call: {method} {url}")
 
-        # Mock implementation - replace with actual HTTP requests
-        output_data = {
+        # Prepare parameters for API call adapter
+        api_parameters = {
             "method": method,
             "url": url,
             "headers": headers,
-            "status_code": 200,
-            "response": f"Mock {method} response from {url}",
-            "executed_at": datetime.now().isoformat(),
+            "query_params": query_params,
+            "body": body,
+            "timeout": timeout,
+            "authentication": authentication
         }
+        
+        # Add authentication parameters if provided
+        if auth_token:
+            api_parameters["auth_token"] = auth_token
+        if api_key_header and api_key_header != "X-API-Key":
+            api_parameters["api_key_header"] = api_key_header
+            
+        # Add basic auth parameters if provided
+        username = self.get_parameter_with_spec(context, "username")
+        password = self.get_parameter_with_spec(context, "password")
+        if username:
+            api_parameters["username"] = username
+        if password:
+            api_parameters["password"] = password
+        
+        # Get user credentials (may be empty for generic calls)
+        user_id = getattr(context, 'user_id', None) or context.metadata.get('user_id', "00000000-0000-0000-0000-000000000123")
+        credentials = {}
+        
+        # Call real API using the api_call adapter
+        try:
+            # Use the new adapter system
+            if get_adapter:
+                adapter = get_adapter("api_call")
+                if adapter:
+                    output_data = await adapter.call("generic_call", api_parameters, credentials)
+                    
+                    # Add metadata
+                    output_data["provider"] = "api_call"
+                    output_data["executed_at"] = datetime.now().isoformat()
+                    output_data["real_api_call"] = True
+                else:
+                    raise Exception("api_call adapter not found")
+            else:
+                raise Exception("Adapter system not available")
+                
+        except Exception as e:
+            logs.append(f"Failed to call generic API: {str(e)}")
+            # Fallback to mock data with error info
+            output_data = {
+                "method": method,
+                "url": url,
+                "headers": headers,
+                "status_code": 500,
+                "success": False,
+                "error": str(e),
+                "response": f"Mock {method} response from {url} (API call failed: {str(e)})",
+                "executed_at": datetime.now().isoformat(),
+                "fallback_mode": True,
+                "api_error": str(e)
+            }
 
         return self._create_success_result(
             output_data=output_data, execution_time=time.time() - start_time, logs=logs

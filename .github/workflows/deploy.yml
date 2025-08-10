@@ -87,7 +87,7 @@ jobs:
             dockerfile: apps/backend/workflow_engine/Dockerfile
             repository: agent-team/workflow-engine
           - name: workflow-scheduler
-            context: .
+            context: apps/backend
             dockerfile: apps/backend/workflow_scheduler/Dockerfile
             repository: agent-team/workflow-scheduler
 

@@ -4,11 +4,12 @@ from enum import Enum
 
 
 class ExecutionStatus(str, Enum):
-    PENDING = "pending"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
+    NEW = "NEW"
+    RUNNING = "RUNNING"
+    SUCCESS = "SUCCESS"
+    ERROR = "ERROR"
+    CANCELED = "CANCELED"
+    WAITING = "WAITING"
 
 
 class ExecutionLog(BaseModel):
@@ -20,13 +21,18 @@ class ExecutionLog(BaseModel):
 
 
 class Execution(BaseModel):
-    id: str
-    workflow_id: str
+    id: str  # 对应数据库的 id (UUID)
+    execution_id: str  # 对应数据库的 execution_id
+    workflow_id: str  # 对应数据库的 workflow_id (UUID)
     status: ExecutionStatus
-    started_at: int
-    ended_at: Optional[int] = None
-    input_data: Dict[str, Any] = Field(default_factory=dict)
-    output_data: Dict[str, Any] = Field(default_factory=dict)
-    logs: List[ExecutionLog] = Field(default_factory=list)
-    user_id: str
-    session_id: Optional[str] = None 
+    mode: Optional[str] = None  # 对应数据库的 mode
+    triggered_by: Optional[str] = None  # 对应数据库的 triggered_by (可以作为 user_id)
+    start_time: Optional[int] = None  # 对应数据库的 start_time
+    end_time: Optional[int] = None  # 对应数据库的 end_time
+    run_data: Optional[Dict[str, Any]] = None  # 对应数据库的 run_data
+    metadata: Optional[Dict[str, Any]] = None  # 对应数据库的 metadata
+    execution_metadata: Optional[Dict[str, Any]] = None  # 对应数据库的 execution_metadata
+    error_message: Optional[str] = None
+    error_details: Optional[Dict[str, Any]] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None 

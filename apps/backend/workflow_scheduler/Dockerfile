@@ -16,7 +16,11 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy requirements and install dependencies
+<<<<<<< HEAD
 COPY workflow_scheduler/pyproject.toml ./
+=======
+COPY ./workflow_scheduler/pyproject.toml ./
+>>>>>>> c9adfde4c8f458194672917215abd65d75986286
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir setuptools wheel && \
     pip install --no-cache-dir .
@@ -47,8 +51,13 @@ COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
+<<<<<<< HEAD
 COPY workflow_scheduler/ ./workflow_scheduler/
 COPY shared/ ./shared/
+=======
+COPY ./workflow_scheduler/ ./workflow_scheduler/
+COPY ./shared/ ./shared/
+>>>>>>> c9adfde4c8f458194672917215abd65d75986286
 
 # Set ownership
 RUN chown -R appuser:appuser /app

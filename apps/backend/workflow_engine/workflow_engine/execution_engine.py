@@ -202,7 +202,7 @@ class EnhancedWorkflowExecutionEngine:
         # Get executor
         node_type = node_def["type"]
         node_subtype = node_def.get("subtype", "")
-        executor = self.factory.get_executor(node_type, node_subtype)
+        executor = self.factory.create_executor(node_type, node_subtype)
         if not executor:
             return {
                 "status": "ERROR",
@@ -667,7 +667,7 @@ class EnhancedWorkflowExecutionEngine:
             # Get executor and validate
             node_subtype = node.get("subtype", "")
             try:
-                executor = self.factory.get_executor(node_type, node_subtype)
+                executor = self.factory.create_executor(node_type, node_subtype)
                 if not executor:
                     errors.append(f"No executor found for node type: {node_type}")
                     continue

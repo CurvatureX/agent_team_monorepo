@@ -21,7 +21,7 @@ from ..base import (
 def _create_ai_agent_spec(provider: str, provider_description: str) -> NodeSpec:
     """Create a standardized AI agent specification for a provider."""
     return NodeSpec(
-        node_type="AI_AGENT_NODE",
+        node_type="AI_AGENT",
         subtype=provider,
         description=f"{provider_description} AI agent with customizable behavior via system prompt",
         parameters=[

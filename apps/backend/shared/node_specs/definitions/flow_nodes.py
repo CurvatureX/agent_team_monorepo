@@ -17,7 +17,7 @@ from ..base import (
 
 # IF node - conditional branching
 IF_NODE_SPEC = NodeSpec(
-    node_type="FLOW_NODE",
+    node_type="FLOW",
     subtype="IF",
     description="Conditional branching node that routes data based on conditions",
     parameters=[
@@ -95,7 +95,7 @@ IF_NODE_SPEC = NodeSpec(
 
 # Filter node - filter data based on criteria
 FILTER_NODE_SPEC = NodeSpec(
-    node_type="FLOW_NODE",
+    node_type="FLOW",
     subtype="FILTER",
     description="Filter data based on specified criteria",
     parameters=[
@@ -160,7 +160,7 @@ FILTER_NODE_SPEC = NodeSpec(
 
 # Loop node - iterate over data
 LOOP_NODE_SPEC = NodeSpec(
-    node_type="FLOW_NODE",
+    node_type="FLOW",
     subtype="LOOP",
     description="Iterate over data items or repeat operations",
     parameters=[
@@ -252,7 +252,7 @@ LOOP_NODE_SPEC = NodeSpec(
 
 # Merge node - combine multiple data streams
 MERGE_NODE_SPEC = NodeSpec(
-    node_type="FLOW_NODE",
+    node_type="FLOW",
     subtype="MERGE",
     description="Merge multiple data streams into a single output",
     parameters=[
@@ -324,7 +324,7 @@ MERGE_NODE_SPEC = NodeSpec(
 
 # Switch node - route to different outputs based on values
 SWITCH_NODE_SPEC = NodeSpec(
-    node_type="FLOW_NODE",
+    node_type="FLOW",
     subtype="SWITCH",
     description="Route data to different outputs based on switch values",
     parameters=[
@@ -392,7 +392,7 @@ SWITCH_NODE_SPEC = NodeSpec(
 
 # Wait node - introduce delays or wait for conditions
 WAIT_NODE_SPEC = NodeSpec(
-    node_type="FLOW_NODE",
+    node_type="FLOW",
     subtype="WAIT",
     description="Wait for a specified time or condition before continuing",
     parameters=[

@@ -4,6 +4,9 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { 
   Calendar, 
   Play, 
@@ -11,15 +14,16 @@ import {
   XCircle, 
   // AlertCircle,
   Loader2,
-  Shield
-  // ExternalLink
+  Shield,
+  ExternalLink,
+  Plus
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 // Google OAuth2 配置 - 从环境变量或配置获取
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
 const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events';
-const REDIRECT_URI = 'http://localhost:3003/oauth-callback';
+const REDIRECT_URI = 'http://localhost:3000/oauth-callback';
 const USER_ID = '7ba36345-a2bb-4ec9-a001-bb46d79d629d'; // 固定用户ID
 
 interface ExecutionResult {
@@ -30,12 +34,33 @@ interface ExecutionResult {
   logs: string[];
 }
 
+interface EventFormData {
+  summary: string;
+  description: string;
+  location: string;
+  startDate: string;
+  startTime: string;
+  endDate: string;
+  endTime: string;
+}
+
 export default function GoogleCalendarTestPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [hasCredentials, setHasCredentials] = useState(false);
   const [lastResult, setLastResult] = useState<ExecutionResult | null>(null);
   const [workflowId, setWorkflowId] = useState<string | null>(null);
   const { toast } = useToast();
+
+  // 事件表单数据
+  const [eventForm, setEventForm] = useState<EventFormData>({
+    summary: 'Test Event from Agent Team',
+    description: 'This is a test event created through our external API integration system',
+    location: 'Virtual Meeting',
+    startDate: new Date().toISOString().split('T')[0],
+    startTime: '10:00',
+    endDate: new Date().toISOString().split('T')[0],
+    endTime: '11:00'
+  });
 
   // 检查是否已有存储的凭据
   const checkCredentials = async () => {
@@ -66,21 +91,23 @@ export default function GoogleCalendarTestPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         user_id: USER_ID,
-        name: 'Google Calendar OAuth2 Test',
-        description: 'Test workflow for Google Calendar OAuth2 integration',
+        name: 'Google Calendar Create Event Test',
+        description: 'Test workflow for creating Google Calendar events',
         settings: {
           timeout: 300,
           retry_count: 3
         },
         nodes: [{
-          id: 'google_calendar_node',
-          name: 'Google Calendar Node',
+          id: 'google_calendar_create_node',
+          name: 'Create Google Calendar Event',
           type: 'EXTERNAL_ACTION_NODE',
           subtype: 'GOOGLE_CALENDAR',
           parameters: {
-            action: 'list_events',
+            action: 'create_event',
             calendar_id: 'primary',
-            max_results: '10'
+            summary: eventForm.summary,
+            description: eventForm.description,
+            location: eventForm.location
           },
           position: { x: 100, y: 100 }
         }],
@@ -110,18 +137,23 @@ export default function GoogleCalendarTestPage() {
         setWorkflowId(currentWorkflowId);
       }
 
+      // 构建事件的开始和结束时间 - Google Calendar API需要时区信息
+      const startDateTime = `${eventForm.startDate}T${eventForm.startTime}:00+08:00`;
+      const endDateTime = `${eventForm.endDate}T${eventForm.endTime}:00+08:00`;
+
       // 构建执行请求
       const requestBody: Record<string, unknown> = {
         user_id: USER_ID,
-        input_data: {
-          calendar_id: 'primary',
-          time_min: new Date().toISOString(),
-          time_max: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() // 未来7天
-        },
+        input_data: {},
         execution_context: {
           override_parameters: {
-            action: 'list_events',
-            max_results: '10'
+            action: 'create_event',
+            calendar_id: 'primary',
+            summary: eventForm.summary,
+            description: eventForm.description,
+            location: eventForm.location,
+            start: startDateTime,
+            end: endDateTime
           }
         }
       };
@@ -134,7 +166,7 @@ export default function GoogleCalendarTestPage() {
       }
 
       const response = await fetch(
-        `http://localhost:8002/v1/workflows/${currentWorkflowId}/nodes/google_calendar_node/execute`,
+        `http://localhost:8002/v1/workflows/${currentWorkflowId}/nodes/google_calendar_create_node/execute`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -260,7 +292,7 @@ export default function GoogleCalendarTestPage() {
     try {
       // 步骤1: 尝试直接执行节点
       toast({
-        title: "执行Google Calendar节点",
+        title: "创建Google Calendar事件",
         description: "正在检查是否需要授权..."
       });
 
@@ -301,14 +333,14 @@ export default function GoogleCalendarTestPage() {
 
       if (result.status === 'COMPLETED' && result.output_data?.success !== false) {
         toast({
-          title: "执行成功！",
-          description: "Google Calendar节点执行完成，已获取日历数据。",
+          title: "事件创建成功！",
+          description: "Google Calendar事件已成功创建，请查看您的Google日历。",
           variant: "default"
         });
       } else {
         toast({
-          title: "执行失败",
-          description: result.error_message || result.output_data?.error || "节点执行出现错误",
+          title: "创建失败",
+          description: result.error_message || result.output_data?.error || "事件创建出现错误",
           variant: "destructive"
         });
       }
@@ -355,10 +387,10 @@ export default function GoogleCalendarTestPage() {
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
             <Calendar className="w-8 h-8" />
-            Google Calendar OAuth2 测试
+            Google Calendar 事件创建测试
           </h1>
           <p className="text-gray-600 mt-2">
-            N8N风格的智能OAuth2授权流程 - 自动检测、弹窗授权、存储凭据
+            创建真实的Google Calendar事件 - N8N风格的智能OAuth2授权流程
           </p>
         </div>
       </div>
@@ -394,48 +426,125 @@ export default function GoogleCalendarTestPage() {
         </CardContent>
       </Card>
 
+      {/* 事件表单卡片 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Plus className="w-5 h-5" />
+            事件详情
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="summary">事件标题</Label>
+              <Input
+                id="summary"
+                value={eventForm.summary}
+                onChange={(e) => setEventForm({...eventForm, summary: e.target.value})}
+                placeholder="输入事件标题"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="location">地点</Label>
+              <Input
+                id="location"
+                value={eventForm.location}
+                onChange={(e) => setEventForm({...eventForm, location: e.target.value})}
+                placeholder="输入事件地点"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="description">事件描述</Label>
+            <Textarea
+              id="description"
+              value={eventForm.description}
+              onChange={(e) => setEventForm({...eventForm, description: e.target.value})}
+              placeholder="输入事件描述"
+              rows={3}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>开始时间</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="date"
+                  value={eventForm.startDate}
+                  onChange={(e) => setEventForm({...eventForm, startDate: e.target.value})}
+                />
+                <Input
+                  type="time"
+                  value={eventForm.startTime}
+                  onChange={(e) => setEventForm({...eventForm, startTime: e.target.value})}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>结束时间</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="date"
+                  value={eventForm.endDate}
+                  onChange={(e) => setEventForm({...eventForm, endDate: e.target.value})}
+                />
+                <Input
+                  type="time"
+                  value={eventForm.endTime}
+                  onChange={(e) => setEventForm({...eventForm, endTime: e.target.value})}
+                />
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* 执行测试卡片 */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Play className="w-5 h-5" />
-            Google Calendar 节点测试
+            <Plus className="w-5 h-5" />
+            创建Google Calendar事件
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h3 className="font-medium text-blue-900 mb-2">🎯 智能执行流程</h3>
-            <div className="text-sm text-blue-700 space-y-1">
-              <p>1. 点击执行按钮</p>
-              <p>2. 自动检测是否需要OAuth2授权</p>
-              <p>3. 如需授权，自动弹出Google授权页面</p>
-              <p>4. 授权完成后自动存储凭据</p>
-              <p>5. 自动重新执行节点，获取真实数据</p>
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <h3 className="font-medium text-green-900 mb-2">🎯 智能创建流程</h3>
+            <div className="text-sm text-green-700 space-y-1">
+              <p>1. 填写上方事件详情表单</p>
+              <p>2. 点击创建按钮</p>
+              <p>3. 系统自动检测OAuth2授权状态</p>
+              <p>4. 如需授权，自动弹出Google授权页面</p>
+              <p>5. 授权完成后自动创建真实的Calendar事件</p>
+              <p>6. 您可以在Google Calendar中验证创建的事件</p>
             </div>
           </div>
 
           <Button 
             onClick={handleExecuteNode}
             disabled={isLoading}
-            className="w-full"
+            className="w-full bg-green-600 hover:bg-green-700"
             size="lg"
           >
             {isLoading ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                执行中...
+                创建中...
               </>
             ) : (
               <>
-                <Play className="w-4 h-4 mr-2" />
-                执行 Google Calendar 节点
+                <Plus className="w-4 h-4 mr-2" />
+                创建 Google Calendar 事件
               </>
             )}
           </Button>
 
           {/* 执行结果 */}
           {lastResult && (
-            <div className="mt-4 space-y-3">
+            <div className="mt-4 space-y-4">
               <div className="flex items-center gap-2">
                 <h4 className="font-medium">执行结果:</h4>
                 {lastResult.status === 'COMPLETED' ? (
@@ -450,21 +559,78 @@ export default function GoogleCalendarTestPage() {
                 </Badge>
               </div>
 
-              <div className="bg-gray-50 rounded-lg p-4">
-                <pre className="text-sm overflow-auto max-h-96">
-                  {JSON.stringify(lastResult.output_data, null, 2)}
-                </pre>
-              </div>
-
-              {lastResult.logs.length > 0 && (
-                <div>
-                  <h5 className="font-medium mb-2">执行日志:</h5>
-                  <div className="bg-gray-100 rounded p-3 text-sm">
-                    {lastResult.logs.map((log, index) => (
-                      <div key={index} className="mb-1">• {log}</div>
-                    ))}
-                  </div>
+              {/* 成功结果展示 */}
+              {lastResult.status === 'COMPLETED' && lastResult.output_data?.success && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-3">
+                  <h5 className="font-medium text-green-800 flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4" />
+                    事件创建成功！
+                  </h5>
+                  
+                  {lastResult.output_data?.event && (
+                    <div className="space-y-2 text-sm">
+                      {lastResult.output_data.event_id && (
+                        <p><strong>事件ID:</strong> {lastResult.output_data.event_id}</p>
+                      )}
+                      {lastResult.output_data.html_link && (
+                        <p>
+                          <strong>Google Calendar链接:</strong> 
+                          <a 
+                            href={lastResult.output_data.html_link} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="ml-2 text-blue-600 hover:underline inline-flex items-center gap-1"
+                          >
+                            查看事件 <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </p>
+                      )}
+                      
+                      <div className="mt-3 p-3 bg-white rounded border">
+                        <p><strong>标题:</strong> {eventForm.summary}</p>
+                        <p><strong>时间:</strong> {eventForm.startDate} {eventForm.startTime} - {eventForm.endDate} {eventForm.endTime}</p>
+                        <p><strong>地点:</strong> {eventForm.location}</p>
+                        <p><strong>描述:</strong> {eventForm.description}</p>
+                      </div>
+                      
+                      <div className="bg-blue-50 border border-blue-200 rounded p-3 text-blue-800">
+                        <p className="font-medium">🎉 验证步骤：</p>
+                        <p className="text-sm mt-1">
+                          1. 打开您的 <a href="https://calendar.google.com" target="_blank" className="underline">Google Calendar</a><br/>
+                          2. 查找刚创建的事件："{eventForm.summary}"<br/>
+                          3. 确认事件详情是否正确
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
+              )}
+
+              {/* 详细数据展示 */}
+              <details className="bg-gray-50 rounded-lg">
+                <summary className="cursor-pointer p-3 font-medium text-gray-700 hover:bg-gray-100 rounded-lg">
+                  查看详细响应数据
+                </summary>
+                <div className="p-3 pt-0">
+                  <pre className="text-xs overflow-auto max-h-80 bg-white p-3 rounded border">
+                    {JSON.stringify(lastResult.output_data, null, 2)}
+                  </pre>
+                </div>
+              </details>
+
+              {lastResult.logs && lastResult.logs.length > 0 && (
+                <details className="bg-gray-50 rounded-lg">
+                  <summary className="cursor-pointer p-3 font-medium text-gray-700 hover:bg-gray-100 rounded-lg">
+                    查看执行日志
+                  </summary>
+                  <div className="p-3 pt-0">
+                    <div className="bg-white rounded border p-3 text-sm space-y-1">
+                      {lastResult.logs.map((log, index) => (
+                        <div key={index} className="font-mono text-xs">• {log}</div>
+                      ))}
+                    </div>
+                  </div>
+                </details>
               )}
             </div>
           )}
@@ -477,11 +643,13 @@ export default function GoogleCalendarTestPage() {
           <CardTitle>使用说明</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-gray-600">
+          <p>• <strong>事件创建</strong>: 填写事件详情后点击创建按钮，系统会在您的Google Calendar中创建真实事件</p>
           <p>• <strong>智能检测</strong>: 系统会自动检测是否需要OAuth2授权</p>
-          <p>• <strong>弹窗授权</strong>: 如需授权会自动弹出Google授权页面</p>
-          <p>• <strong>自动重试</strong>: 授权完成后会自动重新执行节点</p>
-          <p>• <strong>凭据存储</strong>: 授权信息会安全存储，下次无需重新授权</p>
-          <p>• <strong>真实API</strong>: 执行成功后会调用真实的Google Calendar API</p>
+          <p>• <strong>弹窗授权</strong>: 如需授权会自动弹出Google授权页面，完成后自动关闭</p>
+          <p>• <strong>自动重试</strong>: 授权完成后会自动重新执行事件创建</p>
+          <p>• <strong>凭据存储</strong>: 授权信息会安全存储，下次创建事件无需重新授权</p>
+          <p>• <strong>即时验证</strong>: 创建成功后可直接在Google Calendar中查看和验证事件</p>
+          <p>• <strong>完整集成</strong>: 展示了与N8N等平台相同的外部API集成体验</p>
         </CardContent>
       </Card>
     </div>
