@@ -143,7 +143,6 @@ class WorkflowAgentStateManager:
                 self.supabase_client.table(self.table_name)
                 .select("*")
                 .eq("session_id", session_id)
-                .eq("access_token", access_token)
                 .order("updated_at", desc=True)
                 .limit(1)
                 .execute()
@@ -153,11 +152,8 @@ class WorkflowAgentStateManager:
                 # 返回最新的状态记录
                 latest_state = max(result.data, key=lambda x: x.get("updated_at", 0))
 
-                # Create model from DB data for validation
-                state_model = WorkflowAgentStateModel.from_db_dict(latest_state)
-
-                # Convert to workflow state format
-                workflow_state = state_model.to_workflow_state()
+                # Create model from DB data using the helper method
+                workflow_state = self._db_to_workflow_state(latest_state)
 
                 logger.debug("Retrieved workflow_agent_state", extra={"session_id": session_id})
                 return workflow_state
@@ -258,7 +254,6 @@ class WorkflowAgentStateManager:
                 self.supabase_client.table(self.table_name)
                 .delete()
                 .eq("session_id", session_id)
-                .eq("access_token", access_token)
                 .execute()
             )
 

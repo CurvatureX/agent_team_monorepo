@@ -148,6 +148,20 @@ class WorkflowAgentServicer:
                 )
 
             # 添加用户消息到对话历史
+            # Handle case where current_state is None due to database access issues
+            if current_state is None:
+                current_state = {
+                    "session_id": session_id,
+                    "user_id": request.user_id or "anonymous",
+                    "stage": "clarification",
+                    "intent_summary": "",
+                    "conversations": [],
+                    "current_workflow": {},
+                    "debug_loop_count": 0,
+                }
+                logger.warning("Using fallback state due to database access failure", 
+                             extra={"session_id": session_id})
+            
             conversations = current_state.get("conversations", [])
             if request.user_message:
                 conversations.append(
