@@ -5,10 +5,10 @@ Handles external action operations for integrating with third-party systems
 like GitHub, Google Calendar, Trello, Slack, etc.
 """
 
-import json
-import time
-import logging
 import asyncio
+import json
+import logging
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
@@ -44,7 +44,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
     def __init__(self, oauth2_service: Optional['OAuth2ServiceLite'] = None, subtype: Optional[str] = None):
         """Initialize the external action executor.
-        
+
         Args:
             oauth2_service: OAuth2 service for credential management
             subtype: The specific subtype of external action (e.g., GITHUB, SLACK, etc.)
@@ -52,7 +52,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         super().__init__(subtype=subtype)
         self.oauth2_service = oauth2_service
         self.logger = logging.getLogger(__name__)
-        
+
         # Initialize API adapters
         self._adapters = {}
         if GoogleCalendarAdapter:
@@ -89,11 +89,11 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         """Validate external action node configuration using spec-based validation."""
         # First use the base class validation which includes spec validation
         errors = super().validate(node)
-        
+
         # If spec validation passed, we're done
         if not errors and self.spec:
             return errors
-        
+
         # Fallback if spec not available
         if not node.subtype:
             errors.append("External action subtype is required")
@@ -103,14 +103,14 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
             errors.append(f"Unsupported external action subtype: {node.subtype}")
 
         return errors
-    
+
     def _validate_legacy(self, node: Any) -> List[str]:
         """Legacy validation for backward compatibility."""
         errors = []
-        
-        if not hasattr(node, 'subtype'):
+
+        if not hasattr(node, "subtype"):
             return errors
-            
+
         subtype = node.subtype
 
         if subtype == "GITHUB":
@@ -124,7 +124,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
         elif subtype == "EMAIL":
             errors.extend(self._validate_required_parameters(node, ["action"]))
-            if hasattr(node, 'parameters') and node.parameters.get("action") == "send":
+            if hasattr(node, "parameters") and node.parameters.get("action") == "send":
                 errors.extend(self._validate_required_parameters(node, ["recipients", "subject"]))
 
         elif subtype == "SLACK":
@@ -132,7 +132,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
         elif subtype == "API_CALL":
             errors.extend(self._validate_required_parameters(node, ["method", "url"]))
-            if hasattr(node, 'parameters'):
+            if hasattr(node, "parameters"):
                 method = node.parameters.get("method", "").upper()
                 if method and method not in ["GET", "POST", "PUT", "DELETE", "PATCH"]:
                     errors.append(f"Invalid HTTP method: {method}")
@@ -142,9 +142,14 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
         elif subtype == "NOTIFICATION":
             errors.extend(self._validate_required_parameters(node, ["type", "message", "target"]))
-            if hasattr(node, 'parameters'):
+            if hasattr(node, "parameters"):
                 notification_type = node.parameters.get("type", "")
-                if notification_type and notification_type not in ["push", "sms", "email", "in_app"]:
+                if notification_type and notification_type not in [
+                    "push",
+                    "sms",
+                    "email",
+                    "in_app",
+                ]:
                     errors.append(f"Invalid notification type: {notification_type}")
 
         return errors
@@ -156,11 +161,15 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
         try:
             self.logger.info(f"ExternalActionNodeExecutor.execute() called")
-            self.logger.info(f"Context node type: {context.node.type}, subtype: {context.node.subtype}")
+            self.logger.info(
+                f"Context node type: {context.node.type}, subtype: {context.node.subtype}"
+            )
             self.logger.info(f"Context credentials available: {bool(context.credentials)}")
             if context.credentials:
-                self.logger.info(f"Available credential providers: {list(context.credentials.keys())}")
-            
+                self.logger.info(
+                    f"Available credential providers: {list(context.credentials.keys())}"
+                )
+
             subtype = context.node.subtype
             logs.append(f"Executing external action node with subtype: {subtype}")
 
@@ -197,46 +206,50 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
     async def _get_user_credentials(self, user_id: str, provider: str) -> Optional[Dict[str, str]]:
         """Get user credentials for the specified provider.
-        
+
         Args:
             user_id: User ID from execution context
             provider: Provider name (google_calendar, github, slack)
-            
+
         Returns:
             Dictionary with access_token or None if not available
         """
         try:
             # Use simplified OAuth2 service
-            from ..services.oauth2_service_lite import OAuth2ServiceLite
             from ..models.database import get_db_session
-            
+            from ..services.oauth2_service_lite import OAuth2ServiceLite
+
             with get_db_session() as db:
                 oauth2_service_lite = OAuth2ServiceLite(db)
-                
+
                 # Get valid access token
                 access_token = await oauth2_service_lite.get_valid_token(user_id, provider)
                 if access_token:
                     return {"access_token": access_token}
                 else:
-                    self.logger.warning(f"No valid credentials found for user {user_id}, provider {provider}")
+                    self.logger.warning(
+                        f"No valid credentials found for user {user_id}, provider {provider}"
+                    )
                     return None
-                    
+
         except Exception as e:
-            self.logger.error(f"Failed to get credentials for user {user_id}, provider {provider}: {e}")
+            self.logger.error(
+                f"Failed to get credentials for user {user_id}, provider {provider}: {e}"
+            )
             return None
 
     async def _call_external_api(
-        self, 
-        provider: str, 
-        operation: str, 
-        parameters: Dict[str, Any], 
+        self,
+        provider: str,
+        operation: str,
+        parameters: Dict[str, Any],
         user_id: str,
         workflow_execution_id: Optional[str] = None,
         node_id: Optional[str] = None,
-        context: Optional[NodeExecutionContext] = None
+        context: Optional[NodeExecutionContext] = None,
     ) -> Dict[str, Any]:
         """Call external API using the appropriate adapter with comprehensive logging.
-        
+
         Args:
             provider: Provider name (google_calendar, github, slack)
             operation: API operation to perform
@@ -244,13 +257,13 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
             user_id: User ID for credential lookup
             workflow_execution_id: Optional workflow execution ID for logging
             node_id: Optional node ID for logging
-            
+
         Returns:
             API response data
         """
         start_time = time.time()
         api_logger = get_api_call_logger()
-        
+
         # Initialize tracking variables
         success = False
         status_code = None
@@ -260,12 +273,12 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         http_method = "POST"  # Default for most operations
         response_data = None
         retry_count = 0
-        
+
         # Check if we have the adapter
         if provider not in self._adapters:
             error_message = f"Provider {provider} not supported"
             self.logger.error(f"No adapter available for provider: {provider}")
-            
+
             # Log the failed call
             await api_logger.log_api_call(
                 user_id=user_id,
@@ -280,69 +293,73 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 node_id=node_id,
                 request_data=parameters,
                 error_type="ProviderNotSupported",
-                error_message=error_message
+                error_message=error_message,
             )
-            
+
             return {
                 "success": False,
                 "error": error_message,
                 "provider": provider,
                 "fallback": True,
-                "mock_result": f"Mock {operation} result for {provider}"
+                "mock_result": f"Mock {operation} result for {provider}",
             }
-        
+
         # Get user credentials - first check execution context, then OAuth2 service
         credentials = None
-        
+
         # Debug logging
         self.logger.info(f"Calling external API for provider={provider}, operation={operation}")
         self.logger.info(f"Context provided: {context is not None}")
         if context:
             self.logger.info(f"Context credentials available: {context.credentials is not None}")
             if context.credentials:
-                self.logger.info(f"Available credential providers: {list(context.credentials.keys())}")
-        
+                self.logger.info(
+                    f"Available credential providers: {list(context.credentials.keys())}"
+                )
+
         # Check if credentials are provided in execution context
         if context and context.credentials and provider in context.credentials:
             context_creds = context.credentials[provider]
             self.logger.info(f"Using credentials from execution context for {provider}")
-            
+
             # Handle authorization code flow
             if "authorization_code" in context_creds:
                 # Exchange authorization code for access token
                 try:
                     # Use simplified OAuth2 service for token exchange
-                    from ..services.oauth2_service_lite import OAuth2ServiceLite
                     from ..models.database import get_db_session
-                    
+                    from ..services.oauth2_service_lite import OAuth2ServiceLite
+
                     # Create OAuth2 service
                     with get_db_session() as db:
                         oauth2_service_lite = OAuth2ServiceLite(db)
-                        
+
                         # Exchange code for token
                         token_response = await oauth2_service_lite.exchange_code_for_token(
                             code=context_creds["authorization_code"],
                             client_id=context_creds.get("client_id"),
                             redirect_uri=context_creds.get("redirect_uri"),
-                            provider=provider
+                            provider=provider,
                         )
-                        
+
                         # Store credentials for future use
-                        user_id_from_context = context.metadata.get('user_id', user_id)
+                        user_id_from_context = context.metadata.get("user_id", user_id)
                         await oauth2_service_lite.store_user_credentials(
                             user_id=user_id_from_context,
                             provider=provider,
-                            token_response=token_response
+                            token_response=token_response,
                         )
-                        
+
                         credentials = {
                             "access_token": token_response.access_token,
                             "refresh_token": token_response.refresh_token,
                             "token_type": token_response.token_type,
-                            "expires_at": token_response.expires_at
+                            "expires_at": token_response.expires_at,
                         }
-                        self.logger.info(f"Successfully exchanged authorization code for access token for {provider}")
-                        
+                        self.logger.info(
+                            f"Successfully exchanged authorization code for access token for {provider}"
+                        )
+
                 except Exception as e:
                     self.logger.error(f"Failed to exchange authorization code for {provider}: {e}")
                     return {
@@ -350,20 +367,20 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                         "error": f"OAuth2 token exchange failed: {str(e)}",
                         "provider": provider,
                         "operation": operation,
-                        "oauth2_error": True
+                        "oauth2_error": True,
                     }
             else:
                 # Direct token credentials
                 credentials = context_creds
-        
+
         # Fallback to OAuth2 service if no context credentials
         if not credentials:
             credentials = await self._get_user_credentials(user_id, provider)
-            
+
         if not credentials:
             error_message = f"No valid credentials for {provider}"
             self.logger.warning(f"No credentials available for user {user_id}, provider {provider}")
-            
+
             # Log the authentication failure
             await api_logger.log_api_call(
                 user_id=user_id,
@@ -378,46 +395,46 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 node_id=node_id,
                 request_data=parameters,
                 error_type="AuthenticationError",
-                error_message=error_message
+                error_message=error_message,
             )
-            
+
             return {
                 "success": False,
                 "error": error_message,
                 "provider": provider,
                 "requires_auth": True,
-                "mock_result": f"Mock {operation} result for {provider} (no auth)"
+                "mock_result": f"Mock {operation} result for {provider} (no auth)",
             }
-        
+
         # Call the real API with comprehensive error handling
         try:
             adapter = self._adapters[provider]
-            
+
             # Attempt to determine API endpoint (adapter-specific)
             try:
-                if hasattr(adapter, 'get_endpoint_info'):
+                if hasattr(adapter, "get_endpoint_info"):
                     endpoint_info = adapter.get_endpoint_info(operation, parameters)
-                    api_endpoint = endpoint_info.get('url', f"{provider}://{operation}")
-                    http_method = endpoint_info.get('method', 'POST')
+                    api_endpoint = endpoint_info.get("url", f"{provider}://{operation}")
+                    http_method = endpoint_info.get("method", "POST")
                 else:
                     api_endpoint = f"{provider}://{operation}"
             except:
                 api_endpoint = f"{provider}://{operation}"
-            
+
             # Make the API call
             result = await adapter.call(operation, parameters, credentials)
-            
+
             # Parse response information
-            success = result.get('success', True)
-            status_code = result.get('status_code', 200 if success else 500)
+            success = result.get("success", True)
+            status_code = result.get("status_code", 200 if success else 500)
             response_data = result
-            
+
             # Add metadata
             result["provider"] = provider
             result["operation"] = operation
             result["real_api_call"] = True
             result["executed_at"] = datetime.now().isoformat()
-            
+
             # Log successful API call
             await api_logger.log_api_call(
                 user_id=user_id,
@@ -432,16 +449,16 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 node_id=node_id,
                 request_data=parameters,
                 response_data=response_data,
-                retry_count=retry_count
+                retry_count=retry_count,
             )
-            
+
             self.logger.info(f"Successfully called {provider} API: {operation}")
             return result
-            
+
         except Exception as e:
             error_type = type(e).__name__
             error_message = str(e)
-            
+
             # Determine status code based on error type
             if "auth" in error_message.lower() or "token" in error_message.lower():
                 status_code = 401
@@ -453,9 +470,9 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 status_code = 408
             else:
                 status_code = 500
-            
+
             self.logger.error(f"Failed to call {provider} API: {e}")
-            
+
             # Log failed API call
             await api_logger.log_api_call(
                 user_id=user_id,
@@ -471,16 +488,16 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 request_data=parameters,
                 error_type=error_type,
                 error_message=error_message,
-                retry_count=retry_count
+                retry_count=retry_count,
             )
-            
+
             return {
                 "success": False,
                 "error": error_message,
                 "provider": provider,
                 "operation": operation,
                 "api_error": True,
-                "mock_result": f"Mock {operation} result for {provider} (API error)"
+                "mock_result": f"Mock {operation} result for {provider} (API error)",
             }
 
     def _execute_github_action(
@@ -489,71 +506,96 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         """Execute GitHub action."""
         # Use spec-based parameter retrieval with fallback
         action = self.get_parameter_with_spec(context, "action") or context.get_parameter("action")
-        repository = self.get_parameter_with_spec(context, "repository") or context.get_parameter("repository")
+        repository = self.get_parameter_with_spec(context, "repository") or context.get_parameter(
+            "repository"
+        )
         owner = self.get_parameter_with_spec(context, "owner") or context.get_parameter("owner")
-        user_id = getattr(context, 'user_id', None) or context.metadata.get('user_id', "00000000-0000-0000-0000-000000000123")
+        user_id = getattr(context, "user_id", None) or context.metadata.get(
+            "user_id", "00000000-0000-0000-0000-000000000123"
+        )
 
         logs.append(f"GitHub action: {action} on repository: {repository}")
 
         # Prepare parameters for GitHub API
-        api_parameters = {
-            "action": action,
-            "repository": repository,
-            "owner": owner
-        }
+        api_parameters = {"action": action, "repository": repository, "owner": owner}
 
         # Add action-specific parameters
         if action == "create_issue":
-            api_parameters.update({
-                "title": context.get_parameter("title", ""),
-                "body": context.get_parameter("body", ""),
-                "labels": context.get_parameter("labels", []),
-                "assignees": context.get_parameter("assignees", [])
-            })
+            api_parameters.update(
+                {
+                    "title": context.get_parameter("title", ""),
+                    "body": context.get_parameter("body", ""),
+                    "labels": context.get_parameter("labels", []),
+                    "assignees": context.get_parameter("assignees", []),
+                }
+            )
         elif action == "create_pull_request":
-            api_parameters.update({
-                "title": context.get_parameter("title", ""),
-                "head": context.get_parameter("head", ""),
-                "base": context.get_parameter("base", ""),
-                "body": context.get_parameter("body", "")
-            })
+            api_parameters.update(
+                {
+                    "title": context.get_parameter("title", ""),
+                    "head": context.get_parameter("head", ""),
+                    "base": context.get_parameter("base", ""),
+                    "body": context.get_parameter("body", ""),
+                }
+            )
         elif action == "list_issues":
-            api_parameters.update({
-                "state": context.get_parameter("state", "open"),
-                "labels": context.get_parameter("labels", []),
-                "sort": context.get_parameter("sort", "created")
-            })
+            api_parameters.update(
+                {
+                    "state": context.get_parameter("state", "open"),
+                    "labels": context.get_parameter("labels", []),
+                    "sort": context.get_parameter("sort", "created"),
+                }
+            )
 
         # Call real GitHub API
         try:
             import asyncio
-            
+
             # Handle async call in sync context
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
                     # If already in async context, create new task
                     import concurrent.futures
+
                     with concurrent.futures.ThreadPoolExecutor() as executor:
                         future = executor.submit(
                             asyncio.run,
-                            self._call_external_api("github", action, api_parameters, user_id, 
-                                                   context.metadata.get('workflow_execution_id'), 
-                                                   context.metadata.get('node_id'), context)
+                            self._call_external_api(
+                                "github",
+                                action,
+                                api_parameters,
+                                user_id,
+                                context.metadata.get("workflow_execution_id"),
+                                context.metadata.get("node_id"),
+                                context,
+                            ),
                         )
                         output_data = future.result()
                 else:
                     output_data = loop.run_until_complete(
-                        self._call_external_api("github", action, api_parameters, user_id,
-                                               context.metadata.get('workflow_execution_id'),
-                                               context.metadata.get('node_id'), context)
+                        self._call_external_api(
+                            "github",
+                            action,
+                            api_parameters,
+                            user_id,
+                            context.metadata.get("workflow_execution_id"),
+                            context.metadata.get("node_id"),
+                            context,
+                        )
                     )
             except RuntimeError:
                 # No event loop, create new one
                 output_data = asyncio.run(
-                    self._call_external_api("github", action, api_parameters, user_id,
-                                           context.metadata.get('workflow_execution_id'),
-                                           context.metadata.get('node_id'), context)
+                    self._call_external_api(
+                        "github",
+                        action,
+                        api_parameters,
+                        user_id,
+                        context.metadata.get("workflow_execution_id"),
+                        context.metadata.get("node_id"),
+                        context,
+                    )
                 )
         except Exception as e:
             logs.append(f"Failed to call GitHub API: {str(e)}")
@@ -565,7 +607,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 "result": f"Mock GitHub {action} result (API call failed: {str(e)})",
                 "executed_at": datetime.now().isoformat(),
                 "fallback_mode": True,
-                "api_error": str(e)
+                "api_error": str(e),
             }
 
         return self._create_success_result(
@@ -578,43 +620,55 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         """Execute Google Calendar action."""
         # Use spec-based parameter retrieval with fallback
         action = self.get_parameter_with_spec(context, "action") or context.get_parameter("action")
-        calendar_id = self.get_parameter_with_spec(context, "calendar_id") or context.get_parameter("calendar_id", "primary")
-        user_id = getattr(context, 'user_id', None) or context.metadata.get('user_id', "00000000-0000-0000-0000-000000000123")
+        calendar_id = self.get_parameter_with_spec(context, "calendar_id") or context.get_parameter(
+            "calendar_id", "primary"
+        )
+        user_id = getattr(context, "user_id", None) or context.metadata.get(
+            "user_id", "00000000-0000-0000-0000-000000000123"
+        )
 
         logs.append(f"Google Calendar action: {action} on calendar: {calendar_id}")
 
         # Prepare parameters for Google Calendar API
-        api_parameters = {
-            "calendar_id": calendar_id
-        }
+        api_parameters = {"calendar_id": calendar_id}
 
         # Add action-specific parameters
         if action == "create_event":
             event_data = context.get_parameter("event_data", {})
-            api_parameters.update({
-                "summary": event_data.get("summary", context.get_parameter("summary", "")),
-                "description": event_data.get("description", context.get_parameter("description", "")),
-                "start": event_data.get("start", context.get_parameter("start")),
-                "end": event_data.get("end", context.get_parameter("end")),
-                "location": event_data.get("location", context.get_parameter("location", "")),
-                "attendees": event_data.get("attendees", context.get_parameter("attendees", []))
-            })
+            api_parameters.update(
+                {
+                    "summary": event_data.get("summary", context.get_parameter("summary", "")),
+                    "description": event_data.get(
+                        "description", context.get_parameter("description", "")
+                    ),
+                    "start": event_data.get("start", context.get_parameter("start")),
+                    "end": event_data.get("end", context.get_parameter("end")),
+                    "location": event_data.get("location", context.get_parameter("location", "")),
+                    "attendees": event_data.get(
+                        "attendees", context.get_parameter("attendees", [])
+                    ),
+                }
+            )
         elif action == "list_events":
-            api_parameters.update({
-                "time_min": context.get_parameter("time_min"),
-                "time_max": context.get_parameter("time_max"),
-                "max_results": context.get_parameter("max_results", 10),
-                "single_events": context.get_parameter("single_events", True),
-                "order_by": context.get_parameter("order_by", "startTime")
-            })
+            api_parameters.update(
+                {
+                    "time_min": context.get_parameter("time_min"),
+                    "time_max": context.get_parameter("time_max"),
+                    "max_results": context.get_parameter("max_results", 10),
+                    "single_events": context.get_parameter("single_events", True),
+                    "order_by": context.get_parameter("order_by", "startTime"),
+                }
+            )
         elif action == "update_event":
-            api_parameters.update({
-                "event_id": context.get_parameter("event_id", ""),
-                "summary": context.get_parameter("summary", ""),
-                "description": context.get_parameter("description", ""),
-                "start": context.get_parameter("start"),
-                "end": context.get_parameter("end")
-            })
+            api_parameters.update(
+                {
+                    "event_id": context.get_parameter("event_id", ""),
+                    "summary": context.get_parameter("summary", ""),
+                    "description": context.get_parameter("description", ""),
+                    "start": context.get_parameter("start"),
+                    "end": context.get_parameter("end"),
+                }
+            )
 
         # Call real Google Calendar API
         try:
@@ -632,7 +686,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 "result": f"Mock Google Calendar {action} result (API call failed: {str(e)})",
                 "executed_at": datetime.now().isoformat(),
                 "fallback_mode": True,
-                "api_error": str(e)
+                "api_error": str(e),
             }
 
         return self._create_success_result(
@@ -694,79 +748,110 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         """Execute Slack action."""
         # Use spec-based parameter retrieval with fallback
         action = self.get_parameter_with_spec(context, "action") or context.get_parameter("action")
-        channel = self.get_parameter_with_spec(context, "channel") or context.get_parameter("channel")
-        user_id = getattr(context, 'user_id', None) or context.metadata.get('user_id', "00000000-0000-0000-0000-000000000123")
+        channel = self.get_parameter_with_spec(context, "channel") or context.get_parameter(
+            "channel"
+        )
+        user_id = getattr(context, "user_id", None) or context.metadata.get(
+            "user_id", "00000000-0000-0000-0000-000000000123"
+        )
 
         logs.append(f"Slack action: {action} in channel: {channel}")
 
         # Prepare parameters for Slack API
-        api_parameters = {
-            "channel": channel
-        }
+        api_parameters = {"channel": channel}
 
         # Add action-specific parameters
         if action == "send_message":
             message_data = context.get_parameter("message_data", {})
-            api_parameters.update({
-                "text": message_data.get("text", context.get_parameter("text", "")),
-                "blocks": message_data.get("blocks", context.get_parameter("blocks", [])),
-                "attachments": message_data.get("attachments", context.get_parameter("attachments", [])),
-                "username": context.get_parameter("username"),
-                "icon_emoji": context.get_parameter("icon_emoji"),
-                "icon_url": context.get_parameter("icon_url"),
-                "thread_ts": context.get_parameter("thread_ts"),
-                "reply_broadcast": context.get_parameter("reply_broadcast", False)
-            })
+            api_parameters.update(
+                {
+                    "text": message_data.get("text", context.get_parameter("text", "")),
+                    "blocks": message_data.get("blocks", context.get_parameter("blocks", [])),
+                    "attachments": message_data.get(
+                        "attachments", context.get_parameter("attachments", [])
+                    ),
+                    "username": context.get_parameter("username"),
+                    "icon_emoji": context.get_parameter("icon_emoji"),
+                    "icon_url": context.get_parameter("icon_url"),
+                    "thread_ts": context.get_parameter("thread_ts"),
+                    "reply_broadcast": context.get_parameter("reply_broadcast", False),
+                }
+            )
         elif action == "list_channels":
-            api_parameters.update({
-                "types": context.get_parameter("types", "public_channel,private_channel"),
-                "exclude_archived": context.get_parameter("exclude_archived", True),
-                "limit": context.get_parameter("limit", 100)
-            })
+            api_parameters.update(
+                {
+                    "types": context.get_parameter("types", "public_channel,private_channel"),
+                    "exclude_archived": context.get_parameter("exclude_archived", True),
+                    "limit": context.get_parameter("limit", 100),
+                }
+            )
         elif action == "create_channel":
-            api_parameters.update({
-                "name": context.get_parameter("name", ""),
-                "is_private": context.get_parameter("is_private", False)
-            })
+            api_parameters.update(
+                {
+                    "name": context.get_parameter("name", ""),
+                    "is_private": context.get_parameter("is_private", False),
+                }
+            )
         elif action == "upload_file":
-            api_parameters.update({
-                "file_content": context.get_parameter("file_content", ""),
-                "file_name": context.get_parameter("file_name", ""),
-                "title": context.get_parameter("title"),
-                "initial_comment": context.get_parameter("initial_comment"),
-                "channels": channel
-            })
+            api_parameters.update(
+                {
+                    "file_content": context.get_parameter("file_content", ""),
+                    "file_name": context.get_parameter("file_name", ""),
+                    "title": context.get_parameter("title"),
+                    "initial_comment": context.get_parameter("initial_comment"),
+                    "channels": channel,
+                }
+            )
 
         # Call real Slack API
         try:
             import asyncio
-            
+
             # Handle async call in sync context
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
                     # If already in async context, create new task
                     import concurrent.futures
+
                     with concurrent.futures.ThreadPoolExecutor() as executor:
                         future = executor.submit(
                             asyncio.run,
-                            self._call_external_api("slack", action, api_parameters, user_id,
-                                                   context.metadata.get('workflow_execution_id'),
-                                                   context.metadata.get('node_id'), context)
+                            self._call_external_api(
+                                "slack",
+                                action,
+                                api_parameters,
+                                user_id,
+                                context.metadata.get("workflow_execution_id"),
+                                context.metadata.get("node_id"),
+                                context,
+                            ),
                         )
                         output_data = future.result()
                 else:
                     output_data = loop.run_until_complete(
-                        self._call_external_api("slack", action, api_parameters, user_id,
-                                               context.metadata.get('workflow_execution_id'),
-                                               context.metadata.get('node_id'), context)
+                        self._call_external_api(
+                            "slack",
+                            action,
+                            api_parameters,
+                            user_id,
+                            context.metadata.get("workflow_execution_id"),
+                            context.metadata.get("node_id"),
+                            context,
+                        )
                     )
             except RuntimeError:
                 # No event loop, create new one
                 output_data = asyncio.run(
-                    self._call_external_api("slack", action, api_parameters, user_id,
-                                           context.metadata.get('workflow_execution_id'),
-                                           context.metadata.get('node_id'), context)
+                    self._call_external_api(
+                        "slack",
+                        action,
+                        api_parameters,
+                        user_id,
+                        context.metadata.get("workflow_execution_id"),
+                        context.metadata.get("node_id"),
+                        context,
+                    )
                 )
         except Exception as e:
             logs.append(f"Failed to call Slack API: {str(e)}")
@@ -778,7 +863,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 "result": f"Mock Slack {action} result (API call failed: {str(e)})",
                 "executed_at": datetime.now().isoformat(),
                 "fallback_mode": True,
-                "api_error": str(e)
+                "api_error": str(e),
             }
 
         return self._create_success_result(

@@ -13,14 +13,15 @@ import sys
 import time
 from typing import AsyncGenerator, Optional
 
-from agents.state import WorkflowStage, WorkflowState
-
-# Import workflow agent components
-from agents.workflow_agent import WorkflowAgent
-from core.config import settings
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from services.state_manager import get_workflow_agent_state_manager
+
+from workflow_agent.agents.state import WorkflowStage, WorkflowState
+
+# Import workflow agent components
+from workflow_agent.agents.workflow_agent import WorkflowAgent
+from workflow_agent.core.config import settings
+from workflow_agent.services.state_manager import get_workflow_agent_state_manager
 
 # Add parent directory to path for shared models
 current_dir = os.path.dirname(os.path.abspath(__file__))
