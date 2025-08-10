@@ -1,0 +1,149 @@
+# Workflow DSL Specification
+# A YAML-like syntax for defining AI Agent workflows as an elegant intermediate representation
+
+# Core DSL Structure
+workflow:
+  # Basic workflow metadata
+  name: string                    # Human-readable workflow name
+  description: string             # Brief description of workflow purpose
+  version: string                 # Workflow version for tracking
+  tags: [string]                  # Categorization tags
+
+  # Optional workflow settings
+  settings:
+    timezone: string              # Execution timezone
+    timeout: int                  # Workflow timeout in seconds
+    error_policy: enum            # STOP_WORKFLOW | CONTINUE_REGULAR_OUTPUT | CONTINUE_ERROR_OUTPUT
+    caller_policy: enum           # WORKFLOW_MAIN | WORKFLOW_SUB
+    save_execution_progress: bool
+    save_manual_executions: bool
+
+  # Node definitions - the heart of the workflow
+  nodes:
+    - name: string                # Unique node identifier
+      type: enum                  # Core node type (TRIGGER_NODE, AI_AGENT_NODE, etc.)
+      subtype: enum              # Specific implementation (TRIGGER_CHAT, AI_GEMINI_NODE, etc.)
+      role: string               # Human-readable role description
+      disabled: bool             # Whether node is active
+
+      # Optional node configuration
+      parameters:
+        key: value               # Node-specific parameters as key-value pairs
+
+      # Optional error handling
+      on_error: enum             # STOP_WORKFLOW_ON_ERROR | CONTINUE_REGULAR_OUTPUT_ON_ERROR | CONTINUE_ERROR_OUTPUT_ON_ERROR
+      retry:
+        max_tries: int
+        wait_between_tries: int
+
+      # Optional metadata for extensions
+      position:
+        x: float
+        y: float
+      notes:
+        key: value
+
+  # Connection definitions - how nodes are linked
+  connections:
+    - from: string               # Source node name
+      to: string                 # Target node name
+      type: enum                 # Connection type (MAIN, AI_AGENT, AI_CHAIN, etc.)
+      index: int                 # Port index for multiple connections
+
+# Supported Node Types
+node_types:
+  TRIGGER_NODE:
+    description: "Entry points for workflow execution"
+    subtypes:
+      - TRIGGER_CHAT
+      - TRIGGER_WEBHOOK
+      - TRIGGER_CRON
+      - TRIGGER_MANUAL
+      - TRIGGER_EMAIL
+      - TRIGGER_FORM
+      - TRIGGER_CALENDAR
+
+  AI_AGENT_NODE:
+    description: "AI-powered processing nodes"
+    subtypes:
+      - AI_GEMINI_NODE
+      - AI_OPENAI_NODE
+      - AI_CLAUDE_NODE
+
+  EXTERNAL_ACTION_NODE:
+    description: "External service integrations"
+    subtypes:
+      - EXTERNAL_GITHUB
+      - EXTERNAL_GOOGLE_CALENDAR
+      - EXTERNAL_TRELLO
+      - EXTERNAL_EMAIL
+      - EXTERNAL_SLACK
+      - EXTERNAL_API_CALL
+      - EXTERNAL_WEBHOOK
+      - EXTERNAL_NOTIFICATION
+
+  ACTION_NODE:
+    description: "Internal processing actions"
+    subtypes:
+      - ACTION_RUN_CODE
+      - ACTION_SEND_HTTP_REQUEST
+      - ACTION_PARSE_IMAGE
+      - ACTION_WEB_SEARCH
+      - ACTION_DATABASE_OPERATION
+      - ACTION_FILE_OPERATION
+      - ACTION_DATA_TRANSFORMATION
+
+  FLOW_NODE:
+    description: "Workflow control flow"
+    subtypes:
+      - FLOW_IF
+      - FLOW_FILTER
+      - FLOW_LOOP
+      - FLOW_MERGE
+      - FLOW_SWITCH
+      - FLOW_WAIT
+
+  HUMAN_IN_THE_LOOP_NODE:
+    description: "Human interaction points"
+    subtypes:
+      - HUMAN_GMAIL
+      - HUMAN_SLACK
+      - HUMAN_DISCORD
+      - HUMAN_TELEGRAM
+      - HUMAN_APP
+
+  TOOL_NODE:
+    description: "External tool integrations"
+    subtypes:
+      - TOOL_GOOGLE_CALENDAR_MCP
+      - TOOL_NOTION_MCP
+      - TOOL_CALENDAR
+      - TOOL_EMAIL
+      - TOOL_HTTP
+      - TOOL_CODE_EXECUTION
+
+  MEMORY_NODE:
+    description: "Data persistence and retrieval"
+    subtypes:
+      - MEMORY_SIMPLE
+      - MEMORY_BUFFER
+      - MEMORY_KNOWLEDGE
+      - MEMORY_VECTOR_STORE
+      - MEMORY_DOCUMENT
+      - MEMORY_EMBEDDING
+
+# Supported Connection Types
+connection_types:
+  MAIN: "Primary execution flow"
+  AI_AGENT: "AI agent connections"
+  AI_CHAIN: "AI processing chains"
+  AI_DOCUMENT: "Document processing"
+  AI_EMBEDDING: "Embedding operations"
+  AI_LANGUAGE_MODEL: "Language model connections"
+  AI_MEMORY: "Memory system connections"
+  AI_OUTPUT_PARSER: "Output parsing"
+  AI_RETRIEVER: "Information retrieval"
+  AI_RERANKER: "Result reranking"
+  AI_TEXT_SPLITTER: "Text processing"
+  AI_TOOL: "Tool integrations"
+  AI_VECTOR_STORE: "Vector storage"

@@ -14,10 +14,10 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 try:
-    from workflow_engine.proto import workflow_pb2
-    from workflow_engine.proto import execution_pb2
-    from workflow_engine.proto import ai_system_pb2
-    from workflow_engine.proto import integration_pb2
+    from proto import workflow_pb2
+    from proto import execution_pb2
+    from proto import ai_system_pb2
+    from proto import integration_pb2
 except ImportError as e:
     print(f"Error importing protobuf modules: {e}")
     print("Please run 'make proto' to generate the protobuf Python code first.")

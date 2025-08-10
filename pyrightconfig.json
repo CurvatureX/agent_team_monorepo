@@ -1,0 +1,45 @@
+{
+  "typeCheckingMode": "basic",
+  "reportAttributeAccessIssue": false,
+  "reportArgumentType": false,
+  "reportOptionalMemberAccess": false,
+  "reportOptionalSubscript": false,
+  "venvPath": "apps/backend",
+  "venv": ".venv",
+  "extraPaths": [
+    "apps/backend",
+    "apps/backend/workflow_agent",
+    "apps/backend/api-gateway",
+    "apps/backend/shared",
+    "apps/backend/workflow_engine",
+    "apps/backend/workflow_runtime"
+  ],
+  "executionEnvironments": [
+    {
+      "root": "apps/backend/workflow_agent",
+      "extraPaths": [
+        "apps/backend",
+        "apps/backend/workflow_agent",
+        "apps/backend/shared",
+        "apps/backend/workflow_engine",
+        "apps/backend/workflow_runtime"
+      ]
+    },
+    {
+      "root": "apps/backend/api-gateway",
+      "extraPaths": [
+        "apps/backend",
+        "apps/backend/api-gateway",
+        "apps/backend/shared"
+      ]
+    },
+    {
+      "root": "apps/backend/workflow_engine",
+      "extraPaths": [
+        "apps/backend",
+        "apps/backend/workflow_engine",
+        "apps/backend/shared"
+      ]
+    }
+  ]
+}

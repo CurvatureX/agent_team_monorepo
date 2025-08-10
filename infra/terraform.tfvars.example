@@ -1,0 +1,32 @@
+# AWS Configuration
+aws_region = "us-east-1"
+environment = "production"
+project_name = "agent-team"
+
+# VPC Configuration
+vpc_cidr = "10.0.0.0/16"
+public_subnet_cidrs = ["10.0.1.0/24", "10.0.2.0/24"]
+private_subnet_cidrs = ["10.0.10.0/24", "10.0.20.0/24"]
+
+# ECS Configuration
+api_gateway_cpu = 512
+api_gateway_memory = 1024
+workflow_engine_cpu = 1024
+workflow_engine_memory = 2048
+workflow_agent_cpu = 512
+workflow_agent_memory = 1024
+desired_count = 1
+
+# Database Configuration
+db_instance_class = "db.t3.micro"
+db_allocated_storage = 20
+
+# Domain Configuration (optional)
+# domain_name = "api.yourdomain.com"
+# certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012"
+
+# Environment Variables (set these in GitHub Secrets or via terraform.tfvars)
+# supabase_url = "https://your-project.supabase.co"
+# supabase_secret_key = "your-secret-key"
+# openai_api_key = "your-openai-api-key"
+# anthropic_api_key = "your-anthropic-api-key"

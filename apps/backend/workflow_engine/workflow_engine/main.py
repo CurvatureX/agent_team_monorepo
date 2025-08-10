@@ -2,116 +2,148 @@
 Main gRPC server application.
 """
 
-import asyncio
 import logging
-import signal
+import os
 import sys
-from concurrent import futures
+import time
+from pathlib import Path
 from typing import Optional
 
 import grpc
+import uvicorn
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 
+# Add backend directory to Python path for shared models
+backend_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(backend_dir))
+
+# 遥测组件
+try:
+    from shared.telemetry import setup_telemetry, TrackingMiddleware, MetricsMiddleware  # type: ignore[assignment]
+except ImportError:
+    # Fallback for deployment - create dummy implementations
+    print("Warning: Could not import telemetry components, using stubs")
+    def setup_telemetry(*args, **kwargs):  # type: ignore[misc]
+        pass
+    class TrackingMiddleware:  # type: ignore[misc]
+        def __init__(self, app):
+            self.app = app
+        async def __call__(self, scope, receive, send):
+            await self.app(scope, receive, send)
+    class MetricsMiddleware:  # type: ignore[misc]
+        def __init__(self, app, **kwargs):
+            self.app = app
+        async def __call__(self, scope, receive, send):
+            await self.app(scope, receive, send)
+from shared.models.common import HealthResponse, HealthStatus
+from workflow_engine.api.v1 import executions, triggers, workflows
 from workflow_engine.core.config import get_settings
-from workflow_engine.models.database import init_db
-from workflow_engine.services.main_service import MainWorkflowService
+from workflow_engine.models.database import close_db
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
 
-class GRPCServer:
-    """gRPC server manager."""
+settings = get_settings()
+
+app = FastAPI(
+    title="Workflow Engine API",
+    description="Service for managing and executing workflows.",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
+
+# 初始化遥测系统
+# 从环境变量获取 OTLP 端点，默认使用 otel-collector
+otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4317")
+setup_telemetry(app, service_name="workflow-engine", service_version="1.0.0", otlp_endpoint=otlp_endpoint)
+
+# 添加遥测中间件
+app.add_middleware(TrackingMiddleware)  # type: ignore
+app.add_middleware(MetricsMiddleware, service_name="workflow-engine")  # type: ignore
+
+@app.on_event("startup")
+def on_startup():
+    logger.info("Workflow Engine service starting up")
     
-    def __init__(self):
-        self.settings = get_settings()
-        self.server: Optional[grpc.Server] = None
-        
-    def create_server(self) -> grpc.Server:
-        """Create and configure gRPC server."""
-        # Create server with thread pool
-        server = grpc.server(
-            futures.ThreadPoolExecutor(max_workers=10),
-            options=[
-                ('grpc.keepalive_time_ms', 30000),
-                ('grpc.keepalive_timeout_ms', 5000),
-                ('grpc.keepalive_permit_without_calls', True),
-                ('grpc.http2.max_pings_without_data', 0),
-                ('grpc.http2.min_time_between_pings_ms', 10000),
-                ('grpc.http2.min_ping_interval_without_data_ms', 300000),
-            ]
-        )
-        
-        # Add services
-        from workflow_engine.proto import workflow_service_pb2_grpc
-        workflow_service_pb2_grpc.add_WorkflowServiceServicer_to_server(
-            MainWorkflowService(), server
-        )
-        
-        # Add health check service
-        from grpc_health.v1 import health_pb2_grpc, health_pb2
-        from grpc_health.v1.health import HealthServicer
-        health_servicer = HealthServicer()
-        health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
-        
-        # Set all services as serving
-        health_servicer.set("", health_pb2.HealthCheckResponse.ServingStatus.SERVING)
-        health_servicer.set("WorkflowService", health_pb2.HealthCheckResponse.ServingStatus.SERVING)
-        
-        # Add listening port
-        listen_addr = f"{self.settings.grpc_host}:{self.settings.grpc_port}"
-        server.add_insecure_port(listen_addr)
-        
-        logger.info(f"gRPC server configured to listen on {listen_addr}")
-        return server
+
+# Trace ID middleware
+@app.middleware("http")
+async def trace_id_middleware(request: Request, call_next):
+    """Extract and propagate trace_id from request headers"""
+    trace_id = request.headers.get("x-trace-id") or request.headers.get("X-Trace-ID")
     
-    def start(self):
-        """Start the gRPC server."""
-        try:
-            # Initialize database
-            logger.info("Initializing database...")
-            init_db()
-            
-            # Create and start server
-            self.server = self.create_server()
-            self.server.start()
-            
-            logger.info("gRPC server started successfully")
-            
-            # Set up signal handlers
-            def signal_handler(signum, frame):
-                logger.info(f"Received signal {signum}, shutting down...")
-                self.stop()
-                sys.exit(0)
-            
-            signal.signal(signal.SIGINT, signal_handler)
-            signal.signal(signal.SIGTERM, signal_handler)
-            
-            # Wait for termination
-            self.server.wait_for_termination()
-            
-        except Exception as e:
-            logger.error(f"Failed to start gRPC server: {e}")
-            sys.exit(1)
+    if trace_id:
+        # Store trace_id in request state for access in endpoints
+        request.state.trace_id = trace_id
+        
+        # Configure logging to include trace_id
+        import contextvars
+        trace_id_context = contextvars.ContextVar('trace_id', default=None)
+        trace_id_context.set(trace_id)
+        
+        logger.info(f"Request received with trace_id: {trace_id}")
     
-    def stop(self):
-        """Stop the gRPC server."""
-        if self.server:
-            logger.info("Stopping gRPC server...")
-            self.server.stop(grace=30)
-            logger.info("gRPC server stopped")
+    response = await call_next(request)
+    
+    # Optionally add trace_id to response headers
+    if trace_id:
+        response.headers["X-Trace-ID"] = trace_id
+    
+    return response
 
 
-def main():
-    """Main entry point."""
-    logger.info("Starting Workflow Engine gRPC Server")
-    
-    server = GRPCServer()
-    server.start()
+@app.on_event("shutdown")
+def on_shutdown():
+    close_db()
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Adjust in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include routers
+app.include_router(workflows.router, prefix="/v1", tags=["Workflows"])
+app.include_router(executions.router, prefix="/v1", tags=["Executions"])
+app.include_router(triggers.router, prefix="/v1", tags=["Triggers"])
+
+
+@app.get("/health", response_model=HealthResponse)
+async def health_check():
+    """Health check that validates database connection."""
+    details = {"service": "workflow-engine", "database": "unknown"}
+
+    overall_status = HealthStatus.HEALTHY
+
+    # Check database connection
+    try:
+        from sqlalchemy import text
+
+        from workflow_engine.models.database import engine
+
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        details["database"] = "connected"
+        logger.info("Database health check passed")
+    except Exception as e:
+        details["database"] = f"failed: {str(e)}"
+        overall_status = HealthStatus.UNHEALTHY
+        logger.error(f"Database health check failed: {e}")
+
+    return HealthResponse(
+        status=overall_status, version="1.0.0", timestamp=int(time.time()), details=details
+    )
+
+
+@app.get("/")
+async def root():
+    return {"message": "Workflow Engine API is running", "version": "1.0.0"}
 
 
 if __name__ == "__main__":
-    main() 
+    uvicorn.run("main:app", host=settings.HOST, port=settings.PORT, reload=True)

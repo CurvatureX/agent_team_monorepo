@@ -1,36 +1,15 @@
-[project]
-name = "workflow-agent-backend"
-version = "1.0.0"
-description = "Backend services for Workflow Agent Team - API Gateway and Workflow Agent"
-authors = [
-    {name = "Workflow Agent Team", email = "team@example.com"}
-]
-readme = "README.md"
-license = {text = "MIT"}
-requires-python = ">=3.11"
-
-# Workspace configuration for managing multiple packages
-dependencies = []
-
-[project.optional-dependencies]
-dev = [
-    "pytest==7.4.3",
-    "pytest-asyncio==0.21.1",
-    "httpx==0.25.2",
-    "black==23.11.0",
-    "isort==5.12.0",
-    "flake8==6.1.0",
-    "mypy==1.7.1",
-    "pre-commit==3.6.0",
-]
+# This is a UV workspace root - no project definition needed
+# All actual packages are defined in the member directories
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.hatch.build.targets.wheel]
-packages = ["api-gateway", "workflow_agent"]
+# UV Workspace 配置
+[tool.uv.workspace]
+members = ["api-gateway", "workflow_agent", "workflow_engine"]
 
+# 共享工具配置
 [tool.black]
 line-length = 100
 target-version = ['py311']
@@ -45,11 +24,22 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
 
-# Workspace settings
-[tool.uv.workspace]
-members = ["api-gateway", "workflow_agent"]
-
+# 依赖分组 - 按功能组织 (gRPC dependencies removed)
 [dependency-groups]
-dev = [
-    "pre-commit>=3.6.0",
+shared-infra = [
+    "structlog>=23.2.0",
+]
+
+shared-config = [
+    "pydantic-settings>=2.1.0",
+    "python-dotenv>=1.0.0",
+]
+
+dev-tools = [
+    "pytest>=7.4.3",
+    "pytest-asyncio>=0.21.1",
+    "black>=23.11.0",
+    "isort>=5.12.0",
+    "flake8>=6.1.0",
+    "mypy>=1.7.1",
 ]

@@ -1,7 +1,7 @@
 [project]
-name = "api-gateway"
+name = "api-gateway-mvp"
 version = "1.0.0"
-description = "API Gateway for Workflow Agent Team"
+description = "API Gateway MVP for Workflow Agent Team with Supabase Auth"
 authors = [
     {name = "Workflow Agent Team", email = "team@example.com"}
 ]
@@ -9,29 +9,45 @@ license = {text = "MIT"}
 requires-python = ">=3.11"
 
 dependencies = [
+    # Core FastAPI stack
     "fastapi>=0.104.1",
     "uvicorn[standard]>=0.26.0",
-    "pydantic>=2.7.4",
+    "pydantic[email]>=2.7.4",
     "pydantic-settings==2.1.0",
-    "grpcio==1.59.0",
-    "grpcio-tools==1.59.0",
-    "protobuf==4.25.0",
-    "python-multipart==0.0.6",
+    "python-multipart>=0.0.6",
+    # Email validation for Pydantic EmailStr
+    "email-validator>=2.0.0",
+    # Database and Auth
+    "supabase>=2.9.0", # Supabase client with auth support
+    "sqlalchemy>=2.0.23",
+    "psycopg2-binary>=2.9.7",
+    "asyncpg>=0.29.0",
     "python-jose[cryptography]==3.3.0",
     "passlib[bcrypt]==1.7.4",
     "python-dotenv==1.0.0",
-    "structlog>=23.2.0",
+    "python-json-logger>=2.0.0",
+    # Redis dependencies
+    "redis>=5.0.0",
+    "redis[hiredis]>=5.0.0", # Enhanced performance with hiredis
+    # gRPC dependencies removed - migrated to HTTP clients
+    # JSON Schema validation
+    "jsonschema>=4.0.0",
+    # Security and validation
+    "bleach>=6.0.0", # HTML sanitization
+    # OpenTelemetry dependencies
+    "opentelemetry-api>=1.21.0",
+    "opentelemetry-sdk>=1.21.0",
+    "opentelemetry-instrumentation-fastapi>=0.42b0",
+    "opentelemetry-instrumentation-requests>=0.42b0",
+    "opentelemetry-instrumentation-httpx>=0.42b0",
+    "opentelemetry-instrumentation-psycopg2>=0.42b0",
+    "opentelemetry-exporter-otlp>=1.21.0",
+    "opentelemetry-exporter-prometheus",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest==7.4.3",
-    "pytest-asyncio==0.21.1",
-    "httpx==0.25.2",
-    "black==23.11.0",
-    "isort==5.12.0",
-    "flake8==6.1.0",
-    "mypy==1.7.1",
+    "httpx>=0.24.0",              # For testing FastAPI
 ]
 
 [build-system]
@@ -39,18 +55,34 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["."]
+packages = ["app"]
 
-[tool.black]
-line-length = 100
-target-version = ['py311']
+[tool.hatch.metadata]
+allow-direct-references = true
 
-[tool.isort]
-profile = "black"
-line_length = 100
+# Service-specific dev dependencies
+[tool.uv]
+dev-dependencies = [
+    "httpx>=0.24.0",              # For testing FastAPI
+    "pytest>=7.4.0",             # Test framework
+    "pytest-asyncio>=0.21.0",    # Async test support
+    "pytest-cov>=4.1.0",         # Coverage reporting
+]
 
-[tool.mypy]
-python_version = "3.11"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
+[tool.uv.sources]
+# Add any local package sources here if needed
+
+# Tool configurations inherited from workspace root
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "asyncio: mark test as async",
+    "integration: mark test as integration test requiring real services",
+    "requires_env: mark test as requiring environment variables",
+]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--cov-report=term-missing",
+]

@@ -1,42 +1,90 @@
-FROM python:3.11-slim
+# Production Dockerfile for Three-Layer API Gateway with uv
+FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies for building
 RUN apt-get update && apt-get install -y \
     gcc \
+    g++ \
     curl \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.cargo/bin:$PATH"
+# Install uv with retry and increased timeout
+RUN pip install --default-timeout=120 --retries 5 uv
 
-# Copy pyproject.toml first for better Docker layer caching
-COPY pyproject.toml .
+# Copy workspace files from parent directory (context should be apps/backend)
+COPY pyproject.toml ./
+COPY uv.lock ./
+COPY api-gateway/pyproject.toml ./api-gateway/
+COPY api-gateway/.python-version* ./api-gateway/
 
-# Install Python dependencies using uv
-RUN uv pip install --system -e .
+# Install Python dependencies with uv
+RUN uv sync --frozen --package api-gateway-mvp
 
-# Copy the application code
-COPY . .
+# No proto files needed for HTTP-only deployment
 
-# Create proto directory and copy generated files
-RUN mkdir -p proto
+# Production stage
+FROM python:3.11-slim AS production
 
-# Expose the API port
-EXPOSE 8000
+WORKDIR /app
 
-# Set environment variables
+# Install runtime dependencies including Redis client tools
+RUN apt-get update && apt-get install -y \
+    curl \
+    redis-tools \
+    netcat-openbsd \
+    libpq5 \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Copy uv and dependencies from builder
+COPY --from=builder /app/.venv /app/.venv
+
+# No proto files to copy for HTTP-only deployment
+
+# Copy shared models and application code
+COPY shared/ ./shared/
+COPY api-gateway/ ./
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash --uid 1000 app && \
+    chown -R app:app /app
+USER app
+
+# Set environment variables for three-layer architecture
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+ENV PATH="/app/.venv/bin:$PATH"
 
-# Install curl for health check
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+# API Gateway specific environment
+ENV APP_NAME="API Gateway"
+ENV VERSION="1.0.0"
+ENV ENVIRONMENT="production"
+ENV HOST="0.0.0.0"
+ENV PORT="8000"
+ENV DEBUG="false"
+ENV LOG_LEVEL="INFO"
+ENV LOG_FORMAT="json"
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+# Authentication settings
+ENV SUPABASE_AUTH_ENABLED="true"
+ENV MCP_API_KEY_REQUIRED="true"
 
-# Run the application
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Rate limiting settings
+ENV PUBLIC_RATE_LIMIT_ENABLED="true"
+
+ENV UV_HTTP_TIMEOUT=120
+
+# Expose port
+EXPOSE 8000
+
+# Enhanced health check for three-layer architecture
+# Uses versioned health endpoint and includes Redis connectivity check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD curl -f http://localhost:8000/api/v1/public/health || curl -f http://localhost:8000/health || exit 1
+
+# Set the default command to run the start script
+# This script waits for the database and then starts the application
+CMD ["/bin/bash", "start.sh"]
