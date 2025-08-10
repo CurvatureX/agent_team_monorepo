@@ -24,7 +24,7 @@ import { useToast } from '@/hooks/use-toast';
 interface OAuthProvider {
   id: string;
   name: string;
-  icon: React.ComponentType<any>;
+  icon: React.ComponentType<{ className?: string }>;
   color: string;
   scopes: string[];
   connected: boolean;
@@ -35,7 +35,7 @@ interface WorkflowTest {
   name: string;
   description: string;
   provider: string;
-  icon: React.ComponentType<any>;
+  icon: React.ComponentType<{ className?: string }>;
   status: 'idle' | 'running' | 'success' | 'error';
   result?: any;
   requiresAuth: boolean;
@@ -57,7 +57,7 @@ const ExternalAPIsTestPage: React.FC = () => {
   const [providers, setProviders] = useState<OAuthProvider[]>([]);
   const [workflowTests, setWorkflowTests] = useState<WorkflowTest[]>([]);
   const [apiLogs, setAPILogs] = useState<APICallLog[]>([]);
-  const [selectedTest, setSelectedTest] = useState<string | null>(null);
+  // const [selectedTest, setSelectedTest] = useState<string | null>(null);
   
   // Mock JWT token - in real app, get from auth context
   const [authToken, setAuthToken] = useState<string>('');
@@ -165,7 +165,7 @@ const ExternalAPIsTestPage: React.FC = () => {
         const data = await response.json();
         setProviders(prev => prev.map(provider => ({
           ...provider,
-          connected: data.credentials?.some((cred: any) => cred.provider === provider.id && cred.is_valid) || false
+          connected: data.credentials?.some((cred: { provider: string; is_valid: boolean }) => cred.provider === provider.id && cred.is_valid) || false
         })));
       }
     } catch (error) {
@@ -389,13 +389,13 @@ const ExternalAPIsTestPage: React.FC = () => {
       }
     }
 
-    setSelectedTest(testId);
+    // setSelectedTest(testId);
     setWorkflowTests(prev => prev.map(t => 
       t.id === testId ? { ...t, status: 'running', result: undefined } : t
     ));
 
     try {
-      let workflowBody: any;
+      let workflowBody: Record<string, unknown>;
       
       switch (testId) {
         case 'github_issue':
