@@ -3,6 +3,7 @@ uvicorn[standard]
 pydantic
 pydantic-settings
 croniter
+cryptography
 # Existing dependencies below
 psycopg2-binary
 sqlalchemy

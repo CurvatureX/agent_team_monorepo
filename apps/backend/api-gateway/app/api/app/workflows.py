@@ -10,6 +10,8 @@ from app.core.config import get_settings
 from app.dependencies import AuthenticatedDeps
 from app.exceptions import NotFoundError, ValidationError
 from app.models import (
+    DeploymentResult,
+    DeploymentStatus,
     ExecutionResult,
     ManualTriggerSpec,
     NodeTemplateListResponse,
@@ -378,4 +380,105 @@ async def trigger_manual_workflow(
         raise
     except Exception as e:
         logger.error(f"❌ Error triggering manual workflow {workflow_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/{workflow_id}/deploy", response_model=DeploymentResult)
+async def deploy_workflow(
+    workflow_id: str,
+    deps: AuthenticatedDeps = Depends(),
+):
+    """
+    Deploy a workflow with its trigger configuration
+    部署工作流及其触发器配置
+    """
+    try:
+        logger.info(f"📦 Deploying workflow {workflow_id} for user {deps.current_user.sub}")
+
+        # First get the workflow from workflow engine
+        workflow_engine_client = await get_workflow_engine_client()
+        workflow_result = await workflow_engine_client.get_workflow(
+            workflow_id, deps.current_user.sub
+        )
+
+        if not workflow_result.get("success", False) or not workflow_result.get("workflow"):
+            raise NotFoundError("Workflow")
+
+        workflow_data = workflow_result["workflow"]
+
+        # Get workflow scheduler client
+        scheduler_client = await get_workflow_scheduler_client()
+
+        # Deploy workflow via scheduler
+        result = await scheduler_client.deploy_workflow(
+            workflow_id=workflow_id,
+            workflow_spec=workflow_data,
+            trace_id=getattr(deps.request.state, "trace_id", None),
+        )
+
+        # Handle errors
+        if not result.get("success", True) and result.get("error"):
+            error_msg = result.get("error", "Unknown error")
+            if "not found" in error_msg.lower():
+                raise HTTPException(status_code=404, detail="Workflow not found")
+            raise HTTPException(status_code=500, detail=f"Deployment failed: {error_msg}")
+
+        logger.info(
+            f"✅ Workflow deployment successful: {workflow_id}, "
+            f"deployment_id: {result.get('deployment_id', 'N/A')}"
+        )
+
+        # Return DeploymentResult
+        return DeploymentResult(
+            deployment_id=result.get("deployment_id", ""),
+            status=DeploymentStatus(result.get("status", "deployed")),
+            message=result.get("message", "Workflow deployed successfully"),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error deploying workflow {workflow_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/{workflow_id}/deployment/status")
+async def get_deployment_status(
+    workflow_id: str,
+    deps: AuthenticatedDeps = Depends(),
+):
+    """
+    Get deployment status for a workflow
+    获取工作流的部署状态
+    """
+    try:
+        logger.info(
+            f"📊 Getting deployment status for workflow {workflow_id} for user {deps.current_user.sub}"
+        )
+
+        # Get workflow scheduler client
+        scheduler_client = await get_workflow_scheduler_client()
+
+        # Get deployment status
+        result = await scheduler_client.get_deployment_status(workflow_id)
+
+        # Handle not found
+        if result.get("status_code") == 404:
+            raise HTTPException(status_code=404, detail="Deployment not found")
+
+        # Handle errors
+        if not result.get("success", True) and result.get("error"):
+            error_msg = result.get("error", "Unknown error")
+            raise HTTPException(
+                status_code=500, detail=f"Failed to get deployment status: {error_msg}"
+            )
+
+        logger.info(f"✅ Retrieved deployment status for workflow: {workflow_id}")
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error getting deployment status for workflow {workflow_id}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
