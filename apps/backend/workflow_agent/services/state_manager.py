@@ -108,7 +108,9 @@ class WorkflowAgentStateManager:
                     "collected_info": {},
                     "pending_questions": [],
                     "origin": "create"
-                }
+                },
+                "gap_negotiation_count": 0,
+                "selected_alternative": None
             }
             
             result = self.supabase_client.table(self.table_name).insert(state_data).execute()
@@ -336,6 +338,8 @@ class WorkflowAgentStateManager:
             "template_id": "template_id",
             "current_workflow": "current_workflow",
             "template_workflow": "template_workflow",
+            "gap_negotiation_count": "gap_negotiation_count",
+            "selected_alternative": "selected_alternative",
         }
         
         for state_key, db_key in field_mappings.items():
@@ -410,6 +414,8 @@ class WorkflowAgentStateManager:
             "debug_loop_count": 0,
             "execution_history": [],
             "template_id": None,
+            "gap_negotiation_count": 0,
+            "selected_alternative": None,
             "created_at": int(time.time() * 1000),
             "updated_at": int(time.time() * 1000)
         }
