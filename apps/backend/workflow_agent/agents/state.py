@@ -1,7 +1,7 @@
 """
 LangGraph state management for Workflow Agent
-State definitions for the 4-node architecture
-Based on main branch, updated for MCP integration
+State definitions for the optimized 3-node architecture
+Simplified for better user experience with automatic gap handling
 """
 
 from enum import Enum
@@ -9,13 +9,13 @@ from typing import Any, Dict, List, NotRequired, TypedDict
 
 
 class WorkflowStage(str, Enum):
-    """Workflow stages for 4-node architecture"""
+    """Workflow stages for 3-node architecture"""
 
     CLARIFICATION = "clarification"
-    GAP_ANALYSIS = "gap_analysis"
     WORKFLOW_GENERATION = "workflow_generation"
     DEBUG = "debug"
     COMPLETED = "completed"
+    FAILED = "failed"  # Workflow generation failed after max attempts
 
 
 class WorkflowOrigin(str, Enum):
@@ -30,7 +30,6 @@ class ClarificationPurpose(str, Enum):
     
     INITIAL_INTENT = "initial_intent"
     TEMPLATE_MODIFICATION = "template_modification"
-    GAP_NEGOTIATION = "gap_negotiation"  # When negotiating gap alternatives with user
     DEBUG_ISSUE = "debug_issue"
 
 
@@ -52,15 +51,8 @@ class ClarificationContext(TypedDict):
     origin: NotRequired[str]  # workflow origin
 
 
-class GapDetail(TypedDict):
-    """Detailed gap information from gap analysis"""
-    required_capability: str
-    missing_component: str
-    alternatives: List[str]
-
-
 class WorkflowState(TypedDict):
-    """Complete workflow state for LangGraph processing in 4-node architecture"""
+    """Complete workflow state for LangGraph processing in 3-node architecture"""
     
     # Session and user info
     session_id: str
@@ -80,12 +72,6 @@ class WorkflowState(TypedDict):
     # Clarification context
     clarification_context: ClarificationContext
     
-    # Gap analysis results
-    gap_status: NotRequired[str]  # "no_gap", "has_gap", "gap_resolved"
-    identified_gaps: NotRequired[List[GapDetail]]  # detailed gap information
-    gap_negotiation_count: NotRequired[int]  # number of gap negotiation rounds
-    selected_alternative: NotRequired[str]  # user-selected alternative from gap analysis
-    
     # Workflow data
     current_workflow: NotRequired[Any]  # workflow JSON object
     template_workflow: NotRequired[Any]  # template workflow if editing
@@ -94,6 +80,11 @@ class WorkflowState(TypedDict):
     # Debug information - updated to support structured output
     debug_result: NotRequired[Dict[str, Any]]  # structured debug result from prompt
     debug_loop_count: NotRequired[int]
+    debug_error_for_regeneration: NotRequired[str]  # Error message to pass to workflow generation
+    
+    # Failure information
+    workflow_generation_failed: NotRequired[bool]  # True if generation failed after max attempts
+    final_error_message: NotRequired[str]  # Final error message for failed generation
     
     # Template information
     template_id: NotRequired[str]  # template ID if using template
@@ -112,16 +103,6 @@ def get_intent_summary(state: WorkflowState) -> str:
     """Get intent summary from state"""
     return state.get("intent_summary", "")
 
-
-def get_gap_status(state: WorkflowState) -> str:
-    """Get gap status from state"""
-    return state.get("gap_status", "no_gap")
-
-
-def get_identified_gaps(state: WorkflowState) -> List[Dict[str, Any]]:
-    """Get identified gaps from state"""
-    gaps = state.get("identified_gaps", [])
-    return [dict(gap) for gap in gaps]
 
 
 def get_current_workflow(state: WorkflowState) -> Any:
@@ -157,9 +138,6 @@ def is_clarification_ready(state: WorkflowState) -> bool:
     if not intent_summary:
         return False
     
-    # If we're in gap negotiation, not ready (need user response)
-    if clarification_context.get("purpose") == "gap_negotiation":
-        return False
     
     # Otherwise, we're ready to proceed
     return True

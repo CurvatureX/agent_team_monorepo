@@ -1,16 +1,15 @@
 """
-LangGraph nodes for simplified Workflow Agent architecture
-Implements the 4 core nodes: Clarification, Gap Analysis, Workflow Generation, and Debug
-Based on main branch structure, updated for MCP integration
+LangGraph nodes for optimized Workflow Agent architecture
+Implements the 3 core nodes: Clarification, Workflow Generation, and Debug
+Simplified architecture with automatic gap handling for better user experience
 """
 
-import asyncio
 import json
 import time
 import uuid
-from typing import List, Dict, Any
+from typing import List
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from .state import (
@@ -18,13 +17,9 @@ from .state import (
     Conversation,
     WorkflowStage,
     WorkflowState,
-    GapDetail,
     get_user_message,
     get_intent_summary,
-    get_gap_status,
-    get_identified_gaps,
     get_current_workflow,
-    get_debug_errors,
     is_clarification_ready,
 )
 from .mcp_tools import MCPToolCaller
@@ -88,8 +83,6 @@ class WorkflowAgentNodes:
         if stage == WorkflowStage.CLARIFICATION:
             if previous_stage == WorkflowStage.DEBUG:
                 return "Debug Recovery"
-            elif previous_stage == WorkflowStage.GAP_ANALYSIS:
-                return "Gap Analysis Feedback Processing"
             elif workflow_context.get("template_workflow") or state.get("template_workflow"):
                 return "Template Customization"
             else:
@@ -102,8 +95,6 @@ class WorkflowAgentNodes:
 
         if scenario == "Debug Recovery":
             return "Understand what went wrong and gather ONLY the missing critical information"
-        elif scenario == "Gap Analysis Feedback Processing":
-            return "Process user's choice from the alternatives presented"
         elif scenario == "Template Customization":
             return "Understand the specific modifications needed for the template"
         else:
@@ -191,8 +182,6 @@ class WorkflowAgentNodes:
                 "current_goal": self._get_current_goal(state),
                 "goal": self._get_current_goal(state),  # For the user template
                 "purpose": clarification_context.get("purpose", ""),
-                "identified_gaps": state.get("identified_gaps", []),
-                "gap_status": state.get("gap_status", "no_gap"),
                 "scenario_type": scenario_type,
                 "clarification_context": clarification_context,
                 "execution_history": state.get("execution_history", [])
@@ -250,16 +239,14 @@ class WorkflowAgentNodes:
                 # Check if user selected an alternative from gap negotiation
                 gap_resolution = clarification_output.get("gap_resolution", {})
                 if gap_resolution.get("user_selected_alternative", False):
-                    # User made a choice, mark gap as resolved
-                    state["gap_status"] = "gap_resolved"
+                    # User made a choice
                     logger.info(f"User selected alternative {gap_resolution.get('selected_index')} with confidence {gap_resolution.get('confidence')}")
                 
-                # Update clarification context - preserve purpose if in gap negotiation
+                # Update clarification context
                 existing_purpose = clarification_context.get("purpose", "initial_intent")
-                new_purpose = "gap_resolved" if gap_resolution.get("user_selected_alternative", False) else existing_purpose
                 
                 clarification_context = ClarificationContext(
-                    purpose=new_purpose,
+                    purpose=existing_purpose,
                     collected_info={"intent": clarification_output.get("intent_summary", "")},
                     pending_questions=[clarification_output.get("clarification_question", "")] if clarification_output.get("clarification_question") else [],
                     origin=clarification_context.get("origin", "create")
@@ -293,193 +280,13 @@ class WorkflowAgentNodes:
                 "stage": WorkflowStage.CLARIFICATION,
             }
 
-    async def gap_analysis_node(self, state: WorkflowState) -> WorkflowState:
-        """
-        Gap Analysis Node - 使用 MCP 分析需求可行性，智能识别和解决 gaps
-        Enhanced with real capability checking and intelligent alternatives
-        """
-        logger.info("Processing enhanced gap analysis node with MCP")
-        
-        # Set stage to GAP_ANALYSIS
-        state["stage"] = WorkflowStage.GAP_ANALYSIS
-
-        try:
-            intent_summary = get_intent_summary(state)
-            conversation_context = self._get_conversation_context(state)
-            
-            # Check if we're coming back from clarification after user made a choice
-            clarification_context = state.get("clarification_context", {})
-            previous_stage = state.get("previous_stage")
-            logger.info(f"Gap analysis check: previous_stage={previous_stage}, clarification_purpose={clarification_context.get('purpose')}")
-            
-            # If coming from clarification after gap negotiation, mark as resolved
-            if previous_stage == WorkflowStage.CLARIFICATION and clarification_context.get("purpose") in ["gap_negotiation", "gap_resolved"]:
-                # User has already chosen from alternatives, mark gap as resolved
-                logger.info("User has made choice from gap alternatives, marking as resolved")
-                state["gap_status"] = "gap_resolved"
-                # Create a new clarification context with updated values
-                updated_context = ClarificationContext(
-                    purpose="gap_resolved",
-                    collected_info=clarification_context.get("collected_info", {}),
-                    pending_questions=[],  # Clear the pending questions since user responded
-                    origin=clarification_context.get("origin", "create")
-                )
-                state["clarification_context"] = updated_context
-                # Set previous_stage for routing
-                state["previous_stage"] = WorkflowStage.GAP_ANALYSIS
-                # Don't need to run LLM again, just return with gap_resolved
-                return {**state, "stage": WorkflowStage.GAP_ANALYSIS}
-
-            # Check negotiation count to limit rounds
-            gap_negotiation_count = state.get("gap_negotiation_count", 0)
-            max_rounds = settings.GAP_ANALYSIS_MAX_ROUNDS
-            
-            # Determine scenario type for gap analysis
-            if clarification_context.get("purpose") == "gap_negotiation":
-                scenario_type = "post_negotiation"
-            else:
-                scenario_type = "initial_analysis"
-            
-            # NEW: Use MCP to get real available capabilities if enabled
-            available_nodes = None
-            if settings.GAP_ANALYSIS_USE_MCP:
-                logger.info("Fetching real node capabilities from MCP")
-                available_nodes = await self._get_available_nodes_from_mcp()
-                logger.info(f"Retrieved {len(available_nodes) if available_nodes else 0} node types from MCP")
-            else:
-                logger.info("MCP disabled, using prompt-based capability analysis")
-
-            # Prepare context for both templates - now with MCP data
-            template_context = {
-                "intent_summary": intent_summary,
-                "conversation_context": conversation_context,
-                "scenario_type": scenario_type,
-                "current_scenario": self._get_current_scenario(state),
-                "goal": self._get_current_goal(state),
-                "template_workflow": state.get("template_workflow"),
-                "current_workflow": state.get("current_workflow"),
-                "debug_result": state.get("debug_result"),
-                "execution_history": state.get("execution_history", []),
-                "user_feedback": get_user_message(state) if scenario_type == "post_negotiation" else None,
-                "selected_alternative": None,  # TODO: Extract from user message if needed
-                "available_nodes": available_nodes,  # NEW: Real MCP capabilities
-                "negotiation_count": gap_negotiation_count  # NEW: Track negotiation rounds
-            }
-
-            # Use both system and user templates
-            system_prompt = await self.prompt_engine.render_prompt(
-                "gap_analysis_f2_system",
-                **template_context
-            )
-            
-            user_prompt = await self.prompt_engine.render_prompt(
-                "gap_analysis_f2_user",
-                **template_context
-            )
-
-            messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
-            response = await self.llm.ainvoke(messages)
-
-            response_text = (
-                response.content if isinstance(response.content, str) else str(response.content)
-            )
-
-            # Try to parse structured response
-            try:
-                # Remove markdown code blocks if present
-                clean_text = response_text.strip()
-                if clean_text.startswith("```json"):
-                    clean_text = clean_text[7:]
-                    if clean_text.endswith("```"):
-                        clean_text = clean_text[:-3]
-                elif clean_text.startswith("```"):
-                    clean_text = clean_text[3:]
-                    if clean_text.endswith("```"):
-                        clean_text = clean_text[:-3]
-
-                gap_analysis_output = json.loads(clean_text.strip())
-                gap_status = gap_analysis_output.get("gap_status", "no_gap")
-                negotiation_phrase = gap_analysis_output.get("negotiation_phrase", "")
-                
-                logger.info(f"Gap analysis result: gap_status={gap_status}, has_negotiation_phrase={bool(negotiation_phrase)}")
-
-                # Map to main branch state structure
-                state["gap_status"] = gap_status
-                
-                # Convert identified_gaps format
-                identified_gaps_data = gap_analysis_output.get("identified_gaps", [])
-                identified_gaps = []
-                for gap in identified_gaps_data:
-                    identified_gaps.append(GapDetail(
-                        required_capability=gap.get("required_capability", ""),
-                        missing_component=gap.get("missing_component", ""),
-                        alternatives=gap.get("alternatives", [])
-                    ))
-                state["identified_gaps"] = identified_gaps
-                
-                # If we have gaps, set up for user input with smart handling
-                if gap_status == "has_gap":
-                    # Track negotiation count
-                    state["gap_negotiation_count"] = gap_negotiation_count + 1
-                    
-                    # Check if we've reached max negotiation rounds (configurable)
-                    if state["gap_negotiation_count"] > max_rounds:
-                        # Auto-select recommended alternative
-                        logger.info("Max negotiation rounds reached, using recommended alternative")
-                        state["gap_status"] = "gap_resolved"
-                        # Select first alternative as default
-                        if identified_gaps and identified_gaps[0].alternatives:
-                            state["selected_alternative"] = identified_gaps[0].alternatives[0]
-                            self._add_conversation(state, "assistant", 
-                                f"I'll proceed with the recommended approach: {identified_gaps[0].alternatives[0]}")
-                    else:
-                        # First negotiation - present alternatives with smart recommendation
-                        negotiation_phrase = await self._create_smart_negotiation_message(
-                            identified_gaps, intent_summary, negotiation_phrase
-                        )
-                        
-                        # Add negotiation phrase to conversations
-                        self._add_conversation(state, "assistant", negotiation_phrase)
-                        
-                        # Set up clarification context to wait for user's choice
-                        existing_context = state.get("clarification_context", {})
-                        updated_context = ClarificationContext(
-                            purpose="gap_negotiation",
-                            collected_info=existing_context.get("collected_info", {}),
-                            pending_questions=[negotiation_phrase],
-                            origin=existing_context.get("origin", "create")
-                        )
-                        state["clarification_context"] = updated_context
-                else:
-                    # For other cases, just add the full response
-                    self._add_conversation(state, "assistant", response_text)
-
-            except json.JSONDecodeError:
-                # Fallback
-                state["gap_status"] = "no_gap"
-                state["identified_gaps"] = []
-                # Add fallback response
-                self._add_conversation(state, "assistant", response_text)
-
-            # Keep stage as GAP_ANALYSIS and let routing logic decide based on gap_status
-            # The prompt returns: "no_gap", "has_gap", or "gap_resolved"
-            # Set previous_stage so clarification knows we're coming from gap_analysis
-            state["previous_stage"] = WorkflowStage.GAP_ANALYSIS
-            return {**state, "stage": WorkflowStage.GAP_ANALYSIS}
-
-        except Exception as e:
-            logger.error("Gap analysis node failed", extra={"error": str(e)})
-            return {
-                **state,
-                "stage": WorkflowStage.GAP_ANALYSIS,
-            }
 
     async def workflow_generation_node(self, state: WorkflowState) -> WorkflowState:
         """
-        Workflow Generation Node - Uses MCP tools to generate accurate workflows
-        Now enhanced to handle error-based regeneration from debug node
+        Optimized Workflow Generation Node - Automatically handles capability gaps
+        Uses MCP tools to generate accurate workflows with smart substitutions
         """
-        logger.info("Processing workflow generation node with MCP tools")
+        logger.info("Processing optimized workflow generation node")
         
         # Set stage to WORKFLOW_GENERATION
         state["stage"] = WorkflowStage.WORKFLOW_GENERATION
@@ -489,60 +296,43 @@ class WorkflowAgentNodes:
             conversation_context = self._get_conversation_context(state)
             
             # Check if we're coming from debug with errors
+            debug_error = state.get("debug_error_for_regeneration")
             debug_result = state.get("debug_result") or {}
-            previous_errors = debug_result.get("errors", []) if debug_result else []
-            previous_suggestions = debug_result.get("suggestions", []) if debug_result else []
             debug_loop_count = state.get("debug_loop_count", 0)
             
-            # Build enhanced context if we have debug feedback
-            error_context = ""
-            if previous_errors:
-                error_context = f"""
-                
-IMPORTANT: Previous attempt failed with these errors:
-Errors: {json.dumps(previous_errors, indent=2)}
-Suggestions: {json.dumps(previous_suggestions, indent=2) if previous_suggestions else 'None'}
-
-Please fix these issues in the regenerated workflow:
-1. Address each error specifically
-2. Apply the suggestions if provided
-3. Ensure all node parameters are correctly configured
-4. Verify connection logic is sound
-"""
-
-            # Load the workflow generation prompt
-            workflow_gen_prompt = await self.prompt_engine.render_prompt(
-                "workflow_gen_f1",
+            # Get available nodes from MCP if enabled
+            available_nodes = None
+            if settings.GAP_ANALYSIS_USE_MCP:
+                logger.info("Fetching node capabilities from MCP")
+                try:
+                    available_nodes = await self._get_available_nodes_from_mcp()
+                    logger.info(f"Retrieved {len(available_nodes) if available_nodes else 0} node types from MCP")
+                except Exception as e:
+                    logger.warning(f"Failed to get MCP nodes, proceeding without: {e}")
+            
+            # Prepare template context
+            template_context = {
+                "intent_summary": intent_summary,
+                "conversation_context": conversation_context,
+                "available_nodes": available_nodes,
+                "current_workflow": state.get("current_workflow"),
+                "debug_result": debug_error or (debug_result.get("error") if not debug_result.get("success", True) else None)
+            }
+            
+            # Use the optimized prompts
+            system_prompt = await self.prompt_engine.render_prompt(
+                "workflow_generation_optimized_system",
+                **template_context
             )
-
-            # Build the user message with error context if available
-            user_message = f"Create a comprehensive workflow based on these requirements:\\n\\n{intent_summary}\\n\\nConversation context:\\n{conversation_context}"
             
-            if error_context:
-                user_message += error_context
-                logger.info(f"Regenerating workflow after debug failure (attempt {debug_loop_count + 1})")
-            
-            user_message += """
-
-IMPORTANT WORKFLOW GENERATION PROCESS:
-1. First, use get_node_types to discover all available node types
-2. Then, use get_node_details to get specifications for the nodes you need
-3. Finally, generate a COMPLETE workflow JSON with this structure:
-{
-  "name": "...",
-  "description": "...",
-  "nodes": [...],
-  "connections": {...},
-  "settings": {...},
-  "static_data": {},
-  "tags": []
-}
-
-You MUST use the exact node types, subtypes, and parameters from the MCP responses."""
+            user_prompt = await self.prompt_engine.render_prompt(
+                "workflow_generation_optimized_user",
+                **template_context
+            )
             
             messages = [
-                SystemMessage(content=workflow_gen_prompt),
-                HumanMessage(content=user_message)
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
             ]
 
             # Generate workflow using OpenAI with tools
@@ -738,10 +528,11 @@ You MUST use the exact node types, subtypes, and parameters from the MCP respons
 
     async def debug_node(self, state: WorkflowState) -> WorkflowState:
         """
-        Debug Node - 测试生成的工作流，发现并尝试修复错误
-        Now integrates with workflow_engine to actually execute and test workflows
+        Simplified Debug Node - Test generated workflow and route to regeneration if needed.
+        No assumptions about execution result fields, no static validation, no clarification routing.
+        Max 2 attempts at workflow generation before giving up.
         """
-        logger.info("Processing debug node with workflow engine integration")
+        logger.info("Processing simplified debug node")
         
         # Update stage to DEBUG
         state["stage"] = WorkflowStage.DEBUG
@@ -756,7 +547,7 @@ You MUST use the exact node types, subtypes, and parameters from the MCP respons
                 # No workflow to debug
                 state["debug_result"] = {
                     "success": False,
-                    "errors": ["No workflow to debug"],
+                    "error": "No workflow to debug",
                     "timestamp": int(time.time() * 1000)
                 }
                 return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
@@ -782,113 +573,29 @@ You MUST use the exact node types, subtypes, and parameters from the MCP respons
                 user_id=user_id
             )
             
-            # Step 3: Analyze execution results
-            if not execution_result:
-                # Handle None or empty result
-                logger.error("No execution result returned from workflow engine")
-                execution_result = {"success": False, "error": "No response from workflow engine"}
+            # Step 3: Check if execution succeeded (no field assumptions)
+            success = False
+            error_message = "ERROR"
             
-            success = execution_result.get("success", False)
-            errors = []
-            warnings = []
-            
-            if not success:
-                # Execution failed - analyze the error
-                stage = execution_result.get("stage", "unknown")
-                error_msg = execution_result.get("error", "Unknown error")
-                
-                if stage == "creation":
-                    # Workflow creation failed - likely structural issues
-                    errors.append(f"Workflow creation failed: {error_msg}")
-                    # Parse detailed error if available
-                    details = execution_result.get("details", {})
-                    if details.get("status_code") == 400:
-                        errors.append("Invalid workflow structure or parameters")
-                    elif details.get("status_code") == 500:
-                        errors.append("Internal error in workflow engine")
-                        
-                elif stage == "execution":
-                    # Workflow created but execution failed
-                    errors.append(f"Workflow execution failed: {error_msg}")
-                    workflow_id = execution_result.get("workflow_id")
-                    if workflow_id:
-                        warnings.append(f"Workflow was created with ID: {workflow_id}")
-                    # This might indicate missing parameters or logic errors
-                    errors.append("Check node parameters and connection logic")
+            if execution_result and isinstance(execution_result, dict):
+                # Check for success indicator
+                success = execution_result.get("success", False)
+                if not success:
+                    # Extract error message if available, otherwise use default
+                    error_message = execution_result.get("error", "ERROR")
+                    logger.info(f"Workflow execution failed: {error_message}")
+                else:
+                    # Success! Log the execution details
+                    logger.info("Workflow executed successfully")
             else:
-                # Success! Log the execution details
-                logger.info(
-                    "Workflow executed successfully",
-                    extra={
-                        "workflow_id": execution_result.get("workflow_id"),
-                        "execution_id": execution_result.get("execution_id")
-                    }
-                )
+                # No valid result returned
+                logger.error("Invalid or no execution result returned from workflow engine")
+                error_message = "ERROR"
             
-            # Step 4: If there are errors, also run static validation for more insights
-            if errors or debug_loop_count == 0:
-                # Use the existing LLM-based validation for additional insights
-                try:
-                    prompt_text = await self.prompt_engine.render_prompt(
-                        "debug",
-                        current_workflow=current_workflow,
-                        debug_loop_count=debug_loop_count,
-                        previous_errors=errors,
-                    )
-
-                    system_prompt = (
-                        "You are a workflow debugging specialist. Analyze the workflow and any execution errors."
-                    )
-                    user_prompt = prompt_text
-
-                    messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
-                    llm_response = await self.llm.ainvoke(messages)
-
-                    # Parse LLM response
-                    response_text = (
-                        llm_response.content
-                        if isinstance(llm_response.content, str)
-                        else str(llm_response.content)
-                    )
-
-                    # Clean JSON
-                    if response_text.strip().startswith("```json"):
-                        response_text = response_text.strip()[7:]
-                        if response_text.endswith("```"):
-                            response_text = response_text[:-3]
-                    elif response_text.strip().startswith("```"):
-                        response_text = response_text.strip()[3:]
-                        if response_text.endswith("```"):
-                            response_text = response_text[:-3]
-
-                    debug_output = json.loads(response_text.strip())
-                    
-                    # Merge LLM insights with execution results
-                    if "issues_found" in debug_output:
-                        additional_errors = debug_output["issues_found"].get("critical_errors", [])
-                        for error in additional_errors:
-                            error_desc = error.get("description", str(error))
-                            if error_desc not in errors:
-                                errors.append(error_desc)
-                    
-                    if "warnings" in debug_output:
-                        warnings.extend(debug_output.get("warnings", []))
-                    
-                    suggestions = debug_output.get("suggestions", [])
-
-                except Exception as e:
-                    logger.warning(f"LLM analysis failed: {str(e)}")
-                    suggestions = []
-            else:
-                suggestions = []
-            
-            # Store the complete debug result
+            # Store the simplified debug result
             state["debug_result"] = {
                 "success": success,
-                "errors": errors,
-                "warnings": warnings,
-                "suggestions": suggestions,
-                "execution_result": execution_result if not success else None,
+                "error": error_message if not success else None,
                 "test_data_used": test_data,
                 "iteration_count": debug_loop_count,
                 "timestamp": int(time.time() * 1000)
@@ -902,103 +609,29 @@ You MUST use the exact node types, subtypes, and parameters from the MCP respons
                 logger.info("Workflow validation successful")
                 return {**state, "stage": WorkflowStage.COMPLETED}
 
-            # If we've tried too many times, give up
-            if debug_loop_count >= 3:
-                logger.warning("Max debug attempts reached, ending with current workflow")
-                return {**state, "stage": WorkflowStage.COMPLETED}
+            # Max 2 attempts (0 and 1), give up after that
+            if debug_loop_count >= 2:
+                logger.error("Max debug attempts (2) reached, workflow generation failed")
+                # Mark as failed and return with error
+                state["workflow_generation_failed"] = True
+                state["final_error_message"] = f"Workflow generation failed after 2 attempts. Last error: {error_message}"
+                return {**state, "stage": WorkflowStage.FAILED}
 
-            # Analyze error type to decide next stage
-            error_types = self._analyze_error_types(errors)
-
-            if error_types["missing_requirements"]:
-                # Need more information from user
-                logger.info("Missing requirements detected, returning to clarification")
-                # Note: clarification readiness will be derived from pending questions
-                return {
-                    **state,
-                    "stage": WorkflowStage.CLARIFICATION,
-                    "previous_stage": WorkflowStage.DEBUG,
-                }
-            else:
-                # Can fix with regeneration - keep stage as DEBUG
-                # The routing logic will handle sending it to workflow_generation
-                logger.info("Fixable errors detected, will route to workflow generation")
-                return {
-                    **state,
-                    "stage": WorkflowStage.DEBUG,  # Keep as DEBUG, let routing handle it
-                    "previous_stage": WorkflowStage.DEBUG,
-                }
+            # Failed - always route back to workflow generation for retry
+            logger.info(f"Debug failed (attempt {debug_loop_count + 1}/2), routing to workflow generation with error: {error_message}")
+            return {
+                **state,
+                "stage": WorkflowStage.DEBUG,  # Keep as DEBUG, let routing handle it
+                "previous_stage": WorkflowStage.DEBUG,
+                "debug_error_for_regeneration": error_message  # Pass error to workflow generation
+            }
 
         except Exception as e:
             logger.error("Debug node failed", extra={"error": str(e)})
             # On debug failure, assume workflow is acceptable
             return {**state, "stage": WorkflowStage.COMPLETED}
 
-    def _basic_workflow_validation(self, workflow: dict) -> dict:
-        """Basic workflow validation when LLM analysis fails"""
-        errors = []
-        warnings = []
 
-        # Check required fields - be lenient about ID/name
-        if not workflow.get("id") and not workflow.get("name"):
-            warnings.append("No workflow ID or name")
-        if not workflow.get("nodes"):
-            errors.append("No nodes defined in workflow")
-        if not workflow.get("connections"):
-            warnings.append("No connections defined between nodes")
-
-        # Check node structure
-        nodes = workflow.get("nodes", [])
-        for node in nodes:
-            if not node.get("id"):
-                errors.append(f"Node missing ID: {node}")
-            if not node.get("type"):
-                errors.append(f"Node missing type: {node.get('id', 'unknown')}")
-
-        return {
-            "success": len(errors) == 0,
-            "errors": errors,
-            "warnings": warnings,
-            "suggestions": [],
-            "timestamp": int(time.time() * 1000)
-        }
-
-    def _analyze_error_types(self, errors: List[str]) -> dict:
-        """Analyze error types to determine the appropriate recovery action"""
-        error_types = {
-            "missing_requirements": False,
-            "structural_issues": False,
-            "logic_errors": False,
-        }
-
-        for error in errors:
-            error_lower = error.lower()
-            # Check for parameter-related errors first (these are structural, not missing requirements)
-            if "missing required parameter" in error_lower or "field required" in error_lower:
-                # Missing required parameter/field is a structural issue (wrong parameter name)
-                # This can be fixed by regeneration with correct MCP specs
-                error_types["structural_issues"] = True
-            elif any(
-                keyword in error_lower
-                for keyword in ["parameter", "must be", "integer", "string", "type", "float", "boolean", "dict_type", "position", "subtype"]
-            ):
-                # Parameter type mismatches and missing fields are structural issues
-                error_types["structural_issues"] = True
-            elif any(
-                keyword in error_lower
-                for keyword in ["missing", "undefined", "not specified", "unclear", "ambiguous"]
-            ):
-                # Only treat as missing requirements if it's about user intent, not structure
-                error_types["missing_requirements"] = True
-            elif any(
-                keyword in error_lower
-                for keyword in ["invalid", "structure", "format", "schema", "connection"]
-            ):
-                error_types["structural_issues"] = True
-            elif any(keyword in error_lower for keyword in ["logic", "flow", "sequence", "loop"]):
-                error_types["logic_errors"] = True
-
-        return error_types
 
     async def _get_available_nodes_from_mcp(self) -> dict:
         """
@@ -1024,84 +657,6 @@ You MUST use the exact node types, subtypes, and parameters from the MCP respons
             "FLOW_NODE": ["if", "loop", "wait"],
             "EXTERNAL_ACTION_NODE": ["github", "slack", "email", "api_call"]
         }
-    
-    async def _create_smart_negotiation_message(self, identified_gaps, intent_summary, default_phrase):
-        """
-        Create an intelligent negotiation message with recommendations
-        """
-        if not identified_gaps:
-            return default_phrase or "I'll help you create this workflow."
-        
-        # Analyze alternatives to find the best recommendation
-        recommendation = self._analyze_best_alternative(identified_gaps, intent_summary)
-        
-        # Build the message
-        message_parts = []
-        message_parts.append(f"I found {len(identified_gaps)} capability {'gap' if len(identified_gaps) == 1 else 'gaps'} for your workflow.\n")
-        
-        for i, gap in enumerate(identified_gaps):
-            if gap.alternatives:
-                message_parts.append(f"\nFor {gap.required_capability}:")
-                for j, alt in enumerate(gap.alternatives[:3]):  # Limit to 3 alternatives
-                    star = "⭐ " if j == recommendation.get(gap.required_capability, 0) else ""
-                    message_parts.append(f"{star}{chr(65+j)}) {alt}")
-        
-        message_parts.append(f"\n{chr(65 + recommendation.get('overall', 0))} is recommended based on your requirements.")
-        message_parts.append("\nChoose an option (A/B/C) or describe your preference:")
-        
-        return "\n".join(message_parts)
-    
-    def _analyze_best_alternative(self, identified_gaps, intent_summary):
-        """
-        Analyze and recommend the best alternative based on user intent
-        """
-        recommendation = {}
-        
-        # Simple heuristic: prefer first alternative as it's usually the most straightforward
-        # In production, this could use more sophisticated analysis
-        for gap in identified_gaps:
-            if gap.alternatives:
-                # Score alternatives based on simplicity and reliability
-                scores = []
-                for alt in gap.alternatives:
-                    score = self._score_alternative(alt, intent_summary)
-                    scores.append(score)
-                
-                best_idx = scores.index(max(scores)) if scores else 0
-                recommendation[gap.required_capability] = best_idx
-        
-        # Overall recommendation (simplified: use most common recommendation)
-        if recommendation:
-            recommendation['overall'] = max(set(recommendation.values()), key=list(recommendation.values()).count)
-        else:
-            recommendation['overall'] = 0
-            
-        return recommendation
-    
-    def _score_alternative(self, alternative, intent_summary):
-        """
-        Score an alternative based on various factors
-        """
-        score = 0
-        alt_lower = alternative.lower()
-        
-        # Prefer simpler solutions
-        if any(word in alt_lower for word in ['simple', 'basic', 'standard']):
-            score += 2
-        
-        # Prefer scheduled/automated solutions for automation requests
-        if 'automat' in intent_summary.lower() and 'schedule' in alt_lower:
-            score += 3
-        
-        # Prefer webhook for real-time needs
-        if any(word in intent_summary.lower() for word in ['real-time', 'instant', 'immediate']) and 'webhook' in alt_lower:
-            score += 3
-        
-        # Penalize complex solutions
-        if any(word in alt_lower for word in ['complex', 'advanced', 'custom']):
-            score -= 1
-            
-        return score
 
     def should_continue(self, state: WorkflowState) -> str:
         """
@@ -1128,32 +683,9 @@ You MUST use the exact node types, subtypes, and parameters from the MCP respons
                 return "END"
             # Otherwise, check if we're ready to proceed
             elif clarification_ready:
-                return "gap_analysis"
+                return "workflow_generation"  # Go directly to workflow generation
             else:
                 return "END"  # Wait for user input
-                
-        elif stage == WorkflowStage.GAP_ANALYSIS:
-            # From gap analysis, check gap status and negotiation count
-            gap_status = state.get("gap_status", "no_gap")
-            gap_negotiation_count = state.get("gap_negotiation_count", 0)
-            logger.info(f"Gap analysis routing: gap_status={gap_status}, negotiation_count={gap_negotiation_count}")
-            
-            if gap_status == "has_gap":
-                # Check if we've reached max negotiation rounds (configurable)
-                max_rounds = settings.GAP_ANALYSIS_MAX_ROUNDS
-                if gap_negotiation_count >= max_rounds:
-                    # Already negotiated once, proceed with recommendation
-                    logger.info("Max negotiation rounds reached, proceeding with recommended alternative")
-                    return "workflow_generation"
-                else:
-                    # First time finding gaps, go to clarification for user choice
-                    return "clarification"
-            elif gap_status == "gap_resolved" or gap_status == "no_gap":
-                # Either no gaps or gaps have been resolved
-                return "workflow_generation"
-            else:
-                # Fallback for any unexpected status
-                return "workflow_generation"
                 
         elif stage == WorkflowStage.WORKFLOW_GENERATION:
             # From workflow generation, always go to debug
@@ -1167,18 +699,16 @@ You MUST use the exact node types, subtypes, and parameters from the MCP respons
                 return "END"  # Workflow is complete
             else:
                 debug_loop_count = state.get("debug_loop_count", 0)
-                if debug_loop_count >= 3:
-                    return "END"  # Max attempts reached
-                # Check error types to determine next step
-                errors = debug_result.get("errors", [])
-                error_types = self._analyze_error_types(errors)
-                if error_types["missing_requirements"]:
-                    return "clarification"  # Need more info
-                else:
-                    return "workflow_generation"  # Try regenerating
+                if debug_loop_count >= 2:
+                    return "END"  # Max attempts reached - will be in FAILED state
+                # Failed but can retry - route to workflow generation
+                return "workflow_generation"  # Try regenerating
                     
         elif stage == WorkflowStage.COMPLETED:
             return "END"
+        
+        elif stage == WorkflowStage.FAILED:
+            return "END"  # Generation failed, terminate
             
         # Default to END if unknown state
         return "END"
