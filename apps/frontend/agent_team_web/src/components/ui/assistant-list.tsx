@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowRight, X, Star, Zap } from "lucide-react";
+import { ArrowRight, X, Star, Zap, Workflow, Eye } from "lucide-react";
 import Image from "next/image";
 import { Assistant } from "@/lib/assistant-data";
+import { EnhancedWorkflowCanvas } from "@/components/workflow/EnhancedWorkflowCanvas";
 
 interface AssistantListProps {
   assistants: Assistant[];
@@ -45,7 +46,9 @@ const AssistantList = ({ assistants }: AssistantListProps) => {
                     key={assistant.id}
                     layoutId={`assistant-${assistant.id}`}
                     className="flex cursor-pointer items-center justify-between rounded-lg p-4 hover:bg-accent transition-colors"
-                    onClick={() => setSelectedAssistant(assistant)}
+                    onClick={() => {
+                      setSelectedAssistant(assistant);
+                    }}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                   >
@@ -80,20 +83,15 @@ const AssistantList = ({ assistants }: AssistantListProps) => {
                     <motion.div
                       className="flex items-center space-x-2 text-muted-foreground"
                     >
+                      {assistant.workflow && (
+                        <Workflow className="w-4 h-4 text-primary mr-1" />
+                      )}
                       <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
                       <ArrowRight className="w-4 h-4" />
                     </motion.div>
                   </motion.div>
                 ))}
               </div>
-
-              {/* <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className="m-auto mt-6 mb-6 flex w-11/12 items-center justify-center rounded-xl bg-primary text-primary-foreground py-3 px-6 text-base font-medium"
-              >
-                View All Assistants <ArrowRight className="ml-2 h-4 w-4" />
-              </motion.button> */}
             </motion.div>
           ) : (
             <motion.div
@@ -179,6 +177,37 @@ const AssistantList = ({ assistants }: AssistantListProps) => {
                     ))}
                   </div>
                 </div>
+
+                {/* Workflow view */}
+                {selectedAssistant.workflow && (
+                  <div className="mt-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="font-semibold text-foreground text-lg">Workflow</h4>
+                      <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => {
+                          // Trigger workflow view event to switch to fullscreen workflow view
+                          window.dispatchEvent(new CustomEvent('assistant-selected', {
+                            detail: { assistantId: selectedAssistant.id }
+                          }));
+                        }}
+                        className="flex items-center gap-1 text-xs text-primary hover:text-primary/80"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Fullscreen</span>
+                      </motion.button>
+                    </div>
+                    
+                    {/* Embedded workflow canvas */}
+                    <div className="h-[300px] border border-border/50 rounded-lg overflow-hidden bg-muted/10">
+                      <EnhancedWorkflowCanvas
+                        workflow={selectedAssistant.workflow}
+                        readOnly={true}
+                      />
+                    </div>
+                  </div>
+                )}
               </motion.div>
             </motion.div>
           )}
