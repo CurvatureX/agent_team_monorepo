@@ -31,6 +31,12 @@ try:
 except ImportError as e:
     logging.warning(f"Failed to import API adapters or logger: {e}")
     APIAdapterRegistry = None
+    OAuth2Service = None
+    GoogleCalendarAdapter = None
+    GitHubAdapter = None
+    SlackAdapter = None
+    get_api_call_logger = None
+    APICallTracker = None
 
 
 class ExternalActionNodeExecutor(BaseNodeExecutor):

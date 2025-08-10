@@ -379,7 +379,7 @@ class WorkflowResponse(BaseModel):
     工作流响应模型
     """
 
-    workflow: WorkflowEntity = Field(description="工作流信息")
+    workflow: WorkflowData = Field(description="工作流信息")
     message: Optional[str] = Field(default=None, description="响应消息")
 
 
@@ -388,7 +388,7 @@ class WorkflowListResponse(BaseModel):
     工作流列表响应模型
     """
 
-    workflows: List[WorkflowEntity] = Field(default_factory=list, description="工作流列表")
+    workflows: List[WorkflowData] = Field(default_factory=list, description="工作流列表")
     total_count: int = Field(default=0, description="总数量")
     page: int = Field(default=1, description="当前页码")
     page_size: int = Field(default=20, description="每页大小")

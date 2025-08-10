@@ -46,9 +46,10 @@ try:
         WorkflowExecutionResponse,
         WorkflowResponse,
         NodeTemplateListResponse,
+        WorkflowData,
     )
     from shared.models import WorkflowCreateRequest as WorkflowCreate
-    from shared.models import WorkflowEntity as Workflow
+    from shared.models import WorkflowData as Workflow
     from shared.models import WorkflowUpdateRequest as WorkflowUpdate
 except ImportError:
     # 如果直接导入失败，尝试添加路径后导入
@@ -99,9 +100,10 @@ except ImportError:
         WorkflowExecutionResponse,
         WorkflowResponse,
         NodeTemplateListResponse,
+        WorkflowData,
     )
     from shared.models import WorkflowCreateRequest as WorkflowCreate
-    from shared.models import WorkflowEntity as Workflow
+    from shared.models import WorkflowData as Workflow
     from shared.models import WorkflowUpdateRequest as WorkflowUpdate
 
 # 向后兼容别名
