@@ -20,22 +20,33 @@ sys.path.insert(0, str(backend_dir))
 
 # 遥测组件
 try:
-    from shared.telemetry import setup_telemetry, TrackingMiddleware, MetricsMiddleware  # type: ignore[assignment]
+    from shared.telemetry import (  # type: ignore[assignment]
+        MetricsMiddleware,
+        TrackingMiddleware,
+        setup_telemetry,
+    )
 except ImportError:
     # Fallback for deployment - create dummy implementations
     print("Warning: Could not import telemetry components, using stubs")
+
     def setup_telemetry(*args, **kwargs):  # type: ignore[misc]
         pass
+
     class TrackingMiddleware:  # type: ignore[misc]
         def __init__(self, app):
             self.app = app
+
         async def __call__(self, scope, receive, send):
             await self.app(scope, receive, send)
+
     class MetricsMiddleware:  # type: ignore[misc]
         def __init__(self, app, **kwargs):
             self.app = app
+
         async def __call__(self, scope, receive, send):
             await self.app(scope, receive, send)
+
+
 from shared.models.common import HealthResponse, HealthStatus
 from workflow_engine.api.v1 import credentials, executions, triggers, workflows
 from workflow_engine.core.config import get_settings
@@ -55,42 +66,64 @@ app = FastAPI(
 )
 
 # 初始化遥测系统
-# 从环境变量获取 OTLP 端点，默认使用 otel-collector
-otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4317")
-setup_telemetry(app, service_name="workflow-engine", service_version="1.0.0", otlp_endpoint=otlp_endpoint)
+# 检查是否禁用OpenTelemetry
+otel_disabled = os.getenv("OTEL_SDK_DISABLED", "false").lower() == "true"
+environment = os.getenv("ENVIRONMENT", "development")
 
-# 添加遥测中间件
-app.add_middleware(TrackingMiddleware)  # type: ignore
-app.add_middleware(MetricsMiddleware, service_name="workflow-engine")  # type: ignore
+if not otel_disabled:
+    # AWS生产环境使用localhost:4317 (AWS OTEL Collector sidecar)
+    # 开发环境使用otel-collector:4317 (Docker Compose service)
+    if environment in ["production", "staging"]:
+        otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
+    else:
+        otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4317")
+
+    setup_telemetry(
+        app, service_name="workflow-engine", service_version="1.0.0", otlp_endpoint=otlp_endpoint
+    )
+
+    # 添加遥测中间件
+    app.add_middleware(TrackingMiddleware)  # type: ignore
+    app.add_middleware(MetricsMiddleware, service_name="workflow-engine")  # type: ignore
+
+    logger.info(
+        f"OpenTelemetry configured for workflow-engine in {environment} environment with endpoint: {otlp_endpoint}"
+    )
+else:
+    logger.info(
+        "OpenTelemetry disabled for workflow-engine via OTEL_SDK_DISABLED environment variable"
+    )
+
 
 @app.on_event("startup")
 def on_startup():
     logger.info("Workflow Engine service starting up")
-    
+
 
 # Trace ID middleware
 @app.middleware("http")
 async def trace_id_middleware(request: Request, call_next):
     """Extract and propagate trace_id from request headers"""
     trace_id = request.headers.get("x-trace-id") or request.headers.get("X-Trace-ID")
-    
+
     if trace_id:
         # Store trace_id in request state for access in endpoints
         request.state.trace_id = trace_id
-        
+
         # Configure logging to include trace_id
         import contextvars
-        trace_id_context = contextvars.ContextVar('trace_id', default=None)
+
+        trace_id_context = contextvars.ContextVar("trace_id", default=None)
         trace_id_context.set(trace_id)
-        
+
         logger.info(f"Request received with trace_id: {trace_id}")
-    
+
     response = await call_next(request)
-    
+
     # Optionally add trace_id to response headers
     if trace_id:
         response.headers["X-Trace-ID"] = trace_id
-    
+
     return response
 
 

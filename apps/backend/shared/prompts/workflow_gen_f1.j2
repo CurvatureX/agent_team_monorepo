@@ -27,14 +27,14 @@ Error Handling: What happens when something fails?
 Node Type Knowledge Guide
 To help you intelligently map requirements to node types, here's what each type does:
 
-🚀 **TRIGGER_NODE** - Initiates workflows based on events or schedules
-🤖 **AI_AGENT_NODE** - Intelligent AI-driven tasks with customizable prompts
-🌐 **EXTERNAL_ACTION_NODE** - Interacts with external systems/platforms
-⚡ **ACTION_NODE** - Self-contained workflow actions
-🔄 **FLOW_NODE** - Controls workflow execution flow
-👤 **HUMAN_IN_THE_LOOP_NODE** - Requires human interaction to continue
-🛠️ **TOOL_NODE** - Utility tools for AI agents (MCP integration)
-💾 **MEMORY_NODE** - Storage and retrieval for AI agents
+🚀 **TRIGGER** - Initiates workflows based on events or schedules
+🤖 **AI_AGENT** - Intelligent AI-driven tasks with customizable prompts
+🌐 **EXTERNAL_ACTION** - Interacts with external systems/platforms
+⚡ **ACTION** - Self-contained workflow actions
+🔄 **FLOW** - Controls workflow execution flow
+👤 **HUMAN_IN_THE_LOOP** - Requires human interaction to continue
+🛠️ **TOOL** - Utility tools for AI agents (MCP integration)
+💾 **MEMORY** - Storage and retrieval for AI agents
 
 Step 2: Discover Components (MANDATORY)
 ⚠️ CRITICAL: You MUST use MCP tools before creating any workflow. Never guess node configurations.
@@ -67,9 +67,9 @@ User: "Send a Slack message when a new file is uploaded to Google Drive"
 
 Required MCP calls (MUST DO ALL):
 1. get_node_types() // See all available node categories and subtypes
-2. get_node_details([{"node_type": "TRIGGER_NODE", "subtype": "TRIGGER_WEBHOOK"}]) // Get webhook trigger specs
-3. get_node_details([{"node_type": "HUMAN_IN_THE_LOOP_NODE", "subtype": "HUMAN_SLACK"}]) // Get Slack node specs
-4. get_node_details([{"node_type": "ACTION_NODE", "subtype": "FILE_OPERATION"}]) // Get file processing specs
+2. get_node_details([{"node_type": "TRIGGER", "subtype": "WEBHOOK"}]) // Get webhook trigger specs
+3. get_node_details([{"node_type": "HUMAN_IN_THE_LOOP", "subtype": "SLACK_INTERACTION"}]) // Get Slack node specs
+4. get_node_details([{"node_type": "ACTION", "subtype": "FILE_OPERATION"}]) // Get file processing specs
 
 ⚠️ CRITICAL: You must call get_node_details for every single node you plan to use. The workflow JSON can ONLY use node subtypes and parameters that exist in the actual MCP responses.
 
@@ -113,9 +113,9 @@ Appropriate settings and error policies
 
 🔄 DATA FLOW DESIGN:
 - **Input/Output Mapping**: Ensure data flows logically between connected nodes
-- **State Persistence**: Use MEMORY_NODE types to store workflow state, user preferences, task data
+- **State Persistence**: Use MEMORY types to store workflow state, user preferences, task data
 - **Context Passing**: Design workflows so downstream nodes receive necessary context from upstream nodes
-- **Conditional Routing**: Use FLOW_NODE types (IF, SWITCH) to create decision points based on data
+- **Conditional Routing**: Use FLOW types (IF, SWITCH) to create decision points based on data
 Step 5: Validate and Document
 Before presenting the workflow:
 Verify all node IDs are unique
@@ -144,11 +144,11 @@ FINAL RESPONSE MUST BE JSON ONLY:
 2. Call get_node_details() for EVERY node you plan to use (MANDATORY)
 3. Use ONLY the exact node subtypes and parameters from the MCP responses
 4. Create comprehensive workflow with:
-   - **Multiple Triggers**: 3 separate TRIGGER_NODE types for different entry points
-   - **Conditional Logic**: FLOW_NODE subtypes (IF, SWITCH, LOOP) for decision making
-   - **Human Interactions**: Multiple HUMAN_SLACK nodes with proper "channel" and "message_template" parameters
-   - **Memory Storage**: MEMORY_NODE types for storing task state and user preferences
-   - **Loop Structures**: FLOW_NODE.LOOP for handling incomplete tasks and iterations
+   - **Multiple Triggers**: 3 separate TRIGGER types for different entry points
+   - **Conditional Logic**: FLOW subtypes (IF, SWITCH, LOOP) for decision making
+   - **Human Interactions**: Multiple HUMAN_IN_THE_LOOP nodes with proper "channel" and "message_template" parameters
+   - **Memory Storage**: MEMORY types for storing task state and user preferences
+   - **Loop Structures**: FLOW.LOOP for handling incomplete tasks and iterations
    - **Error Handling**: Proper timeout and retry configurations in all nodes
    - **20+ Nodes Minimum**: Complex workflows require extensive node networks
 5. Output ONLY the complete JSON workflow object
@@ -184,22 +184,22 @@ FINAL RESPONSE MUST BE JSON ONLY:
 - Connection source keys must match exact node names from the nodes array
 - Connection target "node" values must match exact node names from the nodes array
 - Connection types follow STRICT rules:
-  - ACTION_NODE & EXTERNAL_ACTION_NODE: Can use `success`, `error`, `main`
-  - FLOW_NODE (IF subtype): Can use `true`, `false`, `main`
+  - ACTION & EXTERNAL_ACTION: Can use `success`, `error`, `main`
+  - FLOW (IF subtype): Can use `true`, `false`, `main`
   - ALL OTHER NODES: Can ONLY use `main` connections
 - ❌ Forbidden connection types:
-  - TRIGGER_NODE with `error`, `success`, `true`, `false`
-  - AI_AGENT_NODE with `error`, `success`, `true`, `false`
-  - HUMAN_IN_THE_LOOP_NODE with `error`, `success`, `true`, `false`
-  - TOOL_NODE with `error`, `success`, `true`, `false`
-  - MEMORY_NODE with `error`, `success`, `true`, `false`
+  - TRIGGER with `error`, `success`, `true`, `false`
+  - AI_AGENT with `error`, `success`, `true`, `false`
+  - HUMAN_IN_THE_LOOP with `error`, `success`, `true`, `false`
+  - TOOL with `error`, `success`, `true`, `false`
+  - MEMORY with `error`, `success`, `true`, `false`
 
 **Workflow Structure Validation:**
 - Workflow has name (required) and all optional fields with proper defaults
 - Settings include timezone object: {"name": "UTC"}, save_execution_progress, save_manual_executions, timeout, error_policy, caller_policy
 - static_data and pin_data are Dict[str, str] format
 - Complex requirements broken into 20+ interconnected nodes
-- Workflow includes conditional branching using FLOW_NODE (IF subtype)
+- Workflow includes conditional branching using FLOW (IF subtype)
 - Working hours logic (10:00-18:00, skip 12:00-13:30) implemented in AI prompts
 
 **Output Format Validation:**
@@ -225,8 +225,8 @@ FINAL RESPONSE MUST BE JSON ONLY:
     {
       "id": "node-1",
       "name": "webhook-trigger-for-tasks",
-      "type": "TRIGGER_NODE",
-      "subtype": "TRIGGER_WEBHOOK",
+      "type": "TRIGGER",
+      "subtype": "WEBHOOK",
       "type_version": 1,
       "position": {
         "x": 100.0,
@@ -360,8 +360,8 @@ FINAL RESPONSE MUST BE JSON ONLY:
 🚨 **CRITICAL CONNECTION TYPE RULES:**
 
 **Connection Type Usage by Node Type:**
-- **ACTION_NODE & EXTERNAL_ACTION_NODE**: Can use `success`, `error`, and `main` connections
-- **IF_NODE (FLOW_NODE with IF subtype)**: Can use `true`, `false`, and `main` connections
+- **ACTION & EXTERNAL_ACTION**: Can use `success`, `error`, and `main` connections
+- **IF_NODE (FLOW with IF subtype)**: Can use `true`, `false`, and `main` connections
 - **ALL OTHER NODE TYPES**: Can ONLY use `main` connections
 - **Standard Flow**: Most nodes connect via `main` → `main`
 - **Error Handling**: Only ACTION/EXTERNAL_ACTION nodes can have `error` outputs
@@ -370,19 +370,19 @@ FINAL RESPONSE MUST BE JSON ONLY:
 **Connection Type Examples (最新版本 - 使用 NODE NAME):**
 ```json
 {
-  // ✅ EXTERNAL_ACTION_NODE: 可以使用 success, error, main
+  // ✅ EXTERNAL_ACTION: 可以使用 success, error, main
   "google-calendar-api-call": {
     "success": [{"node": "time-slot-data-processor", "type": "main", "index": 0}],
     "error": [{"node": "api-error-handler", "type": "main", "index": 0}]
   },
 
-  // ✅ ACTION_NODE: 可以使用 success, error, main
+  // ✅ ACTION: 可以使用 success, error, main
   "task-file-upload": {
     "success": [{"node": "file-validation-check", "type": "main", "index": 0}],
     "error": [{"node": "upload-retry-handler", "type": "main", "index": 0}]
   },
 
-  // ✅ FLOW_NODE (IF subtype): 可以使用 true, false, main
+  // ✅ FLOW (IF subtype): 可以使用 true, false, main
   "working-hours-check": {
     "true": [{"node": "schedule-task-immediately", "type": "main", "index": 0}],
     "false": [{"node": "queue-for-next-workday", "type": "main", "index": 0}]
@@ -417,8 +417,8 @@ FINAL RESPONSE MUST BE JSON ONLY:
     {
       "id": "slack-trigger-001",
       "name": "slack-task-message-trigger",
-      "type": "TRIGGER_NODE",
-      "subtype": "TRIGGER_CHAT",
+      "type": "TRIGGER",
+      "subtype": "SLACK",
       "type_version": 1,
       "position": {"x": 100.0, "y": 100.0},
       "parameters": {
@@ -440,8 +440,8 @@ FINAL RESPONSE MUST BE JSON ONLY:
     {
       "id": "calendar-api-002",
       "name": "google-calendar-api-call",
-      "type": "EXTERNAL_ACTION_NODE",
-      "subtype": "EXTERNAL_API_CALL",
+      "type": "EXTERNAL_ACTION",
+      "subtype": "REST_API",
       "type_version": 1,
       "position": {"x": 300.0, "y": 100.0},
       "parameters": {
@@ -460,7 +460,7 @@ FINAL RESPONSE MUST BE JSON ONLY:
     {
       "id": "time-check-003",
       "name": "working-hours-availability-check",
-      "type": "FLOW_NODE",
+      "type": "FLOW",
       "subtype": "IF",
       "type_version": 1,
       "position": {"x": 500.0, "y": 100.0},

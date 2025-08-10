@@ -13,7 +13,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 # Try multiple paths to find shared module
 possible_paths = [
     os.path.join(current_dir, "../../../shared"),  # Original path
-    os.path.join(current_dir, "../../shared"),      # From app directory
+    os.path.join(current_dir, "../../shared"),  # From app directory
     os.path.abspath(os.path.join(current_dir, "..", "..", "shared")),  # Absolute path
 ]
 
@@ -31,22 +31,32 @@ import logging
 
 # 遥测组件
 try:
-    from shared.telemetry import setup_telemetry, TrackingMiddleware, MetricsMiddleware  # type: ignore[assignment]
+    from shared.telemetry import (  # type: ignore[assignment]
+        MetricsMiddleware,
+        TrackingMiddleware,
+        setup_telemetry,
+    )
 except ImportError:
     # Fallback for tests - create dummy implementations
     print("Warning: Could not import telemetry components, using stubs")
+
     def setup_telemetry(*args, **kwargs):  # type: ignore[misc]
         pass
+
     class TrackingMiddleware:  # type: ignore[misc]
         def __init__(self, app):
             self.app = app
+
         async def __call__(self, scope, receive, send):
             await self.app(scope, receive, send)
+
     class MetricsMiddleware:  # type: ignore[misc]
         def __init__(self, app, **kwargs):
             self.app = app
+
         async def __call__(self, scope, receive, send):
             await self.app(scope, receive, send)
+
 
 from app.api.app.router import router as app_router
 from app.api.mcp.router import router as mcp_router
@@ -119,16 +129,40 @@ def create_application() -> FastAPI:
     )
 
     # 初始化遥测系统
-    # 从环境变量获取 OTLP 端点，默认使用 otel-collector
-    otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4317")
-    setup_telemetry(app, service_name="api-gateway", service_version=settings.VERSION, otlp_endpoint=otlp_endpoint)
+    # 检查是否禁用OpenTelemetry
+    otel_disabled = os.getenv("OTEL_SDK_DISABLED", "false").lower() == "true"
+    environment = os.getenv(
+        "ENVIRONMENT", settings.ENVIRONMENT if hasattr(settings, "ENVIRONMENT") else "development"
+    )
+
+    if not otel_disabled:
+        # AWS生产环境使用localhost:4317 (AWS OTEL Collector sidecar)
+        # 开发环境使用otel-collector:4317 (Docker Compose service)
+        if environment in ["production", "staging"]:
+            otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
+        else:
+            otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4317")
+
+        setup_telemetry(
+            app,
+            service_name="api-gateway",
+            service_version=settings.VERSION,
+            otlp_endpoint=otlp_endpoint,
+        )
+        logger.info(
+            f"OpenTelemetry configured for {environment} environment with endpoint: {otlp_endpoint}"
+        )
+    else:
+        logger.info("OpenTelemetry disabled via OTEL_SDK_DISABLED environment variable")
 
     # 注册中间件（顺序很重要）
     # 1. 追踪中间件（最外层，为每个请求生成 tracking_id）
-    app.add_middleware(TrackingMiddleware)  # type: ignore
+    if not otel_disabled:
+        app.add_middleware(TrackingMiddleware)  # type: ignore
 
     # 2. 指标收集中间件
-    app.add_middleware(MetricsMiddleware, service_name="api-gateway")  # type: ignore
+    if not otel_disabled:
+        app.add_middleware(MetricsMiddleware, service_name="api-gateway")  # type: ignore
 
     # 3. 限流中间件
     app.middleware("http")(rate_limit_middleware)

@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, XCircle, Loader2, ArrowLeft } from 'lucide-react';
 
-const AuthCallbackPage: React.FC = () => {
+const AuthCallbackContent: React.FC = () => {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('');
@@ -90,7 +90,7 @@ const AuthCallbackPage: React.FC = () => {
             if (parentToken) {
               authToken = parentToken;
             }
-          } catch (e) {
+          } catch {
             // Cross-origin access blocked, try postMessage
             console.log('Cross-origin access blocked, using postMessage');
           }
@@ -124,7 +124,7 @@ const AuthCallbackPage: React.FC = () => {
         if (response.ok) {
           const data = await response.json();
           setStatus('success');
-          setMessage(`Successfully connected ${getProviderDisplayName(providerParam)}!`);
+          setMessage(`Successfully connected ${providerParam ? getProviderDisplayName(providerParam) : 'provider'}!`);
           
           // Notify parent window if this is a popup
           if (window.opener && window.opener !== window) {
@@ -146,7 +146,7 @@ const AuthCallbackPage: React.FC = () => {
         } else {
           const errorData = await response.json().catch(() => ({}));
           setStatus('error');
-          setMessage(errorData.message || `Failed to complete ${getProviderDisplayName(providerParam)} authorization`);
+          setMessage(errorData.message || `Failed to complete ${providerParam ? getProviderDisplayName(providerParam) : 'provider'} authorization`);
         }
       } catch (error) {
         console.error('OAuth callback error:', error);
@@ -319,6 +319,26 @@ const AuthCallbackPage: React.FC = () => {
         </CardContent>
       </Card>
     </div>
+  );
+};
+
+// Main component with Suspense boundary
+const AuthCallbackPage: React.FC = () => {
+  return (
+    <Suspense 
+      fallback={
+        <div className="flex items-center justify-center min-h-screen">
+          <Card className="w-full max-w-md">
+            <CardContent className="flex flex-col items-center justify-center py-10">
+              <Loader2 className="h-8 w-8 animate-spin text-blue-500 mb-4" />
+              <p className="text-gray-600">Loading...</p>
+            </CardContent>
+          </Card>
+        </div>
+      }
+    >
+      <AuthCallbackContent />
+    </Suspense>
   );
 };
 
