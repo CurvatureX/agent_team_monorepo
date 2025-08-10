@@ -61,10 +61,4 @@ const WorkflowEditorContent: React.FC<WorkflowEditorProps> = ({
   );
 };
 
-export const WorkflowEditor: React.FC<WorkflowEditorProps> = (props) => {
-  return (
-    <Provider>
-      <WorkflowEditorContent {...props} />
-    </Provider>
-  );
-};
+export const WorkflowEditor: React.FC<WorkflowEditorProps> = WorkflowEditorContent;

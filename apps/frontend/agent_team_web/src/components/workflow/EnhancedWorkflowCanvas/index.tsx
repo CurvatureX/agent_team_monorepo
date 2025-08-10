@@ -161,7 +161,9 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
           y: event.clientY - reactFlowBounds.top,
         });
 
-        addNode({ template, position });
+        console.log('Adding node:', { template, position });
+        const nodeId = addNode({ template, position });
+        console.log('Node added with ID:', nodeId);
       } catch (error) {
         console.error('Error handling drop:', error);
       } finally {

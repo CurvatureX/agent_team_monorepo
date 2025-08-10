@@ -37,14 +37,21 @@ export const addNodeAtom = atom(
       },
     };
 
+    console.log('Adding node to store:', newNode);
+    const currentNodes = get(workflowNodesAtom);
+    console.log('Current nodes before add:', currentNodes);
+    
     set(workflowNodesAtom, (draft) => {
       draft.push(newNode);
+      console.log('Nodes after add (draft):', draft);
+      console.log('Draft length:', draft.length);
     });
 
     // Select the new node
     set(selectedNodeIdAtom, newNode.id);
     set(detailsPanelOpenAtom, true);
 
+    console.log('Node added successfully:', newNode.id);
     return newNode.id;
   }
 );
