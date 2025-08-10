@@ -511,19 +511,33 @@ class WorkflowAgentServicer:
     async def _create_workflow_response(
         self, session_id: str, state: WorkflowState
     ) -> Optional[ConversationResponse]:
-        """创建工作流响应"""
+        """创建工作流响应，包含workflow_id"""
         current_workflow = state.get("current_workflow", {})
+        workflow_id = state.get("workflow_id")
 
         if (
             current_workflow
             and isinstance(current_workflow, dict)
             and current_workflow.get("nodes")
         ):
-            workflow_json = json.dumps(current_workflow)
-            logger.info(
-                "Creating workflow response",
-                extra={"node_count": len(current_workflow.get("nodes", []))},
-            )
+            # Add workflow_id to the workflow data if available
+            workflow_data = current_workflow.copy()
+            if workflow_id:
+                workflow_data["workflow_id"] = workflow_id
+                logger.info(
+                    "Creating workflow response with workflow_id",
+                    extra={
+                        "node_count": len(current_workflow.get("nodes", [])),
+                        "workflow_id": workflow_id
+                    },
+                )
+            else:
+                logger.warning(
+                    "Creating workflow response without workflow_id",
+                    extra={"node_count": len(current_workflow.get("nodes", []))},
+                )
+            
+            workflow_json = json.dumps(workflow_data)
             return ConversationResponse(
                 session_id=session_id,
                 response_type=ResponseType.WORKFLOW,

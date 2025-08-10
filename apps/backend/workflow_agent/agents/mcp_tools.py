@@ -174,6 +174,33 @@ class MCPToolCaller:
             logger.error(f"Error getting node details: {e}")
             return {"error": str(e)}
 
+    async def call_tool(self, tool_name: str, tool_args: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Generic method to call MCP tools by name.
+        This is used by the LangChain tool execution logic.
+        
+        Args:
+            tool_name: Name of the tool to call
+            tool_args: Arguments for the tool
+            
+        Returns:
+            Dictionary with tool result
+        """
+        try:
+            if tool_name == "get_node_types":
+                type_filter = tool_args.get("type_filter")
+                return await self.get_node_types(type_filter)
+            elif tool_name == "get_node_details":
+                nodes = tool_args.get("nodes", [])
+                include_examples = tool_args.get("include_examples", True)
+                include_schemas = tool_args.get("include_schemas", True)
+                return await self.get_node_details(nodes, include_examples, include_schemas)
+            else:
+                return {"error": f"Unknown tool: {tool_name}"}
+        except Exception as e:
+            logger.error(f"Error calling tool {tool_name}: {e}")
+            return {"error": str(e)}
+
     def get_langchain_tools(self) -> List[Tool]:
         """
         Get LangChain tools for use with function calling.

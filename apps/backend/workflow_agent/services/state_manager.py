@@ -88,7 +88,6 @@ class WorkflowAgentStateManager:
                 stage=initial_stage,
                 intent_summary="",
                 conversations=[],
-                current_workflow={},
                 debug_loop_count=0,
             )
 
@@ -129,8 +128,8 @@ class WorkflowAgentStateManager:
                 "stage": "clarification",
                 "intent_summary": "",
                 "conversations": [],
-                "current_workflow": {},
                 "debug_loop_count": 0,
+                # current_workflow is not included - it's runtime-only
             }
 
         try:
@@ -193,14 +192,19 @@ class WorkflowAgentStateManager:
 
                 state_id = current_state["id"]
 
-                # Filter updates to only include persistent fields
+                # Filter updates to only include persistent fields (matching actual DDL)
                 filtered_updates = {
                     "stage": workflow_state.get("stage"),
+                    "previous_stage": workflow_state.get("previous_stage"),
                     "intent_summary": workflow_state.get("intent_summary", ""),
                     "conversations": workflow_state.get("conversations", []),
-                    "current_workflow": workflow_state.get("current_workflow", {}),
+                    "debug_result": self._convert_debug_result_to_text(workflow_state.get("debug_result")),
                     "debug_loop_count": workflow_state.get("debug_loop_count", 0),
+                    "template_workflow": workflow_state.get("template_workflow"),
+                    "workflow_id": workflow_state.get("workflow_id"),
+                    "final_error_message": workflow_state.get("final_error_message"),
                     "updated_at": int(time.time() * 1000),
+                    # NOTE: current_workflow is NOT saved - it's transient runtime data
                 }
 
                 result = (
@@ -282,15 +286,19 @@ class WorkflowAgentStateManager:
 
     def _db_to_workflow_state(self, db_state: dict) -> dict:
         """转换数据库状态为workflow状态"""
-        # Mock model just for conversion
+        # Create model from DB data (matching actual DDL fields)
         mock_model = WorkflowAgentStateModel(
             session_id=db_state.get("session_id", ""),
             user_id=db_state.get("user_id", "anonymous"),
             stage=WorkflowStageEnum(db_state.get("stage", "clarification")),
+            previous_stage=WorkflowStageEnum(db_state["previous_stage"]) if db_state.get("previous_stage") else None,
             intent_summary=db_state.get("intent_summary", ""),
             conversations=db_state.get("conversations", []),
-            current_workflow=db_state.get("current_workflow", {}),
+            debug_result=db_state.get("debug_result"),  # Text from DB
             debug_loop_count=db_state.get("debug_loop_count", 0),
+            template_workflow=db_state.get("template_workflow"),
+            workflow_id=db_state.get("workflow_id"),
+            final_error_message=db_state.get("final_error_message"),
         )
 
         # Set optional fields if they exist
@@ -303,6 +311,17 @@ class WorkflowAgentStateManager:
 
         # Return as WorkflowState format with derived fields
         return mock_model.to_workflow_state()
+    
+    def _convert_debug_result_to_text(self, debug_result) -> Optional[str]:
+        """Convert debug_result dict to text for DB storage"""
+        if debug_result is None:
+            return None
+        if isinstance(debug_result, str):
+            return debug_result
+        if isinstance(debug_result, dict):
+            import json
+            return json.dumps(debug_result)
+        return str(debug_result)
 
 
 def get_workflow_agent_state_manager() -> WorkflowAgentStateManager:

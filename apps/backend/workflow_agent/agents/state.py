@@ -82,6 +82,12 @@ class WorkflowState(TypedDict):
     debug_loop_count: NotRequired[int]
     debug_error_for_regeneration: NotRequired[str]  # Error message to pass to workflow generation
     
+    # Workflow creation tracking (new fields for moved workflow creation)
+    workflow_id: NotRequired[str]  # ID of created workflow in workflow_engine
+    workflow_creation_result: NotRequired[Dict[str, Any]]  # Full creation result from workflow_engine
+    workflow_creation_error: NotRequired[str]  # Error message if workflow creation failed
+    generation_loop_count: NotRequired[int]  # Counter for workflow generation retry attempts
+    
     # Failure information
     workflow_generation_failed: NotRequired[bool]  # True if generation failed after max attempts
     final_error_message: NotRequired[str]  # Final error message for failed generation

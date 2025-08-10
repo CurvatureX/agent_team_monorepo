@@ -343,7 +343,10 @@ class WorkflowAgentNodes:
         """
         Optimized Workflow Generation Node - Automatically handles capability gaps
         Uses MCP tools to generate accurate workflows with smart substitutions
+        Now also creates the workflow in workflow_engine immediately after generation
         """
+        from workflow_agent.services.workflow_engine_client import WorkflowEngineClient
+        
         logger.info("Processing optimized workflow generation node")
 
         # Set stage to WORKFLOW_GENERATION
@@ -353,10 +356,11 @@ class WorkflowAgentNodes:
             intent_summary = get_intent_summary(state)
             conversation_context = self._get_conversation_context(state)
 
-            # Check if we're coming from debug with errors
+            # Check if we're coming from debug with errors or previous generation failures
             debug_error = state.get("debug_error_for_regeneration")
             debug_result = state.get("debug_result") or {}
-            debug_loop_count = state.get("debug_loop_count", 0)  # noqa: F841
+            creation_error = state.get("workflow_creation_error")  # New field for creation failures
+            generation_loop_count = state.get("generation_loop_count", 0)
 
             # Get available nodes from MCP if enabled
             available_nodes = None
@@ -369,34 +373,51 @@ class WorkflowAgentNodes:
                 except Exception as e:
                     logger.warning(f"Failed to get MCP nodes, proceeding without: {e}")
 
-            # Prepare template context
+            # Prepare template context with creation error if available
+            error_context = None
+            if creation_error:
+                error_context = f"Previous workflow creation failed with error: {creation_error}. Please fix the issues and regenerate."
+            elif debug_error:
+                error_context = debug_error
+            elif debug_result.get("error") and not debug_result.get("success", True):
+                error_context = debug_result.get("error")
+
             template_context = {
                 "intent_summary": intent_summary,
                 "conversation_context": conversation_context,
                 "available_nodes": available_nodes,
                 "current_workflow": state.get("current_workflow"),
-                "debug_result": debug_error or (
-                    debug_result.get("error") if not debug_result.get("success", True) else None
-                )
+                "debug_result": error_context
             }
 
-            # Use the optimized prompts
+            # Use the original f1 template system - the working approach
             system_prompt = await self.prompt_engine.render_prompt(
-                "workflow_generation_optimized_system",
+                "workflow_gen_f1",
                 **template_context
             )
 
-            user_prompt = await self.prompt_engine.render_prompt(
-                "workflow_generation_optimized_user", **template_context
-            )
+            # Create user prompt for workflow generation
+            user_prompt_content = f"""Create a comprehensive workflow based on these EXACT requirements:
+
+{intent_summary}
+
+IMPLEMENT ALL REQUIREMENTS MENTIONED ABOVE.
+
+FIRST: Call get_node_types() to see all available node types and subtypes
+THEN: Call get_node_details() for ALL nodes you plan to use  
+FINALLY: Output ONLY the complete JSON workflow configuration using the actual node specifications. No text, no explanations, no markdown - just pure JSON starting with {{ and ending with }}."""
+
+            # Add error context to prompt if we're regenerating due to creation failure
+            if error_context:
+                user_prompt_content += f"\n\nIMPORTANT: {error_context}"
 
             messages = [
                 SystemMessage(content=system_prompt),
-                HumanMessage(content=user_prompt)
+                HumanMessage(content=user_prompt_content)
             ]
 
-            # Generate workflow using OpenAI with tools
-            workflow_json = await self._generate_with_tools(messages)
+            # Generate workflow using OpenAI with multi-turn tool calling (like the test file)
+            workflow_json = await self._generate_with_multi_turn_tools(messages)
 
             # Check if we got an empty response
             if not workflow_json or workflow_json.strip() == "":
@@ -428,10 +449,49 @@ class WorkflowAgentNodes:
                     # Use fallback workflow on parse error
                     workflow = self._create_fallback_workflow(intent_summary)
 
-            # Store in main branch state structure
-            state["current_workflow"] = workflow
-            # Keep stage as WORKFLOW_GENERATION so routing goes to debug node
-            return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
+            # NEW: Create workflow in workflow_engine immediately after generation
+            logger.info("Creating workflow in workflow_engine")
+            engine_client = WorkflowEngineClient()
+            user_id = state.get("user_id", "test_user")
+            
+            creation_result = await engine_client.create_workflow(workflow, user_id)
+            
+            if creation_result.get("success", True) and creation_result.get("workflow", {}).get("id"):
+                # Creation successful - store workflow and workflow_id
+                workflow_id = creation_result["workflow"]["id"]
+                state["current_workflow"] = workflow
+                state["workflow_id"] = workflow_id
+                state["workflow_creation_result"] = creation_result
+                
+                # Clear any previous creation errors
+                if "workflow_creation_error" in state:
+                    del state["workflow_creation_error"]
+                
+                logger.info(f"Workflow created successfully with ID: {workflow_id}")
+                # Keep stage as WORKFLOW_GENERATION so routing goes to debug node
+                return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
+                
+            else:
+                # Creation failed - check if we should retry generation
+                creation_error = creation_result.get("error", "Unknown creation error")
+                max_generation_retries = settings.WORKFLOW_GENERATION_MAX_RETRIES
+                
+                logger.error(f"Workflow creation failed: {creation_error}")
+                
+                if generation_loop_count < max_generation_retries:
+                    # Store error for regeneration and increment loop count
+                    state["workflow_creation_error"] = creation_error
+                    state["generation_loop_count"] = generation_loop_count + 1
+                    
+                    logger.info(f"Retrying workflow generation (attempt {generation_loop_count + 1}/{max_generation_retries})")
+                    # Return to workflow generation with error context
+                    return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
+                else:
+                    # Max retries reached, store error and proceed to debug for user feedback
+                    state["workflow_creation_error"] = creation_error
+                    state["current_workflow"] = workflow  # Store the workflow even if creation failed
+                    logger.error(f"Max workflow generation retries ({max_generation_retries}) reached, proceeding with error")
+                    return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
 
         except Exception as e:
             logger.error("Workflow generation node failed", extra={"error": str(e)})
@@ -439,6 +499,107 @@ class WorkflowAgentNodes:
                 **state,
                 "stage": WorkflowStage.WORKFLOW_GENERATION,
             }
+
+    async def _generate_with_multi_turn_tools(self, messages: List) -> str:
+        """
+        Multi-turn workflow generation following the working pattern from test file.
+        
+        This matches the successful approach:
+        1. First call with tools - LLM uses get_node_types
+        2. Process tool responses
+        3. Continue conversation to get node_details  
+        4. Final generation with complete JSON output
+        """
+        try:
+            # Convert LangChain messages to OpenAI format
+            openai_messages = []
+            for msg in messages:
+                if hasattr(msg, 'content'):
+                    role = "system" if type(msg).__name__ == "SystemMessage" else "user"
+                    openai_messages.append({"role": role, "content": msg.content})
+                    
+            logger.info("Starting multi-turn workflow generation with OpenAI")
+            
+            # Step 1: First call - let LLM call get_node_types  
+            # Use the LLM with tools bound (not passing tools parameter directly)
+            response = await self.llm_with_tools.ainvoke(messages)
+            
+            # Convert back to openai format for processing
+            if hasattr(response, 'content') and response.content:
+                openai_messages.append({"role": "assistant", "content": response.content})
+            
+            # Process tool calls if any
+            if hasattr(response, "tool_calls") and response.tool_calls:
+                logger.info(f"Processing {len(response.tool_calls)} tool calls from first response")
+                
+                # Add tool call responses
+                for tool_call in response.tool_calls:
+                    tool_name = getattr(tool_call, 'name', tool_call.get('name', ''))
+                    tool_args = getattr(tool_call, 'args', tool_call.get('args', {}))
+                    
+                    logger.info(f"Calling tool: {tool_name}")
+                    result = await self.mcp_client.call_tool(tool_name, tool_args)
+                    
+                    # Format as string for conversation
+                    result_str = json.dumps(result, indent=2) if isinstance(result, dict) else str(result)
+                    
+                    openai_messages.append({
+                        "role": "tool", 
+                        "tool_call_id": getattr(tool_call, 'id', str(uuid.uuid4())),
+                        "content": result_str
+                    })
+                
+                # Step 2: Continue conversation to get node_details and final JSON
+                openai_messages.append({
+                    "role": "user",
+                    "content": "FIRST: Call get_node_details for ALL the nodes you identified. THEN: Output ONLY the complete JSON workflow configuration using the actual node specifications. No text, no explanations, no markdown - just pure JSON starting with { and ending with }."
+                })
+                
+                # Convert back to LangChain format
+                langchain_messages = []
+                for msg in openai_messages:
+                    if msg["role"] == "system":
+                        langchain_messages.append(SystemMessage(content=msg["content"]))
+                    elif msg["role"] == "user":  
+                        langchain_messages.append(HumanMessage(content=msg["content"]))
+                    elif msg["role"] == "assistant":
+                        langchain_messages.append(SystemMessage(content=f"Assistant: {msg['content']}"))
+                    elif msg["role"] == "tool":
+                        langchain_messages.append(HumanMessage(content=f"Tool result: {msg['content']}"))
+                
+                # Step 3: Final generation call
+                final_response = await self.llm_with_tools.ainvoke(langchain_messages)
+                
+                # Handle any additional tool calls for node_details
+                if hasattr(final_response, "tool_calls") and final_response.tool_calls:
+                    logger.info(f"Processing {len(final_response.tool_calls)} additional tool calls")
+                    
+                    # Process additional tool calls
+                    for tool_call in final_response.tool_calls:
+                        tool_name = getattr(tool_call, 'name', tool_call.get('name', ''))
+                        tool_args = getattr(tool_call, 'args', tool_call.get('args', {}))
+                        
+                        logger.info(f"Calling additional tool: {tool_name}")
+                        result = await self.mcp_client.call_tool(tool_name, tool_args)
+                        
+                        result_str = json.dumps(result, indent=2) if isinstance(result, dict) else str(result)
+                        langchain_messages.append(HumanMessage(content=f"Tool result: {result_str}"))
+                    
+                    # Final call to get the JSON workflow
+                    langchain_messages.append(HumanMessage(content="Now output ONLY the complete JSON workflow configuration. Start with { and end with }."))
+                    
+                    final_json_response = await self.llm_with_tools.ainvoke(langchain_messages)
+                    return str(final_json_response.content) if hasattr(final_json_response, 'content') else ""
+                
+                # Return the final response content
+                return str(final_response.content) if hasattr(final_response, 'content') else ""
+            
+            # No tool calls in first response - return content directly  
+            return str(response.content) if hasattr(response, 'content') else ""
+            
+        except Exception as e:
+            logger.error(f"Multi-turn tool generation failed: {e}", exc_info=True)
+            return ""
 
     async def _generate_with_tools(self, messages: List) -> str:
         """
@@ -605,6 +766,7 @@ class WorkflowAgentNodes:
     async def debug_node(self, state: WorkflowState) -> WorkflowState:
         """
         Debug Node - Validate workflow using workflow_engine with real execution test
+        Now only handles test data generation and execution since workflow is already created
         Returns debug result with either success or error message
         """
         from workflow_agent.services.workflow_engine_client import WorkflowEngineClient
@@ -617,6 +779,19 @@ class WorkflowAgentNodes:
 
         try:
             current_workflow = get_current_workflow(state)
+            workflow_id = state.get("workflow_id")
+            
+            # Check if we have workflow creation error from previous workflow generation
+            creation_error = state.get("workflow_creation_error")
+            if creation_error:
+                logger.warning(f"Workflow creation failed previously: {creation_error}")
+                state["debug_result"] = {
+                    "success": False,
+                    "error": f"Workflow creation failed: {creation_error}",
+                    "timestamp": int(time.time() * 1000),
+                }
+                # Keep stage as DEBUG - the routing logic will handle this
+                return {**state, "stage": WorkflowStage.DEBUG}
 
             if not current_workflow:
                 logger.warning("No workflow to debug")
@@ -625,7 +800,16 @@ class WorkflowAgentNodes:
                     "error": "No workflow to debug",
                     "timestamp": int(time.time() * 1000),
                 }
-                return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
+                return {**state, "stage": WorkflowStage.DEBUG}
+                
+            if not workflow_id:
+                logger.warning("No workflow_id available, workflow may not have been created successfully")
+                state["debug_result"] = {
+                    "success": False,
+                    "error": "No workflow_id available - workflow creation may have failed",
+                    "timestamp": int(time.time() * 1000),
+                }
+                return {**state, "stage": WorkflowStage.DEBUG}
 
             debug_loop_count = state.get("debug_loop_count", 0)
 
@@ -634,16 +818,16 @@ class WorkflowAgentNodes:
             test_generator = WorkflowDataGenerator()
             test_data = await test_generator.generate_test_data(current_workflow)
 
-            # Step 2: Create and execute the workflow using workflow_engine
-            logger.info("Creating and executing workflow in workflow_engine")
+            # Step 2: Execute the already created workflow using workflow_id
+            logger.info(f"Executing existing workflow in workflow_engine (ID: {workflow_id})")
             engine_client = WorkflowEngineClient()
 
             # Get user_id from state or use default
             user_id = state.get("user_id", "test_user")
 
-            # Execute the workflow with test data
-            execution_result = await engine_client.validate_and_execute_workflow(
-                workflow_data=current_workflow, test_data=test_data, user_id=user_id
+            # Execute the workflow directly using workflow_id (no creation needed)
+            execution_result = await engine_client.execute_workflow(
+                workflow_id=workflow_id, trigger_data=test_data, user_id=user_id
             )
 
             # Step 3: Check if execution succeeded (no field assumptions)
@@ -659,7 +843,8 @@ class WorkflowAgentNodes:
                     logger.info(f"Workflow execution failed: {error_message}")
                 else:
                     # Success! Log the execution details
-                    logger.info("Workflow executed successfully")
+                    execution_id = execution_result.get("execution_id")
+                    logger.info(f"Workflow executed successfully (execution_id: {execution_id})")
             else:
                 # No valid result returned
                 logger.error("Invalid or no execution result returned from workflow engine")

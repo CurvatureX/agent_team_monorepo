@@ -21,8 +21,13 @@ Debug feedback to address:
 
 Generate an optimal workflow that fulfills the user's requirements using the available node capabilities.
 
+⚠️ **MANDATORY BEFORE GENERATING WORKFLOW**:
+1. Call get_node_types() to see all available node types and subtypes
+2. Call get_node_details() for EVERY node you plan to use in the workflow
+3. Use ONLY the exact subtypes and parameters returned by MCP tools
+
 If certain capabilities are not directly available:
-1. Automatically select the best alternative approach
+1. Automatically select the best alternative approach from MCP results
 2. Combine multiple nodes to achieve the desired outcome
 
 **CRITICAL**: Your response must contain ONLY valid JSON workflow configuration. No explanatory text, no DSL format, no markdown blocks, no explanations.

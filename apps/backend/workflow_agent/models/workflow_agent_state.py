@@ -61,11 +61,13 @@ class WorkflowAgentStateModel(BaseModel):
     intent_summary: str = Field(default="")
     conversations: List[ConversationMessage] = Field(default_factory=list)
 
-    # Workflow result
-    current_workflow: Optional[Dict[str, Any]] = None
-
-    # Debug state
+    # Debug state (matches DDL: debug_result as text, debug_loop_count as int)
+    debug_result: Optional[str] = None  # Stored as text in DB
     debug_loop_count: int = Field(default=0, ge=0, le=2)  # Max 2 retries
+
+    # Workflow data (matches DDL)
+    template_workflow: Optional[Dict[str, Any]] = None  # Future use for templates
+    workflow_id: Optional[str] = None  # ID of created workflow in workflow_engine
 
     # Failure state
     final_error_message: Optional[str] = None
@@ -94,10 +96,10 @@ class WorkflowAgentStateModel(BaseModel):
             ]
         return v
 
-    @field_validator('current_workflow', mode='before')
+    @field_validator('template_workflow', mode='before')
     @classmethod
-    def validate_workflow(cls, v: Any) -> Optional[Dict[str, Any]]:
-        """Validate and parse workflow JSON"""
+    def validate_template_workflow(cls, v: Any) -> Optional[Dict[str, Any]]:
+        """Validate and parse template workflow JSON"""
         if v is None:
             return None
         if isinstance(v, str):
@@ -153,13 +155,29 @@ class WorkflowAgentStateModel(BaseModel):
     def to_workflow_state(self) -> Dict[str, Any]:
         """
         Convert to WorkflowState format for LangGraph.
-        Adds derived fields that are not stored in DB.
+        Adds derived fields that are not stored in DB but needed at runtime.
         """
         state = self.to_db_dict()
 
         # Add derived fields for runtime use
         state['clarification_context'] = self._derive_clarification_context()
-        # gap fields removed in optimized 3-node architecture
+        
+        # current_workflow is NOT stored in DB - it's a runtime field
+        # It gets populated during workflow generation and passed to debug node in memory
+        # We don't initialize it here since it's transient data
+        
+        # Convert debug_result from text to dict if needed (for LangGraph compatibility)
+        if state.get('debug_result') and isinstance(state['debug_result'], str):
+            try:
+                import json
+                state['debug_result'] = json.loads(state['debug_result'])
+            except (json.JSONDecodeError, TypeError):
+                # If not valid JSON, convert to simple dict format
+                state['debug_result'] = {
+                    "success": False,
+                    "error": state['debug_result'],
+                    "timestamp": int(datetime.now().timestamp() * 1000)
+                }
 
         return state
 
@@ -184,8 +202,13 @@ class WorkflowAgentStateModel(BaseModel):
 
     @classmethod
     def from_workflow_state(cls, state: Dict[str, Any]) -> "WorkflowAgentStateModel":
-        """Create model from WorkflowState dict"""
-        # Extract only the fields we persist
+        """Create model from WorkflowState dict - only persist fields that belong in DB"""
+        # Convert debug_result to text if it's a dict (for DB storage)
+        debug_result = state.get("debug_result")
+        if isinstance(debug_result, dict):
+            import json
+            debug_result = json.dumps(debug_result)
+        
         return cls(
             session_id=state.get("session_id"),
             user_id=state.get("user_id"),
@@ -195,7 +218,10 @@ class WorkflowAgentStateModel(BaseModel):
             previous_stage=state.get("previous_stage"),
             intent_summary=state.get("intent_summary", ""),
             conversations=state.get("conversations", []),
-            current_workflow=state.get("current_workflow"),
+            debug_result=debug_result,
             debug_loop_count=state.get("debug_loop_count", 0),
+            template_workflow=state.get("template_workflow"),  # For future template support
+            workflow_id=state.get("workflow_id"),  # Critical: persist the workflow_id
             final_error_message=state.get("final_error_message")
+            # NOTE: current_workflow is NOT persisted - it's transient runtime data
         )
