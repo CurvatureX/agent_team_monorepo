@@ -32,6 +32,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "reactflow": "^11.11.4",
+    "sonner": "^1.4.41",
     "tailwind-merge": "^3.3.1",
     "usehooks-ts": "^3.1.1"
   },
