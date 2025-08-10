@@ -317,34 +317,6 @@ class WorkflowUpdateRequest(BaseModel):
     tags: Optional[List[str]] = Field(default=None, description="工作流标签")
 
 
-class WorkflowEntity(EntityModel):
-    """
-    工作流实体模型
-    表示完整的工作流定义
-    """
-
-    user_id: str = Field(description="工作流所有者用户ID")
-    name: str = Field(description="工作流名称")
-    description: Optional[str] = Field(default=None, description="工作流描述")
-    type: WorkflowType = Field(default=WorkflowType.SEQUENTIAL, description="工作流类型")
-    status: WorkflowStatus = Field(default=WorkflowStatus.DRAFT, description="工作流状态")
-    version: int = Field(default=1, description="工作流版本号")
-    nodes: List[WorkflowNode] = Field(default_factory=list, description="工作流节点列表")
-    edges: List[WorkflowEdge] = Field(default_factory=list, description="工作流连接边列表")
-    variables: Dict[str, Any] = Field(default_factory=dict, description="工作流变量")
-    settings: Dict[str, Any] = Field(default_factory=dict, description="工作流设置")
-    tags: List[str] = Field(default_factory=list, description="工作流标签")
-    execution_count: int = Field(default=0, description="执行次数")
-    last_execution: Optional[str] = Field(default=None, description="最后执行时间")
-
-    def is_executable(self) -> bool:
-        """判断工作流是否可执行"""
-        return self.status in [WorkflowStatus.ACTIVE] and len(self.nodes) > 0
-
-    def get_trigger_nodes(self) -> List[WorkflowNode]:
-        """获取触发器节点"""
-        return [node for node in self.nodes if node.type == NodeType.TRIGGER]
-
 
 class WorkflowExecutionRecord(EntityModel):
     """

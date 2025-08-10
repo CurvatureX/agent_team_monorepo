@@ -133,8 +133,9 @@ async def get_workflow(workflow_id: str, deps: AuthenticatedDeps = Depends()):
         if not result.get("found", False) or not result.get("workflow"):
             raise NotFoundError("Workflow")
 
-        # Create workflow object
-        workflow = Workflow(**result["workflow"])
+        # Create workflow object using WorkflowData
+        from shared.models.workflow import WorkflowData
+        workflow = WorkflowData(**result["workflow"])
 
         logger.info(f"✅ Workflow retrieved: {workflow_id}")
 

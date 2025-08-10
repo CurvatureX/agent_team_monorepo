@@ -98,7 +98,6 @@ __all__ = [
     "WorkflowEdge",
     "WorkflowCreateRequest",
     "WorkflowUpdateRequest",
-    "WorkflowEntity",
     "WorkflowExecutionRecord",
     "WorkflowResponse",
     "WorkflowListResponse",
