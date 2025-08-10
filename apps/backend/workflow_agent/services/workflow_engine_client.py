@@ -9,7 +9,7 @@ import httpx
 from httpx import AsyncClient, Response
 import json
 
-from core.config import settings
+from workflow_agent.core.config import settings
 
 logger = logging.getLogger(__name__)
 
