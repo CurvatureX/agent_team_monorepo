@@ -38,6 +38,25 @@ except ImportError as e:
     get_api_call_logger = None
     APICallTracker = None
 
+# Import new shared SDKs
+try:
+    from shared.sdks import (
+        GoogleCalendarSDK,
+        GitHubSDK,
+        SlackSDK,
+        EmailSDK,
+        ApiCallSDK
+    )
+    SDK_AVAILABLE = True
+except ImportError as e:
+    logging.warning(f"Failed to import shared SDKs: {e}")
+    GoogleCalendarSDK = None
+    GitHubSDK = None
+    SlackSDK = None
+    EmailSDK = None
+    ApiCallSDK = None
+    SDK_AVAILABLE = False
+
 
 class ExternalActionNodeExecutor(BaseNodeExecutor):
     """Executor for EXTERNAL_ACTION_NODE type."""
@@ -53,14 +72,35 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         self.oauth2_service = oauth2_service
         self.logger = logging.getLogger(__name__)
         
-        # Initialize API adapters
+        # Initialize new shared SDKs
+        self._sdks = {}
+        if SDK_AVAILABLE:
+            try:
+                # Only initialize available SDKs
+                if GoogleCalendarSDK is not None:
+                    self._sdks["google_calendar"] = GoogleCalendarSDK()
+                if GitHubSDK is not None:
+                    self._sdks["github"] = GitHubSDK()
+                if SlackSDK is not None:
+                    self._sdks["slack"] = SlackSDK()
+                if EmailSDK is not None:
+                    self._sdks["email"] = EmailSDK()
+                if ApiCallSDK is not None:
+                    self._sdks["api_call"] = ApiCallSDK()
+                
+                self.logger.info(f"Initialized {len(self._sdks)} shared SDKs for external actions: {list(self._sdks.keys())}")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize shared SDKs: {e}")
+                self._sdks = {}
+        
+        # Fallback to old adapters if SDKs not available
         self._adapters = {}
-        if GoogleCalendarAdapter:
+        if not self._sdks and GoogleCalendarAdapter:
             try:
                 self._adapters = {
                     "google_calendar": GoogleCalendarAdapter(),
                 }
-                self.logger.info("Initialized real API adapters for external actions")
+                self.logger.info("Initialized fallback API adapters for external actions")
             except Exception as e:
                 self.logger.error(f"Failed to initialize API adapters: {e}")
                 self._adapters = {}
@@ -149,6 +189,122 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
         return errors
 
+    async def _call_sdk_api(
+        self,
+        provider: str,
+        operation: str,
+        parameters: Dict[str, Any],
+        credentials: Dict[str, str],
+        user_id: str,
+        workflow_execution_id: Optional[str] = None,
+        node_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Call external API using the new shared SDK system."""
+        api_logger = get_api_call_logger()
+        start_time = time.time()
+        
+        # Check if we have the SDK
+        if provider not in self._sdks:
+            error_message = f"Provider {provider} not available in shared SDKs"
+            self.logger.error(error_message)
+            
+            if api_logger:
+                await api_logger.log_api_call(
+                    user_id=user_id,
+                    provider=provider,
+                    operation=operation,
+                    api_endpoint="N/A",
+                    http_method="N/A",
+                    success=False,
+                    status_code=404,
+                    response_time_ms=int((time.time() - start_time) * 1000),
+                    workflow_execution_id=workflow_execution_id,
+                    node_id=node_id,
+                    request_data=parameters,
+                    error_type="ProviderNotSupported",
+                    error_message=error_message
+                )
+            
+            return {
+                "success": False,
+                "error": error_message,
+                "provider": provider,
+                "fallback": True
+            }
+        
+        try:
+            # Use the shared SDK
+            sdk = self._sdks[provider]
+            api_response = await sdk.call_operation(operation, parameters, credentials)
+            
+            # Log the API call
+            if api_logger:
+                await api_logger.log_api_call(
+                    user_id=user_id,
+                    provider=provider,
+                    operation=operation,
+                    api_endpoint=f"{provider}://{operation}",
+                    http_method="POST",
+                    success=api_response.success,
+                    status_code=api_response.status_code or (200 if api_response.success else 500),
+                    response_time_ms=int((time.time() - start_time) * 1000),
+                    workflow_execution_id=workflow_execution_id,
+                    node_id=node_id,
+                    request_data=parameters,
+                    response_data=api_response.data if api_response.success else None,
+                    error_type=None if api_response.success else "APIError",
+                    error_message=api_response.error if not api_response.success else None
+                )
+            
+            # Convert APIResponse to dict format expected by existing code
+            if api_response.success:
+                result = api_response.data or {}
+                result.update({
+                    "success": True,
+                    "provider": provider,
+                    "operation": operation,
+                    "real_api_call": True,
+                    "executed_at": datetime.now().isoformat(),
+                    "sdk_used": True
+                })
+                return result
+            else:
+                return {
+                    "success": False,
+                    "error": api_response.error,
+                    "provider": provider,
+                    "operation": operation,
+                    "sdk_used": True
+                }
+                
+        except Exception as e:
+            self.logger.error(f"SDK API call failed for {provider}: {e}")
+            
+            if api_logger:
+                await api_logger.log_api_call(
+                    user_id=user_id,
+                    provider=provider,
+                    operation=operation,
+                    api_endpoint=f"{provider}://{operation}",
+                    http_method="POST",
+                    success=False,
+                    status_code=500,
+                    response_time_ms=int((time.time() - start_time) * 1000),
+                    workflow_execution_id=workflow_execution_id,
+                    node_id=node_id,
+                    request_data=parameters,
+                    error_type=type(e).__name__,
+                    error_message=str(e)
+                )
+            
+            return {
+                "success": False,
+                "error": str(e),
+                "provider": provider,
+                "operation": operation,
+                "sdk_error": True
+            }
+
     async def execute(self, context: NodeExecutionContext) -> NodeExecutionResult:
         """Execute external action node."""
         start_time = time.time()
@@ -164,14 +320,18 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
             subtype = context.node.subtype
             logs.append(f"Executing external action node with subtype: {subtype}")
 
-            if subtype == "GITHUB":
+            # Try new shared SDK approach first
+            if self._sdks and subtype in ["GITHUB", "GOOGLE_CALENDAR", "SLACK", "EMAIL", "API_CALL"]:
+                return await self._execute_with_sdk(context, logs, start_time)
+            # Fallback to original implementation
+            elif subtype == "GITHUB":
                 return self._execute_github_action(context, logs, start_time)
             elif subtype == "GOOGLE_CALENDAR":
                 return await self._execute_google_calendar_action(context, logs, start_time)
             elif subtype == "TRELLO":
                 return self._execute_trello_action(context, logs, start_time)
             elif subtype == "EMAIL":
-                return self._execute_email_action(context, logs, start_time)
+                return await self._execute_email_action(context, logs, start_time)
             elif subtype == "SLACK":
                 return self._execute_slack_action(context, logs, start_time)
             elif subtype == "API_CALL":
@@ -194,6 +354,248 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 execution_time=time.time() - start_time,
                 logs=logs,
             )
+
+    async def _execute_with_sdk(self, context: NodeExecutionContext, logs: List[str], start_time: float) -> NodeExecutionResult:
+        """Execute external action using new shared SDK system."""
+        subtype = context.node.subtype
+        user_id = getattr(context, 'user_id', None) or context.metadata.get('user_id', "00000000-0000-0000-0000-000000000123")
+        
+        # Map subtypes to provider names and operations
+        subtype_mapping = {
+            "GITHUB": ("github", self._prepare_github_operation),
+            "GOOGLE_CALENDAR": ("google_calendar", self._prepare_google_calendar_operation),
+            "SLACK": ("slack", self._prepare_slack_operation),
+            "EMAIL": ("email", self._prepare_email_operation),
+            "API_CALL": ("api_call", self._prepare_api_call_operation)
+        }
+        
+        if subtype not in subtype_mapping:
+            return self._create_error_result(
+                f"SDK not available for subtype: {subtype}",
+                execution_time=time.time() - start_time,
+                logs=logs
+            )
+        
+        provider, operation_preparer = subtype_mapping[subtype]
+        
+        try:
+            # Prepare operation and parameters
+            operation, parameters = operation_preparer(context)
+            logs.append(f"Prepared {provider} operation: {operation}")
+            
+            # Get credentials from OAuth2 service (N8N-style automatic querying)
+            credentials = await self._get_credentials_for_sdk(context, provider, user_id)
+            
+            # Check if credentials are available (N8N-style error handling)
+            if not credentials:
+                # Return standardized error for missing authorization (referencing N8N pattern)
+                logs.append(f"No credentials found for {provider} - authorization required")
+                return self._create_error_result(
+                    f"Missing credentials for {provider}. Please authorize this provider first.",
+                    error_details={
+                        "error_type": "MISSING_CREDENTIALS",
+                        "provider": provider,
+                        "user_id": user_id,
+                        "requires_auth": True,
+                        "auth_provider": provider
+                    },
+                    execution_time=time.time() - start_time,
+                    logs=logs
+                )
+            
+            # Call SDK
+            result = await self._call_sdk_api(
+                provider=provider,
+                operation=operation,
+                parameters=parameters,
+                credentials=credentials,
+                user_id=user_id,
+                workflow_execution_id=context.metadata.get('workflow_execution_id'),
+                node_id=context.metadata.get('node_id')
+            )
+            
+            logs.append(f"SDK call completed for {provider}: {result.get('success', False)}")
+            
+            return self._create_success_result(
+                output_data=result,
+                execution_time=time.time() - start_time,
+                logs=logs
+            )
+            
+        except Exception as e:
+            logs.append(f"SDK execution failed: {str(e)}")
+            return self._create_error_result(
+                f"SDK execution failed for {subtype}: {str(e)}",
+                execution_time=time.time() - start_time,
+                logs=logs
+            )
+
+    def _prepare_github_operation(self, context: NodeExecutionContext) -> tuple[str, Dict[str, Any]]:
+        """Prepare GitHub operation and parameters."""
+        action = self.get_parameter_with_spec(context, "action") or context.get_parameter("action")
+        repository = self.get_parameter_with_spec(context, "repository") or context.get_parameter("repository")
+        owner = self.get_parameter_with_spec(context, "owner") or context.get_parameter("owner")
+        
+        parameters = {
+            "repository": repository,
+            "owner": owner
+        }
+        
+        # Add action-specific parameters
+        if action == "create_issue":
+            parameters.update({
+                "title": context.get_parameter("title", ""),
+                "body": context.get_parameter("body", ""),
+                "labels": context.get_parameter("labels", []),
+                "assignees": context.get_parameter("assignees", [])
+            })
+        elif action == "create_pull_request":
+            parameters.update({
+                "title": context.get_parameter("title", ""),
+                "head": context.get_parameter("head", ""),
+                "base": context.get_parameter("base", ""),
+                "body": context.get_parameter("body", "")
+            })
+        elif action == "list_issues":
+            parameters.update({
+                "state": context.get_parameter("state", "open"),
+                "labels": context.get_parameter("labels", []),
+                "sort": context.get_parameter("sort", "created")
+            })
+        
+        return action, parameters
+
+    def _prepare_google_calendar_operation(self, context: NodeExecutionContext) -> tuple[str, Dict[str, Any]]:
+        """Prepare Google Calendar operation and parameters."""
+        action = self.get_parameter_with_spec(context, "action") or context.get_parameter("action")
+        calendar_id = self.get_parameter_with_spec(context, "calendar_id") or context.get_parameter("calendar_id", "primary")
+        
+        parameters = {"calendar_id": calendar_id}
+        
+        # Add action-specific parameters
+        if action == "create_event":
+            event_data = context.get_parameter("event_data", {})
+            parameters.update({
+                "summary": event_data.get("summary", context.get_parameter("summary", "")),
+                "description": event_data.get("description", context.get_parameter("description", "")),
+                "start": event_data.get("start", context.get_parameter("start")),
+                "end": event_data.get("end", context.get_parameter("end")),
+                "location": event_data.get("location", context.get_parameter("location", "")),
+                "attendees": event_data.get("attendees", context.get_parameter("attendees", []))
+            })
+        elif action == "list_events":
+            parameters.update({
+                "time_min": context.get_parameter("time_min"),
+                "time_max": context.get_parameter("time_max"),
+                "max_results": context.get_parameter("max_results", 10),
+                "single_events": context.get_parameter("single_events", True),
+                "order_by": context.get_parameter("order_by", "startTime")
+            })
+        elif action == "update_event":
+            parameters.update({
+                "event_id": context.get_parameter("event_id", ""),
+                "summary": context.get_parameter("summary", ""),
+                "description": context.get_parameter("description", ""),
+                "start": context.get_parameter("start"),
+                "end": context.get_parameter("end")
+            })
+        
+        return action, parameters
+
+    def _prepare_slack_operation(self, context: NodeExecutionContext) -> tuple[str, Dict[str, Any]]:
+        """Prepare Slack operation and parameters."""
+        action = self.get_parameter_with_spec(context, "action") or context.get_parameter("action")
+        channel = self.get_parameter_with_spec(context, "channel") or context.get_parameter("channel")
+        
+        parameters = {"channel": channel}
+        
+        # Add action-specific parameters
+        if action == "send_message":
+            message_data = context.get_parameter("message_data", {})
+            parameters.update({
+                "text": message_data.get("text", context.get_parameter("text", "")),
+                "blocks": message_data.get("blocks", context.get_parameter("blocks", [])),
+                "attachments": message_data.get("attachments", context.get_parameter("attachments", [])),
+                "username": context.get_parameter("username"),
+                "icon_emoji": context.get_parameter("icon_emoji"),
+                "icon_url": context.get_parameter("icon_url"),
+                "thread_ts": context.get_parameter("thread_ts"),
+                "reply_broadcast": context.get_parameter("reply_broadcast", False)
+            })
+        elif action == "list_channels":
+            parameters.update({
+                "types": context.get_parameter("types", "public_channel,private_channel"),
+                "exclude_archived": context.get_parameter("exclude_archived", True),
+                "limit": context.get_parameter("limit", 100)
+            })
+        elif action == "upload_file":
+            parameters.update({
+                "file_content": context.get_parameter("file_content", ""),
+                "file_name": context.get_parameter("file_name", ""),
+                "title": context.get_parameter("title"),
+                "initial_comment": context.get_parameter("initial_comment"),
+                "channels": channel
+            })
+        
+        return action, parameters
+
+    def _prepare_email_operation(self, context: NodeExecutionContext) -> tuple[str, Dict[str, Any]]:
+        """Prepare Email operation and parameters."""
+        action = self.get_parameter_with_spec(context, "action") or "send"
+        
+        parameters = {}
+        
+        if action == "send":
+            parameters.update({
+                "recipients": self.get_parameter_with_spec(context, "recipients"),
+                "subject": self.get_parameter_with_spec(context, "subject"),
+                "body": context.get_parameter("body", context.get_parameter("message", "")),
+                "from_email": context.get_parameter("from_email")
+            })
+        
+        return action, parameters
+
+    def _prepare_api_call_operation(self, context: NodeExecutionContext) -> tuple[str, Dict[str, Any]]:
+        """Prepare API Call operation and parameters."""
+        parameters = {
+            "method": self.get_parameter_with_spec(context, "method"),
+            "url": self.get_parameter_with_spec(context, "url"),
+            "headers": self.get_parameter_with_spec(context, "headers") or {},
+            "query_params": self.get_parameter_with_spec(context, "query_params") or {},
+            "body": self.get_parameter_with_spec(context, "body"),
+            "timeout": self.get_parameter_with_spec(context, "timeout") or 30,
+            "authentication": self.get_parameter_with_spec(context, "authentication") or "none"
+        }
+        
+        # Add authentication parameters
+        if parameters["authentication"] != "none":
+            auth_token = self.get_parameter_with_spec(context, "auth_token")
+            api_key_header = self.get_parameter_with_spec(context, "api_key_header")
+            username = self.get_parameter_with_spec(context, "username")
+            password = self.get_parameter_with_spec(context, "password")
+            
+            if auth_token:
+                parameters["auth_token"] = auth_token
+            if api_key_header:
+                parameters["api_key_header"] = api_key_header
+            if username:
+                parameters["username"] = username
+            if password:
+                parameters["password"] = password
+        
+        return "generic_call", parameters
+
+    async def _get_credentials_for_sdk(self, context: NodeExecutionContext, provider: str, user_id: str) -> Dict[str, str]:
+        """Get credentials for SDK from OAuth2 service (N8N-style automatic credential querying).
+        
+        This method implements the N8N-style approach where:
+        1. Credentials are automatically queried from database, not passed in requests
+        2. Missing credentials result in structured error responses
+        3. Frontend handles authorization flow based on error responses
+        """
+        # Always query stored credentials from database (N8N style)
+        # Don't check context.credentials - this enforces the N8N pattern
+        return await self._get_user_credentials(user_id, provider) or {}
 
     async def _get_user_credentials(self, user_id: str, provider: str) -> Optional[Dict[str, str]]:
         """Get user credentials for the specified provider.
@@ -291,74 +693,12 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 "mock_result": f"Mock {operation} result for {provider}"
             }
         
-        # Get user credentials - first check execution context, then OAuth2 service
-        credentials = None
+        # Always query stored credentials from database (N8N style)
+        credentials = await self._get_user_credentials(user_id, provider)
         
         # Debug logging
         self.logger.info(f"Calling external API for provider={provider}, operation={operation}")
-        self.logger.info(f"Context provided: {context is not None}")
-        if context:
-            self.logger.info(f"Context credentials available: {context.credentials is not None}")
-            if context.credentials:
-                self.logger.info(f"Available credential providers: {list(context.credentials.keys())}")
-        
-        # Check if credentials are provided in execution context
-        if context and context.credentials and provider in context.credentials:
-            context_creds = context.credentials[provider]
-            self.logger.info(f"Using credentials from execution context for {provider}")
-            
-            # Handle authorization code flow
-            if "authorization_code" in context_creds:
-                # Exchange authorization code for access token
-                try:
-                    # Use simplified OAuth2 service for token exchange
-                    from ..services.oauth2_service_lite import OAuth2ServiceLite
-                    from ..models.database import get_db_session
-                    
-                    # Create OAuth2 service
-                    with get_db_session() as db:
-                        oauth2_service_lite = OAuth2ServiceLite(db)
-                        
-                        # Exchange code for token
-                        token_response = await oauth2_service_lite.exchange_code_for_token(
-                            code=context_creds["authorization_code"],
-                            client_id=context_creds.get("client_id"),
-                            redirect_uri=context_creds.get("redirect_uri"),
-                            provider=provider
-                        )
-                        
-                        # Store credentials for future use
-                        user_id_from_context = context.metadata.get('user_id', user_id)
-                        await oauth2_service_lite.store_user_credentials(
-                            user_id=user_id_from_context,
-                            provider=provider,
-                            token_response=token_response
-                        )
-                        
-                        credentials = {
-                            "access_token": token_response.access_token,
-                            "refresh_token": token_response.refresh_token,
-                            "token_type": token_response.token_type,
-                            "expires_at": token_response.expires_at
-                        }
-                        self.logger.info(f"Successfully exchanged authorization code for access token for {provider}")
-                        
-                except Exception as e:
-                    self.logger.error(f"Failed to exchange authorization code for {provider}: {e}")
-                    return {
-                        "success": False,
-                        "error": f"OAuth2 token exchange failed: {str(e)}",
-                        "provider": provider,
-                        "operation": operation,
-                        "oauth2_error": True
-                    }
-            else:
-                # Direct token credentials
-                credentials = context_creds
-        
-        # Fallback to OAuth2 service if no context credentials
-        if not credentials:
-            credentials = await self._get_user_credentials(user_id, provider)
+        self.logger.info(f"Auto-queried credentials for user {user_id}, provider {provider}: {bool(credentials)}")
             
         if not credentials:
             error_message = f"No valid credentials for {provider}"
@@ -555,6 +895,23 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                                            context.metadata.get('workflow_execution_id'),
                                            context.metadata.get('node_id'), context)
                 )
+                
+            # Check if this is an N8N-style error response (missing credentials)
+            if not output_data.get("success", True) and output_data.get("requires_auth"):
+                logs.append(f"Missing credentials for github - authorization required")
+                return self._create_error_result(
+                    f"Missing credentials for github. Please authorize this provider first.",
+                    error_details={
+                        "error_type": "MISSING_CREDENTIALS",
+                        "provider": "github",
+                        "user_id": user_id,
+                        "requires_auth": True,
+                        "auth_provider": "github"
+                    },
+                    execution_time=time.time() - start_time,
+                    logs=logs
+                )
+                
         except Exception as e:
             logs.append(f"Failed to call GitHub API: {str(e)}")
             # Fallback to mock data with error info
@@ -622,6 +979,23 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
             output_data = await self._call_external_api("google_calendar", action, api_parameters, user_id,
                                            context.metadata.get('workflow_execution_id'),
                                            context.metadata.get('node_id'), context)
+            
+            # Check if this is an N8N-style error response (missing credentials)
+            if not output_data.get("success", True) and output_data.get("requires_auth"):
+                logs.append(f"Missing credentials for google_calendar - authorization required")
+                return self._create_error_result(
+                    f"Missing credentials for google_calendar. Please authorize this provider first.",
+                    error_details={
+                        "error_type": "MISSING_CREDENTIALS",
+                        "provider": "google_calendar",
+                        "user_id": user_id,
+                        "requires_auth": True,
+                        "auth_provider": "google_calendar"
+                    },
+                    execution_time=time.time() - start_time,
+                    logs=logs
+                )
+                
         except Exception as e:
             logs.append(f"Failed to call Google Calendar API: {str(e)}")
             # Fallback to mock data with error info
@@ -662,27 +1036,66 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
             output_data=output_data, execution_time=time.time() - start_time, logs=logs
         )
 
-    def _execute_email_action(
+    async def _execute_email_action(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute email action."""
-        # Use spec-based parameter retrieval
-        action = self.get_parameter_with_spec(context, "action")
+        # Use spec-based parameter retrieval with fallback
+        action = self.get_parameter_with_spec(context, "action") or "send"
+        user_id = getattr(context, 'user_id', None) or context.metadata.get('user_id', "00000000-0000-0000-0000-000000000123")
 
         logs.append(f"Email action: {action}")
 
-        # Mock implementation - replace with actual email API calls
-        output_data = {
-            "provider": "email",
-            "action": action,
-            "result": f"Mock email {action} result",
-            "executed_at": datetime.now().isoformat(),
-        }
-
+        # Prepare parameters for Email API
+        api_parameters = {}
+        
         if action == "send":
-            recipients = self.get_parameter_with_spec(context, "recipients")
-            subject = self.get_parameter_with_spec(context, "subject")
-            output_data.update({"recipients": recipients, "subject": subject})
+            api_parameters.update({
+                "recipients": self.get_parameter_with_spec(context, "recipients"),
+                "subject": self.get_parameter_with_spec(context, "subject"),
+                "body": context.get_parameter("body", context.get_parameter("message", "")),
+                "from_email": context.get_parameter("from_email")
+            })
+
+        # Call real Email API
+        try:
+            # Direct async call since method is now async
+            output_data = await self._call_external_api("email", action, api_parameters, user_id,
+                                           context.metadata.get('workflow_execution_id'),
+                                           context.metadata.get('node_id'), context)
+            
+            # Check if this is an N8N-style error response (missing credentials)
+            if not output_data.get("success", True) and output_data.get("requires_auth"):
+                logs.append(f"Missing credentials for email - authorization required")
+                return self._create_error_result(
+                    f"Missing credentials for email. Please authorize this provider first.",
+                    error_details={
+                        "error_type": "MISSING_CREDENTIALS",
+                        "provider": "email",
+                        "user_id": user_id,
+                        "requires_auth": True,
+                        "auth_provider": "email"
+                    },
+                    execution_time=time.time() - start_time,
+                    logs=logs
+                )
+                
+        except Exception as e:
+            logs.append(f"Failed to call Email API: {str(e)}")
+            # Fallback to mock data with error info
+            output_data = {
+                "provider": "email",
+                "action": action,
+                "result": f"Mock email {action} result (API call failed: {str(e)})",
+                "executed_at": datetime.now().isoformat(),
+                "fallback_mode": True,
+                "api_error": str(e)
+            }
+            
+            if action == "send":
+                recipients = self.get_parameter_with_spec(context, "recipients")
+                subject = self.get_parameter_with_spec(context, "subject")
+                output_data.update({"recipients": recipients, "subject": subject})
 
         return self._create_success_result(
             output_data=output_data, execution_time=time.time() - start_time, logs=logs
@@ -768,6 +1181,23 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                                            context.metadata.get('workflow_execution_id'),
                                            context.metadata.get('node_id'), context)
                 )
+                
+            # Check if this is an N8N-style error response (missing credentials)
+            if not output_data.get("success", True) and output_data.get("requires_auth"):
+                logs.append(f"Missing credentials for slack - authorization required")
+                return self._create_error_result(
+                    f"Missing credentials for slack. Please authorize this provider first.",
+                    error_details={
+                        "error_type": "MISSING_CREDENTIALS",
+                        "provider": "slack",
+                        "user_id": user_id,
+                        "requires_auth": True,
+                        "auth_provider": "slack"
+                    },
+                    execution_time=time.time() - start_time,
+                    logs=logs
+                )
+                
         except Exception as e:
             logs.append(f"Failed to call Slack API: {str(e)}")
             # Fallback to mock data with error info
@@ -837,20 +1267,26 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         
         # Call real API using the api_call adapter
         try:
-            # Use the new adapter system
-            if get_adapter:
-                adapter = get_adapter("api_call")
-                if adapter:
-                    output_data = await adapter.call("generic_call", api_parameters, credentials)
-                    
-                    # Add metadata
-                    output_data["provider"] = "api_call"
-                    output_data["executed_at"] = datetime.now().isoformat()
-                    output_data["real_api_call"] = True
-                else:
-                    raise Exception("api_call adapter not found")
-            else:
-                raise Exception("Adapter system not available")
+            # Direct async call using the new shared API system
+            output_data = await self._call_external_api("api_call", "generic_call", api_parameters, user_id,
+                                           context.metadata.get('workflow_execution_id'),
+                                           context.metadata.get('node_id'), context)
+            
+            # Check if this is an N8N-style error response (missing credentials)
+            if not output_data.get("success", True) and output_data.get("requires_auth"):
+                logs.append(f"Missing credentials for api_call - authorization required")
+                return self._create_error_result(
+                    f"Missing credentials for api_call. Please authorize this provider first.",
+                    error_details={
+                        "error_type": "MISSING_CREDENTIALS",
+                        "provider": "api_call",
+                        "user_id": user_id,
+                        "requires_auth": True,
+                        "auth_provider": "api_call"
+                    },
+                    execution_time=time.time() - start_time,
+                    logs=logs
+                )
                 
         except Exception as e:
             logs.append(f"Failed to call generic API: {str(e)}")
