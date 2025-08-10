@@ -71,6 +71,12 @@ class OAuth2ServiceLite:
                 'client_secret': os.getenv('SLACK_CLIENT_SECRET', ''),
                 'token_url': 'https://slack.com/api/oauth.v2.access',
                 'scopes': ['chat:write', 'channels:read']
+            },
+            'api_call': {
+                'client_id': os.getenv('API_CALL_CLIENT_ID', ''),
+                'client_secret': os.getenv('API_CALL_CLIENT_SECRET', ''),
+                'token_url': os.getenv('API_CALL_TOKEN_URL', ''),
+                'scopes': os.getenv('API_CALL_SCOPES', '').split(',') if os.getenv('API_CALL_SCOPES') else []
             }
         }
         

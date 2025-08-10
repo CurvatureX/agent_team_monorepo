@@ -16,7 +16,11 @@ import {
   Loader2,
   Shield,
   ExternalLink,
-  Plus
+  Plus,
+  Copy,
+  Code,
+  Settings,
+  RefreshCw
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -44,12 +48,48 @@ interface EventFormData {
   endTime: string;
 }
 
+interface ProviderStatus {
+  authorized: boolean;
+  client_id?: string;
+  expires_at?: string;
+  last_updated?: string;
+  error?: string;
+}
+
+interface AllProvidersStatus {
+  user_id: string;
+  providers: Record<string, ProviderStatus>;
+}
+
 export default function GoogleCalendarTestPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [hasCredentials, setHasCredentials] = useState(false);
   const [lastResult, setLastResult] = useState<ExecutionResult | null>(null);
   const [workflowId, setWorkflowId] = useState<string | null>(null);
+  const [authorizationCode, setAuthorizationCode] = useState<string>('');
+  const [storedCredentials, setStoredCredentials] = useState<any>(null);
+  const [allProvidersStatus, setAllProvidersStatus] = useState<AllProvidersStatus | null>(null);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(false);
   const { toast } = useToast();
+
+  // 复制到剪贴板功能
+  const copyToClipboard = async (text: string, description: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({
+        title: "复制成功",
+        description: `已复制${description}到剪贴板`,
+        variant: "default"
+      });
+    } catch (err) {
+      console.error('复制失败:', err);
+      toast({
+        title: "复制失败",
+        description: "无法复制到剪贴板，请手动选择并复制",
+        variant: "destructive"
+      });
+    }
+  };
 
   // 事件表单数据
   const [eventForm, setEventForm] = useState<EventFormData>({
@@ -62,10 +102,48 @@ export default function GoogleCalendarTestPage() {
     endTime: '11:00'
   });
 
-  // 检查是否已有存储的凭据
-  const checkCredentials = async () => {
+  // 获取所有提供商的授权状态 (N8N 风格)
+  const fetchAllProvidersStatus = async () => {
     try {
-      const response = await fetch(`http://localhost:8002/api/v1/credentials/check`, {
+      const response = await fetch(`http://localhost:8002/api/v1/credentials/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: USER_ID
+        })
+      });
+      
+      if (response.ok) {
+        const result: AllProvidersStatus = await response.json();
+        setAllProvidersStatus(result);
+        
+        // 更新 Google Calendar 凭据状态
+        const googleCalendarStatus = result.providers?.google_calendar;
+        setHasCredentials(googleCalendarStatus?.authorized || false);
+        
+        return result;
+      } else {
+        console.log('Failed to fetch providers status');
+        return null;
+      }
+    } catch (error) {
+      console.log('Providers status check failed:', error);
+      return null;
+    }
+  };
+
+  // 检查是否已有存储的凭据 (向后兼容)
+  const checkCredentials = async () => {
+    const status = await fetchAllProvidersStatus();
+    if (!status) {
+      setHasCredentials(false);
+    }
+  };
+
+  // 获取存储的凭据详情（包括authorization_code）
+  const getStoredCredentials = async () => {
+    try {
+      const response = await fetch(`http://localhost:8002/api/v1/credentials/get`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -76,11 +154,18 @@ export default function GoogleCalendarTestPage() {
       
       if (response.ok) {
         const result = await response.json();
-        setHasCredentials(result.has_credentials);
+        if (result.credentials) {
+          setStoredCredentials(result.credentials);
+          // 如果有存储的authorization_code，显示它
+          if (result.credentials.authorization_code) {
+            setAuthorizationCode(result.credentials.authorization_code);
+          }
+        }
+      } else {
+        console.log('No stored credentials found');
       }
-    } catch {
-      console.log('Credentials check failed, assuming no credentials');
-      setHasCredentials(false);
+    } catch (error) {
+      console.log('Failed to get stored credentials:', error);
     }
   };
 
@@ -141,7 +226,7 @@ export default function GoogleCalendarTestPage() {
       const startDateTime = `${eventForm.startDate}T${eventForm.startTime}:00+08:00`;
       const endDateTime = `${eventForm.endDate}T${eventForm.endTime}:00+08:00`;
 
-      // 构建执行请求
+      // 构建执行请求 (N8N风格 - 不包含凭据)
       const requestBody: Record<string, unknown> = {
         user_id: USER_ID,
         input_data: {},
@@ -157,13 +242,8 @@ export default function GoogleCalendarTestPage() {
           }
         }
       };
-
-      // 如果有凭据，添加到请求中
-      if (credentials) {
-        requestBody.credentials = {
-          google_calendar: credentials
-        };
-      }
+      
+      // N8N风格：不传递凭据，让后端自动查询
 
       const response = await fetch(
         `http://localhost:8002/v1/workflows/${currentWorkflowId}/nodes/google_calendar_create_node/execute`,
@@ -244,6 +324,7 @@ export default function GoogleCalendarTestPage() {
               popup.close();
               clearInterval(checkClosed);
               sessionStorage.removeItem('oauth2_state');
+              setAuthorizationCode(code); // 保存授权码用于显示
               resolve(code);
             }
           }
@@ -284,54 +365,33 @@ export default function GoogleCalendarTestPage() {
     return await response.json();
   };
 
-  // 主要的执行函数 - N8N风格的智能执行
+  // N8N风格的节点执行 - 后端自动查询凭据
   const handleExecuteNode = async () => {
     setIsLoading(true);
     setLastResult(null);
 
     try {
-      // 步骤1: 尝试直接执行节点
+      // 步骤1: 直接执行节点 (后端会自动查询凭据)
       toast({
         title: "创建Google Calendar事件",
-        description: "正在检查是否需要授权..."
+        description: "正在执行..."
       });
 
-      let result = await executeGoogleCalendarNode();
+      // 简化的执行请求 - 不传递凭据
+      const result = await executeGoogleCalendarNode();
 
-      // 步骤2: 检查是否需要OAuth2授权
-      if (result.output_data?.requires_auth || result.output_data?.error?.includes('credentials')) {
+      // 步骤2: 检查是否是授权错误
+      if (result.status === 'FAILED' && 
+          (result.error_details?.error_type === 'MISSING_CREDENTIALS' || 
+           result.error_details?.requires_auth)) {
+        
+        // MVP版本: 显示错误，让用户手动授权
         toast({
           title: "需要授权",
-          description: "正在启动Google OAuth2授权流程...",
-          variant: "default"
+          description: `请在授权管理区域为 ${result.error_details?.provider || 'Google Calendar'} 完成授权后重试`,
+          variant: "destructive"
         });
-
-        // 步骤3: 启动OAuth2授权流程
-        const authorizationCode = await startOAuth2Flow();
-        
-        toast({
-          title: "授权成功",
-          description: "正在存储凭据并重新执行节点..."
-        });
-
-        // 步骤4: 存储凭据到后端
-        await storeCredentials(authorizationCode);
-
-        // 步骤5: 使用新凭据重新执行节点
-        result = await executeGoogleCalendarNode({
-          authorization_code: authorizationCode,
-          client_id: GOOGLE_CLIENT_ID,
-          redirect_uri: REDIRECT_URI
-        });
-
-        // 更新凭据状态
-        setHasCredentials(true);
-      }
-
-      // 显示最终结果
-      setLastResult(result);
-
-      if (result.status === 'COMPLETED' && result.output_data?.success !== false) {
+      } else if (result.status === 'COMPLETED' && result.output_data?.success !== false) {
         toast({
           title: "事件创建成功！",
           description: "Google Calendar事件已成功创建，请查看您的Google日历。",
@@ -345,6 +405,9 @@ export default function GoogleCalendarTestPage() {
         });
       }
 
+      // 显示执行结果
+      setLastResult(result);
+
     } catch (error) {
       console.error('Execution error:', error);
       toast({
@@ -357,9 +420,58 @@ export default function GoogleCalendarTestPage() {
     }
   };
 
-  // 页面加载时检查凭据状态
+  // 手动授权单个提供商
+  const handleManualAuthorize = async (provider: string) => {
+    setIsLoadingAuth(true);
+    
+    try {
+      if (provider === 'google_calendar') {
+        toast({
+          title: "启动授权",
+          description: "正在打开Google授权页面..."
+        });
+        
+        // 启动OAuth2流程
+        const authorizationCode = await startOAuth2Flow();
+        
+        toast({
+          title: "授权成功",
+          description: "正在存储凭据..."
+        });
+        
+        // 存储凭据
+        await storeCredentials(authorizationCode);
+        
+        toast({
+          title: "授权完成",
+          description: "Google Calendar授权已完成，可以执行节点了"
+        });
+        
+        // 刷新状态
+        await fetchAllProvidersStatus();
+        
+      } else {
+        toast({
+          title: "暂不支持",
+          description: `${provider} 授权功能正在开发中`,
+          variant: "default"
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "授权失败",
+        description: error instanceof Error ? error.message : "授权过程中发生错误",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoadingAuth(false);
+    }
+  };
+
+  // 页面加载时检查所有提供商状态
   useEffect(() => {
-    checkCredentials();
+    fetchAllProvidersStatus();
+    getStoredCredentials(); // 获取已存储的凭据详情 (用于测试)
     
     // 检查URL参数，处理OAuth2回调
     const urlParams = new URLSearchParams(window.location.search);
@@ -421,6 +533,343 @@ export default function GoogleCalendarTestPage() {
                   需要授权
                 </Badge>
               </>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* N8N 风格的授权管理区域 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Settings className="w-5 h-5" />
+              授权管理 (N8N 风格)
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => fetchAllProvidersStatus()}
+              disabled={isLoadingAuth}
+            >
+              <RefreshCw className={`w-3 h-3 mr-2 ${isLoadingAuth ? 'animate-spin' : ''}`} />
+              刷新状态
+            </Button>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <p className="text-sm text-blue-800 mb-2">
+                <strong>💡 N8N 风格说明：</strong> 这是类似 N8N 的外部 API 集成管理方式
+              </p>
+              <ul className="text-xs text-blue-700 space-y-1">
+                <li>• 节点执行时后端自动查询存储的凭据</li>
+                <li>• 没有授权时返回标准错误格式</li>
+                <li>• 前端显示错误，用户手动完成授权</li>
+                <li>• 授权完成后重新执行节点即可</li>
+              </ul>
+            </div>
+
+            {allProvidersStatus ? (
+              <div className="grid gap-3">
+                {Object.entries(allProvidersStatus.providers).map(([provider, status]) => (
+                  <div key={provider} className="flex items-center justify-between p-3 bg-white border rounded-lg shadow-sm">
+                    <div className="flex items-center gap-3">
+                      {status.authorized ? (
+                        <CheckCircle className="w-4 h-4 text-green-500" />
+                      ) : (
+                        <XCircle className="w-4 h-4 text-red-500" />
+                      )}
+                      <div>
+                        <div className="font-medium capitalize text-gray-800">
+                          {provider.replace('_', ' ')}
+                        </div>
+                        <div className="text-xs text-gray-600">
+                          {status.authorized ? (
+                            <>
+                              <span className="text-green-600 font-medium">已授权</span>
+                              {status.last_updated && (
+                                <span className="text-gray-500"> • 更新于 {new Date(status.last_updated).toLocaleString()}</span>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-red-600 font-medium">未授权</span>
+                          )}
+                          {status.error && (
+                            <div className="mt-1 text-xs text-red-600 bg-red-50 p-1 rounded">
+                              错误: {status.error.length > 80 ? status.error.substring(0, 80) + '...' : status.error}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {status.authorized ? (
+                        <Badge variant="outline" className="text-green-600 border-green-200">
+                          已连接
+                        </Badge>
+                      ) : (
+                        <Button
+                          size="sm"
+                          onClick={() => handleManualAuthorize(provider)}
+                          disabled={isLoadingAuth}
+                          className="bg-blue-600 hover:bg-blue-700"
+                        >
+                          {isLoadingAuth ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            '授权'
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-4 text-gray-500">
+                <Loader2 className="w-4 h-4 animate-spin mx-auto mb-2" />
+                正在加载提供商状态...
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* OAuth2参数显示卡片 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Code className="w-5 h-5" />
+            OAuth2 参数（供cURL调用使用）
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <p className="text-sm text-blue-800 mb-3">
+              <strong>💡 使用说明：</strong> 页面会自动显示当前可用的OAuth2参数值，你可以复制用于手动cURL调用。如果没有显示授权码，请先完成OAuth2授权。
+            </p>
+            
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 bg-white rounded border">
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-gray-700">Client ID:</div>
+                  <div className="text-xs font-mono text-gray-600 break-all">
+                    {GOOGLE_CLIENT_ID || '未配置环境变量 NEXT_PUBLIC_GOOGLE_CLIENT_ID'}
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => copyToClipboard(GOOGLE_CLIENT_ID, 'Client ID')}
+                  disabled={!GOOGLE_CLIENT_ID}
+                  className="ml-2"
+                >
+                  <Copy className="w-3 h-3" />
+                </Button>
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-white rounded border">
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-gray-700">Redirect URI:</div>
+                  <div className="text-xs font-mono text-gray-600">{REDIRECT_URI}</div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => copyToClipboard(REDIRECT_URI, 'Redirect URI')}
+                  className="ml-2"
+                >
+                  <Copy className="w-3 h-3" />
+                </Button>
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-white rounded border">
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-gray-700">User ID:</div>
+                  <div className="text-xs font-mono text-gray-600">{USER_ID}</div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => copyToClipboard(USER_ID, 'User ID')}
+                  className="ml-2"
+                >
+                  <Copy className="w-3 h-3" />
+                </Button>
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-white rounded border">
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-gray-700">
+                    Authorization Code:
+                    {authorizationCode && (
+                      <span className="ml-2 text-xs text-green-600 bg-green-50 px-2 py-1 rounded">
+                        当前可用
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs font-mono text-gray-600 break-all">
+                    {authorizationCode || (hasCredentials ? '加载中...' : '需要先完成OAuth2授权')}
+                  </div>
+                  {authorizationCode && (
+                    <div className="text-xs text-gray-500 mt-1">
+                      💡 这是当前存储的有效授权码，可直接用于cURL调用
+                    </div>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => copyToClipboard(authorizationCode, 'Authorization Code')}
+                  disabled={!authorizationCode}
+                  className="ml-2"
+                >
+                  <Copy className="w-3 h-3" />
+                </Button>
+              </div>
+
+              {/* 工作流ID */}
+              {workflowId && (
+                <div className="flex items-center justify-between p-3 bg-white rounded border">
+                  <div className="flex-1">
+                    <div className="text-sm font-medium text-gray-700">Workflow ID:</div>
+                    <div className="text-xs font-mono text-gray-600 break-all">{workflowId}</div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => copyToClipboard(workflowId, 'Workflow ID')}
+                    className="ml-2"
+                  >
+                    <Copy className="w-3 h-3" />
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* 完整的cURL命令模板 - N8N风格 */}
+            {workflowId && (
+              <details className="mt-4">
+                <summary className="cursor-pointer text-sm font-medium text-blue-800 hover:text-blue-900">
+                  📋 点击查看 N8N 风格的 cURL 命令模板
+                </summary>
+                <div className="mt-3 p-3 bg-gray-100 rounded text-xs font-mono overflow-auto">
+                  <div className="mb-2 text-gray-600">N8N风格执行命令（后端自动查询凭据）：</div>
+                  <pre className="whitespace-pre-wrap break-all text-gray-800">
+{`curl --location --request POST 'http://localhost:8002/v1/workflows/${workflowId}/nodes/google_calendar_create_node/execute' \\
+--header 'Content-Type: application/json' \\
+--data-raw '{
+  "user_id": "${USER_ID}",
+  "input_data": {},
+  "execution_context": {
+    "override_parameters": {
+      "action": "create_event",
+      "calendar_id": "primary",
+      "summary": "${eventForm.summary}",
+      "description": "${eventForm.description}",
+      "location": "${eventForm.location}",
+      "start": "${eventForm.startDate}T${eventForm.startTime}:00+08:00",
+      "end": "${eventForm.endDate}T${eventForm.endTime}:00+08:00"
+    }
+  }
+}'`}
+                  </pre>
+                  <div className="text-xs text-green-700 bg-green-50 p-2 rounded mt-2 mb-2">
+                    💡 注意：N8N风格不需要在请求中传递credentials，后端会自动查询存储的凭据
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => copyToClipboard(`curl --location --request POST 'http://localhost:8002/v1/workflows/${workflowId}/nodes/google_calendar_create_node/execute' \\
+--header 'Content-Type: application/json' \\
+--data-raw '{
+  "user_id": "${USER_ID}",
+  "input_data": {},
+  "execution_context": {
+    "override_parameters": {
+      "action": "create_event",
+      "calendar_id": "primary",
+      "summary": "${eventForm.summary}",
+      "description": "${eventForm.description}",
+      "location": "${eventForm.location}",
+      "start": "${eventForm.startDate}T${eventForm.startTime}:00+08:00",
+      "end": "${eventForm.endDate}T${eventForm.endTime}:00+08:00"
+    }
+  }
+}'`, 'N8N风格 cURL命令')}
+                    className="mt-2"
+                  >
+                    <Copy className="w-3 h-3 mr-2" />
+                    复制 N8N 风格 cURL 命令
+                  </Button>
+                </div>
+
+                {/* Legacy命令（包含凭据的版本）*/}
+                {authorizationCode && (
+                  <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs font-mono overflow-auto">
+                    <div className="mb-2 text-yellow-800">Legacy风格执行命令（手动传递凭据）：</div>
+                    <pre className="whitespace-pre-wrap break-all text-gray-800">
+{`curl --location --request POST 'http://localhost:8002/v1/workflows/${workflowId}/nodes/google_calendar_create_node/execute' \\
+--header 'Content-Type: application/json' \\
+--data-raw '{
+  "user_id": "${USER_ID}",
+  "input_data": {},
+  "execution_context": {
+    "override_parameters": {
+      "action": "create_event",
+      "calendar_id": "primary",
+      "summary": "${eventForm.summary}",
+      "description": "${eventForm.description}",
+      "location": "${eventForm.location}",
+      "start": "${eventForm.startDate}T${eventForm.startTime}:00+08:00",
+      "end": "${eventForm.endDate}T${eventForm.endTime}:00+08:00"
+    }
+  },
+  "credentials": {
+    "google_calendar": {
+      "authorization_code": "${authorizationCode}",
+      "client_id": "${GOOGLE_CLIENT_ID}",
+      "redirect_uri": "${REDIRECT_URI}"
+    }
+  }
+}'`}
+                    </pre>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => copyToClipboard(`curl --location --request POST 'http://localhost:8002/v1/workflows/${workflowId}/nodes/google_calendar_create_node/execute' \\
+--header 'Content-Type: application/json' \\
+--data-raw '{
+  "user_id": "${USER_ID}",
+  "input_data": {},
+  "execution_context": {
+    "override_parameters": {
+      "action": "create_event",
+      "calendar_id": "primary",
+      "summary": "${eventForm.summary}",
+      "description": "${eventForm.description}",
+      "location": "${eventForm.location}",
+      "start": "${eventForm.startDate}T${eventForm.startTime}:00+08:00",
+      "end": "${eventForm.endDate}T${eventForm.endTime}:00+08:00"
+    }
+  },
+  "credentials": {
+    "google_calendar": {
+      "authorization_code": "${authorizationCode}",
+      "client_id": "${GOOGLE_CLIENT_ID}",
+      "redirect_uri": "${REDIRECT_URI}"
+    }
+  }
+}'`, 'Legacy cURL命令')}
+                      className="mt-2"
+                    >
+                      <Copy className="w-3 h-3 mr-2" />
+                      复制 Legacy cURL 命令
+                    </Button>
+                  </div>
+                )}
+              </details>
             )}
           </div>
         </CardContent>
@@ -512,14 +961,14 @@ export default function GoogleCalendarTestPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <h3 className="font-medium text-green-900 mb-2">🎯 智能创建流程</h3>
+            <h3 className="font-medium text-green-900 mb-2">🎯 N8N 风格创建流程</h3>
             <div className="text-sm text-green-700 space-y-1">
               <p>1. 填写上方事件详情表单</p>
-              <p>2. 点击创建按钮</p>
-              <p>3. 系统自动检测OAuth2授权状态</p>
-              <p>4. 如需授权，自动弹出Google授权页面</p>
-              <p>5. 授权完成后自动创建真实的Calendar事件</p>
-              <p>6. 您可以在Google Calendar中验证创建的事件</p>
+              <p>2. 点击创建按钮（后端自动查询存储的凭据）</p>
+              <p>3. 如果未授权，会显示错误提示</p>
+              <p>4. 在"授权管理"区域手动完成授权</p>
+              <p>5. 重新点击创建按钮执行节点</p>
+              <p>6. 创建成功后可在Google Calendar中查看</p>
             </div>
           </div>
 

@@ -46,6 +46,31 @@ class CredentialStoreResponse(BaseModel):
     user_id: str
 
 
+class CredentialGetRequest(BaseModel):
+    """Request model for getting stored credential details"""
+    user_id: str
+    provider: str
+
+
+class CredentialGetResponse(BaseModel):
+    """Response model for getting credential details"""
+    has_credentials: bool
+    provider: str
+    user_id: str
+    credentials: Dict[str, Any] = None
+
+
+class CredentialStatusRequest(BaseModel):
+    """Request model for getting authorization status for all providers"""
+    user_id: str
+
+
+class CredentialStatusResponse(BaseModel):
+    """Response model for authorization status"""
+    user_id: str
+    providers: Dict[str, Dict[str, Any]]
+
+
 @router.post("/credentials/check", response_model=CredentialCheckResponse)
 async def check_credentials(request: CredentialCheckRequest):
     """
@@ -80,6 +105,161 @@ async def check_credentials(request: CredentialCheckRequest):
         raise HTTPException(
             status_code=500,
             detail=f"Failed to check credentials: {str(e)}"
+        )
+
+
+@router.post("/credentials/status", response_model=CredentialStatusResponse)
+async def get_authorization_status(request: CredentialStatusRequest):
+    """
+    Get authorization status for all external API providers
+    
+    Args:
+        request: Status request containing user_id
+        
+    Returns:
+        CredentialStatusResponse with status for all providers
+    """
+    try:
+        logger.info(f"Getting authorization status for user {request.user_id}")
+        
+        # Supported providers list
+        supported_providers = [
+            "google_calendar",
+            "github", 
+            "slack",
+            "email",
+            "api_call"
+        ]
+        
+        providers_status = {}
+        
+        with get_db_session() as db:
+            oauth2_service = OAuth2ServiceLite(db)
+            
+            for provider in supported_providers:
+                try:
+                    # Check if user has valid stored token
+                    access_token = await oauth2_service.get_valid_token(request.user_id, provider)
+                    has_credentials = access_token is not None
+                    
+                    # Get additional credential info if available
+                    if has_credentials:
+                        from sqlalchemy import text
+                        query = text("""
+                            SELECT client_id, token_expires_at, created_at, updated_at
+                            FROM user_external_credentials 
+                            WHERE user_id = :user_id AND provider = :provider
+                            ORDER BY updated_at DESC
+                            LIMIT 1
+                        """)
+                        
+                        result = db.execute(query, {
+                            "user_id": request.user_id,
+                            "provider": provider
+                        }).fetchone()
+                        
+                        providers_status[provider] = {
+                            "authorized": True,
+                            "client_id": result.client_id if result else None,
+                            "expires_at": result.token_expires_at.isoformat() if result and result.token_expires_at else None,
+                            "last_updated": result.updated_at.isoformat() if result and result.updated_at else None
+                        }
+                    else:
+                        providers_status[provider] = {
+                            "authorized": False,
+                            "client_id": None,
+                            "expires_at": None,
+                            "last_updated": None
+                        }
+                        
+                except Exception as e:
+                    logger.warning(f"Failed to check status for provider {provider}: {e}")
+                    providers_status[provider] = {
+                        "authorized": False,
+                        "error": f"Failed to check: {str(e)}"
+                    }
+        
+        logger.info(f"Authorization status retrieved for user {request.user_id}: {list(providers_status.keys())}")
+        
+        return CredentialStatusResponse(
+            user_id=request.user_id,
+            providers=providers_status
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to get authorization status for user {request.user_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get authorization status: {str(e)}"
+        )
+
+
+@router.post("/credentials/get", response_model=CredentialGetResponse)
+async def get_credentials(request: CredentialGetRequest):
+    """
+    Get stored credential details for a specific provider (for debugging/testing)
+    
+    Args:
+        request: Credential get request containing user_id and provider
+        
+    Returns:
+        CredentialGetResponse with credential details if available
+    """
+    try:
+        logger.info(f"Getting credentials for user {request.user_id}, provider {request.provider}")
+        
+        with get_db_session() as db:
+            from sqlalchemy import text
+            
+            # Query the stored credentials
+            query = text("""
+                SELECT encrypted_additional_data, client_id, encrypted_access_token, encrypted_refresh_token, 
+                       token_expires_at, created_at, updated_at
+                FROM user_external_credentials 
+                WHERE user_id = :user_id AND provider = :provider
+                ORDER BY updated_at DESC
+                LIMIT 1
+            """)
+            
+            result = db.execute(query, {
+                "user_id": request.user_id,
+                "provider": request.provider
+            }).fetchone()
+            
+            if result:
+                # Build credential details (excluding sensitive refresh token for security)
+                credentials = {
+                    "additional_data": "***encrypted***" if result.encrypted_additional_data else None,
+                    "client_id": result.client_id,
+                    "has_access_token": bool(result.encrypted_access_token),
+                    "expires_at": result.token_expires_at.isoformat() if result.token_expires_at else None,
+                    "created_at": result.created_at.isoformat() if result.created_at else None,
+                    "updated_at": result.updated_at.isoformat() if result.updated_at else None
+                }
+                
+                logger.info(f"Found credentials for user {request.user_id}, provider {request.provider}")
+                
+                return CredentialGetResponse(
+                    has_credentials=True,
+                    provider=request.provider,
+                    user_id=request.user_id,
+                    credentials=credentials
+                )
+            else:
+                logger.info(f"No credentials found for user {request.user_id}, provider {request.provider}")
+                
+                return CredentialGetResponse(
+                    has_credentials=False,
+                    provider=request.provider,
+                    user_id=request.user_id,
+                    credentials=None
+                )
+                
+    except Exception as e:
+        logger.error(f"Failed to get credentials for user {request.user_id}, provider {request.provider}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get credentials: {str(e)}"
         )
 
 
