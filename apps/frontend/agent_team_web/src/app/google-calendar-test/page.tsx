@@ -50,6 +50,9 @@ interface EventFormData {
 
 interface ProviderStatus {
   authorized: boolean;
+  status: string;
+  message: string;
+  requires_auth: boolean;
   client_id?: string;
   expires_at?: string;
   last_updated?: string;
@@ -65,7 +68,7 @@ export default function GoogleCalendarTestPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [hasCredentials, setHasCredentials] = useState(false);
   const [lastResult, setLastResult] = useState<ExecutionResult | null>(null);
-  const [workflowId, setWorkflowId] = useState<string | null>(null);
+  const [workflowId, setWorkflowId] = useState<string | null>('56cda720-69b9-4d08-b28e-c7ae98c5a4d8');
   const [authorizationCode, setAuthorizationCode] = useState<string>('');
   const [storedCredentials, setStoredCredentials] = useState<any>(null);
   const [allProvidersStatus, setAllProvidersStatus] = useState<AllProvidersStatus | null>(null);
@@ -104,14 +107,20 @@ export default function GoogleCalendarTestPage() {
 
   // 获取所有提供商的授权状态 (N8N 风格)
   const fetchAllProvidersStatus = async () => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时
+
     try {
       const response = await fetch(`http://localhost:8002/api/v1/credentials/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           user_id: USER_ID
-        })
+        }),
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
       
       if (response.ok) {
         const result: AllProvidersStatus = await response.json();
@@ -127,7 +136,12 @@ export default function GoogleCalendarTestPage() {
         return null;
       }
     } catch (error) {
-      console.log('Providers status check failed:', error);
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('Providers status check timeout');
+      } else {
+        console.log('Providers status check failed:', error);
+      }
       return null;
     }
   };
@@ -171,45 +185,59 @@ export default function GoogleCalendarTestPage() {
 
   // 创建测试工作流
   const createTestWorkflow = async () => {
-    const response = await fetch('http://localhost:8002/v1/workflows', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_id: USER_ID,
-        name: 'Google Calendar Create Event Test',
-        description: 'Test workflow for creating Google Calendar events',
-        settings: {
-          timeout: 300,
-          retry_count: 3
-        },
-        nodes: [{
-          id: 'google_calendar_create_node',
-          name: 'Create Google Calendar Event',
-          type: 'EXTERNAL_ACTION_NODE',
-          subtype: 'GOOGLE_CALENDAR',
-          parameters: {
-            action: 'create_event',
-            calendar_id: 'primary',
-            summary: eventForm.summary,
-            description: eventForm.description,
-            location: eventForm.location
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15秒超时
+
+    try {
+      const response = await fetch('http://localhost:8002/v1/workflows', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: USER_ID,
+          name: 'Google Calendar Create Event Test',
+          description: 'Test workflow for creating Google Calendar events',
+          settings: {
+            timeout: 300,
+            retry_count: 3
           },
-          position: { x: 100, y: 100 }
-        }],
-        connections: {},
-        trigger: {
-          type: 'manual',
-          config: {}
-        }
-      })
-    });
+          nodes: [{
+            id: 'google_calendar_node',
+            name: 'Create Google Calendar Event',
+            type: 'EXTERNAL_ACTION_NODE',
+            subtype: 'GOOGLE_CALENDAR',
+            parameters: {
+              action: 'create_event',
+              calendar_id: 'primary',
+              summary: eventForm.summary,
+              description: eventForm.description,
+              location: eventForm.location
+            },
+            position: { x: 100, y: 100 }
+          }],
+          connections: {},
+          trigger: {
+            type: 'manual',
+            config: {}
+          }
+        }),
+        signal: controller.signal
+      });
 
-    if (!response.ok) {
-      throw new Error('Failed to create workflow');
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error('Failed to create workflow');
+      }
+
+      const data = await response.json();
+      return data.workflow.id;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Workflow creation timeout - Please try again');
+      }
+      throw error;
     }
-
-    const data = await response.json();
-    return data.workflow.id;
   };
 
   // 执行Google Calendar节点
@@ -245,20 +273,35 @@ export default function GoogleCalendarTestPage() {
       
       // N8N风格：不传递凭据，让后端自动查询
 
-      const response = await fetch(
-        `http://localhost:8002/v1/workflows/${currentWorkflowId}/nodes/google_calendar_create_node/execute`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody)
+      // 创建AbortController用于超时控制
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
+
+      try {
+        const response = await fetch(
+          `http://localhost:8002/v1/workflows/${currentWorkflowId}/nodes/google_calendar_node/execute`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody),
+            signal: controller.signal
+          }
+        );
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`API request failed: ${response.status}`);
         }
-      );
 
-      if (!response.ok) {
-        throw new Error(`API request failed: ${response.status}`);
+        return await response.json();
+      } catch (error) {
+        clearTimeout(timeoutId);
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw new Error('Request timeout - Please try again');
+        }
+        throw error;
       }
-
-      return await response.json();
     } catch (error) {
       console.error('Execute node error:', error);
       throw error;
@@ -346,23 +389,37 @@ export default function GoogleCalendarTestPage() {
 
   // 存储授权码到后端
   const storeCredentials = async (authorizationCode: string) => {
-    const response = await fetch('http://localhost:8002/api/v1/credentials/store', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_id: USER_ID,
-        provider: 'google_calendar',
-        authorization_code: authorizationCode,
-        client_id: GOOGLE_CLIENT_ID,
-        redirect_uri: REDIRECT_URI
-      })
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15秒超时
 
-    if (!response.ok) {
-      throw new Error('Failed to store credentials');
+    try {
+      const response = await fetch('http://localhost:8002/api/v1/credentials/store', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: USER_ID,
+          provider: 'google_calendar',
+          authorization_code: authorizationCode,
+          client_id: GOOGLE_CLIENT_ID,
+          redirect_uri: REDIRECT_URI
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error('Failed to store credentials');
+      }
+
+      return await response.json();
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Credential storage timeout - Please try again');
+      }
+      throw error;
     }
-
-    return await response.json();
   };
 
   // N8N风格的节点执行 - 后端自动查询凭据
@@ -588,17 +645,45 @@ export default function GoogleCalendarTestPage() {
                         <div className="text-xs text-gray-600">
                           {status.authorized ? (
                             <>
-                              <span className="text-green-600 font-medium">已授权</span>
+                              <span className={`font-medium ${
+                                status.status === 'valid' ? 'text-green-600' :
+                                status.status === 'will_refresh' ? 'text-yellow-600' : 'text-blue-600'
+                              }`}>
+                                {status.status === 'valid' ? '已授权' :
+                                 status.status === 'will_refresh' ? '将自动刷新' : '已授权'}
+                              </span>
                               {status.last_updated && (
                                 <span className="text-gray-500"> • 更新于 {new Date(status.last_updated).toLocaleString()}</span>
                               )}
                             </>
                           ) : (
-                            <span className="text-red-600 font-medium">未授权</span>
+                            <span className={`font-medium ${
+                              status.status === 'refresh_expired' ? 'text-orange-600' :
+                              status.status === 'refresh_failed' ? 'text-red-600' : 'text-red-600'
+                            }`}>
+                              {status.status === 'not_authorized' ? '未授权' :
+                               status.status === 'refresh_expired' ? '授权已过期' :
+                               status.status === 'refresh_failed' ? '刷新失败' :
+                               status.status === 'expired_no_refresh' ? '令牌已过期' : '未授权'}
+                            </span>
                           )}
+                          
+                          {/* 显示详细状态信息 */}
+                          {status.message && (
+                            <div className={`mt-1 text-xs p-2 rounded-lg ${
+                              status.authorized 
+                                ? 'bg-green-50 text-green-700 border border-green-200'
+                                : status.requires_auth
+                                  ? 'bg-orange-50 text-orange-700 border border-orange-200'
+                                  : 'bg-red-50 text-red-700 border border-red-200'
+                            }`}>
+                              💡 {status.message}
+                            </div>
+                          )}
+                          
                           {status.error && (
-                            <div className="mt-1 text-xs text-red-600 bg-red-50 p-1 rounded">
-                              错误: {status.error.length > 80 ? status.error.substring(0, 80) + '...' : status.error}
+                            <div className="mt-1 text-xs text-red-600 bg-red-50 p-1 rounded border border-red-200">
+                              ❌ 错误: {status.error.length > 80 ? status.error.substring(0, 80) + '...' : status.error}
                             </div>
                           )}
                         </div>
@@ -606,18 +691,43 @@ export default function GoogleCalendarTestPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       {status.authorized ? (
-                        <Badge variant="outline" className="text-green-600 border-green-200">
-                          已连接
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className={`${
+                            status.status === 'valid' ? 'text-green-600 border-green-200' :
+                            status.status === 'will_refresh' ? 'text-yellow-600 border-yellow-200' :
+                            'text-blue-600 border-blue-200'
+                          }`}>
+                            {status.status === 'valid' ? '已连接' :
+                             status.status === 'will_refresh' ? '自动刷新' : '已连接'}
+                          </Badge>
+                          {/* 如果即将过期，显示刷新按钮 */}
+                          {status.status === 'will_refresh' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleManualAuthorize(provider)}
+                              disabled={isLoadingAuth}
+                              className="text-xs"
+                            >
+                              <RefreshCw className="w-3 h-3" />
+                            </Button>
+                          )}
+                        </div>
                       ) : (
                         <Button
                           size="sm"
                           onClick={() => handleManualAuthorize(provider)}
                           disabled={isLoadingAuth}
-                          className="bg-blue-600 hover:bg-blue-700"
+                          className={`${
+                            status.requires_auth 
+                              ? 'bg-orange-600 hover:bg-orange-700' 
+                              : 'bg-blue-600 hover:bg-blue-700'
+                          }`}
                         >
                           {isLoadingAuth ? (
                             <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : status.requires_auth ? (
+                            '重新授权'
                           ) : (
                             '授权'
                           )}
@@ -758,7 +868,7 @@ export default function GoogleCalendarTestPage() {
                 <div className="mt-3 p-3 bg-gray-100 rounded text-xs font-mono overflow-auto">
                   <div className="mb-2 text-gray-600">N8N风格执行命令（后端自动查询凭据）：</div>
                   <pre className="whitespace-pre-wrap break-all text-gray-800">
-{`curl --location --request POST 'http://localhost:8002/v1/workflows/${workflowId}/nodes/google_calendar_create_node/execute' \\
+{`curl --location --request POST 'http://localhost:8002/v1/workflows/${workflowId}/nodes/google_calendar_node/execute' \\
 --header 'Content-Type: application/json' \\
 --data-raw '{
   "user_id": "${USER_ID}",
@@ -781,7 +891,7 @@ export default function GoogleCalendarTestPage() {
                   </div>
                   <Button
                     size="sm"
-                    onClick={() => copyToClipboard(`curl --location --request POST 'http://localhost:8002/v1/workflows/${workflowId}/nodes/google_calendar_create_node/execute' \\
+                    onClick={() => copyToClipboard(`curl --location --request POST 'http://localhost:8002/v1/workflows/${workflowId}/nodes/google_calendar_node/execute' \\
 --header 'Content-Type: application/json' \\
 --data-raw '{
   "user_id": "${USER_ID}",
@@ -810,7 +920,7 @@ export default function GoogleCalendarTestPage() {
                   <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded text-xs font-mono overflow-auto">
                     <div className="mb-2 text-yellow-800">Legacy风格执行命令（手动传递凭据）：</div>
                     <pre className="whitespace-pre-wrap break-all text-gray-800">
-{`curl --location --request POST 'http://localhost:8002/v1/workflows/${workflowId}/nodes/google_calendar_create_node/execute' \\
+{`curl --location --request POST 'http://localhost:8002/v1/workflows/${workflowId}/nodes/google_calendar_node/execute' \\
 --header 'Content-Type: application/json' \\
 --data-raw '{
   "user_id": "${USER_ID}",
@@ -838,7 +948,7 @@ export default function GoogleCalendarTestPage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => copyToClipboard(`curl --location --request POST 'http://localhost:8002/v1/workflows/${workflowId}/nodes/google_calendar_create_node/execute' \\
+                      onClick={() => copyToClipboard(`curl --location --request POST 'http://localhost:8002/v1/workflows/${workflowId}/nodes/google_calendar_node/execute' \\
 --header 'Content-Type: application/json' \\
 --data-raw '{
   "user_id": "${USER_ID}",
