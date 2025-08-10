@@ -46,7 +46,7 @@ WORKDIR /app
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy application code
+# Copy application code (forced rebuild v7 - URL-level pgbouncer fix)
 COPY ./workflow_scheduler/ ./workflow_scheduler/
 COPY ./shared/ ./shared/
 

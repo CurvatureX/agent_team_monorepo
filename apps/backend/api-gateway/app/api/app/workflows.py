@@ -135,6 +135,7 @@ async def get_workflow(workflow_id: str, deps: AuthenticatedDeps = Depends()):
 
         # Create workflow object using WorkflowData
         from shared.models.workflow import WorkflowData
+
         workflow = WorkflowData(**result["workflow"])
 
         logger.info(f"✅ Workflow retrieved: {workflow_id}")
@@ -405,8 +406,10 @@ async def deploy_workflow(
             workflow_id, deps.current_user.sub
         )
 
-        if not workflow_result.get("success", False) or not workflow_result.get("workflow"):
-            raise NotFoundError("Workflow")
+        # Check if workflow exists (workflow engine returns found:true/false and workflow data)
+        if not workflow_result.get("found", False) or not workflow_result.get("workflow"):
+            logger.error(f"❌ Error deploying workflow {workflow_id}: Workflow not found")
+            raise HTTPException(status_code=404, detail="Workflow not found")
 
         workflow_data = workflow_result["workflow"]
 

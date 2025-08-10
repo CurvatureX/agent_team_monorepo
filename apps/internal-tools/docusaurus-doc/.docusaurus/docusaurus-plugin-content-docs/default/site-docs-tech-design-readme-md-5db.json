@@ -1,0 +1,30 @@
+{
+  "id": "tech-design/tech-design-intro",
+  "title": "Technical Design Documentation",
+  "description": "",
+  "source": "@site/../../../docs/tech-design/README.md",
+  "sourceDirName": "tech-design",
+  "slug": "/tech-design/",
+  "permalink": "/docs/tech-design/",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/curvaturex/agent_team_monorepo/tree/main/docs/../../../docs/tech-design/README.md",
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 1,
+  "frontMatter": {
+    "id": "tech-design-intro",
+    "title": "Technical Design Documentation",
+    "sidebar_label": "Tech Design",
+    "sidebar_position": 1
+  },
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "产品设计",
+    "permalink": "/docs/product-design/core-product-design"
+  },
+  "next": {
+    "title": "MVP Workflow 数据结构",
+    "permalink": "/docs/tech-design/mvp-workflow-data-structure-definition"
+  }
+}

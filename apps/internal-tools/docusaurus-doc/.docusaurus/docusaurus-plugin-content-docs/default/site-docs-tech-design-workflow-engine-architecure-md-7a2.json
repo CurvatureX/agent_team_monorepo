@@ -1,0 +1,24 @@
+{
+  "id": "tech-design/workflow-engine-architecure",
+  "title": "Workflow Engine: Architecture & Execution Flow",
+  "description": "1. Overview & Business Purpose",
+  "source": "@site/../../../docs/tech-design/workflow-engine-architecure.md",
+  "sourceDirName": "tech-design",
+  "slug": "/tech-design/workflow-engine-architecure",
+  "permalink": "/docs/tech-design/workflow-engine-architecure",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/curvaturex/agent_team_monorepo/tree/main/docs/../../../docs/tech-design/workflow-engine-architecure.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {},
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "Workflow Generation API Documentation",
+    "permalink": "/docs/tech-design/workflow-agent-api-doc"
+  },
+  "next": {
+    "title": "Workflow Runtime 技术架构设计",
+    "permalink": "/docs/tech-design/workflow-runtime-architecture"
+  }
+}
