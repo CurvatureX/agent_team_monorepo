@@ -18,7 +18,7 @@
     "permalink": "/docs/tech-design/node-structure"
   },
   "next": {
-    "title": "Workflow Generation API Documentation",
-    "permalink": "/docs/tech-design/workflow-agent-api-doc"
+    "title": "Slack App Integration Architecture",
+    "permalink": "/docs/tech-design/slack-app-integration"
   }
 }

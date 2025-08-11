@@ -14,8 +14,8 @@
   "frontMatter": {},
   "sidebar": "tutorialSidebar",
   "previous": {
-    "title": "节点规范系统技术设计",
-    "permalink": "/docs/tech-design/node_spec"
+    "title": "Slack App Integration Architecture",
+    "permalink": "/docs/tech-design/slack-app-integration"
   },
   "next": {
     "title": "Workflow Engine: Architecture & Execution Flow",

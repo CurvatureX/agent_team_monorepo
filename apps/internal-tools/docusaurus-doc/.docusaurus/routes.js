@@ -3,6 +3,41 @@ import ComponentCreator from '@docusaurus/ComponentCreator';
 
 export default [
   {
+    path: '/__docusaurus/debug',
+    component: ComponentCreator('/__docusaurus/debug', '5ff'),
+    exact: true
+  },
+  {
+    path: '/__docusaurus/debug/config',
+    component: ComponentCreator('/__docusaurus/debug/config', '5ba'),
+    exact: true
+  },
+  {
+    path: '/__docusaurus/debug/content',
+    component: ComponentCreator('/__docusaurus/debug/content', 'a2b'),
+    exact: true
+  },
+  {
+    path: '/__docusaurus/debug/globalData',
+    component: ComponentCreator('/__docusaurus/debug/globalData', 'c3c'),
+    exact: true
+  },
+  {
+    path: '/__docusaurus/debug/metadata',
+    component: ComponentCreator('/__docusaurus/debug/metadata', '156'),
+    exact: true
+  },
+  {
+    path: '/__docusaurus/debug/registry',
+    component: ComponentCreator('/__docusaurus/debug/registry', '88c'),
+    exact: true
+  },
+  {
+    path: '/__docusaurus/debug/routes',
+    component: ComponentCreator('/__docusaurus/debug/routes', '000'),
+    exact: true
+  },
+  {
     path: '/blog',
     component: ComponentCreator('/blog', 'b2f'),
     exact: true
@@ -79,15 +114,15 @@ export default [
   },
   {
     path: '/docs',
-    component: ComponentCreator('/docs', '6b2'),
+    component: ComponentCreator('/docs', '6e5'),
     routes: [
       {
         path: '/docs',
-        component: ComponentCreator('/docs', '844'),
+        component: ComponentCreator('/docs', 'd3d'),
         routes: [
           {
             path: '/docs',
-            component: ComponentCreator('/docs', '280'),
+            component: ComponentCreator('/docs', 'd92'),
             routes: [
               {
                 path: '/docs/',
@@ -138,6 +173,12 @@ export default [
                 sidebar: "tutorialSidebar"
               },
               {
+                path: '/docs/development/workflows_for_trigger_debug',
+                component: ComponentCreator('/docs/development/workflows_for_trigger_debug', '9c9'),
+                exact: true,
+                sidebar: "tutorialSidebar"
+              },
+              {
                 path: '/docs/product-design/',
                 component: ComponentCreator('/docs/product-design/', '298'),
                 exact: true,
@@ -180,6 +221,12 @@ export default [
                 sidebar: "tutorialSidebar"
               },
               {
+                path: '/docs/tech-design/github-app-integration',
+                component: ComponentCreator('/docs/tech-design/github-app-integration', 'c60'),
+                exact: true,
+                sidebar: "tutorialSidebar"
+              },
+              {
                 path: '/docs/tech-design/grpc-to-fastapi-migration',
                 component: ComponentCreator('/docs/tech-design/grpc-to-fastapi-migration', '6ad'),
                 exact: true,
@@ -194,6 +241,12 @@ export default [
               {
                 path: '/docs/tech-design/mcp-node-knowledge-server',
                 component: ComponentCreator('/docs/tech-design/mcp-node-knowledge-server', '468'),
+                exact: true,
+                sidebar: "tutorialSidebar"
+              },
+              {
+                path: '/docs/tech-design/monitoring-guide',
+                component: ComponentCreator('/docs/tech-design/monitoring-guide', '161'),
                 exact: true,
                 sidebar: "tutorialSidebar"
               },
@@ -222,6 +275,12 @@ export default [
                 sidebar: "tutorialSidebar"
               },
               {
+                path: '/docs/tech-design/slack-app-integration',
+                component: ComponentCreator('/docs/tech-design/slack-app-integration', '678'),
+                exact: true,
+                sidebar: "tutorialSidebar"
+              },
+              {
                 path: '/docs/tech-design/workflow-agent-api-doc',
                 component: ComponentCreator('/docs/tech-design/workflow-agent-api-doc', '817'),
                 exact: true,
@@ -240,8 +299,8 @@ export default [
                 sidebar: "tutorialSidebar"
               },
               {
-                path: '/docs/tech-design/workflow-runtime-architecture',
-                component: ComponentCreator('/docs/tech-design/workflow-runtime-architecture', 'c53'),
+                path: '/docs/tech-design/workflow-scheduler-architecture',
+                component: ComponentCreator('/docs/tech-design/workflow-scheduler-architecture', 'c43'),
                 exact: true,
                 sidebar: "tutorialSidebar"
               }

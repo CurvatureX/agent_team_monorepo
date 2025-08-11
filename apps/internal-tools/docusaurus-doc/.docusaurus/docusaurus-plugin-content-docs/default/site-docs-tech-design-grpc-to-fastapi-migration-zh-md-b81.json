@@ -14,8 +14,8 @@
   "frontMatter": {},
   "sidebar": "tutorialSidebar",
   "previous": {
-    "title": "AI Teams 分布式监控系统实施指南",
-    "permalink": "/docs/tech-design/distributed-tracing-system"
+    "title": "GitHub App Integration Architecture",
+    "permalink": "/docs/tech-design/github-app-integration"
   },
   "next": {
     "title": "gRPC 迁移到 FastAPI + Pydantic 技术方案",

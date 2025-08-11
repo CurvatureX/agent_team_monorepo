@@ -18,7 +18,7 @@
     "permalink": "/docs/tech-design/db-design"
   },
   "next": {
-    "title": "gRPC 迁移到 FastAPI + Pydantic 技术方案",
-    "permalink": "/docs/tech-design/grpc-to-fastapi-migration-zh"
+    "title": "GitHub App Integration Architecture",
+    "permalink": "/docs/tech-design/github-app-integration"
   }
 }

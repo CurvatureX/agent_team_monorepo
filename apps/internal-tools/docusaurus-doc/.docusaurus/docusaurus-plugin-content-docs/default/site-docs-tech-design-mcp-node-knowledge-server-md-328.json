@@ -18,7 +18,7 @@
     "permalink": "/docs/tech-design/grpc-to-fastapi-migration"
   },
   "next": {
-    "title": "Node Structure Definition",
-    "permalink": "/docs/tech-design/node-structure"
+    "title": "📚 AI Teams 分布式监控系统完整使用手册",
+    "permalink": "/docs/tech-design/monitoring-guide"
   }
 }

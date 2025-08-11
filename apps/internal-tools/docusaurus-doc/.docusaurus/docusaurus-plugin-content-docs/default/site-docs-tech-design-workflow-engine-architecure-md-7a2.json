@@ -18,7 +18,7 @@
     "permalink": "/docs/tech-design/workflow-agent-api-doc"
   },
   "next": {
-    "title": "Workflow Runtime 技术架构设计",
-    "permalink": "/docs/tech-design/workflow-runtime-architecture"
+    "title": "Workflow Scheduler 技术架构设计",
+    "permalink": "/docs/tech-design/workflow-scheduler-architecture"
   }
 }
