@@ -171,6 +171,51 @@ resource "aws_lb_listener" "internal" {
   tags = local.common_tags
 }
 
+# Internal ALB Listener for port 8001 (Workflow Agent)
+resource "aws_lb_listener" "internal_8001" {
+  load_balancer_arn = aws_lb.internal.arn
+  port              = "8001"
+  protocol          = "HTTP"
+
+  # Default action - forward to Workflow Agent
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.workflow_agent_http.arn
+  }
+
+  tags = local.common_tags
+}
+
+# Internal ALB Listener for port 8002 (Workflow Engine)
+resource "aws_lb_listener" "internal_8002" {
+  load_balancer_arn = aws_lb.internal.arn
+  port              = "8002"
+  protocol          = "HTTP"
+
+  # Default action - forward to Workflow Engine
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.workflow_engine_http.arn
+  }
+
+  tags = local.common_tags
+}
+
+# Internal ALB Listener for port 8003 (Workflow Scheduler)
+resource "aws_lb_listener" "internal_8003" {
+  load_balancer_arn = aws_lb.internal.arn
+  port              = "8003"
+  protocol          = "HTTP"
+
+  # Default action - forward to Workflow Scheduler
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.workflow_scheduler.arn
+  }
+
+  tags = local.common_tags
+}
+
 # Internal ALB Listener Rules for path-based routing
 resource "aws_lb_listener_rule" "workflow_agent" {
   listener_arn = aws_lb_listener.internal.arn

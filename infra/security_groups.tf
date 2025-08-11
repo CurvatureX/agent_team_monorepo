@@ -56,6 +56,54 @@ resource "aws_security_group" "alb_internal" {
     security_groups = [aws_security_group.alb.id]
   }
 
+  ingress {
+    description = "Workflow Scheduler port from VPC"
+    from_port   = 8003
+    to_port     = 8003
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+  }
+
+  ingress {
+    description = "Workflow Scheduler port from API Gateway ALB"
+    from_port   = 8003
+    to_port     = 8003
+    protocol    = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
+
+  ingress {
+    description = "Workflow Agent port from VPC"
+    from_port   = 8001
+    to_port     = 8001
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+  }
+
+  ingress {
+    description = "Workflow Agent port from API Gateway ALB"
+    from_port   = 8001
+    to_port     = 8001
+    protocol    = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
+
+  ingress {
+    description = "Workflow Engine port from VPC"
+    from_port   = 8002
+    to_port     = 8002
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+  }
+
+  ingress {
+    description = "Workflow Engine port from API Gateway ALB"
+    from_port   = 8002
+    to_port     = 8002
+    protocol    = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
