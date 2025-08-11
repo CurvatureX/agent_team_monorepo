@@ -178,15 +178,15 @@ resource "aws_ecs_task_definition" "api_gateway" {
         },
         {
           name  = "WORKFLOW_AGENT_URL"
-          value = "http://workflow-agent.${local.name_prefix}.local:8001"
+          value = "http://${aws_lb.internal.dns_name}:8001"
         },
         {
           name  = "WORKFLOW_ENGINE_URL"
-          value = "http://workflow-engine.${local.name_prefix}.local:8002"
+          value = "http://${aws_lb.internal.dns_name}:8002"
         },
         {
           name  = "WORKFLOW_SCHEDULER_URL"
-          value = "http://workflow-scheduler.${local.name_prefix}.local:8003"
+          value = "http://${aws_lb.internal.dns_name}:8003"
         },
         {
           name  = "AWS_REGION"
@@ -562,11 +562,11 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
         },
         {
           name  = "WORKFLOW_ENGINE_URL"
-          value = "http://workflow-engine.${local.name_prefix}.local:8002"
+          value = "http://${aws_lb.internal.dns_name}:8002"
         },
         {
           name  = "API_GATEWAY_URL"
-          value = "http://api-gateway.${local.name_prefix}.local:8000"
+          value = "http://${aws_lb.internal.dns_name}:8000"
         },
         {
           name  = "redis_url"
