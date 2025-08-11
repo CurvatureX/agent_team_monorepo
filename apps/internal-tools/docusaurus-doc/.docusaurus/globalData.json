@@ -51,6 +51,11 @@
               "sidebar": "tutorialSidebar"
             },
             {
+              "id": "development/workflows_for_trigger_debug",
+              "path": "/docs/development/workflows_for_trigger_debug",
+              "sidebar": "tutorialSidebar"
+            },
+            {
               "id": "intro",
               "path": "/docs/",
               "sidebar": "tutorialSidebar"
@@ -86,6 +91,11 @@
               "sidebar": "tutorialSidebar"
             },
             {
+              "id": "tech-design/github-app-integration",
+              "path": "/docs/tech-design/github-app-integration",
+              "sidebar": "tutorialSidebar"
+            },
+            {
               "id": "tech-design/grpc-to-fastapi-migration",
               "path": "/docs/tech-design/grpc-to-fastapi-migration",
               "sidebar": "tutorialSidebar"
@@ -101,6 +111,11 @@
               "sidebar": "tutorialSidebar"
             },
             {
+              "id": "tech-design/monitoring-guide",
+              "path": "/docs/tech-design/monitoring-guide",
+              "sidebar": "tutorialSidebar"
+            },
+            {
               "id": "tech-design/mvp-workflow-data-structure-definition",
               "path": "/docs/tech-design/mvp-workflow-data-structure-definition",
               "sidebar": "tutorialSidebar"
@@ -113,6 +128,11 @@
             {
               "id": "tech-design/node-structure",
               "path": "/docs/tech-design/node-structure",
+              "sidebar": "tutorialSidebar"
+            },
+            {
+              "id": "tech-design/slack-app-integration",
+              "path": "/docs/tech-design/slack-app-integration",
               "sidebar": "tutorialSidebar"
             },
             {
@@ -136,8 +156,8 @@
               "sidebar": "tutorialSidebar"
             },
             {
-              "id": "tech-design/workflow-runtime-architecture",
-              "path": "/docs/tech-design/workflow-runtime-architecture",
+              "id": "tech-design/workflow-scheduler-architecture",
+              "path": "/docs/tech-design/workflow-scheduler-architecture",
               "sidebar": "tutorialSidebar"
             }
           ],

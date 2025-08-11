@@ -16,5 +16,9 @@
   "previous": {
     "title": "Workflow Agent MVP 实现计划",
     "permalink": "/docs/development/workflow_agent_mvp_plan"
+  },
+  "next": {
+    "title": "Trigger Node Debug Testing Plan",
+    "permalink": "/docs/development/workflows_for_trigger_debug"
   }
 }

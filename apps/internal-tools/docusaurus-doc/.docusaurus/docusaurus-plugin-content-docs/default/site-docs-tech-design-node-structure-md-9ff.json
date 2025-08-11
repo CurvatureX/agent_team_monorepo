@@ -14,8 +14,8 @@
   "frontMatter": {},
   "sidebar": "tutorialSidebar",
   "previous": {
-    "title": "MCP Node Knowledge Server - Tech Design",
-    "permalink": "/docs/tech-design/mcp-node-knowledge-server"
+    "title": "📚 AI Teams 分布式监控系统完整使用手册",
+    "permalink": "/docs/tech-design/monitoring-guide"
   },
   "next": {
     "title": "节点规范系统技术设计",
