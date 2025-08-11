@@ -56,14 +56,8 @@ from workflow_scheduler.triggers.slack_trigger import SlackTrigger
 from workflow_scheduler.triggers.webhook_trigger import WebhookTrigger
 
 # Configure logging
-logging.basicConfig(
-    level=getattr(logging, settings.log_level.upper()),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    if settings.log_format == "text"
-    else "%(message)s",
-    stream=sys.stdout,
-)
-from shared.logging_config import get_logger
+from shared.logging_config import setup_logging, get_logger
+setup_logging("workflow_scheduler", settings.log_level.upper())
 logger = get_logger(__name__)
 
 # Global service instances will be managed through dependencies.py

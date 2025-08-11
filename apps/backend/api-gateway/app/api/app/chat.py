@@ -16,7 +16,7 @@ from app.models import (
     MessageEventData, StatusChangeEventData, WorkflowEventData,
     ErrorEventData, DebugEventData
 )
-from app.utils.logger import get_logger
+from shared.logging_config import get_logger
 from app.utils.sse import create_mock_chat_stream, format_sse_event
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse

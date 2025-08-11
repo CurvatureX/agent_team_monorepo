@@ -84,8 +84,8 @@ class APIAdapter(ABC):
     """Base class for all API adapters."""
     
     def __init__(self, **kwargs):
-        self.from shared.logging_config import get_logger
-logger = get_logger(self.__class__.__name__)
+        from shared.logging_config import get_logger
+        logger = get_logger(self.__class__.__name__)
         self._http_client = httpx.AsyncClient()
     
     @abstractmethod

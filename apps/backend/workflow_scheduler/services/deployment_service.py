@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from shared.models.trigger import DeploymentResult, DeploymentStatus, TriggerSpec, TriggerType
+from workflow_scheduler.services.direct_db_service import DirectDBService
 from workflow_scheduler.services.trigger_index_manager import TriggerIndexManager
 
 from shared.logging_config import get_logger
@@ -15,6 +16,7 @@ class DeploymentService:
     def __init__(self, trigger_manager):
         self.trigger_manager = trigger_manager
         self.trigger_index_manager = TriggerIndexManager()
+        self.direct_db_service = DirectDBService()
         self._deployments: Dict[str, Dict] = {}  # In-memory storage for now
 
     async def deploy_workflow(self, workflow_id: str, workflow_spec: Dict) -> DeploymentResult:
@@ -28,56 +30,146 @@ class DeploymentService:
         Returns:
             DeploymentResult with deployment status and details
         """
+        import asyncio
+
         deployment_id = f"deploy_{uuid.uuid4()}"
 
         try:
             logger.info(f"Starting deployment of workflow {workflow_id}")
 
-            # 1. Validate workflow definition
-            validation_result = await self._validate_workflow_definition(workflow_spec)
+            # Async optimization: Run validation and trigger extraction in parallel
+            validation_task = asyncio.create_task(self._validate_workflow_definition(workflow_spec))
+            trigger_extraction_task = asyncio.create_task(
+                asyncio.to_thread(self._extract_trigger_specs, workflow_spec)
+            )
+
+            # Run validation and trigger extraction concurrently
+            validation_result, trigger_specs = await asyncio.gather(
+                validation_task, trigger_extraction_task, return_exceptions=True
+            )
+
+            # Handle validation result
+            if isinstance(validation_result, Exception):
+                error_msg = f"Workflow validation error: {str(validation_result)}"
+                await self._handle_deployment_failure(workflow_id, deployment_id, error_msg)
+                return DeploymentResult(
+                    deployment_id=deployment_id,
+                    status=DeploymentStatus.FAILED,
+                    message=error_msg,
+                )
+
             if not validation_result["valid"]:
+                error_msg = f"Workflow validation failed: {validation_result['error']}"
+                await self._handle_deployment_failure(workflow_id, deployment_id, error_msg)
                 return DeploymentResult(
                     deployment_id=deployment_id,
                     status=DeploymentStatus.FAILED,
-                    message=f"Workflow validation failed: {validation_result['error']}",
+                    message=error_msg,
                 )
 
-            # 2. Extract trigger specifications
-            trigger_specs = self._extract_trigger_specs(workflow_spec)
+            # Handle trigger extraction result
+            if isinstance(trigger_specs, Exception):
+                error_msg = f"Trigger extraction error: {str(trigger_specs)}"
+                await self._handle_deployment_failure(workflow_id, deployment_id, error_msg)
+                return DeploymentResult(
+                    deployment_id=deployment_id,
+                    status=DeploymentStatus.FAILED,
+                    message=error_msg,
+                )
+
             if not trigger_specs:
+                error_msg = "No valid trigger specifications found in workflow"
+                await self._handle_deployment_failure(workflow_id, deployment_id, error_msg)
                 return DeploymentResult(
                     deployment_id=deployment_id,
                     status=DeploymentStatus.FAILED,
-                    message="No valid trigger specifications found in workflow",
+                    message=error_msg,
                 )
 
-            # 3. Register triggers with TriggerManager
-            registration_result = await self.trigger_manager.register_triggers(
-                workflow_id, trigger_specs
+            # Async optimization: Run trigger registration in parallel
+            trigger_manager_task = asyncio.create_task(
+                self.trigger_manager.register_triggers(workflow_id, trigger_specs)
+            )
+            trigger_index_task = asyncio.create_task(
+                self.trigger_index_manager.register_workflow_triggers(
+                    workflow_id, trigger_specs, deployment_status="active"
+                )
             )
 
-            if not registration_result:
+            # Wait for both trigger registrations to complete
+            registration_result, index_registration_result = await asyncio.gather(
+                trigger_manager_task, trigger_index_task, return_exceptions=True
+            )
+
+            # Handle registration results
+            if isinstance(registration_result, Exception) or not registration_result:
+                error_msg = f"Failed to register triggers: {registration_result if isinstance(registration_result, Exception) else 'Unknown error'}"
+                await self._handle_deployment_failure(workflow_id, deployment_id, error_msg)
                 return DeploymentResult(
                     deployment_id=deployment_id,
                     status=DeploymentStatus.FAILED,
-                    message="Failed to register triggers",
+                    message=error_msg,
                 )
 
-            # 4. Register triggers in the trigger index for fast lookup
-            index_registration_result = await self.trigger_index_manager.register_workflow_triggers(
-                workflow_id, trigger_specs, deployment_status="active"
-            )
-
-            if not index_registration_result:
+            if isinstance(index_registration_result, Exception) or not index_registration_result:
                 # Cleanup TriggerManager registration if index registration fails
                 await self.trigger_manager.unregister_triggers(workflow_id)
+                error_msg = f"Failed to register triggers in index: {index_registration_result if isinstance(index_registration_result, Exception) else 'Unknown error'}"
+                await self._handle_deployment_failure(workflow_id, deployment_id, error_msg)
                 return DeploymentResult(
                     deployment_id=deployment_id,
                     status=DeploymentStatus.FAILED,
-                    message="Failed to register triggers in index",
+                    message=error_msg,
                 )
 
-            # 5. Store deployment record
+            # Get current workflow status for deployment tracking
+            current_status_info = await self.direct_db_service.get_workflow_current_status(
+                workflow_id
+            )
+            current_status = (
+                current_status_info.get("deployment_status", "DRAFT")
+                if current_status_info
+                else "DRAFT"
+            )
+            current_version = (
+                current_status_info.get("deployment_version", 0) if current_status_info else 0
+            )
+
+            # Create deployment history record
+            history_success = await self.direct_db_service.create_deployment_history_record(
+                workflow_id=workflow_id,
+                deployment_action="DEPLOY",
+                from_status=current_status,
+                to_status="DEPLOYED",
+                deployment_version=current_version + 1,
+                deployment_config={
+                    "deployment_id": deployment_id,
+                    "trigger_count": len(trigger_specs),
+                    "workflow_spec": workflow_spec,
+                },
+            )
+
+            # Update workflow deployment status
+            deployment_success = await self.direct_db_service.update_workflow_deployment_status(
+                workflow_id=workflow_id,
+                deployment_status="DEPLOYED",
+                deployed_at=datetime.utcnow(),
+                deployment_config={
+                    "deployment_id": deployment_id,
+                    "trigger_count": len(trigger_specs),
+                    "workflow_spec": workflow_spec,
+                },
+                increment_version=True,
+            )
+
+            if deployment_success:
+                logger.info(f"✅ Database updated successfully for workflow {workflow_id}")
+            else:
+                logger.warning(
+                    f"⚠️ Database update failed for workflow {workflow_id}, but triggers are active"
+                )
+
+            # Store deployment record (in-memory for backward compatibility)
             deployment_record = {
                 "deployment_id": deployment_id,
                 "workflow_id": workflow_id,
@@ -102,6 +194,22 @@ class DeploymentService:
             error_msg = f"Deployment failed for workflow {workflow_id}: {str(e)}"
             logger.error(error_msg, exc_info=True)
 
+            # Update workflow status to failed
+            try:
+                await self.workflow_repository.update_workflow_deployment_status(
+                    workflow_id=workflow_id,
+                    deployment_status="DEPLOYMENT_FAILED",
+                )
+                await self.workflow_repository.update_deployment_history_completion(
+                    workflow_id=workflow_id,
+                    deployment_action="DEPLOY",
+                    error_message=error_msg,
+                )
+            except Exception as db_error:
+                logger.error(
+                    f"Failed to update database after deployment error: {db_error}", exc_info=True
+                )
+
             return DeploymentResult(
                 deployment_id=deployment_id, status=DeploymentStatus.FAILED, message=error_msg
             )
@@ -119,6 +227,26 @@ class DeploymentService:
         try:
             logger.info(f"Undeploying workflow {workflow_id}")
 
+            # Get current workflow status for deployment history
+            current_workflow = await self.workflow_repository.get_workflow_by_id(workflow_id)
+            current_status = current_workflow.deployment_status if current_workflow else "DEPLOYED"
+            current_version = current_workflow.deployment_version if current_workflow else 1
+
+            # Create deployment history record
+            await self.workflow_repository.create_deployment_history_record(
+                workflow_id=workflow_id,
+                deployment_action="UNDEPLOY",
+                from_status=current_status,
+                to_status="UNDEPLOYING",
+                deployment_version=current_version,
+            )
+
+            # Update workflow status to UNDEPLOYING
+            await self.workflow_repository.update_workflow_deployment_status(
+                workflow_id=workflow_id,
+                deployment_status="UNDEPLOYING",
+            )
+
             # 1. Unregister triggers from TriggerManager
             unregister_result = await self.trigger_manager.unregister_triggers(workflow_id)
 
@@ -127,7 +255,35 @@ class DeploymentService:
                 workflow_id
             )
 
-            # 3. Update deployment record
+            if unregister_result and index_unregister_result:
+                # Update workflow status to UNDEPLOYED
+                await self.workflow_repository.update_workflow_deployment_status(
+                    workflow_id=workflow_id,
+                    deployment_status="UNDEPLOYED",
+                    undeployed_at=datetime.utcnow(),
+                )
+
+                # Complete deployment history record
+                await self.workflow_repository.update_deployment_history_completion(
+                    workflow_id=workflow_id,
+                    deployment_action="UNDEPLOY",
+                    deployment_logs={"undeployed_at": datetime.utcnow().isoformat()},
+                )
+            else:
+                # Update workflow status to failed
+                await self.workflow_repository.update_workflow_deployment_status(
+                    workflow_id=workflow_id,
+                    deployment_status="DEPLOYMENT_FAILED",
+                )
+
+                # Complete deployment history record with error
+                await self.workflow_repository.update_deployment_history_completion(
+                    workflow_id=workflow_id,
+                    deployment_action="UNDEPLOY",
+                    error_message="Failed to unregister triggers",
+                )
+
+            # 3. Update in-memory deployment record
             if workflow_id in self._deployments:
                 self._deployments[workflow_id]["status"] = DeploymentStatus.UNDEPLOYED
                 self._deployments[workflow_id]["updated_at"] = datetime.utcnow()
@@ -136,7 +292,25 @@ class DeploymentService:
             return unregister_result and index_unregister_result
 
         except Exception as e:
-            logger.error(f"Failed to undeploy workflow {workflow_id}: {e}", exc_info=True)
+            error_msg = f"Failed to undeploy workflow {workflow_id}: {e}"
+            logger.error(error_msg, exc_info=True)
+
+            # Update database with error status
+            try:
+                await self.workflow_repository.update_workflow_deployment_status(
+                    workflow_id=workflow_id,
+                    deployment_status="DEPLOYMENT_FAILED",
+                )
+                await self.workflow_repository.update_deployment_history_completion(
+                    workflow_id=workflow_id,
+                    deployment_action="UNDEPLOY",
+                    error_message=error_msg,
+                )
+            except Exception as db_error:
+                logger.error(
+                    f"Failed to update database after undeploy error: {db_error}", exc_info=True
+                )
+
             return False
 
     async def update_deployment(self, workflow_id: str, workflow_spec: Dict) -> DeploymentResult:
@@ -414,3 +588,28 @@ class DeploymentService:
         except Exception as e:
             logger.error(f"Failed to extract trigger specs: {e}", exc_info=True)
             return []
+
+    async def _handle_deployment_failure(
+        self, workflow_id: str, deployment_id: str, error_msg: str
+    ):
+        """Handle deployment failure with simple database updates"""
+        try:
+            # Update workflow status to failed
+            await self.direct_db_service.update_workflow_deployment_status(
+                workflow_id=workflow_id,
+                deployment_status="DEPLOYMENT_FAILED",
+            )
+
+            # Create deployment history record with error
+            await self.direct_db_service.create_deployment_history_record(
+                workflow_id=workflow_id,
+                deployment_action="DEPLOY",
+                from_status="DRAFT",
+                to_status="DEPLOYMENT_FAILED",
+                deployment_version=1,
+                error_message=error_msg,
+            )
+        except Exception as db_error:
+            logger.error(
+                f"Failed to update database after deployment error: {db_error}", exc_info=True
+            )

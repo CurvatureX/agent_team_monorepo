@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import bleach
 from app.exceptions import ValidationError
-from app.utils.logger import get_logger
+from shared.logging_config import get_logger
 from fastapi import HTTPException, Request
 from pydantic import BaseModel
 from pydantic import ValidationError as PydanticValidationError

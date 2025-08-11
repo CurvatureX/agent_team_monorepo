@@ -2,7 +2,6 @@
 Main gRPC server application.
 """
 
-import logging
 import os
 import sys
 import time
@@ -107,29 +106,29 @@ def on_startup():
     logger.info("Workflow Engine service starting up")
 
 
-# Trace ID middleware
+# Tracking ID middleware
 @app.middleware("http")
-async def trace_id_middleware(request: Request, call_next):
-    """Extract and propagate trace_id from request headers"""
-    trace_id = request.headers.get("x-trace-id") or request.headers.get("X-Trace-ID")
+async def tracking_id_middleware(request: Request, call_next):
+    """Extract and propagate tracking_id from request headers"""
+    tracking_id = request.headers.get("x-tracking-id") or request.headers.get("X-Tracking-ID")
 
-    if trace_id:
-        # Store trace_id in request state for access in endpoints
-        request.state.trace_id = trace_id
+    if tracking_id:
+        # Store tracking_id in request state for access in endpoints
+        request.state.tracking_id = tracking_id
 
-        # Configure logging to include trace_id
+        # Configure logging to include tracking_id
         import contextvars
 
-        trace_id_context = contextvars.ContextVar("trace_id", default=None)
-        trace_id_context.set(trace_id)
+        tracking_id_context = contextvars.ContextVar("tracking_id", default=None)
+        tracking_id_context.set(tracking_id)
 
-        logger.info(f"Request received with trace_id: {trace_id}")
+        logger.info(f"Request received with tracking_id: {tracking_id}")
 
     response = await call_next(request)
 
-    # Optionally add trace_id to response headers
-    if trace_id:
-        response.headers["X-Trace-ID"] = trace_id
+    # Optionally add tracking_id to response headers
+    if tracking_id:
+        response.headers["X-Tracking-ID"] = tracking_id
 
     return response
 

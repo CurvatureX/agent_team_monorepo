@@ -19,7 +19,7 @@ from app.models import (
     MCPToolsResponse,
 )
 from app.services.node_knowledge_service import NodeKnowledgeService
-from app.utils.logger import get_logger
+from shared.logging_config import get_logger
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 

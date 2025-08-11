@@ -9,7 +9,7 @@ from typing import AsyncGenerator
 
 from app.core.config import get_settings
 from app.core.database import get_database_manager
-from app.utils.logger import get_logger
+from shared.logging_config import get_logger
 from fastapi import FastAPI
 
 

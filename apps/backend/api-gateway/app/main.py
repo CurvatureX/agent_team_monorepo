@@ -27,7 +27,6 @@ if shared_path and shared_path not in sys.path:
     sys.path.insert(0, shared_path)
 
 # 工具 - Use shared logging
-import logging
 from shared.logging_config import setup_logging
 
 # 遥测组件

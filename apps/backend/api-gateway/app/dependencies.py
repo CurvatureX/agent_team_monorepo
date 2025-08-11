@@ -27,7 +27,7 @@ from app.core.database import (
 )
 from app.models import AuthClient, AuthUser
 from app.services.auth_service import verify_supabase_token
-from app.utils.logger import get_logger
+from shared.logging_config import get_logger
 
 logger = get_logger(__name__)
 

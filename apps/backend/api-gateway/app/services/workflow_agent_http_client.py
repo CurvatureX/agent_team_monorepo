@@ -10,9 +10,10 @@ from typing import Any, AsyncGenerator, Dict, Optional
 
 import httpx
 from app.core.config import get_settings
-from app.utils.logger import log_error, log_info
+from shared.logging_config import get_logger
 
 settings = get_settings()
+logger = get_logger(__name__)
 
 
 class WorkflowAgentHTTPClient:
@@ -45,16 +46,16 @@ class WorkflowAgentHTTPClient:
                 response = await client.get(f"{self.base_url}/health")
                 response.raise_for_status()
                 self.connected = True
-                log_info(f"✅ Connected to Workflow Agent at {self.base_url}")
+                logger.info(f"✅ Connected to Workflow Agent at {self.base_url}")
         except Exception as e:
-            log_error(f"❌ Failed to connect to Workflow Agent: {e}")
+            logger.error(f"❌ Failed to connect to Workflow Agent: {e}")
             self.connected = False
             raise
 
     async def close(self):
         """Close HTTP connection (no-op for HTTP)"""
         self.connected = False
-        log_info("Closed Workflow Agent HTTP connection")
+        logger.info("Closed Workflow Agent HTTP connection")
 
 
     async def process_conversation_stream(
@@ -64,7 +65,7 @@ class WorkflowAgentHTTPClient:
         user_id: str = "anonymous",
         workflow_context: Optional[Dict[str, Any]] = None,
         access_token: Optional[str] = None,
-        trace_id: Optional[str] = None,
+        tracking_id: Optional[str] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Process conversation using HTTP POST to /process-conversation
@@ -89,7 +90,7 @@ class WorkflowAgentHTTPClient:
                     "source_workflow_id": workflow_context.get("source_workflow_id", "")
                 }
 
-            log_info(f"📨 Sending HTTP request to {self.base_url}/process-conversation")
+            logger.info(f"📨 Sending HTTP request to {self.base_url}/process-conversation")
 
             # Stream conversation processing via HTTP SSE with connection pooling
             async with httpx.AsyncClient(
@@ -106,7 +107,7 @@ class WorkflowAgentHTTPClient:
                         "Content-Type": "application/json",
                         "Connection": "keep-alive",
                         "Cache-Control": "no-cache",
-                        "X-Trace-ID": trace_id or "",  # 传递 trace_id
+                        "X-Tracking-ID": tracking_id or "",  # 传递 tracking_id
                     },
                 ) as response:
                     response.raise_for_status()
@@ -119,15 +120,15 @@ class WorkflowAgentHTTPClient:
                                     data = json.loads(line[6:])  # Remove "data: " prefix
                                     yield data
                                 except json.JSONDecodeError as e:
-                                    log_error(f"❌ Error parsing SSE data: {e}")
+                                    logger.error(f"❌ Error parsing SSE data: {e}")
                                     continue
                     except asyncio.CancelledError:
-                        log_info("Client disconnected during streaming")
+                        logger.info("Client disconnected during streaming")
                         # Re-raise to maintain proper cancellation semantics
                         raise
 
         except httpx.HTTPStatusError as e:
-            log_error(f"❌ HTTP error in process_conversation_stream: {e.response.status_code}")
+            logger.error(f"❌ HTTP error in process_conversation_stream: {e.response.status_code}")
             # Yield error response - 符合 ConversationResponse 格式
             yield {
                 "session_id": session_id,
@@ -141,7 +142,7 @@ class WorkflowAgentHTTPClient:
                 }
             }
         except Exception as e:
-            log_error(f"❌ Error in process_conversation_stream: {e}")
+            logger.error(f"❌ Error in process_conversation_stream: {e}")
             # Yield error response - 符合 ConversationResponse 格式
             yield {
                 "session_id": session_id,

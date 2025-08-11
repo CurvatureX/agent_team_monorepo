@@ -91,12 +91,10 @@ class CleanChatTester:
                 return
                 
             # Print tracking ID from response headers
-            trace_id = response.headers.get('X-Trace-ID')
-            if trace_id:
-                print(f"{Fore.MAGENTA}Trace ID: {trace_id}{Style.RESET_ALL}")
-            
-            # Also check for x-tracking-id (lowercase)
-            tracking_id = response.headers.get('x-tracking-id')
+            tracking_id = response.headers.get('X-Tracking-ID')
+            if not tracking_id:
+                # Also check for lowercase header
+                tracking_id = response.headers.get('x-tracking-id')
             if tracking_id:
                 print(f"{Fore.MAGENTA}Tracking ID: {tracking_id}{Style.RESET_ALL}")
                 

@@ -10,7 +10,7 @@ from app.core.config import Settings, get_settings
 from app.core.events import health_check
 from app.dependencies import CommonDeps
 from app.models import HealthCheckModel
-from app.utils.logger import get_logger
+from shared.logging_config import get_logger
 from fastapi import APIRouter, Depends, Request
 
 logger = get_logger(__name__)

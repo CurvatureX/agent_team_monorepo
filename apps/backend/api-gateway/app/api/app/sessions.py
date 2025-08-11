@@ -16,7 +16,7 @@ from app.models import (
     SessionResponse,
     SessionUpdate,
 )
-from app.utils.logger import get_logger
+from shared.logging_config import get_logger
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 logger = get_logger(__name__)

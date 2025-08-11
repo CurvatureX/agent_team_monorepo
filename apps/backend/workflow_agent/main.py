@@ -15,9 +15,6 @@ load_dotenv()
 
 # Note: 遥测组件现在在 services/fastapi_server.py 中定义
 
-# Import logging
-import logging
-
 import uvicorn
 
 # Add shared to path for logging module

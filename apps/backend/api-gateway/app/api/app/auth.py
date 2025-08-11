@@ -21,7 +21,7 @@ class UserSessionListResponse(ResponseModel):
     total_count: int = Field(default=0, description="Total number of sessions")
     page: int = Field(default=1, description="Current page")
     page_size: int = Field(default=20, description="Page size")
-from app.utils.logger import get_logger
+from shared.logging_config import get_logger
 from fastapi import APIRouter, Depends, HTTPException
 
 logger = get_logger(__name__)

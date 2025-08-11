@@ -25,7 +25,7 @@ class ExecutionCancelResponse(BaseModel):
     message: str = Field(description="Result message")
     execution_id: str = Field(description="Execution ID")
 from app.services.workflow_engine_http_client import get_workflow_engine_client
-from app.utils.logger import get_logger
+from shared.logging_config import get_logger
 from fastapi import APIRouter, Depends, HTTPException
 
 logger = get_logger(__name__)

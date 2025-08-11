@@ -8,7 +8,9 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 from app.core.config import get_settings
-from app.utils.logger import log_error, log_info
+from shared.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 settings = get_settings()
 
@@ -25,24 +27,39 @@ class WorkflowEngineHTTPClient:
         )
         self.timeout = httpx.Timeout(30.0, connect=5.0)
         self.connected = False
+        # Connection pool for better performance
+        self._client = None
+        self._limits = httpx.Limits(max_keepalive_connections=10, max_connections=20)
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Get or create HTTP client with connection pooling"""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=self.timeout,
+                limits=self._limits,
+                http2=True,  # Enable HTTP/2 for multiplexing
+            )
+        return self._client
 
     async def connect(self):
         """Test connection to workflow engine service"""
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.get(f"{self.base_url}/health")
-                response.raise_for_status()
-                self.connected = True
-                log_info(f"✅ Connected to Workflow Engine at {self.base_url}")
+            client = await self._get_client()
+            response = await client.get(f"{self.base_url}/health")
+            response.raise_for_status()
+            self.connected = True
+            logger.info(f"✅ Connected to Workflow Engine at {self.base_url}")
         except Exception as e:
-            log_error(f"❌ Failed to connect to Workflow Engine: {e}")
+            logger.error(f"❌ Failed to connect to Workflow Engine: {e}")
             self.connected = False
             raise
 
     async def close(self):
-        """Close HTTP connection (no-op for HTTP)"""
+        """Close HTTP connection and client"""
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
         self.connected = False
-        log_info("Closed Workflow Engine HTTP connection")
+        logger.info("Closed Workflow Engine HTTP connection")
 
     async def list_all_node_templates(
         self,
@@ -62,23 +79,25 @@ class WorkflowEngineHTTPClient:
             if type_filter:
                 params["type_filter"] = type_filter
 
-            log_info(f"📨 HTTP request to {self.base_url}/v1/workflows/node-templates")
+            logger.info(f"📨 HTTP request to {self.base_url}/v1/workflows/node-templates")
 
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.get(f"{self.base_url}/v1/workflows/node-templates", params=params)
-                response.raise_for_status()
+            client = await self._get_client()
+            response = await client.get(
+                f"{self.base_url}/v1/workflows/node-templates", params=params
+            )
+            response.raise_for_status()
 
-                data = response.json()
-                # The workflow engine returns the array directly
-                templates = data if isinstance(data, list) else data.get("node_templates", [])
-                log_info(f"✅ Retrieved {len(templates)} node templates")
-                return templates
+            data = response.json()
+            # The workflow engine returns the array directly
+            templates = data if isinstance(data, list) else data.get("node_templates", [])
+            logger.info(f"✅ Retrieved {len(templates)} node templates")
+            return templates
 
         except httpx.HTTPStatusError as e:
-            log_error(f"❌ HTTP error listing node templates: {e.response.status_code}")
+            logger.error(f"❌ HTTP error listing node templates: {e.response.status_code}")
             return []
         except Exception as e:
-            log_error(f"❌ Error listing node templates: {e}")
+            logger.error(f"❌ Error listing node templates: {e}")
             return []
 
     async def create_workflow(
@@ -111,25 +130,27 @@ class WorkflowEngineHTTPClient:
                 "session_id": session_id,
             }
 
-            log_info(f"📨 HTTP request to create workflow: {name}")
+            logger.info(f"📨 HTTP request to create workflow: {name}")
 
             headers = {}
             if tracking_id:
                 headers["X-Tracking-ID"] = tracking_id
-                
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(f"{self.base_url}/v1/workflows", json=request_data, headers=headers)
-                response.raise_for_status()
 
-                data = response.json()
-                log_info(f"✅ Created workflow: {data.get('workflow', {}).get('id', 'unknown')}")
-                return data
+            client = await self._get_client()
+            response = await client.post(
+                f"{self.base_url}/v1/workflows", json=request_data, headers=headers
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            logger.info(f"✅ Created workflow: {data.get('workflow', {}).get('id', 'unknown')}")
+            return data
 
         except httpx.HTTPStatusError as e:
-            log_error(f"❌ HTTP error creating workflow: {e.response.status_code}")
+            logger.error(f"❌ HTTP error creating workflow: {e.response.status_code}")
             return {"success": False, "error": f"HTTP {e.response.status_code}"}
         except Exception as e:
-            log_error(f"❌ Error creating workflow: {e}")
+            logger.error(f"❌ Error creating workflow: {e}")
             return {"success": False, "error": str(e)}
 
     async def get_workflow(self, workflow_id: str, user_id: str) -> Dict[str, Any]:
@@ -138,28 +159,31 @@ class WorkflowEngineHTTPClient:
             await self.connect()
 
         try:
-            log_info(f"📨 HTTP request to get workflow: {workflow_id}")
+            logger.info(f"📨 HTTP request to get workflow: {workflow_id}")
 
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.get(
-                    f"{self.base_url}/v1/workflows/{workflow_id}", params={"user_id": user_id}
-                )
-                response.raise_for_status()
+            client = await self._get_client()
+            response = await client.get(
+                f"{self.base_url}/v1/workflows/{workflow_id}", params={"user_id": user_id}
+            )
+            response.raise_for_status()
 
-                data = response.json()
-                log_info(f"✅ Retrieved workflow: {workflow_id}")
-                return data
+            data = response.json()
+            logger.info(f"✅ Retrieved workflow: {workflow_id}")
+            return data
 
         except httpx.HTTPStatusError as e:
-            log_error(f"❌ HTTP error getting workflow: {e.response.status_code}")
+            logger.error(f"❌ HTTP error getting workflow: {e.response.status_code}")
             return {"success": False, "error": f"HTTP {e.response.status_code}"}
         except Exception as e:
-            log_error(f"❌ Error getting workflow: {e}")
+            logger.error(f"❌ Error getting workflow: {e}")
             return {"success": False, "error": str(e)}
 
     async def execute_workflow(
-        self, workflow_id: str, user_id: str, input_data: Optional[Dict[str, Any]] = None,
-        tracking_id: Optional[str] = None
+        self,
+        workflow_id: str,
+        user_id: str,
+        input_data: Optional[Dict[str, Any]] = None,
+        tracking_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Execute workflow via HTTP"""
         if not self.connected:
@@ -172,27 +196,29 @@ class WorkflowEngineHTTPClient:
                 "input_data": input_data or {},
             }
 
-            log_info(f"📨 HTTP request to execute workflow: {workflow_id}")
+            logger.info(f"📨 HTTP request to execute workflow: {workflow_id}")
 
             headers = {}
             if tracking_id:
                 headers["X-Tracking-ID"] = tracking_id
-                
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
-                    f"{self.base_url}/v1/workflows/{workflow_id}/execute", json=request_data, headers=headers
-                )
-                response.raise_for_status()
 
-                data = response.json()
-                log_info(f"✅ Executed workflow: {workflow_id}")
-                return data
+            client = await self._get_client()
+            response = await client.post(
+                f"{self.base_url}/v1/workflows/{workflow_id}/execute",
+                json=request_data,
+                headers=headers,
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            logger.info(f"✅ Executed workflow: {workflow_id}")
+            return data
 
         except httpx.HTTPStatusError as e:
-            log_error(f"❌ HTTP error executing workflow: {e.response.status_code}")
+            logger.error(f"❌ HTTP error executing workflow: {e.response.status_code}")
             return {"success": False, "error": f"HTTP {e.response.status_code}"}
         except Exception as e:
-            log_error(f"❌ Error executing workflow: {e}")
+            logger.error(f"❌ Error executing workflow: {e}")
             return {"success": False, "error": str(e)}
 
     async def get_execution_status(self, execution_id: str) -> Dict[str, Any]:
@@ -201,21 +227,21 @@ class WorkflowEngineHTTPClient:
             await self.connect()
 
         try:
-            log_info(f"📨 HTTP request to get execution status: {execution_id}")
+            logger.info(f"📨 HTTP request to get execution status: {execution_id}")
 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.get(f"{self.base_url}/v1/executions/{execution_id}")
                 response.raise_for_status()
 
                 data = response.json()
-                log_info(f"✅ Retrieved execution status: {execution_id}")
+                logger.info(f"✅ Retrieved execution status: {execution_id}")
                 return data
 
         except httpx.HTTPStatusError as e:
-            log_error(f"❌ HTTP error getting execution status: {e.response.status_code}")
+            logger.error(f"❌ HTTP error getting execution status: {e.response.status_code}")
             return {"success": False, "error": f"HTTP {e.response.status_code}"}
         except Exception as e:
-            log_error(f"❌ Error getting execution status: {e}")
+            logger.error(f"❌ Error getting execution status: {e}")
             return {"success": False, "error": str(e)}
 
     async def cancel_execution(self, execution_id: str) -> Dict[str, Any]:
@@ -224,21 +250,21 @@ class WorkflowEngineHTTPClient:
             await self.connect()
 
         try:
-            log_info(f"📨 HTTP request to cancel execution: {execution_id}")
+            logger.info(f"📨 HTTP request to cancel execution: {execution_id}")
 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(f"{self.base_url}/v1/executions/{execution_id}/cancel")
                 response.raise_for_status()
 
                 data = response.json()
-                log_info(f"✅ Cancelled execution: {execution_id}")
+                logger.info(f"✅ Cancelled execution: {execution_id}")
                 return data
 
         except httpx.HTTPStatusError as e:
-            log_error(f"❌ HTTP error cancelling execution: {e.response.status_code}")
+            logger.error(f"❌ HTTP error cancelling execution: {e.response.status_code}")
             return {"success": False, "error": f"HTTP {e.response.status_code}"}
         except Exception as e:
-            log_error(f"❌ Error cancelling execution: {e}")
+            logger.error(f"❌ Error cancelling execution: {e}")
             return {"success": False, "error": str(e)}
 
     async def get_execution_history(
@@ -249,7 +275,7 @@ class WorkflowEngineHTTPClient:
             await self.connect()
 
         try:
-            log_info(f"📨 HTTP request to get execution history: {workflow_id}")
+            logger.info(f"📨 HTTP request to get execution history: {workflow_id}")
 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.get(
@@ -259,14 +285,14 @@ class WorkflowEngineHTTPClient:
                 response.raise_for_status()
 
                 data = response.json()
-                log_info(f"✅ Retrieved execution history: {workflow_id}")
+                logger.info(f"✅ Retrieved execution history: {workflow_id}")
                 return data
 
         except httpx.HTTPStatusError as e:
-            log_error(f"❌ HTTP error getting execution history: {e.response.status_code}")
+            logger.error(f"❌ HTTP error getting execution history: {e.response.status_code}")
             return []
         except Exception as e:
-            log_error(f"❌ Error getting execution history: {e}")
+            logger.error(f"❌ Error getting execution history: {e}")
             return []
 
     async def update_workflow(
@@ -306,7 +332,7 @@ class WorkflowEngineHTTPClient:
             if active is not None:
                 update_data["active"] = active
 
-            log_info(f"📨 HTTP request to update workflow: {workflow_id}")
+            logger.info(f"📨 HTTP request to update workflow: {workflow_id}")
 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.put(
@@ -315,14 +341,14 @@ class WorkflowEngineHTTPClient:
                 response.raise_for_status()
 
                 data = response.json()
-                log_info(f"✅ Updated workflow: {workflow_id}")
+                logger.info(f"✅ Updated workflow: {workflow_id}")
                 return data
 
         except httpx.HTTPStatusError as e:
-            log_error(f"❌ HTTP error updating workflow: {e.response.status_code}")
+            logger.error(f"❌ HTTP error updating workflow: {e.response.status_code}")
             return {"success": False, "error": f"HTTP {e.response.status_code}"}
         except Exception as e:
-            log_error(f"❌ Error updating workflow: {e}")
+            logger.error(f"❌ Error updating workflow: {e}")
             return {"success": False, "error": str(e)}
 
     async def delete_workflow(self, workflow_id: str, user_id: str) -> Dict[str, Any]:
@@ -331,7 +357,7 @@ class WorkflowEngineHTTPClient:
             await self.connect()
 
         try:
-            log_info(f"📨 HTTP request to delete workflow: {workflow_id}")
+            logger.info(f"📨 HTTP request to delete workflow: {workflow_id}")
 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.delete(
@@ -340,14 +366,14 @@ class WorkflowEngineHTTPClient:
                 response.raise_for_status()
 
                 data = response.json()
-                log_info(f"✅ Deleted workflow: {workflow_id}")
+                logger.info(f"✅ Deleted workflow: {workflow_id}")
                 return data
 
         except httpx.HTTPStatusError as e:
-            log_error(f"❌ HTTP error deleting workflow: {e.response.status_code}")
+            logger.error(f"❌ HTTP error deleting workflow: {e.response.status_code}")
             return {"success": False, "error": f"HTTP {e.response.status_code}"}
         except Exception as e:
-            log_error(f"❌ Error deleting workflow: {e}")
+            logger.error(f"❌ Error deleting workflow: {e}")
             return {"success": False, "error": str(e)}
 
     async def list_workflows(
@@ -373,21 +399,21 @@ class WorkflowEngineHTTPClient:
             if tags:
                 params["tags"] = ",".join(tags)
 
-            log_info(f"📨 HTTP request to list workflows for user: {user_id}")
+            logger.info(f"📨 HTTP request to list workflows for user: {user_id}")
 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.get(f"{self.base_url}/v1/workflows", params=params)
                 response.raise_for_status()
 
                 data = response.json()
-                log_info(f"✅ Listed workflows for user: {user_id}")
+                logger.info(f"✅ Listed workflows for user: {user_id}")
                 return data
 
         except httpx.HTTPStatusError as e:
-            log_error(f"❌ HTTP error listing workflows: {e.response.status_code}")
+            logger.error(f"❌ HTTP error listing workflows: {e.response.status_code}")
             return {"workflows": [], "total_count": 0, "has_more": False}
         except Exception as e:
-            log_error(f"❌ Error listing workflows: {e}")
+            logger.error(f"❌ Error listing workflows: {e}")
             return {"workflows": [], "total_count": 0, "has_more": False}
 
 

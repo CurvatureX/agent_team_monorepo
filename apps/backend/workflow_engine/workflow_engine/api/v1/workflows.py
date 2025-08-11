@@ -48,13 +48,13 @@ async def create_workflow(
                 f"🐛 DEBUG: FastAPI node {i}: id='{node.id}', type='{node.type}', subtype='{node.subtype}'"
             )
 
-        # 获取 trace_id
-        trace_id = request_obj.headers.get("x-trace-id") or request_obj.headers.get("X-Trace-ID")
-        if trace_id:
+        # 获取 tracking_id
+        tracking_id = request_obj.headers.get("x-tracking-id") or request_obj.headers.get("X-Tracking-ID")
+        if tracking_id:
             from shared.logging_config import get_logger
 
             logger = get_logger(__name__)
-            logger.info(f"Creating workflow with trace_id: {trace_id}")
+            logger.info(f"Creating workflow with tracking_id: {tracking_id}")
 
         workflow = service.create_workflow_from_data(request)
         return CreateWorkflowResponse(

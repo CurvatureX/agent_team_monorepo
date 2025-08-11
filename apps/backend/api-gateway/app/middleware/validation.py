@@ -8,7 +8,7 @@ from typing import Any, Dict
 
 from app.exceptions import ValidationError
 from app.services.validation import validation_service
-from app.utils.logger import get_logger
+from shared.logging_config import get_logger
 from fastapi import HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware

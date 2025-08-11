@@ -139,13 +139,13 @@ class BaseModel:
                 if col.name == column.name:
                     attr_name = attr
                     break
-            
+
             if attr_name:
                 value = getattr(self, attr_name)
             else:
                 # Fallback to column name if no mapping found
                 value = getattr(self, column.name)
-                
+
             if isinstance(value, uuid.UUID):
                 result[column.name] = str(value)
             elif isinstance(value, datetime):
@@ -231,8 +231,10 @@ class WorkflowDB(Base, BaseModel):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # User information
-    user_id = Column(String(255), nullable=False, index=True)
-    session_id = Column(String(255), nullable=True, index=True)
+    user_id = Column(UUID(as_uuid=True), nullable=True, index=True)  # References auth.users(id)
+    session_id = Column(
+        UUID(as_uuid=True), nullable=True, index=True, server_default=text("gen_random_uuid()")
+    )  # References sessions(id)
 
     # Basic workflow information
     name = Column(String(255), nullable=False, index=True)
@@ -244,11 +246,17 @@ class WorkflowDB(Base, BaseModel):
     workflow_data = Column(JSON, nullable=False, default=dict)
     tags = Column(ARRAY(String), nullable=False, default=list)
 
-    # Timestamps
-    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at = Column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
-    )
+    # Deployment fields
+    deployment_status = Column(String(50), nullable=False, default="DRAFT", index=True)
+    deployed_at = Column(DateTime(timezone=True), nullable=True)
+    deployed_by = Column(UUID(as_uuid=True), nullable=True)
+    undeployed_at = Column(DateTime(timezone=True), nullable=True)
+    deployment_version = Column(Integer, nullable=False, default=1)
+    deployment_config = Column(JSON, nullable=False, default=dict)
+
+    # Timestamps - using Integer for bigint fields to match database schema
+    created_at = Column(Integer, nullable=False)
+    updated_at = Column(Integer, nullable=False)
 
     def __repr__(self) -> str:
         return f"<WorkflowDB(id='{self.id}', name='{self.name}', user_id='{self.user_id}')>"
@@ -264,6 +272,41 @@ class WorkflowDB(Base, BaseModel):
         """Remove a tag from the workflow"""
         if self.tags and tag in self.tags:
             self.tags.remove(tag)
+
+
+class WorkflowDeploymentHistory(Base, BaseModel):
+    """Workflow deployment history tracking table"""
+
+    __tablename__ = "workflow_deployment_history"
+
+    # Primary key - UUID
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+
+    # Foreign key to workflow
+    workflow_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+
+    # Deployment action and status tracking
+    deployment_action = Column(
+        String(50), nullable=False
+    )  # 'DEPLOY', 'UNDEPLOY', 'UPDATE', 'ROLLBACK'
+    from_status = Column(String(50), nullable=False)
+    to_status = Column(String(50), nullable=False)
+
+    # Deployment version and configuration
+    deployment_version = Column(Integer, nullable=False)
+    deployment_config = Column(JSON, nullable=False, default=dict)
+
+    # Audit information
+    triggered_by = Column(UUID(as_uuid=True), nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Error tracking
+    error_message = Column(Text, nullable=True)
+    deployment_logs = Column(JSON, nullable=False, default=dict)
+
+    def __repr__(self) -> str:
+        return f"<WorkflowDeploymentHistory(id='{self.id}', workflow_id='{self.workflow_id}', action='{self.deployment_action}')>"
 
 
 class NodeTemplateDB(Base, BaseModel):
@@ -560,6 +603,7 @@ __all__ = [
     # Models
     "WorkflowExecution",
     "WorkflowDB",
+    "WorkflowDeploymentHistory",
     "NodeTemplateDB",
     "WorkflowDeployment",
     "TriggerExecution",
