@@ -23,22 +23,37 @@ class WorkflowSchedulerHTTPClient:
         self.base_url = settings.workflow_scheduler_http_url
         self.timeout = httpx.Timeout(30.0, connect=5.0)
         self.connected = False
+        # Connection pool for better performance
+        self._client = None
+        self._limits = httpx.Limits(max_keepalive_connections=10, max_connections=20)
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Get or create HTTP client with connection pooling"""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=self.timeout,
+                limits=self._limits,
+                http2=True,  # Enable HTTP/2 for multiplexing
+            )
+        return self._client
 
     async def connect(self):
         """Test connection to workflow scheduler service"""
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.get(f"{self.base_url}/health")
-                response.raise_for_status()
-                self.connected = True
-                log_info(f"✅ Connected to Workflow Scheduler at {self.base_url}")
+            client = await self._get_client()
+            response = await client.get(f"{self.base_url}/health")
+            response.raise_for_status()
+            self.connected = True
+            log_info(f"✅ Connected to Workflow Scheduler at {self.base_url}")
         except Exception as e:
             log_error(f"❌ Failed to connect to Workflow Scheduler: {e}")
             self.connected = False
             raise
 
     async def close(self):
-        """Close HTTP connection (no-op for HTTP)"""
+        """Close HTTP connection and client"""
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
         self.connected = False
         log_info("Closed Workflow Scheduler HTTP connection")
 
@@ -173,21 +188,21 @@ class WorkflowSchedulerHTTPClient:
             if trace_id:
                 headers["X-Trace-ID"] = trace_id
 
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
-                    f"{self.base_url}/api/v1/deployment/workflows/{workflow_id}/deploy",
-                    json=request_data,
-                    headers=headers,
-                )
-                response.raise_for_status()
+            client = await self._get_client()
+            response = await client.post(
+                f"{self.base_url}/api/v1/deployment/workflows/{workflow_id}/deploy",
+                json=request_data,
+                headers=headers,
+            )
+            response.raise_for_status()
 
-                data = response.json()
-                log_info(
-                    f"✅ Workflow deployment completed: {workflow_id}, "
-                    f"deployment_id: {data.get('deployment_id', 'N/A')}, "
-                    f"status: {data.get('status', 'unknown')}"
-                )
-                return data
+            data = response.json()
+            log_info(
+                f"✅ Workflow deployment completed: {workflow_id}, "
+                f"deployment_id: {data.get('deployment_id', 'N/A')}, "
+                f"status: {data.get('status', 'unknown')}"
+            )
+            return data
 
         except httpx.HTTPStatusError as e:
             # Try to extract detailed error message from response

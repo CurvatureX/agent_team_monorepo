@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import and_, delete
+from sqlalchemy import and_, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.trigger import TriggerSpec, TriggerType
@@ -371,9 +371,29 @@ class TriggerIndexManager:
     ) -> bool:
         """Register a single trigger specification in the index"""
         try:
+            workflow_uuid = uuid.UUID(workflow_id)
+
+            # Check if trigger already exists for this workflow
+            existing_query = select(TriggerIndex).where(
+                TriggerIndex.workflow_id == workflow_uuid,
+                TriggerIndex.trigger_type == spec.subtype.value,
+            )
+            result = await session.execute(existing_query)
+            existing_trigger = result.scalar_one_or_none()
+
+            if existing_trigger:
+                # Update existing trigger instead of creating duplicate
+                existing_trigger.trigger_config = spec.parameters
+                existing_trigger.deployment_status = deployment_status
+                existing_trigger.updated_at = datetime.utcnow()
+                logger.info(
+                    f"Updated existing trigger {spec.subtype.value} for workflow {workflow_id}"
+                )
+                return True
+
             # Create trigger index entry
             trigger_index = TriggerIndex(
-                workflow_id=uuid.UUID(workflow_id),
+                workflow_id=workflow_uuid,
                 trigger_type=spec.subtype.value,
                 trigger_config=spec.parameters,
                 deployment_status=deployment_status,
@@ -406,16 +426,24 @@ class TriggerIndexManager:
 
             session.add(trigger_index)
 
-            logger.debug(
-                f"Registered trigger {spec.subtype.value} for workflow {workflow_id} with index_key: {trigger_index.index_key}"
+            logger.info(
+                f"Created new trigger {spec.subtype.value} for workflow {workflow_id} with index_key: {trigger_index.index_key}"
             )
             return True
 
         except Exception as e:
-            logger.error(
-                f"Error registering single trigger {spec.subtype.value}: {e}", exc_info=True
-            )
-            return False
+            # Handle database constraint errors gracefully
+            error_msg = str(e)
+            if "duplicate key" in error_msg.lower() or "already exists" in error_msg.lower():
+                logger.warning(
+                    f"Trigger {spec.subtype.value} for workflow {workflow_id} already exists, skipping"
+                )
+                return True  # Consider duplicate as success
+            else:
+                logger.error(
+                    f"Error registering single trigger {spec.subtype.value}: {e}", exc_info=True
+                )
+                return False
 
     async def _remove_workflow_triggers(self, session: AsyncSession, workflow_id: str) -> bool:
         """Remove all trigger index entries for a workflow"""
