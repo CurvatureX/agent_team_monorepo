@@ -13,6 +13,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from opentelemetry import trace
 from .metrics import get_metrics
+from .tracking import generate_tracking_id, get_or_create_tracking_id
 from shared.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -30,29 +31,24 @@ class TrackingMiddleware(BaseHTTPMiddleware):
     """
     
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        # 获取当前 span
+        # Generate or get tracking ID (works with or without OpenTelemetry)
+        tracking_id = get_or_create_tracking_id(request.state)
+        
+        # Store in request state for use by business code
+        request.state.tracking_id = tracking_id
+        
+        # Get current span for OpenTelemetry integration
         span = trace.get_current_span()
         
         if span.is_recording():
-            # 直接使用 OpenTelemetry 的完整 trace_id 作为 tracking_id
-            span_context = span.get_span_context()
-            tracking_id = format(span_context.trace_id, '032x')
-            
-            # 存储到请求状态，供业务代码使用
-            request.state.tracking_id = tracking_id
-            
-            # 添加到 span 属性，便于业务查询
+            # Add tracking ID and request info to span
             span.set_attribute("tracking.id", tracking_id)
             span.set_attribute("http.method", request.method)
             span.set_attribute("http.url", str(request.url))
             
-            # 添加用户信息（如果可用）
+            # Add user info if available
             if hasattr(request.state, 'user_id'):
                 span.set_attribute("user.id", request.state.user_id)
-        else:
-            # 如果没有有效的 span，使用备用标识
-            tracking_id = "no-trace"
-            request.state.tracking_id = tracking_id
         
         # 处理请求
         response = await call_next(request)

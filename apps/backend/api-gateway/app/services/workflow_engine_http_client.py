@@ -92,7 +92,7 @@ class WorkflowEngineHTTPClient:
         tags: Optional[List[str]] = None,
         user_id: str = "anonymous",
         session_id: Optional[str] = None,
-        trace_id: Optional[str] = None,
+        tracking_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Create a new workflow via HTTP"""
         if not self.connected:
@@ -114,8 +114,8 @@ class WorkflowEngineHTTPClient:
             log_info(f"📨 HTTP request to create workflow: {name}")
 
             headers = {}
-            if trace_id:
-                headers["X-Trace-ID"] = trace_id
+            if tracking_id:
+                headers["X-Tracking-ID"] = tracking_id
                 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(f"{self.base_url}/v1/workflows", json=request_data, headers=headers)
@@ -159,7 +159,7 @@ class WorkflowEngineHTTPClient:
 
     async def execute_workflow(
         self, workflow_id: str, user_id: str, input_data: Optional[Dict[str, Any]] = None,
-        trace_id: Optional[str] = None
+        tracking_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """Execute workflow via HTTP"""
         if not self.connected:
@@ -175,8 +175,8 @@ class WorkflowEngineHTTPClient:
             log_info(f"📨 HTTP request to execute workflow: {workflow_id}")
 
             headers = {}
-            if trace_id:
-                headers["X-Trace-ID"] = trace_id
+            if tracking_id:
+                headers["X-Tracking-ID"] = tracking_id
                 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(

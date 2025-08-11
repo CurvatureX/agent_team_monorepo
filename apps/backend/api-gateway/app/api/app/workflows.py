@@ -92,7 +92,7 @@ async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Dep
             static_data=getattr(request, "static_data", None) or {},
             tags=request.tags or [],
             user_id=deps.current_user.sub,
-            trace_id=getattr(deps.request.state, "trace_id", None),
+            tracking_id=getattr(deps.request.state, "tracking_id", None),
         )
 
         if not result.get("success", False) or not result.get("workflow", {}).get("id"):
@@ -303,7 +303,7 @@ async def execute_workflow(
             workflow_id,
             deps.current_user.sub,
             execution_request.inputs,
-            trace_id=getattr(deps.request.state, "trace_id", None),
+            tracking_id=getattr(deps.request.state, "tracking_id", None),
         )
 
         if not result.get("success", False) or not result.get("execution_id"):
@@ -346,7 +346,7 @@ async def trigger_manual_workflow(
             workflow_id=workflow_id,
             user_id=deps.current_user.sub,
             confirmation=request.require_confirmation,
-            trace_id=getattr(deps.request.state, "trace_id", None),
+            tracking_id=getattr(deps.request.state, "tracking_id", None),
         )
 
         # Handle confirmation required case
@@ -420,7 +420,7 @@ async def deploy_workflow(
         result = await scheduler_client.deploy_workflow(
             workflow_id=workflow_id,
             workflow_spec=workflow_data,
-            trace_id=getattr(deps.request.state, "trace_id", None),
+            tracking_id=getattr(deps.request.state, "tracking_id", None),
         )
 
         # Handle errors

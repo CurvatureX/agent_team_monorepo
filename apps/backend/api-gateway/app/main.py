@@ -130,7 +130,7 @@ def create_application() -> FastAPI:
         allow_headers=["*"],
         expose_headers=[
             "X-Request-ID",
-            "X-Trace-ID",
+            "X-Tracking-ID",
             "X-RateLimit-Limit",
             "X-RateLimit-Remaining",
             "X-RateLimit-Reset",
@@ -198,10 +198,21 @@ async def request_logging_middleware(request: Request, call_next):
     """请求日志中间件"""
     start_time = time.time()
 
-    # 使用 OpenTelemetry 生成的 tracking_id（如果有）
-    trace_id = getattr(request.state, 'tracking_id', 'no-trace')
-    request.state.request_id = trace_id
-    request.state.trace_id = trace_id  # 同时存储为 trace_id
+    # Get or generate tracking_id
+    # This runs before TrackingMiddleware, so we need to generate our own
+    try:
+        from shared.telemetry.tracking import get_or_create_tracking_id
+        tracking_id = get_or_create_tracking_id(request.state)
+    except ImportError as e:
+        logger.warning(f"Could not import tracking module: {e}")
+        tracking_id = "no-trace"
+    except Exception as e:
+        logger.warning(f"Error generating tracking ID: {e}")
+        tracking_id = "no-trace"
+    
+    # Store it in request.state for other middleware to use
+    request.state.tracking_id = tracking_id
+    request.state.request_id = tracking_id  # Keep for backward compatibility
 
     # 记录请求开始
     client_ip = (
@@ -211,9 +222,13 @@ async def request_logging_middleware(request: Request, call_next):
         if request.client
         else "unknown"
     )
+    # Debug: Log what tracking_id we got
+    if tracking_id and tracking_id != "no-trace":
+        logger.debug(f"Generated tracking_id: {tracking_id}")
+    
     logger.info(
         f"{request.method} {request.url.path} [IP:{client_ip}]",
-        extra={"tracking_id": trace_id}
+        extra={"tracking_id": tracking_id}
     )
 
     # 处理请求
@@ -223,13 +238,13 @@ async def request_logging_middleware(request: Request, call_next):
     process_time = time.time() - start_time
 
     # 添加响应头
-    response.headers["X-Trace-ID"] = trace_id  # 添加 trace_id 到响应头
+    response.headers["X-Tracking-ID"] = tracking_id
     response.headers["X-Process-Time"] = str(round(process_time * 1000, 2))
 
     # 记录响应
     logger.info(
         f"{request.method} {request.url.path} -> {response.status_code} [{round(process_time * 1000, 2)}ms]",
-        extra={"tracking_id": trace_id}
+        extra={"tracking_id": tracking_id}
     )
 
     return response

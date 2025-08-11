@@ -268,7 +268,8 @@ services:
       # workflow-engine:
       #   condition: service_healthy
     volumes:
-      - ./shared/proto:/app/shared/proto:ro
+      - ./shared:/app/shared:ro
+      - ./api-gateway/app:/app/app:ro
       - api_gateway_logs:/app/logs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/public/health"]

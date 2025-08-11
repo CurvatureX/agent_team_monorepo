@@ -101,15 +101,15 @@ class WorkflowAgentServicer:
         """
         generator_created = False
         try:
-            # 获取 trace_id（如果有的话）
-            trace_id = getattr(request_obj.state, "trace_id", None) if request_obj else None
+            # 获取 tracking_id（如果有的话）
+            tracking_id = getattr(request_obj.state, "tracking_id", None) if request_obj else None
 
             logger.info(
                 "Processing conversation request",
                 extra={
                     "request_session_id": request.session_id,
                     "request_user_id": request.user_id,
-                    "trace_id": trace_id,
+                    "tracking_id": tracking_id,
                 },
             )
             session_id = request.session_id
@@ -599,12 +599,12 @@ async def process_conversation(request: ConversationRequest, request_obj: Reques
     start_time = time.time()
     session_id = request.session_id
 
-    # 获取 trace_id
-    trace_id = request_obj.headers.get("x-trace-id") or request_obj.headers.get("X-Trace-ID")
-    if trace_id:
-        logger.info(f"Processing conversation with trace_id: {trace_id}")
-        # 将 trace_id 存储到 request state，供后续使用
-        request_obj.state.trace_id = trace_id
+    # 获取 tracking_id
+    tracking_id = request_obj.headers.get("x-tracking-id") or request_obj.headers.get("X-Tracking-ID")
+    if tracking_id:
+        logger.info(f"Processing conversation with tracking_id: {tracking_id}")
+        # 将 tracking_id 存储到 request state，供后续使用
+        request_obj.state.tracking_id = tracking_id
 
     async def wrapped_generator():
         """Wrapper to track client disconnection"""
