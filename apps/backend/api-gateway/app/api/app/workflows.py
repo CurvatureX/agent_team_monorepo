@@ -4,6 +4,7 @@ Workflow API endpoints with authentication and enhanced gRPC client integration
 """
 
 import logging
+import time
 from typing import Optional
 
 from app.core.config import get_settings
@@ -31,6 +32,39 @@ from fastapi import APIRouter, Depends, HTTPException
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Workflow validation and data cache
+WORKFLOW_CACHE = {}
+CACHE_TTL = 300  # 5 minutes TTL for workflow data
+
+
+def _get_cached_workflow(workflow_id: str, user_id: str):
+    """Get cached workflow data if available and not expired"""
+    cache_key = f"{workflow_id}_{user_id}"
+    if cache_key in WORKFLOW_CACHE:
+        cached_data, timestamp = WORKFLOW_CACHE[cache_key]
+        if time.time() - timestamp < CACHE_TTL:
+            logger.info(f"📋 Using cached workflow data for {workflow_id}")
+            return cached_data
+        else:
+            # Remove expired cache entry
+            del WORKFLOW_CACHE[cache_key]
+    return None
+
+
+def _cache_workflow(workflow_id: str, user_id: str, workflow_data: dict):
+    """Cache workflow data for future use"""
+    cache_key = f"{workflow_id}_{user_id}"
+    WORKFLOW_CACHE[cache_key] = (workflow_data, time.time())
+    logger.info(f"📋 Cached workflow data for {workflow_id}")
+
+
+def _clear_workflow_cache(workflow_id: str, user_id: str):
+    """Clear cached workflow data when workflow is modified"""
+    cache_key = f"{workflow_id}_{user_id}"
+    if cache_key in WORKFLOW_CACHE:
+        del WORKFLOW_CACHE[cache_key]
+        logger.info(f"📋 Cleared cached workflow data for {workflow_id}")
 
 
 @router.get("/node-templates", response_model=NodeTemplateListResponse)
@@ -193,6 +227,9 @@ async def update_workflow(
         # Create workflow object
         workflow = Workflow(**result["workflow"])
 
+        # Clear cache since workflow was updated
+        _clear_workflow_cache(workflow_id, deps.current_user.sub)
+
         logger.info(f"✅ Workflow updated: {workflow_id}")
 
         return WorkflowResponse(workflow=workflow, message="Workflow updated successfully")
@@ -225,6 +262,9 @@ async def delete_workflow(workflow_id: str, deps: AuthenticatedDeps = Depends())
             if "not found" in result.get("error", "").lower():
                 raise NotFoundError("Workflow")
             raise HTTPException(status_code=500, detail="Failed to delete workflow")
+
+        # Clear cache since workflow was deleted
+        _clear_workflow_cache(workflow_id, deps.current_user.sub)
 
         logger.info(f"✅ Workflow deleted: {workflow_id}")
 
@@ -400,18 +440,28 @@ async def deploy_workflow(
     try:
         logger.info(f"📦 Deploying workflow {workflow_id} for user {deps.current_user.sub}")
 
-        # First get the workflow from workflow engine
-        workflow_engine_client = await get_workflow_engine_client()
-        workflow_result = await workflow_engine_client.get_workflow(
-            workflow_id, deps.current_user.sub
-        )
+        # Check cache first to avoid redundant workflow fetches
+        cached_workflow = _get_cached_workflow(workflow_id, deps.current_user.sub)
 
-        # Check if workflow exists (workflow engine returns found:true/false and workflow data)
-        if not workflow_result.get("found", False) or not workflow_result.get("workflow"):
-            logger.error(f"❌ Error deploying workflow {workflow_id}: Workflow not found")
-            raise HTTPException(status_code=404, detail="Workflow not found")
+        if cached_workflow:
+            workflow_data = cached_workflow
+            logger.info(f"📋 Using cached workflow data for deployment: {workflow_id}")
+        else:
+            # Get the workflow from workflow engine
+            workflow_engine_client = await get_workflow_engine_client()
+            workflow_result = await workflow_engine_client.get_workflow(
+                workflow_id, deps.current_user.sub
+            )
 
-        workflow_data = workflow_result["workflow"]
+            # Check if workflow exists (workflow engine returns found:true/false and workflow data)
+            if not workflow_result.get("found", False) or not workflow_result.get("workflow"):
+                logger.error(f"❌ Error deploying workflow {workflow_id}: Workflow not found")
+                raise HTTPException(status_code=404, detail="Workflow not found")
+
+            workflow_data = workflow_result["workflow"]
+
+            # Cache the workflow data for future deployments
+            _cache_workflow(workflow_id, deps.current_user.sub, workflow_data)
 
         # Get workflow scheduler client
         scheduler_client = await get_workflow_scheduler_client()
