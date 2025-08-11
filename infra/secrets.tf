@@ -20,9 +20,10 @@ resource "aws_ssm_parameter" "supabase_secret_key" {
 }
 
 resource "aws_ssm_parameter" "supabase_anon_key" {
-  name  = "/${local.name_prefix}/supabase/anon-key"
-  type  = "SecureString"
-  value = var.supabase_anon_key
+  name      = "/${local.name_prefix}/supabase/anon-key"
+  type      = "SecureString"
+  value     = var.supabase_anon_key
+  overwrite = true
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-supabase-anon-key"
