@@ -123,6 +123,12 @@ variable "supabase_secret_key" {
   sensitive   = true
 }
 
+variable "supabase_anon_key" {
+  description = "Supabase anonymous key for RLS operations"
+  type        = string
+  sensitive   = true
+}
+
 variable "openai_api_key" {
   description = "OpenAI API key"
   type        = string

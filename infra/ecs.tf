@@ -185,6 +185,10 @@ resource "aws_ecs_task_definition" "api_gateway" {
           value = "http://workflow-engine.${local.name_prefix}.local:8002"
         },
         {
+          name  = "WORKFLOW_SCHEDULER_URL"
+          value = "http://workflow-scheduler.${local.name_prefix}.local:8003"
+        },
+        {
           name  = "AWS_REGION"
           value = var.aws_region
         },
@@ -210,6 +214,10 @@ resource "aws_ecs_task_definition" "api_gateway" {
         {
           name      = "SUPABASE_SECRET_KEY"
           valueFrom = aws_ssm_parameter.supabase_secret_key.arn
+        },
+        {
+          name      = "SUPABASE_ANON_KEY"
+          valueFrom = aws_ssm_parameter.supabase_anon_key.arn
         }
       ]
 

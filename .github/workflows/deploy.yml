@@ -160,6 +160,7 @@ jobs:
           TF_VAR_image_tag: ${{ github.sha }}
           TF_VAR_supabase_url: ${{ secrets.SUPABASE_URL }}
           TF_VAR_supabase_secret_key: ${{ secrets.SUPABASE_SECRET_KEY }}
+          TF_VAR_supabase_anon_key: ${{ secrets.SUPABASE_ANON_KEY }}
           TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           TF_VAR_database_url: ${{ secrets.DATABASE_URL }}
@@ -198,6 +199,7 @@ jobs:
           TF_VAR_image_tag: ${{ github.sha }}
           TF_VAR_supabase_url: ${{ secrets.SUPABASE_URL }}
           TF_VAR_supabase_secret_key: ${{ secrets.SUPABASE_SECRET_KEY }}
+          TF_VAR_supabase_anon_key: ${{ secrets.SUPABASE_ANON_KEY }}
           TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           TF_VAR_database_url: ${{ secrets.DATABASE_URL }}
