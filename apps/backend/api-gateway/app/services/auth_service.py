@@ -9,9 +9,9 @@ from typing import Any, Dict, Optional
 
 from app.core.database import get_supabase
 from app.services.cache import cache_service
-import logging
 
-logger = logging.getLogger("app.services.auth_service")
+from shared.logging_config import get_logger
+logger = get_logger("app.services.auth_service")
 
 
 async def verify_supabase_token(token: str, use_cache: bool = True) -> Optional[Dict[str, Any]]:

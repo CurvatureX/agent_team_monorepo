@@ -1,4 +1,3 @@
-import logging
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -9,7 +8,8 @@ from shared.models.trigger import ExecutionResult
 from workflow_scheduler.dependencies import get_trigger_manager
 from workflow_scheduler.services.trigger_manager import TriggerManager
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/github", tags=["github"])
 

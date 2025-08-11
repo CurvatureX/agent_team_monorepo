@@ -7,7 +7,6 @@ This module handles incoming Slack events and routes them to appropriate trigger
 import hashlib
 import hmac
 import json
-import logging
 import time
 from typing import Dict
 
@@ -16,7 +15,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from workflow_scheduler.core.config import settings
 from workflow_scheduler.services.slack_event_router import SlackEventRouter
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/slack", tags=["slack"])
 

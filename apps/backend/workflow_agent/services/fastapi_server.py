@@ -5,7 +5,6 @@ FastAPI Server for Workflow Agent
 
 import asyncio
 import json
-import logging
 import os
 
 # Import shared models
@@ -77,7 +76,8 @@ else:
             async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
                 await self.app(scope, receive, send)
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 
 class WorkflowAgentServicer:

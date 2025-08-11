@@ -1,4 +1,3 @@
-import logging
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -8,7 +7,8 @@ from shared.models.trigger import ExecutionResult, TriggerType
 from workflow_scheduler.dependencies import get_trigger_manager
 from workflow_scheduler.services.trigger_manager import TriggerManager
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/triggers", tags=["triggers"])
 

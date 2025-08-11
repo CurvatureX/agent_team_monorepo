@@ -4,7 +4,6 @@ Analyzes workflow structure and generates appropriate test data using LLM
 """
 
 import json
-import logging
 from typing import Dict, Any, List, Optional
 
 try:
@@ -16,8 +15,9 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from workflow_agent.core.config import settings
+from shared.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class WorkflowDataGenerator:

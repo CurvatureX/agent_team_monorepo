@@ -4,7 +4,6 @@ Email SMTP Adapter
 支持主流邮件服务商和自定义SMTP服务器
 """
 
-import logging
 import smtplib
 import ssl
 from email.mime.text import MIMEText
@@ -25,7 +24,8 @@ from .base import (
     register_adapter
 )
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 
 @register_adapter("email")

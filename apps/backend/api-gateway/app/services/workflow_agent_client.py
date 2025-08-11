@@ -5,13 +5,13 @@ Workflow Agent HTTP Client
 
 import httpx
 import json
-import logging
 from typing import AsyncGenerator, Dict, Any, Optional
 
 from app.core.config import get_settings
 from app.models import ConversationRequest, ConversationResponse
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 settings = get_settings()
 
 

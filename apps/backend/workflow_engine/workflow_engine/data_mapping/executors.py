@@ -4,7 +4,8 @@ Connection Executors
 Handles execution of connections between workflow nodes with data mapping.
 """
 
-import logging
+from shared.logging_config import get_logger
+
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
@@ -47,7 +48,7 @@ class ConnectionExecutor:
 
     def __init__(self):
         self.data_mapper = DataMappingProcessor()
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
 
     def execute_connection(
         self,
@@ -185,7 +186,7 @@ class BatchConnectionExecutor:
 
     def __init__(self):
         self.connection_executor = ConnectionExecutor()
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
 
     def execute_node_connections(
         self,

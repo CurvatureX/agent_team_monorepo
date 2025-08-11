@@ -9,7 +9,6 @@ This module provides the main database manager with minimal scope:
 """
 
 import asyncio
-import logging
 import random
 import time
 from contextlib import asynccontextmanager
@@ -24,7 +23,8 @@ from redis.exceptions import ConnectionError, RedisError, TimeoutError
 from supabase import Client, create_client
 from supabase.lib.client_options import ClientOptions
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 
 class RedisManager:

@@ -4,7 +4,6 @@ External API Call Logger Service
 """
 
 import json
-import logging
 import time
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
@@ -17,7 +16,8 @@ from sqlalchemy.orm import Session
 from .credential_encryption import CredentialEncryption
 from ..models.database import get_db_session
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 
 # ============================================================================

@@ -4,8 +4,9 @@ Data Mapping Engines
 Core engines for template processing, script execution, JSONPath parsing, and function registry.
 """
 
+from shared.logging_config import get_logger
+
 import json
-import logging
 import re
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
@@ -22,7 +23,7 @@ class TemplateEngine:
     """Template engine for processing Handlebars-like templates."""
 
     def __init__(self):
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
 
     def compile(self, template: str) -> "CompiledTemplate":
         """Compile a template string."""
@@ -170,7 +171,7 @@ class ScriptEngine:
     """Script engine for executing transformation scripts."""
 
     def __init__(self):
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
 
     def execute_javascript(
         self, script: str, input_data: Dict[str, Any], context: Dict[str, Any]
@@ -239,7 +240,7 @@ class JSONPathParser:
     """JSONPath parser for field extraction."""
 
     def __init__(self):
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
 
     def extract(self, data: Dict[str, Any], path: str) -> Any:
         """Extract value using JSONPath expression."""
@@ -332,7 +333,7 @@ class FunctionRegistry:
 
     def __init__(self):
         self.functions: Dict[str, Callable] = {}
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
         self._register_builtin_functions()
 
     def _register_builtin_functions(self):

@@ -5,12 +5,12 @@
 """
 
 import base64
-import logging
 from typing import Dict, Optional
 
 from cryptography.fernet import Fernet
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 
 class CredentialEncryption:

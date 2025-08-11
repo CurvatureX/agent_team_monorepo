@@ -5,7 +5,6 @@ This module implements workflow execution-related operations.
 """
 
 import json
-import logging
 import sys
 import time
 import uuid
@@ -35,7 +34,8 @@ from workflow_engine.execution_engine import (
 from workflow_engine.models import ExecutionModel
 from workflow_engine.services.workflow_service import WorkflowService
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 settings = get_settings()
 
 

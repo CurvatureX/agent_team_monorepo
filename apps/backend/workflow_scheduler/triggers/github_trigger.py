@@ -1,5 +1,4 @@
 import fnmatch
-import logging
 import re
 import time
 from datetime import datetime
@@ -20,9 +19,14 @@ try:
     GITHUB_SDK_AVAILABLE = True
 except ImportError:
     GITHUB_SDK_AVAILABLE = False
-    logging.warning("GitHub SDK not available, using basic PyGithub client")
+    # Warning will be logged after logger is imported
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
+
+# Log the warning after logger is initialized
+if not GITHUB_SDK_AVAILABLE:
+    logger.warning("GitHub SDK not available, using basic PyGithub client")
 
 
 class GitHubTrigger(BaseTrigger):

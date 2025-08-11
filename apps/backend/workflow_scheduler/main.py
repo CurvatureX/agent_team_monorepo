@@ -1,5 +1,4 @@
 import asyncio
-import logging
 import os
 import sys
 from contextlib import asynccontextmanager
@@ -64,7 +63,8 @@ logging.basicConfig(
     else "%(message)s",
     stream=sys.stdout,
 )
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 # Global service instances will be managed through dependencies.py
 

@@ -5,12 +5,12 @@ Provides tools for discovering and retrieving workflow node specifications.
 
 import json
 from typing import Any, Dict, List, Optional
-import logging
 import aiohttp
 from langchain_core.tools import Tool
 from pydantic import BaseModel, Field
+from shared.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class NodeQuery(BaseModel):

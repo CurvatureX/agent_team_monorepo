@@ -206,7 +206,7 @@ class AppSettings(BaseSettings):
         description="日志级别",
     )
     LOG_FORMAT: str = Field(
-        default=os.getenv("LOG_FORMAT", "standard"), description="日志格式 (standard, json, simple)"
+        default=os.getenv("LOG_FORMAT", "simple"), description="日志格式 (standard, json, simple)"
     )
 
     # Monitoring

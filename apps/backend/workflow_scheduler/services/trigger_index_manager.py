@@ -5,7 +5,6 @@ This service manages the trigger indexing system for fast reverse lookup and mat
 It handles registration, updates, and cleanup of trigger index entries.
 """
 
-import logging
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -18,7 +17,8 @@ from shared.models.trigger_index import GitHubInstallation, TriggerIndex
 from workflow_scheduler.core.config import settings
 from workflow_scheduler.core.database import async_session_factory
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 
 class TriggerIndexManager:

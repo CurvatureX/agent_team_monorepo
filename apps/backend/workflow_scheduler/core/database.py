@@ -2,7 +2,6 @@
 Database configuration and session management
 """
 
-import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -11,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from shared.models.db_models import Base
 from workflow_scheduler.core.config import settings
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 # Create async engine with pgbouncer-compatible settings
 # Use URL parameters to force statement_cache_size=0 at the asyncpg level

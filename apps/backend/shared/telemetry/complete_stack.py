@@ -9,8 +9,8 @@
 """
 
 import os
-import logging
 from typing import Optional
+import logging  # Keep for constants like logging.INFO
 from fastapi import FastAPI
 
 from opentelemetry import trace, metrics
@@ -74,7 +74,9 @@ def setup_telemetry(
     # 5. 自动装配
     _setup_auto_instrumentation(app)
     
-    logging.info(f"OpenTelemetry telemetry initialized for {service_name}")
+    from shared.logging_config import get_logger
+    logger = get_logger(__name__)
+    logger.info(f"OpenTelemetry telemetry initialized for {service_name}")
 
 
 def _setup_tracing(resource: Resource, otlp_endpoint: str) -> None:
@@ -114,31 +116,49 @@ def _setup_metrics(resource: Resource, otlp_endpoint: str, prometheus_port: int)
 
 
 def _setup_logging(service_name: str) -> None:
-    """配置结构化日志"""
+    """配置结构化日志 - 如果尚未配置"""
     
-    # 获取根日志记录器
+    # 如果已经配置了日志（比如在 main.py 中使用了 shared.logging），不要覆盖
+    # Get root logger from shared config
+    import logging
     logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
+    if logger.handlers:
+        # 日志已经配置，跳过
+        return
     
-    # 移除现有处理程序
-    for handler in logger.handlers[:]:
-        logger.removeHandler(handler)
-    
-    # 创建控制台处理程序
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-    
-    # 使用 CloudWatch 优化的格式化器
-    formatter = CloudWatchTracingFormatter(service_name=service_name)
-    console_handler.setFormatter(formatter)
-    
-    # 添加处理程序
-    logger.addHandler(console_handler)
-    
-    # 配置第三方库日志级别
-    logging.getLogger("uvicorn").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("opentelemetry").setLevel(logging.WARNING)
+    # 如果没有配置，使用 shared.logging_config 模块进行配置
+    try:
+        from ..logging_config import setup_logging as shared_setup_logging
+        shared_setup_logging(
+            service_name=service_name,
+            log_level=os.getenv("LOG_LEVEL", "INFO")
+        )
+    except ImportError:
+        # 如果无法导入 shared.logging，使用基本配置
+        log_format = os.getenv("LOG_FORMAT", "simple")
+        logger.setLevel(logging.INFO)
+        
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        
+        if log_format == "json":
+            formatter = CloudWatchTracingFormatter(service_name=service_name)
+        else:
+            formatter = logging.Formatter(
+                fmt="%(levelname)s:     %(asctime)s - %(name)s - [%(filename)s:%(lineno)d] - %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S"
+            )
+        
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
+        
+        # 配置第三方库日志级别
+        # These are handled by shared logging config's _configure_third_party_loggers()
+        # But we can still set them here for extra safety
+        import logging
+        logging.getLogger("uvicorn").setLevel(logging.WARNING)
+        logging.getLogger("httpx").setLevel(logging.WARNING)
+        logging.getLogger("opentelemetry").setLevel(logging.WARNING)
 
 
 def _setup_auto_instrumentation(app: FastAPI) -> None:

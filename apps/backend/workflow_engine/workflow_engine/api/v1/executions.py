@@ -37,8 +37,8 @@ async def execute_workflow(
         # 获取 trace_id
         trace_id = getattr(request_obj.state, 'trace_id', None)
         if trace_id:
-            import logging
-            logger = logging.getLogger(__name__)
+            from shared.logging_config import get_logger
+            logger = get_logger(__name__)
             logger.info(f"Executing workflow with trace_id: {trace_id}")
             
         execution_id = service.execute_workflow(request)

@@ -1,7 +1,6 @@
 import asyncio
 import base64
 import email
-import logging
 import re
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
@@ -14,7 +13,8 @@ from shared.models.trigger import ExecutionResult, TriggerStatus
 from workflow_scheduler.core.config import settings
 from workflow_scheduler.triggers.base import BaseTrigger
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 
 class EmailTrigger(BaseTrigger):

@@ -6,7 +6,6 @@ Handles webhook requests from GitHub, workflow triggers, and other external syst
 import hashlib
 import hmac
 import json
-import logging
 import time
 from typing import Any, Dict, Optional
 
@@ -14,7 +13,8 @@ import httpx
 from app.core.config import get_settings
 from fastapi import APIRouter, Body, Form, Header, HTTPException, Request, Response
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 settings = get_settings()
 
 router = APIRouter()

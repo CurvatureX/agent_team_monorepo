@@ -7,7 +7,6 @@ Enhanced with detailed data collection for Agent debugging.
 """
 
 import asyncio
-import logging
 import time
 import json
 import os
@@ -23,7 +22,8 @@ class EnhancedWorkflowExecutionEngine:
     """Enhanced workflow execution engine with detailed data collection for Agent debugging."""
     
     def __init__(self):
-        self.logger = logging.getLogger(__name__)
+        from shared.logging_config import get_logger
+        self.logger = get_logger(__name__)
         self.factory = get_node_executor_factory()
         
         # Register all default executors

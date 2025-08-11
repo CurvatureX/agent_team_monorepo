@@ -5,7 +5,6 @@ Simplified architecture with automatic gap handling for better user experience
 """
 
 import json
-import logging
 import time
 import uuid
 from typing import List
@@ -27,8 +26,9 @@ from .state import (
     get_current_workflow,
     is_clarification_ready,
 )
+from shared.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class WorkflowAgentNodes:

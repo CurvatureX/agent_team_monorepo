@@ -18,6 +18,9 @@ from fastapi.middleware.cors import CORSMiddleware
 backend_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(backend_dir))
 
+# Import shared logging
+from shared.logging_config import setup_logging
+
 # 遥测组件
 try:
     from shared.telemetry import (  # type: ignore[assignment]
@@ -52,7 +55,11 @@ from workflow_engine.api.v1 import credentials, executions, triggers, workflows
 from workflow_engine.core.config import get_settings
 from workflow_engine.models.database import close_db
 
-logger = logging.getLogger(__name__)
+# Setup unified logging
+logger = setup_logging(
+    service_name="workflow-engine",
+    log_level=os.getenv("LOG_LEVEL", "INFO")
+)
 
 
 settings = get_settings()

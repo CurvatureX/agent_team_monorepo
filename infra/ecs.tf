@@ -202,7 +202,27 @@ resource "aws_ecs_task_definition" "api_gateway" {
         },
         {
           name  = "OTEL_SDK_DISABLED"
-          value = "true"
+          value = "false"
+        },
+        {
+          name  = "OTEL_TRACES_EXPORTER"
+          value = "none"  # 禁用 trace 导出，但保留 tracking_id 生成
+        },
+        {
+          name  = "OTEL_METRICS_EXPORTER"
+          value = "none"  # 禁用 metrics 导出
+        },
+        {
+          name  = "OTEL_LOGS_EXPORTER"
+          value = "none"  # 禁用 logs 导出
+        },
+        {
+          name  = "LOG_LEVEL"
+          value = "INFO"
+        },
+        {
+          name  = "LOG_FORMAT"
+          value = "simple"
         }
       ]
 
@@ -285,7 +305,27 @@ resource "aws_ecs_task_definition" "workflow_engine" {
         },
         {
           name  = "OTEL_SDK_DISABLED"
-          value = "true"
+          value = "false"
+        },
+        {
+          name  = "OTEL_TRACES_EXPORTER"
+          value = "none"  # 禁用 trace 导出，但保留 tracking_id 生成
+        },
+        {
+          name  = "OTEL_METRICS_EXPORTER"
+          value = "none"  # 禁用 metrics 导出
+        },
+        {
+          name  = "OTEL_LOGS_EXPORTER"
+          value = "none"  # 禁用 logs 导出
+        },
+        {
+          name  = "LOG_LEVEL"
+          value = "INFO"
+        },
+        {
+          name  = "LOG_FORMAT"
+          value = "simple"
         }
       ]
 
@@ -421,7 +461,27 @@ resource "aws_ecs_task_definition" "workflow_agent" {
         },
         {
           name  = "OTEL_SDK_DISABLED"
-          value = "true"
+          value = "false"
+        },
+        {
+          name  = "OTEL_TRACES_EXPORTER"
+          value = "none"  # 禁用 trace 导出，但保留 tracking_id 生成
+        },
+        {
+          name  = "OTEL_METRICS_EXPORTER"
+          value = "none"  # 禁用 metrics 导出
+        },
+        {
+          name  = "OTEL_LOGS_EXPORTER"
+          value = "none"  # 禁用 logs 导出
+        },
+        {
+          name  = "LOG_LEVEL"
+          value = "INFO"
+        },
+        {
+          name  = "LOG_FORMAT"
+          value = "simple"
         }
       ]
 
@@ -578,7 +638,27 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
         },
         {
           name  = "OTEL_SDK_DISABLED"
-          value = "true"
+          value = "false"
+        },
+        {
+          name  = "OTEL_TRACES_EXPORTER"
+          value = "none"  # 禁用 trace 导出，但保留 tracking_id 生成
+        },
+        {
+          name  = "OTEL_METRICS_EXPORTER"
+          value = "none"  # 禁用 metrics 导出
+        },
+        {
+          name  = "OTEL_LOGS_EXPORTER"
+          value = "none"  # 禁用 logs 导出
+        },
+        {
+          name  = "LOG_LEVEL"
+          value = "INFO"
+        },
+        {
+          name  = "LOG_FORMAT"
+          value = "simple"
         }
       ]
 

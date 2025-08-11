@@ -26,12 +26,13 @@ for path in possible_paths:
 if shared_path and shared_path not in sys.path:
     sys.path.insert(0, shared_path)
 
-# 工具 - Use custom logging
+# 工具 - Use shared logging
 import logging
+from shared.logging_config import setup_logging
 
 # 遥测组件
 try:
-    from shared.telemetry import (  # type: ignore[assignment]
+    from shared.telemetry import (  # type: ignore[import]
         MetricsMiddleware,
         TrackingMiddleware,
         setup_telemetry,
@@ -39,22 +40,25 @@ try:
 except ImportError:
     # Fallback for tests - create dummy implementations
     print("Warning: Could not import telemetry components, using stubs")
+    
+    from typing import Any, Callable
 
-    def setup_telemetry(*args, **kwargs):  # type: ignore[misc]
+    def setup_telemetry(*args: Any, **kwargs: Any) -> None:
         pass
 
-    class TrackingMiddleware:  # type: ignore[misc]
-        def __init__(self, app):
+    class TrackingMiddleware:
+        def __init__(self, app: Any) -> None:
             self.app = app
 
-        async def __call__(self, scope, receive, send):
+        async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
             await self.app(scope, receive, send)
 
-    class MetricsMiddleware:  # type: ignore[misc]
-        def __init__(self, app, **kwargs):
+    class MetricsMiddleware:
+        def __init__(self, app: Any, **kwargs: Any) -> None:
             self.app = app
+            self.service_name = kwargs.get("service_name", "unknown")
 
-        async def __call__(self, scope, receive, send):
+        async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
             await self.app(scope, receive, send)
 
 
@@ -76,10 +80,15 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-logger = logging.getLogger("app.main")
-
 # 获取配置
 settings = get_settings()
+
+# Setup unified logging
+logger = setup_logging(
+    service_name="api-gateway",
+    log_level=settings.LOG_LEVEL,
+    log_format=None  # Will use LOG_FORMAT env var
+)
 
 
 def create_application() -> FastAPI:
@@ -158,11 +167,11 @@ def create_application() -> FastAPI:
     # 注册中间件（顺序很重要）
     # 1. 追踪中间件（最外层，为每个请求生成 tracking_id）
     if not otel_disabled:
-        app.add_middleware(TrackingMiddleware)  # type: ignore
+        app.add_middleware(TrackingMiddleware)  # type: ignore[arg-type]
 
     # 2. 指标收集中间件
     if not otel_disabled:
-        app.add_middleware(MetricsMiddleware, service_name="api-gateway")  # type: ignore
+        app.add_middleware(MetricsMiddleware, service_name="api-gateway")  # type: ignore[arg-type]
 
     # 3. 限流中间件
     app.middleware("http")(rate_limit_middleware)
@@ -189,8 +198,8 @@ async def request_logging_middleware(request: Request, call_next):
     """请求日志中间件"""
     start_time = time.time()
 
-    # 生成请求ID（作为 trace_id）
-    trace_id = f"{int(time.time() * 1000)}-{hash(str(request.url)) % 10000:04d}"
+    # 使用 OpenTelemetry 生成的 tracking_id（如果有）
+    trace_id = getattr(request.state, 'tracking_id', 'no-trace')
     request.state.request_id = trace_id
     request.state.trace_id = trace_id  # 同时存储为 trace_id
 
@@ -202,7 +211,10 @@ async def request_logging_middleware(request: Request, call_next):
         if request.client
         else "unknown"
     )
-    logger.info(f"📨 {request.method} {request.url.path} [Trace:{trace_id}] [IP:{client_ip}]")
+    logger.info(
+        f"{request.method} {request.url.path} [IP:{client_ip}]",
+        extra={"tracking_id": trace_id}
+    )
 
     # 处理请求
     response = await call_next(request)
@@ -216,7 +228,8 @@ async def request_logging_middleware(request: Request, call_next):
 
     # 记录响应
     logger.info(
-        f"📤 {request.method} {request.url.path} -> {response.status_code} [{round(process_time * 1000, 2)}ms] [Trace:{trace_id}]"
+        f"{request.method} {request.url.path} -> {response.status_code} [{round(process_time * 1000, 2)}ms]",
+        extra={"tracking_id": trace_id}
     )
 
     return response
@@ -260,7 +273,7 @@ def register_routes(app: FastAPI) -> None:
         },
     )
 
-    logger.info("✅ API routes registered")
+    logger.info("API routes registered")
 
 
 def register_common_routes(app: FastAPI) -> None:
@@ -304,7 +317,7 @@ def register_common_routes(app: FastAPI) -> None:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
-    logger.info("✅ Common routes registered")
+    logger.info("Common routes registered")
 
 
 # 创建应用实例
@@ -314,9 +327,9 @@ app = create_application()
 if __name__ == "__main__":
     import uvicorn
 
-    logger.info(f"🚀 Starting {settings.APP_NAME} v{settings.VERSION}")
-    logger.info(f"🌍 Environment: {settings.ENVIRONMENT}")
-    logger.info(f"🐛 Debug mode: {settings.DEBUG}")
+    logger.info(f"Starting {settings.APP_NAME} v{settings.VERSION}")
+    logger.info(f"Environment: {settings.ENVIRONMENT}")
+    logger.info(f"Debug mode: {settings.DEBUG}")
 
     uvicorn.run(
         "app.main:app",
@@ -324,7 +337,7 @@ if __name__ == "__main__":
         port=settings.PORT,
         reload=settings.RELOAD and settings.DEBUG,
         log_level=settings.LOG_LEVEL.lower(),
-        access_log=False,  # 我们使用自己的请求日志中间件
+        access_log=True,  # Enable access log for CloudWatch
         server_header=False,
         date_header=False,
     )

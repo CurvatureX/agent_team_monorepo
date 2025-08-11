@@ -1,5 +1,4 @@
 import asyncio
-import logging
 import time
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Optional
@@ -8,7 +7,8 @@ import redis.asyncio as redis
 
 from workflow_scheduler.core.config import settings
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 
 class DistributedLockManager:

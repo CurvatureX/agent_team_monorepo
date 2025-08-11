@@ -4,7 +4,6 @@ Validation Service - 工作流验证和调试服务.
 This module implements workflow validation and debugging operations with ConnectionsMap support.
 """
 
-import logging
 from typing import Dict, Any, List, Set
 
 import grpc
@@ -22,7 +21,8 @@ except ImportError:
     NodeExecutionContext = None
     ExecutionStatus = None
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 settings = get_settings()
 
 

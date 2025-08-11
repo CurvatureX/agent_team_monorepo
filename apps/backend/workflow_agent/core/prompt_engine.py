@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import Any, Dict, Tuple
 
 from jinja2 import Environment, FileSystemLoader
-import logging
+from shared.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def tojsonpretty(value):

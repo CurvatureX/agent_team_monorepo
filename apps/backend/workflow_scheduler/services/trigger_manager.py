@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from typing import Any, Dict, List, Optional
 
 from shared.models.trigger import ExecutionResult, TriggerSpec, TriggerStatus, TriggerType
@@ -8,7 +7,8 @@ from workflow_scheduler.services.lock_manager import DistributedLockManager
 from workflow_scheduler.services.notification_service import NotificationService
 from workflow_scheduler.triggers.base import BaseTrigger
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 
 class TriggerManager:

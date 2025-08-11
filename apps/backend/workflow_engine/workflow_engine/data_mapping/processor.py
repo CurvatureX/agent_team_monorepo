@@ -4,7 +4,8 @@ Data Mapping Processor
 Core processor for executing data transformations between workflow nodes.
 """
 
-import logging
+from shared.logging_config import get_logger
+
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -83,7 +84,7 @@ class DataMappingProcessor:
         self.script_engine = ScriptEngine()
         self.jsonpath_parser = JSONPathParser()
         self.function_registry = FunctionRegistry()
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
 
     def transform_data(
         self,

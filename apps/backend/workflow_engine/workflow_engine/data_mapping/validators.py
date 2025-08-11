@@ -4,7 +4,8 @@ Data Mapping Validators
 Validation logic for data mapping configurations and compatibility.
 """
 
-import logging
+from shared.logging_config import get_logger
+
 from typing import Any, Dict, List, Optional
 
 from .exceptions import ValidationError
@@ -15,7 +16,7 @@ class DataMappingValidator:
     """Validator for data mapping configurations."""
 
     def __init__(self):
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
 
     def validate_mapping_configuration(
         self, source_node: Any, target_node: Any, connection

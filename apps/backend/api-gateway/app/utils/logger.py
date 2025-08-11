@@ -1,83 +1,36 @@
 """
-Enhanced logging utility using Python standard library
-Compatible with the new core.logging system
+Enhanced logging utility using shared logging configuration
+Compatible with the unified logging system
 """
 
-import logging
 import sys
 from typing import Optional
+import logging
+
+# Import from shared logging configuration
+from shared.logging_config import get_logger as shared_get_logger, setup_logging as shared_setup_logging
 
 
 def setup_logger(name: str = "api-gateway", level: Optional[str] = None) -> logging.Logger:
     """
-    Setup logger with consistent formatting
-
+    Setup logger using shared configuration
+    
     Args:
         name: Logger name
         level: Log level (DEBUG, INFO, WARNING, ERROR). If None, uses config setting
-
+        
     Returns:
         Configured logger instance
     """
-    # Create logger
-    logger = logging.getLogger(name)
-
-    # Avoid duplicate handlers
-    if logger.handlers:
-        return logger
-
-    # Get level and format from config if not provided
-    if level is None:
-        try:
-            from app.core.config import get_settings
-
-            settings = get_settings()
-            level = settings.LOG_LEVEL
-            log_format = settings.LOG_FORMAT
-        except ImportError:
-            try:
-                # Fallback to old config location
-                from app.config import settings
-
-                level = settings.LOG_LEVEL
-                log_format = settings.LOG_FORMAT
-            except ImportError:
-                level = "INFO"
-                log_format = "standard"
-    else:
-        log_format = "standard"
-
-    # Set level
-    logger.setLevel(getattr(logging, level.upper(), logging.INFO))
-
-    # Create console handler with formatting
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(getattr(logging, level.upper(), logging.INFO))
-
-    # Create formatter based on format preference
-    if log_format == "json":
-        # JSON format for structured logging
-        formatter = logging.Formatter(
-            fmt='{"timestamp": "%(asctime)s", "level": "%(levelname)s", "file": "%(filename)s", "line": %(lineno)d, "function": "%(funcName)s", "message": "%(message)s"}',
-            datefmt="%Y-%m-%d %H:%M:%S",
+    # Use shared setup_logging if this is the main logger
+    if name == "api-gateway":
+        return shared_setup_logging(
+            service_name=name,
+            log_level=level or "INFO"
         )
-    elif log_format == "simple":
-        # Simple format for development
-        formatter = logging.Formatter(fmt="%(levelname)s - %(message)s")
-    else:
-        # Standard format with file, line, and function info
-        formatter = logging.Formatter(
-            fmt="%(asctime)s [%(levelname)s] %(filename)s:%(lineno)d:%(funcName)s - %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        )
-
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-
-    # Prevent propagation to avoid duplicate logs
-    logger.propagate = False
-
-    return logger
+    
+    # For other loggers, just get from shared
+    return shared_get_logger(name)
 
 
 # Global logger instance
@@ -86,22 +39,22 @@ _logger: Optional[logging.Logger] = None
 
 def get_logger(name: Optional[str] = None) -> logging.Logger:
     """
-    Get or create a logger instance
-
+    Get or create a logger instance using shared configuration
+    
     Args:
         name: Logger name, defaults to calling module name or global logger
-
+        
     Returns:
         Configured logger instance
     """
     if name is not None:
-        # Return named logger (compatible with new core system)
-        return logging.getLogger(name)
-
+        # Return named logger using shared configuration
+        return shared_get_logger(name)
+    
     # Backward compatibility: return global logger
     global _logger
     if _logger is None:
-        _logger = setup_logger()
+        _logger = shared_get_logger("api-gateway")
     return _logger
 
 

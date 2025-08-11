@@ -3,7 +3,6 @@ Google Calendar API适配器
 实现Google Calendar API的统一调用接口
 """
 
-import logging
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional
 from urllib.parse import urlencode
@@ -11,7 +10,8 @@ import json
 
 from .base import APIAdapter, OAuth2Config, PermanentError, TemporaryError, ValidationError, register_adapter
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 
 @register_adapter("google_calendar")

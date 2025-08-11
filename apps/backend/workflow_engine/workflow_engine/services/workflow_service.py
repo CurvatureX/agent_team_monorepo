@@ -5,7 +5,6 @@ This module implements workflow-related operations: Create, Read, Update, Delete
 """
 
 import json
-import logging
 import sys
 import uuid
 from datetime import datetime
@@ -30,7 +29,8 @@ from workflow_engine.models import NodeTemplateModel, WorkflowModel
 from workflow_engine.utils.node_id_generator import NodeIdGenerator
 from workflow_engine.utils.workflow_validator import WorkflowValidator
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 settings = get_settings()
 
 

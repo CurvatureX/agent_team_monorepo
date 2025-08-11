@@ -20,10 +20,20 @@ import logging
 
 import uvicorn
 
+# Add shared to path for logging module
+shared_path = Path(__file__).parent.parent / "shared"
+if str(shared_path) not in sys.path:
+    sys.path.insert(0, str(shared_path))
+
+from shared.logging_config import setup_logging
 from workflow_agent.core.config import settings
 from workflow_agent.services.fastapi_server import app
 
-logger = logging.getLogger(__name__)
+# Setup unified logging
+logger = setup_logging(
+    service_name="workflow-agent",
+    log_level=os.getenv("LOG_LEVEL", "INFO")
+)
 
 
 class FastAPIServer:
@@ -38,10 +48,10 @@ class FastAPIServer:
             port = settings.FASTAPI_PORT
             host = settings.HOST
 
-            logger.info("🚀 Starting Workflow Agent FastAPI Server")
-            logger.info(f"   Address: http://{host}:{port}")
-            logger.info(f"   Docs: http://{host}:{port}/docs")
-            logger.info(f"   Health Check: http://{host}:{port}/health")
+            logger.info("Starting Workflow Agent FastAPI Server")
+            logger.info(f"Address: http://{host}:{port}")
+            logger.info(f"Docs: http://{host}:{port}/docs")
+            logger.info(f"Health Check: http://{host}:{port}/health")
 
             # 在 Docker 环境中禁用 reload 模式
             reload_mode = os.getenv("DEBUG", "false").lower() == "true" and not os.path.exists(

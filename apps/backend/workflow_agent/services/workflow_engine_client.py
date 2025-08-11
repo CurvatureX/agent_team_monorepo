@@ -3,15 +3,15 @@ Workflow Engine Client for API integration
 Handles communication with the workflow_engine service
 """
 
-import logging
 from typing import Dict, Any, Optional
 import httpx
 from httpx import AsyncClient, Response
 import json
 
 from workflow_agent.core.config import settings
+from shared.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class WorkflowEngineClient:

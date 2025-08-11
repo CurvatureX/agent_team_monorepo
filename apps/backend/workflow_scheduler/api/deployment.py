@@ -1,4 +1,3 @@
-import logging
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,7 +7,8 @@ from shared.models.trigger import DeploymentResult, DeploymentStatus
 from workflow_scheduler.dependencies import get_deployment_service
 from workflow_scheduler.services.deployment_service import DeploymentService
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/deployment", tags=["deployment"])
 

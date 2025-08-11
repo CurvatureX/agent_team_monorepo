@@ -4,7 +4,6 @@ GitHub API Adapter
 支持issues、pull requests、comments等操作
 """
 
-import logging
 from typing import Dict, Any, Optional
 import json
 
@@ -18,7 +17,8 @@ from .base import (
     register_adapter
 )
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 
 @register_adapter("github")

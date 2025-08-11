@@ -3,7 +3,6 @@ Notification service for workflow_scheduler
 Sends Slack notifications when triggers are activated
 """
 
-import logging
 import os
 import sys
 from datetime import datetime
@@ -16,7 +15,8 @@ from shared.models.trigger import ExecutionResult
 from shared.sdks.slack_sdk import SlackAPIError, SlackBlockBuilder, SlackWebClient
 from workflow_scheduler.core.config import settings
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 
 class NotificationService:

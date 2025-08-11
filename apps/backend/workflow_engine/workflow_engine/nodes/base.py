@@ -3,7 +3,6 @@ Base classes for node executors.
 """
 
 import json
-import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
@@ -99,7 +98,8 @@ class BaseNodeExecutor(ABC):
     """Base class for all node executors."""
 
     def __init__(self, subtype: Optional[str] = None):
-        self.logger = logging.getLogger(self.__class__.__name__)
+        from shared.logging_config import get_logger
+        self.logger = get_logger(self.__class__.__name__)
         self._subtype = subtype  # Set subtype first
         self.spec = self._get_node_spec()  # Now _subtype is available
         self.data_mapper = DataMappingProcessor() if DataMappingProcessor else None

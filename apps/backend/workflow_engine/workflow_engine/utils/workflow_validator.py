@@ -4,14 +4,14 @@ Workflow Validator - 共享的工作流验证逻辑.
 This module provides shared validation logic for both ValidationService and EnhancedWorkflowExecutionEngine.
 """
 
-import logging
 from collections import defaultdict, deque
 from typing import Any, Dict, List, Optional, Set
 
 from ..nodes.factory import get_node_executor_factory
 from .node_id_generator import NodeIdGenerator
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 
 class WorkflowValidator:

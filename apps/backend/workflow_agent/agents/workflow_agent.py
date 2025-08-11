@@ -4,13 +4,13 @@ Implements 3 core nodes: Clarification, Workflow Generation, and Debug
 """
 from langgraph.graph import END, StateGraph
 
-import logging
 from .nodes import WorkflowAgentNodes
 from .state import (
     WorkflowState,
 )
+from shared.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class WorkflowAgent:
     """

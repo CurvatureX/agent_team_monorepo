@@ -5,14 +5,14 @@ This module implements the Slack trigger for workflow_scheduler,
 supporting various Slack events like messages, mentions, reactions, etc.
 """
 
-import logging
 import re
 from typing import Any, Dict, List, Optional
 
 from shared.models.trigger import ExecutionResult, TriggerStatus
 from workflow_scheduler.triggers.base import BaseTrigger
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 
 class SlackTrigger(BaseTrigger):

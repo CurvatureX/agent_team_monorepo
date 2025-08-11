@@ -8,7 +8,6 @@ and token validation.
 
 import asyncio
 import json
-import logging
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
@@ -16,7 +15,8 @@ from typing import Any, Dict, List, Optional, Union
 from app.core.config import settings
 from app.core.database import RedisOperations, get_redis_manager
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 
 class CacheKey(Enum):

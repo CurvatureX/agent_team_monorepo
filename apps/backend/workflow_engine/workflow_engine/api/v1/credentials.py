@@ -2,7 +2,6 @@
 Credentials API endpoints for OAuth2 credential management
 """
 
-import logging
 from typing import Dict, Any
 
 from fastapi import APIRouter, HTTPException, Depends
@@ -11,7 +10,8 @@ from pydantic import BaseModel
 from workflow_engine.models.database import get_db_session
 from workflow_engine.services.oauth2_service_lite import OAuth2ServiceLite
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 router = APIRouter()
 

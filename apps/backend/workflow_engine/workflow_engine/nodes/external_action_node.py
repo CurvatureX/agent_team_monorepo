@@ -7,7 +7,6 @@ like GitHub, Google Calendar, Trello, Slack, etc.
 
 import asyncio
 import json
-import logging
 import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
@@ -30,7 +29,8 @@ try:
     from ..services.api_adapters.google_calendar import GoogleCalendarAdapter
     from ..services.api_call_logger import get_api_call_logger, APICallTracker
 except ImportError as e:
-    logging.warning(f"Failed to import API adapters or logger: {e}")
+    from shared.logging_config import get_logger
+    get_logger(__name__).warning(f"Failed to import API adapters or logger: {e}")
     get_adapter = None
     register_adapter = None
     OAuth2ServiceLite = None
@@ -70,7 +70,8 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         """
         super().__init__(subtype=subtype)
         self.oauth2_service = oauth2_service
-        self.logger = logging.getLogger(__name__)
+        from shared.logging_config import get_logger
+        self.logger = get_logger(__name__)
         
         # Initialize new shared SDKs
         self._sdks = {}

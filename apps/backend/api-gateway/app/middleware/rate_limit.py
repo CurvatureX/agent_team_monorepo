@@ -18,9 +18,9 @@ from typing import Any, Dict, Optional
 from app.core.config import get_settings
 
 settings = get_settings()
-import logging
 
-logger = logging.getLogger("app.middleware.rate_limit")
+from shared.logging_config import get_logger
+logger = get_logger("app.middleware.rate_limit")
 from fastapi import HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 

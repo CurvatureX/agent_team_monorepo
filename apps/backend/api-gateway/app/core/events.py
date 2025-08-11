@@ -35,10 +35,10 @@ async def startup_event(app: FastAPI) -> None:
 
     settings = get_settings()
 
-    logger.info("🚀 Starting API Gateway...")
-    logger.info(f"📊 Environment: {settings.ENVIRONMENT}")
-    logger.info(f"🐛 Debug mode: {settings.DEBUG}")
-    logger.info(f"🌐 Version: {settings.VERSION}")
+    logger.info("Starting API Gateway...")
+    logger.info(f"Environment: {settings.ENVIRONMENT}")
+    logger.info(f"Debug mode: {settings.DEBUG}")
+    logger.info(f"Version: {settings.VERSION}")
 
     # 初始化数据库连接
     await initialize_database_connections()
@@ -50,7 +50,7 @@ async def startup_event(app: FastAPI) -> None:
     app.state.settings = settings
     app.state.db_manager = get_database_manager()
 
-    logger.info("✅ API Gateway startup completed successfully")
+    logger.info("API Gateway startup completed successfully")
 
 
 async def shutdown_event(app: FastAPI) -> None:
@@ -65,7 +65,7 @@ async def shutdown_event(app: FastAPI) -> None:
     # 清理其他资源
     await cleanup_resources(app)
 
-    logger.info("✅ API Gateway shutdown completed")
+    logger.info("API Gateway shutdown completed")
 
 
 async def initialize_database_connections() -> None:
@@ -87,29 +87,29 @@ async def initialize_database_connections() -> None:
         try:
             redis_client = await db_manager.get_redis_client()
         except Exception as redis_e:
-            logger.warning(f"⚠️ Redis connection failed: {redis_e}")
+            logger.warning(f"Redis connection failed: {redis_e}")
 
         # 记录连接状态
         connections_status = []
         if supabase_client:
-            connections_status.append("✅ Supabase (user)")
+            connections_status.append("Supabase (user): OK")
         else:
-            connections_status.append("❌ Supabase (user)")
+            connections_status.append("Supabase (user): FAILED")
 
         if supabase_admin_client:
-            connections_status.append("✅ Supabase (admin)")
+            connections_status.append("Supabase (admin): OK")
         else:
-            connections_status.append("❌ Supabase (admin)")
+            connections_status.append("Supabase (admin): FAILED")
 
         if redis_client:
-            connections_status.append("✅ Redis")
+            connections_status.append("Redis: OK")
         else:
-            connections_status.append("❌ Redis")
+            connections_status.append("Redis: FAILED")
 
-        logger.info(f"🔗 Database connections: {', '.join(connections_status)}")
+        logger.info(f"Database connections: {', '.join(connections_status)}")
 
     except Exception as e:
-        logger.warning(f"⚠️ Database connections initialization completed with warnings: {e}")
+        logger.warning(f"Database connections initialization completed with warnings: {e}")
         # Don't raise - allow app to start with degraded functionality
 
 
@@ -130,28 +130,28 @@ async def perform_startup_health_checks() -> None:
 
         # 检查Supabase配置
         if settings.SUPABASE_URL and settings.SUPABASE_URL != "https://your-project-id.supabase.co":
-            critical_services.append("✅ Supabase configured")
+            critical_services.append("Supabase: CONFIGURED")
         else:
-            critical_services.append("⚠️ Supabase not configured")
+            critical_services.append("Supabase: NOT CONFIGURED")
 
         # 检查Redis配置
         if health_status.get("redis"):
-            critical_services.append("✅ Redis available")
+            critical_services.append("Redis: AVAILABLE")
         else:
-            critical_services.append("⚠️ Redis not available")
+            critical_services.append("Redis: NOT AVAILABLE")
 
         # 检查认证配置
         if settings.SUPABASE_AUTH_ENABLED and settings.SUPABASE_SECRET_KEY:
-            critical_services.append("✅ Authentication configured")
+            critical_services.append("Authentication: CONFIGURED")
         else:
-            critical_services.append("⚠️ Authentication not fully configured")
+            critical_services.append("Authentication: NOT FULLY CONFIGURED")
 
-        logger.info(f"🔍 Service checks: {', '.join(critical_services)}")
+        logger.info(f"Service checks: {', '.join(critical_services)}")
 
         # 警告检查
         warnings = []
         if settings.DEBUG and settings.is_production():
-            warnings.append("🚨 DEBUG mode enabled in production environment")
+            warnings.append("WARNING: DEBUG mode enabled in production environment")
 
         if not settings.SUPABASE_SECRET_KEY:
             warnings.append("🚨 Supabase secret key not configured")
@@ -161,9 +161,9 @@ async def perform_startup_health_checks() -> None:
                 logger.warning(warning)
 
     except Exception as e:
-        logger.error(f"❌ Startup health check failed: {e}")
+        logger.error(f"Startup health check failed: {e}")
         # 不要阻止启动，只是记录警告
-        logger.warning("⚠️ Continuing startup despite health check failures")
+        logger.warning("Continuing startup despite health check failures")
 
 
 async def cleanup_database_connections(app: FastAPI) -> None:
@@ -172,10 +172,10 @@ async def cleanup_database_connections(app: FastAPI) -> None:
 
     try:
         if hasattr(app.state, "db_manager"):
-            app.state.db_manager.close_connections()
-            logger.info("✅ Database connections cleaned up")
+            await app.state.db_manager.close_connections()
+            logger.info("Database connections cleaned up")
     except Exception as e:
-        logger.error(f"❌ Error cleaning up database connections: {e}")
+        logger.error(f"Error cleaning up database connections: {e}")
 
 
 async def cleanup_resources(app: FastAPI) -> None:
@@ -195,10 +195,10 @@ async def cleanup_resources(app: FastAPI) -> None:
             logger.info(f"⏳ Waiting for {len(pending_tasks)} pending tasks to complete...")
             await asyncio.gather(*pending_tasks, return_exceptions=True)
 
-        logger.info("✅ Resources cleanup completed")
+        logger.info("Resources cleanup completed")
 
     except Exception as e:
-        logger.error(f"❌ Error during resource cleanup: {e}")
+        logger.error(f"Error during resource cleanup: {e}")
 
 
 # 用于手动触发的健康检查函数
@@ -245,7 +245,7 @@ async def health_check() -> dict:
         return health_info
 
     except Exception as e:
-        logger.error(f"❌ Health check failed: {e}")
+        logger.error(f"Health check failed: {e}")
         return {
             "service": "API Gateway",
             "version": settings.VERSION,

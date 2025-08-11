@@ -1,4 +1,3 @@
-import logging
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -6,7 +5,8 @@ from typing import Any, Dict, List, Optional
 from shared.models.trigger import DeploymentResult, DeploymentStatus, TriggerSpec, TriggerType
 from workflow_scheduler.services.trigger_index_manager import TriggerIndexManager
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 
 class DeploymentService:

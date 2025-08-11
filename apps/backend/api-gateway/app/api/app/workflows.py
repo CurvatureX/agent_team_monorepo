@@ -3,7 +3,6 @@ Workflow API endpoints with authentication and enhanced gRPC client integration
 支持认证的工作流API端点
 """
 
-import logging
 from typing import Optional
 
 from app.core.config import get_settings
@@ -29,7 +28,8 @@ from app.services.workflow_scheduler_http_client import get_workflow_scheduler_c
 # Node converter no longer needed - using unified models directly
 from fastapi import APIRouter, Depends, HTTPException
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 router = APIRouter()
 
 

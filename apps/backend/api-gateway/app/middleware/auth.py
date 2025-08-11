@@ -11,11 +11,11 @@ from typing import Any, Dict, List, Optional
 from app.core.config import get_settings
 
 settings = get_settings()
-import logging
 
 from app.services.auth_service import verify_supabase_token
 
-logger = logging.getLogger("app.middleware.auth")
+from shared.logging_config import get_logger
+logger = get_logger("app.middleware.auth")
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 

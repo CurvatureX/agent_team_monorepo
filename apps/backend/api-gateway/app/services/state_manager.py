@@ -14,9 +14,9 @@ import time
 from typing import Any, Dict, List, Optional
 
 from app.core.database import create_user_supabase_client, get_supabase_admin
-import logging
 
-logger = logging.getLogger("app.services.state_manager")
+from shared.logging_config import get_logger
+logger = get_logger("app.services.state_manager")
 
 
 class WorkflowStateManager:

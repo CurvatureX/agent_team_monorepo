@@ -5,7 +5,6 @@ Provides APIs for querying node specifications, validating workflows,
 and testing data mappings.
 """
 
-import logging
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
@@ -17,7 +16,8 @@ from workflow_engine.workflow_engine.data_mapping import DataMappingProcessor
 from workflow_engine.workflow_engine.data_mapping.context import ExecutionContext
 from workflow_engine.workflow_engine.data_mapping.processor import DataMapping, MappingType
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 router = APIRouter(prefix="/node-specs", tags=["Node Specifications"])
 
 

@@ -105,10 +105,13 @@ services:
       PYTHONUNBUFFERED: "1"
       REDIS_URL: "redis://redis:6379/0"
       SERVICE_NAME: "workflow-agent"
+      # Logging configuration for CloudWatch
+      LOG_LEVEL: "INFO"
+      LOG_FORMAT: "simple"
       # Workflow Engine URL for debug node integration
       WORKFLOW_ENGINE_URL: "http://workflow-engine:8002"
       # OpenTelemetry configuration
-      # OTEL_SDK_DISABLED: "true"
+      OTEL_SDK_DISABLED: "false"  # 启用 OpenTelemetry 以生成全局 tracking_id
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
       OTEL_EXPORTER_OTLP_INSECURE: "true"
       OTEL_SERVICE_NAME: "workflow-agent"
@@ -151,8 +154,11 @@ services:
       PYTHONUNBUFFERED: "1"
       REDIS_URL: "redis://redis:6379/0"
       SERVICE_NAME: "workflow-engine"
+      # Logging configuration for CloudWatch
+      LOG_LEVEL: "INFO"
+      LOG_FORMAT: "simple"
       # OpenTelemetry configuration
-      # OTEL_SDK_DISABLED: "true"
+      OTEL_SDK_DISABLED: "false"  # 启用 OpenTelemetry 以生成全局 tracking_id
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
       OTEL_EXPORTER_OTLP_INSECURE: "true"
       OTEL_SERVICE_NAME: "workflow-engine"
@@ -194,6 +200,9 @@ services:
       PYTHONUNBUFFERED: "1"
       redis_url: "redis://redis:6379/1"  # Use different Redis DB
       SERVICE_NAME: "workflow-scheduler"
+      # Logging configuration for CloudWatch
+      LOG_LEVEL: "INFO"
+      LOG_FORMAT: "simple"
       # Service URLs for internal communication
       WORKFLOW_ENGINE_URL: "http://workflow-engine:8002"
       API_GATEWAY_URL: "http://api-gateway:8000"
@@ -239,8 +248,11 @@ services:
       - WORKFLOW_SCHEDULER_HTTP_PORT=8003
 
       - USE_HTTP_CLIENT=true
+      # Logging configuration for CloudWatch
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=simple
       # OpenTelemetry configuration
-      # - OTEL_SDK_DISABLED=true
+      - OTEL_SDK_DISABLED=false  # 启用 OpenTelemetry
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
       - OTEL_EXPORTER_OTLP_INSECURE=true
       - OTEL_SERVICE_NAME=api-gateway

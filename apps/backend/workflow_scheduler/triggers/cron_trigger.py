@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -10,7 +9,8 @@ from apscheduler.triggers.cron import CronTrigger as APCronTrigger
 from shared.models.trigger import TriggerStatus
 from workflow_scheduler.triggers.base import BaseTrigger
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 
 class CronTrigger(BaseTrigger):

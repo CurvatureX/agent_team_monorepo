@@ -1,4 +1,3 @@
-import logging
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List
@@ -7,7 +6,8 @@ from shared.models.trigger import ExecutionResult, TriggerStatus
 from workflow_scheduler.core.config import settings
 from workflow_scheduler.triggers.base import BaseTrigger
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 
 class WebhookTrigger(BaseTrigger):

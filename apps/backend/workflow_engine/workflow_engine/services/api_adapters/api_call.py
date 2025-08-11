@@ -4,7 +4,6 @@ Generic API Call Adapter
 支持任意REST API调用，包含多种认证方式
 """
 
-import logging
 from typing import Dict, Any, Optional
 import json
 
@@ -18,7 +17,8 @@ from .base import (
     register_adapter
 )
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 
 @register_adapter("api_call")

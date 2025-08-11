@@ -51,9 +51,9 @@ async def create_workflow(
         # 获取 trace_id
         trace_id = request_obj.headers.get("x-trace-id") or request_obj.headers.get("X-Trace-ID")
         if trace_id:
-            import logging
+            from shared.logging_config import get_logger
 
-            logger = logging.getLogger(__name__)
+            logger = get_logger(__name__)
             logger.info(f"Creating workflow with trace_id: {trace_id}")
 
         workflow = service.create_workflow_from_data(request)

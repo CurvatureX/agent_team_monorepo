@@ -3,7 +3,6 @@ User Service - 用户管理服务
 自动处理用户创建和验证
 """
 
-import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -11,7 +10,8 @@ from typing import Optional
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 
 class UserService:

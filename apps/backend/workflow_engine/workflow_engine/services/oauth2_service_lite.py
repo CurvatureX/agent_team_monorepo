@@ -5,7 +5,6 @@
 
 import asyncio
 import json
-import logging
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional
@@ -19,7 +18,8 @@ from .credential_encryption import CredentialEncryption
 from .user_service import UserService
 from ..models.database import get_db_session
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -45,7 +45,7 @@ class OAuth2ServiceLite:
             db_session: 数据库会话
         """
         self.db = db_session
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger
         self.user_service = UserService(db_session)
         
         # 初始化加密服务

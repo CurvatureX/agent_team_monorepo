@@ -2,7 +2,6 @@
 Base classes and utilities for API adapters.
 """
 
-import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Dict, Any, Optional, List
@@ -10,7 +9,8 @@ import httpx
 from enum import Enum
 
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 
 class APIError(Exception):
@@ -84,7 +84,8 @@ class APIAdapter(ABC):
     """Base class for all API adapters."""
     
     def __init__(self, **kwargs):
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.from shared.logging_config import get_logger
+logger = get_logger(self.__class__.__name__)
         self._http_client = httpx.AsyncClient()
     
     @abstractmethod

@@ -3,14 +3,14 @@ Workflow Agent State Manager
 在 workflow_agent 服务中管理 workflow_agent_state 的 CRUD 操作
 """
 
-import logging
 import time
 from typing import Any, Dict, Optional
 
 from workflow_agent.core.config import settings
 from workflow_agent.models.workflow_agent_state import WorkflowAgentStateModel, WorkflowStageEnum
+from shared.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Import Supabase client
 try:

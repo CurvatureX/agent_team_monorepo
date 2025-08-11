@@ -5,7 +5,6 @@ This module implements the core trigger reverse lookup and matching mechanism
 according to the workflow-scheduler architecture specification.
 """
 
-import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -18,7 +17,8 @@ from shared.models.trigger import ExecutionResult
 from shared.models.trigger_index import GitHubWebhookEvent, TriggerIndex
 from workflow_scheduler.core.config import settings
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 
 class EventRouter:

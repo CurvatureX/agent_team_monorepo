@@ -7,16 +7,15 @@ FastAPI 中间件 - 追踪和指标收集
 """
 
 import time
-import logging
 from typing import Callable
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from opentelemetry import trace
 from .metrics import get_metrics
+from shared.logging_config import get_logger
 
-
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class TrackingMiddleware(BaseHTTPMiddleware):

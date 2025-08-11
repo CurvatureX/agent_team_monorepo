@@ -5,7 +5,6 @@ This runs alongside the gRPC server to provide REST API endpoints
 for node specifications and workflow validation.
 """
 
-import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -15,7 +14,8 @@ from shared.node_specs import node_spec_registry
 from workflow_engine.workflow_engine.api.node_specs import router as node_specs_router
 from workflow_engine.workflow_engine.core.config import get_settings
 
-logger = logging.getLogger(__name__)
+from shared.logging_config import get_logger
+logger = get_logger(__name__)
 
 
 @asynccontextmanager

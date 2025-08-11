@@ -3,10 +3,10 @@
 处理不同stage的响应格式转换
 """
 
-import logging
 from typing import Dict, Any, Optional, List
 
-logger = logging.getLogger("app.services.response_processor")
+from shared.logging_config import get_logger
+logger = get_logger("app.services.response_processor")
 
 
 class UnifiedResponseProcessor:

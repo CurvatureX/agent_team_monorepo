@@ -2,7 +2,6 @@
 Base SDK classes and utilities for external API integrations.
 """
 
-import logging
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -75,7 +74,8 @@ class BaseSDK(ABC):
     """Base class for all external API SDKs."""
     
     def __init__(self, **kwargs):
-        self.logger = logging.getLogger(self.__class__.__name__)
+        from shared.logging_config import get_logger
+        self.logger = get_logger(self.__class__.__name__)
         self._http_client = httpx.AsyncClient(timeout=30.0)
         self.provider_name = self.__class__.__name__.replace('SDK', '').lower()
         
