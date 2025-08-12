@@ -83,7 +83,8 @@ class CleanChatTester:
                 "Accept": "text/event-stream"
             },
             json={"session_id": self.session_id, "user_message": message},
-            stream=True
+            stream=True,
+            timeout=120  # 2 minute timeout for workflow generation
         ) as response:
             
             if response.status_code != 200:

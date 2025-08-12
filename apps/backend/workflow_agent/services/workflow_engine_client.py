@@ -121,7 +121,8 @@ class WorkflowEngineClient:
                 if session_id:
                     request_data["session_id"] = session_id
                 
-                logger.info(f"Creating workflow in engine: {request_data}")
+                logger.info(f"Creating workflow in engine - Total nodes: {len(request_data.get('nodes', []))}")
+                logger.info(f"📦 Full Workflow Creation Request: {json.dumps(request_data, indent=2)}")
                 
                 response = await client.post(
                     f"{self.base_url}/v1/workflows",
@@ -179,6 +180,7 @@ class WorkflowEngineClient:
                 }
                 
                 logger.info(f"Executing workflow: {workflow_id}")
+                logger.info(f"📦 Execute Request Data: {json.dumps(request_data, indent=2)}")
                 
                 response = await client.post(
                     f"{self.base_url}/v1/workflows/{workflow_id}/execute",
