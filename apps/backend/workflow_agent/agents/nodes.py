@@ -263,8 +263,22 @@ class WorkflowAgentNodes:
 
             messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
 
-            # Use OpenAI with JSON response format
-            response = await self.llm.ainvoke(messages, response_format={"type": "json_object"})
+            # Log the model being used
+            logger.info(f"Using model: {settings.DEFAULT_MODEL_NAME}")
+            
+            # Try to use response_format, fall back if not supported
+            try:
+                response = await self.llm.ainvoke(messages, response_format={"type": "json_object"})
+                logger.info("Successfully used response_format for JSON output")
+            except Exception as format_error:
+                if "response_format" in str(format_error):
+                    logger.warning(f"Model doesn't support response_format, falling back to standard call: {format_error}")
+                    # Add JSON instruction to the prompt
+                    messages.append(HumanMessage(content="Please respond in valid JSON format."))
+                    response = await self.llm.ainvoke(messages)
+                else:
+                    # Re-raise if it's not a response_format issue
+                    raise
 
             # Parse response
             response_text = (

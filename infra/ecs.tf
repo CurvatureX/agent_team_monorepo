@@ -456,6 +456,14 @@ resource "aws_ecs_task_definition" "workflow_agent" {
           value = var.environment
         },
         {
+          name  = "DEFAULT_MODEL_PROVIDER"
+          value = "openai"
+        },
+        {
+          name  = "DEFAULT_MODEL_NAME"
+          value = "gpt-4o"  # Use gpt-4o which supports response_format
+        },
+        {
           name  = "OTEL_SDK_DISABLED"
           value = "true"
         }
