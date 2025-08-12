@@ -146,6 +146,11 @@ class WorkflowAgentNodes:
         stage = state.get("stage", WorkflowStage.CLARIFICATION)
         logger.info(f"should_continue called with stage: {stage}")
 
+        # Check for FAILED state first
+        if stage == WorkflowStage.FAILED:
+            logger.info("Workflow generation failed, ending flow")
+            return "END"
+
         # Map stage to next action
         if stage == WorkflowStage.CLARIFICATION:
             # Check if we have pending questions that need user response
@@ -488,8 +493,10 @@ FINALLY: Output ONLY the complete JSON workflow configuration using the actual n
             logger.info("Creating workflow in workflow_engine")
             engine_client = WorkflowEngineClient()
             user_id = state.get("user_id", "test_user")
+            session_id = state.get("session_id")
             
-            creation_result = await engine_client.create_workflow(workflow, user_id)
+            # Pass session_id to the workflow creation
+            creation_result = await engine_client.create_workflow(workflow, user_id, session_id)
             
             if creation_result.get("success", True) and creation_result.get("workflow", {}).get("id"):
                 # Creation successful - store workflow and workflow_id
@@ -509,9 +516,21 @@ FINALLY: Output ONLY the complete JSON workflow configuration using the actual n
             else:
                 # Creation failed - check if we should retry generation
                 creation_error = creation_result.get("error", "Unknown creation error")
-                max_generation_retries = settings.WORKFLOW_GENERATION_MAX_RETRIES
+                max_generation_retries = getattr(settings, 'WORKFLOW_GENERATION_MAX_RETRIES', 3)
                 
                 logger.error(f"Workflow creation failed: {creation_error}")
+                
+                # Check if it's a session_id error - if so, don't retry as it won't help
+                if "session_id" in creation_error or "ForeignKeyViolation" in creation_error:
+                    logger.error("Session ID error detected, skipping retries")
+                    state["workflow_creation_error"] = creation_error
+                    state["current_workflow"] = workflow
+                    # Mark as FAILED to end the flow
+                    state["stage"] = WorkflowStage.FAILED
+                    # Add failure message to conversations
+                    self._add_conversation(state, "assistant", 
+                        f"I've generated the workflow but couldn't save it due to a session error. Here's the workflow configuration:\n\n```json\n{json.dumps(workflow, indent=2)}\n```")
+                    return state
                 
                 if generation_loop_count < max_generation_retries:
                     # Store error for regeneration and increment loop count
@@ -519,14 +538,18 @@ FINALLY: Output ONLY the complete JSON workflow configuration using the actual n
                     state["generation_loop_count"] = generation_loop_count + 1
                     
                     logger.info(f"Retrying workflow generation (attempt {generation_loop_count + 1}/{max_generation_retries})")
-                    # Return to workflow generation with error context
-                    return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
+                    # Recursively call this node to retry
+                    return await self.workflow_generation_node(state)
                 else:
-                    # Max retries reached, store error and proceed to debug for user feedback
+                    # Max retries reached, mark as FAILED
                     state["workflow_creation_error"] = creation_error
-                    state["current_workflow"] = workflow  # Store the workflow even if creation failed
-                    logger.error(f"Max workflow generation retries ({max_generation_retries}) reached, proceeding with error")
-                    return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
+                    state["current_workflow"] = workflow
+                    state["stage"] = WorkflowStage.FAILED
+                    logger.error(f"Max workflow generation retries ({max_generation_retries}) reached")
+                    # Add failure message to conversations
+                    self._add_conversation(state, "assistant", 
+                        f"I've generated the workflow but encountered an error saving it after {max_generation_retries} attempts. Here's the workflow configuration:\n\n```json\n{json.dumps(workflow, indent=2)}\n```\n\nError: {creation_error}")
+                    return state
 
         except Exception as e:
             import traceback
