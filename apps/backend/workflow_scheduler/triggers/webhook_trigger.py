@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List
 
+from shared.models.node_enums import TriggerSubtype
 from shared.models.trigger import ExecutionResult, TriggerStatus
 from workflow_scheduler.core.config import settings
 from workflow_scheduler.triggers.base import BaseTrigger
@@ -26,7 +27,7 @@ class WebhookTrigger(BaseTrigger):
 
     @property
     def trigger_type(self) -> str:
-        return "TRIGGER_WEBHOOK"
+        return TriggerSubtype.WEBHOOK.value
 
     async def start(self) -> bool:
         """Start the webhook trigger (mark as active)"""

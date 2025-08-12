@@ -9,6 +9,7 @@ import httpx
 import jwt
 from github import Github, GithubIntegration
 
+from shared.models.node_enums import TriggerSubtype
 from shared.models.trigger import ExecutionResult, TriggerStatus
 from workflow_scheduler.core.config import settings
 from workflow_scheduler.triggers.base import BaseTrigger
@@ -59,7 +60,7 @@ class GitHubTrigger(BaseTrigger):
 
     @property
     def trigger_type(self) -> str:
-        return "TRIGGER_GITHUB"
+        return TriggerSubtype.GITHUB.value
 
     async def start(self) -> bool:
         """Start the GitHub trigger (initialize GitHub App integration)"""

@@ -12,6 +12,7 @@ from typing import Any, Dict, Optional
 
 import httpx
 from app.core.config import get_settings
+from app.core.database import get_supabase_admin
 from fastapi import APIRouter, Body, Form, Header, HTTPException, Request, Response
 
 logger = logging.getLogger(__name__)
@@ -527,6 +528,129 @@ async def slack_oauth_callback(
         )
 
 
+async def _store_github_installation(user_id: str, installation_id: str, setup_action: str) -> bool:
+    """
+    Store GitHub installation data in oauth_tokens table
+
+    Args:
+        user_id: User ID who authorized the installation
+        installation_id: GitHub installation ID
+        setup_action: Setup action (install/update)
+
+    Returns:
+        bool: True if stored successfully, False otherwise
+    """
+    try:
+        supabase_admin = get_supabase_admin()
+
+        if not supabase_admin:
+            logger.error("❌ Database connection unavailable for GitHub installation storage")
+            return False
+
+        # First, ensure the GitHub integration exists
+        github_integration_result = (
+            supabase_admin.table("integrations")
+            .select("*")
+            .eq("integration_id", "github_app")
+            .execute()
+        )
+
+        if not github_integration_result.data:
+            # Create the GitHub integration if it doesn't exist
+            logger.info("📝 Creating GitHub integration entry")
+            integration_data = {
+                "integration_id": "github_app",
+                "integration_type": "github",
+                "name": "GitHub App Integration",
+                "description": "GitHub App for repository access and automation",
+                "version": "1.0",
+                "configuration": {
+                    "app_name": "agent-team-monorepo",  # Replace with your actual app name
+                    "callback_url": "/api/v1/public/webhooks/github/auth",
+                },
+                "supported_operations": [
+                    "repositories:read",
+                    "repositories:write",
+                    "issues:read",
+                    "actions:read",
+                ],
+                "required_scopes": ["repo", "issues", "actions"],
+                "active": True,
+                "verified": True,
+            }
+
+            integration_result = (
+                supabase_admin.table("integrations").insert(integration_data).execute()
+            )
+
+            if not integration_result.data:
+                logger.error("❌ Failed to create GitHub integration")
+                return False
+
+        # Check if this user already has a GitHub installation token
+        existing_token_result = (
+            supabase_admin.table("oauth_tokens")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("integration_id", "github_app")
+            .execute()
+        )
+
+        # Prepare the token data
+        token_data = {
+            "user_id": user_id,
+            "integration_id": "github_app",
+            "provider": "github",
+            "access_token": f"github_installation_{installation_id}",  # Placeholder - replace with actual token when fetched
+            "token_type": "installation",
+            "credential_data": {
+                "installation_id": installation_id,
+                "setup_action": setup_action,
+                "callback_timestamp": "now()",
+            },
+            "is_active": True,
+        }
+
+        if existing_token_result.data:
+            # Update existing record
+            logger.info(f"🔄 Updating existing GitHub installation for user {user_id}")
+
+            update_result = (
+                supabase_admin.table("oauth_tokens")
+                .update(token_data)
+                .eq("user_id", user_id)
+                .eq("integration_id", "github_app")
+                .execute()
+            )
+
+            if not update_result.data:
+                logger.error("❌ Failed to update GitHub installation record")
+                return False
+
+            logger.info(
+                f"✅ GitHub installation updated successfully - installation_id: {installation_id}, user_id: {user_id}"
+            )
+        else:
+            # Insert new record
+            logger.info(f"➕ Creating new GitHub installation record for user {user_id}")
+
+            insert_result = supabase_admin.table("oauth_tokens").insert(token_data).execute()
+
+            if not insert_result.data:
+                logger.error("❌ Failed to store GitHub installation record")
+                return False
+
+            logger.info(
+                f"✅ GitHub installation stored successfully - installation_id: {installation_id}, user_id: {user_id}"
+            )
+
+        return True
+
+    except Exception as e:
+        logger.error(f"❌ Error storing GitHub installation data: {str(e)}", exc_info=True)
+        return False
+
+
 @router.get("/webhooks/github/auth")
 async def github_oauth_callback(
     code: Optional[str] = None,
@@ -554,13 +678,23 @@ async def github_oauth_callback(
             )
 
         # Handle app installation flow
-        if setup_action == "install":
+        if setup_action == "install" or setup_action == "update":
             if not installation_id:
                 raise HTTPException(
                     status_code=400, detail="Missing installation_id for app installation"
                 )
 
             logger.info(f"GitHub App installation completed: installation_id={installation_id}")
+
+            # Store installation data in database if user_id is provided in state
+            if state:
+                db_store_success = await _store_github_installation(
+                    state, installation_id, setup_action
+                )
+                if not db_store_success:
+                    logger.warning(
+                        f"⚠️ Failed to store GitHub installation data in database for user {state}"
+                    )
 
             # Forward to workflow_scheduler to handle the installation
             scheduler_url = f"{settings.workflow_scheduler_http_url}/api/v1/auth/github/callback"
@@ -591,6 +725,8 @@ async def github_oauth_callback(
                         "account_login": result.get("account_login"),
                         "account_type": result.get("account_type"),
                         "repositories": result.get("repositories", []),
+                        "user_id": state if state else None,
+                        "stored_in_database": db_store_success if state else False,
                     }
                 else:
                     logger.error(

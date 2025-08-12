@@ -143,16 +143,14 @@ class TriggerNodeExecutor(BaseNodeExecutor):
     ) -> NodeExecutionResult:
         """Execute manual trigger."""
         # Use spec-based parameter retrieval
-        require_confirmation = self.get_parameter_with_spec(context, "require_confirmation")
         trigger_name = self.get_parameter_with_spec(context, "trigger_name")
         description = self.get_parameter_with_spec(context, "description")
 
-        logs.append(f"Manual trigger executed, confirmation required: {require_confirmation}")
+        logs.append(f"Manual trigger executed")
 
         output_data = {
             "trigger_type": "manual",
             "triggered_at": datetime.now().isoformat(),
-            "require_confirmation": require_confirmation,
             "input_data": context.input_data,
             "user_id": context.metadata.get("user_id"),
             "session_id": context.metadata.get("session_id"),

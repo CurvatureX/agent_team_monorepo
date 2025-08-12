@@ -385,20 +385,8 @@ async def trigger_manual_workflow(
         result = await scheduler_client.trigger_manual_workflow(
             workflow_id=workflow_id,
             user_id=deps.current_user.sub,
-            confirmation=request.require_confirmation,
             trace_id=getattr(deps.request.state, "trace_id", None),
         )
-
-        # Handle confirmation required case
-        if result.get("status") == "confirmation_required":
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "message": result.get("message", "Confirmation required"),
-                    "confirmation_required": True,
-                    "trigger_data": result.get("trigger_data", {}),
-                },
-            )
 
         # Handle errors
         if not result.get("success", True) and result.get("error"):
