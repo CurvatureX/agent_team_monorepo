@@ -17,12 +17,87 @@ load_dotenv()
 
 # Import logging
 import logging
+import json
 
 import uvicorn
 
 from workflow_agent.core.config import settings
 from workflow_agent.services.fastapi_server import app
 
+
+# Configure JSON logging
+class JSONFormatter(logging.Formatter):
+    """Custom JSON formatter for structured logging"""
+    
+    def format(self, record):
+        log_obj = {
+            'timestamp': self.formatTime(record, self.datefmt),
+            'level': record.levelname,
+            'logger': record.name,
+            'message': record.getMessage(),
+            'module': record.module,
+            'function': record.funcName,
+            'line': record.lineno,
+            'pathname': record.pathname,
+        }
+        
+        # Add extra fields if present
+        if hasattr(record, 'tracking_id'):
+            log_obj['tracking_id'] = record.tracking_id
+        if hasattr(record, 'error'):
+            log_obj['error'] = record.error
+        if hasattr(record, 'error_type'):
+            log_obj['error_type'] = record.error_type
+        if hasattr(record, 'location'):
+            log_obj['location'] = record.location
+        if hasattr(record, 'traceback'):
+            log_obj['traceback'] = record.traceback
+            
+        # Add exception info if present
+        if record.exc_info:
+            log_obj['exc_info'] = self.formatException(record.exc_info)
+            
+        return json.dumps(log_obj, ensure_ascii=False)
+
+
+def setup_logging():
+    """Configure logging based on LOG_FORMAT environment variable"""
+    log_format = os.getenv('LOG_FORMAT', 'simple').lower()
+    log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
+    
+    # Remove any existing handlers
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+    
+    # Create console handler
+    handler = logging.StreamHandler(sys.stdout)
+    
+    if log_format == 'json':
+        # Use JSON formatter for structured logging
+        formatter = JSONFormatter()
+    else:
+        # Use simple format for development
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s - %(pathname)s:%(lineno)d'
+        )
+    
+    handler.setFormatter(formatter)
+    
+    # Configure root logger
+    root_logger.setLevel(getattr(logging, log_level))
+    root_logger.addHandler(handler)
+    
+    # Also configure uvicorn's logger
+    logging.getLogger("uvicorn").setLevel(getattr(logging, log_level))
+    logging.getLogger("uvicorn.access").setLevel(getattr(logging, log_level))
+    
+    logger_temp = logging.getLogger(__name__)
+    logger_temp.info(f"Logging configured: format={log_format}, level={log_level}")
+
+
+# Setup logging before anything else
+setup_logging()
 logger = logging.getLogger(__name__)
 
 

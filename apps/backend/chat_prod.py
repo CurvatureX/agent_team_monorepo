@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Clean Chat Test - Focus on SSE messages, status changes, and assistant responses
+Production Chat Test - Targets ALB endpoint directly
 """
 
 import os
@@ -16,15 +16,15 @@ init(autoreset=True)
 # Load environment variables
 load_dotenv()
 
-# Configuration
-API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+# Configuration - Using production ALB endpoint
+API_BASE_URL = "http://agent-prod-alb-352817645.us-east-1.elb.amazonaws.com"
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 TEST_USER_EMAIL = os.getenv("TEST_USER_EMAIL")
 TEST_USER_PASSWORD = os.getenv("TEST_USER_PASSWORD")
 
 
-class CleanChatTester:
+class ProductionChatTester:
     def __init__(self):
         self.session = requests.Session()
         self.access_token = None
@@ -35,7 +35,7 @@ class CleanChatTester:
         
     def authenticate(self):
         """Authenticate and get access token"""
-        print(f"\n{Fore.CYAN}🔐 Authenticating...{Style.RESET_ALL}")
+        print(f"\n{Fore.CYAN}🔐 Authenticating with production Supabase...{Style.RESET_ALL}")
         
         response = self.session.post(
             f"{SUPABASE_URL}/auth/v1/token?grant_type=password",
@@ -52,8 +52,9 @@ class CleanChatTester:
             return False
             
     def create_session(self):
-        """Create chat session"""
-        print(f"\n{Fore.CYAN}📝 Creating session...{Style.RESET_ALL}")
+        """Create chat session on production"""
+        print(f"\n{Fore.CYAN}📝 Creating session on production ALB...{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}Endpoint: {API_BASE_URL}/api/v1/app/sessions{Style.RESET_ALL}")
         
         response = self.session.post(
             f"{API_BASE_URL}/api/v1/app/sessions",
@@ -67,13 +68,15 @@ class CleanChatTester:
             return True
         else:
             print(f"{Fore.RED}✗ Session creation failed: {response.status_code}{Style.RESET_ALL}")
+            print(f"{Fore.RED}Response: {response.text}{Style.RESET_ALL}")
             return False
             
     def chat(self, message):
-        """Send message and process stream"""
+        """Send message and process stream from production"""
         self.print_separator()
         print(f"{Fore.CYAN}USER:{Style.RESET_ALL} {message}")
         self.print_separator()
+        print(f"{Fore.YELLOW}Streaming from: {API_BASE_URL}/api/v1/app/chat/stream{Style.RESET_ALL}")
         
         with self.session.post(
             f"{API_BASE_URL}/api/v1/app/chat/stream",
@@ -83,12 +86,12 @@ class CleanChatTester:
                 "Accept": "text/event-stream"
             },
             json={"session_id": self.session_id, "user_message": message},
-            stream=True,
-            timeout=120  # 2 minute timeout for workflow generation
+            stream=True
         ) as response:
             
             if response.status_code != 200:
                 print(f"{Fore.RED}Request failed: {response.status_code}{Style.RESET_ALL}")
+                print(f"{Fore.RED}Response: {response.text}{Style.RESET_ALL}")
                 return
                 
             # Print tracking ID from response headers
@@ -158,11 +161,35 @@ class CleanChatTester:
                 
             print(f"\n{Fore.CYAN}Total events: {event_count}{Style.RESET_ALL}")
             
+    def test_health(self):
+        """Test production health endpoint"""
+        print(f"\n{Fore.CYAN}🏥 Testing production health...{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}Endpoint: {API_BASE_URL}/health{Style.RESET_ALL}")
+        
+        try:
+            response = self.session.get(f"{API_BASE_URL}/health", timeout=5)
+            if response.status_code == 200:
+                print(f"{Fore.GREEN}✓ Production API is healthy{Style.RESET_ALL}")
+                print(f"Response: {response.json()}")
+                return True
+            else:
+                print(f"{Fore.RED}✗ Health check failed: {response.status_code}{Style.RESET_ALL}")
+                return False
+        except Exception as e:
+            print(f"{Fore.RED}✗ Could not reach production: {e}{Style.RESET_ALL}")
+            return False
+            
     def run(self):
-        """Run the test"""
+        """Run the production test"""
         print(f"\n{Fore.CYAN}{'='*80}")
-        print("Workflow Chat Test - Clean Output")
+        print("Production Workflow Chat Test")
+        print(f"Target: {API_BASE_URL}")
         print(f"{'='*80}{Style.RESET_ALL}")
+        
+        # Test health first
+        if not self.test_health():
+            print(f"{Fore.RED}Production API is not reachable. Exiting.{Style.RESET_ALL}")
+            return
         
         if not all([SUPABASE_URL, SUPABASE_ANON_KEY, TEST_USER_EMAIL, TEST_USER_PASSWORD]):
             print(f"{Fore.RED}Missing required environment variables!{Style.RESET_ALL}")
@@ -174,7 +201,7 @@ class CleanChatTester:
         if not self.create_session():
             return
             
-        print(f"\n{Fore.YELLOW}Ready to chat. Type 'exit' to quit.{Style.RESET_ALL}")
+        print(f"\n{Fore.YELLOW}Ready to chat with production. Type 'exit' to quit.{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}Example: Send a HTTP request to https://google.com every 5 minutes{Style.RESET_ALL}\n")
         
         while True:
@@ -188,9 +215,9 @@ class CleanChatTester:
                 print(f"\n{Fore.YELLOW}Interrupted{Style.RESET_ALL}")
                 break
                 
-        print(f"\n{Fore.GREEN}Test completed!{Style.RESET_ALL}")
+        print(f"\n{Fore.GREEN}Production test completed!{Style.RESET_ALL}")
 
 
 if __name__ == "__main__":
-    tester = CleanChatTester()
+    tester = ProductionChatTester()
     tester.run()

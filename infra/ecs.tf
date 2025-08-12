@@ -173,6 +173,18 @@ resource "aws_ecs_task_definition" "api_gateway" {
           value = "false"
         },
         {
+          name  = "LOG_FORMAT"
+          value = "json"
+        },
+        {
+          name  = "LOG_LEVEL"
+          value = "INFO"
+        },
+        {
+          name  = "PYTHONUNBUFFERED"
+          value = "1"
+        },
+        {
           name  = "WORKFLOW_SERVICE_DNS_NAME"
           value = "workflow-agent.${local.name_prefix}.local"
         },
@@ -270,6 +282,18 @@ resource "aws_ecs_task_definition" "workflow_engine" {
         {
           name  = "DEBUG"
           value = "false"
+        },
+        {
+          name  = "LOG_FORMAT"
+          value = "json"
+        },
+        {
+          name  = "LOG_LEVEL"
+          value = "INFO"
+        },
+        {
+          name  = "PYTHONUNBUFFERED"
+          value = "1"
         },
         {
           name  = "HOST"
@@ -392,6 +416,18 @@ resource "aws_ecs_task_definition" "workflow_agent" {
           value = "false"
         },
         {
+          name  = "LOG_FORMAT"
+          value = "json"
+        },
+        {
+          name  = "LOG_LEVEL"
+          value = "INFO"
+        },
+        {
+          name  = "PYTHONUNBUFFERED"
+          value = "1"
+        },
+        {
           name  = "HOST"
           value = "0.0.0.0"
         },
@@ -418,6 +454,14 @@ resource "aws_ecs_task_definition" "workflow_agent" {
         {
           name  = "ENVIRONMENT"
           value = var.environment
+        },
+        {
+          name  = "DEFAULT_MODEL_PROVIDER"
+          value = "openai"
+        },
+        {
+          name  = "DEFAULT_MODEL_NAME"
+          value = "gpt-4.1"  # GPT-4.1 which supports response_format
         },
         {
           name  = "OTEL_SDK_DISABLED"
@@ -551,6 +595,18 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
         {
           name  = "DEBUG"
           value = "false"
+        },
+        {
+          name  = "LOG_FORMAT"
+          value = "json"
+        },
+        {
+          name  = "LOG_LEVEL"
+          value = "INFO"
+        },
+        {
+          name  = "PYTHONUNBUFFERED"
+          value = "1"
         },
         {
           name  = "HOST"
