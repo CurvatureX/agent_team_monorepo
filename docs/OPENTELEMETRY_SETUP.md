@@ -27,11 +27,13 @@ This document describes how to set up and use OpenTelemetry for distributed trac
 
 ### 1. OpenTelemetry Collector
 - **Service**: Runs as a separate ECS service in the cluster
+- **Image**: AWS Distro for OpenTelemetry (`public.ecr.aws/aws-observability/aws-otel-collector:latest`)
 - **Ports**: 
   - 4317: gRPC for OTLP
   - 4318: HTTP for OTLP
   - 8889: Prometheus metrics endpoint
 - **Configuration**: Defined in Terraform (`infra/otel_collector.tf`)
+- **Note**: Uses `debug` exporter instead of deprecated `logging` exporter
 
 ### 2. Service Configuration
 Each service (API Gateway, Workflow Agent, Workflow Engine) is configured with:
@@ -175,12 +177,20 @@ Example log entry:
    - **Cause**: Services trying to connect to collector before it's ready
    - **Solution**: These are transient and will resolve once collector is running
 
-2. **No traces appearing in X-Ray**:
+2. **"No such file or directory: /bin/sh" error**:
+   - **Cause**: Using generic OTEL image that lacks shell
+   - **Solution**: Use AWS distro image: `public.ecr.aws/aws-observability/aws-otel-collector:latest`
+
+3. **"logging exporter has been deprecated" error**:
+   - **Cause**: Using deprecated `logging` exporter in configuration
+   - **Solution**: Replace `logging` with `debug` exporter in all pipelines
+
+4. **No traces appearing in X-Ray**:
    - **Check**: Collector is running: `aws ecs describe-services --cluster agent-team-dev-cluster --services agent-team-dev-otel-collector`
    - **Check**: Environment variables are set correctly
    - **Check**: IAM permissions for X-Ray write access
 
-3. **High memory usage in collector**:
+5. **High memory usage in collector**:
    - **Solution**: Adjust memory limits in `otel_collector.tf`
    - **Default**: 512MB, can increase if needed
 

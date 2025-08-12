@@ -66,23 +66,25 @@ exporters:
   prometheus:
     endpoint: "0.0.0.0:8889"
     
-  logging:
-    loglevel: info
+  debug:
+    verbosity: detailed
+    sampling_initial: 5
+    sampling_thereafter: 200
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [awsxray, logging]
+      exporters: [awsxray, debug]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [awsemf, prometheus, logging]
+      exporters: [awsemf, prometheus, debug]
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [logging]
+      exporters: [debug]
 EOT
         }
       ]
