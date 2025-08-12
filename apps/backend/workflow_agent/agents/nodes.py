@@ -362,10 +362,16 @@ class WorkflowAgentNodes:
             )
             # Also log as separate ERROR for visibility
             logger.error(f"Error details: {error_details}")
+            # Store error in debug_result instead of adding undefined field
+            state["debug_result"] = {
+                "success": False,
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "timestamp": int(time.time() * 1000)
+            }
             return {
                 **state,
-                "stage": WorkflowStage.CLARIFICATION,
-                "error": str(e)  # Add error to state for debugging
+                "stage": WorkflowStage.CLARIFICATION
             }
 
     async def workflow_generation_node(self, state: WorkflowState) -> WorkflowState:
