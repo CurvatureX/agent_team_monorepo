@@ -244,10 +244,18 @@ jobs:
             --force-new-deployment \
             --region ${{ env.AWS_REGION }}
 
+      - name: Update ECS Service - OTEL Collector
+        run: |
+          aws ecs update-service \
+            --cluster agent-prod-cluster \
+            --service agent-prod-otel-collector \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }}
+
       - name: Wait for deployment to complete
         run: |
           aws ecs wait services-stable \
             --cluster agent-prod-cluster \
-            --services api-gateway-service workflow-agent-service workflow-engine-service workflow-scheduler-service \
+            --services api-gateway-service workflow-agent-service workflow-engine-service workflow-scheduler-service agent-prod-otel-collector \
             --region ${{ env.AWS_REGION }} \
             --cli-read-timeout 1200

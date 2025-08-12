@@ -3,8 +3,8 @@ resource "aws_ecs_task_definition" "otel_collector" {
   family                   = "${local.name_prefix}-otel-collector"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = "256"
-  memory                   = "512"
+  cpu                      = "512"
+  memory                   = "1024"
   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
   task_role_arn           = aws_iam_role.otel_collector_task_role.arn
 
@@ -35,6 +35,14 @@ resource "aws_ecs_task_definition" "otel_collector" {
           value = var.aws_region
         },
         {
+          name  = "GRAFANA_CLOUD_API_KEY"
+          value = var.grafana_cloud_api_key
+        },
+        {
+          name  = "GRAFANA_CLOUD_TENANT_ID"
+          value = var.grafana_cloud_tenant_id
+        },
+        {
           name  = "AOT_CONFIG_CONTENT"
           value = <<-EOT
 receivers:
@@ -48,9 +56,20 @@ receivers:
 processors:
   batch:
     timeout: 1s
+    send_batch_size: 1024
+    send_batch_max_size: 2048
   memory_limiter:
     check_interval: 1s
-    limit_mib: 256
+    limit_mib: 400
+    spike_limit_mib: 100
+  resource:
+    attributes:
+      - key: environment
+        value: ${var.environment}
+        action: upsert
+      - key: service.namespace
+        value: agent-team
+        action: upsert
 
 exporters:
   awsxray:
@@ -60,31 +79,57 @@ exporters:
   
   awsemf:
     region: ${var.aws_region}
-    namespace: ${local.name_prefix}
+    namespace: AgentTeam/${var.environment}
     dimension_rollup_option: "NoDimensionRollup"
+    metric_declarations:
+      - dimensions: [[service.name], [service.name, operation]]
+        metric_name_selectors:
+          - http.server.duration
+          - http.server.request.size
+          - http.server.response.size
+          - rpc.server.duration
+        label_matchers:
+          - label_names: [http.method]
+            regex: true
     
-  prometheus:
-    endpoint: "0.0.0.0:8889"
+  prometheusremotewrite:
+    endpoint: ${var.grafana_cloud_prometheus_url}
+    headers:
+      Authorization: "Bearer ${var.grafana_cloud_tenant_id}:${var.grafana_cloud_api_key}"
+    resource_to_telemetry_conversion:
+      enabled: true
     
-  debug:
-    verbosity: detailed
+  otlphttp/grafana:
+    endpoint: "https://otlp-gateway-prod-eu-west-0.grafana.net/otlp"
+    headers:
+      Authorization: "Bearer ${var.grafana_cloud_api_key}"
+    
+  logging:
+    verbosity: normal
     sampling_initial: 5
     sampling_thereafter: 200
 
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  pprof:
+    endpoint: 0.0.0.0:1777
+
 service:
+  extensions: [health_check, pprof]
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [awsxray, debug]
+      processors: [memory_limiter, resource, batch]
+      exporters: [awsxray, otlphttp/grafana, logging]
     metrics:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [awsemf, prometheus, debug]
+      processors: [memory_limiter, resource, batch]
+      exporters: [awsemf, prometheusremotewrite, logging]
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [debug]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlphttp/grafana, logging]
 EOT
         }
       ]

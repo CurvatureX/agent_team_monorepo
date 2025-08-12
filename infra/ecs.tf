@@ -222,11 +222,19 @@ resource "aws_ecs_task_definition" "api_gateway" {
         },
         {
           name  = "LOG_LEVEL"
-          value = "INFO"
+          value = "DEBUG"
         },
         {
           name  = "LOG_FORMAT"
-          value = "simple"
+          value = "json"
+        },
+        {
+          name  = "PYTHONUNBUFFERED"
+          value = "1"
+        },
+        {
+          name  = "AWS_DEFAULT_REGION"
+          value = var.aws_region
         }
       ]
 
@@ -329,11 +337,19 @@ resource "aws_ecs_task_definition" "workflow_engine" {
         },
         {
           name  = "LOG_LEVEL"
-          value = "INFO"
+          value = "DEBUG"
         },
         {
           name  = "LOG_FORMAT"
-          value = "simple"
+          value = "json"
+        },
+        {
+          name  = "PYTHONUNBUFFERED"
+          value = "1"
+        },
+        {
+          name  = "AWS_DEFAULT_REGION"
+          value = var.aws_region
         }
       ]
 
@@ -489,11 +505,19 @@ resource "aws_ecs_task_definition" "workflow_agent" {
         },
         {
           name  = "LOG_LEVEL"
-          value = "INFO"
+          value = "DEBUG"
         },
         {
           name  = "LOG_FORMAT"
-          value = "simple"
+          value = "json"
+        },
+        {
+          name  = "PYTHONUNBUFFERED"
+          value = "1"
+        },
+        {
+          name  = "AWS_DEFAULT_REGION"
+          value = var.aws_region
         }
       ]
 
@@ -670,11 +694,19 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
         },
         {
           name  = "LOG_LEVEL"
-          value = "INFO"
+          value = "DEBUG"
         },
         {
           name  = "LOG_FORMAT"
-          value = "simple"
+          value = "json"
+        },
+        {
+          name  = "PYTHONUNBUFFERED"
+          value = "1"
+        },
+        {
+          name  = "AWS_DEFAULT_REGION"
+          value = var.aws_region
         }
       ]
 
