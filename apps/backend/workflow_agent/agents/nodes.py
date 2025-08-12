@@ -103,17 +103,6 @@ class WorkflowAgentNodes:
             context_parts.append(f"{conv.get('role')}: {conv.get('text', '')}")
         return "\n".join(context_parts)
 
-    async def _get_available_nodes_from_mcp(self) -> list:
-        """Get available node types from MCP for gap analysis"""
-        try:
-            # Call MCP to get node types
-            node_types_response = await self.mcp_client.call_tool("get_node_types", {})
-            if node_types_response and isinstance(node_types_response, dict):
-                return node_types_response.get("node_types", [])
-            return []
-        except Exception as e:
-            logger.warning(f"Could not fetch node types from MCP: {e}")
-            return []
 
     def _create_fallback_workflow(self, intent_summary: str) -> dict:
         """Create a simple fallback workflow when generation fails"""
@@ -402,16 +391,10 @@ class WorkflowAgentNodes:
             creation_error = state.get("workflow_creation_error")  # New field for creation failures
             generation_loop_count = state.get("generation_loop_count", 0)
 
-            # Get available nodes from MCP if enabled
+            # Skip manual MCP fetch - LLM will call it through tools if needed
+            # This avoids duplicate API calls since the LLM with tools will
+            # call get_node_types anyway when it needs the information
             available_nodes = None
-            if settings.GAP_ANALYSIS_USE_MCP:
-                logger.info("Fetching node capabilities from MCP")
-                try:
-                    available_nodes = await self._get_available_nodes_from_mcp()
-                    msg = f"Retrieved {len(available_nodes) if available_nodes else 0} node types"
-                    logger.info(msg)
-                except Exception as e:
-                    logger.warning(f"Failed to get MCP nodes, proceeding without: {e}")
 
             # Prepare template context with creation error if available
             error_context = None
@@ -436,16 +419,13 @@ class WorkflowAgentNodes:
                 **template_context
             )
 
-            # Create user prompt for workflow generation
-            user_prompt_content = f"""Create a comprehensive workflow based on these EXACT requirements:
+            # Create user prompt for workflow generation - optimized for efficiency
+            user_prompt_content = f"""Create a workflow for: {intent_summary}
 
-{intent_summary}
-
-IMPLEMENT ALL REQUIREMENTS MENTIONED ABOVE.
-
-FIRST: Call get_node_types() to see all available node types and subtypes
-THEN: Call get_node_details() for ALL nodes you plan to use  
-FINALLY: Output ONLY the complete JSON workflow configuration using the actual node specifications. No text, no explanations, no markdown - just pure JSON starting with {{ and ending with }}."""
+Instructions:
+1. Call get_node_types() to discover available nodes
+2. Call get_node_details() with a SINGLE call containing ALL required nodes as an array
+3. Generate the complete JSON workflow (no explanations, just JSON)"""
 
             # Add error context to prompt if we're regenerating due to creation failure
             if error_context:
@@ -623,7 +603,7 @@ FINALLY: Output ONLY the complete JSON workflow configuration using the actual n
                 # Step 2: Continue conversation to get node_details and final JSON
                 openai_messages.append({
                     "role": "user",
-                    "content": "FIRST: Call get_node_details for ALL the nodes you identified. THEN: Output ONLY the complete JSON workflow configuration using the actual node specifications. No text, no explanations, no markdown - just pure JSON starting with { and ending with }."
+                    "content": "Now call get_node_details with a SINGLE call containing ALL the nodes you need (pass them as an array in the 'nodes' parameter). Focus only on the specific nodes required for this workflow - don't fetch details for unnecessary nodes. After getting the details, output ONLY the complete JSON workflow configuration."
                 })
                 
                 # Convert back to LangChain format
@@ -641,8 +621,14 @@ FINALLY: Output ONLY the complete JSON workflow configuration using the actual n
                 # Step 3: Final generation call
                 final_response = await self.llm_with_tools.ainvoke(langchain_messages)
                 
-                # Handle any additional tool calls for node_details
+                # Handle any additional tool calls for node_details (with limit to prevent infinite loops)
+                MAX_ADDITIONAL_CALLS = 5  # Prevent runaway tool calling
                 if hasattr(final_response, "tool_calls") and final_response.tool_calls:
+                    num_calls = len(final_response.tool_calls)
+                    if num_calls > MAX_ADDITIONAL_CALLS:
+                        logger.warning(f"Too many tool calls ({num_calls}), limiting to {MAX_ADDITIONAL_CALLS}")
+                        final_response.tool_calls = final_response.tool_calls[:MAX_ADDITIONAL_CALLS]
+                    
                     logger.info(f"Processing {len(final_response.tool_calls)} additional tool calls")
                     
                     # Process additional tool calls
@@ -650,14 +636,14 @@ FINALLY: Output ONLY the complete JSON workflow configuration using the actual n
                         tool_name = getattr(tool_call, 'name', tool_call.get('name', ''))
                         tool_args = getattr(tool_call, 'args', tool_call.get('args', {}))
                         
-                        logger.info(f"Calling additional tool: {tool_name}")
+                        logger.info(f"Calling additional tool: {tool_name} with args: {json.dumps(tool_args, indent=2) if tool_args else '{}'}")
                         result = await self.mcp_client.call_tool(tool_name, tool_args)
                         
                         result_str = json.dumps(result, indent=2) if isinstance(result, dict) else str(result)
-                        langchain_messages.append(HumanMessage(content=f"Tool result: {result_str}"))
+                        langchain_messages.append(HumanMessage(content=f"Tool result for {tool_name}: {result_str}"))
                     
-                    # Final call to get the JSON workflow
-                    langchain_messages.append(HumanMessage(content="Now output ONLY the complete JSON workflow configuration. Start with { and end with }."))
+                    # Final call to get the JSON workflow with clearer instructions
+                    langchain_messages.append(HumanMessage(content="You now have all the node details. Output ONLY the complete JSON workflow configuration. Start with { and end with }. No explanations, no markdown, just pure JSON."))
                     
                     final_json_response = await self.llm_with_tools.ainvoke(langchain_messages)
                     return str(final_json_response.content) if hasattr(final_json_response, 'content') else ""
@@ -672,167 +658,6 @@ FINALLY: Output ONLY the complete JSON workflow configuration using the actual n
             logger.error(f"Multi-turn tool generation failed: {e}", exc_info=True)
             return ""
 
-    async def _generate_with_tools(self, messages: List) -> str:
-        """
-        Generate workflow using LangChain tool calling pattern.
-
-        This implementation uses the recommended pattern for tool calling with structured output:
-        1. Bind tools to LLM
-        2. Manually handle tool execution loop
-        3. Control output format
-
-        Alternative approaches considered:
-        - AgentExecutor: Too much overhead, adds reasoning text that breaks JSON
-        - create_structured_output_agent: Good for structured output but less flexible
-        - Direct OpenAI function calling: Would bypass LangChain abstractions
-        """
-        logger.info("Using LangChain tool binding for workflow generation")
-
-        try:
-            # Convert input messages to proper format
-            conversation_messages = list(messages)
-
-            # Tool execution loop - this is the recommended pattern for controlled tool use
-            max_iterations = 5
-            for iteration in range(max_iterations):
-                logger.info(f"Tool execution iteration {iteration + 1}")
-
-                # Call LLM with current conversation state
-                response = await self.llm_with_tools.ainvoke(conversation_messages)
-
-                # Add assistant response to conversation
-                conversation_messages.append(response)
-
-                # Check for tool calls
-                if hasattr(response, "tool_calls") and response.tool_calls:
-                    # New LangChain format uses response.tool_calls directly
-                    tool_calls = response.tool_calls
-                    logger.info(f"LLM made {len(tool_calls)} tool calls")
-
-                    for tool_call in tool_calls:
-                        await self._execute_tool_call(tool_call, conversation_messages)
-
-                elif (
-                    hasattr(response, "additional_kwargs")
-                    and "tool_calls" in response.additional_kwargs
-                ):
-                    # Fallback to older format
-                    tool_calls = response.additional_kwargs["tool_calls"]
-                    logger.info(f"LLM made {len(tool_calls)} tool calls (legacy format)")
-
-                    for tool_call in tool_calls:
-                        await self._execute_tool_call_legacy(tool_call, conversation_messages)
-
-                elif response.content:
-                    # No more tool calls, we have final output
-                    logger.info("Got final response from LLM")
-                    return str(response.content)
-                else:
-                    # Empty response without tool calls
-                    logger.warning("Got empty response without tool calls")
-                    break
-
-            # Max iterations reached or empty response
-            logger.warning("Tool execution completed without final JSON")
-            # Try to get the last non-empty content
-            for msg in reversed(conversation_messages):
-                if hasattr(msg, "content") and msg.content:
-                    return str(msg.content)
-            return ""
-
-        except Exception as e:
-            logger.error(f"Tool-based generation failed: {e}", exc_info=True)
-            raise e
-
-    async def _execute_tool_call(self, tool_call: dict, conversation_messages: list):
-        """Execute a tool call in the new LangChain format"""
-        try:
-            # Extract tool info from the new format
-            if hasattr(tool_call, "name"):
-                tool_name = tool_call.name
-                tool_args = tool_call.args
-                tool_id = getattr(tool_call, "id", str(uuid.uuid4()))
-            else:
-                # Fallback for dict format
-                tool_name = tool_call.get("name", "")
-                tool_args = tool_call.get("args", {})
-                tool_id = tool_call.get("id", str(uuid.uuid4()))
-
-            logger.info(f"Executing tool: {tool_name} with args keys: {tool_args.keys()}")
-
-            # Execute the tool via MCP
-            result = await self.mcp_client.call_tool(tool_name, tool_args)
-
-            # Format result as a string for the conversation
-            if isinstance(result, dict):
-                result_str = json.dumps(result, indent=2)
-            else:
-                result_str = str(result)
-
-            # Create tool response message
-            from langchain_core.messages import ToolMessage
-
-            tool_message = ToolMessage(
-                content=result_str, tool_call_id=tool_id, name=tool_name  # Match the tool call ID
-            )
-
-            # Add to conversation
-            conversation_messages.append(tool_message)
-
-            logger.info(f"Tool {tool_name} execution completed")
-
-        except Exception as e:
-            logger.error(f"Tool execution failed for {tool_name}: {e}")
-            # Add error message to conversation
-            from langchain_core.messages import ToolMessage
-
-            error_message = ToolMessage(
-                content=f"Error executing tool: {str(e)}",
-                tool_call_id=tool_id if "tool_id" in locals() else str(uuid.uuid4()),
-                name=tool_name if "tool_name" in locals() else "unknown",
-            )
-            conversation_messages.append(error_message)
-
-    async def _execute_tool_call_legacy(self, tool_call: dict, conversation_messages: list):
-        """Execute a tool call in the legacy format (for compatibility)"""
-        try:
-            tool_name = tool_call.get("function", {}).get("name", "")
-            tool_args_str = tool_call.get("function", {}).get("arguments", "{}")
-            tool_id = tool_call.get("id", str(uuid.uuid4()))
-
-            # Parse arguments
-            tool_args = json.loads(tool_args_str) if tool_args_str else {}
-
-            logger.info(f"Executing tool (legacy): {tool_name}")
-
-            # Execute the tool via MCP
-            result = await self.mcp_client.call_tool(tool_name, tool_args)
-
-            # Format result
-            if isinstance(result, dict):
-                result_str = json.dumps(result, indent=2)
-            else:
-                result_str = str(result)
-
-            # Create tool response message
-            from langchain_core.messages import ToolMessage
-
-            tool_message = ToolMessage(content=result_str, tool_call_id=tool_id, name=tool_name)
-
-            # Add to conversation
-            conversation_messages.append(tool_message)
-
-        except Exception as e:
-            logger.error(f"Legacy tool execution failed: {e}")
-            # Add error message
-            from langchain_core.messages import ToolMessage
-
-            error_message = ToolMessage(
-                content=f"Error: {str(e)}",
-                tool_call_id=tool_id if "tool_id" in locals() else str(uuid.uuid4()),
-                name=tool_name if "tool_name" in locals() else "unknown",
-            )
-            conversation_messages.append(error_message)
 
     async def debug_node(self, state: WorkflowState) -> WorkflowState:
         """
