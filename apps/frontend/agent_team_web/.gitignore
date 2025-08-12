@@ -32,6 +32,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+.env.local
+.env.production
 
 # vercel
 .vercel
@@ -43,3 +45,5 @@ next-env.d.ts
 # 覆盖根目录的.gitignore规则
 !public/
 !lib/
+# 保留示例文件，但忽略真实的环境变量文件
+!.env.local.example

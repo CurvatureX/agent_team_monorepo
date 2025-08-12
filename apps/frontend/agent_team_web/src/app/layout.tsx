@@ -3,6 +3,8 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { NavigationHeader } from "@/components/ui/navigation-header";
 import { ThemeProvider } from "@/components/theme-provider";
+import { AuthProvider } from "@/contexts/auth-context";
+import { Toaster } from "@/components/ui/toaster";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -29,8 +31,11 @@ export default function RootLayout({
           defaultTheme="system"
           enableSystem
         >
-          <NavigationHeader />
-          {children}
+          <AuthProvider>
+            <NavigationHeader />
+            {children}
+            <Toaster />
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>
