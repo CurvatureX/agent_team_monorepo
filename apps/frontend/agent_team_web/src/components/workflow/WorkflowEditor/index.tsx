@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useCallback } from 'react';
-import { Provider } from 'jotai';
 import { cn } from '@/lib/utils';
 import { NodeSidebar } from '../NodeSidebar';
 import { EnhancedWorkflowCanvas } from '../EnhancedWorkflowCanvas';

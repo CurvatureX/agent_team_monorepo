@@ -3,15 +3,17 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { ExpandableTabs } from "@/components/ui/expandable-tabs";
-import { Home, Bell, User, Settings, Bot, DollarSign } from "lucide-react";
+import { Home, Bell, User, Settings, Bot, DollarSign, LogIn, LogOut } from "lucide-react";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
+import { useAuth } from "@/contexts/auth-context";
 
 export const NavigationHeader = () => {
     const router = useRouter();
     const pathname = usePathname();
     const [activeTabIndex, setActiveTabIndex] = useState<number | null>(null);
+    const { user, signOut } = useAuth();
 
     const tabs = [
         { title: "Home", icon: Home },
@@ -19,8 +21,9 @@ export const NavigationHeader = () => {
         { title: "Pricing", icon: DollarSign },
         { title: "Notifications", icon: Bell },
         { type: "separator" as const },
-        { title: "Profile", icon: User },
+        user ? { title: "Profile", icon: User } : { title: "Login", icon: LogIn },
         { title: "Settings", icon: Settings },
+        ...(user ? [{ title: "Logout", icon: LogOut }] : []),
     ];
 
     // Set active tab based on current path
@@ -37,25 +40,36 @@ export const NavigationHeader = () => {
     }, [pathname]);
 
     // Handle tab click events
-    const handleTabChange = (index: number | null) => {
+    const handleTabChange = async (index: number | null) => {
         if (index === null) return;
 
         setActiveTabIndex(index); // Update selected state first
-
+        
+        const tab = tabs[index];
+        
         // Navigate to corresponding page based on selected tab
-        switch (index) {
-            case 0: // Home
+        switch (tab.title) {
+            case 'Home':
                 router.push('/');
                 break;
-            case 1: // Assistant
+            case 'Assistant':
                 router.push('/canvas');
                 break;
-            case 2: // Pricing
+            case 'Pricing':
                 router.push('/pricing');
                 break;
-            // Can add navigation logic for other tabs
+            case 'Login':
+                router.push('/login');
+                break;
+            case 'Profile':
+                router.push('/profile');
+                break;
+            case 'Logout':
+                await signOut();
+                router.push('/');
+                break;
             default:
-                console.log("Selected tab:", tabs[index]);
+                console.log("Selected tab:", tab);
                 break;
         }
     };
