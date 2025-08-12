@@ -4,6 +4,7 @@ from typing import Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
+from shared.models.node_enums import TriggerSubtype
 from shared.models.trigger import ExecutionResult, TriggerType
 from workflow_scheduler.dependencies import get_trigger_manager
 from workflow_scheduler.services.trigger_manager import TriggerManager
@@ -14,7 +15,7 @@ router = APIRouter(prefix="/triggers", tags=["triggers"])
 
 
 class ManualTriggerRequest(BaseModel):
-    confirmation: bool = False
+    pass
 
 
 class WebhookData(BaseModel):
@@ -47,20 +48,7 @@ async def trigger_manual(
     try:
         logger.info(f"Manual trigger requested for workflow {workflow_id} by user {user_id}")
 
-        result = await trigger_manager.trigger_manual(
-            workflow_id=workflow_id, user_id=user_id, confirmation=request.confirmation
-        )
-
-        # Handle confirmation required case
-        if result.status == "confirmation_required":
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "message": result.message,
-                    "confirmation_required": True,
-                    "trigger_data": result.trigger_data,
-                },
-            )
+        result = await trigger_manager.trigger_manual(workflow_id=workflow_id, user_id=user_id)
 
         return result
 
@@ -248,7 +236,9 @@ async def _find_workflows_with_github_triggers(
     # Get all workflows with triggers
     for workflow_id, triggers in trigger_manager._triggers.items():
         # Find GitHub triggers for this workflow
-        github_triggers = [t for t in triggers if t.trigger_type == "TRIGGER_GITHUB" and t.enabled]
+        github_triggers = [
+            t for t in triggers if t.trigger_type == TriggerSubtype.GITHUB.value and t.enabled
+        ]
 
         for trigger in github_triggers:
             # Check if this trigger matches the event

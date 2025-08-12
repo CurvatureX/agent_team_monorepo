@@ -61,7 +61,6 @@ class WorkflowSchedulerHTTPClient:
         self,
         workflow_id: str,
         user_id: str = "system",
-        confirmation: bool = False,
         trace_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Manually trigger a workflow execution"""
@@ -69,9 +68,7 @@ class WorkflowSchedulerHTTPClient:
             await self.connect()
 
         try:
-            request_data = {
-                "confirmation": confirmation,
-            }
+            request_data = {}
 
             log_info(f"📨 Manual trigger request for workflow: {workflow_id} by user: {user_id}")
 

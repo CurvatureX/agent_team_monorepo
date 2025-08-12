@@ -34,13 +34,6 @@ MANUAL_TRIGGER_SPEC = NodeSpec(
             required=False,
             description="Description of what this trigger does",
         ),
-        ParameterDef(
-            name="require_confirmation",
-            type=ParameterType.BOOLEAN,
-            required=False,
-            default_value=False,
-            description="Whether to require confirmation before execution",
-        ),
     ],
     input_ports=[],  # Trigger nodes have no input ports
     output_ports=[

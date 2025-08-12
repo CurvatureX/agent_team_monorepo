@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 import aioimaplib
 
+from shared.models.node_enums import TriggerSubtype
 from shared.models.trigger import ExecutionResult, TriggerStatus
 from workflow_scheduler.core.config import settings
 from workflow_scheduler.triggers.base import BaseTrigger
@@ -44,7 +45,7 @@ class EmailTrigger(BaseTrigger):
 
     @property
     def trigger_type(self) -> str:
-        return "TRIGGER_EMAIL"
+        return TriggerSubtype.EMAIL.value
 
     async def start(self) -> bool:
         """Start email monitoring"""

@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
+from shared.models.node_enums import TriggerSubtype
 from shared.models.trigger import ExecutionResult
 from workflow_scheduler.dependencies import get_trigger_manager
 from workflow_scheduler.services.trigger_manager import TriggerManager
@@ -196,7 +197,9 @@ async def _find_workflows_with_github_triggers(
     # Get all workflows with triggers
     for workflow_id, triggers in trigger_manager._triggers.items():
         # Find GitHub triggers for this workflow
-        github_triggers = [t for t in triggers if t.trigger_type == "TRIGGER_GITHUB" and t.enabled]
+        github_triggers = [
+            t for t in triggers if t.trigger_type == TriggerSubtype.GITHUB.value and t.enabled
+        ]
 
         for trigger in github_triggers:
             # Check if this trigger matches the event
@@ -235,7 +238,7 @@ async def github_status(trigger_manager: TriggerManager = Depends(get_trigger_ma
 
         # Count GitHub triggers across all workflows
         for workflow_id, workflow_data in health_status.get("workflows", {}).items():
-            github_triggers = workflow_data.get("triggers", {}).get("TRIGGER_GITHUB", [])
+            github_triggers = workflow_data.get("triggers", {}).get(TriggerSubtype.GITHUB.value, [])
             if github_triggers:
                 github_workflows[workflow_id] = len(github_triggers)
                 total_github_triggers += len(github_triggers)

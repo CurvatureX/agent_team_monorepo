@@ -7,6 +7,7 @@ import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger as APCronTrigger
 
+from shared.models.node_enums import TriggerSubtype
 from shared.models.trigger import TriggerStatus
 from workflow_scheduler.triggers.base import BaseTrigger
 
@@ -39,7 +40,7 @@ class CronTrigger(BaseTrigger):
 
     @property
     def trigger_type(self) -> str:
-        return "TRIGGER_CRON"
+        return TriggerSubtype.CRON.value
 
     async def start(self) -> bool:
         """Start the cron trigger by scheduling the job"""

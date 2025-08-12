@@ -58,7 +58,6 @@ class CronTriggerSpec(BaseModel):
 
 
 class ManualTriggerSpec(BaseModel):
-    require_confirmation: bool = False
     enabled: bool = True
 
 
