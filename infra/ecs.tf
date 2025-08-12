@@ -205,16 +205,20 @@ resource "aws_ecs_task_definition" "api_gateway" {
           value = "false"
         },
         {
+          name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
+          value = "http://otel-collector.${aws_service_discovery_private_dns_namespace.main.name}:4317"
+        },
+        {
           name  = "OTEL_TRACES_EXPORTER"
-          value = "none"  # 禁用 trace 导出，但保留 tracking_id 生成
+          value = "otlp"  # 启用 OTLP trace 导出
         },
         {
           name  = "OTEL_METRICS_EXPORTER"
-          value = "none"  # 禁用 metrics 导出
+          value = "otlp"  # 启用 OTLP metrics 导出
         },
         {
           name  = "OTEL_LOGS_EXPORTER"
-          value = "none"  # 禁用 logs 导出
+          value = "otlp"  # 启用 OTLP logs 导出
         },
         {
           name  = "LOG_LEVEL"
@@ -308,16 +312,20 @@ resource "aws_ecs_task_definition" "workflow_engine" {
           value = "false"
         },
         {
+          name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
+          value = "http://otel-collector.${aws_service_discovery_private_dns_namespace.main.name}:4317"
+        },
+        {
           name  = "OTEL_TRACES_EXPORTER"
-          value = "none"  # 禁用 trace 导出，但保留 tracking_id 生成
+          value = "otlp"  # 启用 OTLP trace 导出
         },
         {
           name  = "OTEL_METRICS_EXPORTER"
-          value = "none"  # 禁用 metrics 导出
+          value = "otlp"  # 启用 OTLP metrics 导出
         },
         {
           name  = "OTEL_LOGS_EXPORTER"
-          value = "none"  # 禁用 logs 导出
+          value = "otlp"  # 启用 OTLP logs 导出
         },
         {
           name  = "LOG_LEVEL"
@@ -464,16 +472,20 @@ resource "aws_ecs_task_definition" "workflow_agent" {
           value = "false"
         },
         {
+          name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
+          value = "http://otel-collector.${aws_service_discovery_private_dns_namespace.main.name}:4317"
+        },
+        {
           name  = "OTEL_TRACES_EXPORTER"
-          value = "none"  # 禁用 trace 导出，但保留 tracking_id 生成
+          value = "otlp"  # 启用 OTLP trace 导出
         },
         {
           name  = "OTEL_METRICS_EXPORTER"
-          value = "none"  # 禁用 metrics 导出
+          value = "otlp"  # 启用 OTLP metrics 导出
         },
         {
           name  = "OTEL_LOGS_EXPORTER"
-          value = "none"  # 禁用 logs 导出
+          value = "otlp"  # 启用 OTLP logs 导出
         },
         {
           name  = "LOG_LEVEL"
@@ -641,16 +653,20 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
           value = "false"
         },
         {
+          name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
+          value = "http://otel-collector.${aws_service_discovery_private_dns_namespace.main.name}:4317"
+        },
+        {
           name  = "OTEL_TRACES_EXPORTER"
-          value = "none"  # 禁用 trace 导出，但保留 tracking_id 生成
+          value = "otlp"  # 启用 OTLP trace 导出
         },
         {
           name  = "OTEL_METRICS_EXPORTER"
-          value = "none"  # 禁用 metrics 导出
+          value = "otlp"  # 启用 OTLP metrics 导出
         },
         {
           name  = "OTEL_LOGS_EXPORTER"
-          value = "none"  # 禁用 logs 导出
+          value = "otlp"  # 启用 OTLP logs 导出
         },
         {
           name  = "LOG_LEVEL"
