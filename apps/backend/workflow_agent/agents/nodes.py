@@ -333,10 +333,25 @@ class WorkflowAgentNodes:
             return {**state, "stage": WorkflowStage.CLARIFICATION}
 
         except Exception as e:
-            logger.error("Clarification node failed", extra={"error": str(e)})
+            import traceback
+            error_details = {
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "traceback": traceback.format_exc(),
+                "tracking_id": state.get("tracking_id", "unknown"),
+                "location": "agents/nodes.py:336"
+            }
+            logger.error(
+                f"Clarification node failed: {str(e)}", 
+                extra=error_details,
+                exc_info=True  # This will include the full stack trace
+            )
+            # Also log as separate ERROR for visibility
+            logger.error(f"Error details: {error_details}")
             return {
                 **state,
                 "stage": WorkflowStage.CLARIFICATION,
+                "error": str(e)  # Add error to state for debugging
             }
 
     async def workflow_generation_node(self, state: WorkflowState) -> WorkflowState:
@@ -494,7 +509,20 @@ FINALLY: Output ONLY the complete JSON workflow configuration using the actual n
                     return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
 
         except Exception as e:
-            logger.error("Workflow generation node failed", extra={"error": str(e)})
+            import traceback
+            error_details = {
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "traceback": traceback.format_exc(),
+                "tracking_id": state.get("tracking_id", "unknown"),
+                "location": "agents/nodes.py:workflow_generation_node"
+            }
+            logger.error(
+                f"Workflow generation node failed: {str(e)}", 
+                extra=error_details,
+                exc_info=True
+            )
+            logger.error(f"Error details: {error_details}")
             return {
                 **state,
                 "stage": WorkflowStage.WORKFLOW_GENERATION,
@@ -864,7 +892,20 @@ FINALLY: Output ONLY the complete JSON workflow configuration using the actual n
             return {**state, "stage": WorkflowStage.DEBUG}
 
         except Exception as e:
-            logger.error("Debug node failed", extra={"error": str(e)})
+            import traceback
+            error_details = {
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "traceback": traceback.format_exc(),
+                "tracking_id": state.get("tracking_id", "unknown"),
+                "location": "agents/nodes.py:debug_node"
+            }
+            logger.error(
+                f"Debug node failed: {str(e)}", 
+                extra=error_details,
+                exc_info=True
+            )
+            logger.error(f"Error details: {error_details}")
             state["debug_result"] = {
                 "success": False,
                 "error": f"Debug validation failed: {str(e)}",
