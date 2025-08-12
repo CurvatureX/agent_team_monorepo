@@ -1,0 +1,50 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+
+exporters:
+  # CloudWatch Logs for traces via AWS X-Ray
+  awsxray:
+    region: us-east-1
+    no_verify_ssl: false
+    local_mode: false
+  
+  # CloudWatch Metrics
+  awsemf:
+    region: us-east-1
+    namespace: agent-team-dev
+    dimension_rollup_option: "NoDimensionRollup"
+    
+  # Prometheus metrics endpoint (for internal monitoring)
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    
+  # Debug logging
+  logging:
+    loglevel: info
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [awsxray, logging]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [awsemf, prometheus, logging]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [logging]

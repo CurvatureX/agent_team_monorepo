@@ -11,7 +11,8 @@ resource "aws_ecs_task_definition" "otel_collector" {
   container_definitions = jsonencode([
     {
       name  = "otel-collector"
-      image = "otel/opentelemetry-collector-contrib:latest"
+      # Use AWS distro for OpenTelemetry Collector
+      image = "public.ecr.aws/aws-observability/aws-otel-collector:latest"
 
       portMappings = [
         {
@@ -30,22 +31,12 @@ resource "aws_ecs_task_definition" "otel_collector" {
 
       environment = [
         {
-          name  = "OTEL_CONFIG"
-          value = "/etc/otel-collector-config.yaml"
-        }
-      ]
-
-      # Mount the configuration from a ConfigMap or inline
-      command = [
-        "--config=/etc/otel-collector-config.yaml"
-      ]
-
-      # Inline configuration (you can also use a ConfigMap)
-      entryPoint = [
-        "/bin/sh",
-        "-c",
-        <<-EOT
-        cat > /etc/otel-collector-config.yaml <<'EOF'
+          name  = "AWS_REGION"
+          value = var.aws_region
+        },
+        {
+          name  = "AOT_CONFIG_CONTENT"
+          value = <<-EOT
 receivers:
   otlp:
     protocols:
@@ -62,23 +53,19 @@ processors:
     limit_mib: 256
 
 exporters:
-  # CloudWatch Logs for traces
   awsxray:
     region: ${var.aws_region}
     no_verify_ssl: false
     local_mode: false
   
-  # CloudWatch Metrics
   awsemf:
     region: ${var.aws_region}
     namespace: ${local.name_prefix}
     dimension_rollup_option: "NoDimensionRollup"
     
-  # Prometheus metrics endpoint (for internal monitoring)
   prometheus:
     endpoint: "0.0.0.0:8889"
     
-  # Debug logging (remove in production)
   logging:
     loglevel: info
 
@@ -96,9 +83,8 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, batch]
       exporters: [logging]
-EOF
-        exec /otelcol-contrib --config=/etc/otel-collector-config.yaml
-        EOT
+EOT
+        }
       ]
 
       logConfiguration = {
@@ -111,7 +97,7 @@ EOF
       }
 
       healthCheck = {
-        command     = ["CMD", "/otelcol-contrib", "--version"]
+        command     = ["CMD", "/healthcheck"]
         interval    = 30
         timeout     = 5
         retries     = 3
@@ -184,6 +170,11 @@ resource "aws_iam_policy" "otel_collector_cloudwatch" {
           "cloudwatch:PutMetricData"
         ]
         Resource = "*"
+        Condition = {
+          StringEquals = {
+            "cloudwatch:namespace" = local.name_prefix
+          }
+        }
       }
     ]
   })
@@ -194,6 +185,39 @@ resource "aws_iam_policy" "otel_collector_cloudwatch" {
 resource "aws_iam_role_policy_attachment" "otel_collector_cloudwatch" {
   role       = aws_iam_role.otel_collector_task_role.name
   policy_arn = aws_iam_policy.otel_collector_cloudwatch.arn
+}
+
+# Additional IAM policy for EC2 and ECS discovery (optional for service discovery)
+resource "aws_iam_policy" "otel_collector_discovery" {
+  name        = "${local.name_prefix}-otel-collector-discovery"
+  description = "Policy for OTEL Collector to discover ECS services"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ecs:ListTasks",
+          "ecs:ListServices",
+          "ecs:DescribeServices",
+          "ecs:DescribeContainerInstances",
+          "ecs:DescribeTasks",
+          "ecs:DescribeTaskDefinition",
+          "ec2:DescribeInstances",
+          "ec2:DescribeNodes"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "otel_collector_discovery" {
+  role       = aws_iam_role.otel_collector_task_role.name
+  policy_arn = aws_iam_policy.otel_collector_discovery.arn
 }
 
 # ECS Service for OTEL Collector
