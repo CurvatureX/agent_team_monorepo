@@ -22,7 +22,7 @@ class WorkflowEngineClient:
         self.timeout = settings.WORKFLOW_ENGINE_TIMEOUT
         logger.info(f"WorkflowEngineClient initialized with URL: {self.base_url}")
         
-    async def create_workflow(self, workflow_data: Dict[str, Any], user_id: str = "test_user") -> Dict[str, Any]:
+    async def create_workflow(self, workflow_data: Dict[str, Any], user_id: str = "test_user", session_id: str = None) -> Dict[str, Any]:
         """
         Create a workflow in the workflow engine
         
@@ -117,7 +117,12 @@ class WorkflowEngineClient:
                     "user_id": user_id
                 }
                 
-                logger.info(f"Creating workflow in engine: {request_data}")
+                # Add session_id if provided
+                if session_id:
+                    request_data["session_id"] = session_id
+                
+                logger.info(f"Creating workflow in engine - Total nodes: {len(request_data.get('nodes', []))}")
+                logger.info(f"📦 Full Workflow Creation Request: {json.dumps(request_data, indent=2)}")
                 
                 response = await client.post(
                     f"{self.base_url}/v1/workflows",
@@ -175,6 +180,7 @@ class WorkflowEngineClient:
                 }
                 
                 logger.info(f"Executing workflow: {workflow_id}")
+                logger.info(f"📦 Execute Request Data: {json.dumps(request_data, indent=2)}")
                 
                 response = await client.post(
                     f"{self.base_url}/v1/workflows/{workflow_id}/execute",

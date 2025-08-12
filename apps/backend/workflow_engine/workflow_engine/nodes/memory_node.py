@@ -23,8 +23,8 @@ except ImportError:
 class MemoryNodeExecutor(BaseNodeExecutor):
     """Executor for MEMORY_NODE type."""
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, subtype: Optional[str] = None):
+        super().__init__(subtype=subtype)
         # Mock memory storage
         self._vector_db = {}
         self._key_value_store = {}

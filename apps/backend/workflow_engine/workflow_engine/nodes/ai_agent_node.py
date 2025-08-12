@@ -24,8 +24,8 @@ except ImportError:
 class AIAgentNodeExecutor(BaseNodeExecutor):
     """Executor for AI_AGENT_NODE type with provider-based architecture."""
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, subtype: Optional[str] = None):
+        super().__init__(subtype=subtype)
         self.ai_clients = {}
         self._init_ai_clients()
 

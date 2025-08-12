@@ -65,12 +65,24 @@ class WorkflowDataGenerator:
                 HumanMessage(content=user_prompt)
             ]
             
-            # Use response_format for JSON if OpenAI
+            # Log the model being used
+            logger.info(f"Workflow data generator using model: {settings.DEFAULT_MODEL_NAME}")
+            
+            # Try to use response_format for JSON if OpenAI
             if settings.DEFAULT_MODEL_PROVIDER == "openai":
-                response = await self.llm.ainvoke(
-                    messages,
-                    response_format={"type": "json_object"}
-                )
+                try:
+                    response = await self.llm.ainvoke(
+                        messages,
+                        response_format={"type": "json_object"}
+                    )
+                    logger.info("Successfully used response_format for JSON output")
+                except Exception as format_error:
+                    if "response_format" in str(format_error):
+                        logger.warning(f"Model doesn't support response_format, falling back: {format_error}")
+                        messages.append(HumanMessage(content="Please respond in valid JSON format."))
+                        response = await self.llm.ainvoke(messages)
+                    else:
+                        raise
             else:
                 response = await self.llm.ainvoke(messages)
             

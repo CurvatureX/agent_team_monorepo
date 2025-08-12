@@ -244,10 +244,62 @@ jobs:
             --force-new-deployment \
             --region ${{ env.AWS_REGION }}
 
+      - name: Update ECS Service - OTEL Collector
+        run: |
+          aws ecs update-service \
+            --cluster agent-prod-cluster \
+            --service agent-prod-otel-collector \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }} || echo "OTEL Collector service not found, skipping"
+
       - name: Wait for deployment to complete
         run: |
-          aws ecs wait services-stable \
+          # Base services that should always exist
+          BASE_SERVICES="api-gateway-service workflow-agent-service workflow-engine-service workflow-scheduler-service"
+          
+          # Check which services are actually ACTIVE
+          ACTIVE_SERVICES=""
+          for service in $BASE_SERVICES; do
+            STATUS=$(aws ecs describe-services \
+              --cluster agent-prod-cluster \
+              --services $service \
+              --region ${{ env.AWS_REGION }} \
+              --query "services[0].status" \
+              --output text 2>/dev/null || echo "")
+            
+            if [ "$STATUS" = "ACTIVE" ]; then
+              ACTIVE_SERVICES="$ACTIVE_SERVICES $service"
+              echo "✓ Service $service is ACTIVE"
+            else
+              echo "⚠ Service $service is not ACTIVE (status: $STATUS), skipping"
+            fi
+          done
+          
+          # Check if OTEL collector exists and is ACTIVE
+          OTEL_STATUS=$(aws ecs describe-services \
             --cluster agent-prod-cluster \
-            --services api-gateway-service workflow-agent-service workflow-engine-service workflow-scheduler-service \
+            --services agent-prod-otel-collector \
             --region ${{ env.AWS_REGION }} \
-            --cli-read-timeout 1200
+            --query "services[0].status" \
+            --output text 2>/dev/null || echo "")
+          
+          if [ "$OTEL_STATUS" = "ACTIVE" ]; then
+            ACTIVE_SERVICES="$ACTIVE_SERVICES agent-prod-otel-collector"
+            echo "✓ OTEL Collector service is ACTIVE"
+          else
+            echo "ℹ OTEL Collector service is not ACTIVE (status: $OTEL_STATUS), skipping"
+          fi
+          
+          # Only wait for ACTIVE services
+          if [ -n "$ACTIVE_SERVICES" ]; then
+            echo "Waiting for services to stabilize: $ACTIVE_SERVICES"
+            aws ecs wait services-stable \
+              --cluster agent-prod-cluster \
+              --services $ACTIVE_SERVICES \
+              --region ${{ env.AWS_REGION }} \
+              --cli-read-timeout 1200
+            echo "✅ All active services are stable"
+          else
+            echo "⚠ No active services found to wait for"
+            exit 1
+          fi
