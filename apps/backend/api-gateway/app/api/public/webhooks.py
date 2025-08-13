@@ -693,15 +693,15 @@ async def github_oauth_callback(
                 try:
                     supabase_admin = get_supabase_admin()
                     if supabase_admin:
-                        # Check if user exists in auth.users table
-                        user_check = (
-                            supabase_admin.table("auth.users")
-                            .select("id")
-                            .eq("id", state)
-                            .execute()
-                        )
+                        # Check if user exists in auth.users table using raw SQL
+                        # Note: Use rpc to query auth schema directly since .table() method
+                        # incorrectly interprets auth.users as public.auth.users
+                        user_check = supabase_admin.rpc(
+                            "check_user_exists", {"user_id": state}
+                        ).execute()
 
-                        if user_check.data:
+                        # RPC function returns boolean, check if user exists
+                        if user_check.data is True:
                             # User exists in auth.users, proceed with installation storage
                             db_store_success = await _store_github_installation(
                                 state, installation_id, setup_action
