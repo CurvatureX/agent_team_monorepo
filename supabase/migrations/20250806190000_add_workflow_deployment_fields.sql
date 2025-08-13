@@ -6,7 +6,7 @@
 ALTER TABLE workflows
 ADD COLUMN deployment_status TEXT DEFAULT 'DRAFT',
 ADD COLUMN deployed_at TIMESTAMP WITH TIME ZONE,
-ADD COLUMN deployed_by UUID REFERENCES users(id),
+ADD COLUMN deployed_by UUID REFERENCES auth.users(id),
 ADD COLUMN undeployed_at TIMESTAMP WITH TIME ZONE,
 ADD COLUMN deployment_version INTEGER DEFAULT 1,
 ADD COLUMN deployment_config JSONB DEFAULT '{}';
@@ -26,7 +26,7 @@ CREATE TABLE workflow_deployment_history (
     to_status TEXT NOT NULL,
     deployment_version INTEGER NOT NULL,
     deployment_config JSONB DEFAULT '{}',
-    triggered_by UUID REFERENCES users(id),
+    triggered_by UUID REFERENCES auth.users(id),
     started_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     completed_at TIMESTAMP WITH TIME ZONE,
     error_message TEXT,
