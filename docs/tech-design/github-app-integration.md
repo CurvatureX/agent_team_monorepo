@@ -39,7 +39,7 @@ This document outlines the technical design for a centralized GitHub App that en
 App Name: "AI Workflow Teams"
 Description: "Connect your repositories to AI-powered workflow automation"
 Homepage URL: "https://aiworkflowteams.com"
-Callback URL: "https://api.aiworkflowteams.com/auth/github/callback"
+Callback URL: "https://api.aiworkflowteams.com/api/v1/public/webhooks/github/auth"
 Webhook URL: "https://api.aiworkflowteams.com/webhooks/github"
 Webhook Secret: "generate_secure_random_string_here"
 ```
@@ -91,7 +91,7 @@ Webhook Secret: "generate_secure_random_string_here"
 App Name: "AI Workflow Teams (Dev)"
 Description: "Development version for testing GitHub integration"
 Homepage URL: "https://dev-api.aiworkflowteams.com"
-Callback URL: "https://dev-api.aiworkflowteams.com/auth/github/callback"
+Callback URL: "https://dev-api.aiworkflowteams.com/api/v1/public/webhooks/github/auth"
 Webhook URL: "https://dev-api.aiworkflowteams.com/webhooks/github"
 Webhook Secret: "dev_webhook_secret_here"
 
@@ -182,36 +182,107 @@ Webhook Secret: "dev_webhook_secret_here"
 ### Installation Flow
 
 1. **User initiates connection** via our frontend
-2. **OAuth redirect** to GitHub App installation page
+2. **OAuth redirect** to GitHub App installation page: `https://github.com/apps/{APP_NAME}/installations/new?state=<user_id>`
 3. **User selects repositories** to grant access
-4. **GitHub redirects back** with installation ID
-5. **We store installation mapping** in Supabase
+4. **GitHub redirects back** with installation data: `/api/v1/public/webhooks/github/auth?installation_id=12345&setup_action=install&state=<user_id>`
+5. **We store installation mapping** in existing Supabase OAuth infrastructure
+
+#### Database Schema (Implementation)
+
+We leverage the existing OAuth infrastructure instead of creating separate GitHub tables:
 
 ```sql
--- GitHub App installations table
-CREATE TABLE github_installations (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES auth.users(id),
-    installation_id BIGINT UNIQUE NOT NULL,
-    account_id BIGINT NOT NULL,
-    account_login TEXT NOT NULL,
-    account_type TEXT NOT NULL, -- 'User' or 'Organization'
-    repositories JSONB, -- Array of accessible repo info
-    permissions JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+-- Existing integrations table (stores GitHub app configuration)
+-- Already exists - we create a GitHub integration entry
+INSERT INTO integrations (
+    integration_id, integration_type, name, description, version,
+    configuration, supported_operations, required_scopes
+) VALUES (
+    'github_app', 'github', 'GitHub App Integration',
+    'GitHub App for repository access and automation', '1.0',
+    '{"app_name": "agent-team-monorepo", "callback_url": "/api/v1/public/webhooks/github/auth"}',
+    ARRAY['repositories:read', 'repositories:write', 'issues:read', 'actions:read'],
+    ARRAY['repo', 'issues', 'actions']
 );
 
--- GitHub repository configurations
-CREATE TABLE github_repository_configs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    installation_id UUID REFERENCES github_installations(id),
-    repository_id BIGINT NOT NULL,
-    repository_name TEXT NOT NULL, -- 'owner/repo'
-    webhook_secret TEXT, -- For signature verification
-    active_triggers JSONB, -- Array of active workflow trigger configs
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+-- Existing oauth_tokens table (stores user installation mappings)
+-- We store GitHub installations as OAuth tokens with:
+-- - integration_id: 'github_app'
+-- - provider: 'github'
+-- - access_token: placeholder (will be replaced with actual installation token)
+-- - credential_data: JSON containing installation_id and setup_action
+-- - user_id: links installation to specific user
+```
+
+#### Installation Data Storage
+
+**Credential Data Structure:**
+```json
+{
+  "installation_id": "12345",
+  "setup_action": "install",
+  "callback_timestamp": "2025-01-13T10:30:00Z"
+}
+```
+
+**Benefits of Existing Schema:**
+- ✅ **Unified OAuth Management**: All integrations (GitHub, Slack, etc.) in one system
+- ✅ **User Association**: Direct link between users and their integrations
+- ✅ **Generic API**: `/api/v1/app/integrations` works for all providers
+- ✅ **Authentication**: Proper JWT-based access control
+- ✅ **Audit Trail**: Track when integrations are created/revoked
+
+#### API Endpoints (Implementation)
+
+**Public API (No Authentication Required):**
+```bash
+# GitHub App installation callback (handles redirect from GitHub)
+GET /api/v1/public/webhooks/github/auth?installation_id=12345&setup_action=install&state=<user_id>
+# - Stores installation data in database
+# - Forwards to workflow_scheduler for additional processing
+# - Returns success response with installation details
+```
+
+**App API (Requires JWT Authentication):**
+```bash
+# Get all user integrations (GitHub, Slack, etc.)
+GET /api/v1/app/integrations
+Authorization: Bearer <jwt_token>
+# Returns: { "integrations": [...], "total_count": 2 }
+
+# Get GitHub integrations only
+GET /api/v1/app/integrations/github
+Authorization: Bearer <jwt_token>
+# Returns: GitHub installations for authenticated user
+
+# Revoke specific integration
+DELETE /api/v1/app/integrations/{integration_token_id}
+Authorization: Bearer <jwt_token>
+# Marks integration as inactive (soft delete)
+```
+
+**Example Response:**
+```json
+{
+  "success": true,
+  "user_id": "user-123",
+  "integrations": [
+    {
+      "id": "token-abc-123",
+      "integration_id": "github_app",
+      "provider": "github",
+      "integration_type": "github",
+      "name": "GitHub App Integration",
+      "is_active": true,
+      "created_at": "2025-01-13T10:30:00Z",
+      "credential_data": {
+        "installation_id": "12345",
+        "setup_action": "install"
+      }
+    }
+  ],
+  "total_count": 1
+}
 ```
 
 ## 2. Webhook Event Processing
@@ -219,33 +290,91 @@ CREATE TABLE github_repository_configs (
 ### Step 1: API Gateway Event Reception
 
 ```python
-# API Gateway webhook endpoint
-@app.post("/webhooks/github")
-async def github_webhook_handler(
+# API Gateway webhook endpoint (Implementation)
+@router.post("/webhooks/github")
+async def github_webhook(
     request: Request,
-    x_github_event: str = Header(...),
-    x_github_delivery: str = Header(...),
-    x_hub_signature_256: str = Header(...)
+    x_github_event: str = Header(..., alias="X-GitHub-Event"),
+    x_github_delivery: str = Header(..., alias="X-GitHub-Delivery"),
+    x_hub_signature_256: Optional[str] = Header(None, alias="X-Hub-Signature-256"),
 ):
-    # 1. Verify webhook signature
+    """
+    GitHub webhook endpoint - handles GitHub App webhooks and routes them to workflow_scheduler
+    """
+    # 1. Verify webhook signature if secret is configured
     payload = await request.body()
-    if not verify_github_signature(payload, x_hub_signature_256):
-        raise HTTPException(401, "Invalid signature")
+    if hasattr(settings, "GITHUB_WEBHOOK_SECRET") and settings.GITHUB_WEBHOOK_SECRET:
+        if not x_hub_signature_256 or not _verify_github_signature(
+            payload, x_hub_signature_256, settings.GITHUB_WEBHOOK_SECRET
+        ):
+            raise HTTPException(status_code=401, detail="Invalid signature")
 
-    # 2. Parse event data
-    event_data = json.loads(payload)
+    # 2. Parse JSON payload
+    event_data = json.loads(payload.decode())
 
-    # 3. Log webhook event for debugging/monitoring
-    await log_webhook_event(x_github_delivery, x_github_event, event_data)
+    # 3. Extract repository and installation info
+    installation_id = event_data.get("installation", {}).get("id")
+    repository = event_data.get("repository", {})
+    repo_name = repository.get("full_name", "unknown")
 
-    # 4. Forward to Workflow Scheduler
-    await forward_to_workflow_scheduler(
-        event_type=x_github_event,
-        delivery_id=x_github_delivery,
-        payload=event_data
-    )
+    # 4. Forward to workflow_scheduler GitHub webhook handler
+    scheduler_url = f"{settings.workflow_scheduler_http_url}/api/v1/triggers/github/events"
 
-    return {"status": "received", "delivery_id": x_github_delivery}
+    github_webhook_data = {
+        "event_type": x_github_event,
+        "delivery_id": x_github_delivery,
+        "payload": event_data,
+        "installation_id": installation_id,
+        "repository_name": repo_name,
+        "timestamp": event_data.get("timestamp")
+    }
+
+    async with httpx.AsyncClient() as client:
+        scheduler_response = await client.post(scheduler_url, json=github_webhook_data, timeout=30.0)
+
+        if scheduler_response.status_code == 200:
+            result = scheduler_response.json()
+            return {
+                "status": "received",
+                "message": "GitHub webhook processed successfully",
+                "event_type": x_github_event,
+                "delivery_id": x_github_delivery,
+                "repository": repo_name,
+                "installation_id": installation_id,
+                "processed_workflows": result.get("processed_workflows", 0),
+                "results": result.get("results", []),
+            }
+
+# GitHub App installation callback (Implementation)
+@router.get("/webhooks/github/auth")
+async def github_oauth_callback(
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    installation_id: Optional[str] = None,
+    setup_action: Optional[str] = None,
+    error: Optional[str] = None,
+):
+    """
+    GitHub OAuth callback endpoint - handles GitHub App installation OAuth flow
+    """
+    # Handle app installation flow
+    if setup_action in ["install", "update"]:
+        # Store installation data in database if user_id is provided in state
+        if state and installation_id:
+            db_store_success = await _store_github_installation(state, installation_id, setup_action)
+
+        # Forward to workflow_scheduler to handle the installation
+        scheduler_url = f"{settings.workflow_scheduler_http_url}/api/v1/auth/github/callback"
+
+        installation_data = {
+            "installation_id": int(installation_id),
+            "setup_action": setup_action,
+            "state": state,
+            "code": code,
+        }
+
+        # Process with workflow_scheduler and return response
+        # Returns installation details including account info and repositories
 ```
 
 ### Step 2: Forward to Workflow Scheduler
@@ -627,31 +756,56 @@ class GitHubCreateCommentNode:
 2. **Data Retention**: Clear policies on webhook payload storage
 3. **Encryption**: Encrypt sensitive data at rest
 
-## 6. Implementation Plan
+## 6. Implementation Status & Plan
 
-### Phase 1: Core Infrastructure
-1. Create GitHub App with basic permissions
-2. Implement webhook reception and signature verification
-3. Set up installation flow and database schema
-4. Build GitHub API client with token management
+### ✅ **Phase 1: Core Infrastructure (COMPLETED)**
+1. ✅ **GitHub App Registration**: App configuration and credentials management
+2. ✅ **Webhook Reception**: `/api/v1/public/webhooks/github` endpoint with signature verification
+3. ✅ **Installation Flow**: `/api/v1/public/webhooks/github/auth` callback with database storage
+4. ✅ **Database Schema**: Using existing `oauth_tokens` and `integrations` tables
+5. ✅ **User Management API**: Generic `/api/v1/app/integrations` endpoints
 
-### Phase 2: Event Processing
-1. Implement event routing and filtering
-2. Create GitHub trigger node enhancements
-3. Build repository context services
-4. Add workflow integration
+**Key Implementation Details:**
+- **Database**: Leverages existing OAuth infrastructure instead of separate GitHub tables
+- **API Design**: Generic integrations API supports GitHub, Slack, and future providers
+- **Authentication**: Proper JWT-based access control for user data
+- **Dual Processing**: Stores in database AND forwards to workflow_scheduler
+- **Error Handling**: Graceful failure handling with detailed logging
 
-### Phase 3: Advanced Features
-1. Create specialized GitHub action nodes
-2. Implement advanced filtering (paths, labels, etc.)
-3. Add monitoring and analytics
-4. Build user management interface
+### 🔄 **Phase 2: Event Processing (IN PROGRESS)**
+1. ✅ **Event Routing**: Forward GitHub webhooks to workflow_scheduler service
+2. ✅ **Basic Filtering**: Installation and repository-level filtering
+3. 🚧 **GitHub Trigger Enhancements**: Enhanced trigger nodes with repository context
+4. 🚧 **Repository Context**: GitHub API client for accessing repository data
 
-### Phase 4: Production Readiness
-1. Security audit and penetration testing
-2. Performance optimization
-3. Comprehensive documentation
-4. User onboarding flows
+### 📋 **Phase 3: Advanced Features (PLANNED)**
+1. **Specialized GitHub Nodes**: PR analysis, code review, issue management
+2. **Advanced Filtering**: Branch patterns, file paths, user/label filters
+3. **Monitoring Dashboard**: Installation analytics and webhook metrics
+4. **User Interface**: Frontend components for GitHub integration management
+
+### 📋 **Phase 4: Production Readiness (PLANNED)**
+1. **Security Audit**: Comprehensive security review and penetration testing
+2. **Performance Optimization**: Rate limiting, caching, and scaling
+3. **Documentation**: User guides and developer documentation
+4. **Onboarding Flows**: Guided setup and integration tutorials
+
+### **Current Implementation Architecture:**
+
+```
+Frontend App → GitHub App Install → GitHub Callback → API Gateway
+                                                           ↓
+User clicks     User authorizes      GitHub redirects    Stores in DB
+"Connect GitHub"    repositories     with installation   +
+                                           data           Forwards to
+                                                         Scheduler
+```
+
+**Ready for Integration:**
+- ✅ Frontend can initiate GitHub connections via GitHub App install URL
+- ✅ Backend properly handles installation callbacks and stores user mappings
+- ✅ Generic API allows frontend to display user's connected integrations
+- ✅ Webhook processing forwards events to workflow scheduling system
 
 ## 7. Monitoring and Observability
 
@@ -676,7 +830,7 @@ class GitHubCreateCommentNode:
 ```yaml
 Primary Domain: api.aiworkflowteams.com
 Webhook Endpoint: api.aiworkflowteams.com/webhooks/github
-Auth Callback: api.aiworkflowteams.com/auth/github/callback
+Auth Callback: api.aiworkflowteams.com/api/v1/public/webhooks/github/auth
 SSL Certificate: Required (Let's Encrypt or commercial)
 ```
 

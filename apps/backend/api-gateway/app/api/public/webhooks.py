@@ -454,7 +454,7 @@ async def slack_slash_commands_webhook(
         }
 
 
-@router.get("/auth/slack/callback")
+@router.get("/webhooks/slack/auth")
 async def slack_oauth_callback(
     code: Optional[str] = None,
     state: Optional[str] = None,
@@ -565,7 +565,7 @@ async def _store_github_installation(user_id: str, installation_id: str, setup_a
                 "description": "GitHub App for repository access and automation",
                 "version": "1.0",
                 "configuration": {
-                    "app_name": "agent-team-monorepo",  # Replace with your actual app name
+                    "app_name": "starmates",
                     "callback_url": "/api/v1/public/webhooks/github/auth",
                 },
                 "supported_operations": [
@@ -687,17 +687,44 @@ async def github_oauth_callback(
             logger.info(f"GitHub App installation completed: installation_id={installation_id}")
 
             # Store installation data in database if user_id is provided in state
+            db_store_success = False
             if state:
-                db_store_success = await _store_github_installation(
-                    state, installation_id, setup_action
-                )
-                if not db_store_success:
-                    logger.warning(
-                        f"⚠️ Failed to store GitHub installation data in database for user {state}"
-                    )
+                # First validate that the user exists
+                try:
+                    supabase_admin = get_supabase_admin()
+                    if supabase_admin:
+                        # Check if user exists in auth.users table
+                        user_check = (
+                            supabase_admin.table("auth.users")
+                            .select("id")
+                            .eq("id", state)
+                            .execute()
+                        )
 
-            # Forward to workflow_scheduler to handle the installation
+                        if user_check.data:
+                            # User exists in auth.users, proceed with installation storage
+                            db_store_success = await _store_github_installation(
+                                state, installation_id, setup_action
+                            )
+                            if not db_store_success:
+                                logger.warning(
+                                    f"⚠️ Failed to store GitHub installation data in database for user {state}"
+                                )
+                        else:
+                            logger.warning(
+                                f"⚠️ User {state} not found in auth.users, skipping installation storage"
+                            )
+                    else:
+                        logger.warning(
+                            "⚠️ Database connection unavailable, skipping installation storage"
+                        )
+                except Exception as e:
+                    logger.error(f"❌ Error validating user {state}: {e}")
+                    db_store_success = False
+
+            # Forward to workflow_scheduler to handle the installation (if service is available)
             scheduler_url = f"{settings.workflow_scheduler_http_url}/api/v1/auth/github/callback"
+            scheduler_success = False
 
             installation_data = {
                 "installation_id": int(installation_id),
@@ -706,36 +733,57 @@ async def github_oauth_callback(
                 "code": code,
             }
 
-            async with httpx.AsyncClient() as client:
-                scheduler_response = await client.post(
-                    scheduler_url, json=installation_data, timeout=30.0
-                )
-
-                if scheduler_response.status_code == 200:
-                    result = scheduler_response.json()
-                    logger.info(
-                        f"GitHub App installation processed successfully for account: {result.get('account_login')}"
+            try:
+                async with httpx.AsyncClient() as client:
+                    scheduler_response = await client.post(
+                        scheduler_url, json=installation_data, timeout=30.0
                     )
 
-                    # Return success page or redirect
-                    return {
-                        "success": True,
-                        "message": "GitHub App installed successfully!",
-                        "installation_id": result.get("installation_id"),
-                        "account_login": result.get("account_login"),
-                        "account_type": result.get("account_type"),
-                        "repositories": result.get("repositories", []),
-                        "user_id": state if state else None,
-                        "stored_in_database": db_store_success if state else False,
-                    }
-                else:
-                    logger.error(
-                        f"Workflow scheduler GitHub installation error: {scheduler_response.status_code} - {scheduler_response.text}"
-                    )
-                    raise HTTPException(
-                        status_code=scheduler_response.status_code,
-                        detail=f"GitHub installation processing error: {scheduler_response.text}",
-                    )
+                    if scheduler_response.status_code == 200:
+                        result = scheduler_response.json()
+                        logger.info(
+                            f"GitHub App installation processed successfully for account: {result.get('account_login')}"
+                        )
+                        scheduler_success = True
+
+                        # Return success page or redirect
+                        return {
+                            "success": True,
+                            "message": "GitHub App installed successfully!",
+                            "installation_id": result.get("installation_id"),
+                            "account_login": result.get("account_login"),
+                            "account_type": result.get("account_type"),
+                            "repositories": result.get("repositories", []),
+                            "user_id": state if state else None,
+                            "stored_in_database": db_store_success if state else False,
+                        }
+                    else:
+                        logger.warning(
+                            f"Workflow scheduler GitHub installation error: {scheduler_response.status_code} - {scheduler_response.text}"
+                        )
+                        scheduler_success = False
+
+            except Exception as e:
+                logger.warning(f"Failed to forward to workflow_scheduler: {e}")
+                scheduler_success = False
+
+            # If scheduler failed but we have the installation data, still return success
+            # The installation was successful, just the workflow_scheduler integration failed
+            logger.info(
+                f"GitHub App installation completed (scheduler_success: {scheduler_success}, db_stored: {db_store_success})"
+            )
+
+            return {
+                "success": True,
+                "message": "GitHub App installed successfully!",
+                "installation_id": installation_id,
+                "user_id": state if state else None,
+                "stored_in_database": db_store_success if state else False,
+                "scheduler_processed": scheduler_success,
+                "note": "Installation successful. Some backend services may still be initializing."
+                if not scheduler_success
+                else None,
+            }
 
         # Handle OAuth authorization code flow (if needed)
         elif code:
@@ -893,7 +941,7 @@ async def webhook_status():
                         "/api/v1/public/webhooks/slack/events",
                         "/api/v1/public/webhooks/slack/interactive",
                         "/api/v1/public/webhooks/slack/commands",
-                        "/api/v1/public/auth/slack/callback",
+                        "/api/v1/public/webhooks/slack/auth",
                         "/api/v1/public/webhooks/status",
                     ],
                 }
