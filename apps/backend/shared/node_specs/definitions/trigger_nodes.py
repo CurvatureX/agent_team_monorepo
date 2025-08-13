@@ -5,6 +5,7 @@ This module defines specifications for all TRIGGER_NODE subtypes including
 manual triggers, webhooks, cron jobs, chat triggers, and other event-based triggers.
 """
 
+from ...models.node_enums import NodeType, TriggerSubtype
 from ..base import (
     ConnectionType,
     DataFormat,
@@ -17,8 +18,8 @@ from ..base import (
 
 # Manual trigger - started by user action
 MANUAL_TRIGGER_SPEC = NodeSpec(
-    node_type="TRIGGER",
-    subtype="MANUAL",
+    node_type=NodeType.TRIGGER,
+    subtype=TriggerSubtype.MANUAL,
     description="Manual trigger activated by user action",
     parameters=[
         ParameterDef(
@@ -56,8 +57,8 @@ MANUAL_TRIGGER_SPEC = NodeSpec(
 
 # Cron trigger - scheduled execution
 CRON_TRIGGER_SPEC = NodeSpec(
-    node_type="TRIGGER",
-    subtype="CRON",
+    node_type=NodeType.TRIGGER,
+    subtype=TriggerSubtype.CRON,
     description="Scheduled trigger based on cron expressions",
     parameters=[
         ParameterDef(
@@ -103,8 +104,8 @@ CRON_TRIGGER_SPEC = NodeSpec(
 
 # Webhook trigger - HTTP endpoint
 WEBHOOK_TRIGGER_SPEC = NodeSpec(
-    node_type="TRIGGER",
-    subtype="WEBHOOK",
+    node_type=NodeType.TRIGGER,
+    subtype=TriggerSubtype.WEBHOOK,
     description="HTTP webhook trigger that responds to incoming requests",
     parameters=[
         ParameterDef(
@@ -158,8 +159,8 @@ WEBHOOK_TRIGGER_SPEC = NodeSpec(
 
 # Slack trigger - Slack interaction trigger
 SLACK_TRIGGER_SPEC = NodeSpec(
-    node_type="TRIGGER",
-    subtype="CHAT",
+    node_type=NodeType.TRIGGER,
+    subtype=TriggerSubtype.SLACK,
     description="Slack trigger that responds to Slack interactions and events",
     parameters=[
         ParameterDef(
@@ -247,8 +248,8 @@ SLACK_TRIGGER_SPEC = NodeSpec(
 
 # Email trigger - email monitoring
 EMAIL_TRIGGER_SPEC = NodeSpec(
-    node_type="TRIGGER",
-    subtype="EMAIL",
+    node_type=NodeType.TRIGGER,
+    subtype=TriggerSubtype.EMAIL,
     description="Email trigger that monitors incoming emails",
     parameters=[
         ParameterDef(
@@ -301,8 +302,8 @@ EMAIL_TRIGGER_SPEC = NodeSpec(
 
 # GitHub trigger - repository event based
 GITHUB_TRIGGER_SPEC = NodeSpec(
-    node_type="TRIGGER",
-    subtype="WEBHOOK",
+    node_type=NodeType.TRIGGER,
+    subtype=TriggerSubtype.GITHUB,
     description="GitHub repository trigger for code events and workflows",
     parameters=[
         ParameterDef(

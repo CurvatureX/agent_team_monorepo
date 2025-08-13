@@ -104,6 +104,121 @@ async def process_webhook(
         raise HTTPException(status_code=500, detail=f"Webhook processing failed: {str(e)}")
 
 
+@router.post("/github/events", response_model=Dict[str, Any])
+async def handle_github_events(
+    github_webhook_data: Dict[str, Any],
+    trigger_manager: TriggerManager = Depends(get_trigger_manager),
+):
+    """
+    Process GitHub webhook events forwarded from API Gateway
+    Expected data format from API Gateway:
+    {
+        "event_type": str,
+        "delivery_id": str,
+        "payload": Dict[str, Any],
+        "installation_id": int,
+        "repository_name": str,
+        "timestamp": str
+    }
+    """
+    try:
+        event_type = github_webhook_data.get("event_type")
+        delivery_id = github_webhook_data.get("delivery_id")
+        payload = github_webhook_data.get("payload", {})
+        installation_id = github_webhook_data.get("installation_id")
+        repository_name = github_webhook_data.get("repository_name")
+
+        logger.info(
+            f"GitHub webhook event received from API Gateway: {event_type} "
+            f"(delivery: {delivery_id}, repo: {repository_name})"
+        )
+
+        if not all([event_type, delivery_id, payload]):
+            raise HTTPException(
+                status_code=400,
+                detail="Missing required fields: event_type, delivery_id, or payload",
+            )
+
+        # Find workflows with matching GitHub triggers
+        matching_workflows = await _find_workflows_with_github_triggers(
+            trigger_manager,
+            installation_id=installation_id or 0,
+            repository_name=repository_name or "",
+            event_type=event_type,
+            payload=payload,
+        )
+
+        if not matching_workflows:
+            logger.info(
+                f"No workflows found matching GitHub event {event_type} "
+                f"for repository {repository_name}"
+            )
+            return {
+                "message": "No matching workflows found",
+                "event_type": event_type,
+                "delivery_id": delivery_id,
+                "processed_workflows": 0,
+                "results": [],
+            }
+
+        # Process each matching workflow
+        results = []
+        processed_workflows = 0
+
+        for workflow_id, trigger in matching_workflows:
+            try:
+                # Process the GitHub event through the trigger
+                result = await trigger.process_github_event(event_type, payload)
+
+                if result:
+                    results.append(
+                        {
+                            "workflow_id": workflow_id,
+                            "execution_id": result.execution_id,
+                            "status": result.status,
+                            "message": result.message,
+                        }
+                    )
+                    processed_workflows += 1
+
+                    logger.info(
+                        f"GitHub trigger processed workflow {workflow_id}: "
+                        f"execution_id={result.execution_id}, status={result.status}"
+                    )
+                else:
+                    logger.debug(f"GitHub trigger filtered out for workflow {workflow_id}")
+
+            except Exception as e:
+                logger.error(
+                    f"Error processing GitHub trigger for workflow {workflow_id}: {e}",
+                    exc_info=True,
+                )
+                results.append(
+                    {
+                        "workflow_id": workflow_id,
+                        "execution_id": None,
+                        "status": "error",
+                        "message": f"Processing failed: {str(e)}",
+                    }
+                )
+
+        return {
+            "message": "GitHub webhook processed",
+            "event_type": event_type,
+            "delivery_id": delivery_id,
+            "repository": repository_name,
+            "installation_id": installation_id,
+            "processed_workflows": processed_workflows,
+            "results": results,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error handling GitHub webhook event: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"GitHub webhook processing failed: {str(e)}")
+
+
 @router.post("/github", response_model=Dict[str, Any])
 async def handle_github_trigger(
     trigger_request: GitHubTriggerRequest,
@@ -308,6 +423,109 @@ async def get_trigger_types():
     except Exception as e:
         logger.error(f"Error getting trigger types: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get trigger types: {str(e)}")
+
+
+# Slack endpoints that the API Gateway expects
+@router.post("/slack/events", response_model=Dict[str, Any])
+async def handle_slack_events(
+    slack_event_data: Dict[str, Any],
+    trigger_manager: TriggerManager = Depends(get_trigger_manager),
+):
+    """
+    Process Slack events forwarded from API Gateway
+    Expected data format from API Gateway:
+    {
+        "team_id": str,
+        "event_data": Dict[str, Any]
+    }
+    """
+    try:
+        team_id = slack_event_data.get("team_id")
+        event_data = slack_event_data.get("event_data", {})
+
+        logger.info(f"Slack event received from API Gateway for team {team_id}")
+
+        # For now, just acknowledge the event
+        # In the future, this could route to appropriate Slack triggers
+        return {
+            "message": "Slack event processed",
+            "team_id": team_id,
+            "processed_triggers": 0,
+            "results": [],
+        }
+
+    except Exception as e:
+        logger.error(f"Error handling Slack event: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Slack event processing failed: {str(e)}")
+
+
+@router.post("/slack/interactive", response_model=Dict[str, Any])
+async def handle_slack_interactive(
+    slack_interactive_data: Dict[str, Any],
+    trigger_manager: TriggerManager = Depends(get_trigger_manager),
+):
+    """
+    Process Slack interactive components forwarded from API Gateway
+    Expected data format from API Gateway:
+    {
+        "team_id": str,
+        "payload": Dict[str, Any]
+    }
+    """
+    try:
+        team_id = slack_interactive_data.get("team_id")
+        payload = slack_interactive_data.get("payload", {})
+
+        logger.info(f"Slack interactive component received from API Gateway for team {team_id}")
+
+        # For now, just acknowledge the interaction
+        # In the future, this could route to appropriate Slack triggers
+        return {
+            "message": "Slack interactive component processed",
+            "team_id": team_id,
+            "slack_response": {"ok": True},
+        }
+
+    except Exception as e:
+        logger.error(f"Error handling Slack interactive component: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Slack interactive component processing failed: {str(e)}"
+        )
+
+
+@router.post("/slack/commands", response_model=Dict[str, Any])
+async def handle_slack_commands(
+    command_data: Dict[str, Any],
+    trigger_manager: TriggerManager = Depends(get_trigger_manager),
+):
+    """
+    Process Slack slash commands forwarded from API Gateway
+    Expected data format from API Gateway: form data as dict
+    """
+    try:
+        team_id = command_data.get("team_id")
+        command = command_data.get("command")
+        text = command_data.get("text", "")
+        user_name = command_data.get("user_name")
+
+        logger.info(
+            f"Slack slash command received from API Gateway: {command} from {user_name} in team {team_id}"
+        )
+
+        # For now, just acknowledge the command
+        # In the future, this could route to appropriate Slack triggers
+        return {
+            "message": "Slack command processed",
+            "team_id": team_id,
+            "slack_response": {
+                "response_type": "ephemeral",
+                "text": f"Command `{command}` received and processed",
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"Error handling Slack command: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Slack command processing failed: {str(e)}")
 
 
 @router.get("/health")

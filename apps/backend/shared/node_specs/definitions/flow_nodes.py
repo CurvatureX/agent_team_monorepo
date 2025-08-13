@@ -5,6 +5,7 @@ This module defines specifications for all FLOW_NODE subtypes including
 conditional logic, loops, filtering, merging, and other flow control operations.
 """
 
+from ...models.node_enums import FlowSubtype, NodeType
 from ..base import (
     ConnectionType,
     DataFormat,
@@ -17,8 +18,8 @@ from ..base import (
 
 # IF node - conditional branching
 IF_NODE_SPEC = NodeSpec(
-    node_type="FLOW",
-    subtype="IF",
+    node_type=NodeType.FLOW,
+    subtype=FlowSubtype.IF,
     description="Conditional branching node that routes data based on conditions",
     parameters=[
         ParameterDef(
@@ -95,8 +96,8 @@ IF_NODE_SPEC = NodeSpec(
 
 # Filter node - filter data based on criteria
 FILTER_NODE_SPEC = NodeSpec(
-    node_type="FLOW",
-    subtype="FILTER",
+    node_type=NodeType.FLOW,
+    subtype=FlowSubtype.FILTER,
     description="Filter data based on specified criteria",
     parameters=[
         ParameterDef(
@@ -160,8 +161,8 @@ FILTER_NODE_SPEC = NodeSpec(
 
 # Loop node - iterate over data
 LOOP_NODE_SPEC = NodeSpec(
-    node_type="FLOW",
-    subtype="LOOP",
+    node_type=NodeType.FLOW,
+    subtype=FlowSubtype.LOOP,
     description="Iterate over data items or repeat operations",
     parameters=[
         ParameterDef(
@@ -252,8 +253,8 @@ LOOP_NODE_SPEC = NodeSpec(
 
 # Merge node - combine multiple data streams
 MERGE_NODE_SPEC = NodeSpec(
-    node_type="FLOW",
-    subtype="MERGE",
+    node_type=NodeType.FLOW,
+    subtype=FlowSubtype.MERGE,
     description="Merge multiple data streams into a single output",
     parameters=[
         ParameterDef(
@@ -324,8 +325,8 @@ MERGE_NODE_SPEC = NodeSpec(
 
 # Switch node - route to different outputs based on values
 SWITCH_NODE_SPEC = NodeSpec(
-    node_type="FLOW",
-    subtype="SWITCH",
+    node_type=NodeType.FLOW,
+    subtype=FlowSubtype.SWITCH,
     description="Route data to different outputs based on switch values",
     parameters=[
         ParameterDef(
@@ -392,8 +393,8 @@ SWITCH_NODE_SPEC = NodeSpec(
 
 # Wait node - introduce delays or wait for conditions
 WAIT_NODE_SPEC = NodeSpec(
-    node_type="FLOW",
-    subtype="WAIT",
+    node_type=NodeType.FLOW,
+    subtype=FlowSubtype.WAIT,
     description="Wait for a specified time or condition before continuing",
     parameters=[
         ParameterDef(

@@ -76,10 +76,6 @@ class ExternalActionSubtype(str, Enum):
     MYSQL_ACTION = "MYSQL_ACTION"
     MONGODB_ACTION = "MONGODB_ACTION"
 
-    # APIs
-    REST_API = "REST_API"
-    GRAPHQL_API = "GRAPHQL_API"
-
 
 class ActionSubtype(str, Enum):
     """Action Node Subtypes - Core system actions"""
@@ -105,6 +101,8 @@ class ActionSubtype(str, Enum):
     # Database Operations
     DATABASE_QUERY = "DATABASE_QUERY"
     DATABASE_OPERATION = "DATABASE_OPERATION"
+
+    WEB_SEARCH = "WEB_SEARCH"
 
 
 class FlowSubtype(str, Enum):
@@ -164,9 +162,9 @@ class ToolSubtype(str, Enum):
     MCP_TOOL = "MCP_TOOL"
 
     # Calendar Tools
-    GOOGLE_CALENDAR = "GOOGLE_CALENDAR"
-    OUTLOOK_CALENDAR = "OUTLOOK_CALENDAR"
-    CALENDAR_GENERIC = "CALENDAR_GENERIC"
+    GOOGLE_CALENDAR = "GOOGLE_CALENDAR_TOOL"
+    OUTLOOK_CALENDAR = "OUTLOOK_CALENDAR_TOOL"
+    CALENDAR_GENERIC = "CALENDAR_GENERIC_TOOL"
 
     # Email Tools
     EMAIL_TOOL = "EMAIL_TOOL"
@@ -174,17 +172,12 @@ class ToolSubtype(str, Enum):
 
     # HTTP Tools
     HTTP_CLIENT = "HTTP_CLIENT"
-    REST_CLIENT = "REST_CLIENT"
 
     # File Tools
     FILE_PROCESSOR = "FILE_PROCESSOR"
     IMAGE_PROCESSOR = "IMAGE_PROCESSOR"
 
-    # Legacy (for backward compatibility)
-    MCP = "MCP"
-    CALENDAR = "CALENDAR"
-    EMAIL = "EMAIL"
-    HTTP = "HTTP"
+    CODE_TOOL = "CODE_TOOL"
 
 
 class MemorySubtype(str, Enum):
@@ -207,6 +200,8 @@ class MemorySubtype(str, Enum):
     # Traditional Databases
     SQL_DATABASE = "SQL_DATABASE"
     NOSQL_DATABASE = "NOSQL_DATABASE"
+
+    SIMPLE_MEMORY = "SIMPLE_MEMORY"
 
     # Legacy (for backward compatibility)
     VECTOR_DB = "VECTOR_DB"

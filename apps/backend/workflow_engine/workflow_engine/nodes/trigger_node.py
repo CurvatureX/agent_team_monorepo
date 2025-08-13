@@ -22,7 +22,10 @@ except ImportError:
     NodeSpec = None
 
 try:
-    from shared.enums import TriggerSubtype, normalize_subtype
+    from shared.models.node_enums import TriggerSubtype
+
+    # Legacy compatibility function
+    normalize_subtype = lambda x: x.value if hasattr(x, "value") else x
 except ImportError:
     # Fallback if shared enums not available
     TriggerSubtype = None

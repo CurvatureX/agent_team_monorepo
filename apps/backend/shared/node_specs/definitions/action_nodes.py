@@ -5,6 +5,7 @@ This module defines specifications for all ACTION_NODE subtypes including
 code execution, HTTP requests, data processing, and various action-based operations.
 """
 
+from ...models.node_enums import ActionSubtype, NodeType
 from ..base import (
     ConnectionType,
     DataFormat,
@@ -17,8 +18,8 @@ from ..base import (
 
 # Run Code - execute code in various languages
 RUN_CODE_SPEC = NodeSpec(
-    node_type="ACTION",
-    subtype="RUN_CODE",
+    node_type=NodeType.ACTION,
+    subtype=ActionSubtype.RUN_CODE,
     description="Execute code in various programming languages",
     parameters=[
         ParameterDef(
@@ -93,8 +94,8 @@ RUN_CODE_SPEC = NodeSpec(
 
 # HTTP Request - make HTTP API calls
 HTTP_REQUEST_SPEC = NodeSpec(
-    node_type="ACTION",
-    subtype="HTTP_REQUEST",
+    node_type=NodeType.ACTION,
+    subtype=ActionSubtype.HTTP_REQUEST,
     description="Make HTTP requests to external APIs",
     parameters=[
         ParameterDef(
@@ -179,7 +180,7 @@ HTTP_REQUEST_SPEC = NodeSpec(
 
 # Parse Image - extract information from images
 PARSE_IMAGE_SPEC = NodeSpec(
-    node_type="ACTION",
+    node_type=NodeType.ACTION,
     subtype="PARSE_IMAGE",
     description="Extract text and information from images using OCR and AI",
     parameters=[
@@ -255,8 +256,8 @@ PARSE_IMAGE_SPEC = NodeSpec(
 
 # Web Search - search the web for information
 WEB_SEARCH_SPEC = NodeSpec(
-    node_type="ACTION",
-    subtype="WEB_SEARCH",
+    node_type=NodeType.ACTION,
+    subtype=ActionSubtype.WEB_SEARCH,
     description="Search the web for information using search engines",
     parameters=[
         ParameterDef(
@@ -336,8 +337,8 @@ WEB_SEARCH_SPEC = NodeSpec(
 
 # Database Operation - perform database operations
 DATABASE_OPERATION_SPEC = NodeSpec(
-    node_type="ACTION",
-    subtype="DATABASE_OPERATION",
+    node_type=NodeType.ACTION,
+    subtype=ActionSubtype.DATABASE_OPERATION,
     description="Perform database operations (SELECT, INSERT, UPDATE, DELETE)",
     parameters=[
         ParameterDef(
@@ -416,8 +417,8 @@ DATABASE_OPERATION_SPEC = NodeSpec(
 
 # File Operation - file system operations
 FILE_OPERATION_SPEC = NodeSpec(
-    node_type="ACTION",
-    subtype="FILE_OPERATION",
+    node_type=NodeType.ACTION,
+    subtype=ActionSubtype.FILE_OPERATION,
     description="Perform file system operations (read, write, copy, delete)",
     parameters=[
         ParameterDef(
@@ -495,8 +496,8 @@ FILE_OPERATION_SPEC = NodeSpec(
 
 # Data Transformation - transform and process data
 DATA_TRANSFORMATION_SPEC = NodeSpec(
-    node_type="ACTION",
-    subtype="DATA_TRANSFORMATION",
+    node_type=NodeType.ACTION,
+    subtype=ActionSubtype.DATA_TRANSFORMATION,
     description="Transform and process data using various operations",
     parameters=[
         ParameterDef(
