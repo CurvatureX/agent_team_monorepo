@@ -39,7 +39,7 @@ except ImportError:
 
 
 from shared.models.trigger import TriggerType
-from workflow_scheduler.api import deployment, github, slack, triggers
+from workflow_scheduler.api import auth, deployment, github, slack, triggers
 from workflow_scheduler.core.config import settings
 from workflow_scheduler.dependencies import (
     get_lock_manager,
@@ -176,6 +176,7 @@ app.add_middleware(
 app.include_router(deployment.router, prefix="/api/v1")
 app.include_router(triggers.router, prefix="/api/v1")
 app.include_router(github.router, prefix="/api/v1")
+app.include_router(auth.router, prefix="/api/v1")
 app.include_router(slack.router)
 
 

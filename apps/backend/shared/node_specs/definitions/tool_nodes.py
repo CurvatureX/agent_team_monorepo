@@ -5,6 +5,7 @@ This module defines specifications for TOOL_NODE subtypes that provide
 various tool integrations like HTTP, code execution, and MCP tools.
 """
 
+from ...models.node_enums import NodeType, ToolSubtype
 from ..base import (
     ConnectionType,
     DataFormat,
@@ -17,8 +18,8 @@ from ..base import (
 
 # HTTP Tool Node
 HTTP_TOOL_SPEC = NodeSpec(
-    node_type="TOOL",
-    subtype="TOOL_HTTP",
+    node_type=NodeType.TOOL,
+    subtype=ToolSubtype.HTTP_CLIENT,
     description="HTTP request tool",
     parameters=[
         ParameterDef(
@@ -101,8 +102,8 @@ HTTP_TOOL_SPEC = NodeSpec(
 
 # Code Execution Tool Node
 CODE_EXECUTION_TOOL_SPEC = NodeSpec(
-    node_type="TOOL",
-    subtype="TOOL_CODE_EXECUTION",
+    node_type=NodeType.TOOL,
+    subtype=ToolSubtype.CODE_TOOL,
     description="Safe code execution environment",
     parameters=[
         ParameterDef(
@@ -176,8 +177,8 @@ CODE_EXECUTION_TOOL_SPEC = NodeSpec(
 
 # Google Calendar MCP Tool Node
 GOOGLE_CALENDAR_MCP_TOOL_SPEC = NodeSpec(
-    node_type="TOOL",
-    subtype="TOOL_GOOGLE_CALENDAR_MCP",
+    node_type=NodeType.TOOL,
+    subtype=ToolSubtype.GOOGLE_CALENDAR,
     description="Access Google Calendar through MCP protocol",
     parameters=[
         ParameterDef(
