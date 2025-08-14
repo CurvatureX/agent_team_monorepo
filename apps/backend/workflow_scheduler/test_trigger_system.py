@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 # Add the backend directory to the Python path so we can import our modules
 sys.path.insert(0, "/Users/jingweizhang/Workspace/agent_team_monorepo/apps/backend")
 
+from shared.models.node_enums import NodeType
 from shared.models.trigger import TriggerSpec, TriggerType
 from workflow_scheduler.services.event_router import EventRouter
 from workflow_scheduler.services.trigger_index_manager import TriggerIndexManager
@@ -39,7 +40,7 @@ async def test_trigger_indexing():
 
     trigger_specs = [
         TriggerSpec(
-            node_type="TRIGGER_NODE",
+            node_type=NodeType.TRIGGER.value,
             subtype=TriggerType.GITHUB,
             parameters={
                 "repository": "test-org/test-repo",
@@ -50,13 +51,13 @@ async def test_trigger_indexing():
             enabled=True,
         ),
         TriggerSpec(
-            node_type="TRIGGER_NODE",
+            node_type=NodeType.TRIGGER.value,
             subtype=TriggerType.WEBHOOK,
             parameters={"path": "/webhooks/test", "allowed_methods": ["POST"]},
             enabled=True,
         ),
         TriggerSpec(
-            node_type="TRIGGER_NODE",
+            node_type=NodeType.TRIGGER.value,
             subtype=TriggerType.CRON,
             parameters={"cron_expression": "0 9 * * MON-FRI", "timezone": "UTC"},
             enabled=True,

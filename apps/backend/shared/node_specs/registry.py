@@ -97,8 +97,56 @@ class NodeSpecRegistry:
 
     def get_spec(self, node_type: str, subtype: str) -> Optional[NodeSpec]:
         """Get a node specification by type and subtype."""
+        # Try the direct key first (for backward compatibility)
         key = f"{node_type}.{subtype}"
-        return self._specs.get(key)
+        spec = self._specs.get(key)
+        if spec:
+            return spec
+
+        # Try with NodeType/Subtype prefixes (for new enum format)
+        enum_key = f"NodeType.{node_type}.{self._get_subtype_enum_key(node_type, subtype)}"
+        return self._specs.get(enum_key)
+
+    def _get_subtype_enum_key(self, node_type: str, subtype: str) -> str:
+        """Convert subtype string to its enum representation."""
+        # Import enum classes to convert string to enum format
+        try:
+            from ..models.node_enums import (
+                ActionSubtype,
+                AIAgentSubtype,
+                ExternalActionSubtype,
+                FlowSubtype,
+                HumanLoopSubtype,
+                MemorySubtype,
+                ToolSubtype,
+                TriggerSubtype,
+            )
+
+            # Map node types to their subtype enums
+            subtype_enum_map = {
+                "ACTION": ActionSubtype,
+                "AI_AGENT": AIAgentSubtype,
+                "FLOW": FlowSubtype,
+                "TRIGGER": TriggerSubtype,
+                "MEMORY": MemorySubtype,
+                "HUMAN_LOOP": HumanLoopSubtype,
+                "TOOL": ToolSubtype,
+                "EXTERNAL_ACTION": ExternalActionSubtype,
+            }
+
+            enum_class = subtype_enum_map.get(node_type)
+            if enum_class:
+                # Try to find the enum value that matches the subtype
+                for enum_value in enum_class:
+                    if enum_value.value == subtype:
+                        return str(enum_value)
+
+            # If no enum match found, return the subtype as-is
+            return subtype
+
+        except ImportError:
+            # If enums not available, return the subtype as-is
+            return subtype
 
     def get_specs_by_type(self, node_type: str) -> List[NodeSpec]:
         """Get all specifications for a given node type."""

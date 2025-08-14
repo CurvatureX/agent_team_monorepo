@@ -23,6 +23,8 @@ from app.utils.logger import get_logger
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from shared.models.node_enums import ActionSubtype, NodeType
+
 logger = get_logger(__name__)
 router = APIRouter()
 
@@ -43,16 +45,7 @@ class NodeKnowledgeMCPService:
                     "properties": {
                         "type_filter": {
                             "type": "string",
-                            "enum": [
-                                "ACTION_NODE",
-                                "TRIGGER_NODE",
-                                "AI_AGENT_NODE",
-                                "FLOW_NODE",
-                                "TOOL_NODE",
-                                "MEMORY_NODE",
-                                "HUMAN_LOOP_NODE",
-                                "EXTERNAL_ACTION_NODE",
-                            ],
+                            "enum": [node_type.value for node_type in NodeType],
                             "description": "Filter by node type (optional)",
                         }
                     },
@@ -178,7 +171,7 @@ class NodeKnowledgeMCPService:
                 "available": True,
                 "category": "workflow",
                 "usage_examples": [
-                    {"type_filter": "ACTION_NODE"},  # Filter by specific type
+                    {"type_filter": NodeType.ACTION.value},  # Filter by specific type
                 ],
             },
             "get_node_details": {
@@ -189,7 +182,12 @@ class NodeKnowledgeMCPService:
                 "category": "workflow",
                 "usage_examples": [
                     {
-                        "nodes": [{"node_type": "ACTION_NODE", "subtype": "HTTP_REQUEST"}],
+                        "nodes": [
+                            {
+                                "node_type": NodeType.ACTION.value,
+                                "subtype": ActionSubtype.HTTP_REQUEST.value,
+                            }
+                        ],
                         "include_examples": True,
                     }
                 ],

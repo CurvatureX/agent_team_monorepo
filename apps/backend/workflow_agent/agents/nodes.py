@@ -16,15 +16,23 @@ from langchain_openai import ChatOpenAI
 from workflow_agent.core.config import settings
 from workflow_agent.core.prompt_engine import get_prompt_engine
 
+# Import shared enums for consistent node type handling
+try:
+    from shared.models.node_enums import NodeType, TriggerSubtype
+except ImportError:
+    # Fallback if shared models not available
+    NodeType = None
+    TriggerSubtype = None
+
 from .mcp_tools import MCPToolCaller
 from .state import (
     ClarificationContext,
     Conversation,
     WorkflowStage,
     WorkflowState,
-    get_user_message,
-    get_intent_summary,
     get_current_workflow,
+    get_intent_summary,
+    get_user_message,
     is_clarification_ready,
 )
 
@@ -103,9 +111,12 @@ class WorkflowAgentNodes:
             context_parts.append(f"{conv.get('role')}: {conv.get('text', '')}")
         return "\n".join(context_parts)
 
-
     def _create_fallback_workflow(self, intent_summary: str) -> dict:
         """Create a simple fallback workflow when generation fails"""
+        # Use enum values if available, fallback to hardcoded strings
+        node_type = NodeType.TRIGGER.value if NodeType else "trigger"
+        subtype = TriggerSubtype.MANUAL.value if TriggerSubtype else "manual"
+
         return {
             "name": "Fallback Workflow",
             "description": f"Basic workflow for: {intent_summary[:100]}",
@@ -113,8 +124,8 @@ class WorkflowAgentNodes:
                 {
                     "id": str(uuid.uuid4()),
                     "name": "Start",
-                    "type": "trigger",
-                    "subtype": "manual",
+                    "type": node_type,
+                    "subtype": subtype,
                     "properties": {},
                     "inputs": {},
                     "outputs": {"trigger_data": {"type": "object"}},
@@ -259,14 +270,16 @@ class WorkflowAgentNodes:
 
             # Log the model being used
             logger.info(f"Using model: {settings.DEFAULT_MODEL_NAME}")
-            
+
             # Try to use response_format, fall back if not supported
             try:
                 response = await self.llm.ainvoke(messages, response_format={"type": "json_object"})
                 logger.info("Successfully used response_format for JSON output")
             except Exception as format_error:
                 if "response_format" in str(format_error):
-                    logger.warning(f"Model doesn't support response_format, falling back to standard call: {format_error}")
+                    logger.warning(
+                        f"Model doesn't support response_format, falling back to standard call: {format_error}"
+                    )
                     # Add JSON instruction to the prompt
                     messages.append(HumanMessage(content="Please respond in valid JSON format."))
                     response = await self.llm.ainvoke(messages)
@@ -303,8 +316,8 @@ class WorkflowAgentNodes:
                 gap_resolution = clarification_output.get("gap_resolution", {})
                 if gap_resolution.get("user_selected_alternative", False):
                     # User made a choice
-                    alt_idx = gap_resolution.get('selected_index')
-                    confidence = gap_resolution.get('confidence')
+                    alt_idx = gap_resolution.get("selected_index")
+                    confidence = gap_resolution.get("confidence")
                     logger.info(f"User selected alternative {alt_idx} with confidence {confidence}")
 
                 # Update clarification context
@@ -342,17 +355,18 @@ class WorkflowAgentNodes:
 
         except Exception as e:
             import traceback
+
             error_details = {
                 "error": str(e),
                 "error_type": type(e).__name__,
                 "traceback": traceback.format_exc(),
                 "tracking_id": state.get("tracking_id", "unknown"),
-                "location": "agents/nodes.py:336"
+                "location": "agents/nodes.py:336",
             }
             logger.error(
-                f"Clarification node failed: {str(e)}", 
+                f"Clarification node failed: {str(e)}",
                 extra=error_details,
-                exc_info=True  # This will include the full stack trace
+                exc_info=True,  # This will include the full stack trace
             )
             # Also log as separate ERROR for visibility
             logger.error(f"Error details: {error_details}")
@@ -361,12 +375,9 @@ class WorkflowAgentNodes:
                 "success": False,
                 "error": str(e),
                 "error_type": type(e).__name__,
-                "timestamp": int(time.time() * 1000)
+                "timestamp": int(time.time() * 1000),
             }
-            return {
-                **state,
-                "stage": WorkflowStage.CLARIFICATION
-            }
+            return {**state, "stage": WorkflowStage.CLARIFICATION}
 
     async def workflow_generation_node(self, state: WorkflowState) -> WorkflowState:
         """
@@ -375,7 +386,7 @@ class WorkflowAgentNodes:
         Now also creates the workflow in workflow_engine immediately after generation
         """
         from workflow_agent.services.workflow_engine_client import WorkflowEngineClient
-        
+
         logger.info("Processing optimized workflow generation node")
 
         # Set stage to WORKFLOW_GENERATION
@@ -410,13 +421,12 @@ class WorkflowAgentNodes:
                 "conversation_context": conversation_context,
                 "available_nodes": available_nodes,
                 "current_workflow": state.get("current_workflow"),
-                "debug_result": error_context
+                "debug_result": error_context,
             }
 
             # Use the original f1 template system - the working approach
             system_prompt = await self.prompt_engine.render_prompt(
-                "workflow_gen_f1",
-                **template_context
+                "workflow_gen_f1", **template_context
             )
 
             # Create user prompt for workflow generation - optimized for efficiency
@@ -433,7 +443,7 @@ Instructions:
 
             messages = [
                 SystemMessage(content=system_prompt),
-                HumanMessage(content=user_prompt_content)
+                HumanMessage(content=user_prompt_content),
             ]
 
             # Generate workflow using OpenAI with multi-turn tool calling (like the test file)
@@ -474,32 +484,34 @@ Instructions:
             engine_client = WorkflowEngineClient()
             user_id = state.get("user_id", "test_user")
             session_id = state.get("session_id")
-            
+
             # Pass session_id to the workflow creation
             creation_result = await engine_client.create_workflow(workflow, user_id, session_id)
-            
-            if creation_result.get("success", True) and creation_result.get("workflow", {}).get("id"):
+
+            if creation_result.get("success", True) and creation_result.get("workflow", {}).get(
+                "id"
+            ):
                 # Creation successful - store workflow and workflow_id
                 workflow_id = creation_result["workflow"]["id"]
                 state["current_workflow"] = workflow
                 state["workflow_id"] = workflow_id
                 state["workflow_creation_result"] = creation_result
-                
+
                 # Clear any previous creation errors
                 if "workflow_creation_error" in state:
                     del state["workflow_creation_error"]
-                
+
                 logger.info(f"Workflow created successfully with ID: {workflow_id}")
                 # Keep stage as WORKFLOW_GENERATION so routing goes to debug node
                 return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
-                
+
             else:
                 # Creation failed - check if we should retry generation
                 creation_error = creation_result.get("error", "Unknown creation error")
-                max_generation_retries = getattr(settings, 'WORKFLOW_GENERATION_MAX_RETRIES', 3)
-                
+                max_generation_retries = getattr(settings, "WORKFLOW_GENERATION_MAX_RETRIES", 3)
+
                 logger.error(f"Workflow creation failed: {creation_error}")
-                
+
                 # Check if it's a session_id error - if so, don't retry as it won't help
                 if "session_id" in creation_error or "ForeignKeyViolation" in creation_error:
                     logger.error("Session ID error detected, skipping retries")
@@ -508,16 +520,21 @@ Instructions:
                     # Mark as FAILED to end the flow
                     state["stage"] = WorkflowStage.FAILED
                     # Add failure message to conversations
-                    self._add_conversation(state, "assistant", 
-                        f"I've generated the workflow but couldn't save it due to a session error. Here's the workflow configuration:\n\n```json\n{json.dumps(workflow, indent=2)}\n```")
+                    self._add_conversation(
+                        state,
+                        "assistant",
+                        f"I've generated the workflow but couldn't save it due to a session error. Here's the workflow configuration:\n\n```json\n{json.dumps(workflow, indent=2)}\n```",
+                    )
                     return state
-                
+
                 if generation_loop_count < max_generation_retries:
                     # Store error for regeneration and increment loop count
                     state["workflow_creation_error"] = creation_error
                     state["generation_loop_count"] = generation_loop_count + 1
-                    
-                    logger.info(f"Retrying workflow generation (attempt {generation_loop_count + 1}/{max_generation_retries})")
+
+                    logger.info(
+                        f"Retrying workflow generation (attempt {generation_loop_count + 1}/{max_generation_retries})"
+                    )
                     # Recursively call this node to retry
                     return await self.workflow_generation_node(state)
                 else:
@@ -525,25 +542,29 @@ Instructions:
                     state["workflow_creation_error"] = creation_error
                     state["current_workflow"] = workflow
                     state["stage"] = WorkflowStage.FAILED
-                    logger.error(f"Max workflow generation retries ({max_generation_retries}) reached")
+                    logger.error(
+                        f"Max workflow generation retries ({max_generation_retries}) reached"
+                    )
                     # Add failure message to conversations
-                    self._add_conversation(state, "assistant", 
-                        f"I've generated the workflow but encountered an error saving it after {max_generation_retries} attempts. Here's the workflow configuration:\n\n```json\n{json.dumps(workflow, indent=2)}\n```\n\nError: {creation_error}")
+                    self._add_conversation(
+                        state,
+                        "assistant",
+                        f"I've generated the workflow but encountered an error saving it after {max_generation_retries} attempts. Here's the workflow configuration:\n\n```json\n{json.dumps(workflow, indent=2)}\n```\n\nError: {creation_error}",
+                    )
                     return state
 
         except Exception as e:
             import traceback
+
             error_details = {
                 "error": str(e),
                 "error_type": type(e).__name__,
                 "traceback": traceback.format_exc(),
                 "tracking_id": state.get("tracking_id", "unknown"),
-                "location": "agents/nodes.py:workflow_generation_node"
+                "location": "agents/nodes.py:workflow_generation_node",
             }
             logger.error(
-                f"Workflow generation node failed: {str(e)}", 
-                extra=error_details,
-                exc_info=True
+                f"Workflow generation node failed: {str(e)}", extra=error_details, exc_info=True
             )
             logger.error(f"Error details: {error_details}")
             return {
@@ -554,110 +575,139 @@ Instructions:
     async def _generate_with_multi_turn_tools(self, messages: List) -> str:
         """
         Multi-turn workflow generation following the working pattern from test file.
-        
+
         This matches the successful approach:
         1. First call with tools - LLM uses get_node_types
         2. Process tool responses
-        3. Continue conversation to get node_details  
+        3. Continue conversation to get node_details
         4. Final generation with complete JSON output
         """
         try:
             # Convert LangChain messages to OpenAI format
             openai_messages = []
             for msg in messages:
-                if hasattr(msg, 'content'):
+                if hasattr(msg, "content"):
                     role = "system" if type(msg).__name__ == "SystemMessage" else "user"
                     openai_messages.append({"role": role, "content": msg.content})
-                    
+
             logger.info("Starting multi-turn workflow generation with OpenAI")
-            
-            # Step 1: First call - let LLM call get_node_types  
+
+            # Step 1: First call - let LLM call get_node_types
             # Use the LLM with tools bound (not passing tools parameter directly)
             response = await self.llm_with_tools.ainvoke(messages)
-            
+
             # Convert back to openai format for processing
-            if hasattr(response, 'content') and response.content:
+            if hasattr(response, "content") and response.content:
                 openai_messages.append({"role": "assistant", "content": response.content})
-            
+
             # Process tool calls if any
             if hasattr(response, "tool_calls") and response.tool_calls:
                 logger.info(f"Processing {len(response.tool_calls)} tool calls from first response")
-                
+
                 # Add tool call responses
                 for tool_call in response.tool_calls:
-                    tool_name = getattr(tool_call, 'name', tool_call.get('name', ''))
-                    tool_args = getattr(tool_call, 'args', tool_call.get('args', {}))
-                    
+                    tool_name = getattr(tool_call, "name", tool_call.get("name", ""))
+                    tool_args = getattr(tool_call, "args", tool_call.get("args", {}))
+
                     logger.info(f"Calling tool: {tool_name}")
                     result = await self.mcp_client.call_tool(tool_name, tool_args)
-                    
+
                     # Format as string for conversation
-                    result_str = json.dumps(result, indent=2) if isinstance(result, dict) else str(result)
-                    
-                    openai_messages.append({
-                        "role": "tool", 
-                        "tool_call_id": getattr(tool_call, 'id', str(uuid.uuid4())),
-                        "content": result_str
-                    })
-                
+                    result_str = (
+                        json.dumps(result, indent=2) if isinstance(result, dict) else str(result)
+                    )
+
+                    openai_messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": getattr(tool_call, "id", str(uuid.uuid4())),
+                            "content": result_str,
+                        }
+                    )
+
                 # Step 2: Continue conversation to get node_details and final JSON
-                openai_messages.append({
-                    "role": "user",
-                    "content": "Now call get_node_details with a SINGLE call containing ALL the nodes you need (pass them as an array in the 'nodes' parameter). Focus only on the specific nodes required for this workflow - don't fetch details for unnecessary nodes. After getting the details, output ONLY the complete JSON workflow configuration."
-                })
-                
+                openai_messages.append(
+                    {
+                        "role": "user",
+                        "content": "Now call get_node_details with a SINGLE call containing ALL the nodes you need (pass them as an array in the 'nodes' parameter). Focus only on the specific nodes required for this workflow - don't fetch details for unnecessary nodes. After getting the details, output ONLY the complete JSON workflow configuration.",
+                    }
+                )
+
                 # Convert back to LangChain format
                 langchain_messages = []
                 for msg in openai_messages:
                     if msg["role"] == "system":
                         langchain_messages.append(SystemMessage(content=msg["content"]))
-                    elif msg["role"] == "user":  
+                    elif msg["role"] == "user":
                         langchain_messages.append(HumanMessage(content=msg["content"]))
                     elif msg["role"] == "assistant":
-                        langchain_messages.append(SystemMessage(content=f"Assistant: {msg['content']}"))
+                        langchain_messages.append(
+                            SystemMessage(content=f"Assistant: {msg['content']}")
+                        )
                     elif msg["role"] == "tool":
-                        langchain_messages.append(HumanMessage(content=f"Tool result: {msg['content']}"))
-                
+                        langchain_messages.append(
+                            HumanMessage(content=f"Tool result: {msg['content']}")
+                        )
+
                 # Step 3: Final generation call
                 final_response = await self.llm_with_tools.ainvoke(langchain_messages)
-                
+
                 # Handle any additional tool calls for node_details (with limit to prevent infinite loops)
                 MAX_ADDITIONAL_CALLS = 5  # Prevent runaway tool calling
                 if hasattr(final_response, "tool_calls") and final_response.tool_calls:
                     num_calls = len(final_response.tool_calls)
                     if num_calls > MAX_ADDITIONAL_CALLS:
-                        logger.warning(f"Too many tool calls ({num_calls}), limiting to {MAX_ADDITIONAL_CALLS}")
+                        logger.warning(
+                            f"Too many tool calls ({num_calls}), limiting to {MAX_ADDITIONAL_CALLS}"
+                        )
                         final_response.tool_calls = final_response.tool_calls[:MAX_ADDITIONAL_CALLS]
-                    
-                    logger.info(f"Processing {len(final_response.tool_calls)} additional tool calls")
-                    
+
+                    logger.info(
+                        f"Processing {len(final_response.tool_calls)} additional tool calls"
+                    )
+
                     # Process additional tool calls
                     for tool_call in final_response.tool_calls:
-                        tool_name = getattr(tool_call, 'name', tool_call.get('name', ''))
-                        tool_args = getattr(tool_call, 'args', tool_call.get('args', {}))
-                        
-                        logger.info(f"Calling additional tool: {tool_name} with args: {json.dumps(tool_args, indent=2) if tool_args else '{}'}")
+                        tool_name = getattr(tool_call, "name", tool_call.get("name", ""))
+                        tool_args = getattr(tool_call, "args", tool_call.get("args", {}))
+
+                        logger.info(
+                            f"Calling additional tool: {tool_name} with args: {json.dumps(tool_args, indent=2) if tool_args else '{}'}"
+                        )
                         result = await self.mcp_client.call_tool(tool_name, tool_args)
-                        
-                        result_str = json.dumps(result, indent=2) if isinstance(result, dict) else str(result)
-                        langchain_messages.append(HumanMessage(content=f"Tool result for {tool_name}: {result_str}"))
-                    
+
+                        result_str = (
+                            json.dumps(result, indent=2)
+                            if isinstance(result, dict)
+                            else str(result)
+                        )
+                        langchain_messages.append(
+                            HumanMessage(content=f"Tool result for {tool_name}: {result_str}")
+                        )
+
                     # Final call to get the JSON workflow with clearer instructions
-                    langchain_messages.append(HumanMessage(content="You now have all the node details. Output ONLY the complete JSON workflow configuration. Start with { and end with }. No explanations, no markdown, just pure JSON."))
-                    
+                    langchain_messages.append(
+                        HumanMessage(
+                            content="You now have all the node details. Output ONLY the complete JSON workflow configuration. Start with { and end with }. No explanations, no markdown, just pure JSON."
+                        )
+                    )
+
                     final_json_response = await self.llm_with_tools.ainvoke(langchain_messages)
-                    return str(final_json_response.content) if hasattr(final_json_response, 'content') else ""
-                
+                    return (
+                        str(final_json_response.content)
+                        if hasattr(final_json_response, "content")
+                        else ""
+                    )
+
                 # Return the final response content
-                return str(final_response.content) if hasattr(final_response, 'content') else ""
-            
-            # No tool calls in first response - return content directly  
-            return str(response.content) if hasattr(response, 'content') else ""
-            
+                return str(final_response.content) if hasattr(final_response, "content") else ""
+
+            # No tool calls in first response - return content directly
+            return str(response.content) if hasattr(response, "content") else ""
+
         except Exception as e:
             logger.error(f"Multi-turn tool generation failed: {e}", exc_info=True)
             return ""
-
 
     async def debug_node(self, state: WorkflowState) -> WorkflowState:
         """
@@ -665,8 +715,8 @@ Instructions:
         Now only handles test data generation and execution since workflow is already created
         Returns debug result with either success or error message
         """
-        from workflow_agent.services.workflow_engine_client import WorkflowEngineClient
         from workflow_agent.agents.workflow_data_generator import WorkflowDataGenerator
+        from workflow_agent.services.workflow_engine_client import WorkflowEngineClient
 
         logger.info("Processing debug node with workflow_engine validation")
 
@@ -676,7 +726,7 @@ Instructions:
         try:
             current_workflow = get_current_workflow(state)
             workflow_id = state.get("workflow_id")
-            
+
             # Check if we have workflow creation error from previous workflow generation
             creation_error = state.get("workflow_creation_error")
             if creation_error:
@@ -697,9 +747,11 @@ Instructions:
                     "timestamp": int(time.time() * 1000),
                 }
                 return {**state, "stage": WorkflowStage.DEBUG}
-                
+
             if not workflow_id:
-                logger.warning("No workflow_id available, workflow may not have been created successfully")
+                logger.warning(
+                    "No workflow_id available, workflow may not have been created successfully"
+                )
                 state["debug_result"] = {
                     "success": False,
                     "error": "No workflow_id available - workflow creation may have failed",
@@ -761,18 +813,15 @@ Instructions:
 
         except Exception as e:
             import traceback
+
             error_details = {
                 "error": str(e),
                 "error_type": type(e).__name__,
                 "traceback": traceback.format_exc(),
                 "tracking_id": state.get("tracking_id", "unknown"),
-                "location": "agents/nodes.py:debug_node"
+                "location": "agents/nodes.py:debug_node",
             }
-            logger.error(
-                f"Debug node failed: {str(e)}", 
-                extra=error_details,
-                exc_info=True
-            )
+            logger.error(f"Debug node failed: {str(e)}", extra=error_details, exc_info=True)
             logger.error(f"Error details: {error_details}")
             state["debug_result"] = {
                 "success": False,

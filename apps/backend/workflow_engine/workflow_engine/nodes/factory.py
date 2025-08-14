@@ -59,42 +59,41 @@ class NodeExecutorFactory:
 
 
 # Global factory instance
-_node_executor_factory = NodeExecutorFactory()
+_node_executor_factory = None
 
 
 def get_node_executor_factory() -> NodeExecutorFactory:
     """Get the global node executor factory instance."""
+    global _node_executor_factory
+    if _node_executor_factory is None:
+        _node_executor_factory = NodeExecutorFactory()
+        # Register default executors when factory is first created
+        register_default_executors()
     return _node_executor_factory
 
 
 def register_default_executors() -> None:
     """Register all default node executors using authoritative shared model enums."""
-    factory = get_node_executor_factory()
+    # Don't call get_node_executor_factory() here to avoid circular import
+    # This function will be called from within get_node_executor_factory()
+    global _node_executor_factory
+    if _node_executor_factory is None:
+        return  # Factory not initialized yet
 
     if NodeType:
-        # Use authoritative shared model enums directly
-        factory.register_executor(NodeType.TRIGGER.value, TriggerNodeExecutor)
-        factory.register_executor(NodeType.AI_AGENT.value, AIAgentNodeExecutor)
-        factory.register_executor(NodeType.ACTION.value, ActionNodeExecutor)
-        factory.register_executor(NodeType.FLOW.value, FlowNodeExecutor)
-        factory.register_executor(NodeType.HUMAN_IN_THE_LOOP.value, HumanLoopNodeExecutor)
-        factory.register_executor(NodeType.TOOL.value, ToolNodeExecutor)
-        factory.register_executor(NodeType.MEMORY.value, MemoryNodeExecutor)
-        factory.register_executor(NodeType.EXTERNAL_ACTION.value, ExternalActionNodeExecutor)
-
-        # Register legacy format aliases for backward compatibility
-        factory.register_executor("TRIGGER_NODE", TriggerNodeExecutor)
-        factory.register_executor("AI_AGENT_NODE", AIAgentNodeExecutor)
-        factory.register_executor("ACTION_NODE", ActionNodeExecutor)
-        factory.register_executor("FLOW_NODE", FlowNodeExecutor)
-        factory.register_executor("HUMAN_IN_THE_LOOP_NODE", HumanLoopNodeExecutor)
-        factory.register_executor("TOOL_NODE", ToolNodeExecutor)
-        factory.register_executor("MEMORY_NODE", MemoryNodeExecutor)
-        factory.register_executor("EXTERNAL_ACTION_NODE", ExternalActionNodeExecutor)
+        # Use authoritative shared model enums only - no legacy support
+        _node_executor_factory.register_executor(NodeType.TRIGGER.value, TriggerNodeExecutor)
+        _node_executor_factory.register_executor(NodeType.AI_AGENT.value, AIAgentNodeExecutor)
+        _node_executor_factory.register_executor(NodeType.ACTION.value, ActionNodeExecutor)
+        _node_executor_factory.register_executor(NodeType.FLOW.value, FlowNodeExecutor)
+        _node_executor_factory.register_executor(
+            NodeType.HUMAN_IN_THE_LOOP.value, HumanLoopNodeExecutor
+        )
+        _node_executor_factory.register_executor(NodeType.TOOL.value, ToolNodeExecutor)
+        _node_executor_factory.register_executor(NodeType.MEMORY.value, MemoryNodeExecutor)
+        _node_executor_factory.register_executor(
+            NodeType.EXTERNAL_ACTION.value, ExternalActionNodeExecutor
+        )
     else:
         # Fallback - should not be needed with proper shared models
         raise ImportError("Cannot import shared models NodeType - check shared models installation")
-
-
-# Register all executors
-register_default_executors()

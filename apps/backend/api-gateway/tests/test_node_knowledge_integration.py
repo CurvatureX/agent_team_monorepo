@@ -8,6 +8,8 @@ instead of extensive mocking.
 import pytest
 from app.services.node_knowledge_service import NodeKnowledgeService
 
+from shared.models.node_enums import ActionSubtype, AIAgentSubtype, FlowSubtype, NodeType
+
 
 class TestNodeKnowledgeServiceIntegration:
     """Integration tests using real node specifications"""
@@ -26,7 +28,7 @@ class TestNodeKnowledgeServiceIntegration:
         assert len(result) > 0
 
         # Should contain expected real node types
-        expected_types = ["ACTION", "AI_AGENT", "FLOW"]
+        expected_types = [NodeType.ACTION.value, NodeType.AI_AGENT.value, NodeType.FLOW.value]
         for expected_type in expected_types:
             assert expected_type in result
             assert isinstance(result[expected_type], list)
@@ -36,9 +38,9 @@ class TestNodeKnowledgeServiceIntegration:
         """Test getting real node details"""
         # Use actual nodes that exist in the registry
         real_nodes = [
-            {"node_type": "ACTION", "subtype": "HTTP_REQUEST"},
-            {"node_type": "AI_AGENT", "subtype": "OPENAI_NODE"},
-            {"node_type": "FLOW", "subtype": "IF"},
+            {"node_type": NodeType.ACTION.value, "subtype": ActionSubtype.HTTP_REQUEST.value},
+            {"node_type": NodeType.AI_AGENT.value, "subtype": AIAgentSubtype.OPENAI_CHATGPT.value},
+            {"node_type": NodeType.FLOW.value, "subtype": FlowSubtype.IF.value},
         ]
 
         result = service.get_node_details(real_nodes)
@@ -79,7 +81,7 @@ class TestNodeKnowledgeServiceIntegration:
         assert len(result) > 0
 
         # Should find the HTTP_REQUEST node
-        http_nodes = [r for r in result if r["subtype"] == "HTTP_REQUEST"]
+        http_nodes = [r for r in result if r["subtype"] == ActionSubtype.HTTP_REQUEST.value]
         assert len(http_nodes) > 0
 
         # Should have relevance score
@@ -130,16 +132,16 @@ class TestNodeKnowledgeServiceIntegration:
     def test_node_types_filtering(self, service):
         """Test filtering node types"""
         # Test filtering by specific type
-        result = service.get_node_types("ACTION")
+        result = service.get_node_types(NodeType.ACTION.value)
 
         assert isinstance(result, dict)
         assert len(result) == 1
-        assert "ACTION" in result
-        assert len(result["ACTION"]) > 0
+        assert NodeType.ACTION.value in result
+        assert len(result[NodeType.ACTION.value]) > 0
 
         # Should not contain other types
-        assert "AI_AGENT" not in result
-        assert "FLOW" not in result
+        assert NodeType.AI_AGENT.value not in result
+        assert NodeType.FLOW.value not in result
 
     def test_detailed_search_results(self, service):
         """Test search with detailed results"""

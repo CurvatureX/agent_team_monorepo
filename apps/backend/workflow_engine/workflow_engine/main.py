@@ -48,14 +48,35 @@ except ImportError:
 
 
 from shared.models.common import HealthResponse, HealthStatus
-from workflow_engine.api.v1 import credentials, executions, triggers, workflows
-from workflow_engine.core.config import get_settings
-from workflow_engine.models.database import close_db
+
+from .api.v1 import credentials, executions, triggers, workflows
+from .core.config import get_settings
+from .models.database import close_db
 
 logger = logging.getLogger(__name__)
 
 
+# Configure logging to reduce SQLAlchemy noise
+def setup_logging():
+    """Configure logging to reduce database noise while preserving app logs."""
+    # Set SQLAlchemy logging based on database_echo setting
+    if settings.database_echo:
+        # Allow SQLAlchemy INFO logs when debugging is enabled
+        logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
+    else:
+        # Suppress SQLAlchemy logs in normal operation
+        logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+        logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
+        logging.getLogger("sqlalchemy.dialects").setLevel(logging.WARNING)
+
+    # Keep application logging at INFO level
+    logging.getLogger("workflow_engine").setLevel(logging.INFO)
+    logging.getLogger("uvicorn").setLevel(logging.INFO)
+
+
 settings = get_settings()
+
+setup_logging()
 
 app = FastAPI(
     title="Workflow Engine API",
@@ -158,7 +179,7 @@ async def health_check():
     try:
         from sqlalchemy import text
 
-        from workflow_engine.models.database import engine
+        from .models.database import engine
 
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))

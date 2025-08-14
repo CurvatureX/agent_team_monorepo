@@ -13,9 +13,6 @@ from pydantic import BaseModel
 
 from shared.node_specs import node_spec_registry
 from shared.node_specs.base import NodeSpec
-from workflow_engine.workflow_engine.data_mapping import DataMappingProcessor
-from workflow_engine.workflow_engine.data_mapping.context import ExecutionContext
-from workflow_engine.workflow_engine.data_mapping.processor import DataMapping, MappingType
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/node-specs", tags=["Node Specifications"])
@@ -65,22 +62,6 @@ class ConnectionValidationRequest(BaseModel):
     source_port: str
     target_node: Dict
     target_port: str
-
-
-class DataMappingTestRequest(BaseModel):
-    """Data mapping test request."""
-
-    mapping_config: Dict
-    sample_data: Dict
-    context: Optional[Dict] = None
-
-
-class DataMappingTestResponse(BaseModel):
-    """Data mapping test response."""
-
-    success: bool
-    transformed_data: Optional[Dict] = None
-    error: Optional[str] = None
 
 
 # API Endpoints
@@ -287,69 +268,6 @@ async def validate_connection(request: ConnectionValidationRequest):
     except Exception as e:
         logger.error(f"Error validating connection: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
-
-
-@router.post("/data-mapping/test", response_model=DataMappingTestResponse)
-async def test_data_mapping(request: DataMappingTestRequest):
-    """Test data mapping transformation with sample data."""
-    try:
-        processor = DataMappingProcessor()
-
-        # Convert mapping config to DataMapping object
-        mapping_type = MappingType(request.mapping_config.get("type", "DIRECT"))
-
-        # Create DataMapping object
-        from workflow_engine.data_mapping.processor import (
-            DataMapping,
-            FieldMapping,
-            FieldTransform,
-            TransformType,
-        )
-
-        field_mappings = []
-        if request.mapping_config.get("field_mappings"):
-            for fm in request.mapping_config["field_mappings"]:
-                transform = None
-                if fm.get("transform"):
-                    transform = FieldTransform(
-                        type=TransformType(fm["transform"].get("type", "NONE")),
-                        transform_value=fm["transform"].get("transform_value", ""),
-                        options=fm["transform"].get("options", {}),
-                    )
-
-                field_mappings.append(
-                    FieldMapping(
-                        source_field=fm.get("source_field", ""),
-                        target_field=fm.get("target_field", ""),
-                        transform=transform,
-                        required=fm.get("required", False),
-                        default_value=fm.get("default_value"),
-                    )
-                )
-
-        mapping = DataMapping(
-            type=mapping_type,
-            field_mappings=field_mappings,
-            transform_script=request.mapping_config.get("transform_script"),
-            static_values=request.mapping_config.get("static_values", {}),
-            description=request.mapping_config.get("description", ""),
-        )
-
-        # Create execution context
-        context = ExecutionContext(
-            workflow_id="test", execution_id="test", variables=request.context or {}, metadata={}
-        )
-
-        # Transform data
-        transformed_data = processor.transform_data(
-            source_data=request.sample_data, mapping=mapping, context=context
-        )
-
-        return DataMappingTestResponse(success=True, transformed_data=transformed_data, error=None)
-
-    except Exception as e:
-        logger.error(f"Error testing data mapping: {e}")
-        return DataMappingTestResponse(success=False, transformed_data=None, error=str(e))
 
 
 @router.get("/health")

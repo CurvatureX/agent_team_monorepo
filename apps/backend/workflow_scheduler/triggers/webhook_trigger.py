@@ -118,7 +118,7 @@ class WebhookTrigger(BaseTrigger):
 
             # Prepare trigger data
             trigger_data = {
-                "trigger_type": "webhook",
+                "trigger_type": self.trigger_type,
                 "method": method,
                 "path": request_data.get("path", self.webhook_path),
                 "headers": request_data.get("headers", {}),

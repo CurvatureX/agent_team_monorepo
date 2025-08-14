@@ -28,6 +28,10 @@ class CronTrigger(BaseTrigger):
         self.scheduler: Optional[AsyncIOScheduler] = None
         self.job_id = f"cron_{self.workflow_id}"
 
+    @property
+    def trigger_type(self) -> str:
+        return TriggerSubtype.CRON.value
+
         if not self.cron_expression:
             raise ValueError("cron_expression is required for CronTrigger")
 
@@ -185,7 +189,7 @@ class CronTrigger(BaseTrigger):
         """Execute the actual cron trigger"""
         try:
             trigger_data = {
-                "trigger_type": "cron",
+                "trigger_type": self.trigger_type,
                 "cron_expression": self.cron_expression,
                 "scheduled_time": datetime.now(pytz.timezone(self.timezone)).isoformat(),
                 "timezone": self.timezone,

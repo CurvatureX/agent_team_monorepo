@@ -1,51 +1,66 @@
 """
 Node Type Converter
 Converts between API Gateway node types and unified node types.
-Uses shared enums for consistency across all services.
+Uses shared enums for type safety and consistency across all services.
+
+This module provides a legacy compatibility layer that:
+1. Maps old frontend/API names to new enum values (e.g., "http" → "HTTP_REQUEST")
+2. Provides default subtypes when none specified (e.g., "trigger" defaults to "MANUAL")
+3. Handles case-insensitive conversion from legacy API formats
+4. Uses enums exclusively - no fallback scenarios or hardcoded strings
 """
 
 from typing import Any, Dict, List
 
-try:
-    from shared.models.node_enums import NodeType, resolve_legacy_api_type
-except ImportError:
-    # Fallback if shared models not available
-    NodeType = None
-    resolve_legacy_api_type = lambda x: x
-
+from shared.models.node_enums import (
+    ActionSubtype,
+    AIAgentSubtype,
+    ExternalActionSubtype,
+    FlowSubtype,
+    HumanLoopSubtype,
+    MemorySubtype,
+    NodeType,
+    ToolSubtype,
+    TriggerSubtype,
+    resolve_legacy_api_type,
+)
 
 # Legacy mapping from API Gateway NodeType enum to unified node types
-# NOTE: This mapping is now redundant as shared.models.node_enums provides
-# resolve_legacy_api_type() function with the authoritative mapping.
+# Using enums for type safety and consistency
 LEGACY_NODE_TYPE_MAPPING = {
-    "trigger": NodeType.TRIGGER.value if NodeType else "TRIGGER",
-    "action": NodeType.ACTION.value if NodeType else "ACTION",
-    "condition": NodeType.FLOW.value if NodeType else "FLOW",
-    "loop": NodeType.FLOW.value if NodeType else "FLOW",
-    "webhook": NodeType.TRIGGER.value if NodeType else "TRIGGER",
-    "api_call": NodeType.EXTERNAL_ACTION.value if NodeType else "EXTERNAL_ACTION",
-    "email": NodeType.EXTERNAL_ACTION.value if NodeType else "EXTERNAL_ACTION",
-    "delay": NodeType.FLOW.value if NodeType else "FLOW",
+    "trigger": NodeType.TRIGGER.value,
+    "action": NodeType.ACTION.value,
+    "condition": NodeType.FLOW.value,
+    "loop": NodeType.FLOW.value,
+    "webhook": NodeType.TRIGGER.value,
+    "api_call": NodeType.EXTERNAL_ACTION.value,
+    "email": NodeType.EXTERNAL_ACTION.value,
+    "delay": NodeType.FLOW.value,
 }
 
-# Subtype mapping based on node type - UPDATED TO UNIFIED FORMAT
-SUBTYPE_MAPPING = {
+# Legacy subtype mapping using enums for type safety
+LEGACY_SUBTYPE_MAPPING = {
     "trigger": {
-        "default": "MANUAL",  # Updated to unified format
-        "cron": "CRON",  # Updated to unified format
-        "manual": "MANUAL",  # Updated to unified format
-        "webhook": "WEBHOOK",  # Updated to unified format
+        "default": TriggerSubtype.MANUAL.value,
+        "cron": TriggerSubtype.CRON.value,
+        "manual": TriggerSubtype.MANUAL.value,
+        "webhook": TriggerSubtype.WEBHOOK.value,
     },
     "action": {
-        "default": "HTTP_REQUEST",
-        "http": "HTTP_REQUEST",
-        "api_call": "HTTP_REQUEST",
-        "email": "SEND_EMAIL",
+        "default": ActionSubtype.HTTP_REQUEST.value,
+        "http": ActionSubtype.HTTP_REQUEST.value,
+        "api_call": ActionSubtype.HTTP_REQUEST.value,
     },
-    "condition": {"default": "IF"},
-    "loop": {"default": "FOR_EACH"},
-    "webhook": {"default": "WEBHOOK"},  # Updated to unified format
-    "delay": {"default": "WAIT"},
+    "email": {
+        "default": ExternalActionSubtype.EMAIL.value,
+    },
+    "api_call": {
+        "default": ActionSubtype.HTTP_REQUEST.value,
+    },
+    "condition": {"default": FlowSubtype.IF.value},
+    "loop": {"default": FlowSubtype.FOR_EACH.value},
+    "webhook": {"default": TriggerSubtype.WEBHOOK.value},
+    "delay": {"default": FlowSubtype.WAIT.value},
 }
 
 
@@ -63,15 +78,13 @@ def convert_node_for_workflow_engine(node: Dict[str, Any]) -> Dict[str, Any]:
     original_type = node.get("type", "").lower()
 
     # Convert type to unified format using authoritative shared model function
-    if NodeType and resolve_legacy_api_type and original_type:
+    if resolve_legacy_api_type and original_type:
         # Use the authoritative conversion from shared.models.node_enums
         result = resolve_legacy_api_type(original_type)
         engine_type = result.value if hasattr(result, "value") else result
     else:
         # Fallback to local mapping
-        engine_type = LEGACY_NODE_TYPE_MAPPING.get(
-            original_type, NodeType.ACTION.value if NodeType else "ACTION"
-        )
+        engine_type = LEGACY_NODE_TYPE_MAPPING.get(original_type, NodeType.ACTION.value)
 
     # Extract parameters from config or use direct parameters
     config = node.get("config", {})
@@ -79,14 +92,15 @@ def convert_node_for_workflow_engine(node: Dict[str, Any]) -> Dict[str, Any]:
 
     # Determine subtype - use the one provided or infer from type
     subtype = node.get("subtype")
+
     if not subtype:
         # Try to infer subtype from config or use default
-        if original_type in SUBTYPE_MAPPING:
-            subtype = SUBTYPE_MAPPING[original_type].get("default", "")
-    elif original_type in SUBTYPE_MAPPING:
+        if original_type in LEGACY_SUBTYPE_MAPPING:
+            subtype = LEGACY_SUBTYPE_MAPPING[original_type].get("default", "")
+    elif original_type in LEGACY_SUBTYPE_MAPPING:
         # If subtype is provided, try to match it in the mapping (case-insensitive)
         subtype_lower = subtype.lower()
-        type_mapping = SUBTYPE_MAPPING[original_type]
+        type_mapping = LEGACY_SUBTYPE_MAPPING[original_type]
 
         # Check if the provided subtype is already in the correct unified format
         if subtype in type_mapping.values():

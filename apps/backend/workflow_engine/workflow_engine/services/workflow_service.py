@@ -25,10 +25,11 @@ from shared.models import (
     UpdateWorkflowRequest,
     WorkflowData,
 )
-from workflow_engine.core.config import get_settings
-from workflow_engine.models import NodeTemplateModel, WorkflowModel
-from workflow_engine.utils.node_id_generator import NodeIdGenerator
-from workflow_engine.utils.workflow_validator import WorkflowValidator
+
+from ..core.config import get_settings
+from ..models import NodeTemplateModel, WorkflowModel
+from ..utils.node_id_generator import NodeIdGenerator
+from ..utils.workflow_validator import WorkflowValidator
 
 logger = logging.getLogger(__name__)
 settings = get_settings()

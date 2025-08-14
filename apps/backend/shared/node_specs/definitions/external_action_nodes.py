@@ -19,7 +19,7 @@ from ..base import (
 # GitHub - GitHub operations
 GITHUB_SPEC = NodeSpec(
     node_type=NodeType.EXTERNAL_ACTION,
-    subtype=ExternalActionSubtype.GITHUB_ACTION,
+    subtype=ExternalActionSubtype.GITHUB,
     description="Execute GitHub operations via GitHub API",
     parameters=[
         ParameterDef(
@@ -134,7 +134,7 @@ GITHUB_SPEC = NodeSpec(
 # Email - email operations
 EMAIL_SPEC = NodeSpec(
     node_type=NodeType.EXTERNAL_ACTION,
-    subtype=ExternalActionSubtype.EMAIL_SEND,
+    subtype=ExternalActionSubtype.EMAIL,
     description="Send emails via SMTP server",
     parameters=[
         ParameterDef(
@@ -256,7 +256,7 @@ EMAIL_SPEC = NodeSpec(
 # Slack - Slack operations
 SLACK_SPEC = NodeSpec(
     node_type=NodeType.EXTERNAL_ACTION,
-    subtype=ExternalActionSubtype.SLACK_ACTION,
+    subtype=ExternalActionSubtype.SLACK,
     description="Send messages and interact with Slack",
     parameters=[
         ParameterDef(

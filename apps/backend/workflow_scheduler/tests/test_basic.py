@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from shared.models.node_enums import NodeType
 from shared.models.trigger import TriggerSpec, TriggerType
 from workflow_scheduler.services.deployment_service import DeploymentService
 from workflow_scheduler.services.trigger_manager import TriggerManager
@@ -18,13 +19,14 @@ class TestTriggerTypes:
     """Test trigger type definitions"""
 
     def test_trigger_types_exist(self):
-        """Test that all expected trigger types are defined"""
+        """Test that all expected trigger types are defined using unified enums"""
         expected_types = {
-            "TRIGGER_CRON",
-            "TRIGGER_MANUAL",
-            "TRIGGER_WEBHOOK",
-            "TRIGGER_EMAIL",
-            "TRIGGER_GITHUB",
+            "CRON",
+            "MANUAL",
+            "WEBHOOK",
+            "EMAIL",
+            "GITHUB",
+            "SLACK",
         }
 
         actual_types = {t.value for t in TriggerType}
@@ -40,7 +42,7 @@ class TestTriggerSpec:
             subtype=TriggerType.MANUAL, parameters={"require_confirmation": True}, enabled=True
         )
 
-        assert spec.node_type == "TRIGGER_NODE"
+        assert spec.node_type == NodeType.TRIGGER.value
         assert spec.subtype == TriggerType.MANUAL
         assert spec.parameters == {"require_confirmation": True}
         assert spec.enabled is True
@@ -135,8 +137,8 @@ class TestDeploymentService:
         valid_workflow = {
             "nodes": [
                 {
-                    "node_type": "TRIGGER_NODE",
-                    "subtype": "TRIGGER_MANUAL",
+                    "node_type": NodeType.TRIGGER.value,
+                    "subtype": TriggerType.MANUAL.value,
                     "parameters": {"require_confirmation": False},
                 }
             ]
@@ -158,8 +160,8 @@ class TestDeploymentService:
         workflow_spec = {
             "nodes": [
                 {
-                    "node_type": "TRIGGER_NODE",
-                    "subtype": "TRIGGER_MANUAL",
+                    "node_type": NodeType.TRIGGER.value,
+                    "subtype": TriggerType.MANUAL.value,
                     "parameters": {"require_confirmation": True},
                     "enabled": True,
                 },
