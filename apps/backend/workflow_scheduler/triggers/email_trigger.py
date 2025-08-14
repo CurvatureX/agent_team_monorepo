@@ -216,7 +216,7 @@ class EmailTrigger(BaseTrigger):
 
             # Prepare trigger data
             trigger_data = {
-                "trigger_type": "email",
+                "trigger_type": self.trigger_type,
                 "email_id": email_id,
                 "subject": email_info["subject"],
                 "sender": email_info["sender"],

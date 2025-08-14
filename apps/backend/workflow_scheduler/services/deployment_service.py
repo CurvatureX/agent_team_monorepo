@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from shared.models.node_enums import NodeType
 from shared.models.trigger import DeploymentResult, DeploymentStatus, TriggerSpec, TriggerType
 from workflow_scheduler.services.direct_db_service import DirectDBService
 from workflow_scheduler.services.trigger_index_manager import TriggerIndexManager
@@ -529,11 +530,7 @@ class DeploymentService:
                 return {"valid": False, "error": "'nodes' must be a list"}
 
             # Check for at least one trigger node (node_type or type field)
-            trigger_nodes = [
-                node
-                for node in nodes
-                if node.get("node_type") == "TRIGGER_NODE" or node.get("type") == "TRIGGER"
-            ]
+            trigger_nodes = [node for node in nodes if node.get("type") == NodeType.TRIGGER.value]
 
             if not trigger_nodes:
                 return {"valid": False, "error": "Workflow must contain at least one trigger node"}
@@ -573,9 +570,9 @@ class DeploymentService:
             nodes = workflow_spec.get("nodes", [])
 
             for node in nodes:
-                if node.get("node_type") == "TRIGGER_NODE" or node.get("type") == "TRIGGER":
+                if node.get("type") == NodeType.TRIGGER.value:
                     trigger_spec = TriggerSpec(
-                        node_type=node.get("node_type", node.get("type")),
+                        node_type=node.get("type"),
                         subtype=TriggerType(node["subtype"]),
                         parameters=node.get("parameters", {}),
                         enabled=node.get("enabled", True),

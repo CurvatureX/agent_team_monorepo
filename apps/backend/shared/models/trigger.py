@@ -5,28 +5,9 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-
-class TriggerType(str, Enum):
-    """
-    Legacy trigger type enum - DEPRECATED
-    Use shared.models.node_enums.TriggerSubtype instead for new code.
-    This is kept for backward compatibility with workflow scheduler.
-    """
-
-    CRON = "CRON"  # Updated to unified format
-    MANUAL = "MANUAL"  # Updated to unified format
-    WEBHOOK = "WEBHOOK"  # Updated to unified format
-    EMAIL = "EMAIL"  # Updated to unified format
-    GITHUB = "GITHUB"  # Updated to unified format
-    SLACK = "SLACK"  # Updated to unified format
-
-    # Keep legacy values as aliases for backward compatibility
-    TRIGGER_CRON = "CRON"
-    TRIGGER_MANUAL = "MANUAL"
-    TRIGGER_WEBHOOK = "WEBHOOK"
-    TRIGGER_EMAIL = "EMAIL"
-    TRIGGER_GITHUB = "GITHUB"
-    TRIGGER_SLACK = "SLACK"
+# Import unified enums - no more legacy support
+from .node_enums import NodeType
+from .node_enums import TriggerSubtype as TriggerType
 
 
 class TriggerStatus(str, Enum):
@@ -45,7 +26,7 @@ class DeploymentStatus(str, Enum):
 
 
 class TriggerSpec(BaseModel):
-    node_type: str = "TRIGGER"  # Updated to unified format (was "TRIGGER_NODE")
+    node_type: str = NodeType.TRIGGER.value  # Use unified enum value
     subtype: TriggerType
     parameters: Dict[str, Any]
     enabled: bool = True

@@ -8,6 +8,18 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+# Import shared enums for consistent node type handling in tests
+try:
+    from shared.models.node_enums import ActionSubtype, AIAgentSubtype, NodeType, TriggerSubtype
+except ImportError:
+    # Fallback if shared models not available - use hardcoded strings
+    class NodeType:
+        TRIGGER = type("", (), {"value": "trigger"})()
+        AI_AGENT = type("", (), {"value": "ai_agent"})()
+        ACTION = type("", (), {"value": "action"})()
+
+    NodeType = NodeType
 from agents.nodes import WorkflowAgentNodes
 from agents.state import ClarificationContext, Conversation, WorkflowOrigin, WorkflowStage
 
@@ -183,7 +195,11 @@ class TestWorkflowAgentNodes:
             "description": "自动处理邮件",
             "nodes": [
                 {"id": "trigger", "type": "email_trigger", "parameters": {"provider": "gmail"}},
-                {"id": "processor", "type": "ai_agent", "parameters": {"model": "gpt-4"}},
+                {
+                    "id": "processor",
+                    "type": NodeType.AI_AGENT.value,
+                    "parameters": {"model": "gpt-4"},
+                },
             ],
             "connections": [{"from": "trigger", "to": "processor"}],
         }
@@ -226,7 +242,11 @@ class TestWorkflowAgentNodes:
             "id": "workflow-test",
             "nodes": [
                 {"id": "trigger", "type": "email_trigger", "parameters": {"provider": "gmail"}},
-                {"id": "processor", "type": "ai_agent", "parameters": {"model": "gpt-4"}},
+                {
+                    "id": "processor",
+                    "type": NodeType.AI_AGENT.value,
+                    "parameters": {"model": "gpt-4"},
+                },
             ],
             "connections": [{"from": "trigger", "to": "processor"}],
         }
@@ -258,7 +278,7 @@ class TestWorkflowAgentNodes:
         sample_state["current_workflow"] = {
             "nodes": [
                 {"id": "trigger", "type": "email_trigger"},
-                {"id": "processor", "type": "ai_agent"},
+                {"id": "processor", "type": NodeType.AI_AGENT.value},
             ],
             "connections": [],  # Missing connections
         }

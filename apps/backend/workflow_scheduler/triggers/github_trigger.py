@@ -400,7 +400,7 @@ class GitHubTrigger(BaseTrigger):
         """Enhance event data with additional repository context"""
         try:
             enhanced_data = {
-                "trigger_type": "github",
+                "trigger_type": self.trigger_type,
                 "event_type": event_type,
                 "action": payload.get("action"),
                 "repository": payload.get("repository", {}),
@@ -426,7 +426,7 @@ class GitHubTrigger(BaseTrigger):
         except Exception as e:
             logger.error(f"Error enhancing event data: {e}", exc_info=True)
             return {
-                "trigger_type": "github",
+                "trigger_type": self.trigger_type,
                 "event_type": event_type,
                 "payload": payload,
                 "timestamp": datetime.utcnow().isoformat(),

@@ -177,7 +177,7 @@ class TriggerManager:
             else:
                 # Fallback to base trigger method
                 return await manual_trigger._trigger_workflow(
-                    {"trigger_type": "manual", "user_id": user_id}
+                    {"trigger_type": TriggerSubtype.MANUAL.value, "user_id": user_id}
                 )
 
         except Exception as e:

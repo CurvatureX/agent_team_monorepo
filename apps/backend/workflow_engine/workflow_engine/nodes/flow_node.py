@@ -9,14 +9,11 @@ import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
+from shared.models.node_enums import FlowSubtype
+from shared.node_specs import node_spec_registry
+from shared.node_specs.base import NodeSpec
 
-try:
-    from shared.node_specs import node_spec_registry
-    from shared.node_specs.base import NodeSpec
-except ImportError:
-    node_spec_registry = None
-    NodeSpec = None
+from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
 
 
 class FlowNodeExecutor(BaseNodeExecutor):
@@ -26,22 +23,22 @@ class FlowNodeExecutor(BaseNodeExecutor):
         """Get the node specification for flow nodes."""
         if node_spec_registry and self._subtype:
             # Return the specific spec for current subtype
-            return node_spec_registry.get_spec("FLOW_NODE", self._subtype)
+            return node_spec_registry.get_spec(NodeType.FLOW.value, self._subtype)
         return None
 
     def get_supported_subtypes(self) -> List[str]:
         """Get supported flow control subtypes."""
-        return ["IF", "FILTER", "LOOP", "MERGE", "SWITCH", "WAIT"]
+        return [subtype.value for subtype in FlowSubtype]
 
     def validate(self, node: Any) -> List[str]:
         """Validate flow node configuration using spec-based validation."""
         # First use the base class validation which includes spec validation
         errors = super().validate(node)
-        
+
         # If spec validation passed, we're done
         if not errors and self.spec:
             return errors
-        
+
         # Fallback if spec not available
         if not node.subtype:
             errors.append("Flow subtype is required")
@@ -51,35 +48,35 @@ class FlowNodeExecutor(BaseNodeExecutor):
             errors.append(f"Unsupported flow subtype: {node.subtype}")
 
         return errors
-    
+
     def _validate_legacy(self, node: Any) -> List[str]:
         """Legacy validation for backward compatibility."""
         errors = []
-        
-        if not hasattr(node, 'subtype'):
+
+        if not hasattr(node, "subtype"):
             return errors
-            
+
         subtype = node.subtype
 
-        if subtype == "IF":
+        if subtype == FlowSubtype.IF.value:
             errors.extend(self._validate_required_parameters(node, ["condition"]))
 
-        elif subtype == "FILTER":
+        elif subtype == FlowSubtype.FILTER.value:
             errors.extend(self._validate_required_parameters(node, ["filter_condition"]))
 
-        elif subtype == "LOOP":
+        elif subtype == FlowSubtype.LOOP.value:
             errors.extend(self._validate_required_parameters(node, ["loop_type"]))
-            if hasattr(node, 'parameters'):
+            if hasattr(node, "parameters"):
                 loop_type = node.parameters.get("loop_type")
                 if loop_type and loop_type not in ["for_each", "while", "times"]:
                     errors.append(f"Invalid loop type: {loop_type}")
 
-        elif subtype == "SWITCH":
+        elif subtype == FlowSubtype.SWITCH.value:
             errors.extend(self._validate_required_parameters(node, ["switch_cases"]))
 
-        elif subtype == "WAIT":
+        elif subtype == FlowSubtype.WAIT.value:
             errors.extend(self._validate_required_parameters(node, ["wait_type"]))
-            if hasattr(node, 'parameters'):
+            if hasattr(node, "parameters"):
                 wait_type = node.parameters.get("wait_type")
                 if wait_type and wait_type not in ["time", "condition", "event"]:
                     errors.append(f"Invalid wait type: {wait_type}")
@@ -95,18 +92,34 @@ class FlowNodeExecutor(BaseNodeExecutor):
             subtype = context.node.subtype
             logs.append(f"Executing flow node with subtype: {subtype}")
 
-            if subtype == "IF":
+            if subtype == FlowSubtype.IF.value:
                 return self._execute_if_condition(context, logs, start_time)
-            elif subtype == "FILTER":
+            elif subtype == FlowSubtype.FILTER.value:
                 return self._execute_filter(context, logs, start_time)
-            elif subtype == "LOOP":
+            elif subtype == FlowSubtype.LOOP.value:
                 return self._execute_loop(context, logs, start_time)
-            elif subtype == "MERGE":
+            elif subtype == FlowSubtype.FOR_EACH.value:
+                return self._execute_loop(
+                    context, logs, start_time
+                )  # FOR_EACH uses same logic as LOOP
+            elif subtype == FlowSubtype.WHILE.value:
+                return self._execute_loop(
+                    context, logs, start_time
+                )  # WHILE uses same logic as LOOP
+            elif subtype == FlowSubtype.MERGE.value:
                 return self._execute_merge(context, logs, start_time)
-            elif subtype == "SWITCH":
+            elif subtype == FlowSubtype.SWITCH.value:
                 return self._execute_switch(context, logs, start_time)
-            elif subtype == "WAIT":
+            elif subtype == FlowSubtype.WAIT.value:
                 return self._execute_wait(context, logs, start_time)
+            elif subtype == FlowSubtype.DELAY.value:
+                return self._execute_wait(
+                    context, logs, start_time
+                )  # DELAY uses same logic as WAIT
+            elif subtype == FlowSubtype.SPLIT.value:
+                return self._execute_split(context, logs, start_time)
+            elif subtype == FlowSubtype.SORT.value:
+                return self._execute_sort(context, logs, start_time)
             else:
                 return self._create_error_result(
                     f"Unsupported flow subtype: {subtype}",
@@ -439,3 +452,74 @@ class FlowNodeExecutor(BaseNodeExecutor):
             "source_data": data,
             "intersection_at": datetime.now().isoformat(),
         }
+
+    def _execute_split(
+        self, context: NodeExecutionContext, logs: List[str], start_time: float
+    ) -> NodeExecutionResult:
+        """Execute split operation."""
+        # Use spec-based parameter retrieval
+        split_key = self.get_parameter_with_spec(context, "split_key")
+        split_type = self.get_parameter_with_spec(context, "split_type")
+
+        logs.append(f"Splitting data by {split_key} using {split_type}")
+
+        input_data = context.input_data
+
+        # Split the data based on the key
+        if split_type == "by_key" and isinstance(input_data, dict):
+            split_result = {key: [value] for key, value in input_data.items()}
+        elif split_type == "by_value" and isinstance(input_data, list):
+            split_result = {str(i): item for i, item in enumerate(input_data)}
+        else:
+            split_result = {"all": input_data}
+
+        output_data = {
+            "flow_type": "split",
+            "split_key": split_key,
+            "split_type": split_type,
+            "input_data": input_data,
+            "split_result": split_result,
+            "split_count": len(split_result),
+            "split_at": datetime.now().isoformat(),
+        }
+
+        return self._create_success_result(
+            output_data=output_data, execution_time=time.time() - start_time, logs=logs
+        )
+
+    def _execute_sort(
+        self, context: NodeExecutionContext, logs: List[str], start_time: float
+    ) -> NodeExecutionResult:
+        """Execute sort operation."""
+        # Use spec-based parameter retrieval
+        sort_key = self.get_parameter_with_spec(context, "sort_key")
+        sort_order = self.get_parameter_with_spec(context, "sort_order")
+
+        logs.append(f"Sorting data by {sort_key} in {sort_order} order")
+
+        input_data = context.input_data
+
+        # Sort the data
+        if isinstance(input_data, list):
+            if sort_key and all(isinstance(item, dict) and sort_key in item for item in input_data):
+                sorted_data = sorted(
+                    input_data, key=lambda x: x[sort_key], reverse=(sort_order == "desc")
+                )
+            else:
+                sorted_data = sorted(input_data, reverse=(sort_order == "desc"))
+        else:
+            sorted_data = input_data
+
+        output_data = {
+            "flow_type": "sort",
+            "sort_key": sort_key,
+            "sort_order": sort_order,
+            "input_data": input_data,
+            "sorted_data": sorted_data,
+            "item_count": len(sorted_data) if isinstance(sorted_data, list) else 1,
+            "sorted_at": datetime.now().isoformat(),
+        }
+
+        return self._create_success_result(
+            output_data=output_data, execution_time=time.time() - start_time, logs=logs
+        )

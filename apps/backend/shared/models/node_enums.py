@@ -56,15 +56,24 @@ class ExternalActionSubtype(str, Enum):
     """External Action Node Subtypes - Third-party integrations"""
 
     # Communication
-    SLACK_ACTION = "SLACK_ACTION"
+    SLACK = "SLACK"
     DISCORD_ACTION = "DISCORD_ACTION"
     TELEGRAM_ACTION = "TELEGRAM_ACTION"
-    EMAIL_SEND = "EMAIL_SEND"
+    EMAIL = "EMAIL"
 
     # Development
-    GITHUB_ACTION = "GITHUB_ACTION"
+    GITHUB = "GITHUB"
     GITLAB_ACTION = "GITLAB_ACTION"
     JIRA_ACTION = "JIRA_ACTION"
+
+    # Productivity
+    GOOGLE_CALENDAR = "GOOGLE_CALENDAR"
+    TRELLO = "TRELLO"
+
+    # Generic Actions
+    API_CALL = "API_CALL"
+    WEBHOOK = "WEBHOOK"
+    NOTIFICATION = "NOTIFICATION"
 
     # Cloud Services
     AWS_ACTION = "AWS_ACTION"

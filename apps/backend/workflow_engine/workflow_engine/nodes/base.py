@@ -19,7 +19,6 @@ except ImportError:
 try:
     from shared.node_specs import node_spec_registry
     from shared.node_specs.base import InputPortSpec, NodeSpec, OutputPortSpec, ParameterType
-    from workflow_engine.data_mapping.processor import DataMappingProcessor
 except ImportError:
     # Fallback for when node specs are not available
     node_spec_registry = None
@@ -27,7 +26,6 @@ except ImportError:
     InputPortSpec = None
     OutputPortSpec = None
     ParameterType = None
-    DataMappingProcessor = None
 
 
 class ExecutionStatus(Enum):
@@ -102,7 +100,6 @@ class BaseNodeExecutor(ABC):
         self.logger = logging.getLogger(self.__class__.__name__)
         self._subtype = subtype  # Set subtype first
         self.spec = self._get_node_spec()  # Now _subtype is available
-        self.data_mapper = DataMappingProcessor() if DataMappingProcessor else None
 
     def _get_node_spec(self) -> Optional[NodeSpec]:
         """Get the node specification for this executor.
