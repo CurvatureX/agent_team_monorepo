@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
+from shared.models import NodeType
 from shared.models.node_enums import ActionSubtype
 from shared.node_specs import node_spec_registry
 from shared.node_specs.base import NodeSpec

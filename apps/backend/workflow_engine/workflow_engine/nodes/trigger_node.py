@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from croniter import croniter
 
+from shared.models import NodeType
 from shared.models.node_enums import TriggerSubtype
 from shared.node_specs import node_spec_registry
 from shared.node_specs.base import NodeSpec

@@ -46,7 +46,7 @@ async def get_system_status():
     """
 
     # Get database manager for health checks
-    db_manager = await get_database_manager()
+    db_manager = get_database_manager()
 
     # Perform health checks
     db_health = await db_manager.health_check()

@@ -94,7 +94,6 @@ __all__ = [
     "is_valid_node_subtype_combination",
     "get_all_node_types",
     "get_all_subtypes",
-    "WorkflowNode",
     "WorkflowEdge",
     "WorkflowCreateRequest",
     "WorkflowUpdateRequest",

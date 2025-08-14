@@ -116,7 +116,7 @@ async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Dep
 
         http_client = await get_workflow_engine_client()
 
-        # Convert WorkflowNode objects to dicts (no format conversion needed - using unified models)
+        # Pass nodes directly - they should already be in NodeData format from WorkflowCreateRequest
         nodes_list = []
         if request.nodes:
             nodes_list = [node.model_dump() for node in request.nodes]

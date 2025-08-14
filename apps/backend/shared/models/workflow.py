@@ -256,21 +256,6 @@ class WorkflowType(str, Enum):
 # All services should import NodeType from shared.models directly
 
 
-class WorkflowNode(BaseModel):
-    """
-    工作流节点模型
-    """
-
-    id: str = Field(description="节点唯一标识符")
-    type: NodeType = Field(description="节点类型")
-    name: str = Field(description="节点名称")
-    description: Optional[str] = Field(default=None, description="节点描述")
-    config: Dict[str, Any] = Field(default_factory=dict, description="节点配置")
-    position: Optional[Dict[str, float]] = Field(default=None, description="节点在画布上的位置 {x, y}")
-    connections: List[str] = Field(default_factory=list, description="连接到的下一个节点ID列表")
-    enabled: bool = Field(default=True, description="节点是否启用")
-
-
 class WorkflowEdge(BaseModel):
     """
     工作流连接边模型
@@ -291,7 +276,7 @@ class WorkflowCreateRequest(BaseModel):
     name: str = Field(description="工作流名称")
     description: Optional[str] = Field(default=None, description="工作流描述")
     type: WorkflowType = Field(default=WorkflowType.SEQUENTIAL, description="工作流类型")
-    nodes: List[WorkflowNode] = Field(default_factory=list, description="工作流节点列表")
+    nodes: List[NodeData] = Field(default_factory=list, description="工作流节点列表")
     edges: List[WorkflowEdge] = Field(default_factory=list, description="工作流连接边列表")
     connections: Optional[Dict[str, Any]] = Field(default_factory=dict, description="节点连接信息（兼容性字段）")
     variables: Dict[str, Any] = Field(default_factory=dict, description="工作流变量")
@@ -310,12 +295,11 @@ class WorkflowUpdateRequest(BaseModel):
     name: Optional[str] = Field(default=None, description="工作流名称")
     description: Optional[str] = Field(default=None, description="工作流描述")
     status: Optional[WorkflowStatus] = Field(default=None, description="工作流状态")
-    nodes: Optional[List[WorkflowNode]] = Field(default=None, description="工作流节点列表")
+    nodes: Optional[List[NodeData]] = Field(default=None, description="工作流节点列表")
     edges: Optional[List[WorkflowEdge]] = Field(default=None, description="工作流连接边列表")
     variables: Optional[Dict[str, Any]] = Field(default=None, description="工作流变量")
     settings: Optional[Dict[str, Any]] = Field(default=None, description="工作流设置")
     tags: Optional[List[str]] = Field(default=None, description="工作流标签")
-
 
 
 class WorkflowExecutionRecord(EntityModel):
