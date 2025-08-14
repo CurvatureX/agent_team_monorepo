@@ -34,14 +34,15 @@ class GitHubTrigger(BaseTrigger):
 
         self.installation_id = trigger_config.get("github_app_installation_id")
         self.repository = trigger_config.get("repository")
-        self.events = trigger_config.get("events", [])
-        self.branches = trigger_config.get("branches")
-        self.paths = trigger_config.get("paths")
-        self.action_filter = trigger_config.get("action_filter")
+        self.event_config = trigger_config.get("event_config", {})
         self.author_filter = trigger_config.get("author_filter")
-        self.label_filter = trigger_config.get("label_filter")
         self.ignore_bots = trigger_config.get("ignore_bots", True)
-        self.draft_pr_handling = trigger_config.get("draft_pr_handling", "ignore")
+        self.require_signature_verification = trigger_config.get(
+            "require_signature_verification", True
+        )
+
+        # Extract events from event_config for backward compatibility
+        self.events = list(self.event_config.keys()) if self.event_config else []
 
         # GitHub App configuration
         self.app_id = settings.github_app_id
@@ -129,7 +130,8 @@ class GitHubTrigger(BaseTrigger):
 
         except Exception as e:
             logger.error(
-                f"Failed to stop GitHub trigger for workflow {self.workflow_id}: {e}", exc_info=True
+                f"Failed to stop GitHub trigger for workflow {self.workflow_id}: {e}",
+                exc_info=True,
             )
             return False
 
@@ -207,78 +209,132 @@ class GitHubTrigger(BaseTrigger):
             )
 
     async def _matches_advanced_filters(self, event_type: str, payload: Dict[str, Any]) -> bool:
-        """Apply advanced filtering logic"""
+        """Apply advanced filtering logic using new event_config structure"""
         try:
-            # Bot filter
+            # Bot filter (global)
             if self.ignore_bots:
                 sender = payload.get("sender", {})
-                if sender.get("type") == "Bot":
+                if sender.get("type") == "Bot" or "[bot]" in sender.get("login", "").lower():
                     logger.debug(f"Ignoring bot event from {sender.get('login')}")
                     return False
 
-            # Branch filter
-            if self.branches and event_type in ["push", "pull_request"]:
-                if event_type == "push":
-                    ref = payload.get("ref", "")
-                    branch = ref.replace("refs/heads/", "") if ref.startswith("refs/heads/") else ""
-                elif event_type == "pull_request":
-                    branch = payload.get("pull_request", {}).get("base", {}).get("ref", "")
-
-                if branch and branch not in self.branches:
-                    logger.debug(f"Branch {branch} not in filter {self.branches}")
-                    return False
-
-            # Action filter (for PR and issues events)
-            if self.action_filter and event_type in ["pull_request", "issues", "issue_comment"]:
-                action = payload.get("action", "")
-                if action not in self.action_filter:
-                    logger.debug(f"Action {action} not in filter {self.action_filter}")
-                    return False
-
-            # Author filter
+            # Global author filter
             if self.author_filter:
                 author = self._get_event_author(event_type, payload)
                 if author and not re.match(self.author_filter, author):
                     logger.debug(f"Author {author} does not match filter {self.author_filter}")
                     return False
 
-            # Label filter (for issues and PRs)
-            if self.label_filter and event_type in ["issues", "pull_request"]:
-                event_labels = []
-                if event_type == "issues":
-                    event_labels = [
-                        label["name"] for label in payload.get("issue", {}).get("labels", [])
-                    ]
-                elif event_type == "pull_request":
-                    event_labels = [
-                        label["name"] for label in payload.get("pull_request", {}).get("labels", [])
-                    ]
+            # Event-specific filters from event_config
+            event_filters = self.event_config.get(event_type, {})
+            if not event_filters:
+                # If no specific config for this event, allow it (backward compatibility)
+                return True
 
-                if not any(label in event_labels for label in self.label_filter):
-                    logger.debug(
-                        f"No matching labels found. Event labels: {event_labels}, Filter: {self.label_filter}"
-                    )
-                    return False
-
-            # Draft PR handling
-            if event_type == "pull_request" and self.draft_pr_handling == "ignore":
-                pr = payload.get("pull_request", {})
-                if pr.get("draft", False):
-                    logger.debug("Ignoring draft PR")
-                    return False
-
-            # Path filter (for push and PR events)
-            if self.paths and event_type in ["push", "pull_request"]:
-                changed_files = await self._get_changed_files(event_type, payload)
-                if not self._files_match_patterns(changed_files, self.paths):
-                    logger.debug(f"No changed files match path patterns {self.paths}")
-                    return False
-
-            return True
+            # Apply event-specific filters
+            return await self._apply_event_specific_filters(event_type, payload, event_filters)
 
         except Exception as e:
             logger.error(f"Error in advanced filtering: {e}", exc_info=True)
             return False
+
+    async def _apply_event_specific_filters(
+        self, event_type: str, payload: Dict[str, Any], filters: Dict[str, Any]
+    ) -> bool:
+        """Apply filters specific to the event type"""
+
+        # Branch filter
+        if "branches" in filters and event_type in ["push", "pull_request"]:
+            if event_type == "push":
+                ref = payload.get("ref", "")
+                branch = ref.replace("refs/heads/", "") if ref.startswith("refs/heads/") else ""
+            elif event_type == "pull_request":
+                branch = payload.get("pull_request", {}).get("base", {}).get("ref", "")
+
+            if branch and branch not in filters["branches"]:
+                logger.debug(f"Branch {branch} not in filter {filters['branches']}")
+                return False
+
+        # Action filter
+        if "actions" in filters:
+            action = payload.get("action", "")
+            if action not in filters["actions"]:
+                logger.debug(f"Action {action} not in filter {filters['actions']}")
+                return False
+
+        # Label filter (for issues and PRs)
+        if "labels" in filters and event_type in ["issues", "pull_request"]:
+            event_labels = []
+            if event_type == "issues":
+                event_labels = [
+                    label["name"] for label in payload.get("issue", {}).get("labels", [])
+                ]
+            elif event_type == "pull_request":
+                event_labels = [
+                    label["name"] for label in payload.get("pull_request", {}).get("labels", [])
+                ]
+
+            if not any(label in event_labels for label in filters["labels"]):
+                logger.debug(
+                    f"No matching labels found. Event labels: {event_labels}, Filter: {filters['labels']}"
+                )
+                return False
+
+        # Draft PR handling
+        if "draft_handling" in filters and event_type == "pull_request":
+            pr = payload.get("pull_request", {})
+            is_draft = pr.get("draft", False)
+
+            if filters["draft_handling"] == "ignore" and is_draft:
+                logger.debug("Ignoring draft PR")
+                return False
+            elif filters["draft_handling"] == "only" and not is_draft:
+                logger.debug("Only accepting draft PRs")
+                return False
+
+        # Path filter (for push and PR events)
+        if "paths" in filters and event_type in ["push", "pull_request"]:
+            changed_files = await self._get_changed_files(event_type, payload)
+            if not self._files_match_patterns(changed_files, filters["paths"]):
+                logger.debug(f"No changed files match path patterns {filters['paths']}")
+                return False
+
+        # Authors filter (event-specific, different from global author_filter)
+        if "authors" in filters:
+            author = self._get_event_author(event_type, payload)
+            if author and author not in filters["authors"]:
+                logger.debug(f"Author {author} not in allowed authors {filters['authors']}")
+                return False
+
+        # Review state filter (for pull_request_review events)
+        if "states" in filters and event_type == "pull_request_review":
+            review_state = payload.get("review", {}).get("state", "")
+            if review_state not in filters["states"]:
+                logger.debug(f"Review state {review_state} not in filter {filters['states']}")
+                return False
+
+        # Workflow filter (for workflow_run events)
+        if "workflows" in filters and event_type == "workflow_run":
+            workflow_path = payload.get("workflow_run", {}).get("path", "")
+            if workflow_path not in filters["workflows"]:
+                logger.debug(f"Workflow path {workflow_path} not in filter {filters['workflows']}")
+                return False
+
+        # Conclusion filter (for workflow_run and workflow_job events)
+        if "conclusions" in filters and event_type in ["workflow_run", "workflow_job"]:
+            conclusion = payload.get(event_type, {}).get("conclusion", "")
+            if conclusion not in filters["conclusions"]:
+                logger.debug(f"Conclusion {conclusion} not in filter {filters['conclusions']}")
+                return False
+
+        # Ref type filter (for create/delete events)
+        if "ref_types" in filters and event_type in ["create", "delete"]:
+            ref_type = payload.get("ref_type", "")
+            if ref_type not in filters["ref_types"]:
+                logger.debug(f"Ref type {ref_type} not in filter {filters['ref_types']}")
+                return False
+
+        return True
 
     def _get_event_author(self, event_type: str, payload: Dict[str, Any]) -> Optional[str]:
         """Extract author from event payload"""

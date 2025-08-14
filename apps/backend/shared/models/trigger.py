@@ -79,14 +79,10 @@ class EmailTriggerSpec(BaseModel):
 class GitHubTriggerSpec(BaseModel):
     github_app_installation_id: str
     repository: str
-    events: List[str]
-    branches: Optional[List[str]] = None
-    paths: Optional[List[str]] = None
-    action_filter: Optional[List[str]] = None
+    event_config: Dict[str, Any]  # Changed from separate parameters to unified event configuration
     author_filter: Optional[str] = None
-    label_filter: Optional[List[str]] = None
     ignore_bots: bool = True
-    draft_pr_handling: str = "ignore"
+    require_signature_verification: bool = True
     enabled: bool = True
 
 

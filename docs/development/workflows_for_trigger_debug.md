@@ -834,15 +834,15 @@ GitHub triggers respond to repository events via webhooks.
       "parameters": {
         "github_app_installation_id": "12345678",
         "repository": "company/webapp",
-        "events": ["pull_request"],
-        "branches": ["main", "develop"],
-        "paths": null,
-        "action_filter": ["opened", "closed", "synchronize"],
-        "author_filter": null,
-        "label_filter": null,
+        "event_config": {
+          "pull_request": {
+            "actions": ["opened", "closed", "synchronize"],
+            "branches": ["main", "develop"],
+            "draft_handling": "ignore"
+          }
+        },
         "ignore_bots": true,
-        "require_signature_verification": true,
-        "draft_pr_handling": "ignore"
+        "require_signature_verification": true
       },
       "position": {"x": 100, "y": 100}
     },
@@ -957,15 +957,15 @@ GitHub triggers respond to repository events via webhooks.
       "parameters": {
         "github_app_installation_id": "12345678",
         "repository": "company/webapp",
-        "events": ["push"],
-        "branches": ["main"],
-        "paths": ["src/**", "package.json", "Dockerfile"],
-        "action_filter": null,
+        "event_config": {
+          "push": {
+            "branches": ["main"],
+            "paths": ["src/**", "package.json", "Dockerfile"]
+          }
+        },
         "author_filter": "^(?!dependabot)",
-        "label_filter": null,
         "ignore_bots": true,
-        "require_signature_verification": true,
-        "draft_pr_handling": "ignore"
+        "require_signature_verification": true
       },
       "position": {"x": 100, "y": 100}
     },

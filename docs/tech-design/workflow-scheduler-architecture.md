@@ -630,14 +630,23 @@ class SlackTrigger(BaseTrigger):
   "parameters": {
     "github_app_installation_id": "12345678",
     "repository": "microsoft/vscode",
-    "events": ["push", "pull_request"],
-    "branches": ["main", "develop"],
-    "paths": ["src/**", "*.md"],
-    "action_filter": ["opened", "synchronize"],
+    "event_config": {
+      "push": {
+        "branches": ["main", "develop"],
+        "paths": ["src/**", "*.md"],
+        "authors": ["john-doe", "jane-smith"]
+      },
+      "pull_request": {
+        "actions": ["opened", "synchronize"],
+        "branches": ["main", "develop"],
+        "paths": ["src/**", "*.md"],
+        "labels": ["bug", "enhancement"],
+        "draft_handling": "ignore"
+      }
+    },
     "author_filter": "^(?!dependabot)",
-    "label_filter": ["bug", "enhancement"],
     "ignore_bots": true,
-    "draft_pr_handling": "ignore"
+    "require_signature_verification": true
   }
 }
 ```
