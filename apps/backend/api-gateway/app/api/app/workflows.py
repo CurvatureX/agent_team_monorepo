@@ -75,22 +75,30 @@ async def list_all_node_templates(
     deps: AuthenticatedDeps = Depends(),
 ):
     """
-    List all available node templates via HTTP.
+    List all available node templates from node specs.
+
+    This endpoint has been updated to use the node specs system instead of
+    the deprecated node_templates database table.
     """
     try:
-        settings = get_settings()
+        logger.info("Listing node templates from node specs system")
 
-        http_client = await get_workflow_engine_client()
-        templates = await http_client.list_all_node_templates(
-            category_filter=category,
-            type_filter=node_type,
-            include_system_templates=include_system,
+        # Import here to avoid circular imports
+        from shared.services.node_specs_api_service import get_node_specs_api_service
+
+        # Use node specs service directly for better performance and consistency
+        specs_service = get_node_specs_api_service()
+        templates = specs_service.list_all_node_templates(
+            category_filter=category, type_filter=node_type, include_system_templates=include_system
         )
+
+        logger.info(f"Retrieved {len(templates)} node templates from specs")
         return NodeTemplateListResponse(node_templates=templates)
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error listing node templates: {e}")
+        logger.error(f"Error listing node templates from specs: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

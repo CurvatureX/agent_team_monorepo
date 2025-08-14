@@ -21,6 +21,9 @@ RUN_CODE_SPEC = NodeSpec(
     node_type=NodeType.ACTION,
     subtype=ActionSubtype.RUN_CODE,
     description="Execute code in various programming languages",
+    display_name="Code Execution",
+    category="actions",
+    template_id="action_code_exec",
     parameters=[
         ParameterDef(
             name="code", type=ParameterType.STRING, required=True, description="Code to execute"
@@ -97,6 +100,9 @@ HTTP_REQUEST_SPEC = NodeSpec(
     node_type=NodeType.ACTION,
     subtype=ActionSubtype.HTTP_REQUEST,
     description="Make HTTP requests to external APIs",
+    display_name="HTTP Request",
+    category="actions",
+    template_id="action_http_request",
     parameters=[
         ParameterDef(
             name="url",
@@ -499,6 +505,9 @@ DATA_TRANSFORMATION_SPEC = NodeSpec(
     node_type=NodeType.ACTION,
     subtype=ActionSubtype.DATA_TRANSFORMATION,
     description="Transform and process data using various operations",
+    display_name="Data Transformation",
+    category="actions",
+    template_id="action_data_transform",
     parameters=[
         ParameterDef(
             name="transformation_type",
@@ -572,6 +581,63 @@ DATA_TRANSFORMATION_SPEC = NodeSpec(
             name="error",
             type=ConnectionType.ERROR,
             description="Error output when transformation fails",
+        ),
+    ],
+)
+
+
+# Send Email - Simple email sending action
+SEND_EMAIL_SPEC = NodeSpec(
+    node_type=NodeType.ACTION,
+    subtype="SEND_EMAIL",  # Might not be in enum yet
+    description="Send email notifications",
+    display_name="Send Email",
+    category="actions",
+    template_id="action_send_email",
+    parameters=[
+        ParameterDef(
+            name="to",
+            type=ParameterType.STRING,
+            required=True,
+            description="Recipient email address",
+        ),
+        ParameterDef(
+            name="subject",
+            type=ParameterType.STRING,
+            required=True,
+            description="Email subject",
+        ),
+        ParameterDef(
+            name="body",
+            type=ParameterType.STRING,
+            required=True,
+            description="Email body content",
+        ),
+        ParameterDef(
+            name="from_address",
+            type=ParameterType.STRING,
+            required=False,
+            description="Sender email address",
+        ),
+    ],
+    input_ports=[
+        InputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            required=False,
+            description="Email content and recipients",
+        )
+    ],
+    output_ports=[
+        OutputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            description="Email send result",
+        ),
+        OutputPortSpec(
+            name="error",
+            type=ConnectionType.ERROR,
+            description="Email send error",
         ),
     ],
 )

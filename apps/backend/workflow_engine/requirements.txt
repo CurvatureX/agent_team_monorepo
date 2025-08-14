@@ -4,6 +4,7 @@ pydantic
 pydantic-settings
 croniter
 cryptography
+supabase
 # Existing dependencies below
 psycopg2-binary
 sqlalchemy
