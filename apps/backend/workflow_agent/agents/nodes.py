@@ -26,8 +26,6 @@ except ImportError:
 
 from .mcp_tools import MCPToolCaller
 from .state import (
-    ClarificationContext,
-    Conversation,
     WorkflowStage,
     WorkflowState,
     get_current_workflow,
@@ -75,40 +73,62 @@ class WorkflowAgentNodes:
             state["conversations"] = []
 
         state["conversations"].append(
-            Conversation(role=role, text=text, timestamp=int(time.time() * 1000))
+            {"role": role, "text": text, "timestamp": int(time.time() * 1000)}
         )
 
-    def _get_current_scenario(self, state: WorkflowState) -> str:
-        """Determine the current scenario based on state"""
-        stage = state.get("stage")
-        previous_stage = state.get("previous_stage")
-        workflow_context = state.get("workflow_context", {})
-
-        if stage == WorkflowStage.CLARIFICATION:
-            if previous_stage == WorkflowStage.DEBUG:
-                return "Debug Recovery"
-            elif workflow_context.get("template_workflow") or state.get("template_workflow"):
-                return "Template Customization"
-            else:
-                return "Initial Clarification"
-        return "Initial Clarification"
-
-    def _get_current_goal(self, state: WorkflowState) -> str:
-        """Determine the current goal based on the scenario"""
-        scenario = self._get_current_scenario(state)
-        goals = {
-            "Initial Clarification": "Understand the user's workflow requirements thoroughly",
-            "Debug Recovery": "Fix the workflow issues found during debugging",
-            "Template Customization": "Customize the template workflow to meet user needs",
-        }
-        return goals.get(scenario, "Create a workflow based on the requirements")
 
     def _get_conversation_context(self, state: WorkflowState) -> str:
-        """Extract conversation context from state"""
+        """Extract conversation context from state with proper capping and formatting"""
         conversations = state.get("conversations", [])
+        
+        # Define maximum context based on the 3-node architecture
+        # We want enough context for understanding but not overwhelming the LLM
+        MAX_CONVERSATION_PAIRS = 10  # Maximum of 10 user-assistant pairs
+        MAX_TEXT_LENGTH = 500  # Truncate long messages to avoid token overflow
+        
         context_parts = []
-        for conv in conversations[-5:]:  # Last 5 messages for context
-            context_parts.append(f"{conv.get('role')}: {conv.get('text', '')}")
+        conversation_pairs = []
+        
+        # Group conversations into user-assistant pairs for better context
+        current_pair = {}
+        for conv in reversed(conversations):  # Start from most recent
+            role = conv.get("role", "")
+            text = conv.get("text", "")
+            
+            # Truncate long messages
+            if len(text) > MAX_TEXT_LENGTH:
+                text = text[:MAX_TEXT_LENGTH] + "..."
+            
+            if role == "user":
+                if current_pair.get("assistant"):
+                    # Complete pair found, add it
+                    conversation_pairs.append(current_pair)
+                    current_pair = {}
+                current_pair["user"] = text
+            elif role == "assistant":
+                current_pair["assistant"] = text
+                if current_pair.get("user"):
+                    # Complete pair found, add it
+                    conversation_pairs.append(current_pair)
+                    current_pair = {}
+        
+        # Add any incomplete pair
+        if current_pair:
+            conversation_pairs.append(current_pair)
+        
+        # Take only the most recent conversation pairs (up to MAX_CONVERSATION_PAIRS)
+        conversation_pairs = conversation_pairs[:MAX_CONVERSATION_PAIRS]
+        
+        # Reverse to get chronological order (oldest to newest)
+        conversation_pairs.reverse()
+        
+        # Format the conversation history for the prompt
+        for pair in conversation_pairs:
+            if pair.get("user"):
+                context_parts.append(f"User: {pair['user']}")
+            if pair.get("assistant"):
+                context_parts.append(f"Assistant: {pair['assistant']}")
+        
         return "\n".join(context_parts)
 
     def _create_fallback_workflow(self, intent_summary: str) -> dict:
@@ -206,49 +226,41 @@ class WorkflowAgentNodes:
 
     async def clarification_node(self, state: WorkflowState) -> WorkflowState:
         """
-        Clarification Node - Ask clarifying questions to the user
-        Maps prompt output to main branch state structure
+        Clarification Node - Optimized for 3-node architecture
+        Focuses on understanding user intent quickly with minimal questions
         """
         logger.info("Processing clarification node")
 
-        # Get user message
+        # Get core state data
         user_message = get_user_message(state)
-        session_id = self._get_session_id(state)
         existing_intent = get_intent_summary(state)
-        clarification_context = state.get("clarification_context", {})
-
+        conversation_history = self._get_conversation_context(state)
+        
+        # Track conversation rounds for limiting questions
+        conversation_rounds = len([c for c in state.get("conversations", []) if c.get("role") == "user"])
+        MAX_CLARIFICATION_ROUNDS = 3
+        force_completion = conversation_rounds >= MAX_CLARIFICATION_ROUNDS
+        
         logger.info(
             "Clarification context",
             extra={
-                "session_id": session_id,
                 "user_message": user_message[:100] if user_message else None,
-                "existing_intent": existing_intent[:100] if existing_intent else None,
-                "clarification_purpose": clarification_context.get("purpose"),
+                "conversation_rounds": conversation_rounds,
+                "force_completion": force_completion,
             },
         )
 
-        # Set stage to CLARIFICATION
         state["stage"] = WorkflowStage.CLARIFICATION
 
         try:
-            # Determine scenario type
-            scenario_type = self._get_current_scenario(state)
-            conversation_context = self._get_conversation_context(state)
-
-            # Create structured template context
+            # Simplified template context - only what's needed
             template_context = {
                 "user_message": user_message,
                 "existing_intent": existing_intent,
-                "conversation_context": conversation_context,
-                "current_scenario": scenario_type,
-                "goal": self._get_current_goal(state),
-                "template_workflow": state.get("template_workflow"),
-                "current_workflow": state.get("current_workflow"),
-                "debug_result": state.get("debug_result"),
-                "purpose": clarification_context.get("purpose", ""),
-                "scenario_type": scenario_type,
-                "clarification_context": clarification_context,
-                "execution_history": state.get("execution_history", []),
+                "conversation_history": conversation_history,
+                "force_completion": force_completion,
+                "conversation_rounds": conversation_rounds,
+                "max_rounds": MAX_CLARIFICATION_ROUNDS,
             }
 
             # Use the f2 template system - both system and user prompts
@@ -306,51 +318,51 @@ class WorkflowAgentNodes:
                         clean_text = clean_text[:-3]
 
                 clarification_output = json.loads(clean_text.strip())
+                
+                # Force completion if we've hit the round limit
+                if force_completion:
+                    clarification_output["is_complete"] = True
+                    clarification_output["clarification_question"] = ""
+                    logger.info(f"Forced completion after {conversation_rounds} rounds")
+                
                 # Check if clarification is ready (for future routing logic)
                 is_ready = clarification_output.get("is_complete", False)  # noqa: F841
 
                 # Map to main branch state structure
                 state["intent_summary"] = clarification_output.get("intent_summary", "")
 
-                # Check if user selected an alternative from gap negotiation
-                gap_resolution = clarification_output.get("gap_resolution", {})
-                if gap_resolution.get("user_selected_alternative", False):
-                    # User made a choice
-                    alt_idx = gap_resolution.get("selected_index")
-                    confidence = gap_resolution.get("confidence")
-                    logger.info(f"User selected alternative {alt_idx} with confidence {confidence}")
 
-                # Update clarification context
-                existing_purpose = clarification_context.get("purpose", "initial_intent")
-
-                clarification_context = ClarificationContext(
-                    purpose=existing_purpose,
-                    collected_info={"intent": clarification_output.get("intent_summary", "")},
-                    pending_questions=[clarification_output.get("clarification_question", "")]
+                # Update clarification context with simplified structure
+                state["clarification_context"] = {
+                    "pending_questions": [clarification_output.get("clarification_question", "")]
                     if clarification_output.get("clarification_question")
                     else [],
-                    origin=clarification_context.get("origin", "create"),
-                )
-                state["clarification_context"] = clarification_context
+                }
 
             except json.JSONDecodeError:
                 # Fallback to simple format
                 state["intent_summary"] = response_text[:200]
-                state["clarification_context"] = ClarificationContext(
-                    purpose="initial_intent",
-                    collected_info={"intent": response_text[:200]},
-                    pending_questions=[response_text],
-                    origin="create",
-                )
-                is_ready = False  # noqa: F841
+                state["clarification_context"] = {
+                    "pending_questions": [response_text],
+                }
 
-            # Add to conversations
-            self._add_conversation(state, "assistant", response_text)
+            # Add to conversations - but store the structured output, not raw JSON
+            if isinstance(clarification_output, dict):
+                # Create a user-friendly message from the structured output
+                assistant_message = ""
+                if clarification_output.get("clarification_question"):
+                    assistant_message = clarification_output["clarification_question"]
+                elif clarification_output.get("is_complete"):
+                    assistant_message = f"I understand your requirements: {clarification_output.get('intent_summary', 'Processing your workflow request')}"
+                else:
+                    assistant_message = clarification_output.get("intent_summary", "Processing your request")
+                
+                self._add_conversation(state, "assistant", assistant_message)
+            else:
+                # Fallback to raw response if not structured
+                self._add_conversation(state, "assistant", response_text)
 
-            # Keep stage as CLARIFICATION - routing logic will decide next step
-            # Note: clarification readiness is now derived from state, not stored
-            # Set previous_stage for next node to know where we came from
-            state["previous_stage"] = WorkflowStage.CLARIFICATION
+            # Return updated state
             return {**state, "stage": WorkflowStage.CLARIFICATION}
 
         except Exception as e:
