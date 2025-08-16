@@ -74,15 +74,20 @@ Step 2: Discover Components (MANDATORY)
        - Arrays: Use empty [] or sample data ["item1", "item2"]
        - Objects: Use empty {} or sample data {"key": "value"}
      * **MOCK VALUE EXAMPLES BY FIELD NAME**:
-       - issue_number → 123 (NOT "{{trigger.issue_number}}", NOT 0)
-       - pr_number → 456 (NOT template variable)
+       - issue_number → 123 (NOT "{{trigger.issue_number}}", NOT {"$ref": "..."}, NOT 0)
+       - pr_number → 456 (NOT template variable, NOT reference object)
        - repository → "owner/repo" or "microsoft/vscode" (NOT "<OWNER>/<REPO>")
        - github_app_installation_id → 12345678 (NOT "<YOUR_GITHUB_APP_INSTALLATION_ID>")
        - auth_token → "mock-token-123" (NOT "{{env.TOKEN}}")
        - user_input → "Example user input text"
        - timestamp → "2024-01-01T00:00:00Z"
        - cron_expression → "0 9 * * *"
-     * **IMPORTANT**: Do NOT use template variables like {{trigger.xxx}} or {{env.xxx}} - use mock values!
+     * **🚫 FORBIDDEN PARAMETER VALUES**:
+       - Template variables: {{trigger.xxx}}, {{env.xxx}}, ${xxx}
+       - Reference objects: {"$ref": "node.path"}, {"$reference": "..."}
+       - Placeholders: <VALUE>, [VALUE], YOUR_VALUE
+       - Empty/null: null, "", 0 (for required fields)
+     * **✅ ALWAYS USE SIMPLE MOCK VALUES**: The workflow engine needs concrete values for validation!
 5. **Generate Workflow**: Create JSON using ONLY the actual specifications from get_node_details
    🚨 **CRITICAL VALIDATION BEFORE GENERATING**:
    - Did you call get_node_details for EVERY node? ✓
