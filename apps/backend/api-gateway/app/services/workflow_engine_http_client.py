@@ -129,6 +129,7 @@ class WorkflowEngineHTTPClient:
             }
 
             log_info(f"📨 HTTP request to create workflow: {name}")
+            log_info(f"🐛 DEBUG: Request data: {request_data}")
 
             headers = {}
             if trace_id:
@@ -145,7 +146,13 @@ class WorkflowEngineHTTPClient:
             return data
 
         except httpx.HTTPStatusError as e:
+            error_details = ""
+            try:
+                error_details = e.response.text
+            except:
+                pass
             log_error(f"❌ HTTP error creating workflow: {e.response.status_code}")
+            log_error(f"🐛 DEBUG: Error response: {error_details}")
             return {"success": False, "error": f"HTTP {e.response.status_code}"}
         except Exception as e:
             log_error(f"❌ Error creating workflow: {e}")

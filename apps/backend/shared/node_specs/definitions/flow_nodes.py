@@ -21,6 +21,9 @@ IF_NODE_SPEC = NodeSpec(
     node_type=NodeType.FLOW,
     subtype=FlowSubtype.IF,
     description="Conditional branching node that routes data based on conditions",
+    display_name="If Condition",
+    category="flow_control",
+    template_id="flow_if",
     parameters=[
         ParameterDef(
             name="condition",
@@ -99,6 +102,9 @@ FILTER_NODE_SPEC = NodeSpec(
     node_type=NodeType.FLOW,
     subtype=FlowSubtype.FILTER,
     description="Filter data based on specified criteria",
+    display_name="Filter",
+    category="flow_control",
+    template_id="flow_filter",
     parameters=[
         ParameterDef(
             name="filter_expression",
@@ -164,6 +170,9 @@ LOOP_NODE_SPEC = NodeSpec(
     node_type=NodeType.FLOW,
     subtype=FlowSubtype.LOOP,
     description="Iterate over data items or repeat operations",
+    display_name="Loop",
+    category="flow_control",
+    template_id="flow_loop",
     parameters=[
         ParameterDef(
             name="loop_type",
@@ -256,6 +265,9 @@ MERGE_NODE_SPEC = NodeSpec(
     node_type=NodeType.FLOW,
     subtype=FlowSubtype.MERGE,
     description="Merge multiple data streams into a single output",
+    display_name="Merge",
+    category="flow_control",
+    template_id="flow_merge",
     parameters=[
         ParameterDef(
             name="merge_strategy",
@@ -328,6 +340,9 @@ SWITCH_NODE_SPEC = NodeSpec(
     node_type=NodeType.FLOW,
     subtype=FlowSubtype.SWITCH,
     description="Route data to different outputs based on switch values",
+    display_name="Switch Case",
+    category="flow_control",
+    template_id="flow_switch",
     parameters=[
         ParameterDef(
             name="switch_expression",
@@ -396,6 +411,9 @@ WAIT_NODE_SPEC = NodeSpec(
     node_type=NodeType.FLOW,
     subtype=FlowSubtype.WAIT,
     description="Wait for a specified time or condition before continuing",
+    display_name="Wait",
+    category="flow_control",
+    template_id="flow_wait",
     parameters=[
         ParameterDef(
             name="wait_type",

@@ -21,6 +21,9 @@ GITHUB_SPEC = NodeSpec(
     node_type=NodeType.EXTERNAL_ACTION,
     subtype=ExternalActionSubtype.GITHUB,
     description="Execute GitHub operations via GitHub API",
+    display_name="GitHub Integration",
+    category="integrations",
+    template_id="external_github",
     parameters=[
         ParameterDef(
             name="action",
@@ -136,6 +139,9 @@ EMAIL_SPEC = NodeSpec(
     node_type=NodeType.EXTERNAL_ACTION,
     subtype=ExternalActionSubtype.EMAIL,
     description="Send emails via SMTP server",
+    display_name="Email SMTP",
+    category="integrations",
+    template_id="external_email_smtp",
     parameters=[
         ParameterDef(
             name="to",
@@ -258,6 +264,9 @@ SLACK_SPEC = NodeSpec(
     node_type=NodeType.EXTERNAL_ACTION,
     subtype=ExternalActionSubtype.SLACK,
     description="Send messages and interact with Slack",
+    display_name="Slack Integration",
+    category="integrations",
+    template_id="external_slack",
     parameters=[
         ParameterDef(
             name="channel",
@@ -357,6 +366,9 @@ GOOGLE_CALENDAR_SPEC = NodeSpec(
     node_type=NodeType.EXTERNAL_ACTION,
     subtype="GOOGLE_CALENDAR",
     description="Interact with Google Calendar API",
+    display_name="Google Calendar",
+    category="integrations",
+    template_id="external_google_calendar",
     parameters=[
         ParameterDef(
             name="action",
@@ -454,6 +466,113 @@ GOOGLE_CALENDAR_SPEC = NodeSpec(
             name="error",
             type=ConnectionType.ERROR,
             description="Error output when Google Calendar operation fails",
+        ),
+    ],
+)
+
+# Generic API Call - flexible HTTP API integration
+API_CALL_SPEC = NodeSpec(
+    node_type=NodeType.EXTERNAL_ACTION,
+    subtype=ExternalActionSubtype.API_CALL,
+    description="Make generic HTTP API calls to any endpoint",
+    display_name="Generic API Call",
+    category="integrations",
+    template_id="external_api_call_generic",
+    parameters=[
+        ParameterDef(
+            name="url",
+            type=ParameterType.URL,
+            required=True,
+            description="API endpoint URL",
+        ),
+        ParameterDef(
+            name="method",
+            type=ParameterType.ENUM,
+            required=True,
+            default_value="GET",
+            enum_values=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+            description="HTTP method",
+        ),
+        ParameterDef(
+            name="headers",
+            type=ParameterType.JSON,
+            required=False,
+            default_value={},
+            description="HTTP headers",
+        ),
+        ParameterDef(
+            name="body",
+            type=ParameterType.JSON,
+            required=False,
+            description="Request body data",
+        ),
+        ParameterDef(
+            name="query_params",
+            type=ParameterType.JSON,
+            required=False,
+            default_value={},
+            description="Query parameters",
+        ),
+        ParameterDef(
+            name="timeout",
+            type=ParameterType.INTEGER,
+            required=False,
+            default_value=30,
+            description="Timeout in seconds",
+        ),
+        ParameterDef(
+            name="authentication",
+            type=ParameterType.ENUM,
+            required=False,
+            default_value="none",
+            enum_values=["none", "bearer", "basic", "api_key"],
+            description="Authentication method",
+        ),
+        ParameterDef(
+            name="auth_token",
+            type=ParameterType.STRING,
+            required=False,
+            description="Authentication token (when needed)",
+        ),
+        ParameterDef(
+            name="api_key_header",
+            type=ParameterType.STRING,
+            required=False,
+            description="API key header name (for api_key auth)",
+        ),
+    ],
+    input_ports=[
+        InputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            required=False,
+            description="Dynamic API call data",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"dynamic_headers": "object", "dynamic_params": "object", "payload": "object"}',
+                examples=[
+                    '{"dynamic_headers": {"X-Custom": "value"}, "dynamic_params": {"filter": "active"}, "payload": {"data": "value"}}'
+                ],
+            ),
+        )
+    ],
+    output_ports=[
+        OutputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            description="API response data",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"status_code": "number", "headers": "object", "body": "object", "response_time": "number"}',
+                examples=[
+                    '{"status_code": 200, "headers": {"Content-Type": "application/json"}, "body": {"result": "success"}, "response_time": 1.2}'
+                ],
+            ),
+        ),
+        OutputPortSpec(
+            name="error",
+            type=ConnectionType.ERROR,
+            description="Error output when API call fails",
         ),
     ],
 )

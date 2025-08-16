@@ -345,3 +345,49 @@ APP_HUMAN_LOOP_SPEC = NodeSpec(
         ),
     ],
 )
+
+
+# Human Approval - Generic approval workflow
+APPROVAL_SPEC = NodeSpec(
+    node_type=NodeType.HUMAN_IN_THE_LOOP,
+    subtype="APPROVAL",  # Using string to avoid conflict
+    description="Wait for human approval before proceeding",
+    display_name="Human Approval",
+    category="human_interaction",
+    template_id="human_approval",
+    parameters=[
+        ParameterDef(
+            name="approval_message",
+            type=ParameterType.STRING,
+            required=True,
+            description="Message to display for approval request",
+        ),
+        ParameterDef(
+            name="timeout_hours",
+            type=ParameterType.INTEGER,
+            required=False,
+            default_value=24,
+            description="Hours to wait for approval before timeout",
+        ),
+    ],
+    input_ports=[
+        InputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            required=False,
+            description="Data to include in approval request",
+        )
+    ],
+    output_ports=[
+        OutputPortSpec(
+            name="approved",
+            type=ConnectionType.MAIN,
+            description="Output when request is approved",
+        ),
+        OutputPortSpec(
+            name="rejected",
+            type=ConnectionType.ERROR,
+            description="Output when request is rejected",
+        ),
+    ],
+)

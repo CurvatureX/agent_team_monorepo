@@ -360,38 +360,21 @@ class WorkflowService:
     def list_all_node_templates(
         self, category_filter: Optional[str] = None, include_system_templates: bool = True
     ) -> List[NodeTemplate]:
-        """List all available node templates."""
+        """List all available node templates using node specs."""
         try:
-            self.logger.info("Listing all node templates")
-            query = self.db.query(NodeTemplateModel)
+            self.logger.info("Listing node templates from node specs (database deprecated)")
 
-            if category_filter:
-                query = query.filter(NodeTemplateModel.category == category_filter)
+            # Import here to avoid circular imports
+            from shared.services.node_specs_api_service import get_node_specs_api_service
 
-            if not include_system_templates:
-                query = query.filter(NodeTemplateModel.is_system_template == False)
+            # Use the new node specs service instead of database
+            specs_service = get_node_specs_api_service()
+            templates = specs_service.list_all_node_templates(
+                category_filter=category_filter, include_system_templates=include_system_templates
+            )
 
-            db_node_templates = query.all()
-
-            # Convert DB models to Pydantic models
-            node_templates = []
-            for t in db_node_templates:
-                # Map template_id to id for the Pydantic model
-                data = {
-                    "id": t.template_id,  # Use template_id as id
-                    "name": t.name,
-                    "description": t.description,
-                    "category": t.category,
-                    "node_type": t.node_type,
-                    "node_subtype": t.node_subtype,
-                    "version": t.version,
-                    "is_system_template": t.is_system_template,
-                    "default_parameters": t.default_parameters,
-                    "required_parameters": t.required_parameters,
-                    "parameter_schema": t.parameter_schema,
-                }
-                node_templates.append(NodeTemplate.model_validate(data))
-            return node_templates
+            self.logger.info(f"Retrieved {len(templates)} templates from node specs")
+            return templates
 
         except Exception as e:
             self.logger.error(f"Error listing node templates: {str(e)}")

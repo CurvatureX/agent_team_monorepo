@@ -42,17 +42,17 @@ class NodeSpecValidator:
     @staticmethod
     def validate_ports(node, spec: NodeSpec) -> List[str]:
         """Validate node port configuration.
-        
+
         Note: In workflow systems, ports are validated through connections,
         not as node attributes. This method returns no errors by default
         to avoid false positives for nodes that don't have explicit port attributes.
         """
         errors = []
-        
+
         # Skip port validation for workflow nodes
         # Port connectivity is validated through the connections map instead
         # This prevents false "Missing required input port" errors
-        
+
         return errors
 
     @staticmethod
@@ -83,6 +83,14 @@ class NodeSpecValidator:
     def _validate_parameter_value(value: str, param_def: ParameterDef) -> List[str]:
         """Validate individual parameter value."""
         errors = []
+
+        # Skip validation for template variables (e.g., {{payload.number}})
+        if (
+            isinstance(value, str)
+            and value.strip().startswith("{{")
+            and value.strip().endswith("}}")
+        ):
+            return errors  # Template variables are valid for any type
 
         if param_def.type == ParameterType.INTEGER:
             try:
@@ -126,6 +134,7 @@ class NodeSpecValidator:
             # Use croniter for proper cron expression validation
             try:
                 from croniter import croniter
+
                 croniter(str(value))
             except (ImportError, ValueError, TypeError):
                 errors.append(f"Parameter {param_def.name} must be a valid cron expression")
