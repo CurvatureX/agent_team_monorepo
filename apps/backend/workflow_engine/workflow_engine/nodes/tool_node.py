@@ -9,7 +9,8 @@ import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from shared.models.node_enums import NodeType, ToolSubtype
+from shared.models import NodeType
+from shared.models.node_enums import ToolSubtype
 from shared.node_specs import node_spec_registry
 from shared.node_specs.base import NodeSpec
 

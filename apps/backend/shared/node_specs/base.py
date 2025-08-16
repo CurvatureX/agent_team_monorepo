@@ -85,6 +85,12 @@ class NodeSpec:
     output_ports: List[OutputPortSpec] = field(default_factory=list)
     examples: Optional[List[Dict[str, Any]]] = None
 
+    # Enhanced fields for node_templates compatibility
+    display_name: Optional[str] = None  # Human-readable name for UI
+    category: Optional[str] = None  # Category for grouping (e.g., "ai", "actions")
+    template_id: Optional[str] = None  # Legacy template ID for migration
+    is_system_template: bool = True  # Whether this is a system-provided spec
+
     def get_parameter(self, name: str) -> Optional[ParameterDef]:
         """Get a parameter definition by name."""
         for param in self.parameters:

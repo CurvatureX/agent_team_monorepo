@@ -22,6 +22,9 @@ VECTOR_STORE_MEMORY_SPEC = NodeSpec(
     node_type=NodeType.MEMORY,
     subtype=MemorySubtype.VECTOR_DATABASE,
     description="Store and search vectors in a vector database for semantic similarity",
+    display_name="Vector Database",
+    category="memory",
+    template_id="memory_vector",
     parameters=[
         ParameterDef(
             name="operation",
@@ -379,6 +382,117 @@ VECTOR_DATABASE_MEMORY_SPEC = NodeSpec(
             name="error",
             type=ConnectionType.ERROR,
             description="Embedding operation error",
+        ),
+    ],
+)
+
+# Store Memory - Simple workflow memory storage
+STORE_MEMORY_SPEC = NodeSpec(
+    node_type=NodeType.MEMORY,
+    subtype="STORE",  # Using string since we need separate subtype
+    description="Store data in workflow memory",
+    display_name="Store Memory",
+    category="memory",
+    template_id="memory_store",
+    parameters=[
+        ParameterDef(
+            name="key",
+            type=ParameterType.STRING,
+            required=True,
+            description="Memory key to store data under",
+        ),
+        ParameterDef(
+            name="value",
+            type=ParameterType.STRING,
+            required=False,
+            description="Value to store (if not provided, input data will be stored)",
+        ),
+        ParameterDef(
+            name="ttl_minutes",
+            type=ParameterType.INTEGER,
+            required=False,
+            default_value=60,
+            description="Time to live in minutes",
+        ),
+    ],
+    input_ports=[
+        InputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            required=False,
+            description="Data to store in memory",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"data": "object", "metadata": "object"}',
+            ),
+        )
+    ],
+    output_ports=[
+        OutputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            description="Storage confirmation",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"stored": "boolean", "key": "string", "timestamp": "string"}',
+            ),
+        ),
+        OutputPortSpec(
+            name="error",
+            type=ConnectionType.ERROR,
+            description="Storage error",
+        ),
+    ],
+)
+
+# Retrieve Memory - Simple workflow memory retrieval
+RETRIEVE_MEMORY_SPEC = NodeSpec(
+    node_type=NodeType.MEMORY,
+    subtype="RETRIEVE",  # Using string since we need separate subtype
+    description="Retrieve data from workflow memory",
+    display_name="Retrieve Memory",
+    category="memory",
+    template_id="memory_retrieve",
+    parameters=[
+        ParameterDef(
+            name="key",
+            type=ParameterType.STRING,
+            required=True,
+            description="Memory key to retrieve data from",
+        ),
+        ParameterDef(
+            name="default_value",
+            type=ParameterType.STRING,
+            required=False,
+            description="Default value if key doesn't exist",
+        ),
+    ],
+    input_ports=[
+        InputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            required=False,
+            description="Optional context for retrieval",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"context": "object", "filters": "object"}',
+            ),
+        )
+    ],
+    output_ports=[
+        OutputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            description="Retrieved data",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"data": "object", "key": "string", "found": "boolean", "timestamp": "string"}',
+            ),
+        ),
+        OutputPortSpec(
+            name="error",
+            type=ConnectionType.ERROR,
+            description="Retrieval error",
         ),
     ],
 )

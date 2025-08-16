@@ -21,6 +21,9 @@ MANUAL_TRIGGER_SPEC = NodeSpec(
     node_type=NodeType.TRIGGER,
     subtype=TriggerSubtype.MANUAL,
     description="Manual trigger activated by user action",
+    display_name="Manual Trigger",
+    category="triggers",
+    template_id="trigger_manual",
     parameters=[
         ParameterDef(
             name="trigger_name",
@@ -60,6 +63,9 @@ CRON_TRIGGER_SPEC = NodeSpec(
     node_type=NodeType.TRIGGER,
     subtype=TriggerSubtype.CRON,
     description="Scheduled trigger based on cron expressions",
+    display_name="Cron Trigger",
+    category="triggers",
+    template_id="trigger_cron",
     parameters=[
         ParameterDef(
             name="cron_expression",
@@ -107,6 +113,9 @@ WEBHOOK_TRIGGER_SPEC = NodeSpec(
     node_type=NodeType.TRIGGER,
     subtype=TriggerSubtype.WEBHOOK,
     description="HTTP webhook trigger that responds to incoming requests",
+    display_name="Webhook Trigger",
+    category="triggers",
+    template_id="trigger_webhook",
     parameters=[
         ParameterDef(
             name="webhook_path",

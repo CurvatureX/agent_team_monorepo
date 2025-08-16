@@ -67,15 +67,24 @@ async def create_workflow(
 @router.get("/workflows/node-templates", response_model=List[NodeTemplate])
 async def list_node_templates(
     category: Optional[str] = None,
+    node_type: Optional[str] = None,
     include_system: bool = True,
     service: WorkflowService = Depends(get_workflow_service),
 ):
     """
-    List all available node templates, with optional filters.
+    List all available node templates from node specs, with optional filters.
+
+    This endpoint has been updated to use the node specs system instead of
+    the deprecated node_templates database table.
     """
     try:
-        templates = service.list_all_node_templates(
-            category_filter=category, include_system_templates=include_system
+        # Import here to avoid circular imports
+        from shared.services.node_specs_api_service import get_node_specs_api_service
+
+        # Use node specs service directly for better performance
+        specs_service = get_node_specs_api_service()
+        templates = specs_service.list_all_node_templates(
+            category_filter=category, type_filter=node_type, include_system_templates=include_system
         )
         return templates
     except Exception as e:
