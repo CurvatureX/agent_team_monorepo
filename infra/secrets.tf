@@ -112,6 +112,16 @@ resource "aws_ssm_parameter" "github_webhook_secret" {
   })
 }
 
+resource "aws_ssm_parameter" "github_client_id" {
+  name  = "/${local.name_prefix}/github/client-id"
+  type  = "SecureString"
+  value = var.github_client_id
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-github-client-id"
+  })
+}
+
 # IAM policy for ECS tasks to access SSM parameters
 resource "aws_iam_policy" "ecs_ssm_policy" {
   name        = "${local.name_prefix}-ecs-ssm-policy"

@@ -662,6 +662,10 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
         {
           name      = "GITHUB_WEBHOOK_SECRET"
           valueFrom = aws_ssm_parameter.github_webhook_secret.arn
+        },
+        {
+          name      = "GITHUB_CLIENT_ID"
+          valueFrom = aws_ssm_parameter.github_client_id.arn
         }
       ]
 

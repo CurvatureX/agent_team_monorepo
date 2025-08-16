@@ -183,6 +183,13 @@ variable "github_webhook_secret" {
   default     = ""
 }
 
+variable "github_client_id" {
+  description = "GitHub App Client ID for GitHub trigger integration"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 # Monitoring Configuration
 variable "alert_email" {
   description = "Email address for CloudWatch alerts"

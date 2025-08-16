@@ -62,9 +62,26 @@ class Settings(BaseSettings):
     smtp_timeout: int = Field(default=30, description="SMTP timeout in seconds")
 
     # GitHub App Configuration
-    github_app_id: str = Field(default="", description="GitHub App ID")
-    github_app_private_key: str = Field(default="", description="GitHub App private key")
-    github_webhook_secret: str = Field(default="", description="GitHub webhook secret")
+    github_app_id: str = Field(
+        default="",
+        description="GitHub App ID",
+        validation_alias=AliasChoices("GITHUB_APP_ID", "github_app_id"),
+    )
+    github_app_private_key: str = Field(
+        default="",
+        description="GitHub App private key",
+        validation_alias=AliasChoices("GITHUB_APP_PRIVATE_KEY", "github_app_private_key"),
+    )
+    github_webhook_secret: str = Field(
+        default="",
+        description="GitHub webhook secret",
+        validation_alias=AliasChoices("GITHUB_WEBHOOK_SECRET", "github_webhook_secret"),
+    )
+    github_client_id: str = Field(
+        default="",
+        description="GitHub App Client ID",
+        validation_alias=AliasChoices("GITHUB_CLIENT_ID", "github_client_id"),
+    )
 
     # Slack Configuration
     slack_bot_token: str = Field(
@@ -111,6 +128,7 @@ class Settings(BaseSettings):
         """Get GitHub configuration"""
         return {
             "app_id": self.github_app_id,
+            "client_id": self.github_client_id,
             "private_key": self.github_app_private_key,
             "webhook_secret": self.github_webhook_secret,
         }

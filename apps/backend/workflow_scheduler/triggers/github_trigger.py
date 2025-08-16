@@ -1,4 +1,5 @@
 import fnmatch
+import json
 import logging
 import re
 import time
@@ -34,7 +35,18 @@ class GitHubTrigger(BaseTrigger):
 
         self.installation_id = trigger_config.get("github_app_installation_id")
         self.repository = trigger_config.get("repository")
-        self.event_config = trigger_config.get("event_config", {})
+
+        # Handle event_config which might be a string (JSON) or dict
+        event_config_raw = trigger_config.get("event_config", {})
+        if isinstance(event_config_raw, str):
+            try:
+                self.event_config = json.loads(event_config_raw)
+            except (json.JSONDecodeError, TypeError):
+                logger.error(f"Failed to parse event_config JSON: {event_config_raw}")
+                self.event_config = {}
+        else:
+            self.event_config = event_config_raw or {}
+
         self.author_filter = trigger_config.get("author_filter")
         self.ignore_bots = trigger_config.get("ignore_bots", True)
         self.require_signature_verification = trigger_config.get(
