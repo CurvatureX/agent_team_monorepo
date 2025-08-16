@@ -298,9 +298,15 @@ class WorkflowAgentNodes:
                 if is_obvious_placeholder:
                     # 记录警告，这表明 prompt 需要改进
                     logger.warning(f"LLM generated placeholder for '{param_name}': {param_value}")
-                    # 暂时保留修复逻辑，但这应该通过改进 prompt 来避免
-                    parameters[param_name] = self._generate_mock_value(param_name, "string")
-                    logger.debug(f"Temporarily fixed placeholder, but this should be handled by prompt")
+                    # 根据参数名推断正确的类型
+                    if 'number' in param_name.lower() or 'id' in param_name.lower() or 'count' in param_name.lower():
+                        mock_type = "integer"
+                    elif 'enabled' in param_name.lower() or 'disabled' in param_name.lower() or 'bool' in param_name.lower():
+                        mock_type = "boolean"
+                    else:
+                        mock_type = "string"
+                    parameters[param_name] = self._generate_mock_value(param_name, mock_type)
+                    logger.debug(f"Fixed placeholder with {mock_type} type, but this should be handled by prompt")
             
             # 只修正明显无效的值（如 ID 字段为 0）
             elif isinstance(param_value, int) and param_value == 0:
@@ -735,7 +741,7 @@ class WorkflowAgentNodes:
 
             # Use the original f1 template system - the working approach
             system_prompt = await self.prompt_engine.render_prompt(
-                "workflow_gen_f1", **template_context
+                "workflow_gen_simplified", **template_context
             )
 
             # Create user prompt for workflow generation - optimized for efficiency
