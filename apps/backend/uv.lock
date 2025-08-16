@@ -3556,6 +3556,7 @@ dependencies = [
     { name = "redis" },
     { name = "sqlalchemy" },
     { name = "structlog" },
+    { name = "supabase" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -3585,6 +3586,7 @@ requires-dist = [
     { name = "redis", specifier = ">=5.0.0" },
     { name = "sqlalchemy", specifier = ">=2.0.0" },
     { name = "structlog", specifier = ">=23.2.0" },
+    { name = "supabase", specifier = ">=2.17.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.24.0" },
 ]
 provides-extras = ["dev"]
