@@ -48,6 +48,8 @@ class WorkflowAgentNodes:
         self.mcp_tools = self.mcp_client.get_langchain_tools()
         # Bind tools to LLM if supported
         self.llm_with_tools = self._setup_llm_with_tools()
+        # Store MCP node specs for type reference
+        self.node_specs_cache = {}
 
     def _setup_llm(self):
         """Setup the OpenAI language model"""
@@ -146,15 +148,9 @@ class WorkflowAgentNodes:
         
         # 根据参数类型生成合适的 mock value
         if param_type == "integer":
-            # 整数类型
-            if 'number' in param_lower or 'id' in param_lower:
-                return 123
-            elif 'count' in param_lower:
-                return 5
-            elif 'port' in param_lower:
-                return 8080
-            else:
-                return 42
+            # 整数类型 - 生成一个合理的整数
+            import random
+            return random.randint(100, 99999999)  # 随机整数，避免硬编码
                 
         elif param_type == "float" or param_type == "number":
             # 浮点数类型
@@ -252,13 +248,34 @@ class WorkflowAgentNodes:
         node['parameters'] = optimized_params
         return node
 
-    def _fix_parameter_types(self, node: dict) -> dict:
+    def _fix_workflow_parameters(self, workflow: dict) -> dict:
         """
-        最小化的参数修正，只处理会导致验证失败的关键问题。
-        优先依赖 LLM 通过改进的 prompt 生成正确值。
+        修正工作流中所有节点的参数，使用 MCP 提供的 ParameterType 信息。
+        这只是兜底逻辑，LLM 应该直接根据 MCP ParameterType 生成正确的 mock values。
         
-        注意：我们希望 LLM 直接生成正确的值，而不是在这里修复。
-        只处理极少数无法通过 prompt 解决的情况。
+        Args:
+            workflow: 完整的工作流数据
+            
+        Returns:
+            修正后的工作流数据
+        """
+        if 'nodes' not in workflow:
+            return workflow
+            
+        for node in workflow['nodes']:
+            self._fix_node_parameters(node)
+            
+        return workflow
+    
+    def _fix_node_parameters(self, node: dict) -> dict:
+        """
+        修正单个节点的参数，使用 MCP 节点规格中的 ParameterType 信息。
+        
+        重要：LLM 应该直接根据 MCP 返回的 ParameterType 生成正确的 mock values:
+        - type: "integer" -> 生成 123, 456 等整数
+        - type: "boolean" -> 生成 true/false
+        - type: "string" -> 生成 "example-value" 等字符串
+        - type: "float" -> 生成 0.7, 1.5 等浮点数
         
         Args:
             node: 节点数据
@@ -269,52 +286,114 @@ class WorkflowAgentNodes:
         if not node.get('parameters'):
             return node
             
+        # Get node spec from cache
+        node_key = f"{node.get('type')}:{node.get('subtype')}"
+        node_spec = self.node_specs_cache.get(node_key)
+        
         parameters = node['parameters']
         
-        for param_name, param_value in parameters.items():
-            # 处理引用对象 - 这是一个临时修复，最终应该通过改进 prompt 解决
-            if isinstance(param_value, dict) and '$ref' in param_value:
-                logger.warning(f"LLM generated reference object for '{param_name}': {param_value}")
-                logger.warning("Applying temporary fix, but this should be prevented by better prompting!")
-                
-                # 根据参数名推断类型并生成 mock 值
-                if 'number' in param_name.lower() or 'id' in param_name.lower() or 'count' in param_name.lower():
-                    parameters[param_name] = self._generate_mock_value(param_name, "integer")
-                else:
-                    parameters[param_name] = self._generate_mock_value(param_name, "string")
+        for param_name, param_value in list(parameters.items()):
+            # Get parameter type from MCP spec if available
+            param_type = None
+            param_required = False
+            if node_spec and 'parameters' in node_spec:
+                for param_spec in node_spec['parameters']:
+                    if param_spec.get('name') == param_name:
+                        param_type = param_spec.get('type', 'string')
+                        param_required = param_spec.get('required', False)
+                        break
             
-            # 只修正最明显的占位符模式（这些是极少数情况）
+            # Handle reference objects using MCP-provided ParameterType
+            if isinstance(param_value, dict) and ('$ref' in param_value or '$expr' in param_value):
+                logger.warning(f"LLM generated reference object for '{param_name}': {param_value}")
+                logger.warning(f"LLM should have used MCP ParameterType '{param_type}' to generate a proper mock value!")
+                
+                if param_type:
+                    logger.info(f"Using MCP-provided ParameterType '{param_type}' for parameter '{param_name}'")
+                    parameters[param_name] = self._generate_mock_value(param_name, param_type)
+                else:
+                    # Fallback only if MCP type not available
+                    logger.warning(f"No MCP type info for '{param_name}', using fallback inference")
+                    if 'number' in param_name.lower() or 'id' in param_name.lower() or 'count' in param_name.lower():
+                        parameters[param_name] = self._generate_mock_value(param_name, "integer")
+                    else:
+                        parameters[param_name] = self._generate_mock_value(param_name, "string")
+            
+            # Handle template variables (another form of placeholder)
             elif isinstance(param_value, str):
-                # 检测明确的占位符模式
-                is_obvious_placeholder = (
-                    # 尖括号占位符，如 <OWNER>/<REPO>, <YOUR_TOKEN>
-                    ('<' in param_value and '>' in param_value) or
-                    # 模板变量
+                is_placeholder = (
                     ('{{' in param_value and '}}' in param_value) or
-                    # 环境变量占位符
-                    ('${' in param_value and '}' in param_value)
+                    ('${' in param_value and '}' in param_value) or
+                    ('<' in param_value and '>' in param_value)
                 )
                 
-                if is_obvious_placeholder:
-                    # 记录警告，这表明 prompt 需要改进
+                if is_placeholder:
                     logger.warning(f"LLM generated placeholder for '{param_name}': {param_value}")
-                    # 根据参数名推断正确的类型
-                    if 'number' in param_name.lower() or 'id' in param_name.lower() or 'count' in param_name.lower():
-                        mock_type = "integer"
-                    elif 'enabled' in param_name.lower() or 'disabled' in param_name.lower() or 'bool' in param_name.lower():
-                        mock_type = "boolean"
+                    if param_type:
+                        logger.info(f"Fixing with MCP ParameterType '{param_type}'")
+                        parameters[param_name] = self._generate_mock_value(param_name, param_type)
                     else:
-                        mock_type = "string"
-                    parameters[param_name] = self._generate_mock_value(param_name, mock_type)
-                    logger.debug(f"Fixed placeholder with {mock_type} type, but this should be handled by prompt")
+                        # Fallback
+                        logger.warning(f"No MCP type for '{param_name}', using fallback")
+                        if 'number' in param_name.lower() or 'id' in param_name.lower():
+                            parameters[param_name] = self._generate_mock_value(param_name, "integer")
+                        elif 'enabled' in param_name.lower() or 'bool' in param_name.lower():
+                            parameters[param_name] = self._generate_mock_value(param_name, "boolean")
+                        else:
+                            parameters[param_name] = self._generate_mock_value(param_name, "string")
             
-            # 只修正明显无效的值（如 ID 字段为 0）
+            # Handle type mismatches based on MCP ParameterType
+            elif param_type and not self._value_matches_type(param_value, param_type):
+                # LLM generated wrong type - fix based on MCP type
+                logger.warning(f"Type mismatch for '{param_name}': got {type(param_value).__name__} '{param_value}', expected {param_type}")
+                logger.warning(f"LLM should have generated {param_type} value based on MCP ParameterType!")
+                parameters[param_name] = self._generate_proper_value_for_type(param_type)
+            
+            # Handle invalid zeros for ID fields
             elif isinstance(param_value, int) and param_value == 0:
-                if any(keyword in param_name.lower() for keyword in ['number', 'id', 'count', 'port']):
+                if any(keyword in param_name.lower() for keyword in ['number', 'id', 'count']):
                     logger.warning(f"LLM generated invalid zero for '{param_name}'")
                     parameters[param_name] = self._generate_mock_value(param_name, "integer")
                     
         return node
+
+    def _value_matches_type(self, value: object, expected_type: str) -> bool:
+        """Check if a value matches the expected MCP ParameterType"""
+        if expected_type == "integer":
+            return isinstance(value, int) and not isinstance(value, bool) and value > 0
+        elif expected_type == "boolean":
+            return isinstance(value, bool)
+        elif expected_type == "float":
+            return isinstance(value, (int, float)) and not isinstance(value, bool)
+        elif expected_type == "string":
+            # String is valid only if it doesn't contain "mock-" prefix or template syntax
+            if not isinstance(value, str):
+                return False
+            return not ("mock-" in value.lower() or "{{" in value or "${" in value)
+        elif expected_type == "json":
+            return isinstance(value, (dict, list))
+        else:
+            return True  # Unknown type, assume it's OK
+    
+    def _generate_proper_value_for_type(self, param_type: str) -> object:
+        """Generate a proper value based on MCP ParameterType without hardcoding"""
+        import random
+        
+        if param_type == "integer":
+            # Generate a reasonable integer without hardcoding specific values
+            return random.randint(100, 99999999)
+        elif param_type == "boolean":
+            return random.choice([True, False])
+        elif param_type == "float":
+            return round(random.uniform(0.1, 10.0), 2)
+        elif param_type == "string":
+            # Generate a generic example string
+            return f"example-value-{random.randint(1000, 9999)}"
+        elif param_type == "json":
+            return {}
+        else:
+            # Default to string for unknown types
+            return "example-value"
     
     def _normalize_workflow_structure(self, workflow: dict) -> dict:
         """
@@ -340,10 +419,8 @@ class WorkflowAgentNodes:
                     else:
                         node["name"] = f"{node_type}_{node_id}".replace("_", "-").lower()
                 
-                # Fix parameter types (ensure mock values instead of template variables)
-                node = self._fix_parameter_types(node)
-                
                 # Optimize node parameters (remove unnecessary params)
+                # Note: Parameter fixing is now done at workflow level after all nodes are normalized
                 node = self._optimize_node_parameters(node)
                 
                 # Only add position if completely missing (required field)
@@ -744,13 +821,18 @@ class WorkflowAgentNodes:
                 "workflow_gen_simplified", **template_context
             )
 
-            # Create user prompt for workflow generation - optimized for efficiency
+            # Create user prompt for workflow generation - emphasizing MCP compliance
             user_prompt_content = f"""Create a workflow for: {intent_summary}
 
 Instructions:
 1. Call get_node_types() to discover available nodes
 2. Call get_node_details() with a SINGLE call containing ALL required nodes as an array
-3. Generate the complete JSON workflow (no explanations, just JSON)"""
+3. CRITICAL: Study the MCP response carefully - each parameter has a "type" field
+4. Generate values that EXACTLY match the MCP-specified types:
+   - If type="integer": Generate actual numbers (123, 45678)
+   - If type="string": Generate example strings WITHOUT "mock-" prefix
+   - If type="boolean": Generate true/false (no quotes)
+5. Output ONLY the complete JSON workflow (no explanations)"""
 
             # Add error context to prompt if we're regenerating due to creation failure
             if error_context:
@@ -786,6 +868,9 @@ Instructions:
                     
                     # Post-process the workflow to add missing required fields
                     workflow = self._normalize_workflow_structure(workflow)
+                    
+                    # Fix parameters using MCP-provided types (only as fallback)
+                    workflow = self._fix_workflow_parameters(workflow)
                     
                     logger.info(
                         "Successfully generated workflow using MCP tools, workflow: %s", workflow
@@ -948,7 +1033,14 @@ Instructions:
                 openai_messages.append(
                     {
                         "role": "user",
-                        "content": "Now call get_node_details with a SINGLE call containing ALL the nodes you need (pass them as an array in the 'nodes' parameter). Focus only on the specific nodes required for this workflow - don't fetch details for unnecessary nodes. After getting the details, output ONLY the complete JSON workflow configuration.",
+                        "content": """Now call get_node_details with a SINGLE call containing ALL the nodes you need (pass them as an array in the 'nodes' parameter).
+
+PAY ATTENTION: The MCP response will include a "type" field for each parameter - this tells you EXACTLY what type of value to generate:
+- type="integer" means you MUST use a number (not a string!)
+- type="string" means a text value (but NOT "mock-something"!)
+- type="boolean" means true or false (no quotes!)
+
+After getting the details, generate the complete JSON workflow following these MCP types EXACTLY.""",
                     }
                 )
 
@@ -994,6 +1086,16 @@ Instructions:
                             f"Calling additional tool: {tool_name} with args: {json.dumps(tool_args, indent=2) if tool_args else '{}'}"
                         )
                         result = await self.mcp_client.call_tool(tool_name, tool_args)
+                        
+                        # Store node specs from get_node_details for type reference
+                        if tool_name == "get_node_details" and isinstance(result, dict):
+                            nodes_list = result.get("nodes", [])
+                            for node_spec in nodes_list:
+                                if "error" not in node_spec:
+                                    # Cache the node spec by type:subtype key
+                                    node_key = f"{node_spec.get('node_type')}:{node_spec.get('subtype')}"
+                                    self.node_specs_cache[node_key] = node_spec
+                                    logger.debug(f"Cached node spec for {node_key}")
 
                         result_str = (
                             json.dumps(result, indent=2)
@@ -1004,10 +1106,16 @@ Instructions:
                             HumanMessage(content=f"Tool result for {tool_name}: {result_str}")
                         )
 
-                    # Final call to get the JSON workflow with clearer instructions
+                    # Final call to get the JSON workflow with MCP compliance emphasis
                     langchain_messages.append(
                         HumanMessage(
-                            content="You now have all the node details. Output ONLY the complete JSON workflow configuration. Start with { and end with }. No explanations, no markdown, just pure JSON."
+                            content="""You now have all the node details from MCP. CRITICAL REMINDERS:
+1. Each parameter has a "type" field in the MCP response - THIS IS MANDATORY TO FOLLOW
+2. Generate values that MATCH THE EXACT TYPE:
+   - type="integer" → use numbers like 123, 987654 (NOT "mock-123" strings!)
+   - type="string" → use example strings (NOT with "mock-" prefix!)
+   - type="boolean" → use true/false (no quotes!)
+3. Output ONLY the complete JSON workflow. Start with { and end with }. No explanations."""
                         )
                     )
 
