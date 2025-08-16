@@ -17,6 +17,12 @@ except ImportError:
     workflow_pb2 = None
 
 try:
+    from ..utils.template_resolver import TemplateResolver
+except ImportError:
+    # Fallback if template resolver not available
+    TemplateResolver = None
+
+try:
     from shared.node_specs import node_spec_registry
     from shared.node_specs.base import InputPortSpec, NodeSpec, OutputPortSpec, ParameterType
 except ImportError:
@@ -52,7 +58,7 @@ class NodeExecutionContext:
     metadata: Dict[str, Any]
 
     def get_parameter(self, key: str, default: Any = None) -> Any:
-        """Get node parameter value."""
+        """Get node parameter value with template resolution support."""
         # Handle case where parameters might be a string (JSON)
         if isinstance(self.node.parameters, str):
             import json
@@ -65,9 +71,58 @@ class NodeExecutionContext:
             parameters = self.node.parameters
 
         if hasattr(parameters, "get"):
-            return parameters.get(key, default)
+            value = parameters.get(key, default)
+            
+            # Resolve template variables if TemplateResolver is available
+            if TemplateResolver and value is not None:
+                # Build resolution context
+                context = {
+                    "payload": self.input_data.get("payload", {}),
+                    "trigger": self.input_data,
+                    "static": self.static_data,
+                    "workflow": {"id": self.workflow_id},
+                    "execution": {"id": self.execution_id},
+                    "metadata": self.metadata,
+                    "data": self.input_data,  # Alias for input data
+                }
+                
+                # Resolve the value
+                resolved_value = TemplateResolver.resolve_value(value, context)
+                return resolved_value if resolved_value is not None else default
+            
+            return value
         else:
             return default
+    
+    def get_resolved_parameters(self) -> Dict[str, Any]:
+        """Get all parameters with template variables resolved."""
+        # Handle case where parameters might be a string (JSON)
+        if isinstance(self.node.parameters, str):
+            import json
+
+            try:
+                parameters = json.loads(self.node.parameters)
+            except:
+                return {}
+        else:
+            parameters = self.node.parameters if hasattr(self.node.parameters, "items") else {}
+
+        if not TemplateResolver:
+            return dict(parameters) if hasattr(parameters, "items") else {}
+        
+        # Build resolution context
+        context = {
+            "payload": self.input_data.get("payload", {}),
+            "trigger": self.input_data,
+            "static": self.static_data,
+            "workflow": {"id": self.workflow_id},
+            "execution": {"id": self.execution_id},
+            "metadata": self.metadata,
+            "data": self.input_data,  # Alias for input data
+        }
+        
+        # Resolve all parameters
+        return TemplateResolver.resolve_parameters(dict(parameters), context)
 
     def get_credential(self, key: str, default: Any = None) -> Any:
         """Get credential value."""

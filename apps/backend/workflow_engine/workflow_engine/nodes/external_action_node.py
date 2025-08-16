@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 if TYPE_CHECKING:
     from ..services.oauth2_service_lite import OAuth2ServiceLite
 
-from shared.models.node_enums import ExternalActionSubtype
+from shared.models.node_enums import NodeType, ExternalActionSubtype
 from shared.node_specs import node_spec_registry
 from shared.node_specs.base import NodeSpec
 
@@ -456,11 +456,12 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext
     ) -> tuple[str, Dict[str, Any]]:
         """Prepare GitHub operation and parameters."""
-        action = self.get_parameter_with_spec(context, "action") or context.get_parameter("action")
-        repository = self.get_parameter_with_spec(context, "repository") or context.get_parameter(
-            "repository"
-        )
-        owner = self.get_parameter_with_spec(context, "owner") or context.get_parameter("owner")
+        # Use get_resolved_parameters to resolve all template variables at once
+        resolved_params = context.get_resolved_parameters()
+        
+        action = resolved_params.get("action", "")
+        repository = resolved_params.get("repository", "")
+        owner = resolved_params.get("owner", "")
 
         parameters = {"repository": repository, "owner": owner}
 
@@ -468,27 +469,38 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         if action == "create_issue":
             parameters.update(
                 {
-                    "title": context.get_parameter("title", ""),
-                    "body": context.get_parameter("body", ""),
-                    "labels": context.get_parameter("labels", []),
-                    "assignees": context.get_parameter("assignees", []),
+                    "title": resolved_params.get("title", ""),
+                    "body": resolved_params.get("body", ""),
+                    "labels": resolved_params.get("labels", []),
+                    "assignees": resolved_params.get("assignees", []),
                 }
             )
         elif action == "create_pull_request":
             parameters.update(
                 {
-                    "title": context.get_parameter("title", ""),
-                    "head": context.get_parameter("head", ""),
-                    "base": context.get_parameter("base", ""),
-                    "body": context.get_parameter("body", ""),
+                    "title": resolved_params.get("title", ""),
+                    "head": resolved_params.get("head", ""),
+                    "base": resolved_params.get("base", ""),
+                    "body": resolved_params.get("body", ""),
                 }
             )
+        elif action == "add_comment":
+            # Ensure issue_number is resolved from template
+            issue_number = resolved_params.get("issue_number")
+            if issue_number is not None:
+                parameters["issue_number"] = issue_number
+            parameters["body"] = resolved_params.get("body", "")
+        elif action == "close_issue":
+            # Ensure issue_number is resolved from template
+            issue_number = resolved_params.get("issue_number")
+            if issue_number is not None:
+                parameters["issue_number"] = issue_number
         elif action == "list_issues":
             parameters.update(
                 {
-                    "state": context.get_parameter("state", "open"),
-                    "labels": context.get_parameter("labels", []),
-                    "sort": context.get_parameter("sort", "created"),
+                    "state": resolved_params.get("state", "open"),
+                    "labels": resolved_params.get("labels", []),
+                    "sort": resolved_params.get("sort", "created"),
                 }
             )
 
