@@ -257,6 +257,9 @@ class WorkflowAgentNodes:
         最小化的参数修正，只处理会导致验证失败的关键问题。
         优先依赖 LLM 通过改进的 prompt 生成正确值。
         
+        注意：我们希望 LLM 直接生成正确的值，而不是在这里修复。
+        只处理极少数无法通过 prompt 解决的情况。
+        
         Args:
             node: 节点数据
             
@@ -269,8 +272,19 @@ class WorkflowAgentNodes:
         parameters = node['parameters']
         
         for param_name, param_value in parameters.items():
-            # 只修正最明显的占位符模式
-            if isinstance(param_value, str):
+            # 处理引用对象 - 这是一个临时修复，最终应该通过改进 prompt 解决
+            if isinstance(param_value, dict) and '$ref' in param_value:
+                logger.warning(f"LLM generated reference object for '{param_name}': {param_value}")
+                logger.warning("Applying temporary fix, but this should be prevented by better prompting!")
+                
+                # 根据参数名推断类型并生成 mock 值
+                if 'number' in param_name.lower() or 'id' in param_name.lower() or 'count' in param_name.lower():
+                    parameters[param_name] = self._generate_mock_value(param_name, "integer")
+                else:
+                    parameters[param_name] = self._generate_mock_value(param_name, "string")
+            
+            # 只修正最明显的占位符模式（这些是极少数情况）
+            elif isinstance(param_value, str):
                 # 检测明确的占位符模式
                 is_obvious_placeholder = (
                     # 尖括号占位符，如 <OWNER>/<REPO>, <YOUR_TOKEN>
@@ -282,15 +296,17 @@ class WorkflowAgentNodes:
                 )
                 
                 if is_obvious_placeholder:
-                    # 使用更通用的 mock value 生成逻辑
+                    # 记录警告，这表明 prompt 需要改进
+                    logger.warning(f"LLM generated placeholder for '{param_name}': {param_value}")
+                    # 暂时保留修复逻辑，但这应该通过改进 prompt 来避免
                     parameters[param_name] = self._generate_mock_value(param_name, "string")
-                    logger.debug(f"Replaced placeholder '{param_value}' with mock value for parameter '{param_name}'")
+                    logger.debug(f"Temporarily fixed placeholder, but this should be handled by prompt")
             
             # 只修正明显无效的值（如 ID 字段为 0）
             elif isinstance(param_value, int) and param_value == 0:
                 if any(keyword in param_name.lower() for keyword in ['number', 'id', 'count', 'port']):
+                    logger.warning(f"LLM generated invalid zero for '{param_name}'")
                     parameters[param_name] = self._generate_mock_value(param_name, "integer")
-                    logger.debug(f"Replaced invalid value 0 with mock value for parameter '{param_name}'")
                     
         return node
     
