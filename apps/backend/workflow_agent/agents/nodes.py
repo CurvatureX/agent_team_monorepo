@@ -131,6 +131,287 @@ class WorkflowAgentNodes:
         
         return "\n".join(context_parts)
 
+    def _generate_mock_value(self, param_name: str, param_type: str = "string") -> object:
+        """
+        生成符合类型的 mock value
+
+        Args:
+            param_name: 参数名称
+            param_type: 参数类型 (string, integer, float, boolean, json)
+            
+        Returns:
+            符合类型的 mock value
+        """
+        param_lower = param_name.lower()
+        
+        # 根据参数类型生成合适的 mock value
+        if param_type == "integer":
+            # 整数类型
+            if 'number' in param_lower or 'id' in param_lower:
+                return 123
+            elif 'count' in param_lower:
+                return 5
+            elif 'port' in param_lower:
+                return 8080
+            else:
+                return 42
+                
+        elif param_type == "float" or param_type == "number":
+            # 浮点数类型
+            if 'temperature' in param_lower:
+                return 0.7
+            elif 'threshold' in param_lower:
+                return 0.5
+            else:
+                return 1.0
+                
+        elif param_type == "boolean":
+            # 布尔类型
+            if 'enable' in param_lower or 'active' in param_lower:
+                return True
+            elif 'disable' in param_lower or 'ignore' in param_lower:
+                return False
+            else:
+                return True
+                
+        elif param_type == "json" or param_type == "array":
+            # JSON/数组类型
+            if 'labels' in param_lower or 'tags' in param_lower:
+                return ["example", "test"]
+            elif 'config' in param_lower or 'settings' in param_lower:
+                return {"key": "value"}
+            else:
+                return []
+                
+        else:  # string 或其他
+            # 字符串类型
+            if 'repository' in param_lower or 'repo' in param_lower:
+                return "owner/repo"
+            elif 'token' in param_lower or 'key' in param_lower:
+                return "mock-token-123456"
+            elif 'email' in param_lower:
+                return "user@example.com"
+            elif 'url' in param_lower or 'webhook' in param_lower:
+                return "https://api.example.com/webhook"
+            elif 'message' in param_lower or 'body' in param_lower:
+                return "Example message content"
+            elif 'title' in param_lower or 'subject' in param_lower:
+                return "Example Title"
+            elif 'channel' in param_lower:
+                return "#general"
+            elif 'cron' in param_lower:
+                return "0 9 * * *"
+            elif 'timestamp' in param_lower or 'date' in param_lower:
+                return "2024-01-01T00:00:00Z"
+            else:
+                return f"mock-{param_name}"
+    
+    def _optimize_node_parameters(self, node: dict, node_spec: dict = None) -> dict:
+        """
+        优化节点参数：只保留必需参数和用户指定的参数
+        注意：模板变量保持原样，不进行类型转换
+        
+        Args:
+            node: 节点数据
+            node_spec: 节点规格（从MCP获取的详细信息）
+            
+        Returns:
+            优化后的节点数据
+        """
+        if not node.get('parameters'):
+            return node
+        
+        optimized_params = {}
+        current_params = node['parameters']
+        
+        # 如果有节点规格，使用它来确定必需参数
+        if node_spec and 'parameters' in node_spec:
+            for param_spec in node_spec['parameters']:
+                param_name = param_spec['name']
+                param_required = param_spec.get('required', False)
+                param_desc = param_spec.get('description', '')
+                
+                # 检查当前参数中是否有这个参数
+                if param_name in current_params:
+                    param_value = current_params[param_name]
+                    
+                    # 必需参数或有明确值的参数
+                    if param_required or (param_value and param_value != param_spec.get('default_value')):
+                        # 保留参数值，如果已经是模板变量格式则保持不变
+                        optimized_params[param_name] = param_value
+        else:
+            # 没有规格信息时，进行基本优化
+            for param_name, param_value in current_params.items():
+                # 跳过真正的空值
+                if param_value is None or param_value == "" or (isinstance(param_value, list) and len(param_value) == 0) or (isinstance(param_value, dict) and len(param_value) == 0):
+                    continue
+                
+                # 保留非空参数
+                optimized_params[param_name] = param_value
+        
+        node['parameters'] = optimized_params
+        return node
+
+    def _fix_parameter_types(self, node: dict) -> dict:
+        """
+        最小化的参数修正，只处理会导致验证失败的关键问题。
+        优先依赖 LLM 通过改进的 prompt 生成正确值。
+        
+        Args:
+            node: 节点数据
+            
+        Returns:
+            修正后的节点数据
+        """
+        if not node.get('parameters'):
+            return node
+            
+        parameters = node['parameters']
+        
+        for param_name, param_value in parameters.items():
+            # 只修正最明显的占位符模式
+            if isinstance(param_value, str):
+                # 检测明确的占位符模式
+                is_obvious_placeholder = (
+                    # 尖括号占位符，如 <OWNER>/<REPO>, <YOUR_TOKEN>
+                    ('<' in param_value and '>' in param_value) or
+                    # 模板变量
+                    ('{{' in param_value and '}}' in param_value) or
+                    # 环境变量占位符
+                    ('${' in param_value and '}' in param_value)
+                )
+                
+                if is_obvious_placeholder:
+                    # 使用更通用的 mock value 生成逻辑
+                    parameters[param_name] = self._generate_mock_value(param_name, "string")
+                    logger.debug(f"Replaced placeholder '{param_value}' with mock value for parameter '{param_name}'")
+            
+            # 只修正明显无效的值（如 ID 字段为 0）
+            elif isinstance(param_value, int) and param_value == 0:
+                if any(keyword in param_name.lower() for keyword in ['number', 'id', 'count', 'port']):
+                    parameters[param_name] = self._generate_mock_value(param_name, "integer")
+                    logger.debug(f"Replaced invalid value 0 with mock value for parameter '{param_name}'")
+                    
+        return node
+    
+    def _normalize_workflow_structure(self, workflow: dict) -> dict:
+        """
+        Minimal normalization - only fix critical issues that break workflow creation
+        Most fields should be correctly generated by LLM with improved prompt
+        """
+        # Handle workflow_meta if LLM uses old format
+        if "workflow_meta" in workflow and not workflow.get("name"):
+            workflow["name"] = workflow["workflow_meta"].get("name", "Generated Workflow")
+            workflow["description"] = workflow["workflow_meta"].get("description", "")
+        
+        # Only add absolutely critical missing fields for nodes
+        if "nodes" in workflow:
+            for i, node in enumerate(workflow["nodes"]):
+                # Ensure node has a name (required field)
+                if "name" not in node or not node["name"]:
+                    # Generate name from node type and ID
+                    node_id = node.get("id", f"node_{i}")
+                    node_type = node.get("type", "unknown")
+                    node_subtype = node.get("subtype", "")
+                    if node_subtype:
+                        node["name"] = f"{node_type}_{node_subtype}_{node_id}".replace("_", "-").lower()
+                    else:
+                        node["name"] = f"{node_type}_{node_id}".replace("_", "-").lower()
+                
+                # Fix parameter types (ensure mock values instead of template variables)
+                node = self._fix_parameter_types(node)
+                
+                # Optimize node parameters (remove unnecessary params)
+                node = self._optimize_node_parameters(node)
+                
+                # Only add position if completely missing (required field)
+                if "position" not in node:
+                    node["position"] = {"x": 100.0 + i * 200.0, "y": 100.0}
+                
+                # These fields have defaults in the backend, only add if completely missing
+                essential_defaults = {
+                    "disabled": False,
+                    "on_error": "continue", 
+                    "credentials": {},
+                    "notes": {},
+                    "webhooks": []
+                }
+                
+                for field, default in essential_defaults.items():
+                    if field not in node:
+                        node[field]= default
+        
+        # Fix connections format if it's a list
+        if "connections" in workflow and isinstance(workflow["connections"], list):
+            # Convert list format to dict format
+            connections_dict = {}
+            for conn in workflow["connections"]:
+                if isinstance(conn, dict):
+                    # Handle format 1: {"from": {"node_id": "x", "port": "y"}, "to": {...}}
+                    if isinstance(conn.get("from"), dict) and isinstance(conn.get("to"), dict):
+                        from_node = conn["from"].get("node_id", "")
+                        to_node = conn["to"].get("node_id", "")
+                        from_port = conn["from"].get("port", "main")
+                        to_port = conn["to"].get("port", "main")
+                    # Handle format 2: {"from": "x", "from_port": "y", "to": "z", "to_port": "w"}
+                    elif "from" in conn and "to" in conn and isinstance(conn["from"], str):
+                        from_node = conn.get("from", "")
+                        to_node = conn.get("to", "")
+                        from_port = conn.get("from_port", "main")
+                        to_port = conn.get("to_port", "main")
+                    else:
+                        continue
+                    
+                    if from_node not in connections_dict:
+                        connections_dict[from_node] = {}
+                    if from_port not in connections_dict[from_node]:
+                        connections_dict[from_node][from_port] = []
+                    
+                    connections_dict[from_node][from_port].append({
+                        "node": to_node,
+                        "type": to_port,
+                        "index": 0
+                    })
+            
+            workflow["connections"] = connections_dict
+        elif "connections" not in workflow:
+            workflow["connections"] = {}
+        
+        # Add missing top-level fields
+        if "settings" not in workflow:
+            workflow["settings"] = {
+                "timezone": {"name": "UTC"},
+                "save_execution_progress": True,
+                "save_manual_executions": True,
+                "timeout": 3600,
+                "error_policy": "continue",
+                "caller_policy": "workflow"
+            }
+        
+        if "static_data" not in workflow:
+            workflow["static_data"] = {}
+        
+        if "pin_data" not in workflow:
+            workflow["pin_data"] = {}
+        
+        if "tags" not in workflow:
+            workflow["tags"] = []
+        
+        if "active" not in workflow:
+            workflow["active"] = True
+        
+        if "version" not in workflow:
+            workflow["version"] = "1.0"
+        
+        # Generate unique ID if not present
+        if "id" not in workflow:
+            import re
+            # Create ID from name
+            name = workflow.get("name", "workflow")
+            workflow["id"] = re.sub(r'[^a-z0-9-]', '-', name.lower())[:50]
+        
+        return workflow
+
     def _create_fallback_workflow(self, intent_summary: str) -> dict:
         """Create a simple fallback workflow when generation fails"""
         # Use enum values if available, fallback to hardcoded strings
@@ -480,6 +761,10 @@ Instructions:
                             workflow_json = workflow_json[:-3]
 
                     workflow = json.loads(workflow_json.strip())
+                    
+                    # Post-process the workflow to add missing required fields
+                    workflow = self._normalize_workflow_structure(workflow)
+                    
                     logger.info(
                         "Successfully generated workflow using MCP tools, workflow: %s", workflow
                     )

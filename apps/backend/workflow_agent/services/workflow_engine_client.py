@@ -81,21 +81,51 @@ class WorkflowEngineClient:
                                 if retry["max_tries"] < 1:
                                     retry["max_tries"] = 1
                     
+                    # Note: Template variables like {{payload.number}} are now handled by
+                    # the workflow_engine's template resolver, so we don't need to convert them here
+                    
                     if "parameters" in node and node["parameters"]:
-                        # Convert parameters to correct format
+                        # Smart parameter type handling based on common patterns
                         for key, value in list(node["parameters"].items()):
-                            if isinstance(value, (int, float)):
-                                # Convert numeric values to strings
-                                node["parameters"][key] = str(value)
-                            elif isinstance(value, dict):
-                                # Convert empty dicts to empty strings or JSON strings
-                                if not value:
-                                    node["parameters"][key] = ""
-                                else:
-                                    node["parameters"][key] = json.dumps(value)
-                            elif value is None:
-                                # Convert None to empty string
-                                node["parameters"][key] = ""
+                            # Skip if already correct type
+                            if value is None:
+                                # Remove None values
+                                del node["parameters"][key]
+                                continue
+                            
+                            # Handle string values that might need conversion
+                            if isinstance(value, str):
+                                # Keep template variables as strings - they'll be resolved by workflow_engine
+                                # Templates can be: {{var}}, ${var}, <%var%> or other patterns
+                                if any(pattern in value for pattern in ["{{", "}}", "${", "<%", "%>"]):
+                                    # This is a template variable, keep as string
+                                    # The workflow_engine's template resolver will handle it at runtime
+                                    continue
+                                
+                                # Boolean conversion (only for non-template strings)
+                                if value.lower() in ["true", "false"]:
+                                    node["parameters"][key] = value.lower() == "true"
+                                # JSON object/array detection
+                                elif value.startswith(("{", "[")) and value.endswith(("}", "]")):
+                                    try:
+                                        node["parameters"][key] = json.loads(value)
+                                    except json.JSONDecodeError:
+                                        pass  # Keep as string if not valid JSON
+                                # Number detection (only for literal numbers, not templates)
+                                elif key in ["timeout", "max_tries", "wait_between_tries", "milestone"]:
+                                    try:
+                                        # Try integer first
+                                        if "." not in value:
+                                            node["parameters"][key] = int(value)
+                                        else:
+                                            node["parameters"][key] = float(value)
+                                    except ValueError:
+                                        pass  # Keep as string if not a number
+                            
+                            # Handle dict that should be JSON string (reverse case)
+                            elif isinstance(value, dict) and key in ["event_config", "headers"]:
+                                # Some fields expect JSON strings, not objects
+                                node["parameters"][key] = json.dumps(value)
                 
                 # Fix settings if needed
                 settings = workflow_copy.get("settings", {})

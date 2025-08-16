@@ -184,6 +184,13 @@ class GitHubAdapter(APIAdapter):
         repo = parameters["repository"]
         issue_number = parameters["issue_number"]
         
+        # Ensure issue_number is an integer (in case it comes as string)
+        if isinstance(issue_number, str):
+            try:
+                issue_number = int(issue_number)
+            except ValueError:
+                raise ValidationError(f"Invalid issue_number: {issue_number} - must be an integer")
+        
         comment_data = {
             "body": parameters["body"]
         }
@@ -211,6 +218,13 @@ class GitHubAdapter(APIAdapter):
         """关闭Issue"""
         repo = parameters["repository"]
         issue_number = parameters["issue_number"]
+        
+        # Ensure issue_number is an integer (in case it comes as string)
+        if isinstance(issue_number, str):
+            try:
+                issue_number = int(issue_number)
+            except ValueError:
+                raise ValidationError(f"Invalid issue_number: {issue_number} - must be an integer")
         
         update_data = {
             "state": "closed"
