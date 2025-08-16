@@ -10,7 +10,7 @@ import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from shared.models.node_enums import MemorySubtype
+from shared.models.node_enums import NodeType, MemorySubtype
 from shared.node_specs import node_spec_registry
 from shared.node_specs.base import NodeSpec
 
