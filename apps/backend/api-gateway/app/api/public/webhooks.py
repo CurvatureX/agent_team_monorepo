@@ -961,6 +961,7 @@ async def webhook_status():
                         "/api/v1/public/webhooks/slack/commands",
                         "/api/v1/public/webhooks/slack/auth",
                         "/api/v1/public/webhooks/status",
+                        "/api/v1/public/webhooks/notion/auth",
                     ],
                 }
             else:
@@ -973,3 +974,292 @@ async def webhook_status():
     except Exception as e:
         logger.error(f"Error checking webhook status: {e}", exc_info=True)
         return {"webhook_system": "error", "scheduler_status": "unknown", "error": str(e)}
+
+
+@router.get("/webhooks/notion/auth")
+async def notion_oauth_callback(
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+    error_description: Optional[str] = None,
+):
+    """
+    Notion OAuth callback endpoint
+    Handles Notion integration OAuth flow
+    """
+    try:
+        logger.info(f"Notion OAuth callback received: code={'present' if code else 'missing'}")
+
+        # Check for OAuth errors
+        if error:
+            logger.error(f"Notion OAuth error: {error} - {error_description}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Notion OAuth error: {error} - {error_description or 'Unknown error'}",
+            )
+
+        if not code:
+            raise HTTPException(status_code=400, detail="Missing authorization code")
+
+        # Exchange code for access token
+        token_url = "https://api.notion.com/v1/oauth/token"
+
+        # Prepare token exchange request
+        token_data = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": settings.NOTION_REDIRECT_URI,
+        }
+
+        # Use Basic auth with client credentials
+        import base64
+
+        auth_string = f"{settings.NOTION_CLIENT_ID}:{settings.NOTION_CLIENT_SECRET}"
+        auth_bytes = auth_string.encode("ascii")
+        auth_b64 = base64.b64encode(auth_bytes).decode("ascii")
+
+        headers = {
+            "Authorization": f"Basic {auth_b64}",
+            "Content-Type": "application/json",
+            "Notion-Version": "2022-06-28",
+        }
+
+        async with httpx.AsyncClient() as client:
+            token_response = await client.post(
+                token_url, json=token_data, headers=headers, timeout=30.0
+            )
+
+            if token_response.status_code != 200:
+                logger.error(
+                    f"Notion token exchange failed: {token_response.status_code} - {token_response.text}"
+                )
+                raise HTTPException(
+                    status_code=token_response.status_code,
+                    detail=f"Notion token exchange failed: {token_response.text}",
+                )
+
+            token_result = token_response.json()
+            access_token = token_result.get("access_token")
+            workspace_name = token_result.get("workspace_name", "Unknown Workspace")
+            workspace_id = token_result.get("workspace_id")
+            bot_id = token_result.get("bot_id")
+
+            if not access_token:
+                raise HTTPException(status_code=500, detail="No access token received from Notion")
+
+            logger.info(f"Notion OAuth successful for workspace: {workspace_name}")
+
+            # Store the integration data if user_id provided in state
+            db_store_success = False
+            if state:
+                try:
+                    db_store_success = await _store_notion_integration(
+                        state, access_token, workspace_id, workspace_name, bot_id, token_result
+                    )
+                    if not db_store_success:
+                        logger.warning(
+                            f"⚠️ Failed to store Notion integration data for user {state}"
+                        )
+                except Exception as e:
+                    logger.error(f"❌ Error storing Notion integration: {e}")
+
+            # Forward to workflow_scheduler if available
+            scheduler_success = False
+            try:
+                scheduler_url = (
+                    f"{settings.workflow_scheduler_http_url}/api/v1/auth/notion/callback"
+                )
+
+                notion_data = {
+                    "access_token": access_token,
+                    "workspace_id": workspace_id,
+                    "workspace_name": workspace_name,
+                    "bot_id": bot_id,
+                    "user_id": state,
+                    "token_data": token_result,
+                }
+
+                scheduler_response = await client.post(
+                    scheduler_url, json=notion_data, timeout=30.0
+                )
+
+                if scheduler_response.status_code == 200:
+                    logger.info(
+                        f"Notion OAuth processed by scheduler for workspace: {workspace_name}"
+                    )
+                    scheduler_success = True
+                else:
+                    logger.warning(
+                        f"Scheduler Notion OAuth error: {scheduler_response.status_code} - {scheduler_response.text}"
+                    )
+
+            except Exception as e:
+                logger.warning(f"Failed to forward to workflow_scheduler: {e}")
+
+            return {
+                "success": True,
+                "message": "Notion integration connected successfully!",
+                "workspace_name": workspace_name,
+                "workspace_id": workspace_id,
+                "bot_id": bot_id,
+                "user_id": state if state else None,
+                "stored_in_database": db_store_success if state else False,
+                "scheduler_processed": scheduler_success,
+            }
+
+    except HTTPException:
+        raise
+
+    except httpx.TimeoutException:
+        logger.error("Timeout processing Notion OAuth callback")
+        raise HTTPException(status_code=504, detail="Notion OAuth processing timeout")
+
+    except httpx.RequestError as e:
+        logger.error(f"Request error processing Notion OAuth callback: {e}")
+        raise HTTPException(status_code=502, detail="Unable to process Notion OAuth callback")
+
+    except Exception as e:
+        logger.error(f"Error processing Notion OAuth callback: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail="Internal server error processing Notion OAuth callback"
+        )
+
+
+async def _store_notion_integration(
+    user_id: str,
+    access_token: str,
+    workspace_id: str,
+    workspace_name: str,
+    bot_id: str,
+    token_data: dict,
+) -> bool:
+    """
+    Store Notion integration data in oauth_tokens table
+
+    Args:
+        user_id: User ID who authorized the integration
+        access_token: Notion access token
+        workspace_id: Notion workspace ID
+        workspace_name: Notion workspace name
+        bot_id: Notion bot ID
+        token_data: Full token response from Notion
+
+    Returns:
+        bool: True if stored successfully, False otherwise
+    """
+    try:
+        supabase_admin = get_supabase_admin()
+
+        if not supabase_admin:
+            logger.error("❌ Database connection unavailable for Notion integration storage")
+            return False
+
+        # First, ensure the Notion integration exists
+        notion_integration_result = (
+            supabase_admin.table("integrations")
+            .select("*")
+            .eq("integration_id", "notion")
+            .execute()
+        )
+
+        if not notion_integration_result.data:
+            # Create the Notion integration if it doesn't exist
+            logger.info("📝 Creating Notion integration entry")
+            integration_data = {
+                "integration_id": "notion",
+                "integration_type": "notion",
+                "name": "Notion Integration",
+                "description": "Notion workspace integration for pages, databases, and blocks",
+                "version": "1.0",
+                "configuration": {
+                    "api_version": "2022-06-28",
+                    "callback_url": "/api/v1/public/webhooks/notion/auth",
+                    "scopes": ["read", "insert", "update"],
+                },
+                "supported_operations": [
+                    "pages:read",
+                    "pages:write",
+                    "databases:read",
+                    "databases:write",
+                    "blocks:read",
+                    "blocks:write",
+                ],
+                "required_scopes": ["read", "insert", "update"],
+                "active": True,
+                "verified": True,
+            }
+
+            integration_result = (
+                supabase_admin.table("integrations").insert(integration_data).execute()
+            )
+
+            if not integration_result.data:
+                logger.error("❌ Failed to create Notion integration")
+                return False
+
+        # Check if this user already has a Notion integration token
+        existing_token_result = (
+            supabase_admin.table("oauth_tokens")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("integration_id", "notion")
+            .execute()
+        )
+
+        # Prepare the token data
+        oauth_token_data = {
+            "user_id": user_id,
+            "integration_id": "notion",
+            "provider": "notion",
+            "access_token": access_token,
+            "token_type": "bearer",
+            "credential_data": {
+                "workspace_id": workspace_id,
+                "workspace_name": workspace_name,
+                "bot_id": bot_id,
+                "owner": token_data.get("owner", {}),
+                "duplicated_template_id": token_data.get("duplicated_template_id"),
+                "request_id": token_data.get("request_id"),
+                "callback_timestamp": "now()",
+            },
+            "is_active": True,
+        }
+
+        if existing_token_result.data:
+            # Update existing record
+            logger.info(f"🔄 Updating existing Notion integration for user {user_id}")
+
+            update_result = (
+                supabase_admin.table("oauth_tokens")
+                .update(oauth_token_data)
+                .eq("user_id", user_id)
+                .eq("integration_id", "notion")
+                .execute()
+            )
+
+            if not update_result.data:
+                logger.error("❌ Failed to update Notion integration record")
+                return False
+
+            logger.info(
+                f"✅ Notion integration updated successfully - workspace: {workspace_name}, user_id: {user_id}"
+            )
+        else:
+            # Insert new record
+            logger.info(f"➕ Creating new Notion integration record for user {user_id}")
+
+            insert_result = supabase_admin.table("oauth_tokens").insert(oauth_token_data).execute()
+
+            if not insert_result.data:
+                logger.error("❌ Failed to store Notion integration record")
+                return False
+
+            logger.info(
+                f"✅ Notion integration stored successfully - workspace: {workspace_name}, user_id: {user_id}"
+            )
+
+        return True
+
+    except Exception as e:
+        logger.error(f"❌ Error storing Notion integration data: {str(e)}", exc_info=True)
+        return False

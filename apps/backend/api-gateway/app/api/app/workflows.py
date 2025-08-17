@@ -206,14 +206,14 @@ async def update_workflow(
         logger.info(f"📦 Received request body: {request_body}")
 
         # Remove any workflow_id or user_id from the request body
-        request_body.pop('workflow_id', None)
-        request_body.pop('user_id', None)
-        
+        request_body.pop("workflow_id", None)
+        request_body.pop("user_id", None)
+
         # Build the update request with required fields
         update_request = WorkflowUpdate(
             workflow_id=workflow_id,
             user_id=deps.current_user.sub,
-            **request_body  # All other fields from request
+            **request_body,  # All other fields from request
         )
 
         # Get HTTP client
@@ -222,18 +222,16 @@ async def update_workflow(
 
         # Get only the fields that were provided (exclude_none=True)
         update_data = update_request.model_dump(exclude_none=True)
-        
+
         # Debug log
         logger.info(f"📦 Update data being sent: {update_data}")
-        
+
         # Remove workflow_id and user_id to avoid duplication in the call
-        update_data.pop('workflow_id', None)
-        update_data.pop('user_id', None)
-        
+        update_data.pop("workflow_id", None)
+        update_data.pop("user_id", None)
+
         result = await http_client.update_workflow(
-            workflow_id=workflow_id,
-            user_id=deps.current_user.sub,
-            **update_data
+            workflow_id=workflow_id, user_id=deps.current_user.sub, **update_data
         )
 
         if not result.get("success", False) or not result.get("workflow"):
@@ -499,6 +497,45 @@ async def deploy_workflow(
         raise
     except Exception as e:
         logger.error(f"❌ Error deploying workflow {workflow_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.delete("/{workflow_id}/undeploy", response_model=ResponseModel)
+async def undeploy_workflow(
+    workflow_id: str,
+    deps: AuthenticatedDeps = Depends(),
+):
+    """
+    Undeploy a workflow and cleanup its triggers
+    卸载工作流并清理其触发器
+    """
+    try:
+        logger.info(f"🗑️ Undeploying workflow {workflow_id} for user {deps.current_user.sub}")
+
+        # Get workflow scheduler client
+        scheduler_client = await get_workflow_scheduler_client()
+
+        # Undeploy workflow
+        result = await scheduler_client.undeploy_workflow(
+            workflow_id=workflow_id,
+            trace_id=getattr(deps.request.state, "trace_id", None),
+        )
+
+        # Handle errors
+        if not result.get("success", True) and result.get("error"):
+            error_msg = result.get("error", "Unknown error")
+            if "not found" in error_msg.lower():
+                raise HTTPException(status_code=404, detail="Workflow deployment not found")
+            raise HTTPException(status_code=500, detail=f"Undeploy failed: {error_msg}")
+
+        logger.info(f"✅ Workflow undeployed successfully: {workflow_id}")
+
+        return ResponseModel(success=True, message="Workflow undeployed successfully")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error undeploying workflow {workflow_id}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

@@ -225,6 +225,59 @@ class WorkflowSchedulerHTTPClient:
             log_error(f"❌ Error deploying workflow: {e}")
             return {"success": False, "error": str(e)}
 
+    async def undeploy_workflow(
+        self,
+        workflow_id: str,
+        trace_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Undeploy a workflow and cleanup its triggers"""
+        if not self.connected:
+            await self.connect()
+
+        try:
+            log_info(f"📨 Undeploy workflow request for: {workflow_id}")
+
+            headers = {}
+            if trace_id:
+                headers["X-Trace-ID"] = trace_id
+
+            client = await self._get_client()
+            response = await client.delete(
+                f"{self.base_url}/api/v1/deployment/workflows/{workflow_id}/undeploy",
+                headers=headers,
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            log_info(f"✅ Workflow undeployed: {workflow_id}")
+            return data
+
+        except httpx.HTTPStatusError as e:
+            # Try to extract detailed error message from response
+            error_detail = f"HTTP {e.response.status_code}"
+            try:
+                error_response = e.response.json()
+                if "detail" in error_response:
+                    error_detail = error_response["detail"]
+                elif "message" in error_response:
+                    error_detail = error_response["message"]
+                else:
+                    error_detail = str(error_response)
+            except Exception:
+                # Fallback to text response if JSON parsing fails
+                try:
+                    error_detail = e.response.text or error_detail
+                except Exception:
+                    pass
+
+            log_error(
+                f"❌ HTTP error undeploying workflow: {e.response.status_code} - {error_detail}"
+            )
+            return {"success": False, "error": error_detail}
+        except Exception as e:
+            log_error(f"❌ Error undeploying workflow: {e}")
+            return {"success": False, "error": str(e)}
+
     async def get_deployment_status(self, workflow_id: str) -> Dict[str, Any]:
         """Get deployment status for a workflow"""
         if not self.connected:

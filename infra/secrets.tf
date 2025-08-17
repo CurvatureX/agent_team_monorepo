@@ -122,6 +122,26 @@ resource "aws_ssm_parameter" "github_client_id" {
   })
 }
 
+resource "aws_ssm_parameter" "notion_client_id" {
+  name  = "/${local.name_prefix}/notion/client-id"
+  type  = "SecureString"
+  value = var.notion_client_id
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-notion-client-id"
+  })
+}
+
+resource "aws_ssm_parameter" "notion_redirect_uri" {
+  name  = "/${local.name_prefix}/notion/redirect-uri"
+  type  = "SecureString"
+  value = var.notion_redirect_uri
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-notion-redirect-uri"
+  })
+}
+
 # IAM policy for ECS tasks to access SSM parameters
 resource "aws_iam_policy" "ecs_ssm_policy" {
   name        = "${local.name_prefix}-ecs-ssm-policy"
