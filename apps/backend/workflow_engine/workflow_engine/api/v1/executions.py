@@ -124,7 +124,7 @@ async def execute_single_node(
         500: If execution fails
     """
     try:
-        result = service.execute_single_node(
+        result = await service.execute_single_node(
             workflow_id=workflow_id,
             node_id=node_id,
             request=request

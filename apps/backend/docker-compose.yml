@@ -134,6 +134,8 @@ services:
     dns:
       - 1.1.1.1
       - 8.8.8.8
+    extra_hosts:
+      - "aws-0-ap-southeast-1.pooler.supabase.com:54.255.219.82"
     build:
       context: .
       dockerfile: ./workflow_engine/Dockerfile
@@ -158,6 +160,9 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    volumes:
+      - ./shared:/app/shared:ro
+      - workflow_engine_logs:/app/logs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
@@ -173,6 +178,8 @@ services:
     dns:
       - 1.1.1.1
       - 8.8.8.8
+    extra_hosts:
+      - "aws-0-ap-southeast-1.pooler.supabase.com:54.255.219.82"
     build:
       context: .
       dockerfile: ./workflow_scheduler/Dockerfile

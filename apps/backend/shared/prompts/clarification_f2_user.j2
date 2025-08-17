@@ -1,87 +1,14 @@
-{% if current_scenario %}
-## Current SCENARIO: {{ current_scenario }}
-{% if goal %}
-**Goal**: {{ goal }}
-{% endif %}
-{% endif %}
-
-## Clarification Request
-
-{% if scenario_type == "debug_recovery" %}
-The workflow failed during execution and needs to be clarified for debugging:
-
-{% if current_workflow %}
-**Failed Workflow:**
-```
-{{ current_workflow | tojsonpretty }}
-```
-{% endif %}
-{% if debug_result %}
-**Debug Information:** {{ debug_result }}
+{% if conversation_history %}
+## Conversation History
+{{ conversation_history }}
+---
 {% endif %}
 
-Please help clarify the workflow requirements to resolve the issues.
+## Current Request
+**User's message:** {{ user_message }}
 
-{% elif scenario_type == "gap_analysis_feedback" %}
-Based on gap analysis feedback, please clarify the workflow requirements:
-
-{% if gaps %}
-**Identified Gaps:** {{ gaps | join(", ") }}
-{% endif %}
-{% if alternatives %}
-**Alternative Solutions:**
-{% for alt in alternatives %}
-- {{ alt }}
-{% endfor %}
+{% if existing_intent %}
+**Current understanding:** {{ existing_intent }}
 {% endif %}
 
-Please provide additional clarification based on the analysis results.
-
-{% elif scenario_type == "template_customization" %}
-Please help clarify how to customize this template workflow:
-
-{% if template_workflow %}
-**Template Information:**
-- Template ID: {{ template_workflow.id if template_workflow.id else "N/A" }}
-- Template Description: {{ template_workflow.description if template_workflow.description else "No description available" }}
-- Template Workflow:
-```
-{{ template_workflow.original_workflow | tojsonpretty if template_workflow.original_workflow else "No workflow definition available" }}
-```
-{% endif %}
-
-Please clarify the specific customizations needed.
-
-{% else %}
-Please help clarify the workflow requirements and gather all necessary information to create a comprehensive workflow summary.
-
-**User's request:** {{ user_message }}
-
-{% endif %}
-
-{% if execution_history %}
-## Execution History: {{ execution_history | join(" -> ") }}
-{% endif %}
-
-{% if rag_context %}
-## Available Knowledge: {{ rag_context.summary if rag_context.summary else "Retrieved relevant documentation and examples" }}
-{% endif %}
-
-{% if identified_gaps and clarification_context.purpose == "gap_negotiation" %}
-## Gap Resolution Context
-The user was previously presented with these alternatives to resolve workflow gaps:
-
-{% for gap in identified_gaps %}
-### Gap: {{ gap.required_capability }}
-Missing: {{ gap.missing_component }}
-
-Alternatives presented:
-{% for i in range(gap.alternatives|length) %}
-{{ loop.index }}. {{ gap.alternatives[i] }}
-{% endfor %}
-{% endfor %}
-
-User's current response: "{{ user_input }}"
-
-Please analyze if the user is selecting one of the alternatives and set gap_resolution accordingly.
-{% endif %}
+Please analyze the user's request and determine if you have enough information to proceed with workflow generation, or if you need ONE clarifying question.

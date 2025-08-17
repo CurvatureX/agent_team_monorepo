@@ -1,0 +1,24 @@
+{
+  "id": "tech-design/mcp-node-knowledge-server",
+  "title": "MCP Node Knowledge Server - Tech Design",
+  "description": "Overview",
+  "source": "@site/../../../docs/tech-design/mcp-node-knowledge-server.md",
+  "sourceDirName": "tech-design",
+  "slug": "/tech-design/mcp-node-knowledge-server",
+  "permalink": "/docs/tech-design/mcp-node-knowledge-server",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/curvaturex/agent_team_monorepo/tree/main/docs/../../../docs/tech-design/mcp-node-knowledge-server.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {},
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "gRPC 迁移到 FastAPI + Pydantic 技术方案",
+    "permalink": "/docs/tech-design/grpc-to-fastapi-migration"
+  },
+  "next": {
+    "title": "📚 AI Teams 分布式监控系统完整使用手册",
+    "permalink": "/docs/tech-design/monitoring-guide"
+  }
+}

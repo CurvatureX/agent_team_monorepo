@@ -1,0 +1,24 @@
+{
+  "id": "tech-design/grpc-to-fastapi-migration-zh",
+  "title": "gRPC 迁移到 FastAPI + Pydantic 技术方案",
+  "description": "概述",
+  "source": "@site/../../../docs/tech-design/grpc-to-fastapi-migration-zh.md",
+  "sourceDirName": "tech-design",
+  "slug": "/tech-design/grpc-to-fastapi-migration-zh",
+  "permalink": "/docs/tech-design/grpc-to-fastapi-migration-zh",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/curvaturex/agent_team_monorepo/tree/main/docs/../../../docs/tech-design/grpc-to-fastapi-migration-zh.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {},
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "GitHub App Integration Architecture",
+    "permalink": "/docs/tech-design/github-app-integration"
+  },
+  "next": {
+    "title": "gRPC 迁移到 FastAPI + Pydantic 技术方案",
+    "permalink": "/docs/tech-design/grpc-to-fastapi-migration"
+  }
+}

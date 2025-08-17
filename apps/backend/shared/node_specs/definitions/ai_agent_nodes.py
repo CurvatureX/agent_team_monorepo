@@ -6,6 +6,7 @@ Each node represents a different AI model provider (Gemini, OpenAI, Claude) wher
 the specific functionality is determined by the system prompt rather than predefined roles.
 """
 
+from ...models.node_enums import AIAgentSubtype, NodeType
 from ..base import (
     ConnectionType,
     DataFormat,
@@ -18,12 +19,17 @@ from ..base import (
 
 
 # Base AI Agent specification with common parameters
-def _create_ai_agent_spec(provider: str, provider_description: str) -> NodeSpec:
+def _create_ai_agent_spec(
+    provider: str, provider_description: str, display_name: str = None, template_id: str = None
+) -> NodeSpec:
     """Create a standardized AI agent specification for a provider."""
     return NodeSpec(
-        node_type="AI_AGENT_NODE",
+        node_type=NodeType.AI_AGENT,
         subtype=provider,
         description=f"{provider_description} AI agent with customizable behavior via system prompt",
+        display_name=display_name or f"{provider_description} Chat",
+        category="ai",
+        template_id=template_id,
         parameters=[
             ParameterDef(
                 name="system_prompt",
@@ -147,7 +153,12 @@ def _create_ai_agent_spec(provider: str, provider_description: str) -> NodeSpec:
 
 
 # Gemini AI Agent - Google's Gemini models
-GEMINI_NODE_SPEC = _create_ai_agent_spec("GEMINI_NODE", "Google Gemini")
+GEMINI_NODE_SPEC = _create_ai_agent_spec(
+    AIAgentSubtype.GOOGLE_GEMINI,
+    "Google Gemini",
+    display_name="Gemini Chat",
+    template_id="ai_gemini",
+)
 
 # Add Gemini-specific parameters
 GEMINI_NODE_SPEC.parameters.extend(
@@ -171,7 +182,9 @@ GEMINI_NODE_SPEC.parameters.extend(
 
 
 # OpenAI AI Agent - OpenAI GPT models
-OPENAI_NODE_SPEC = _create_ai_agent_spec("OPENAI_NODE", "OpenAI GPT")
+OPENAI_NODE_SPEC = _create_ai_agent_spec(
+    AIAgentSubtype.OPENAI_CHATGPT, "OpenAI GPT", display_name="OpenAI Chat", template_id="ai_openai"
+)
 
 # Add OpenAI-specific parameters
 OPENAI_NODE_SPEC.parameters.extend(
@@ -205,7 +218,12 @@ OPENAI_NODE_SPEC.parameters.extend(
 
 
 # Claude AI Agent - Anthropic Claude models
-CLAUDE_NODE_SPEC = _create_ai_agent_spec("CLAUDE_NODE", "Anthropic Claude")
+CLAUDE_NODE_SPEC = _create_ai_agent_spec(
+    AIAgentSubtype.ANTHROPIC_CLAUDE,
+    "Anthropic Claude",
+    display_name="Claude Chat",
+    template_id="ai_claude",
+)
 
 # Add Claude-specific parameters
 CLAUDE_NODE_SPEC.parameters.extend(

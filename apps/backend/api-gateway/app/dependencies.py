@@ -434,6 +434,11 @@ class AuthenticatedDeps:
         self.access_token = access_token
         self.request_context = request_context
 
+    @property
+    def user_data(self) -> Dict[str, Any]:
+        """Get user data as dictionary for compatibility"""
+        return self.current_user.model_dump() if self.current_user else {}
+
 
 class MCPDeps:
     """MCP API依赖组合类"""

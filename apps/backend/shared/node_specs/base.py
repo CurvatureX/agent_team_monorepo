@@ -85,6 +85,12 @@ class NodeSpec:
     output_ports: List[OutputPortSpec] = field(default_factory=list)
     examples: Optional[List[Dict[str, Any]]] = None
 
+    # Enhanced fields for node_templates compatibility
+    display_name: Optional[str] = None  # Human-readable name for UI
+    category: Optional[str] = None  # Category for grouping (e.g., "ai", "actions")
+    template_id: Optional[str] = None  # Legacy template ID for migration
+    is_system_template: bool = True  # Whether this is a system-provided spec
+
     def get_parameter(self, name: str) -> Optional[ParameterDef]:
         """Get a parameter definition by name."""
         for param in self.parameters:
@@ -116,44 +122,12 @@ class NodeSpec:
 
 
 @dataclass
-class FieldTransformSpec:
-    """Field transformation specification."""
-
-    type: str  # NONE, STRING_FORMAT, FUNCTION, CONDITION, REGEX
-    transform_value: str
-    options: Optional[Dict[str, str]] = None
-
-
-@dataclass
-class FieldMappingSpec:
-    """Field mapping specification."""
-
-    source_field: str  # JSONPath format source field path
-    target_field: str  # Target field path
-    required: bool = False
-    default_value: Optional[str] = None
-    transform: Optional[FieldTransformSpec] = None
-
-
-@dataclass
-class DataMappingSpec:
-    """Data mapping specification for port connections."""
-
-    mapping_type: str  # DIRECT, FIELD_MAPPING, TEMPLATE, TRANSFORM
-    field_mappings: Optional[List[FieldMappingSpec]] = None
-    transform_script: Optional[str] = None
-    static_values: Optional[Dict[str, str]] = None
-    description: str = ""
-
-
-@dataclass
 class ConnectionSpec:
     """Connection specification between two ports."""
 
     source_port: str
     target_port: str
     connection_type: str  # ConnectionType
-    data_mapping: Optional[DataMappingSpec] = None
     validation_required: bool = True
 
 

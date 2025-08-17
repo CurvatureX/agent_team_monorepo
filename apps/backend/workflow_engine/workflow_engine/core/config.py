@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     database_url: Optional[str] = os.getenv("DATABASE_URL")
 
     # 数据库连接配置
-    database_echo: bool = False
+    database_echo: bool = bool(os.getenv("DATABASE_ECHO", "false").lower() == "true")
     database_pool_size: int = 10
     database_max_overflow: int = 20
     database_pool_timeout: int = 30
@@ -49,7 +49,7 @@ class Settings(BaseSettings):
         return v
 
     class Config:
-        env_file = ".env"
+        env_file = "../../.env"  # 指向正确的.env文件路径
         env_file_encoding = "utf-8"
         # 允许额外的字段，保持兼容性
         extra = "ignore"

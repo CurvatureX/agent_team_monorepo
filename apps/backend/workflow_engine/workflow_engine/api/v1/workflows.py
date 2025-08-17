@@ -34,18 +34,28 @@ def get_workflow_service(db: Session = Depends(get_db)):
 
 @router.post("/workflows", response_model=CreateWorkflowResponse)
 async def create_workflow(
-    request: CreateWorkflowRequest, 
+    request: CreateWorkflowRequest,
     request_obj: Request,
-    service: WorkflowService = Depends(get_workflow_service)
+    service: WorkflowService = Depends(get_workflow_service),
 ):
     try:
+        # DEBUG: Log the FastAPI request
+        print(f"🐛 DEBUG: FastAPI create_workflow endpoint called")
+        print(f"🐛 DEBUG: Request name: {request.name}")
+        print(f"🐛 DEBUG: Request has {len(request.nodes)} nodes")
+        for i, node in enumerate(request.nodes):
+            print(
+                f"🐛 DEBUG: FastAPI node {i}: id='{node.id}', type='{node.type}', subtype='{node.subtype}'"
+            )
+
         # 获取 trace_id
         trace_id = request_obj.headers.get("x-trace-id") or request_obj.headers.get("X-Trace-ID")
         if trace_id:
             import logging
+
             logger = logging.getLogger(__name__)
             logger.info(f"Creating workflow with trace_id: {trace_id}")
-            
+
         workflow = service.create_workflow_from_data(request)
         return CreateWorkflowResponse(
             workflow=workflow, success=True, message="Workflow created successfully"
@@ -57,15 +67,24 @@ async def create_workflow(
 @router.get("/workflows/node-templates", response_model=List[NodeTemplate])
 async def list_node_templates(
     category: Optional[str] = None,
+    node_type: Optional[str] = None,
     include_system: bool = True,
     service: WorkflowService = Depends(get_workflow_service),
 ):
     """
-    List all available node templates, with optional filters.
+    List all available node templates from node specs, with optional filters.
+
+    This endpoint has been updated to use the node specs system instead of
+    the deprecated node_templates database table.
     """
     try:
-        templates = service.list_all_node_templates(
-            category_filter=category, include_system_templates=include_system
+        # Import here to avoid circular imports
+        from shared.services.node_specs_api_service import get_node_specs_api_service
+
+        # Use node specs service directly for better performance
+        specs_service = get_node_specs_api_service()
+        templates = specs_service.list_all_node_templates(
+            category_filter=category, type_filter=node_type, include_system_templates=include_system
         )
         return templates
     except Exception as e:

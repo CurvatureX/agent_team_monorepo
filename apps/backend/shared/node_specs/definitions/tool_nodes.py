@@ -5,6 +5,7 @@ This module defines specifications for TOOL_NODE subtypes that provide
 various tool integrations like HTTP, code execution, and MCP tools.
 """
 
+from ...models.node_enums import NodeType, ToolSubtype
 from ..base import (
     ConnectionType,
     DataFormat,
@@ -17,8 +18,8 @@ from ..base import (
 
 # HTTP Tool Node
 HTTP_TOOL_SPEC = NodeSpec(
-    node_type="TOOL_NODE",
-    subtype="TOOL_HTTP",
+    node_type=NodeType.TOOL,
+    subtype=ToolSubtype.HTTP_CLIENT,
     description="HTTP request tool",
     parameters=[
         ParameterDef(
@@ -101,8 +102,8 @@ HTTP_TOOL_SPEC = NodeSpec(
 
 # Code Execution Tool Node
 CODE_EXECUTION_TOOL_SPEC = NodeSpec(
-    node_type="TOOL_NODE",
-    subtype="TOOL_CODE_EXECUTION",
+    node_type=NodeType.TOOL,
+    subtype=ToolSubtype.CODE_TOOL,
     description="Safe code execution environment",
     parameters=[
         ParameterDef(
@@ -176,8 +177,8 @@ CODE_EXECUTION_TOOL_SPEC = NodeSpec(
 
 # Google Calendar MCP Tool Node
 GOOGLE_CALENDAR_MCP_TOOL_SPEC = NodeSpec(
-    node_type="TOOL_NODE",
-    subtype="TOOL_GOOGLE_CALENDAR_MCP",
+    node_type=NodeType.TOOL,
+    subtype=ToolSubtype.GOOGLE_CALENDAR,
     description="Access Google Calendar through MCP protocol",
     parameters=[
         ParameterDef(
@@ -252,6 +253,154 @@ GOOGLE_CALENDAR_MCP_TOOL_SPEC = NodeSpec(
             name="error",
             type=ConnectionType.ERROR,
             description="Tool execution error",
+        ),
+    ],
+)
+
+# Code Interpreter Tool - sandboxed code execution
+CODE_INTERPRETER_SPEC = NodeSpec(
+    node_type=NodeType.TOOL,
+    subtype=ToolSubtype.CODE_TOOL,
+    description="Execute Python code in sandboxed environment",
+    display_name="Code Interpreter",
+    category="tools",
+    template_id="tool_code_interpreter",
+    parameters=[
+        ParameterDef(
+            name="code",
+            type=ParameterType.STRING,
+            required=True,
+            description="Python code to execute",
+        ),
+        ParameterDef(
+            name="timeout_seconds",
+            type=ParameterType.INTEGER,
+            required=False,
+            default_value=30,
+            description="Execution timeout",
+        ),
+        ParameterDef(
+            name="allowed_imports",
+            type=ParameterType.JSON,
+            required=False,
+            default_value=["numpy", "pandas", "matplotlib", "requests", "json"],
+            description="Allowed Python imports",
+        ),
+        ParameterDef(
+            name="max_memory_mb",
+            type=ParameterType.INTEGER,
+            required=False,
+            default_value=512,
+            description="Maximum memory usage in MB",
+        ),
+    ],
+    input_ports=[
+        InputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            required=False,
+            description="Input data and variables for code",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"variables": "object", "files": "object", "context": "object"}',
+            ),
+        )
+    ],
+    output_ports=[
+        OutputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            description="Code execution result",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"output": "string", "result": "object", "stdout": "string", "stderr": "string", "execution_time": "number"}',
+            ),
+        ),
+        OutputPortSpec(
+            name="error",
+            type=ConnectionType.ERROR,
+            description="Code execution error",
+        ),
+    ],
+)
+
+# Web Scraper Tool - extract data from web pages
+WEB_SCRAPER_SPEC = NodeSpec(
+    node_type=NodeType.TOOL,
+    subtype="WEB_SCRAPER",  # Using string as it might not be in enum yet
+    description="Extract data from web pages",
+    display_name="Web Scraper",
+    category="tools",
+    template_id="tool_web_scraper",
+    parameters=[
+        ParameterDef(
+            name="url",
+            type=ParameterType.URL,
+            required=True,
+            description="URL to scrape",
+        ),
+        ParameterDef(
+            name="selector",
+            type=ParameterType.STRING,
+            required=False,
+            description="CSS selector to extract specific content",
+        ),
+        ParameterDef(
+            name="extract_type",
+            type=ParameterType.ENUM,
+            required=False,
+            default_value="text",
+            enum_values=["text", "html", "links", "images", "tables"],
+            description="Type of content to extract",
+        ),
+        ParameterDef(
+            name="follow_links",
+            type=ParameterType.BOOLEAN,
+            required=False,
+            default_value=False,
+            description="Follow and scrape linked pages",
+        ),
+        ParameterDef(
+            name="max_pages",
+            type=ParameterType.INTEGER,
+            required=False,
+            default_value=1,
+            description="Maximum number of pages to scrape",
+        ),
+        ParameterDef(
+            name="wait_seconds",
+            type=ParameterType.INTEGER,
+            required=False,
+            default_value=2,
+            description="Wait time between requests",
+        ),
+    ],
+    input_ports=[
+        InputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            required=False,
+            description="Additional scraping configuration",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"headers": "object", "cookies": "object", "filters": "array"}',
+            ),
+        )
+    ],
+    output_ports=[
+        OutputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            description="Scraped data",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"content": "string", "data": "array", "metadata": "object", "url": "string"}',
+            ),
+        ),
+        OutputPortSpec(
+            name="error",
+            type=ConnectionType.ERROR,
+            description="Scraping error",
         ),
     ],
 )

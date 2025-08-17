@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, field_validator
 
 from .common import BaseResponse, EntityModel
+from .node_enums import NodeType
 
 
 class PositionData(BaseModel):
@@ -30,7 +31,7 @@ class NodeData(BaseModel):
     subtype: str
     type_version: int = Field(default=1)
     position: PositionData
-    parameters: Dict[str, str] = Field(default_factory=dict)
+    parameters: Dict[str, Any] = Field(default_factory=dict)
     credentials: Dict[str, str] = Field(default_factory=dict)
     disabled: bool = False
     on_error: str = Field(default="continue", pattern="^(continue|stop)$")
@@ -251,32 +252,8 @@ class WorkflowType(str, Enum):
     HYBRID = "hybrid"
 
 
-class NodeType(str, Enum):
-    """节点类型枚举"""
-
-    TRIGGER = "trigger"
-    ACTION = "action"
-    CONDITION = "condition"
-    LOOP = "loop"
-    WEBHOOK = "webhook"
-    API_CALL = "api_call"
-    EMAIL = "email"
-    DELAY = "delay"
-
-
-class WorkflowNode(BaseModel):
-    """
-    工作流节点模型
-    """
-
-    id: str = Field(description="节点唯一标识符")
-    type: NodeType = Field(description="节点类型")
-    name: str = Field(description="节点名称")
-    description: Optional[str] = Field(default=None, description="节点描述")
-    config: Dict[str, Any] = Field(default_factory=dict, description="节点配置")
-    position: Optional[Dict[str, float]] = Field(default=None, description="节点在画布上的位置 {x, y}")
-    connections: List[str] = Field(default_factory=list, description="连接到的下一个节点ID列表")
-    enabled: bool = Field(default=True, description="节点是否启用")
+# Legacy NodeType removed - now using authoritative enums from shared.models.node_enums
+# All services should import NodeType from shared.models directly
 
 
 class WorkflowEdge(BaseModel):
@@ -299,7 +276,7 @@ class WorkflowCreateRequest(BaseModel):
     name: str = Field(description="工作流名称")
     description: Optional[str] = Field(default=None, description="工作流描述")
     type: WorkflowType = Field(default=WorkflowType.SEQUENTIAL, description="工作流类型")
-    nodes: List[WorkflowNode] = Field(default_factory=list, description="工作流节点列表")
+    nodes: List[NodeData] = Field(default_factory=list, description="工作流节点列表")
     edges: List[WorkflowEdge] = Field(default_factory=list, description="工作流连接边列表")
     connections: Optional[Dict[str, Any]] = Field(default_factory=dict, description="节点连接信息（兼容性字段）")
     variables: Dict[str, Any] = Field(default_factory=dict, description="工作流变量")
@@ -318,40 +295,11 @@ class WorkflowUpdateRequest(BaseModel):
     name: Optional[str] = Field(default=None, description="工作流名称")
     description: Optional[str] = Field(default=None, description="工作流描述")
     status: Optional[WorkflowStatus] = Field(default=None, description="工作流状态")
-    nodes: Optional[List[WorkflowNode]] = Field(default=None, description="工作流节点列表")
+    nodes: Optional[List[NodeData]] = Field(default=None, description="工作流节点列表")
     edges: Optional[List[WorkflowEdge]] = Field(default=None, description="工作流连接边列表")
     variables: Optional[Dict[str, Any]] = Field(default=None, description="工作流变量")
     settings: Optional[Dict[str, Any]] = Field(default=None, description="工作流设置")
     tags: Optional[List[str]] = Field(default=None, description="工作流标签")
-
-
-class WorkflowEntity(EntityModel):
-    """
-    工作流实体模型
-    表示完整的工作流定义
-    """
-
-    user_id: str = Field(description="工作流所有者用户ID")
-    name: str = Field(description="工作流名称")
-    description: Optional[str] = Field(default=None, description="工作流描述")
-    type: WorkflowType = Field(default=WorkflowType.SEQUENTIAL, description="工作流类型")
-    status: WorkflowStatus = Field(default=WorkflowStatus.DRAFT, description="工作流状态")
-    version: int = Field(default=1, description="工作流版本号")
-    nodes: List[WorkflowNode] = Field(default_factory=list, description="工作流节点列表")
-    edges: List[WorkflowEdge] = Field(default_factory=list, description="工作流连接边列表")
-    variables: Dict[str, Any] = Field(default_factory=dict, description="工作流变量")
-    settings: Dict[str, Any] = Field(default_factory=dict, description="工作流设置")
-    tags: List[str] = Field(default_factory=list, description="工作流标签")
-    execution_count: int = Field(default=0, description="执行次数")
-    last_execution: Optional[str] = Field(default=None, description="最后执行时间")
-
-    def is_executable(self) -> bool:
-        """判断工作流是否可执行"""
-        return self.status in [WorkflowStatus.ACTIVE] and len(self.nodes) > 0
-
-    def get_trigger_nodes(self) -> List[WorkflowNode]:
-        """获取触发器节点"""
-        return [node for node in self.nodes if node.type == NodeType.TRIGGER]
 
 
 class WorkflowExecutionRecord(EntityModel):
@@ -379,7 +327,7 @@ class WorkflowResponse(BaseModel):
     工作流响应模型
     """
 
-    workflow: WorkflowEntity = Field(description="工作流信息")
+    workflow: WorkflowData = Field(description="工作流信息")
     message: Optional[str] = Field(default=None, description="响应消息")
 
 
@@ -388,7 +336,7 @@ class WorkflowListResponse(BaseModel):
     工作流列表响应模型
     """
 
-    workflows: List[WorkflowEntity] = Field(default_factory=list, description="工作流列表")
+    workflows: List[WorkflowData] = Field(default_factory=list, description="工作流列表")
     total_count: int = Field(default=0, description="总数量")
     page: int = Field(default=1, description="当前页码")
     page_size: int = Field(default=20, description="每页大小")

@@ -1,7 +1,6 @@
 """
-Simplified Workflow Agent based on new architecture
-Implements 4 core nodes: Clarification, Gap Analysis,
-Workflow Generation, and Debug
+Simplified Workflow Agent based on optimized architecture
+Implements 3 core nodes: Clarification, Workflow Generation, and Debug
 """
 from langgraph.graph import END, StateGraph
 
@@ -15,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class WorkflowAgent:
     """
-    Simplified Workflow Agent based on the 6-node architecture with dynamic routing and interception
+    Optimized Workflow Agent with 3-node architecture for better user experience
     """
 
     def __init__(self):
@@ -24,39 +23,27 @@ class WorkflowAgent:
         self._setup_graph()
 
     def _setup_graph(self):
-        """Setup the simplified LangGraph workflow with 4 nodes"""
+        """Setup the optimized LangGraph workflow with 3 nodes"""
 
         # Create the StateGraph with simplified state
         workflow = StateGraph(WorkflowState)
 
-        # Add the 4 core nodes (removed negotiation, router, and alternative_generation)
+        # Add the 3 core nodes (removed gap_analysis for better UX)
         workflow.add_node("clarification", self.nodes.clarification_node)
-        workflow.add_node("gap_analysis", self.nodes.gap_analysis_node)
         workflow.add_node("workflow_generation", self.nodes.workflow_generation_node)
         workflow.add_node("debug", self.nodes.debug_node)
 
         # Set clarification as entry point directly
         workflow.set_entry_point("clarification")
 
-        # Add conditional edges based on the architecture flow
+        # Add conditional edges based on the optimized flow
         workflow.add_conditional_edges(
             "clarification",
             self.nodes.should_continue,
             {
                 "clarification": "clarification",  # Continue clarification if needs more info
-                "gap_analysis": "gap_analysis",
-                "workflow_generation": "workflow_generation",  # Skip to workflow generation when gap resolved
+                "workflow_generation": "workflow_generation",  # Generate workflow when ready
                 "END": END,  # Wait for user input
-            },
-        )
-
-        workflow.add_conditional_edges(
-            "gap_analysis",
-            self.nodes.should_continue,
-            {
-                "clarification": "clarification",  # Go back to clarification if has gaps
-                "workflow_generation": "workflow_generation",  # Proceed if no gaps
-                "END": END,  # End if waiting for user input
             },
         )
 
@@ -81,7 +68,7 @@ class WorkflowAgent:
 
         # Compile the graph
         self.graph = workflow.compile()
-        logger.info("LangGraph workflow compiled successfully with 4-node architecture")
+        logger.info("LangGraph workflow compiled successfully with optimized 3-node architecture")
     
     async def astream(self, state: WorkflowState):
         """

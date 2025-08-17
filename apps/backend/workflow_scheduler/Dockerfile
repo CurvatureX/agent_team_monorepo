@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy requirements and install dependencies
-COPY apps/backend/workflow_scheduler/pyproject.toml ./
+COPY ./workflow_scheduler/pyproject.toml ./
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir setuptools wheel && \
     pip install --no-cache-dir .
@@ -46,9 +46,9 @@ WORKDIR /app
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy application code
-COPY apps/backend/workflow_scheduler/ ./workflow_scheduler/
-COPY apps/backend/shared/ ./shared/
+# Copy application code (forced rebuild v7 - URL-level pgbouncer fix)
+COPY ./workflow_scheduler/ ./workflow_scheduler/
+COPY ./shared/ ./shared/
 
 # Set ownership
 RUN chown -R appuser:appuser /app

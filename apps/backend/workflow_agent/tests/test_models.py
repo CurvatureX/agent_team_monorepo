@@ -7,6 +7,18 @@ from datetime import datetime
 from typing import Any, Dict
 
 import pytest
+
+# Import shared enums for consistent node type handling in tests
+try:
+    from shared.models.node_enums import ActionSubtype, AIAgentSubtype, NodeType, TriggerSubtype
+except ImportError:
+    # Fallback if shared models not available - use hardcoded strings
+    class NodeType:
+        TRIGGER = type("", (), {"value": "trigger"})()
+        AI_AGENT = type("", (), {"value": "ai_agent"})()
+        ACTION = type("", (), {"value": "action"})()
+
+    NodeType = NodeType
 from agents.state import (
     ClarificationContext,
     Conversation,
@@ -207,7 +219,7 @@ class TestWorkflowStateStructure:
             "description": "自动处理客户邮件",
             "nodes": [
                 {"id": "trigger", "type": "email_trigger", "name": "邮件触发器"},
-                {"id": "analyzer", "type": "ai_agent", "name": "AI分析器"},
+                {"id": "analyzer", "type": NodeType.AI_AGENT.value, "name": "AI分析器"},
             ],
             "connections": [{"from": "trigger", "to": "analyzer"}],
         }
@@ -281,9 +293,9 @@ class TestWorkflowStateStructure:
             "id": "workflow-final",
             "name": "完整邮件处理系统",
             "nodes": [
-                {"id": "email_trigger", "type": "trigger"},
-                {"id": "ai_processor", "type": "ai_agent"},
-                {"id": "email_sender", "type": "action"},
+                {"id": "email_trigger", "type": NodeType.TRIGGER.value},
+                {"id": "ai_processor", "type": NodeType.AI_AGENT.value},
+                {"id": "email_sender", "type": NodeType.ACTION.value},
             ],
             "connections": [
                 {"from": "email_trigger", "to": "ai_processor"},

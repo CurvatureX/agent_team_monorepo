@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict
 
+from shared.models.node_enums import TriggerSubtype
 from shared.models.trigger import ExecutionResult, TriggerStatus
 from workflow_scheduler.triggers.base import BaseTrigger
 
@@ -15,11 +16,9 @@ class ManualTrigger(BaseTrigger):
     def __init__(self, workflow_id: str, trigger_config: Dict[str, Any]):
         super().__init__(workflow_id, trigger_config)
 
-        self.require_confirmation = trigger_config.get("require_confirmation", False)
-
     @property
     def trigger_type(self) -> str:
-        return "TRIGGER_MANUAL"
+        return TriggerSubtype.MANUAL.value
 
     async def start(self) -> bool:
         """Start the manual trigger (just mark as active)"""
@@ -56,13 +55,12 @@ class ManualTrigger(BaseTrigger):
             )
             return False
 
-    async def trigger_manual(self, user_id: str, confirmation: bool = False) -> ExecutionResult:
+    async def trigger_manual(self, user_id: str) -> ExecutionResult:
         """
         Manually trigger workflow execution
 
         Args:
             user_id: ID of the user requesting the trigger
-            confirmation: Whether the user confirmed the action
 
         Returns:
             ExecutionResult with execution details
@@ -82,25 +80,11 @@ class ManualTrigger(BaseTrigger):
                     trigger_data={"user_id": user_id},
                 )
 
-            # Check confirmation requirement
-            if self.require_confirmation and not confirmation:
-                return ExecutionResult(
-                    status="confirmation_required",
-                    message="Please confirm execution of this workflow",
-                    trigger_data={
-                        "user_id": user_id,
-                        "require_confirmation": True,
-                        "workflow_id": self.workflow_id,
-                    },
-                )
-
             # Prepare trigger data
             trigger_data = {
                 "trigger_type": "manual",
                 "user_id": user_id,
                 "triggered_at": datetime.utcnow().isoformat(),
-                "confirmation": confirmation,
-                "require_confirmation": self.require_confirmation,
                 "execution_id": f"exec_{uuid.uuid4()}",
             }
 
@@ -132,7 +116,6 @@ class ManualTrigger(BaseTrigger):
 
         manual_health = {
             **base_health,
-            "require_confirmation": self.require_confirmation,
             "ready_for_execution": self.enabled and self.status == TriggerStatus.ACTIVE,
         }
 

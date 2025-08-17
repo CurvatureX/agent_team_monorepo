@@ -1,0 +1,24 @@
+{
+  "id": "tech-design/workflow-agent-api-doc",
+  "title": "Workflow Generation API Documentation",
+  "description": "基础信息",
+  "source": "@site/../../../docs/tech-design/workflow-agent-api-doc.md",
+  "sourceDirName": "tech-design",
+  "slug": "/tech-design/workflow-agent-api-doc",
+  "permalink": "/docs/tech-design/workflow-agent-api-doc",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/curvaturex/agent_team_monorepo/tree/main/docs/../../../docs/tech-design/workflow-agent-api-doc.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {},
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "Slack App Integration Architecture",
+    "permalink": "/docs/tech-design/slack-app-integration"
+  },
+  "next": {
+    "title": "Workflow Engine: Architecture & Execution Flow",
+    "permalink": "/docs/tech-design/workflow-engine-architecure"
+  }
+}

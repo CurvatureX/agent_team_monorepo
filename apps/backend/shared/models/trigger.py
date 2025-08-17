@@ -5,14 +5,9 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-
-class TriggerType(str, Enum):
-    CRON = "TRIGGER_CRON"
-    MANUAL = "TRIGGER_MANUAL"
-    WEBHOOK = "TRIGGER_WEBHOOK"
-    EMAIL = "TRIGGER_EMAIL"
-    GITHUB = "TRIGGER_GITHUB"
-    SLACK = "TRIGGER_SLACK"
+# Import unified enums - no more legacy support
+from .node_enums import NodeType
+from .node_enums import TriggerSubtype as TriggerType
 
 
 class TriggerStatus(str, Enum):
@@ -31,7 +26,7 @@ class DeploymentStatus(str, Enum):
 
 
 class TriggerSpec(BaseModel):
-    node_type: str = "TRIGGER_NODE"
+    node_type: str = NodeType.TRIGGER.value  # Use unified enum value
     subtype: TriggerType
     parameters: Dict[str, Any]
     enabled: bool = True
@@ -44,7 +39,6 @@ class CronTriggerSpec(BaseModel):
 
 
 class ManualTriggerSpec(BaseModel):
-    require_confirmation: bool = False
     enabled: bool = True
 
 
@@ -66,14 +60,10 @@ class EmailTriggerSpec(BaseModel):
 class GitHubTriggerSpec(BaseModel):
     github_app_installation_id: str
     repository: str
-    events: List[str]
-    branches: Optional[List[str]] = None
-    paths: Optional[List[str]] = None
-    action_filter: Optional[List[str]] = None
+    event_config: Dict[str, Any]  # Changed from separate parameters to unified event configuration
     author_filter: Optional[str] = None
-    label_filter: Optional[List[str]] = None
     ignore_bots: bool = True
-    draft_pr_handling: str = "ignore"
+    require_signature_verification: bool = True
     enabled: bool = True
 
 

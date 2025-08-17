@@ -1,0 +1,24 @@
+{
+  "id": "tech-design/grpc-to-fastapi-migration",
+  "title": "gRPC 迁移到 FastAPI + Pydantic 技术方案",
+  "description": "概述",
+  "source": "@site/../../../docs/tech-design/grpc-to-fastapi-migration.md",
+  "sourceDirName": "tech-design",
+  "slug": "/tech-design/grpc-to-fastapi-migration",
+  "permalink": "/docs/tech-design/grpc-to-fastapi-migration",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/curvaturex/agent_team_monorepo/tree/main/docs/../../../docs/tech-design/grpc-to-fastapi-migration.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {},
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "gRPC 迁移到 FastAPI + Pydantic 技术方案",
+    "permalink": "/docs/tech-design/grpc-to-fastapi-migration-zh"
+  },
+  "next": {
+    "title": "MCP Node Knowledge Server - Tech Design",
+    "permalink": "/docs/tech-design/mcp-node-knowledge-server"
+  }
+}

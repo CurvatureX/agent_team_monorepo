@@ -9,6 +9,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
+from shared.models.node_enums import TriggerSubtype
 from shared.models.trigger import ExecutionResult, TriggerStatus
 from workflow_scheduler.triggers.base import BaseTrigger
 
@@ -26,7 +27,9 @@ class SlackTrigger(BaseTrigger):
     - file_shared
     """
 
-    trigger_type = "TRIGGER_SLACK"
+    @property
+    def trigger_type(self) -> str:
+        return TriggerSubtype.SLACK.value
 
     def __init__(self, workflow_id: str, trigger_config: dict):
         super().__init__(workflow_id, trigger_config)
@@ -177,7 +180,7 @@ class SlackTrigger(BaseTrigger):
         try:
             # Extract relevant data from the event
             trigger_data = {
-                "trigger_type": "slack",
+                "trigger_type": self.trigger_type,
                 "event_type": event_data.get("type", ""),
                 "message": event_data.get("text", ""),
                 "user_id": event_data.get("user", ""),

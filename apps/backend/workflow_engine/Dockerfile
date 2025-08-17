@@ -13,14 +13,14 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the requirements file into the container at /app
-COPY ./workflow_engine/requirements.txt /app/requirements.txt
+COPY workflow_engine/requirements.txt /app/requirements.txt
 
 # Install any needed packages specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the application code into the container
-COPY ./workflow_engine/workflow_engine /app/workflow_engine
-COPY ./shared /app/shared
+COPY workflow_engine/workflow_engine /app/workflow_engine
+COPY shared /app/shared
 
 # Production stage
 FROM base AS production

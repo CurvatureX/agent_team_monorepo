@@ -27,6 +27,7 @@ dependencies = [
     "python-multipart>=0.0.6",
     "python-jose[cryptography]>=3.3.0",
     "structlog>=23.2.0",
+    "supabase>=2.7.4",
 ]
 
 [project.optional-dependencies]

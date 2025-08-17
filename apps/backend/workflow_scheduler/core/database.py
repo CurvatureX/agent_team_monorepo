@@ -7,29 +7,50 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import QueuePool
 
 from shared.models.db_models import Base
 from workflow_scheduler.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Create async engine
+import uuid
+
+# Create clean database URL without any problematic parameters
+from sqlalchemy.pool import NullPool
+
+# Generate unique application name to avoid conflicts
+unique_suffix = str(uuid.uuid4())[:8]
+
+# Create simple asyncpg URL without URL parameters that might cause issues
+base_url = settings.database_url.replace("postgresql://", "postgresql+asyncpg://")
+
+# Remove any existing URL parameters to avoid conflicts
+if "?" in base_url:
+    base_url = base_url.split("?")[0]
+
 engine = create_async_engine(
-    settings.database_url.replace("postgresql://", "postgresql+asyncpg://"),
+    base_url,
     echo=settings.debug,
-    poolclass=QueuePool,
-    pool_size=10,
-    max_overflow=20,
-    pool_pre_ping=True,
-    pool_recycle=300,
+    # Disable connection pooling completely
+    poolclass=NullPool,
+    # Force asyncpg to never use prepared statements via connect_args only
+    connect_args={
+        "statement_cache_size": 0,
+        "prepared_statement_cache_size": 0,
+        "command_timeout": 30,
+        "server_settings": {
+            "application_name": f"workflow_scheduler_{unique_suffix}",
+        },
+    },
 )
 
-# Create session factory
+# Create session factory with pgbouncer-compatible settings
 async_session_factory = async_sessionmaker(
     engine,
     class_=AsyncSession,
     expire_on_commit=False,
+    # Prevent session-level prepared statement caching
+    autoflush=False,
 )
 
 

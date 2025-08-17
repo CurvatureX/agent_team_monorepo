@@ -29,8 +29,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20.x"
-          cache: "npm"
-          cache-dependency-path: "apps/internal-tools/docusaurus-doc/package-lock.json"
       - name: Install dependencies
         run: |
           cd apps/internal-tools/docusaurus-doc

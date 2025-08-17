@@ -1,0 +1,24 @@
+{
+  "id": "development/agent_development_one_pager",
+  "title": "Agent Development Guide",
+  "description": "Overview",
+  "source": "@site/../../../docs/development/agent_development_one_pager.md",
+  "sourceDirName": "development",
+  "slug": "/development/agent_development_one_pager",
+  "permalink": "/docs/development/agent_development_one_pager",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/curvaturex/agent_team_monorepo/tree/main/docs/../../../docs/development/agent_development_one_pager.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {},
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "节点规范与数据映射系统实施计划",
+    "permalink": "/docs/development/NODE_SPEC_IMPLEMENTATION_PLAN"
+  },
+  "next": {
+    "title": "Workflow Agent 完整技术设计方案",
+    "permalink": "/docs/development/api_workflow_integration"
+  }
+}

@@ -16,14 +16,12 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
-from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
+from shared.models import NodeType
+from shared.models.node_enums import ActionSubtype
+from shared.node_specs import node_spec_registry
+from shared.node_specs.base import NodeSpec
 
-try:
-    from shared.node_specs import node_spec_registry
-    from shared.node_specs.base import NodeSpec
-except ImportError:
-    node_spec_registry = None
-    NodeSpec = None
+from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
 
 
 class ActionNodeExecutor(BaseNodeExecutor):
@@ -33,22 +31,22 @@ class ActionNodeExecutor(BaseNodeExecutor):
         """Get the node specification for action nodes."""
         if node_spec_registry and self._subtype:
             # Return the specific spec for current subtype
-            return node_spec_registry.get_spec("ACTION_NODE", self._subtype)
+            return node_spec_registry.get_spec(NodeType.ACTION.value, self._subtype)
         return None
 
     def get_supported_subtypes(self) -> List[str]:
         """Get supported action subtypes."""
-        return ["RUN_CODE", "HTTP_REQUEST", "DATA_TRANSFORMATION", "FILE_OPERATION"]
+        return [subtype.value for subtype in ActionSubtype]
 
     def validate(self, node: Any) -> List[str]:
         """Validate action node configuration using spec-based validation."""
         # First use the base class validation which includes spec validation
         errors = super().validate(node)
-        
+
         # If spec validation passed, we're done
         if not errors and self.spec:
             return errors
-        
+
         # Fallback to basic validation if spec not available
         if not node.subtype:
             errors.append("Action subtype is required")
@@ -58,40 +56,53 @@ class ActionNodeExecutor(BaseNodeExecutor):
             errors.append(f"Unsupported action subtype: {node.subtype}")
 
         return errors
-    
+
     def _validate_legacy(self, node: Any) -> List[str]:
         """Legacy validation for backward compatibility."""
         errors = []
-        
-        if not hasattr(node, 'subtype'):
+
+        if not hasattr(node, "subtype"):
             return errors
-            
+
         subtype = node.subtype
 
-        if subtype == "RUN_CODE":
+        if subtype == ActionSubtype.RUN_CODE.value:
             errors.extend(self._validate_required_parameters(node, ["code", "language"]))
-            if hasattr(node, 'parameters'):
+            if hasattr(node, "parameters"):
                 language = node.parameters.get("language", "")
                 if language not in ["python", "javascript", "bash", "sql", "r", "julia"]:
                     errors.append(f"Unsupported language: {language}")
 
-        elif subtype == "HTTP_REQUEST":
+        elif subtype == ActionSubtype.HTTP_REQUEST.value:
             errors.extend(self._validate_required_parameters(node, ["method", "url"]))
-            if hasattr(node, 'parameters'):
+            if hasattr(node, "parameters"):
                 method = node.parameters.get("method", "").upper()
                 if method not in ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]:
                     errors.append(f"Invalid HTTP method: {method}")
 
-        elif subtype == "DATA_TRANSFORMATION":
-            errors.extend(self._validate_required_parameters(node, ["transformation_type", "transformation_rule"]))
-            if hasattr(node, 'parameters'):
+        elif subtype == ActionSubtype.DATA_TRANSFORMATION.value:
+            errors.extend(
+                self._validate_required_parameters(
+                    node, ["transformation_type", "transformation_rule"]
+                )
+            )
+            if hasattr(node, "parameters"):
                 transform_type = node.parameters.get("transformation_type", "")
-                if transform_type not in ["filter", "map", "reduce", "sort", "group", "join", "aggregate", "custom"]:
+                if transform_type not in [
+                    "filter",
+                    "map",
+                    "reduce",
+                    "sort",
+                    "group",
+                    "join",
+                    "aggregate",
+                    "custom",
+                ]:
                     errors.append(f"Invalid transformation type: {transform_type}")
 
-        elif subtype == "FILE_OPERATION":
+        elif subtype == ActionSubtype.FILE_OPERATION.value:
             errors.extend(self._validate_required_parameters(node, ["operation", "file_path"]))
-            if hasattr(node, 'parameters'):
+            if hasattr(node, "parameters"):
                 operation = node.parameters.get("operation", "")
                 if operation not in ["read", "write", "copy", "move", "delete", "list"]:
                     errors.append(f"Invalid file operation: {operation}")
@@ -107,14 +118,18 @@ class ActionNodeExecutor(BaseNodeExecutor):
             subtype = context.node.subtype
             logs.append(f"Executing action node with subtype: {subtype}")
 
-            if subtype == "RUN_CODE":
+            if subtype == ActionSubtype.RUN_CODE.value:
                 return self._execute_run_code(context, logs, start_time)
-            elif subtype == "HTTP_REQUEST":
+            elif subtype == ActionSubtype.HTTP_REQUEST.value:
                 return self._execute_http_request(context, logs, start_time)
-            elif subtype == "DATA_TRANSFORMATION":
+            elif subtype == ActionSubtype.DATA_TRANSFORMATION.value:
                 return self._execute_data_transformation(context, logs, start_time)
-            elif subtype == "FILE_OPERATION":
+            elif subtype == ActionSubtype.FILE_OPERATION.value:
                 return self._execute_file_operation(context, logs, start_time)
+            elif subtype == ActionSubtype.DATABASE_QUERY.value:
+                return self._execute_database_query(context, logs, start_time)
+            elif subtype == ActionSubtype.WEB_SEARCH.value:
+                return self._execute_web_search(context, logs, start_time)
             else:
                 return self._create_error_result(
                     f"Unsupported action subtype: {subtype}",
@@ -195,7 +210,7 @@ class ActionNodeExecutor(BaseNodeExecutor):
         timeout = self.get_parameter_with_spec(context, "timeout")
         authentication = self.get_parameter_with_spec(context, "authentication")
         retry_attempts = self.get_parameter_with_spec(context, "retry_attempts")
-        
+
         # Convert method to uppercase
         if method:
             method = method.upper()
@@ -210,12 +225,12 @@ class ActionNodeExecutor(BaseNodeExecutor):
             if isinstance(headers, str):
                 headers = {}
                 logs.append("WARNING: headers was a string, using empty dict")
-                
+
             # Also ensure data is a dictionary
             if isinstance(data, str):
                 data = {}
                 logs.append("WARNING: data was a string, using empty dict")
-                
+
             response = requests.request(
                 method=method,
                 url=url,
@@ -560,3 +575,59 @@ class ActionNodeExecutor(BaseNodeExecutor):
             return {"success": True, "files": files, "count": len(files)}
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    def _execute_database_query(
+        self, context: NodeExecutionContext, logs: List[str], start_time: float
+    ) -> NodeExecutionResult:
+        """Execute database query (mock implementation)."""
+        query = self.get_parameter_with_spec(context, "query")
+        database_url = self.get_parameter_with_spec(context, "database_url")
+
+        logs.append(f"Executing database query: {query[:50]}...")
+
+        # Mock implementation - would connect to actual database in production
+        output_data = {
+            "action_type": "database_query",
+            "query": query,
+            "database_url": database_url,
+            "rows_affected": 1,
+            "result": [{"id": 1, "status": "success"}],
+            "executed_at": datetime.now().isoformat(),
+        }
+
+        return self._create_success_result(
+            output_data=output_data, execution_time=time.time() - start_time, logs=logs
+        )
+
+    def _execute_web_search(
+        self, context: NodeExecutionContext, logs: List[str], start_time: float
+    ) -> NodeExecutionResult:
+        """Execute web search (mock implementation)."""
+        query = self.get_parameter_with_spec(context, "search_query")
+        max_results = self.get_parameter_with_spec(context, "max_results")
+
+        logs.append(f"Searching web for: {query}")
+
+        # Mock implementation - would use actual search API in production
+        output_data = {
+            "action_type": "web_search",
+            "query": query,
+            "max_results": max_results,
+            "results": [
+                {
+                    "title": "Search Result 1",
+                    "url": "https://example.com/1",
+                    "snippet": "Mock result 1",
+                },
+                {
+                    "title": "Search Result 2",
+                    "url": "https://example.com/2",
+                    "snippet": "Mock result 2",
+                },
+            ],
+            "executed_at": datetime.now().isoformat(),
+        }
+
+        return self._create_success_result(
+            output_data=output_data, execution_time=time.time() - start_time, logs=logs
+        )

@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from shared.models.db_models import get_database_engine
+from shared.models.node_enums import TriggerSubtype
 from shared.models.trigger import ExecutionResult
 from shared.models.trigger_index import GitHubWebhookEvent, TriggerIndex
 from workflow_scheduler.core.config import settings
@@ -56,7 +57,7 @@ class EventRouter:
                 # Query for active cron triggers using unified index_key
                 query = session.query(TriggerIndex).filter(
                     and_(
-                        TriggerIndex.trigger_type == "TRIGGER_CRON",
+                        TriggerIndex.trigger_type == TriggerSubtype.CRON.value,
                         TriggerIndex.index_key == cron_expression,
                         TriggerIndex.deployment_status == "active",
                     )
@@ -117,7 +118,7 @@ class EventRouter:
                 # Query for active webhook triggers using unified index_key
                 query = session.query(TriggerIndex).filter(
                     and_(
-                        TriggerIndex.trigger_type == "TRIGGER_WEBHOOK",
+                        TriggerIndex.trigger_type == TriggerSubtype.WEBHOOK.value,
                         TriggerIndex.index_key == path,
                         TriggerIndex.deployment_status == "active",
                     )
@@ -196,7 +197,7 @@ class EventRouter:
                 # 1. Fast lookup using unified index_key (repository name)
                 query = session.query(TriggerIndex).filter(
                     and_(
-                        TriggerIndex.trigger_type == "TRIGGER_GITHUB",
+                        TriggerIndex.trigger_type == TriggerSubtype.GITHUB.value,
                         TriggerIndex.index_key == repo_full_name,
                         TriggerIndex.deployment_status == "active",
                     )
@@ -257,7 +258,7 @@ class EventRouter:
                 # Query for active email triggers using unified index_key
                 query = session.query(TriggerIndex).filter(
                     and_(
-                        TriggerIndex.trigger_type == "TRIGGER_EMAIL",
+                        TriggerIndex.trigger_type == TriggerSubtype.EMAIL.value,
                         TriggerIndex.deployment_status == "active",
                     )
                 )
@@ -315,7 +316,7 @@ class EventRouter:
                 # Include both specific workspace and global triggers (empty/null workspace_id)
                 query = session.query(TriggerIndex).filter(
                     and_(
-                        TriggerIndex.trigger_type == "TRIGGER_SLACK",
+                        TriggerIndex.trigger_type == TriggerSubtype.SLACK.value,
                         or_(
                             TriggerIndex.index_key == workspace_id,
                             TriggerIndex.index_key.is_(None),

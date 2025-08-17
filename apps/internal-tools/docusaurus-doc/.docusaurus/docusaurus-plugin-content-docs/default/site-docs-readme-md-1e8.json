@@ -1,0 +1,26 @@
+{
+  "id": "intro",
+  "title": "Internal Documentation Hub",
+  "description": "Welcome to our team's internal documentation.",
+  "source": "@site/../../../docs/README.md",
+  "sourceDirName": ".",
+  "slug": "/",
+  "permalink": "/docs/",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/curvaturex/agent_team_monorepo/tree/main/docs/../../../docs/README.md",
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 1,
+  "frontMatter": {
+    "id": "intro",
+    "title": "Internal Documentation Hub",
+    "sidebar_label": "Introduction",
+    "sidebar_position": 1
+  },
+  "sidebar": "tutorialSidebar",
+  "next": {
+    "title": "Product Design",
+    "permalink": "/docs/product-design/"
+  }
+}

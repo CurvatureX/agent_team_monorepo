@@ -9,14 +9,12 @@ import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
+from shared.models import NodeType
+from shared.models.node_enums import HumanLoopSubtype
+from shared.node_specs import node_spec_registry
+from shared.node_specs.base import NodeSpec
 
-try:
-    from shared.node_specs import node_spec_registry
-    from shared.node_specs.base import NodeSpec
-except ImportError:
-    node_spec_registry = None
-    NodeSpec = None
+from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
 
 
 class HumanLoopNodeExecutor(BaseNodeExecutor):
@@ -26,22 +24,22 @@ class HumanLoopNodeExecutor(BaseNodeExecutor):
         """Get the node specification for human loop nodes."""
         if node_spec_registry and self._subtype:
             # Return the specific spec for current subtype
-            return node_spec_registry.get_spec("HUMAN_IN_THE_LOOP_NODE", self._subtype)
+            return node_spec_registry.get_spec(NodeType.HUMAN_IN_THE_LOOP.value, self._subtype)
         return None
 
     def get_supported_subtypes(self) -> List[str]:
         """Get supported human-in-the-loop subtypes."""
-        return ["HUMAN_GMAIL", "HUMAN_SLACK", "HUMAN_DISCORD", "HUMAN_TELEGRAM", "HUMAN_APP"]
+        return [subtype.value for subtype in HumanLoopSubtype]
 
     def validate(self, node: Any) -> List[str]:
         """Validate human-in-the-loop node configuration using spec-based validation."""
         # First use the base class validation which includes spec validation
         errors = super().validate(node)
-        
+
         # If spec validation passed, we're done
         if not errors and self.spec:
             return errors
-        
+
         # Fallback if spec not available
         if not node.subtype:
             errors.append("Human-in-the-loop subtype is required")
@@ -51,37 +49,42 @@ class HumanLoopNodeExecutor(BaseNodeExecutor):
             errors.append(f"Unsupported human-in-the-loop subtype: {node.subtype}")
 
         return errors
-    
+
     def _validate_legacy(self, node: Any) -> List[str]:
         """Legacy validation for backward compatibility."""
         errors = []
-        
-        if not hasattr(node, 'subtype'):
+
+        if not hasattr(node, "subtype"):
             return errors
-            
+
         subtype = node.subtype
 
-        if subtype == "HUMAN_GMAIL":
+        if subtype == HumanLoopSubtype.GMAIL_INTERACTION.value:
             errors.extend(
                 self._validate_required_parameters(node, ["email_template", "recipients"])
             )
 
-        elif subtype == "HUMAN_SLACK":
+        elif subtype == HumanLoopSubtype.SLACK_INTERACTION.value:
             errors.extend(self._validate_required_parameters(node, ["channel", "message_template"]))
 
-        elif subtype == "HUMAN_DISCORD":
+        elif subtype == HumanLoopSubtype.DISCORD_INTERACTION.value:
             errors.extend(
                 self._validate_required_parameters(node, ["channel_id", "message_template"])
             )
 
-        elif subtype == "HUMAN_TELEGRAM":
+        elif subtype == HumanLoopSubtype.TELEGRAM_INTERACTION.value:
             errors.extend(self._validate_required_parameters(node, ["chat_id", "message_template"]))
 
-        elif subtype == "HUMAN_APP":
+        elif subtype == HumanLoopSubtype.IN_APP_APPROVAL.value:
             errors.extend(self._validate_required_parameters(node, ["notification_type"]))
-            if hasattr(node, 'parameters'):
+            if hasattr(node, "parameters"):
                 notification_type = node.parameters.get("notification_type", "")
-                if notification_type and notification_type not in ["approval", "input", "review", "confirmation"]:
+                if notification_type and notification_type not in [
+                    "approval",
+                    "input",
+                    "review",
+                    "confirmation",
+                ]:
                     errors.append(f"Invalid notification type: {notification_type}")
 
         return errors
@@ -95,16 +98,20 @@ class HumanLoopNodeExecutor(BaseNodeExecutor):
             subtype = context.node.subtype
             logs.append(f"Executing human-in-the-loop node with subtype: {subtype}")
 
-            if subtype == "HUMAN_GMAIL":
+            if subtype == HumanLoopSubtype.GMAIL_INTERACTION.value:
                 return self._execute_gmail_interaction(context, logs, start_time)
-            elif subtype == "HUMAN_SLACK":
+            elif subtype == HumanLoopSubtype.SLACK_INTERACTION.value:
                 return self._execute_slack_interaction(context, logs, start_time)
-            elif subtype == "HUMAN_DISCORD":
+            elif subtype == HumanLoopSubtype.DISCORD_INTERACTION.value:
                 return self._execute_discord_interaction(context, logs, start_time)
-            elif subtype == "HUMAN_TELEGRAM":
+            elif subtype == HumanLoopSubtype.TELEGRAM_INTERACTION.value:
                 return self._execute_telegram_interaction(context, logs, start_time)
-            elif subtype == "HUMAN_APP":
+            elif subtype == HumanLoopSubtype.IN_APP_APPROVAL.value:
                 return self._execute_app_interaction(context, logs, start_time)
+            elif subtype == HumanLoopSubtype.GMAIL.value:
+                return self._execute_gmail_interaction(context, logs, start_time)  # Legacy support
+            elif subtype == HumanLoopSubtype.SLACK.value:
+                return self._execute_slack_interaction(context, logs, start_time)  # Legacy support
             else:
                 return self._create_error_result(
                     f"Unsupported human-in-the-loop subtype: {subtype}",

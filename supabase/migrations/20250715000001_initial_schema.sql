@@ -12,21 +12,14 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Create all tables (copy from schema.sql)
 -- This is the initial migration that sets up the complete database structure
 
--- Users table
-CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    email VARCHAR(255) UNIQUE NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    avatar_url VARCHAR(500),
-    is_active BOOLEAN DEFAULT true,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
+-- Users table - REMOVED: Use auth.users provided by Supabase Auth instead
+-- The public.users table should not be created as we rely on auth.users
+-- Note: In existing databases, public.users may exist for auth schema compatibility
 
 -- User settings
 CREATE TABLE user_settings (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     settings JSONB NOT NULL DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -35,7 +28,7 @@ CREATE TABLE user_settings (
 -- Workflows table
 CREATE TABLE workflows (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     description TEXT,
     active BOOLEAN DEFAULT true,
@@ -113,7 +106,7 @@ CREATE TABLE workflow_versions (
     version VARCHAR(50) NOT NULL,
     workflow_data JSONB NOT NULL,
     change_summary TEXT,
-    created_by UUID REFERENCES users(id),
+    created_by UUID REFERENCES auth.users(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(workflow_id, version)
 );
@@ -165,7 +158,7 @@ CREATE TABLE node_executions (
 -- AI generation history
 CREATE TABLE ai_generation_history (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     description TEXT NOT NULL,
     context JSONB DEFAULT '{}',
     generated_workflow JSONB,
@@ -215,7 +208,7 @@ CREATE TABLE integrations (
 -- OAuth tokens
 CREATE TABLE oauth_tokens (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     integration_id VARCHAR(255) REFERENCES integrations(integration_id) ON DELETE CASCADE,
     provider VARCHAR(100) NOT NULL,
     access_token TEXT NOT NULL,
@@ -246,7 +239,7 @@ CREATE TABLE workflow_triggers (
 CREATE TABLE validation_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     workflow_id UUID REFERENCES workflows(id) ON DELETE CASCADE,
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     validation_type VARCHAR(50) NOT NULL,
     validation_result JSONB NOT NULL,
     errors JSONB DEFAULT '[]',
@@ -262,7 +255,7 @@ CREATE TABLE validation_logs (
 CREATE TABLE debug_sessions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     workflow_id UUID REFERENCES workflows(id) ON DELETE CASCADE,
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     session_name VARCHAR(255),
     session_type VARCHAR(50) NOT NULL DEFAULT 'manual',
     debug_data JSONB DEFAULT '{}',
@@ -303,8 +296,7 @@ CREATE TABLE system_settings (
 );
 
 -- Create indexes
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_active ON users(is_active);
+-- Removed: users table indexes (users table no longer created)
 CREATE INDEX idx_workflows_user_id ON workflows(user_id);
 CREATE INDEX idx_workflows_active ON workflows(active);
 CREATE INDEX idx_workflows_created_at ON workflows(created_at);
@@ -348,8 +340,7 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
-CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- Removed: update_users_updated_at trigger (users table no longer created)
 CREATE TRIGGER update_user_settings_updated_at BEFORE UPDATE ON user_settings
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER update_oauth_tokens_updated_at BEFORE UPDATE ON oauth_tokens
