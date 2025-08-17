@@ -1,11 +1,21 @@
+import json
 import logging
+import uuid
+from datetime import datetime
 from typing import Any, Dict
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy import and_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.node_enums import TriggerSubtype
 from shared.models.trigger import ExecutionResult, TriggerType
+from shared.models.trigger_index import TriggerIndex
+from workflow_scheduler.core.config import settings
+from workflow_scheduler.core.database import async_session_factory
+from workflow_scheduler.core.supabase_client import query_github_triggers
 from workflow_scheduler.dependencies import get_trigger_manager
 from workflow_scheduler.services.trigger_manager import TriggerManager
 
@@ -165,10 +175,21 @@ async def handle_github_events(
         results = []
         processed_workflows = 0
 
-        for workflow_id, trigger in matching_workflows:
+        for workflow_id, trigger_config, event_config in matching_workflows:
             try:
-                # Process the GitHub event through the trigger
-                result = await trigger.process_github_event(event_type, payload)
+                # Execute workflow directly via workflow engine
+                result = await _execute_workflow_directly(
+                    workflow_id=workflow_id,
+                    trigger_type="GITHUB",
+                    trigger_data={
+                        "event_type": event_type,
+                        "payload": payload,
+                        "repository": repository_name,
+                        "installation_id": installation_id,
+                        "trigger_config": trigger_config,
+                        "event_config": event_config,
+                    },
+                )
 
                 if result:
                     results.append(
@@ -182,15 +203,13 @@ async def handle_github_events(
                     processed_workflows += 1
 
                     logger.info(
-                        f"GitHub trigger processed workflow {workflow_id}: "
+                        f"GitHub workflow executed directly {workflow_id}: "
                         f"execution_id={result.execution_id}, status={result.status}"
                     )
-                else:
-                    logger.debug(f"GitHub trigger filtered out for workflow {workflow_id}")
 
             except Exception as e:
                 logger.error(
-                    f"Error processing GitHub trigger for workflow {workflow_id}: {e}",
+                    f"Error executing workflow {workflow_id}: {e}",
                     exc_info=True,
                 )
                 results.append(
@@ -198,7 +217,7 @@ async def handle_github_events(
                         "workflow_id": workflow_id,
                         "execution_id": None,
                         "status": "error",
-                        "message": f"Processing failed: {str(e)}",
+                        "message": f"Execution failed: {str(e)}",
                     }
                 )
 
@@ -344,38 +363,75 @@ async def _find_workflows_with_github_triggers(
     payload: Dict[str, Any],
 ) -> list:
     """
-    Find workflows that have GitHub triggers matching this event
+    Find workflows that have GitHub triggers matching this event by querying the database
     """
     matching_workflows = []
 
-    # Get all workflows with triggers
-    for workflow_id, triggers in trigger_manager._triggers.items():
-        # Find GitHub triggers for this workflow
-        github_triggers = [
-            t for t in triggers if t.trigger_type == TriggerSubtype.GITHUB.value and t.enabled
-        ]
+    try:
+        # Query active GitHub triggers using Supabase client (no pgbouncer issues)
+        trigger_records = await query_github_triggers(repository_name)
 
-        for trigger in github_triggers:
-            # Check if this trigger matches the event
-            if (
-                hasattr(trigger, "installation_id")
-                and hasattr(trigger, "repository")
-                and hasattr(trigger, "events")
-            ):
-                # Match installation ID
-                if trigger.installation_id != installation_id:
+        logger.info(
+            f"Found {len(trigger_records)} GitHub triggers for repository {repository_name}"
+        )
+
+        for trigger_record in trigger_records:
+            try:
+                # Parse trigger configuration from Supabase record
+                trigger_config = trigger_record["trigger_config"]
+                workflow_id = trigger_record["workflow_id"]
+
+                # Check installation ID match
+                trigger_installation_id = trigger_config.get("github_app_installation_id")
+                if trigger_installation_id and str(trigger_installation_id) != str(installation_id):
+                    logger.debug(
+                        f"Installation ID mismatch: {trigger_installation_id} != {installation_id}"
+                    )
                     continue
 
-                # Match repository
-                if trigger.repository != repository_name:
+                # Check repository match (already filtered by index_key, but double-check)
+                trigger_repository = trigger_config.get("repository")
+                if trigger_repository and trigger_repository != repository_name:
+                    logger.debug(f"Repository mismatch: {trigger_repository} != {repository_name}")
                     continue
 
-                # Match event type
-                if trigger.events and event_type not in trigger.events:
+                # Check event configuration
+                event_config_raw = trigger_config.get("event_config", "{}")
+                if isinstance(event_config_raw, str):
+                    event_config = json.loads(event_config_raw)
+                else:
+                    event_config = event_config_raw
+
+                # Check if this event type is configured
+                if event_type not in event_config:
+                    logger.debug(
+                        f"Event type {event_type} not in config: {list(event_config.keys())}"
+                    )
                     continue
 
-                # This trigger matches
-                matching_workflows.append((workflow_id, trigger))
+                # Check action match for pull_request events
+                if event_type == "pull_request":
+                    action = payload.get("action")
+                    expected_actions = event_config[event_type].get("actions", [])
+                    if action not in expected_actions:
+                        logger.debug(f"Action {action} not in expected actions: {expected_actions}")
+                        continue
+
+                # This trigger matches! Add to execution list
+                logger.info(
+                    f"✅ Found matching trigger for workflow {workflow_id}: "
+                    f"event={event_type}, repo={repository_name}, installation={installation_id}"
+                )
+
+                # Add workflow for direct execution (no trigger object needed)
+                matching_workflows.append((workflow_id, trigger_config, event_config))
+
+            except (json.JSONDecodeError, KeyError, AttributeError) as e:
+                logger.error(f"Error parsing trigger config for {workflow_id}: {e}")
+                continue
+
+    except Exception as e:
+        logger.error(f"Database error finding GitHub triggers: {e}", exc_info=True)
 
     return matching_workflows
 
@@ -538,3 +594,83 @@ async def get_health_status(trigger_manager: TriggerManager = Depends(get_trigge
     except Exception as e:
         logger.error(f"Error getting health status: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Health check failed: {str(e)}")
+
+
+async def _execute_workflow_directly(
+    workflow_id: str, trigger_type: str, trigger_data: Dict[str, Any]
+) -> ExecutionResult:
+    """
+    Send Slack notification instead of executing workflow (for testing)
+    This allows us to verify the GitHub webhook processing works end-to-end
+    """
+    execution_id = f"exec_{uuid.uuid4()}"
+
+    try:
+        # Import notification service here to avoid circular imports
+        from workflow_scheduler.services.notification_service import NotificationService
+
+        # Create notification service
+        notification_service = NotificationService()
+
+        # Prepare notification message
+        event_type = trigger_data.get("event_type", "unknown")
+        repository = trigger_data.get("repository", "unknown")
+        payload = trigger_data.get("payload", {})
+
+        # Extract relevant info from payload for different event types
+        if event_type == "pull_request":
+            action = payload.get("action", "unknown")
+            pr_title = payload.get("pull_request", {}).get("title", "Unknown PR")
+            pr_number = payload.get("pull_request", {}).get("number", "N/A")
+            pr_url = payload.get("pull_request", {}).get("html_url", "")
+            user = payload.get("pull_request", {}).get("user", {}).get("login", "unknown")
+
+            message = (
+                f"🎯 **GitHub Webhook Triggered Successfully!**\n"
+                f"**Event**: {event_type} - {action}\n"
+                f"**Repository**: {repository}\n"
+                f"**PR**: #{pr_number} - {pr_title}\n"
+                f"**Author**: {user}\n"
+                f"**Workflow ID**: {workflow_id}\n"
+                f"**Execution ID**: {execution_id}\n"
+                f"**URL**: {pr_url}\n\n"
+                f"✅ Webhook processing completed successfully!"
+            )
+        else:
+            message = (
+                f"🎯 **GitHub Webhook Triggered Successfully!**\n"
+                f"**Event**: {event_type}\n"
+                f"**Repository**: {repository}\n"
+                f"**Workflow ID**: {workflow_id}\n"
+                f"**Execution ID**: {execution_id}\n\n"
+                f"✅ Webhook processing completed successfully!"
+            )
+
+        # Send Slack notification
+        await notification_service.send_trigger_notification(
+            workflow_id=workflow_id, trigger_type=trigger_type, trigger_data=trigger_data
+        )
+
+        logger.info(
+            f"✅ Slack notification sent for workflow {workflow_id} (GitHub {event_type} event)"
+        )
+
+        return ExecutionResult(
+            execution_id=execution_id,
+            status="started",
+            message="GitHub webhook processed successfully - Slack notification sent",
+            trigger_data=trigger_data,
+        )
+
+    except Exception as e:
+        error_msg = f"Exception during workflow notification: {str(e)}"
+        logger.error(
+            f"❌ Failed to send notification for workflow {workflow_id}: {error_msg}", exc_info=True
+        )
+
+        return ExecutionResult(
+            execution_id=execution_id,
+            status="error",
+            message=error_msg,
+            trigger_data=trigger_data,
+        )

@@ -98,17 +98,30 @@ async def workflow_webhook(workflow_id: str, request: Request, response: Respons
 
 @router.post("/webhooks/github")
 async def github_webhook(
+    webhook_payload: dict,
     request: Request,
     x_github_event: str = Header(..., alias="X-GitHub-Event"),
     x_github_delivery: str = Header(..., alias="X-GitHub-Delivery"),
     x_hub_signature_256: Optional[str] = Header(None, alias="X-Hub-Signature-256"),
+    x_github_hook_id: Optional[str] = Header(None, alias="X-GitHub-Hook-ID"),
+    x_github_hook_installation_target_id: Optional[str] = Header(
+        None, alias="X-GitHub-Hook-Installation-Target-ID"
+    ),
+    x_github_hook_installation_target_type: Optional[str] = Header(
+        None, alias="X-GitHub-Hook-Installation-Target-Type"
+    ),
+    x_hub_signature: Optional[str] = Header(None, alias="X-Hub-Signature"),
 ):
     """
     GitHub webhook endpoint
     Handles GitHub App webhooks and routes them to workflow_scheduler
     """
     try:
-        logger.info(f"GitHub webhook received: {x_github_event} (delivery: {x_github_delivery})")
+        # Log all received headers for debugging
+        logger.info(
+            f"GitHub webhook received: {x_github_event} (delivery: {x_github_delivery}, "
+            f"hook_id: {x_github_hook_id}, installation_target_id: {x_github_hook_installation_target_id})"
+        )
 
         # Get raw payload for signature verification
         payload = await request.body()
@@ -123,12 +136,8 @@ async def github_webhook(
             ):
                 raise HTTPException(status_code=401, detail="Invalid signature")
 
-        # Parse JSON payload
-        try:
-            event_data = json.loads(payload.decode())
-        except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            logger.error(f"Failed to parse GitHub webhook payload: {e}")
-            raise HTTPException(status_code=400, detail="Invalid JSON payload")
+        # Use the parsed webhook_payload (FastAPI automatically parses JSON)
+        event_data = webhook_payload
 
         # Extract repository and installation info for logging
         installation_id = event_data.get("installation", {}).get("id")
@@ -150,6 +159,15 @@ async def github_webhook(
             "repository_name": repo_name,
             "timestamp": event_data.get("timestamp")
             or payload.decode("utf-8", errors="ignore")[:100],  # Fallback timestamp
+            "headers": {
+                "X-GitHub-Event": x_github_event,
+                "X-GitHub-Delivery": x_github_delivery,
+                "X-Hub-Signature-256": x_hub_signature_256,
+                "X-GitHub-Hook-ID": x_github_hook_id,
+                "X-GitHub-Hook-Installation-Target-ID": x_github_hook_installation_target_id,
+                "X-GitHub-Hook-Installation-Target-Type": x_github_hook_installation_target_type,
+                "X-Hub-Signature": x_hub_signature,
+            },
         }
 
         async with httpx.AsyncClient() as client:
