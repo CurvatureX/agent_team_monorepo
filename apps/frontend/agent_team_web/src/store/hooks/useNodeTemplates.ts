@@ -8,28 +8,40 @@ import {
   templatesByCategoryAtom,
   availableCategoriesAtom,
   categoryCounts,
-  loadNodeTemplatesAtom,
   getTemplateByIdAtom,
 } from '../atoms/nodeTemplates';
 import type { NodeCategory } from '@/types/node-template';
+import { useNodeTemplatesApi } from '@/lib/api';
 
 export const useNodeTemplates = () => {
   const [templates, setTemplates] = useAtom(nodeTemplatesAtom);
-  const loading = useAtomValue(nodeTemplatesLoadingAtom);
-  const error = useAtomValue(nodeTemplatesErrorAtom);
+  const [, setLoading] = useAtom(nodeTemplatesLoadingAtom);
+  const [, setError] = useAtom(nodeTemplatesErrorAtom);
   const filteredTemplates = useAtomValue(filteredTemplatesAtom);
   const templatesByCategory = useAtomValue(templatesByCategoryAtom);
   const categories = useAtomValue(availableCategoriesAtom);
   const counts = useAtomValue(categoryCounts);
-  const loadTemplates = useSetAtom(loadNodeTemplatesAtom);
   const getTemplateById = useSetAtom(getTemplateByIdAtom);
 
-  // Load templates on mount
+  // Use SWR hook to fetch data
+  const { templates: apiTemplates, isLoading, isError, error: apiError } = useNodeTemplatesApi();
+
+  // Sync API data with Jotai atoms
   useEffect(() => {
-    if (templates.length === 0 && !loading && !error) {
-      loadTemplates();
+    if (apiTemplates && apiTemplates.length > 0) {
+      setTemplates(apiTemplates);
+      setLoading(false);
+      setError(null);
     }
-  }, [templates.length, loading, error, loadTemplates]);
+  }, [apiTemplates, setTemplates, setLoading, setError]);
+
+  // Update loading and error states
+  useEffect(() => {
+    setLoading(isLoading);
+    if (isError) {
+      setError(apiError?.message || 'Failed to load node templates');
+    }
+  }, [isLoading, isError, apiError, setLoading, setError]);
 
   // Get templates for a specific category
   const getTemplatesByCategory = useCallback(
@@ -97,15 +109,15 @@ export const useNodeTemplates = () => {
   return {
     // State
     templates,
-    loading,
-    error,
+    loading: isLoading,
+    error: isError ? (apiError?.message || 'Failed to load node templates') : null,
     filteredTemplates,
     templatesByCategory,
     categories,
     counts,
     
     // Actions
-    loadTemplates,
+    loadTemplates: () => {}, // No-op since SWR handles loading
     getTemplateById,
     getTemplatesByCategory,
     getTemplateByType,

@@ -27,7 +27,6 @@ export const NodeSidebar: React.FC<NodeSidebarProps> = ({
     categories,
     loading,
     error,
-    loadTemplates,
   } = useNodeTemplates();
 
   const {
@@ -42,10 +41,7 @@ export const NodeSidebar: React.FC<NodeSidebarProps> = ({
 
   const sidebarRef = useRef<HTMLDivElement>(null);
 
-  // Load templates on mount
-  useEffect(() => {
-    loadTemplates();
-  }, [loadTemplates]);
+  // Templates are loaded automatically by SWR hook
 
   const handleNodeDragStart = (e: DragEvent<HTMLDivElement>, template: NodeTemplate) => {
     // Set the drag data

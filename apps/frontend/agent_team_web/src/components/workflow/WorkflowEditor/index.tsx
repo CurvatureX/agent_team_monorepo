@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useCallback } from 'react';
-import { Provider } from 'jotai';
 import { cn } from '@/lib/utils';
 import { NodeSidebar } from '../NodeSidebar';
 import { EnhancedWorkflowCanvas } from '../EnhancedWorkflowCanvas';
@@ -14,6 +13,8 @@ interface WorkflowEditorProps {
   workflowId?: string;
   initialWorkflow?: Workflow;  // 直接使用API的Workflow格式
   onSave?: (workflow: Workflow) => void;
+  onApiSave?: (workflow?: Workflow) => void;  // API保存回调，接受工作流参数
+  isSaving?: boolean;      // 添加保存状态
   readOnly?: boolean;
   className?: string;
 }
@@ -21,10 +22,12 @@ interface WorkflowEditorProps {
 const WorkflowEditorContent: React.FC<WorkflowEditorProps> = ({
   initialWorkflow,
   onSave,
+  onApiSave,
+  isSaving = false,
   readOnly = false,
   className,
 }) => {
-  const { addNode } = useWorkflow();
+  const { addNode, exportWorkflow } = useWorkflow();
   const { detailsPanelOpen } = useEditorUI();
 
   // Handle node selection from sidebar
@@ -37,6 +40,60 @@ const WorkflowEditorContent: React.FC<WorkflowEditorProps> = ({
     
     addNode({ template, position: centerPosition });
   }, [addNode]);
+
+  // Handle save - export current state and call both callbacks
+  const handleSaveClick = useCallback(() => {
+    if (onApiSave) {
+      // First export the current workflow state
+      const currentState = exportWorkflow();
+      console.log('Exported workflow state:', currentState);
+      
+      // Convert timestamps to strings if they are numbers
+      const metadata = {
+        ...currentState.metadata,
+        created_at: typeof currentState.metadata.created_at === 'number' 
+          ? new Date(currentState.metadata.created_at).toISOString()
+          : currentState.metadata.created_at,
+        updated_at: typeof currentState.metadata.updated_at === 'number'
+          ? new Date(currentState.metadata.updated_at).toISOString()
+          : currentState.metadata.updated_at,
+        // Convert version to number if it's a string
+        version: typeof currentState.metadata.version === 'string'
+          ? parseInt(currentState.metadata.version, 10) || 1
+          : currentState.metadata.version || 1,
+      };
+      
+      // Merge with initial workflow to preserve all fields (ID, settings, etc.)
+      const updatedWorkflow: Workflow = {
+        ...initialWorkflow,
+        ...metadata,
+        nodes: currentState.nodes,
+        edges: currentState.edges,
+        // Ensure edges is always an array
+        ...(currentState.edges && currentState.edges.length > 0 ? { edges: currentState.edges } : {}),
+      } as Workflow;
+      
+      console.log('Updated workflow with edges:', {
+        id: updatedWorkflow.id,
+        nodesCount: updatedWorkflow.nodes?.length,
+        edgesCount: updatedWorkflow.edges?.length,
+        edges: updatedWorkflow.edges,
+      });
+      
+      // Update parent component's state
+      if (onSave) {
+        onSave(updatedWorkflow);
+      }
+      
+      // Trigger API save with the updated workflow
+      // Use setTimeout to ensure state is updated first
+      setTimeout(() => {
+        if (typeof onApiSave === 'function') {
+          onApiSave(updatedWorkflow);
+        }
+      }, 100);
+    }
+  }, [onApiSave, onSave, exportWorkflow, initialWorkflow]);
 
   return (
     <div className={cn(
@@ -51,6 +108,8 @@ const WorkflowEditorContent: React.FC<WorkflowEditorProps> = ({
         <EnhancedWorkflowCanvas
           workflow={initialWorkflow}
           onWorkflowChange={onSave}
+          onSave={handleSaveClick}
+          isSaving={isSaving}
           readOnly={readOnly}
         />
       </div>
@@ -61,10 +120,4 @@ const WorkflowEditorContent: React.FC<WorkflowEditorProps> = ({
   );
 };
 
-export const WorkflowEditor: React.FC<WorkflowEditorProps> = (props) => {
-  return (
-    <Provider>
-      <WorkflowEditorContent {...props} />
-    </Provider>
-  );
-};
+export const WorkflowEditor: React.FC<WorkflowEditorProps> = WorkflowEditorContent;

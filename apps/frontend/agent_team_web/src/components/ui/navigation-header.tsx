@@ -3,15 +3,32 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { ExpandableTabs } from "@/components/ui/expandable-tabs";
-import { Home, Bell, User, Settings, Bot, DollarSign } from "lucide-react";
-import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { Home, Bell, User, Settings, Bot, DollarSign, LogIn, LogOut, Moon, Sun } from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useTheme } from "next-themes";
 import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
+import { useAuth } from "@/contexts/auth-context";
 
 export const NavigationHeader = () => {
     const router = useRouter();
     const pathname = usePathname();
     const [activeTabIndex, setActiveTabIndex] = useState<number | null>(null);
+    const { user, signOut } = useAuth();
+    const { theme, setTheme } = useTheme();
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
 
     const tabs = [
         { title: "Home", icon: Home },
@@ -19,8 +36,9 @@ export const NavigationHeader = () => {
         { title: "Pricing", icon: DollarSign },
         { title: "Notifications", icon: Bell },
         { type: "separator" as const },
-        { title: "Profile", icon: User },
+        user ? { title: "Profile", icon: User } : { title: "Login", icon: LogIn },
         { title: "Settings", icon: Settings },
+        ...(user ? [{ title: "Logout", icon: LogOut }] : []),
     ];
 
     // Set active tab based on current path
@@ -37,25 +55,36 @@ export const NavigationHeader = () => {
     }, [pathname]);
 
     // Handle tab click events
-    const handleTabChange = (index: number | null) => {
+    const handleTabChange = async (index: number | null) => {
         if (index === null) return;
 
         setActiveTabIndex(index); // Update selected state first
-
+        
+        const tab = tabs[index];
+        
         // Navigate to corresponding page based on selected tab
-        switch (index) {
-            case 0: // Home
+        switch (tab.title) {
+            case 'Home':
                 router.push('/');
                 break;
-            case 1: // Assistant
+            case 'Assistant':
                 router.push('/canvas');
                 break;
-            case 2: // Pricing
+            case 'Pricing':
                 router.push('/pricing');
                 break;
-            // Can add navigation logic for other tabs
+            case 'Login':
+                router.push('/login');
+                break;
+            case 'Profile':
+                router.push('/profile');
+                break;
+            case 'Logout':
+                await signOut();
+                router.push('/');
+                break;
             default:
-                console.log("Selected tab:", tabs[index]);
+                console.log("Selected tab:", tab);
                 break;
         }
     };
@@ -103,15 +132,94 @@ export const NavigationHeader = () => {
                 />
             </motion.div>
 
-            {/* Theme Toggle - Fixed Position Right */}
+            {/* User Avatar with Dropdown - Fixed Position Right */}
             <motion.div
                 className="fixed top-4 right-4 z-30"
                 initial={{ opacity: 0, x: 20, rotate: 10 }}
                 animate={{ opacity: 1, x: 0, rotate: 0 }}
                 transition={{ duration: 0.8, delay: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
-                whileHover={{ scale: 1.05 }}
             >
-                <ThemeToggle />
+                {user ? (
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <div className="cursor-pointer">
+                                <Avatar className="h-8 w-8 bg-primary/10 border border-primary/20 hover:scale-105 transition-transform">
+                                    <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-primary font-semibold text-sm">
+                                        {(() => {
+                                            const name = user.user_metadata?.full_name || 
+                                                        user.user_metadata?.name || 
+                                                        user.email || 
+                                                        'User';
+                                            const parts = name.split('@')[0].split(' ');
+                                            if (parts.length > 1) {
+                                                return parts.map((p: string) => p[0]).join('').toUpperCase().slice(0, 2);
+                                            } else {
+                                                return parts[0].slice(0, 2).toUpperCase();
+                                            }
+                                        })()}
+                                    </AvatarFallback>
+                                </Avatar>
+                            </div>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-56">
+                            <DropdownMenuLabel>
+                                <div className="flex flex-col space-y-1">
+                                    <p className="text-sm font-medium leading-none">
+                                        {user.user_metadata?.full_name || user.user_metadata?.name || 'User'}
+                                    </p>
+                                    <p className="text-xs leading-none text-muted-foreground">
+                                        {user.email}
+                                    </p>
+                                </div>
+                            </DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => router.push('/profile')}>
+                                <User className="mr-2 h-4 w-4" />
+                                <span>Profile</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => router.push('/settings')}>
+                                <Settings className="mr-2 h-4 w-4" />
+                                <span>Settings</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            {mounted && (
+                                <DropdownMenuItem onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+                                    {theme === 'dark' ? (
+                                        <>
+                                            <Sun className="mr-2 h-4 w-4" />
+                                            <span>Light Mode</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Moon className="mr-2 h-4 w-4" />
+                                            <span>Dark Mode</span>
+                                        </>
+                                    )}
+                                </DropdownMenuItem>
+                            )}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={async () => {
+                                await signOut();
+                                router.push('/');
+                            }} className="text-red-600 focus:text-red-600">
+                                <LogOut className="mr-2 h-4 w-4" />
+                                <span>Log out</span>
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                ) : (
+                    <div 
+                        className="cursor-pointer"
+                        onClick={() => router.push('/login')}
+                        title="Login"
+                    >
+                        <Avatar className="h-8 w-8 bg-muted hover:scale-105 transition-transform">
+                            <AvatarFallback className="bg-muted">
+                                <LogIn className="h-4 w-4 text-muted-foreground" />
+                            </AvatarFallback>
+                        </Avatar>
+                    </div>
+                )}
             </motion.div>
         </>
     );

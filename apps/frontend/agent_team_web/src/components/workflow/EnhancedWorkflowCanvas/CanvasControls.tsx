@@ -5,10 +5,11 @@ import { Panel, useReactFlow } from 'reactflow';
 import { 
   ZoomIn, 
   ZoomOut, 
-  Maximize2, 
+  Fullscreen, 
   Grid3X3, 
   Map,
-  Lock
+  Lock,
+  Save
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useEditorUI } from '@/store/hooks';
@@ -17,9 +18,15 @@ import { Separator } from '@/components/ui/separator';
 
 interface CanvasControlsProps {
   readOnly?: boolean;
+  onSave?: () => void;
+  isSaving?: boolean;
 }
 
-export const CanvasControls: React.FC<CanvasControlsProps> = ({ readOnly = false }) => {
+export const CanvasControls: React.FC<CanvasControlsProps> = ({ 
+  readOnly = false,
+  onSave,
+  isSaving = false
+}) => {
   const { fitView, zoomIn, zoomOut } = useReactFlow();
   const { showGrid, showMinimap, setShowGrid, setShowMinimap } = useEditorUI();
 
@@ -62,7 +69,7 @@ export const CanvasControls: React.FC<CanvasControlsProps> = ({ readOnly = false
           />
           <ControlButton
             onClick={() => fitView({ padding: 0.2, duration: 200 })}
-            icon={Maximize2}
+            icon={Fullscreen}
             title="Fit View"
           />
           
@@ -81,6 +88,29 @@ export const CanvasControls: React.FC<CanvasControlsProps> = ({ readOnly = false
             title={showMinimap ? "Hide Minimap" : "Show Minimap"}
             active={showMinimap}
           />
+          
+          {/* Save button */}
+          {!readOnly && onSave && (
+            <>
+              <Separator orientation="vertical" className="h-6 mx-1" />
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={onSave}
+                  disabled={isSaving}
+                  title="Save Workflow"
+                  className="h-8 px-3"
+                >
+                  <Save className="w-4 h-4 mr-1" />
+                  {isSaving ? 'Saving...' : 'Save'}
+                </Button>
+              </motion.div>
+            </>
+          )}
           
           {readOnly && (
             <>

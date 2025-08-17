@@ -16,8 +16,8 @@ export const workflowMetadataAtom = atom({
   name: 'Untitled Workflow',
   description: '',
   version: '1.0.0',
-  created_at: Date.now(),
-  updated_at: Date.now(),
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
   tags: [] as string[],
 });
 
@@ -37,14 +37,21 @@ export const addNodeAtom = atom(
       },
     };
 
+    console.log('Adding node to store:', newNode);
+    const currentNodes = get(workflowNodesAtom);
+    console.log('Current nodes before add:', currentNodes);
+    
     set(workflowNodesAtom, (draft) => {
       draft.push(newNode);
+      console.log('Nodes after add (draft):', draft);
+      console.log('Draft length:', draft.length);
     });
 
     // Select the new node
     set(selectedNodeIdAtom, newNode.id);
     set(detailsPanelOpenAtom, true);
 
+    console.log('Node added successfully:', newNode.id);
     return newNode.id;
   }
 );
