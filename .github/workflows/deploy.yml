@@ -158,7 +158,7 @@ jobs:
         working-directory: infra
         env:
           TF_VAR_image_tag: ${{ github.sha }}
-          TF_VAR_supabase_url: ${{ secrets.SUPABASE_URL }}
+          TF_VAR_supabase_url: ${{ vars.SUPABASE_URL }}
           TF_VAR_supabase_secret_key: ${{ secrets.SUPABASE_SECRET_KEY }}
           TF_VAR_supabase_anon_key: ${{ secrets.SUPABASE_ANON_KEY }}
           TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
@@ -198,7 +198,7 @@ jobs:
         working-directory: infra
         env:
           TF_VAR_image_tag: ${{ github.sha }}
-          TF_VAR_supabase_url: ${{ secrets.SUPABASE_URL }}
+          TF_VAR_supabase_url: ${{ vars.SUPABASE_URL }}
           TF_VAR_supabase_secret_key: ${{ secrets.SUPABASE_SECRET_KEY }}
           TF_VAR_supabase_anon_key: ${{ secrets.SUPABASE_ANON_KEY }}
           TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
