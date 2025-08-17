@@ -101,7 +101,8 @@ export interface WorkflowEntity {
   
   // Workflow structure
   nodes: WorkflowNode[];                // 工作流节点列表
-  edges: WorkflowEdge[];                // 工作流连接边列表
+  edges?: WorkflowEdge[];               // 工作流连接边列表 (可选，某些API返回connections)
+  connections?: Record<string, unknown>; // n8n风格的连接信息 (可选，某些API返回这个而不是edges)
   
   // Additional data
   variables?: Record<string, unknown>;  // 工作流变量
