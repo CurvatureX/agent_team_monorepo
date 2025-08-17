@@ -685,10 +685,10 @@ Below is the comprehensive workflow definition in JSON format, structured accord
 
 ### Success Metrics & KPIs
 
-- **Response Time**: Target <12 hours for status updates
-- **Meeting Efficiency**: Target <45 minutes for structured meetings
+- **Response Time**: Target &lt;12 hours for status updates
+- **Meeting Efficiency**: Target &lt;45 minutes for structured meetings
 - **Task Completion Accuracy**: >85% accurate effort estimation
-- **Blocker Resolution Time**: <24 hours average resolution
+- **Blocker Resolution Time**: &lt;24 hours average resolution
 - **Team Satisfaction**: >4.0/5.0 rating on quarterly surveys
 - **Automation Rate**: >70% of PMO tasks automated
 - **Communication Efficiency**: 50% reduction in notification fatigue
