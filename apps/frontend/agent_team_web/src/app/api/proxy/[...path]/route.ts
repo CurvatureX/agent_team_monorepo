@@ -5,9 +5,10 @@ const BACKEND_URL = process.env.BACKEND_API_URL || 'http://agent-prod-alb-352817
 
 async function handler(
   request: NextRequest,
-  { params }: { params: { path: string[] } }
+  { params }: { params: Promise<{ path: string[] }> }
 ) {
-  const path = params.path.join('/');
+  const resolvedParams = await params;
+  const path = resolvedParams.path.join('/');
   const url = `${BACKEND_URL}/${path}${request.nextUrl.search}`;
   
   console.log('Proxying request to:', url);
@@ -123,27 +124,27 @@ async function handler(
   }
 }
 
-export async function GET(request: NextRequest, context: { params: { path: string[] } }) {
+export async function GET(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   return handler(request, context);
 }
 
-export async function POST(request: NextRequest, context: { params: { path: string[] } }) {
+export async function POST(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   return handler(request, context);
 }
 
-export async function PUT(request: NextRequest, context: { params: { path: string[] } }) {
+export async function PUT(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   return handler(request, context);
 }
 
-export async function DELETE(request: NextRequest, context: { params: { path: string[] } }) {
+export async function DELETE(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   return handler(request, context);
 }
 
-export async function PATCH(request: NextRequest, context: { params: { path: string[] } }) {
+export async function PATCH(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   return handler(request, context);
 }
 
-export async function OPTIONS(_request: NextRequest, _context: { params: { path: string[] } }) {
+export async function OPTIONS(_request: NextRequest, _context: { params: Promise<{ path: string[] }> }) {
   return new NextResponse(null, {
     status: 200,
     headers: {
