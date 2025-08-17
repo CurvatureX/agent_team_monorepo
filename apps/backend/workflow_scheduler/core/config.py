@@ -30,10 +30,14 @@ class Settings(BaseSettings):
 
     # External Service URLs
     workflow_engine_url: str = Field(
-        default="http://localhost:8002", description="Workflow Engine service URL"
+        default="http://localhost:8002",
+        description="Workflow Engine service URL",
+        validation_alias=AliasChoices("WORKFLOW_ENGINE_URL", "workflow_engine_url"),
     )
     api_gateway_url: str = Field(
-        default="http://localhost:8000", description="API Gateway service URL"
+        default="http://localhost:8000",
+        description="API Gateway service URL",
+        validation_alias=AliasChoices("API_GATEWAY_URL", "api_gateway_url"),
     )
 
     # Database Configuration
@@ -43,6 +47,23 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("DATABASE_URL", "database_url"),
     )
     redis_url: str = Field(default="redis://localhost:6379/1", description="Redis connection URL")
+
+    # Supabase Configuration
+    supabase_url: str = Field(
+        default="",
+        description="Supabase project URL",
+        validation_alias=AliasChoices("SUPABASE_URL", "supabase_url"),
+    )
+    supabase_secret_key: str = Field(
+        default="",
+        description="Supabase service role secret key",
+        validation_alias=AliasChoices("SUPABASE_SECRET_KEY", "supabase_secret_key"),
+    )
+    supabase_anon_key: str = Field(
+        default="",
+        description="Supabase anonymous public key",
+        validation_alias=AliasChoices("SUPABASE_ANON_KEY", "supabase_anon_key"),
+    )
 
     # Email Configuration (for EmailTrigger)
     imap_server: str = Field(default="imap.gmail.com", description="IMAP server")
