@@ -1,0 +1,24 @@
+{
+  "id": "tech-design/node-structure",
+  "title": "Node Structure Definition",
+  "description": "参数配置说明",
+  "source": "@site/../../../docs/tech-design/node-structure.md",
+  "sourceDirName": "tech-design",
+  "slug": "/tech-design/node-structure",
+  "permalink": "/docs/tech-design/node-structure",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/curvaturex/agent_team_monorepo/tree/main/docs/../../../docs/tech-design/node-structure.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {},
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "📚 AI Teams 分布式监控系统完整使用手册",
+    "permalink": "/docs/tech-design/monitoring-guide"
+  },
+  "next": {
+    "title": "节点规范系统技术设计",
+    "permalink": "/docs/tech-design/node_spec"
+  }
+}

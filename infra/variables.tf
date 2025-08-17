@@ -123,6 +123,12 @@ variable "supabase_secret_key" {
   sensitive   = true
 }
 
+variable "supabase_anon_key" {
+  description = "Supabase anonymous key for RLS operations"
+  type        = string
+  sensitive   = true
+}
+
 variable "openai_api_key" {
   description = "OpenAI API key"
   type        = string
@@ -172,6 +178,13 @@ variable "github_app_private_key" {
 
 variable "github_webhook_secret" {
   description = "GitHub webhook secret for GitHub trigger integration"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "github_client_id" {
+  description = "GitHub App Client ID for GitHub trigger integration"
   type        = string
   sensitive   = true
   default     = ""

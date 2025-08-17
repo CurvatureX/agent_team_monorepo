@@ -12,7 +12,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import QueuePool
 
-from workflow_engine.core.config import get_settings
+from ..core.config import get_settings
 
 backend_dir = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(backend_dir))
@@ -45,7 +45,6 @@ if parsed_url.hostname == "postgres":
     }
 
 # Create engine with enhanced configuration
-# Temporarily enable SQL echo for debugging
 engine = create_engine(
     database_url,
     poolclass=QueuePool,
@@ -54,7 +53,7 @@ engine = create_engine(
     pool_timeout=settings.database_pool_timeout,
     pool_recycle=settings.database_pool_recycle,
     pool_pre_ping=True,
-    echo=True,  # Force SQL logging for debugging
+    echo=settings.database_echo,  # Control SQL logging via settings
     connect_args=connect_args,
 )
 

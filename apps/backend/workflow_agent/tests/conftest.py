@@ -9,8 +9,31 @@ from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from agents.state import ClarificationContext, Conversation, WorkflowOrigin, WorkflowStage
+
+# Import shared enums for consistent node type handling in tests
+try:
+    from shared.models.node_enums import ActionSubtype, AIAgentSubtype, NodeType, TriggerSubtype
+except ImportError:
+    # Fallback if shared models not available - use hardcoded strings
+    class NodeType:
+        TRIGGER = type("", (), {"value": "trigger"})()
+        AI_AGENT = type("", (), {"value": "ai_agent"})()
+        ACTION = type("", (), {"value": "action"})()
+
+    class TriggerSubtype:
+        MANUAL = type("", (), {"value": "manual"})()
+
+    class AIAgentSubtype:
+        OPENAI_CHATGPT = type("", (), {"value": "gpt-4"})()
+
+    class ActionSubtype:
+        HTTP_REQUEST = type("", (), {"value": "http_request"})()
+
+    NodeType = NodeType
+    TriggerSubtype = TriggerSubtype
+    AIAgentSubtype = AIAgentSubtype
+    ActionSubtype = ActionSubtype
 
 
 @pytest.fixture
@@ -79,7 +102,7 @@ def sample_simple_workflow():
         "name": "客户邮件处理工作流",
         "description": "自动处理客户邮件咨询",
         "nodes": [
-            {"id": "start", "type": "trigger", "name": "Start", "parameters": {}},
+            {"id": "start", "type": NodeType.TRIGGER.value, "name": "Start", "parameters": {}},
             {
                 "id": "email_monitor",
                 "type": "email_trigger",
@@ -88,7 +111,7 @@ def sample_simple_workflow():
             },
             {
                 "id": "ai_analyze",
-                "type": "ai_agent",
+                "type": NodeType.AI_AGENT.value,
                 "name": "AI Analyzer",
                 "parameters": {"model": "gpt-4"},
             },

@@ -1,10 +1,21 @@
+import json
 import logging
+import uuid
+from datetime import datetime
 from typing import Any, Dict
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy import and_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.models.node_enums import TriggerSubtype
 from shared.models.trigger import ExecutionResult, TriggerType
+from shared.models.trigger_index import TriggerIndex
+from workflow_scheduler.core.config import settings
+from workflow_scheduler.core.database import async_session_factory
+from workflow_scheduler.core.supabase_client import query_github_triggers
 from workflow_scheduler.dependencies import get_trigger_manager
 from workflow_scheduler.services.trigger_manager import TriggerManager
 
@@ -14,7 +25,7 @@ router = APIRouter(prefix="/triggers", tags=["triggers"])
 
 
 class ManualTriggerRequest(BaseModel):
-    confirmation: bool = False
+    pass
 
 
 class WebhookData(BaseModel):
@@ -47,20 +58,7 @@ async def trigger_manual(
     try:
         logger.info(f"Manual trigger requested for workflow {workflow_id} by user {user_id}")
 
-        result = await trigger_manager.trigger_manual(
-            workflow_id=workflow_id, user_id=user_id, confirmation=request.confirmation
-        )
-
-        # Handle confirmation required case
-        if result.status == "confirmation_required":
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "message": result.message,
-                    "confirmation_required": True,
-                    "trigger_data": result.trigger_data,
-                },
-            )
+        result = await trigger_manager.trigger_manual(workflow_id=workflow_id, user_id=user_id)
 
         return result
 
@@ -114,6 +112,130 @@ async def process_webhook(
     except Exception as e:
         logger.error(f"Error processing webhook for workflow {workflow_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Webhook processing failed: {str(e)}")
+
+
+@router.post("/github/events", response_model=Dict[str, Any])
+async def handle_github_events(
+    github_webhook_data: Dict[str, Any],
+    trigger_manager: TriggerManager = Depends(get_trigger_manager),
+):
+    """
+    Process GitHub webhook events forwarded from API Gateway
+    Expected data format from API Gateway:
+    {
+        "event_type": str,
+        "delivery_id": str,
+        "payload": Dict[str, Any],
+        "installation_id": int,
+        "repository_name": str,
+        "timestamp": str
+    }
+    """
+    try:
+        event_type = github_webhook_data.get("event_type")
+        delivery_id = github_webhook_data.get("delivery_id")
+        payload = github_webhook_data.get("payload", {})
+        installation_id = github_webhook_data.get("installation_id")
+        repository_name = github_webhook_data.get("repository_name")
+
+        logger.info(
+            f"GitHub webhook event received from API Gateway: {event_type} "
+            f"(delivery: {delivery_id}, repo: {repository_name})"
+        )
+
+        if not all([event_type, delivery_id, payload]):
+            raise HTTPException(
+                status_code=400,
+                detail="Missing required fields: event_type, delivery_id, or payload",
+            )
+
+        # Find workflows with matching GitHub triggers
+        matching_workflows = await _find_workflows_with_github_triggers(
+            trigger_manager,
+            installation_id=installation_id or 0,
+            repository_name=repository_name or "",
+            event_type=event_type,
+            payload=payload,
+        )
+
+        if not matching_workflows:
+            logger.info(
+                f"No workflows found matching GitHub event {event_type} "
+                f"for repository {repository_name}"
+            )
+            return {
+                "message": "No matching workflows found",
+                "event_type": event_type,
+                "delivery_id": delivery_id,
+                "processed_workflows": 0,
+                "results": [],
+            }
+
+        # Process each matching workflow
+        results = []
+        processed_workflows = 0
+
+        for workflow_id, trigger_config, event_config in matching_workflows:
+            try:
+                # Execute workflow directly via workflow engine
+                result = await _execute_workflow_directly(
+                    workflow_id=workflow_id,
+                    trigger_type="GITHUB",
+                    trigger_data={
+                        "event_type": event_type,
+                        "payload": payload,
+                        "repository": repository_name,
+                        "installation_id": installation_id,
+                        "trigger_config": trigger_config,
+                        "event_config": event_config,
+                    },
+                )
+
+                if result:
+                    results.append(
+                        {
+                            "workflow_id": workflow_id,
+                            "execution_id": result.execution_id,
+                            "status": result.status,
+                            "message": result.message,
+                        }
+                    )
+                    processed_workflows += 1
+
+                    logger.info(
+                        f"GitHub workflow executed directly {workflow_id}: "
+                        f"execution_id={result.execution_id}, status={result.status}"
+                    )
+
+            except Exception as e:
+                logger.error(
+                    f"Error executing workflow {workflow_id}: {e}",
+                    exc_info=True,
+                )
+                results.append(
+                    {
+                        "workflow_id": workflow_id,
+                        "execution_id": None,
+                        "status": "error",
+                        "message": f"Execution failed: {str(e)}",
+                    }
+                )
+
+        return {
+            "message": "GitHub webhook processed",
+            "event_type": event_type,
+            "delivery_id": delivery_id,
+            "repository": repository_name,
+            "installation_id": installation_id,
+            "processed_workflows": processed_workflows,
+            "results": results,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error handling GitHub webhook event: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"GitHub webhook processing failed: {str(e)}")
 
 
 @router.post("/github", response_model=Dict[str, Any])
@@ -241,36 +363,75 @@ async def _find_workflows_with_github_triggers(
     payload: Dict[str, Any],
 ) -> list:
     """
-    Find workflows that have GitHub triggers matching this event
+    Find workflows that have GitHub triggers matching this event by querying the database
     """
     matching_workflows = []
 
-    # Get all workflows with triggers
-    for workflow_id, triggers in trigger_manager._triggers.items():
-        # Find GitHub triggers for this workflow
-        github_triggers = [t for t in triggers if t.trigger_type == "TRIGGER_GITHUB" and t.enabled]
+    try:
+        # Query active GitHub triggers using Supabase client (no pgbouncer issues)
+        trigger_records = await query_github_triggers(repository_name)
 
-        for trigger in github_triggers:
-            # Check if this trigger matches the event
-            if (
-                hasattr(trigger, "installation_id")
-                and hasattr(trigger, "repository")
-                and hasattr(trigger, "events")
-            ):
-                # Match installation ID
-                if trigger.installation_id != installation_id:
+        logger.info(
+            f"Found {len(trigger_records)} GitHub triggers for repository {repository_name}"
+        )
+
+        for trigger_record in trigger_records:
+            try:
+                # Parse trigger configuration from Supabase record
+                trigger_config = trigger_record["trigger_config"]
+                workflow_id = trigger_record["workflow_id"]
+
+                # Check installation ID match
+                trigger_installation_id = trigger_config.get("github_app_installation_id")
+                if trigger_installation_id and str(trigger_installation_id) != str(installation_id):
+                    logger.debug(
+                        f"Installation ID mismatch: {trigger_installation_id} != {installation_id}"
+                    )
                     continue
 
-                # Match repository
-                if trigger.repository != repository_name:
+                # Check repository match (already filtered by index_key, but double-check)
+                trigger_repository = trigger_config.get("repository")
+                if trigger_repository and trigger_repository != repository_name:
+                    logger.debug(f"Repository mismatch: {trigger_repository} != {repository_name}")
                     continue
 
-                # Match event type
-                if trigger.events and event_type not in trigger.events:
+                # Check event configuration
+                event_config_raw = trigger_config.get("event_config", "{}")
+                if isinstance(event_config_raw, str):
+                    event_config = json.loads(event_config_raw)
+                else:
+                    event_config = event_config_raw
+
+                # Check if this event type is configured
+                if event_type not in event_config:
+                    logger.debug(
+                        f"Event type {event_type} not in config: {list(event_config.keys())}"
+                    )
                     continue
 
-                # This trigger matches
-                matching_workflows.append((workflow_id, trigger))
+                # Check action match for pull_request events
+                if event_type == "pull_request":
+                    action = payload.get("action")
+                    expected_actions = event_config[event_type].get("actions", [])
+                    if action not in expected_actions:
+                        logger.debug(f"Action {action} not in expected actions: {expected_actions}")
+                        continue
+
+                # This trigger matches! Add to execution list
+                logger.info(
+                    f"✅ Found matching trigger for workflow {workflow_id}: "
+                    f"event={event_type}, repo={repository_name}, installation={installation_id}"
+                )
+
+                # Add workflow for direct execution (no trigger object needed)
+                matching_workflows.append((workflow_id, trigger_config, event_config))
+
+            except (json.JSONDecodeError, KeyError, AttributeError) as e:
+                logger.error(f"Error parsing trigger config for {workflow_id}: {e}")
+                continue
+
+    except Exception as e:
+        logger.error(f"Database error finding GitHub triggers: {e}", exc_info=True)
 
     return matching_workflows
 
@@ -320,6 +481,109 @@ async def get_trigger_types():
         raise HTTPException(status_code=500, detail=f"Failed to get trigger types: {str(e)}")
 
 
+# Slack endpoints that the API Gateway expects
+@router.post("/slack/events", response_model=Dict[str, Any])
+async def handle_slack_events(
+    slack_event_data: Dict[str, Any],
+    trigger_manager: TriggerManager = Depends(get_trigger_manager),
+):
+    """
+    Process Slack events forwarded from API Gateway
+    Expected data format from API Gateway:
+    {
+        "team_id": str,
+        "event_data": Dict[str, Any]
+    }
+    """
+    try:
+        team_id = slack_event_data.get("team_id")
+        event_data = slack_event_data.get("event_data", {})
+
+        logger.info(f"Slack event received from API Gateway for team {team_id}")
+
+        # For now, just acknowledge the event
+        # In the future, this could route to appropriate Slack triggers
+        return {
+            "message": "Slack event processed",
+            "team_id": team_id,
+            "processed_triggers": 0,
+            "results": [],
+        }
+
+    except Exception as e:
+        logger.error(f"Error handling Slack event: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Slack event processing failed: {str(e)}")
+
+
+@router.post("/slack/interactive", response_model=Dict[str, Any])
+async def handle_slack_interactive(
+    slack_interactive_data: Dict[str, Any],
+    trigger_manager: TriggerManager = Depends(get_trigger_manager),
+):
+    """
+    Process Slack interactive components forwarded from API Gateway
+    Expected data format from API Gateway:
+    {
+        "team_id": str,
+        "payload": Dict[str, Any]
+    }
+    """
+    try:
+        team_id = slack_interactive_data.get("team_id")
+        payload = slack_interactive_data.get("payload", {})
+
+        logger.info(f"Slack interactive component received from API Gateway for team {team_id}")
+
+        # For now, just acknowledge the interaction
+        # In the future, this could route to appropriate Slack triggers
+        return {
+            "message": "Slack interactive component processed",
+            "team_id": team_id,
+            "slack_response": {"ok": True},
+        }
+
+    except Exception as e:
+        logger.error(f"Error handling Slack interactive component: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Slack interactive component processing failed: {str(e)}"
+        )
+
+
+@router.post("/slack/commands", response_model=Dict[str, Any])
+async def handle_slack_commands(
+    command_data: Dict[str, Any],
+    trigger_manager: TriggerManager = Depends(get_trigger_manager),
+):
+    """
+    Process Slack slash commands forwarded from API Gateway
+    Expected data format from API Gateway: form data as dict
+    """
+    try:
+        team_id = command_data.get("team_id")
+        command = command_data.get("command")
+        text = command_data.get("text", "")
+        user_name = command_data.get("user_name")
+
+        logger.info(
+            f"Slack slash command received from API Gateway: {command} from {user_name} in team {team_id}"
+        )
+
+        # For now, just acknowledge the command
+        # In the future, this could route to appropriate Slack triggers
+        return {
+            "message": "Slack command processed",
+            "team_id": team_id,
+            "slack_response": {
+                "response_type": "ephemeral",
+                "text": f"Command `{command}` received and processed",
+            },
+        }
+
+    except Exception as e:
+        logger.error(f"Error handling Slack command: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Slack command processing failed: {str(e)}")
+
+
 @router.get("/health")
 async def get_health_status(trigger_manager: TriggerManager = Depends(get_trigger_manager)):
     """Get health status of all managed triggers"""
@@ -330,3 +594,83 @@ async def get_health_status(trigger_manager: TriggerManager = Depends(get_trigge
     except Exception as e:
         logger.error(f"Error getting health status: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Health check failed: {str(e)}")
+
+
+async def _execute_workflow_directly(
+    workflow_id: str, trigger_type: str, trigger_data: Dict[str, Any]
+) -> ExecutionResult:
+    """
+    Send Slack notification instead of executing workflow (for testing)
+    This allows us to verify the GitHub webhook processing works end-to-end
+    """
+    execution_id = f"exec_{uuid.uuid4()}"
+
+    try:
+        # Import notification service here to avoid circular imports
+        from workflow_scheduler.services.notification_service import NotificationService
+
+        # Create notification service
+        notification_service = NotificationService()
+
+        # Prepare notification message
+        event_type = trigger_data.get("event_type", "unknown")
+        repository = trigger_data.get("repository", "unknown")
+        payload = trigger_data.get("payload", {})
+
+        # Extract relevant info from payload for different event types
+        if event_type == "pull_request":
+            action = payload.get("action", "unknown")
+            pr_title = payload.get("pull_request", {}).get("title", "Unknown PR")
+            pr_number = payload.get("pull_request", {}).get("number", "N/A")
+            pr_url = payload.get("pull_request", {}).get("html_url", "")
+            user = payload.get("pull_request", {}).get("user", {}).get("login", "unknown")
+
+            message = (
+                f"🎯 **GitHub Webhook Triggered Successfully!**\n"
+                f"**Event**: {event_type} - {action}\n"
+                f"**Repository**: {repository}\n"
+                f"**PR**: #{pr_number} - {pr_title}\n"
+                f"**Author**: {user}\n"
+                f"**Workflow ID**: {workflow_id}\n"
+                f"**Execution ID**: {execution_id}\n"
+                f"**URL**: {pr_url}\n\n"
+                f"✅ Webhook processing completed successfully!"
+            )
+        else:
+            message = (
+                f"🎯 **GitHub Webhook Triggered Successfully!**\n"
+                f"**Event**: {event_type}\n"
+                f"**Repository**: {repository}\n"
+                f"**Workflow ID**: {workflow_id}\n"
+                f"**Execution ID**: {execution_id}\n\n"
+                f"✅ Webhook processing completed successfully!"
+            )
+
+        # Send Slack notification
+        await notification_service.send_trigger_notification(
+            workflow_id=workflow_id, trigger_type=trigger_type, trigger_data=trigger_data
+        )
+
+        logger.info(
+            f"✅ Slack notification sent for workflow {workflow_id} (GitHub {event_type} event)"
+        )
+
+        return ExecutionResult(
+            execution_id=execution_id,
+            status="started",
+            message="GitHub webhook processed successfully - Slack notification sent",
+            trigger_data=trigger_data,
+        )
+
+    except Exception as e:
+        error_msg = f"Exception during workflow notification: {str(e)}"
+        logger.error(
+            f"❌ Failed to send notification for workflow {workflow_id}: {error_msg}", exc_info=True
+        )
+
+        return ExecutionResult(
+            execution_id=execution_id,
+            status="error",
+            message=error_msg,
+            trigger_data=trigger_data,
+        )

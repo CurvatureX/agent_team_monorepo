@@ -26,8 +26,6 @@ class UnifiedResponseProcessor:
         """
         processors = {
             "clarification": UnifiedResponseProcessor._process_clarification,
-            "negotiation": UnifiedResponseProcessor._process_negotiation,
-            "gap_analysis": UnifiedResponseProcessor._process_gap_analysis,
             "workflow_generation": UnifiedResponseProcessor._process_workflow_generation,
             "debug": UnifiedResponseProcessor._process_debug,
             "completed": UnifiedResponseProcessor._process_completed
@@ -60,51 +58,6 @@ class UnifiedResponseProcessor:
                 "stage": "clarification",
                 "pending_questions": pending_questions,
                 "clarification_context": clarification_context
-            }
-        }
-    
-    @staticmethod
-    def _process_negotiation(agent_state: Dict[str, Any]) -> Dict[str, Any]:
-        """处理协商阶段响应"""
-        conversations = agent_state.get("conversations", [])
-        # No alternatives in new architecture - handled in gap_analysis
-        
-        latest_message = ""
-        if conversations:
-            for conv in reversed(conversations):
-                if isinstance(conv, dict) and conv.get("role") == "assistant":
-                    latest_message = conv.get("text", "")
-                    break
-        
-        return {
-            "type": "ai_message",
-            "content": {
-                "text": latest_message or "正在进行需求协商...",
-                "stage": "negotiation"
-            }
-        }
-    
-    @staticmethod
-    def _process_gap_analysis(agent_state: Dict[str, Any]) -> Dict[str, Any]:
-        """处理差距分析阶段响应"""
-        conversations = agent_state.get("conversations", [])
-        identified_gaps = agent_state.get("identified_gaps", [])
-        gap_status = agent_state.get("gap_status", "no_gap")
-        
-        latest_message = ""
-        if conversations:
-            for conv in reversed(conversations):
-                if isinstance(conv, dict) and conv.get("role") == "assistant":
-                    latest_message = conv.get("text", "")
-                    break
-        
-        return {
-            "type": "ai_message",
-            "content": {
-                "text": latest_message or "正在分析技术差距...",
-                "stage": "gap_analysis",
-                "gaps": identified_gaps,
-                "gap_status": gap_status
             }
         }
     
@@ -155,7 +108,7 @@ class UnifiedResponseProcessor:
     def _process_debug(agent_state: Dict[str, Any]) -> Dict[str, Any]:
         """处理调试阶段响应"""
         conversations = agent_state.get("conversations", [])
-        debug_result = agent_state.get("debug_result", "")
+        debug_result = agent_state.get("debug_result", {})
         debug_loop_count = agent_state.get("debug_loop_count", 0)
         current_workflow = agent_state.get("current_workflow_json") or agent_state.get("current_workflow")
         
@@ -166,8 +119,24 @@ class UnifiedResponseProcessor:
                     latest_message = conv.get("text", "")
                     break
         
+        # 根据debug_result构建消息
+        if isinstance(debug_result, dict):
+            if debug_result.get("success"):
+                debug_status = "✅ SUCCESS: 工作流验证通过"
+            else:
+                debug_status = f"❌ ERROR: {debug_result.get('error', '工作流存在问题')}"
+        else:
+            debug_status = "正在验证工作流..."
+        
+        # 如果没有最新消息，使用debug状态
+        if not latest_message:
+            latest_message = debug_status
+        elif debug_result:
+            # 如果有debug结果，将状态追加到消息
+            latest_message = f"{latest_message}\n\n{debug_status}"
+        
         # 如果有调试后的工作流，返回workflow类型
-        if current_workflow and debug_result:
+        if current_workflow:
             workflow_data = current_workflow
             if isinstance(current_workflow, str):
                 try:
@@ -182,19 +151,15 @@ class UnifiedResponseProcessor:
                 "workflow": workflow_data,
                 "content": {
                     "text": latest_message,
-                    "stage": "debug",
-                    "debug_result": debug_result,
-                    "debug_loop_count": debug_loop_count
+                    "stage": "debug"
                 }
             }
         else:
             return {
                 "type": "ai_message",
                 "content": {
-                    "text": latest_message or f"正在调试工作流 (第{debug_loop_count}次)...",
-                    "stage": "debug",
-                    "debug_result": debug_result,
-                    "debug_loop_count": debug_loop_count
+                    "text": latest_message or f"正在调试工作流 (第{debug_loop_count+1}次)...",
+                    "stage": "debug"
                 }
             }
     

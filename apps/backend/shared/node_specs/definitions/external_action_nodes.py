@@ -5,6 +5,7 @@ This module defines specifications for all EXTERNAL_ACTION_NODE subtypes includi
 GitHub, Email, Slack, and API call integrations.
 """
 
+from ...models.node_enums import ExternalActionSubtype, NodeType
 from ..base import (
     ConnectionType,
     DataFormat,
@@ -17,14 +18,26 @@ from ..base import (
 
 # GitHub - GitHub operations
 GITHUB_SPEC = NodeSpec(
-    node_type="EXTERNAL_ACTION_NODE",
-    subtype="GITHUB",
+    node_type=NodeType.EXTERNAL_ACTION,
+    subtype=ExternalActionSubtype.GITHUB,
     description="Execute GitHub operations via GitHub API",
+    display_name="GitHub Integration",
+    category="integrations",
+    template_id="external_github",
     parameters=[
         ParameterDef(
             name="action",
-            type=ParameterType.STRING,
+            type=ParameterType.ENUM,
             required=True,
+            enum_values=[
+                "create_issue",
+                "create_pull_request",
+                "add_comment",
+                "close_issue",
+                "merge_pr",
+                "list_issues",
+                "get_issue",
+            ],
             description="GitHub action type",
         ),
         ParameterDef(
@@ -43,19 +56,46 @@ GITHUB_SPEC = NodeSpec(
             name="branch",
             type=ParameterType.STRING,
             required=False,
+            default_value="main",
             description="Branch name",
         ),
         ParameterDef(
             name="title",
             type=ParameterType.STRING,
             required=False,
-            description="Title (issues or PR)",
+            description="Title for issues or pull requests",
         ),
         ParameterDef(
             name="body",
             type=ParameterType.STRING,
             required=False,
-            description="Content (issues or PR)",
+            description="Body content for issues or pull requests",
+        ),
+        ParameterDef(
+            name="issue_number",
+            type=ParameterType.INTEGER,
+            required=False,
+            description="Issue or PR number for operations",
+        ),
+        ParameterDef(
+            name="labels",
+            type=ParameterType.JSON,
+            required=False,
+            default_value=[],
+            description="Labels to apply (array of strings)",
+        ),
+        ParameterDef(
+            name="assignees",
+            type=ParameterType.JSON,
+            required=False,
+            default_value=[],
+            description="Assignees (array of usernames)",
+        ),
+        ParameterDef(
+            name="milestone",
+            type=ParameterType.INTEGER,
+            required=False,
+            description="Milestone number",
         ),
     ],
     input_ports=[
@@ -96,15 +136,18 @@ GITHUB_SPEC = NodeSpec(
 
 # Email - email operations
 EMAIL_SPEC = NodeSpec(
-    node_type="EXTERNAL_ACTION_NODE",
-    subtype="EMAIL",
-    description="Send emails through various providers",
+    node_type=NodeType.EXTERNAL_ACTION,
+    subtype=ExternalActionSubtype.EMAIL,
+    description="Send emails via SMTP server",
+    display_name="Email SMTP",
+    category="integrations",
+    template_id="external_email_smtp",
     parameters=[
         ParameterDef(
             name="to",
             type=ParameterType.JSON,
             required=True,
-            description="Recipient list",
+            description="Recipient email addresses (array of strings)",
         ),
         ParameterDef(
             name="subject",
@@ -116,35 +159,68 @@ EMAIL_SPEC = NodeSpec(
             name="body",
             type=ParameterType.STRING,
             required=True,
-            description="Email body",
+            description="Email body content",
+        ),
+        ParameterDef(
+            name="smtp_server",
+            type=ParameterType.STRING,
+            required=True,
+            description="SMTP server hostname",
+        ),
+        ParameterDef(
+            name="port",
+            type=ParameterType.INTEGER,
+            required=False,
+            default_value=587,
+            description="SMTP server port",
+        ),
+        ParameterDef(
+            name="username",
+            type=ParameterType.STRING,
+            required=True,
+            description="SMTP username",
+        ),
+        ParameterDef(
+            name="password",
+            type=ParameterType.STRING,
+            required=True,
+            description="SMTP password (sensitive)",
+        ),
+        ParameterDef(
+            name="use_tls",
+            type=ParameterType.BOOLEAN,
+            required=False,
+            default_value=True,
+            description="Use TLS encryption",
         ),
         ParameterDef(
             name="cc",
             type=ParameterType.JSON,
             required=False,
             default_value=[],
-            description="CC list",
+            description="CC email addresses (array of strings)",
         ),
         ParameterDef(
             name="bcc",
             type=ParameterType.JSON,
             required=False,
             default_value=[],
-            description="BCC list",
+            description="BCC email addresses (array of strings)",
+        ),
+        ParameterDef(
+            name="content_type",
+            type=ParameterType.ENUM,
+            required=False,
+            default_value="text/html",
+            enum_values=["text/plain", "text/html"],
+            description="Email content type",
         ),
         ParameterDef(
             name="attachments",
             type=ParameterType.JSON,
             required=False,
             default_value=[],
-            description="Attachment list",
-        ),
-        ParameterDef(
-            name="html_body",
-            type=ParameterType.BOOLEAN,
-            required=False,
-            default_value=False,
-            description="Whether body is HTML format",
+            description="Email attachments (array of file objects)",
         ),
     ],
     input_ports=[
@@ -185,9 +261,12 @@ EMAIL_SPEC = NodeSpec(
 
 # Slack - Slack operations
 SLACK_SPEC = NodeSpec(
-    node_type="EXTERNAL_ACTION_NODE",
-    subtype="SLACK",
+    node_type=NodeType.EXTERNAL_ACTION,
+    subtype=ExternalActionSubtype.SLACK,
     description="Send messages and interact with Slack",
+    display_name="Slack Integration",
+    category="integrations",
+    template_id="external_slack",
     parameters=[
         ParameterDef(
             name="channel",
@@ -218,7 +297,32 @@ SLACK_SPEC = NodeSpec(
             name="thread_ts",
             type=ParameterType.STRING,
             required=False,
-            description="Thread timestamp",
+            description="Thread timestamp for reply",
+        ),
+        ParameterDef(
+            name="username",
+            type=ParameterType.STRING,
+            required=False,
+            description="Custom username for bot message",
+        ),
+        ParameterDef(
+            name="icon_emoji",
+            type=ParameterType.STRING,
+            required=False,
+            description="Emoji icon for bot message",
+        ),
+        ParameterDef(
+            name="icon_url",
+            type=ParameterType.STRING,
+            required=False,
+            description="URL icon for bot message",
+        ),
+        ParameterDef(
+            name="blocks",
+            type=ParameterType.JSON,
+            required=False,
+            default_value=[],
+            description="Slack Block Kit blocks",
         ),
     ],
     input_ports=[
@@ -257,12 +361,130 @@ SLACK_SPEC = NodeSpec(
     ],
 )
 
-# API Call - generic API calls
-API_CALL_SPEC = NodeSpec(
-    node_type="EXTERNAL_ACTION_NODE",
-    subtype="API_CALL",
-    description="Make generic HTTP API calls",
+# Google Calendar - Google Calendar operations
+GOOGLE_CALENDAR_SPEC = NodeSpec(
+    node_type=NodeType.EXTERNAL_ACTION,
+    subtype="GOOGLE_CALENDAR",
+    description="Interact with Google Calendar API",
+    display_name="Google Calendar",
+    category="integrations",
+    template_id="external_google_calendar",
     parameters=[
+        ParameterDef(
+            name="action",
+            type=ParameterType.ENUM,
+            required=True,
+            enum_values=[
+                "list_events",
+                "create_event",
+                "update_event",
+                "delete_event",
+                "get_event",
+            ],
+            description="Google Calendar action type",
+        ),
+        ParameterDef(
+            name="calendar_id",
+            type=ParameterType.STRING,
+            required=False,
+            default_value="primary",
+            description="Calendar ID",
+        ),
+        ParameterDef(
+            name="summary",
+            type=ParameterType.STRING,
+            required=False,
+            description="Event title/summary",
+        ),
+        ParameterDef(
+            name="description",
+            type=ParameterType.STRING,
+            required=False,
+            description="Event description",
+        ),
+        ParameterDef(
+            name="location",
+            type=ParameterType.STRING,
+            required=False,
+            description="Event location",
+        ),
+        ParameterDef(
+            name="start_datetime",
+            type=ParameterType.STRING,
+            required=False,
+            description="Event start datetime (ISO format)",
+        ),
+        ParameterDef(
+            name="end_datetime",
+            type=ParameterType.STRING,
+            required=False,
+            description="Event end datetime (ISO format)",
+        ),
+        ParameterDef(
+            name="event_id",
+            type=ParameterType.STRING,
+            required=False,
+            description="Event ID for update/delete operations",
+        ),
+        ParameterDef(
+            name="max_results",
+            type=ParameterType.STRING,
+            required=False,
+            default_value="10",
+            description="Maximum number of events to return",
+        ),
+    ],
+    input_ports=[
+        InputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            required=False,
+            description="Dynamic calendar event data",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"event_data": "object", "filter_params": "object"}',
+                examples=[
+                    '{"event_data": {"attendees": ["user@example.com"]}, "filter_params": {"time_min": "2025-01-01T00:00:00Z"}}'
+                ],
+            ),
+        )
+    ],
+    output_ports=[
+        OutputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            description="Google Calendar operation result",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"success": "boolean", "event": "object", "events": "array", "event_id": "string"}',
+                examples=[
+                    '{"success": true, "event": {"id": "event123", "summary": "Meeting"}, "event_id": "event123"}'
+                ],
+            ),
+        ),
+        OutputPortSpec(
+            name="error",
+            type=ConnectionType.ERROR,
+            description="Error output when Google Calendar operation fails",
+        ),
+    ],
+)
+
+# Generic API Call - flexible HTTP API integration
+API_CALL_SPEC = NodeSpec(
+    node_type=NodeType.EXTERNAL_ACTION,
+    subtype=ExternalActionSubtype.API_CALL,
+    description="Make generic HTTP API calls to any endpoint",
+    display_name="Generic API Call",
+    category="integrations",
+    template_id="external_api_call_generic",
+    parameters=[
+        ParameterDef(
+            name="url",
+            type=ParameterType.URL,
+            required=True,
+            description="API endpoint URL",
+        ),
         ParameterDef(
             name="method",
             type=ParameterType.ENUM,
@@ -272,12 +494,6 @@ API_CALL_SPEC = NodeSpec(
             description="HTTP method",
         ),
         ParameterDef(
-            name="url",
-            type=ParameterType.URL,
-            required=True,
-            description="API endpoint URL",
-        ),
-        ParameterDef(
             name="headers",
             type=ParameterType.JSON,
             required=False,
@@ -285,17 +501,17 @@ API_CALL_SPEC = NodeSpec(
             description="HTTP headers",
         ),
         ParameterDef(
+            name="body",
+            type=ParameterType.JSON,
+            required=False,
+            description="Request body data",
+        ),
+        ParameterDef(
             name="query_params",
             type=ParameterType.JSON,
             required=False,
             default_value={},
             description="Query parameters",
-        ),
-        ParameterDef(
-            name="body",
-            type=ParameterType.JSON,
-            required=False,
-            description="Request body data",
         ),
         ParameterDef(
             name="timeout",
@@ -312,18 +528,30 @@ API_CALL_SPEC = NodeSpec(
             enum_values=["none", "bearer", "basic", "api_key"],
             description="Authentication method",
         ),
+        ParameterDef(
+            name="auth_token",
+            type=ParameterType.STRING,
+            required=False,
+            description="Authentication token (when needed)",
+        ),
+        ParameterDef(
+            name="api_key_header",
+            type=ParameterType.STRING,
+            required=False,
+            description="API key header name (for api_key auth)",
+        ),
     ],
     input_ports=[
         InputPortSpec(
             name="main",
             type=ConnectionType.MAIN,
             required=False,
-            description="Dynamic API request data",
+            description="Dynamic API call data",
             data_format=DataFormat(
                 mime_type="application/json",
-                schema='{"dynamic_params": "object", "dynamic_headers": "object"}',
+                schema='{"dynamic_headers": "object", "dynamic_params": "object", "payload": "object"}',
                 examples=[
-                    '{"dynamic_params": {"user_id": "123"}, "dynamic_headers": {"X-Custom": "value"}}'
+                    '{"dynamic_headers": {"X-Custom": "value"}, "dynamic_params": {"filter": "active"}, "payload": {"data": "value"}}'
                 ],
             ),
         )
@@ -332,12 +560,12 @@ API_CALL_SPEC = NodeSpec(
         OutputPortSpec(
             name="main",
             type=ConnectionType.MAIN,
-            description="API response",
+            description="API response data",
             data_format=DataFormat(
                 mime_type="application/json",
                 schema='{"status_code": "number", "headers": "object", "body": "object", "response_time": "number"}',
                 examples=[
-                    '{"status_code": 200, "headers": {"content-type": "application/json"}, "body": {"result": "success"}, "response_time": 0.25}'
+                    '{"status_code": 200, "headers": {"Content-Type": "application/json"}, "body": {"result": "success"}, "response_time": 1.2}'
                 ],
             ),
         ),

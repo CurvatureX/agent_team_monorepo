@@ -73,7 +73,32 @@ class MCPToolCaller:
             "Accept": "application/json"
         }
         
+        # Create a shared session with connection pooling for better performance
+        self._session = None
+        
         logger.info(f"MCP Tool initialized with server URL: {self.server_url}")
+    
+    async def _get_session(self):
+        """Get or create the aiohttp session with connection pooling"""
+        if self._session is None:
+            connector = aiohttp.TCPConnector(
+                limit=100,  # Total connection pool limit
+                limit_per_host=30,  # Per-host connection limit
+                ttl_dns_cache=300,  # DNS cache timeout
+                keepalive_timeout=30  # Keep connections alive for reuse
+            )
+            timeout = aiohttp.ClientTimeout(total=10, connect=2)  # 10s total, 2s connect
+            self._session = aiohttp.ClientSession(
+                connector=connector,
+                timeout=timeout
+            )
+        return self._session
+    
+    async def close(self):
+        """Close the session when done"""
+        if self._session:
+            await self._session.close()
+            self._session = None
 
     async def get_node_types(self, type_filter: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -94,15 +119,20 @@ class MCPToolCaller:
             
             if type_filter:
                 payload["arguments"]["type_filter"] = type_filter
+            
+            # Simplified API logging
+            logger.debug(f"MCP API: POST {self.server_url}/invoke")
                 
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
+            session = await self._get_session()
+            async with session.post(
                     f"{self.server_url}/invoke",
                     json=payload,
                     headers=self.headers
                 ) as response:
                     response.raise_for_status()
                     result = await response.json()
+                    
+                    logger.debug(f"MCP API Response: {response.status}")
                     
                     # Extract the actual result from MCP response format
                     if "result" in result:
@@ -118,7 +148,7 @@ class MCPToolCaller:
                     return result
                     
         except Exception as e:
-            logger.error(f"Error getting node types: {e}")
+            logger.error(f"❌ Error getting node types: {e}")
             return {"error": str(e)}
 
     async def get_node_details(
@@ -149,8 +179,12 @@ class MCPToolCaller:
                 }
             }
             
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
+            # Simplified logging for node details request
+            node_list = [f"{n.get('node_type', 'unknown')}:{n.get('subtype', 'unknown')}" for n in nodes]
+            logger.info(f"📦 Getting details for {len(nodes)} nodes: {', '.join(node_list[:3])}{'...' if len(node_list) > 3 else ''}")
+            
+            session = await self._get_session()
+            async with session.post(
                     f"{self.server_url}/invoke",
                     json=payload,
                     headers=self.headers
@@ -158,20 +192,74 @@ class MCPToolCaller:
                     response.raise_for_status()
                     result = await response.json()
                     
+                    logger.debug(f"MCP API Response: {response.status}")
+                    
                     # Extract the actual result from MCP response format
                     if "result" in result:
                         actual_result = result["result"]
                         if "structuredContent" in actual_result:
-                            return actual_result["structuredContent"]
+                            content = actual_result["structuredContent"]
+                            if "nodes" in content:
+                                logger.debug(f"Received details for {len(content['nodes'])} nodes")
+                            return content
                         elif "content" in actual_result:
                             content = actual_result["content"]
                             if isinstance(content, list) and content:
+                                logger.debug(f"Received details for {len(content)} nodes")
                                 return {"nodes": content}
                     
                     return result
                     
         except Exception as e:
-            logger.error(f"Error getting node details: {e}")
+            logger.error(f"❌ Error getting node details: {e}")
+            return {"error": str(e)}
+
+    async def call_tool(self, tool_name: str, tool_args: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Generic method to call MCP tools by name.
+        This is used by the LangChain tool execution logic.
+        
+        Args:
+            tool_name: Name of the tool to call
+            tool_args: Arguments for the tool
+            
+        Returns:
+            Dictionary with tool result
+        """
+        # Simplified logging - show tool name and brief args
+        args_summary = f"nodes={len(tool_args.get('nodes', []))} items" if 'nodes' in tool_args else str(tool_args)
+        logger.info(f"🔧 MCP Call: {tool_name} ({args_summary})")
+        
+        try:
+            result = None
+            if tool_name == "get_node_types":
+                type_filter = tool_args.get("type_filter")
+                result = await self.get_node_types(type_filter)
+            elif tool_name == "get_node_details":
+                nodes = tool_args.get("nodes", [])
+                include_examples = tool_args.get("include_examples", True)
+                include_schemas = tool_args.get("include_schemas", True)
+                result = await self.get_node_details(nodes, include_examples, include_schemas)
+            else:
+                result = {"error": f"Unknown tool: {tool_name}"}
+            
+            # Simplified response logging
+            if result:
+                if isinstance(result, dict):
+                    if "nodes" in result:
+                        logger.info(f"✅ MCP Response: {len(result['nodes'])} nodes returned")
+                    elif "node_types" in result:
+                        logger.info(f"✅ MCP Response: {len(result.get('node_types', []))} node types")
+                    else:
+                        # For other responses, show keys
+                        logger.info(f"✅ MCP Response: {list(result.keys())}")
+                else:
+                    logger.info(f"✅ MCP Response received")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Error calling tool {tool_name}: {e}")
             return {"error": str(e)}
 
     def get_langchain_tools(self) -> List[Tool]:

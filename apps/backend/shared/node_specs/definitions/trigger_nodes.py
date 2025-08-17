@@ -5,6 +5,7 @@ This module defines specifications for all TRIGGER_NODE subtypes including
 manual triggers, webhooks, cron jobs, chat triggers, and other event-based triggers.
 """
 
+from ...models.node_enums import NodeType, TriggerSubtype
 from ..base import (
     ConnectionType,
     DataFormat,
@@ -17,9 +18,12 @@ from ..base import (
 
 # Manual trigger - started by user action
 MANUAL_TRIGGER_SPEC = NodeSpec(
-    node_type="TRIGGER_NODE",
-    subtype="TRIGGER_MANUAL",
+    node_type=NodeType.TRIGGER,
+    subtype=TriggerSubtype.MANUAL,
     description="Manual trigger activated by user action",
+    display_name="Manual Trigger",
+    category="triggers",
+    template_id="trigger_manual",
     parameters=[
         ParameterDef(
             name="trigger_name",
@@ -33,13 +37,6 @@ MANUAL_TRIGGER_SPEC = NodeSpec(
             type=ParameterType.STRING,
             required=False,
             description="Description of what this trigger does",
-        ),
-        ParameterDef(
-            name="require_confirmation",
-            type=ParameterType.BOOLEAN,
-            required=False,
-            default_value=False,
-            description="Whether to require confirmation before execution",
         ),
     ],
     input_ports=[],  # Trigger nodes have no input ports
@@ -63,9 +60,12 @@ MANUAL_TRIGGER_SPEC = NodeSpec(
 
 # Cron trigger - scheduled execution
 CRON_TRIGGER_SPEC = NodeSpec(
-    node_type="TRIGGER_NODE",
-    subtype="TRIGGER_CRON",
+    node_type=NodeType.TRIGGER,
+    subtype=TriggerSubtype.CRON,
     description="Scheduled trigger based on cron expressions",
+    display_name="Cron Trigger",
+    category="triggers",
+    template_id="trigger_cron",
     parameters=[
         ParameterDef(
             name="cron_expression",
@@ -110,9 +110,12 @@ CRON_TRIGGER_SPEC = NodeSpec(
 
 # Webhook trigger - HTTP endpoint
 WEBHOOK_TRIGGER_SPEC = NodeSpec(
-    node_type="TRIGGER_NODE",
-    subtype="TRIGGER_WEBHOOK",
+    node_type=NodeType.TRIGGER,
+    subtype=TriggerSubtype.WEBHOOK,
     description="HTTP webhook trigger that responds to incoming requests",
+    display_name="Webhook Trigger",
+    category="triggers",
+    template_id="trigger_webhook",
     parameters=[
         ParameterDef(
             name="webhook_path",
@@ -165,8 +168,8 @@ WEBHOOK_TRIGGER_SPEC = NodeSpec(
 
 # Slack trigger - Slack interaction trigger
 SLACK_TRIGGER_SPEC = NodeSpec(
-    node_type="TRIGGER_NODE",
-    subtype="TRIGGER_SLACK",
+    node_type=NodeType.TRIGGER,
+    subtype=TriggerSubtype.SLACK,
     description="Slack trigger that responds to Slack interactions and events",
     parameters=[
         ParameterDef(
@@ -183,7 +186,7 @@ SLACK_TRIGGER_SPEC = NodeSpec(
         ),
         ParameterDef(
             name="event_types",
-            type=ParameterType.ARRAY,
+            type=ParameterType.JSON,
             required=False,
             default_value=["message", "app_mention"],
             enum_values=[
@@ -254,8 +257,8 @@ SLACK_TRIGGER_SPEC = NodeSpec(
 
 # Email trigger - email monitoring
 EMAIL_TRIGGER_SPEC = NodeSpec(
-    node_type="TRIGGER_NODE",
-    subtype="TRIGGER_EMAIL",
+    node_type=NodeType.TRIGGER,
+    subtype=TriggerSubtype.EMAIL,
     description="Email trigger that monitors incoming emails",
     parameters=[
         ParameterDef(
@@ -308,8 +311,8 @@ EMAIL_TRIGGER_SPEC = NodeSpec(
 
 # GitHub trigger - repository event based
 GITHUB_TRIGGER_SPEC = NodeSpec(
-    node_type="TRIGGER_NODE",
-    subtype="TRIGGER_GITHUB",
+    node_type=NodeType.TRIGGER,
+    subtype=TriggerSubtype.GITHUB,
     description="GitHub repository trigger for code events and workflows",
     parameters=[
         ParameterDef(
@@ -326,70 +329,45 @@ GITHUB_TRIGGER_SPEC = NodeSpec(
             validation_pattern=r"^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$",
         ),
         ParameterDef(
-            name="events",
-            type=ParameterType.ARRAY,
+            name="event_config",
+            type=ParameterType.JSON,
             required=True,
-            description="GitHub webhook events to listen for",
+            description="Event-specific configuration. Each key is an event type with its filters. See enum_values for supported events.",
             enum_values=[
                 "push",
                 "pull_request",
                 "pull_request_review",
+                "pull_request_review_comment",
+                "pull_request_review_thread",
                 "issues",
                 "issue_comment",
+                "commit_comment",
                 "release",
-                "deployment",
-                "deployment_status",
                 "create",
                 "delete",
                 "fork",
-                "star",
-                "watch",
                 "repository",
-                "member",
-                "team_add",
                 "workflow_run",
                 "workflow_dispatch",
-                "schedule",
-                "check_run",
-                "check_suite",
+                "workflow_job",
+                "label",
+                "milestone",
+                "star",
+                "watch",
             ],
-        ),
-        ParameterDef(
-            name="branches",
-            type=ParameterType.ARRAY,
-            required=False,
-            description="Branch filter (only for push/pull_request events). Empty means all branches",
-        ),
-        ParameterDef(
-            name="paths",
-            type=ParameterType.ARRAY,
-            required=False,
-            description="File path filters using glob patterns (e.g., ['src/**', '*.md'])",
-        ),
-        ParameterDef(
-            name="action_filter",
-            type=ParameterType.ARRAY,
-            required=False,
-            description="Action types to filter on (e.g., ['opened', 'closed', 'synchronize'] for PRs)",
         ),
         ParameterDef(
             name="author_filter",
             type=ParameterType.STRING,
             required=False,
-            description="Filter by commit/PR author (username or regex pattern)",
-        ),
-        ParameterDef(
-            name="label_filter",
-            type=ParameterType.ARRAY,
-            required=False,
-            description="Filter by issue/PR labels (any match triggers)",
+            description="Global filter by commit/PR/issue author (username or regex pattern). Applies to all events.",
         ),
         ParameterDef(
             name="ignore_bots",
             type=ParameterType.BOOLEAN,
             required=False,
             default_value=True,
-            description="Ignore events from bot accounts",
+            description="Globally ignore events from bot accounts (users with [bot] suffix or type 'Bot')",
         ),
         ParameterDef(
             name="require_signature_verification",
@@ -397,14 +375,6 @@ GITHUB_TRIGGER_SPEC = NodeSpec(
             required=False,
             default_value=True,
             description="Verify GitHub webhook signature for security",
-        ),
-        ParameterDef(
-            name="draft_pr_handling",
-            type=ParameterType.ENUM,
-            required=False,
-            default_value="ignore",
-            enum_values=["ignore", "include", "only"],
-            description="How to handle draft pull requests",
         ),
     ],
     input_ports=[],
@@ -415,13 +385,16 @@ GITHUB_TRIGGER_SPEC = NodeSpec(
             description="GitHub event data",
             data_format=DataFormat(
                 mime_type="application/json",
-                schema='{"event": "string", "action": "string", "repository": "object", "sender": "object", "payload": "object", "timestamp": "string"}',
+                schema='{"event": "string", "action": "string", "repository": "object", "sender": "object", "payload": "object", "timestamp": "string", "review_state": "string", "ref_type": "string", "workflow": "object", "job": "object"}',
                 examples=[
-                    '{"event": "push", "action": null, "repository": {"name": "my-repo", "owner": {"login": "user"}}, "sender": {"login": "developer"}, "payload": {"commits": [{"message": "Fix bug"}]}, "timestamp": "2025-01-28T10:30:00Z"}',
-                    '{"event": "pull_request", "action": "opened", "repository": {"name": "my-repo", "owner": {"login": "user"}}, "sender": {"login": "contributor"}, "payload": {"number": 42, "title": "New feature"}, "timestamp": "2025-01-28T10:30:00Z"}',
+                    '{"event": "push", "action": null, "repository": {"name": "my-repo", "owner": {"login": "user"}}, "sender": {"login": "developer"}, "payload": {"ref": "refs/heads/main", "commits": [{"message": "Fix bug"}]}, "timestamp": "2025-01-28T10:30:00Z"}',
+                    '{"event": "pull_request", "action": "opened", "repository": {"name": "my-repo", "owner": {"login": "user"}}, "sender": {"login": "contributor"}, "payload": {"number": 42, "title": "New feature", "draft": false}, "timestamp": "2025-01-28T10:30:00Z"}',
+                    '{"event": "pull_request_review", "action": "submitted", "review_state": "approved", "repository": {"name": "my-repo", "owner": {"login": "user"}}, "sender": {"login": "reviewer"}, "payload": {"review": {"state": "approved", "body": "LGTM"}}, "timestamp": "2025-01-28T10:30:00Z"}',
+                    '{"event": "workflow_run", "action": "completed", "repository": {"name": "my-repo", "owner": {"login": "user"}}, "sender": {"login": "github-actions[bot]"}, "workflow": {"name": "CI", "path": ".github/workflows/ci.yml"}, "payload": {"conclusion": "success", "run_number": 123}, "timestamp": "2025-01-28T10:30:00Z"}',
+                    '{"event": "create", "action": null, "ref_type": "branch", "repository": {"name": "my-repo", "owner": {"login": "user"}}, "sender": {"login": "developer"}, "payload": {"ref": "feature-branch", "ref_type": "branch"}, "timestamp": "2025-01-28T10:30:00Z"}',
                 ],
             ),
-            validation_schema='{"type": "object", "properties": {"event": {"type": "string"}, "action": {"type": ["string", "null"]}, "repository": {"type": "object"}, "sender": {"type": "object"}, "payload": {"type": "object"}, "timestamp": {"type": "string"}}, "required": ["event", "repository", "sender", "payload", "timestamp"]}',
+            validation_schema='{"type": "object", "properties": {"event": {"type": "string"}, "action": {"type": ["string", "null"]}, "repository": {"type": "object"}, "sender": {"type": "object"}, "payload": {"type": "object"}, "timestamp": {"type": "string"}, "review_state": {"type": ["string", "null"]}, "ref_type": {"type": ["string", "null"]}, "workflow": {"type": ["object", "null"]}, "job": {"type": ["object", "null"]}}, "required": ["event", "repository", "sender", "payload", "timestamp"]}',
         )
     ],
 )

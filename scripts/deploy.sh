@@ -46,10 +46,10 @@ build_and_push() {
     aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $(aws sts get-caller-identity --query Account --output text).dkr.ecr.$AWS_REGION.amazonaws.com
 
     cd apps/backend
-    
+
     # Get AWS account ID
     AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-    
+
     # Build and push API Gateway
     echo -e "${YELLOW}Building API Gateway...${NC}"
     docker build --target production -f api-gateway/Dockerfile -t $PROJECT_NAME/api-gateway:latest .
@@ -67,7 +67,13 @@ build_and_push() {
     docker build --target production -f workflow_engine/Dockerfile -t $PROJECT_NAME/workflow-engine:latest .
     docker tag $PROJECT_NAME/workflow-engine:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT_NAME/workflow-engine:latest
     docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT_NAME/workflow-engine:latest
-    
+
+    # Build and push Workflow Scheduler
+    echo -e "${YELLOW}Building Workflow Scheduler...${NC}"
+    docker build -f workflow_scheduler/Dockerfile -t $PROJECT_NAME/workflow-scheduler:latest .
+    docker tag $PROJECT_NAME/workflow-scheduler:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT_NAME/workflow-scheduler:latest
+    docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$PROJECT_NAME/workflow-scheduler:latest
+
     cd ../..
 
     echo -e "${GREEN}✅ Images built and pushed successfully${NC}"
@@ -118,11 +124,18 @@ update_services() {
         --force-new-deployment \
         --region $AWS_REGION
 
+    # Update Workflow Scheduler service
+    aws ecs update-service \
+        --cluster $PROJECT_NAME-$ENVIRONMENT-cluster \
+        --service workflow-scheduler-service \
+        --force-new-deployment \
+        --region $AWS_REGION
+
     # Wait for services to stabilize
     echo -e "${YELLOW}⏳ Waiting for services to stabilize...${NC}"
     aws ecs wait services-stable \
         --cluster $PROJECT_NAME-$ENVIRONMENT-cluster \
-        --services api-gateway-service workflow-agent-service workflow-engine-service \
+        --services api-gateway-service workflow-agent-service workflow-engine-service workflow-scheduler-service \
         --region $AWS_REGION
 
     echo -e "${GREEN}✅ Services updated successfully${NC}"
@@ -144,7 +157,7 @@ get_status() {
     # Get service status
     aws ecs describe-services \
         --cluster $PROJECT_NAME-$ENVIRONMENT-cluster \
-        --services api-gateway-service workflow-agent-service workflow-engine-service \
+        --services api-gateway-service workflow-agent-service workflow-engine-service workflow-scheduler-service \
         --query 'services[*].{Name:serviceName,Status:status,Running:runningCount,Desired:desiredCount}' \
         --output table \
         --region $AWS_REGION

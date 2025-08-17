@@ -52,9 +52,9 @@ Development Slack Workspace: "your-test-workspace"
 
 ```yaml
 Redirect URLs:
-  - "https://api.aiworkflowteams.com/auth/slack/callback" # Production
-  - "https://staging-api.aiworkflowteams.com/auth/slack/callback" # Staging
-  - "http://localhost:8000/auth/slack/callback" # Development
+  - "https://api.aiworkflowteams.com/api/v1/public/webhooks/slack/auth" # Production
+  - "https://staging-api.aiworkflowteams.com/api/v1/public/webhooks/slack/auth" # Staging
+  - "http://localhost:8000/api/v1/public/webhooks/slack/auth" # Development
 
 Scopes - Bot Token Scopes:
   - "app_mentions:read" # Detect @mentions of the bot
@@ -202,7 +202,7 @@ Support:
 **Direct Installation URL:**
 
 ```
-https://slack.com/oauth/v2/authorize?client_id=YOUR_CLIENT_ID&scope=app_mentions:read,channels:history,channels:read,chat:write,commands,files:read,groups:history,groups:read,im:history,im:read,im:write,mpim:history,mpim:read,reactions:read,reactions:write,team:read,users:read,users:read.email,workflow.steps:execute&redirect_uri=https://api.aiworkflowteams.com/auth/slack/callback
+https://slack.com/oauth/v2/authorize?client_id=YOUR_CLIENT_ID&scope=app_mentions:read,channels:history,channels:read,chat:write,commands,files:read,groups:history,groups:read,im:history,im:read,im:write,mpim:history,mpim:read,reactions:read,reactions:write,team:read,users:read,users:read.email,workflow.steps:execute&redirect_uri=https://api.aiworkflowteams.com/api/v1/public/webhooks/slack/auth
 ```
 
 ### Database Schema

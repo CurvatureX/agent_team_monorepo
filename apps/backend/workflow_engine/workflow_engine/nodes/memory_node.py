@@ -10,21 +10,19 @@ import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
+from shared.models import NodeType
+from shared.models.node_enums import MemorySubtype
+from shared.node_specs import node_spec_registry
+from shared.node_specs.base import NodeSpec
 
-try:
-    from shared.node_specs import node_spec_registry
-    from shared.node_specs.base import NodeSpec
-except ImportError:
-    node_spec_registry = None
-    NodeSpec = None
+from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
 
 
 class MemoryNodeExecutor(BaseNodeExecutor):
     """Executor for MEMORY_NODE type."""
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, subtype: Optional[str] = None):
+        super().__init__(subtype=subtype)
         # Mock memory storage
         self._vector_db = {}
         self._key_value_store = {}
@@ -34,29 +32,22 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         """Get the node specification for memory nodes."""
         if node_spec_registry and self._subtype:
             # Return the specific spec for current subtype
-            return node_spec_registry.get_spec("MEMORY_NODE", self._subtype)
+            return node_spec_registry.get_spec(NodeType.MEMORY.value, self._subtype)
         return None
 
     def get_supported_subtypes(self) -> List[str]:
         """Get supported memory subtypes."""
-        return [
-            "MEMORY_SIMPLE",
-            "MEMORY_BUFFER",
-            "MEMORY_KNOWLEDGE",
-            "MEMORY_VECTOR_STORE",
-            "MEMORY_DOCUMENT",
-            "MEMORY_EMBEDDING",
-        ]
+        return [subtype.value for subtype in MemorySubtype]
 
     def validate(self, node: Any) -> List[str]:
         """Validate memory node configuration using spec-based validation."""
         # First use the base class validation which includes spec validation
         errors = super().validate(node)
-        
+
         # If spec validation passed, we're done
         if not errors and self.spec:
             return errors
-        
+
         # Fallback if spec not available
         if not node.subtype:
             errors.append("Memory subtype is required")
@@ -66,37 +57,43 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             errors.append(f"Unsupported memory subtype: {node.subtype}")
 
         return errors
-    
+
     def _validate_legacy(self, node: Any) -> List[str]:
         """Legacy validation for backward compatibility."""
         errors = []
-        
-        if not hasattr(node, 'subtype'):
+
+        if not hasattr(node, "subtype"):
             return errors
-            
+
         subtype = node.subtype
 
         if subtype == "MEMORY_VECTOR_STORE":
             errors.extend(
                 self._validate_required_parameters(node, ["operation", "collection_name"])
             )
-            if hasattr(node, 'parameters'):
+            if hasattr(node, "parameters"):
                 operation = node.parameters.get("operation", "")
                 if operation and operation not in ["store", "search", "delete", "update"]:
                     errors.append(f"Invalid vector DB operation: {operation}")
 
         elif subtype == "MEMORY_SIMPLE":
             errors.extend(self._validate_required_parameters(node, ["operation", "key"]))
-            if hasattr(node, 'parameters'):
+            if hasattr(node, "parameters"):
                 operation = node.parameters.get("operation", "")
                 if operation and operation not in ["get", "set", "delete", "exists"]:
                     errors.append(f"Invalid key-value operation: {operation}")
 
         elif subtype == "MEMORY_DOCUMENT":
             errors.extend(self._validate_required_parameters(node, ["operation", "document_id"]))
-            if hasattr(node, 'parameters'):
+            if hasattr(node, "parameters"):
                 operation = node.parameters.get("operation", "")
-                if operation and operation not in ["store", "retrieve", "update", "delete", "search"]:
+                if operation and operation not in [
+                    "store",
+                    "retrieve",
+                    "update",
+                    "delete",
+                    "search",
+                ]:
                     errors.append(f"Invalid document operation: {operation}")
 
         return errors
@@ -110,17 +107,17 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             subtype = context.node.subtype
             logs.append(f"Executing memory node with subtype: {subtype}")
 
-            if subtype == "MEMORY_VECTOR_STORE":
+            if subtype == MemorySubtype.VECTOR_DATABASE.value:
                 return self._execute_vector_db(context, logs, start_time)
-            elif subtype == "MEMORY_SIMPLE":
+            elif subtype == MemorySubtype.SIMPLE_MEMORY.value:
                 return self._execute_key_value(context, logs, start_time)
-            elif subtype == "MEMORY_DOCUMENT":
+            elif subtype == MemorySubtype.DOCUMENT_STORE.value:
                 return self._execute_document(context, logs, start_time)
-            elif subtype == "MEMORY_BUFFER":
+            elif subtype == MemorySubtype.KEY_VALUE_STORE.value:
                 return self._execute_buffer(context, logs, start_time)
-            elif subtype == "MEMORY_KNOWLEDGE":
+            elif subtype == MemorySubtype.SQL_DATABASE.value:
                 return self._execute_knowledge(context, logs, start_time)
-            elif subtype == "MEMORY_EMBEDDING":
+            elif subtype == MemorySubtype.REDIS_CACHE.value:
                 return self._execute_embedding(context, logs, start_time)
             else:
                 return self._create_error_result(

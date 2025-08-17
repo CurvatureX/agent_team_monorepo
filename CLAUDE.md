@@ -142,10 +142,3 @@ Remember: When in doubt, check the service-specific CLAUDE.md for detailed guida
 
 - **Python Project Management**: Use `uv` and `.venv` to manage Python projects
 
-## IMPORTANT: Sound Notification
-
-After finishing responding to my request or running a command, run this command to notify me by sound:
-
-```bash
-say "I'm done"
-```

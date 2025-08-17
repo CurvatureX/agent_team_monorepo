@@ -153,7 +153,7 @@ GET /api/v1/triggers/health
 
 ```bash
 # 通用 webhook（通过 API Gateway）
-POST /api/v1/public/webhook/{workflow_id}
+POST /api/v1/public/webhook/workflow/{workflow_id}
 
 # GitHub webhook（通过 API Gateway）
 POST /api/v1/public/webhooks/github

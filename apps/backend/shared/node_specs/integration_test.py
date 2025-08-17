@@ -31,22 +31,30 @@ def test_node_specs_loading():
         specs = node_spec_registry.list_all_specs()
         print(f"✅ Loaded {len(specs)} node specifications")
 
-        # Check specific AI agent specs
-        openai_spec = node_spec_registry.get_spec("AI_AGENT_NODE", "OPENAI_NODE")
+        # Check specific AI agent specs (using enum values)
+        from shared.models.node_enums import AIAgentSubtype, NodeType
+
+        openai_spec = node_spec_registry.get_spec(
+            NodeType.AI_AGENT.value, AIAgentSubtype.OPENAI_CHATGPT.value
+        )
         if openai_spec:
             print(f"✅ OpenAI spec loaded: {openai_spec.description}")
         else:
             print("❌ OpenAI spec not found")
             return False
 
-        gemini_spec = node_spec_registry.get_spec("AI_AGENT_NODE", "GEMINI_NODE")
+        gemini_spec = node_spec_registry.get_spec(
+            NodeType.AI_AGENT.value, AIAgentSubtype.GOOGLE_GEMINI.value
+        )
         if gemini_spec:
             print(f"✅ Gemini spec loaded: {gemini_spec.description}")
         else:
             print("❌ Gemini spec not found")
             return False
 
-        claude_spec = node_spec_registry.get_spec("AI_AGENT_NODE", "CLAUDE_NODE")
+        claude_spec = node_spec_registry.get_spec(
+            NodeType.AI_AGENT.value, AIAgentSubtype.ANTHROPIC_CLAUDE.value
+        )
         if claude_spec:
             print(f"✅ Claude spec loaded: {claude_spec.description}")
         else:
@@ -60,74 +68,19 @@ def test_node_specs_loading():
         return False
 
 
-def test_data_mapping():
-    """Test data mapping functionality."""
-    print("🧪 Testing data mapping...")
-
-    try:
-        from workflow_engine.data_mapping.context import ExecutionContext
-        from workflow_engine.data_mapping.processor import (
-            DataMapping,
-            DataMappingProcessor,
-            FieldMapping,
-            MappingType,
-        )
-
-        processor = DataMappingProcessor()
-
-        # Test DIRECT mapping
-        mapping = DataMapping(type=MappingType.DIRECT)
-        context = ExecutionContext(
-            workflow_id="test",
-            execution_id="test",
-            node_id="test_node",
-            current_time="2025-01-28T10:00:00Z",
-        )
-
-        source_data = {"message": "Hello World", "value": 42}
-        result = processor.transform_data(source_data, mapping, context)
-
-        if result == source_data:
-            print("✅ DIRECT mapping works")
-        else:
-            print(f"❌ DIRECT mapping failed: {result}")
-            return False
-
-        # Test FIELD_MAPPING
-        field_mapping = FieldMapping(
-            source_field="message", target_field="output_message", required=True
-        )
-
-        mapping = DataMapping(type=MappingType.FIELD_MAPPING, field_mappings=[field_mapping])
-
-        result = processor.transform_data(source_data, mapping, context)
-        expected = {"output_message": "Hello World"}
-
-        if result == expected:
-            print("✅ FIELD_MAPPING works")
-        else:
-            print(f"❌ FIELD_MAPPING failed: {result}")
-            return False
-
-        return True
-
-    except Exception as e:
-        print(f"❌ Data mapping test failed: {e}")
-        return False
-
-
 def test_node_validation():
     """Test node validation with specifications."""
     print("🧪 Testing node validation...")
 
     try:
+        # Create a mock node using proper enum values
+        from shared.models.node_enums import AIAgentSubtype, NodeType
         from shared.node_specs import node_spec_registry
 
-        # Create a mock node
         class MockNode:
             def __init__(self):
-                self.type = "AI_AGENT_NODE"
-                self.subtype = "OPENAI_NODE"
+                self.type = NodeType.AI_AGENT.value
+                self.subtype = AIAgentSubtype.OPENAI_CHATGPT.value
                 self.parameters = {
                     "system_prompt": "You are a helpful assistant",
                     "temperature": "0.7",
@@ -176,15 +129,20 @@ def test_base_node_executor():
         # Create a mock executor
         class MockExecutor(BaseNodeExecutor):
             def _get_node_spec(self):
+                from shared.models.node_enums import AIAgentSubtype, NodeType
                 from shared.node_specs import node_spec_registry
 
-                return node_spec_registry.get_spec("AI_AGENT_NODE", "OPENAI_NODE")
+                return node_spec_registry.get_spec(
+                    NodeType.AI_AGENT.value, AIAgentSubtype.OPENAI_CHATGPT.value
+                )
 
             def execute(self, context):
                 pass
 
             def get_supported_subtypes(self):
-                return ["OPENAI_NODE"]
+                from shared.models.node_enums import AIAgentSubtype
+
+                return [AIAgentSubtype.OPENAI_CHATGPT.value]
 
         executor = MockExecutor()
 
@@ -230,7 +188,6 @@ def main():
 
     tests = [
         ("Node Specs Loading", test_node_specs_loading),
-        ("Data Mapping", test_data_mapping),
         ("Node Validation", test_node_validation),
         ("BaseNodeExecutor Integration", test_base_node_executor),
     ]

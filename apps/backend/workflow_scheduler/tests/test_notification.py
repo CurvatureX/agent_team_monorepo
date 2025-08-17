@@ -12,6 +12,7 @@ import sys
 # Add current directory to Python path
 sys.path.insert(0, os.path.dirname(__file__))
 
+from shared.models.trigger import TriggerType
 from workflow_scheduler.services.notification_service import NotificationService
 from workflow_scheduler.triggers.cron_trigger import CronTrigger
 from workflow_scheduler.triggers.manual_trigger import ManualTrigger
@@ -33,7 +34,7 @@ async def test_notification_service():
     test_cases = [
         {
             "workflow_id": "test-workflow-001",
-            "trigger_type": "TRIGGER_MANUAL",
+            "trigger_type": TriggerType.MANUAL.value,
             "trigger_data": {
                 "user_id": "test_user",
                 "confirmation": True,
@@ -42,7 +43,7 @@ async def test_notification_service():
         },
         {
             "workflow_id": "daily-report-workflow",
-            "trigger_type": "TRIGGER_CRON",
+            "trigger_type": TriggerType.CRON.value,
             "trigger_data": {
                 "cron_expression": "0 9 * * MON-FRI",
                 "timezone": "America/New_York",
@@ -51,7 +52,7 @@ async def test_notification_service():
         },
         {
             "workflow_id": "github-ci-workflow",
-            "trigger_type": "TRIGGER_GITHUB",
+            "trigger_type": TriggerType.GITHUB.value,
             "trigger_data": {
                 "event_type": "pull_request",
                 "repository": {"full_name": "company/awesome-project"},
@@ -62,7 +63,7 @@ async def test_notification_service():
         },
         {
             "workflow_id": "webhook-integration",
-            "trigger_type": "TRIGGER_WEBHOOK",
+            "trigger_type": TriggerType.WEBHOOK.value,
             "trigger_data": {
                 "method": "POST",
                 "path": "/webhook/webhook-integration",
@@ -73,7 +74,7 @@ async def test_notification_service():
         },
         {
             "workflow_id": "email-processor",
-            "trigger_type": "TRIGGER_EMAIL",
+            "trigger_type": TriggerType.EMAIL.value,
             "trigger_data": {
                 "sender": "customer@example.com",
                 "subject": "Support Request: Login Issues",

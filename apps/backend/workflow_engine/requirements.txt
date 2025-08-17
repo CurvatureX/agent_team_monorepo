@@ -3,6 +3,8 @@ uvicorn[standard]
 pydantic
 pydantic-settings
 croniter
+cryptography
+supabase
 # Existing dependencies below
 psycopg2-binary
 sqlalchemy
@@ -10,6 +12,8 @@ alembic
 # protobuf removed - migrated to FastAPI from gRPC
 python-dotenv
 requests
+httpx
+cryptography
 google-api-python-client
 google-auth-httplib2
 google-auth-oauthlib

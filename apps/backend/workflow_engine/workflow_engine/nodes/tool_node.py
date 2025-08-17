@@ -9,14 +9,12 @@ import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
+from shared.models import NodeType
+from shared.models.node_enums import ToolSubtype
+from shared.node_specs import node_spec_registry
+from shared.node_specs.base import NodeSpec
 
-try:
-    from shared.node_specs import node_spec_registry
-    from shared.node_specs.base import NodeSpec
-except ImportError:
-    node_spec_registry = None
-    NodeSpec = None
+from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
 
 
 class ToolNodeExecutor(BaseNodeExecutor):
@@ -26,29 +24,22 @@ class ToolNodeExecutor(BaseNodeExecutor):
         """Get the node specification for tool nodes."""
         if node_spec_registry and self._subtype:
             # Return the specific spec for current subtype
-            return node_spec_registry.get_spec("TOOL_NODE", self._subtype)
+            return node_spec_registry.get_spec(NodeType.TOOL.value, self._subtype)
         return None
 
     def get_supported_subtypes(self) -> List[str]:
         """Get supported tool subtypes."""
-        return [
-            "TOOL_GOOGLE_CALENDAR_MCP",
-            "TOOL_NOTION_MCP",
-            "TOOL_CALENDAR",
-            "TOOL_EMAIL",
-            "TOOL_HTTP",
-            "TOOL_CODE_EXECUTION",
-        ]
+        return [subtype.value for subtype in ToolSubtype]
 
     def validate(self, node: Any) -> List[str]:
         """Validate tool node configuration using spec-based validation."""
         # First use the base class validation which includes spec validation
         errors = super().validate(node)
-        
+
         # If spec validation passed, we're done
         if not errors and self.spec:
             return errors
-        
+
         # Fallback if spec not available
         if not node.subtype:
             errors.append("Tool subtype is required")
@@ -58,14 +49,14 @@ class ToolNodeExecutor(BaseNodeExecutor):
             errors.append(f"Unsupported tool subtype: {node.subtype}")
 
         return errors
-    
+
     def _validate_legacy(self, node: Any) -> List[str]:
         """Legacy validation for backward compatibility."""
         errors = []
-        
-        if not hasattr(node, 'subtype'):
+
+        if not hasattr(node, "subtype"):
             return errors
-            
+
         subtype = node.subtype
 
         if subtype in ["TOOL_GOOGLE_CALENDAR_MCP", "TOOL_NOTION_MCP"]:
@@ -73,28 +64,33 @@ class ToolNodeExecutor(BaseNodeExecutor):
 
         elif subtype == "TOOL_CALENDAR":
             errors.extend(self._validate_required_parameters(node, ["calendar_id", "operation"]))
-            if hasattr(node, 'parameters'):
+            if hasattr(node, "parameters"):
                 operation = node.parameters.get("operation", "")
-                if operation and operation not in ["list_events", "create_event", "update_event", "delete_event"]:
+                if operation and operation not in [
+                    "list_events",
+                    "create_event",
+                    "update_event",
+                    "delete_event",
+                ]:
                     errors.append(f"Invalid calendar operation: {operation}")
 
         elif subtype == "TOOL_EMAIL":
             errors.extend(self._validate_required_parameters(node, ["operation"]))
-            if hasattr(node, 'parameters'):
+            if hasattr(node, "parameters"):
                 operation = node.parameters.get("operation", "")
                 if operation and operation not in ["send", "read", "search", "delete"]:
                     errors.append(f"Invalid email operation: {operation}")
 
         elif subtype == "TOOL_HTTP":
             errors.extend(self._validate_required_parameters(node, ["method", "url"]))
-            if hasattr(node, 'parameters'):
+            if hasattr(node, "parameters"):
                 method = node.parameters.get("method", "").upper()
                 if method and method not in ["GET", "POST", "PUT", "DELETE", "PATCH"]:
                     errors.append(f"Invalid HTTP method: {method}")
 
         elif subtype == "TOOL_CODE_EXECUTION":
             errors.extend(self._validate_required_parameters(node, ["code"]))
-            if hasattr(node, 'parameters'):
+            if hasattr(node, "parameters"):
                 language = node.parameters.get("language", "python")
                 if language and language not in ["python", "javascript", "bash", "sql"]:
                     errors.append(f"Unsupported code language: {language}")
@@ -110,16 +106,20 @@ class ToolNodeExecutor(BaseNodeExecutor):
             subtype = context.node.subtype
             logs.append(f"Executing tool node with subtype: {subtype}")
 
-            if subtype in ["TOOL_GOOGLE_CALENDAR_MCP", "TOOL_NOTION_MCP"]:
+            if subtype == ToolSubtype.MCP_TOOL.value:
                 return self._execute_mcp_tool(context, logs, start_time)
-            elif subtype == "TOOL_CALENDAR":
+            elif subtype == ToolSubtype.GOOGLE_CALENDAR.value:
                 return self._execute_calendar_tool(context, logs, start_time)
-            elif subtype == "TOOL_EMAIL":
+            elif subtype == ToolSubtype.EMAIL_TOOL.value:
                 return self._execute_email_tool(context, logs, start_time)
-            elif subtype == "TOOL_HTTP":
+            elif subtype == ToolSubtype.HTTP_CLIENT.value:
                 return self._execute_http_tool(context, logs, start_time)
-            elif subtype == "TOOL_CODE_EXECUTION":
+            elif subtype == ToolSubtype.CODE_TOOL.value:
                 return self._execute_code_tool(context, logs, start_time)
+            elif subtype == ToolSubtype.FILE_PROCESSOR.value:
+                return self._execute_file_processor(context, logs, start_time)
+            elif subtype == ToolSubtype.IMAGE_PROCESSOR.value:
+                return self._execute_image_processor(context, logs, start_time)
             else:
                 return self._create_error_result(
                     f"Unsupported tool subtype: {subtype}",
@@ -262,7 +262,7 @@ class ToolNodeExecutor(BaseNodeExecutor):
         headers = self.get_parameter_with_spec(context, "headers")
         data = self.get_parameter_with_spec(context, "data")
         timeout = self.get_parameter_with_spec(context, "timeout")
-        
+
         # Convert method to uppercase
         if method:
             method = method.upper()
@@ -390,6 +390,54 @@ class ToolNodeExecutor(BaseNodeExecutor):
             "output": f"Mock execution result for {language} code",
             "execution_time": 0.1,
             "executed_at": datetime.now().isoformat(),
+        }
+
+        return self._create_success_result(
+            output_data=output_data, execution_time=time.time() - start_time, logs=logs
+        )
+
+    def _execute_file_processor(
+        self, context: NodeExecutionContext, logs: List[str], start_time: float
+    ) -> NodeExecutionResult:
+        """Execute file processor tool."""
+        # Use spec-based parameter retrieval
+        operation = self.get_parameter_with_spec(context, "operation")
+        file_path = self.get_parameter_with_spec(context, "file_path")
+
+        logs.append(f"File Processor Tool: {operation} on {file_path}")
+
+        # Mock file processing
+        output_data = {
+            "tool_type": "file_processor",
+            "operation": operation,
+            "file_path": file_path,
+            "status": "processed",
+            "result": f"Mock file processing result for {operation}",
+            "processed_at": datetime.now().isoformat(),
+        }
+
+        return self._create_success_result(
+            output_data=output_data, execution_time=time.time() - start_time, logs=logs
+        )
+
+    def _execute_image_processor(
+        self, context: NodeExecutionContext, logs: List[str], start_time: float
+    ) -> NodeExecutionResult:
+        """Execute image processor tool."""
+        # Use spec-based parameter retrieval
+        operation = self.get_parameter_with_spec(context, "operation")
+        image_path = self.get_parameter_with_spec(context, "image_path")
+
+        logs.append(f"Image Processor Tool: {operation} on {image_path}")
+
+        # Mock image processing
+        output_data = {
+            "tool_type": "image_processor",
+            "operation": operation,
+            "image_path": image_path,
+            "status": "processed",
+            "result": f"Mock image processing result for {operation}",
+            "processed_at": datetime.now().isoformat(),
         }
 
         return self._create_success_result(

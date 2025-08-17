@@ -12,14 +12,12 @@ from typing import Any, Dict, List, Optional
 
 from croniter import croniter
 
-from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
+from shared.models import NodeType
+from shared.models.node_enums import TriggerSubtype
+from shared.node_specs import node_spec_registry
+from shared.node_specs.base import NodeSpec
 
-try:
-    from shared.node_specs import node_spec_registry
-    from shared.node_specs.base import NodeSpec
-except ImportError:
-    node_spec_registry = None
-    NodeSpec = None
+from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
 
 
 class TriggerNodeExecutor(BaseNodeExecutor):
@@ -28,31 +26,30 @@ class TriggerNodeExecutor(BaseNodeExecutor):
     def _get_node_spec(self) -> Optional[NodeSpec]:
         """Get the node specification for trigger nodes."""
         if node_spec_registry and self._subtype:
-            # Return the specific spec for current subtype
-            return node_spec_registry.get_spec("TRIGGER_NODE", self._subtype)
+            # Use unified format - remove TRIGGER_ prefix if present for compatibility
+            normalized_subtype = self._subtype
+            if self._subtype.startswith("TRIGGER_"):
+                normalized_subtype = self._subtype[8:]  # Remove "TRIGGER_" prefix
+            # Return the specific spec for current subtype using unified format
+            return node_spec_registry.get_spec(NodeType.TRIGGER.value, normalized_subtype)
         return None
 
     def get_supported_subtypes(self) -> List[str]:
         """Get supported trigger subtypes."""
-        return [
-            "TRIGGER_MANUAL",
-            "TRIGGER_WEBHOOK",
-            "TRIGGER_CRON",
-            "TRIGGER_CHAT",
-            "TRIGGER_EMAIL",
-            "TRIGGER_FORM",
-            "TRIGGER_CALENDAR",
-        ]
+        # Use unified enum values - support both legacy and unified formats
+        unified_subtypes = [subtype.value for subtype in TriggerSubtype]
+        legacy_subtypes = [f"TRIGGER_{subtype.value}" for subtype in TriggerSubtype]
+        return unified_subtypes + legacy_subtypes
 
     def validate(self, node: Any) -> List[str]:
         """Validate trigger node configuration using spec-based validation."""
         # First use the base class validation which includes spec validation
         errors = super().validate(node)
-        
+
         # If spec validation passed, we're done
         if not errors and self.spec:
             return errors
-        
+
         # Fallback if spec not available
         if not node.subtype:
             errors.append("Trigger subtype is required")
@@ -62,26 +59,26 @@ class TriggerNodeExecutor(BaseNodeExecutor):
             errors.append(f"Unsupported trigger subtype: {node.subtype}")
 
         return errors
-    
+
     def _validate_legacy(self, node: Any) -> List[str]:
         """Legacy validation for backward compatibility."""
         errors = []
-        
-        if not hasattr(node, 'subtype'):
+
+        if not hasattr(node, "subtype"):
             return errors
-            
+
         subtype = node.subtype
 
-        if subtype == "TRIGGER_WEBHOOK":
+        if subtype == f"TRIGGER_{TriggerSubtype.WEBHOOK.value}":
             # Note: The spec uses webhook_path and http_method, not method and path
-            if hasattr(node, 'parameters'):
+            if hasattr(node, "parameters"):
                 http_method = node.parameters.get("http_method", "").upper()
                 if http_method and http_method not in ["GET", "POST", "PUT", "DELETE", "PATCH"]:
                     errors.append(f"Invalid HTTP method: {http_method}")
 
-        elif subtype == "TRIGGER_CRON":
+        elif subtype == f"TRIGGER_{TriggerSubtype.CRON.value}":
             errors.extend(self._validate_required_parameters(node, ["cron_expression"]))
-            if hasattr(node, 'parameters'):
+            if hasattr(node, "parameters"):
                 cron_expr = node.parameters.get("cron_expression", "")
                 if cron_expr and not self._is_valid_cron(cron_expr):
                     errors.append(f"Invalid cron expression: {cron_expr}")
@@ -97,20 +94,18 @@ class TriggerNodeExecutor(BaseNodeExecutor):
             subtype = context.node.subtype
             logs.append(f"Executing trigger node with subtype: {subtype}")
 
-            if subtype == "TRIGGER_MANUAL":
+            if subtype == TriggerSubtype.MANUAL.value:
                 return self._execute_manual_trigger(context, logs, start_time)
-            elif subtype == "TRIGGER_WEBHOOK":
+            elif subtype == TriggerSubtype.WEBHOOK.value:
                 return self._execute_webhook_trigger(context, logs, start_time)
-            elif subtype == "TRIGGER_CRON":
+            elif subtype == TriggerSubtype.CRON.value:
                 return self._execute_cron_trigger(context, logs, start_time)
-            elif subtype == "TRIGGER_CHAT":
-                return self._execute_chat_trigger(context, logs, start_time)
-            elif subtype == "TRIGGER_EMAIL":
+            elif subtype == TriggerSubtype.EMAIL.value:
                 return self._execute_email_trigger(context, logs, start_time)
-            elif subtype == "TRIGGER_FORM":
-                return self._execute_form_trigger(context, logs, start_time)
-            elif subtype == "TRIGGER_CALENDAR":
-                return self._execute_calendar_trigger(context, logs, start_time)
+            elif subtype == TriggerSubtype.GITHUB.value:
+                return self._execute_github_trigger(context, logs, start_time)
+            elif subtype == TriggerSubtype.SLACK.value:
+                return self._execute_slack_trigger(context, logs, start_time)
             else:
                 return self._create_error_result(
                     f"Unsupported trigger subtype: {subtype}",
@@ -131,16 +126,14 @@ class TriggerNodeExecutor(BaseNodeExecutor):
     ) -> NodeExecutionResult:
         """Execute manual trigger."""
         # Use spec-based parameter retrieval
-        require_confirmation = self.get_parameter_with_spec(context, "require_confirmation")
         trigger_name = self.get_parameter_with_spec(context, "trigger_name")
         description = self.get_parameter_with_spec(context, "description")
 
-        logs.append(f"Manual trigger executed, confirmation required: {require_confirmation}")
+        logs.append(f"Manual trigger executed")
 
         output_data = {
             "trigger_type": "manual",
             "triggered_at": datetime.now().isoformat(),
-            "require_confirmation": require_confirmation,
             "input_data": context.input_data,
             "user_id": context.metadata.get("user_id"),
             "session_id": context.metadata.get("session_id"),
@@ -207,26 +200,27 @@ class TriggerNodeExecutor(BaseNodeExecutor):
             output_data=output_data, execution_time=time.time() - start_time, logs=logs
         )
 
-    def _execute_chat_trigger(
+    def _execute_github_trigger(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
-        """Execute chat trigger."""
-        chat_platform = context.get_parameter("chat_platform", "general")
-        message_filter = context.get_parameter("message_filter", "")
+        """Execute GitHub trigger."""
+        repository = context.get_parameter("repository", "")
+        event_filter = context.get_parameter("event_filter", "")
+        webhook_secret = context.get_parameter("webhook_secret", "")
 
-        logs.append(f"Chat trigger: {chat_platform}, filter: {message_filter}")
+        logs.append(f"GitHub trigger: {repository}, filter: {event_filter}")
 
-        # Extract chat data from input
-        chat_data = context.input_data.get("chat_data", {})
+        # Extract GitHub webhook data from input
+        github_data = context.input_data.get("github_data", {})
 
         output_data = {
-            "trigger_type": "chat",
-            "chat_platform": chat_platform,
-            "message_filter": message_filter,
-            "chat_data": chat_data,
-            "message": chat_data.get("message", ""),
-            "user": chat_data.get("user", ""),
-            "channel": chat_data.get("channel", ""),
+            "trigger_type": "github",
+            "repository": repository,
+            "event_filter": event_filter,
+            "github_data": github_data,
+            "event": github_data.get("event", ""),
+            "action": github_data.get("action", ""),
+            "sender": github_data.get("sender", {}),
             "triggered_at": datetime.now().isoformat(),
         }
 
@@ -262,51 +256,27 @@ class TriggerNodeExecutor(BaseNodeExecutor):
             output_data=output_data, execution_time=time.time() - start_time, logs=logs
         )
 
-    def _execute_form_trigger(
+    def _execute_slack_trigger(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
-        """Execute form trigger."""
-        form_id = context.get_parameter("form_id", "")
-        form_fields = context.get_parameter("form_fields", [])
+        """Execute Slack trigger."""
+        channel = context.get_parameter("channel", "")
+        message_filter = context.get_parameter("message_filter", "")
+        bot_token = context.get_parameter("bot_token", "")
 
-        logs.append(f"Form trigger: {form_id}, fields: {form_fields}")
+        logs.append(f"Slack trigger: {channel}, filter: {message_filter}")
 
-        # Extract form data from input
-        form_data = context.input_data.get("form_data", {})
-
-        output_data = {
-            "trigger_type": "form",
-            "form_id": form_id,
-            "form_fields": form_fields,
-            "form_data": form_data,
-            "submitted_by": form_data.get("submitted_by", ""),
-            "submission_time": form_data.get("submission_time", ""),
-            "triggered_at": datetime.now().isoformat(),
-        }
-
-        return self._create_success_result(
-            output_data=output_data, execution_time=time.time() - start_time, logs=logs
-        )
-
-    def _execute_calendar_trigger(
-        self, context: NodeExecutionContext, logs: List[str], start_time: float
-    ) -> NodeExecutionResult:
-        """Execute calendar trigger."""
-        calendar_id = context.get_parameter("calendar_id", "primary")
-        event_filter = context.get_parameter("event_filter", "")
-
-        logs.append(f"Calendar trigger: {calendar_id}, filter: {event_filter}")
-
-        # Extract calendar data from input
-        calendar_data = context.input_data.get("calendar_data", {})
+        # Extract Slack webhook data from input
+        slack_data = context.input_data.get("slack_data", {})
 
         output_data = {
-            "trigger_type": "calendar",
-            "calendar_id": calendar_id,
-            "event_filter": event_filter,
-            "calendar_data": calendar_data,
-            "events": calendar_data.get("events", []),
-            "event_count": len(calendar_data.get("events", [])),
+            "trigger_type": "slack",
+            "channel": channel,
+            "message_filter": message_filter,
+            "slack_data": slack_data,
+            "text": slack_data.get("text", ""),
+            "user": slack_data.get("user", ""),
+            "timestamp": slack_data.get("timestamp", ""),
             "triggered_at": datetime.now().isoformat(),
         }
 

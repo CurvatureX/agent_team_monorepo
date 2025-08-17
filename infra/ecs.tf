@@ -105,6 +105,46 @@ resource "aws_iam_role_policy_attachment" "ecs_task_service_discovery" {
   policy_arn = aws_iam_policy.service_discovery.arn
 }
 
+# IAM Policy for OpenTelemetry X-Ray and CloudWatch
+resource "aws_iam_policy" "otel_observability" {
+  name        = "${local.name_prefix}-otel-observability"
+  description = "Policy for OpenTelemetry X-Ray and CloudWatch access"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "xray:PutTraceSegments",
+          "xray:PutTelemetryRecords"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "cloudwatch:PutMetricData"
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "cloudwatch:namespace" = "AgentTeam"
+          }
+        }
+      }
+    ]
+  })
+
+  tags = local.common_tags
+}
+
+# Attach OTEL policy to ECS task role
+resource "aws_iam_role_policy_attachment" "ecs_task_otel" {
+  role       = aws_iam_role.ecs_task_role.name
+  policy_arn = aws_iam_policy.otel_observability.arn
+}
+
 # API Gateway Task Definition
 resource "aws_ecs_task_definition" "api_gateway" {
   family                   = "${local.name_prefix}-api-gateway"
@@ -133,16 +173,32 @@ resource "aws_ecs_task_definition" "api_gateway" {
           value = "false"
         },
         {
+          name  = "LOG_FORMAT"
+          value = "json"
+        },
+        {
+          name  = "LOG_LEVEL"
+          value = "INFO"
+        },
+        {
+          name  = "PYTHONUNBUFFERED"
+          value = "1"
+        },
+        {
           name  = "WORKFLOW_SERVICE_DNS_NAME"
           value = "workflow-agent.${local.name_prefix}.local"
         },
         {
           name  = "WORKFLOW_AGENT_URL"
-          value = "http://${aws_lb.internal.dns_name}/process-conversation"
+          value = "http://${aws_lb.internal.dns_name}:8001"
         },
         {
           name  = "WORKFLOW_ENGINE_URL"
-          value = "http://${aws_lb.internal.dns_name}"
+          value = "http://${aws_lb.internal.dns_name}:8002"
+        },
+        {
+          name  = "WORKFLOW_SCHEDULER_URL"
+          value = "http://${aws_lb.internal.dns_name}:8003"
         },
         {
           name  = "AWS_REGION"
@@ -157,16 +213,8 @@ resource "aws_ecs_task_definition" "api_gateway" {
           value = var.environment
         },
         {
-          name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
-          value = "http://localhost:4317"
-        },
-        {
-          name  = "OTEL_SERVICE_NAME"
-          value = "api-gateway"
-        },
-        {
-          name  = "OTEL_RESOURCE_ATTRIBUTES"
-          value = "service.name=api-gateway,service.version=1.0.0,deployment.environment=${var.environment},project=starmates-ai-team"
+          name  = "OTEL_SDK_DISABLED"
+          value = "true"
         }
       ]
 
@@ -178,8 +226,13 @@ resource "aws_ecs_task_definition" "api_gateway" {
         {
           name      = "SUPABASE_SECRET_KEY"
           valueFrom = aws_ssm_parameter.supabase_secret_key.arn
+        },
+        {
+          name      = "SUPABASE_ANON_KEY"
+          valueFrom = aws_ssm_parameter.supabase_anon_key.arn
         }
       ]
+
 
       logConfiguration = {
         logDriver = "awslogs"
@@ -231,6 +284,18 @@ resource "aws_ecs_task_definition" "workflow_engine" {
           value = "false"
         },
         {
+          name  = "LOG_FORMAT"
+          value = "json"
+        },
+        {
+          name  = "LOG_LEVEL"
+          value = "INFO"
+        },
+        {
+          name  = "PYTHONUNBUFFERED"
+          value = "1"
+        },
+        {
           name  = "HOST"
           value = "0.0.0.0"
         },
@@ -243,16 +308,8 @@ resource "aws_ecs_task_definition" "workflow_engine" {
           value = var.environment
         },
         {
-          name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
-          value = "http://localhost:4317"
-        },
-        {
-          name  = "OTEL_SERVICE_NAME"
-          value = "workflow-engine"
-        },
-        {
-          name  = "OTEL_RESOURCE_ATTRIBUTES"
-          value = "service.name=workflow-engine,service.version=1.0.0,deployment.environment=${var.environment},project=starmates-ai-team"
+          name  = "OTEL_SDK_DISABLED"
+          value = "true"
         }
       ]
 
@@ -278,6 +335,7 @@ resource "aws_ecs_task_definition" "workflow_engine" {
           valueFrom = aws_ssm_parameter.database_url.arn
         }
       ]
+
 
       logConfiguration = {
         logDriver = "awslogs"
@@ -358,6 +416,18 @@ resource "aws_ecs_task_definition" "workflow_agent" {
           value = "false"
         },
         {
+          name  = "LOG_FORMAT"
+          value = "json"
+        },
+        {
+          name  = "LOG_LEVEL"
+          value = "INFO"
+        },
+        {
+          name  = "PYTHONUNBUFFERED"
+          value = "1"
+        },
+        {
           name  = "HOST"
           value = "0.0.0.0"
         },
@@ -386,16 +456,16 @@ resource "aws_ecs_task_definition" "workflow_agent" {
           value = var.environment
         },
         {
-          name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
-          value = "http://localhost:4317"
+          name  = "DEFAULT_MODEL_PROVIDER"
+          value = "openai"
         },
         {
-          name  = "OTEL_SERVICE_NAME"
-          value = "workflow-agent"
+          name  = "DEFAULT_MODEL_NAME"
+          value = "gpt-4.1"  # GPT-4.1 which supports response_format
         },
         {
-          name  = "OTEL_RESOURCE_ATTRIBUTES"
-          value = "service.name=workflow-agent,service.version=1.0.0,deployment.environment=${var.environment},project=starmates-ai-team"
+          name  = "OTEL_SDK_DISABLED"
+          value = "true"
         }
       ]
 
@@ -417,6 +487,7 @@ resource "aws_ecs_task_definition" "workflow_agent" {
           valueFrom = aws_ssm_parameter.supabase_secret_key.arn
         }
       ]
+
 
       logConfiguration = {
         logDriver = "awslogs"
@@ -526,6 +597,18 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
           value = "false"
         },
         {
+          name  = "LOG_FORMAT"
+          value = "json"
+        },
+        {
+          name  = "LOG_LEVEL"
+          value = "INFO"
+        },
+        {
+          name  = "PYTHONUNBUFFERED"
+          value = "1"
+        },
+        {
           name  = "HOST"
           value = "0.0.0.0"
         },
@@ -535,11 +618,11 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
         },
         {
           name  = "WORKFLOW_ENGINE_URL"
-          value = "http://${aws_lb.internal.dns_name}/v1"
+          value = "http://${aws_lb.internal.dns_name}:8002"
         },
         {
           name  = "API_GATEWAY_URL"
-          value = "http://${aws_lb.main.dns_name}"
+          value = "http://${aws_lb.internal.dns_name}:8000"
         },
         {
           name  = "redis_url"
@@ -550,16 +633,8 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
           value = var.environment
         },
         {
-          name  = "OTEL_EXPORTER_OTLP_ENDPOINT"
-          value = "http://localhost:4317"
-        },
-        {
-          name  = "OTEL_SERVICE_NAME"
-          value = "workflow-scheduler"
-        },
-        {
-          name  = "OTEL_RESOURCE_ATTRIBUTES"
-          value = "service.name=workflow-scheduler,service.version=1.0.0,deployment.environment=${var.environment},project=starmates-ai-team"
+          name  = "OTEL_SDK_DISABLED"
+          value = "true"
         }
       ]
 
@@ -587,8 +662,13 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
         {
           name      = "GITHUB_WEBHOOK_SECRET"
           valueFrom = aws_ssm_parameter.github_webhook_secret.arn
+        },
+        {
+          name      = "GITHUB_CLIENT_ID"
+          valueFrom = aws_ssm_parameter.github_client_id.arn
         }
       ]
+
 
       logConfiguration = {
         logDriver = "awslogs"

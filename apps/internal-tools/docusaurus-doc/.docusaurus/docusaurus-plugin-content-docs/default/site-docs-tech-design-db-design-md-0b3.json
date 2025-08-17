@@ -1,0 +1,24 @@
+{
+  "id": "tech-design/db-design",
+  "title": "工作流系统数据库设计文档",
+  "description": "数据库选型",
+  "source": "@site/../../../docs/tech-design/db-design.md",
+  "sourceDirName": "tech-design",
+  "slug": "/tech-design/db-design",
+  "permalink": "/docs/tech-design/db-design",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/curvaturex/agent_team_monorepo/tree/main/docs/../../../docs/tech-design/db-design.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {},
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "工作流数据映射系统设计",
+    "permalink": "/docs/tech-design/data_mapping_system"
+  },
+  "next": {
+    "title": "AI Teams 分布式监控系统实施指南",
+    "permalink": "/docs/tech-design/distributed-tracing-system"
+  }
+}

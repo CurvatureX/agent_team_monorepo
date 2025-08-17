@@ -1,0 +1,31 @@
+{
+  "id": "tech-design/workflow-agent-architecture",
+  "title": "Workflow Agent 技术架构设计",
+  "description": "Workflow Agent 是基于 LangGraph 构建的智能工作流生成服务，将用户的描述转换为可执行的工作流, 自动调试并完成部署。",
+  "source": "@site/../../../docs/tech-design/workflow-agent-architecture.md",
+  "sourceDirName": "tech-design",
+  "slug": "/tech-design/workflow-agent-architecture",
+  "permalink": "/docs/tech-design/workflow-agent-architecture",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/curvaturex/agent_team_monorepo/tree/main/docs/../../../docs/tech-design/workflow-agent-architecture.md",
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 5,
+  "frontMatter": {
+    "id": "workflow-agent-architecture",
+    "title": "Workflow Agent 技术架构设计",
+    "sidebar_label": "Workflow Agent 架构",
+    "sidebar_position": 5,
+    "slug": "/tech-design/workflow-agent-architecture"
+  },
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "API Gateway 架构",
+    "permalink": "/docs/tech-design/api-gateway-architecture"
+  },
+  "next": {
+    "title": "工作流数据映射系统设计",
+    "permalink": "/docs/tech-design/data_mapping_system"
+  }
+}

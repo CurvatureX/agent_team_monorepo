@@ -1,0 +1,24 @@
+{
+  "id": "development/workflow_agent_mvp_plan",
+  "title": "Workflow Agent MVP 实现计划",
+  "description": "概述",
+  "source": "@site/../../../docs/development/workflow_agent_mvp_plan.md",
+  "sourceDirName": "development",
+  "slug": "/development/workflow_agent_mvp_plan",
+  "permalink": "/docs/development/workflow_agent_mvp_plan",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/curvaturex/agent_team_monorepo/tree/main/docs/../../../docs/development/workflow_agent_mvp_plan.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {},
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "MVP 产品规划和排期",
+    "permalink": "/docs/tech-design/mvp-workflow-planning"
+  },
+  "next": {
+    "title": "Workflow Runtime Development Tasks",
+    "permalink": "/docs/development/workflow_runtime_tasks"
+  }
+}

@@ -25,10 +25,11 @@ from shared.models import (
     UpdateWorkflowRequest,
     WorkflowData,
 )
-from workflow_engine.core.config import get_settings
-from workflow_engine.models import NodeTemplateModel, WorkflowModel
-from workflow_engine.utils.node_id_generator import NodeIdGenerator
-from workflow_engine.utils.workflow_validator import WorkflowValidator
+
+from ..core.config import get_settings
+from ..models import NodeTemplateModel, WorkflowModel
+from ..utils.node_id_generator import NodeIdGenerator
+from ..utils.workflow_validator import WorkflowValidator
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -47,79 +48,113 @@ class WorkflowService:
         try:
             self.logger.info(f"Creating workflow: {request.name}")
 
+            # DEBUG: Log the original request nodes
+            print(f"🐛 DEBUG: create_workflow_from_data called with {len(request.nodes)} nodes")
+            for i, node in enumerate(request.nodes):
+                print(
+                    f"🐛 DEBUG: Original request node {i}: id='{node.id}', type='{node.type}', subtype='{node.subtype}'"
+                )
+
             workflow_id = str(uuid.uuid4())
             now = int(datetime.now().timestamp())
 
             # Convert nodes to dict for processing
             nodes_data = [node.dict() for node in request.nodes]
-            
+
+            # DEBUG: Log nodes after dict conversion
+            print(f"🐛 DEBUG: After dict conversion:")
+            for i, node in enumerate(nodes_data):
+                print(
+                    f"🐛 DEBUG: Dict node {i}: id='{node.get('id')}', type='{node.get('type')}', subtype='{node.get('subtype')}')"
+                )
+
             # Ensure all nodes have unique IDs
             nodes_data = NodeIdGenerator.ensure_unique_node_ids(nodes_data)
-            
+
             # Handle connections early - support both name and ID references
             connections_data = request.connections if request.connections else {}
-            self.logger.info(f"Original connections data from request: {json.dumps(connections_data, ensure_ascii=False)}")
-            
+            self.logger.info(
+                f"Original connections data from request: {json.dumps(connections_data, ensure_ascii=False)}"
+            )
+
             # Create name to ID mapping for all nodes
             name_to_id_mapping = NodeIdGenerator.create_name_to_id_mapping(nodes_data)
-            node_ids = {node['id'] for node in nodes_data}
-            
+            node_ids = {node["id"] for node in nodes_data}
+
             # Resolve any name-based references to IDs BEFORE validation
             connections_data = NodeIdGenerator.resolve_connection_references(
                 connections_data, name_to_id_mapping, node_ids
             )
-            self.logger.info(f"Resolved connections to use IDs: {json.dumps(connections_data, ensure_ascii=False)}")
-            
+            self.logger.info(
+                f"Resolved connections to use IDs: {json.dumps(connections_data, ensure_ascii=False)}"
+            )
+
             # Convert nodes back to NodeData objects for validation
             from shared.models import NodeData
-            temp_nodes = [NodeData(**node_data) for node_data in nodes_data]
-            
+
+            print(f"🐛 DEBUG: About to recreate NodeData objects from nodes_data")
+            temp_nodes = []
+            for i, node_data in enumerate(nodes_data):
+                print(
+                    f"🐛 DEBUG: Creating NodeData from node_data {i}: subtype='{node_data.get('subtype')}'"
+                )
+                temp_node = NodeData(**node_data)
+                print(f"🐛 DEBUG: Created NodeData object {i}: subtype='{temp_node.subtype}'")
+                temp_nodes.append(temp_node)
+
             # Validate workflow before saving - validator expects dict, not objects
-            validation_result = self.validator.validate_workflow_structure({
-                'name': request.name,
-                'nodes': [node.dict() for node in temp_nodes],  # Convert to dict for validator
-                'connections': connections_data,  # Use resolved connections with IDs
-                'settings': request.settings
-            }, validate_node_parameters=True)
-            
-            if not validation_result.get('valid', True):
-                validation_errors = validation_result.get('errors', [])
+            validation_result = self.validator.validate_workflow_structure(
+                {
+                    "name": request.name,
+                    "nodes": [node.dict() for node in temp_nodes],  # Convert to dict for validator
+                    "connections": connections_data,  # Use resolved connections with IDs
+                    "settings": request.settings,
+                },
+                validate_node_parameters=True,
+            )
+
+            if not validation_result.get("valid", True):
+                validation_errors = validation_result.get("errors", [])
                 error_message = f"Workflow validation failed: {'; '.join(validation_errors)}"
                 self.logger.error(error_message)
                 raise ValueError(error_message)
-            
-            validation_warnings = validation_result.get('warnings', [])
+
+            validation_warnings = validation_result.get("warnings", [])
             if validation_warnings:
-                self.logger.warning(f"Workflow validation warnings: {'; '.join(validation_warnings)}")
-            
+                self.logger.warning(
+                    f"Workflow validation warnings: {'; '.join(validation_warnings)}"
+                )
+
             # Check if any IDs were changed (for connection updates)
             original_ids = {node.id: node.id for node in request.nodes if node.id}
-            new_ids = {node['id']: node['id'] for node in nodes_data}
+            new_ids = {node["id"]: node["id"] for node in nodes_data}
             id_changed = False
             id_mapping = {}
-            
+
             for i, original_node in enumerate(request.nodes):
-                if original_node.id and nodes_data[i]['id'] != original_node.id:
+                if original_node.id and nodes_data[i]["id"] != original_node.id:
                     id_changed = True
-                    id_mapping[original_node.id] = nodes_data[i]['id']
-                    self.logger.info(f"Node ID changed: {original_node.id} -> {nodes_data[i]['id']}")
-            
-            
+                    id_mapping[original_node.id] = nodes_data[i]["id"]
+                    self.logger.info(
+                        f"Node ID changed: {original_node.id} -> {nodes_data[i]['id']}"
+                    )
+
             # If any IDs were changed during generation, update the connections
             if id_changed and connections_data:
                 connections_data = NodeIdGenerator.update_connection_references(
                     connections_data, id_mapping
                 )
                 self.logger.info("Updated connection references after ID changes")
-            
+
             # Convert nodes back to NodeData objects
             from shared.models import NodeData
+
             nodes = [NodeData(**node_data) for node_data in nodes_data]
 
             # 先打印 connections_data 的内容
             self.logger.info(f"connections_data before WorkflowData creation: {connections_data}")
             self.logger.info(f"connections_data type: {type(connections_data)}")
-            
+
             workflow_data = WorkflowData(
                 id=workflow_id,
                 name=request.name,
@@ -134,8 +169,10 @@ class WorkflowService:
                 updated_at=now,
                 version="1.0.0",
             )
-            
-            self.logger.info(f"WorkflowData connections after creation: {workflow_data.connections}")
+
+            self.logger.info(
+                f"WorkflowData connections after creation: {workflow_data.connections}"
+            )
             self.logger.info(f"WorkflowData connections type: {type(workflow_data.connections)}")
             workflow_dict = workflow_data.dict()
             self.logger.info(f"WorkflowData dict connections: {workflow_dict.get('connections')}")
@@ -202,37 +239,46 @@ class WorkflowService:
             workflow_data = WorkflowData(**db_workflow.workflow_data)
 
             update_dict = update_data.dict(exclude_unset=True)
-            
+
             # If nodes are being updated, ensure unique IDs
-            if 'nodes' in update_dict and update_dict['nodes']:
-                nodes_data = [node.dict() if hasattr(node, 'dict') else node for node in update_dict['nodes']]
-                
+            if "nodes" in update_dict and update_dict["nodes"]:
+                nodes_data = [
+                    node.dict() if hasattr(node, "dict") else node for node in update_dict["nodes"]
+                ]
+
                 # Ensure all nodes have unique IDs
                 nodes_data = NodeIdGenerator.ensure_unique_node_ids(nodes_data)
-                
+
                 # Check if any IDs were changed
-                original_nodes = update_dict['nodes']
+                original_nodes = update_dict["nodes"]
                 id_mapping = {}
-                
+
                 for i, original_node in enumerate(original_nodes):
-                    orig_id = original_node.id if hasattr(original_node, 'id') else original_node.get('id')
-                    if orig_id and nodes_data[i]['id'] != orig_id:
-                        id_mapping[orig_id] = nodes_data[i]['id']
-                        self.logger.info(f"Node ID changed during update: {orig_id} -> {nodes_data[i]['id']}")
-                
+                    orig_id = (
+                        original_node.id
+                        if hasattr(original_node, "id")
+                        else original_node.get("id")
+                    )
+                    if orig_id and nodes_data[i]["id"] != orig_id:
+                        id_mapping[orig_id] = nodes_data[i]["id"]
+                        self.logger.info(
+                            f"Node ID changed during update: {orig_id} -> {nodes_data[i]['id']}"
+                        )
+
                 # Update connections if IDs changed
-                if id_mapping and 'connections' in update_dict:
-                    connections_data = update_dict['connections']
-                    if hasattr(connections_data, 'dict'):
+                if id_mapping and "connections" in update_dict:
+                    connections_data = update_dict["connections"]
+                    if hasattr(connections_data, "dict"):
                         connections_data = connections_data.dict()
-                    update_dict['connections'] = NodeIdGenerator.update_connection_references(
+                    update_dict["connections"] = NodeIdGenerator.update_connection_references(
                         connections_data, id_mapping
                     )
-                
+
                 # Convert nodes back to proper format
                 from shared.models import NodeData
-                update_dict['nodes'] = [NodeData(**node_data) for node_data in nodes_data]
-            
+
+                update_dict["nodes"] = [NodeData(**node_data) for node_data in nodes_data]
+
             for key, value in update_dict.items():
                 if hasattr(workflow_data, key):
                     setattr(workflow_data, key, value)
@@ -314,38 +360,21 @@ class WorkflowService:
     def list_all_node_templates(
         self, category_filter: Optional[str] = None, include_system_templates: bool = True
     ) -> List[NodeTemplate]:
-        """List all available node templates."""
+        """List all available node templates using node specs."""
         try:
-            self.logger.info("Listing all node templates")
-            query = self.db.query(NodeTemplateModel)
+            self.logger.info("Listing node templates from node specs (database deprecated)")
 
-            if category_filter:
-                query = query.filter(NodeTemplateModel.category == category_filter)
+            # Import here to avoid circular imports
+            from shared.services.node_specs_api_service import get_node_specs_api_service
 
-            if not include_system_templates:
-                query = query.filter(NodeTemplateModel.is_system_template == False)
+            # Use the new node specs service instead of database
+            specs_service = get_node_specs_api_service()
+            templates = specs_service.list_all_node_templates(
+                category_filter=category_filter, include_system_templates=include_system_templates
+            )
 
-            db_node_templates = query.all()
-
-            # Convert DB models to Pydantic models
-            node_templates = []
-            for t in db_node_templates:
-                # Map template_id to id for the Pydantic model
-                data = {
-                    "id": t.template_id,  # Use template_id as id
-                    "name": t.name,
-                    "description": t.description,
-                    "category": t.category,
-                    "node_type": t.node_type,
-                    "node_subtype": t.node_subtype,
-                    "version": t.version,
-                    "is_system_template": t.is_system_template,
-                    "default_parameters": t.default_parameters,
-                    "required_parameters": t.required_parameters,
-                    "parameter_schema": t.parameter_schema,
-                }
-                node_templates.append(NodeTemplate.model_validate(data))
-            return node_templates
+            self.logger.info(f"Retrieved {len(templates)} templates from node specs")
+            return templates
 
         except Exception as e:
             self.logger.error(f"Error listing node templates: {str(e)}")

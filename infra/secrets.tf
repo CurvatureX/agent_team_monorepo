@@ -19,6 +19,17 @@ resource "aws_ssm_parameter" "supabase_secret_key" {
   })
 }
 
+resource "aws_ssm_parameter" "supabase_anon_key" {
+  name      = "/${local.name_prefix}/supabase/anon-key"
+  type      = "SecureString"
+  value     = var.supabase_anon_key
+  overwrite = true
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-supabase-anon-key"
+  })
+}
+
 
 resource "aws_ssm_parameter" "openai_api_key" {
   name  = "/${local.name_prefix}/openai/api-key"
@@ -98,6 +109,16 @@ resource "aws_ssm_parameter" "github_webhook_secret" {
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-github-webhook-secret"
+  })
+}
+
+resource "aws_ssm_parameter" "github_client_id" {
+  name  = "/${local.name_prefix}/github/client-id"
+  type  = "SecureString"
+  value = var.github_client_id
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-github-client-id"
   })
 }
 

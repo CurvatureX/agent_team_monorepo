@@ -6,6 +6,7 @@ various memory and storage operations including vector databases, key-value stor
 and document management.
 """
 
+from ...models.node_enums import MemorySubtype, NodeType
 from ..base import (
     ConnectionType,
     DataFormat,
@@ -18,9 +19,12 @@ from ..base import (
 
 # VECTOR_DB Memory Node
 VECTOR_STORE_MEMORY_SPEC = NodeSpec(
-    node_type="MEMORY_NODE",
-    subtype="MEMORY_VECTOR_STORE",
+    node_type=NodeType.MEMORY,
+    subtype=MemorySubtype.VECTOR_DATABASE,
     description="Store and search vectors in a vector database for semantic similarity",
+    display_name="Vector Database",
+    category="memory",
+    template_id="memory_vector",
     parameters=[
         ParameterDef(
             name="operation",
@@ -126,8 +130,8 @@ VECTOR_STORE_MEMORY_SPEC = NodeSpec(
 
 # KEY_VALUE Memory Node
 SIMPLE_MEMORY_SPEC = NodeSpec(
-    node_type="MEMORY_NODE",
-    subtype="MEMORY_SIMPLE",
+    node_type=NodeType.MEMORY,
+    subtype=MemorySubtype.SIMPLE_MEMORY,
     description="Store simple key-value memory",
     parameters=[
         ParameterDef(
@@ -218,8 +222,8 @@ SIMPLE_MEMORY_SPEC = NodeSpec(
 
 # DOCUMENT Memory Node
 DOCUMENT_MEMORY_SPEC = NodeSpec(
-    node_type="MEMORY_NODE",
-    subtype="MEMORY_DOCUMENT",
+    node_type=NodeType.MEMORY,
+    subtype=MemorySubtype.DOCUMENT_STORE,
     description="Store, retrieve, and manage documents with full-text search capabilities",
     parameters=[
         ParameterDef(
@@ -319,152 +323,10 @@ DOCUMENT_MEMORY_SPEC = NodeSpec(
 )
 
 
-# BUFFER Memory Node
-BUFFER_MEMORY_SPEC = NodeSpec(
-    node_type="MEMORY_NODE",
-    subtype="MEMORY_BUFFER",
-    description="Store recent history or conversation buffer",
-    parameters=[
-        ParameterDef(
-            name="operation",
-            type=ParameterType.ENUM,
-            required=True,
-            enum_values=["add", "get", "clear", "get_all"],
-            description="Operation type",
-        ),
-        ParameterDef(
-            name="buffer_name",
-            type=ParameterType.STRING,
-            required=False,
-            default_value="default",
-            description="Buffer name",
-        ),
-        ParameterDef(
-            name="max_size",
-            type=ParameterType.INTEGER,
-            required=False,
-            default_value=100,
-            description="Maximum buffer size",
-        ),
-        ParameterDef(
-            name="window_size",
-            type=ParameterType.INTEGER,
-            required=False,
-            default_value=10,
-            description="Window size",
-        ),
-    ],
-    input_ports=[
-        InputPortSpec(
-            name="main",
-            type=ConnectionType.MAIN,
-            required=True,
-            description="Buffer operation data",
-            data_format=DataFormat(
-                mime_type="application/json",
-                schema='{"item": "object", "timestamp": "string", "metadata": "object"}',
-                examples=[
-                    '{"item": {"message": "Hello", "user": "john"}, "timestamp": "2025-01-28T10:30:00Z"}',
-                ],
-            ),
-        )
-    ],
-    output_ports=[
-        OutputPortSpec(
-            name="main",
-            type=ConnectionType.MAIN,
-            description="Buffer operation result",
-            data_format=DataFormat(
-                mime_type="application/json",
-                schema='{"items": "array", "count": "number", "operation": "string"}',
-            ),
-        ),
-        OutputPortSpec(
-            name="error",
-            type=ConnectionType.ERROR,
-            description="Buffer operation error",
-        ),
-    ],
-)
-
-
-# KNOWLEDGE Memory Node
-KNOWLEDGE_MEMORY_SPEC = NodeSpec(
-    node_type="MEMORY_NODE",
-    subtype="MEMORY_KNOWLEDGE",
-    description="Save structured knowledge for later retrieval",
-    parameters=[
-        ParameterDef(
-            name="operation",
-            type=ParameterType.ENUM,
-            required=True,
-            enum_values=["store", "query", "update", "delete"],
-            description="Operation type",
-        ),
-        ParameterDef(
-            name="knowledge_type",
-            type=ParameterType.STRING,
-            required=True,
-            description="Knowledge type",
-        ),
-        ParameterDef(
-            name="content",
-            type=ParameterType.JSON,
-            required=False,
-            description="Knowledge content",
-        ),
-        ParameterDef(
-            name="tags",
-            type=ParameterType.JSON,
-            required=False,
-            default_value=[],
-            description="Tag list",
-        ),
-        ParameterDef(
-            name="expiry_time",
-            type=ParameterType.STRING,
-            required=False,
-            description="Expiry time",
-        ),
-    ],
-    input_ports=[
-        InputPortSpec(
-            name="main",
-            type=ConnectionType.MAIN,
-            required=True,
-            description="Knowledge data",
-            data_format=DataFormat(
-                mime_type="application/json",
-                schema='{"content": "string", "metadata": "object", "relations": "array"}',
-                examples=[
-                    '{"content": "User prefers email notifications", "metadata": {"user_id": "123", "domain": "preferences"}}',
-                ],
-            ),
-        )
-    ],
-    output_ports=[
-        OutputPortSpec(
-            name="main",
-            type=ConnectionType.MAIN,
-            description="Knowledge operation result",
-            data_format=DataFormat(
-                mime_type="application/json",
-                schema='{"knowledge": "object", "results": "array", "operation": "string"}',
-            ),
-        ),
-        OutputPortSpec(
-            name="error",
-            type=ConnectionType.ERROR,
-            description="Knowledge operation error",
-        ),
-    ],
-)
-
-
-# EMBEDDING Memory Node
-EMBEDDING_MEMORY_SPEC = NodeSpec(
-    node_type="MEMORY_NODE",
-    subtype="MEMORY_EMBEDDING",
+# VECTOR DATABASE Memory Node
+VECTOR_DATABASE_MEMORY_SPEC = NodeSpec(
+    node_type=NodeType.MEMORY,
+    subtype=MemorySubtype.VECTOR_DATABASE,
     description="Embed content into vector space for AI tasks",
     parameters=[
         ParameterDef(
@@ -520,6 +382,117 @@ EMBEDDING_MEMORY_SPEC = NodeSpec(
             name="error",
             type=ConnectionType.ERROR,
             description="Embedding operation error",
+        ),
+    ],
+)
+
+# Store Memory - Simple workflow memory storage
+STORE_MEMORY_SPEC = NodeSpec(
+    node_type=NodeType.MEMORY,
+    subtype="STORE",  # Using string since we need separate subtype
+    description="Store data in workflow memory",
+    display_name="Store Memory",
+    category="memory",
+    template_id="memory_store",
+    parameters=[
+        ParameterDef(
+            name="key",
+            type=ParameterType.STRING,
+            required=True,
+            description="Memory key to store data under",
+        ),
+        ParameterDef(
+            name="value",
+            type=ParameterType.STRING,
+            required=False,
+            description="Value to store (if not provided, input data will be stored)",
+        ),
+        ParameterDef(
+            name="ttl_minutes",
+            type=ParameterType.INTEGER,
+            required=False,
+            default_value=60,
+            description="Time to live in minutes",
+        ),
+    ],
+    input_ports=[
+        InputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            required=False,
+            description="Data to store in memory",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"data": "object", "metadata": "object"}',
+            ),
+        )
+    ],
+    output_ports=[
+        OutputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            description="Storage confirmation",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"stored": "boolean", "key": "string", "timestamp": "string"}',
+            ),
+        ),
+        OutputPortSpec(
+            name="error",
+            type=ConnectionType.ERROR,
+            description="Storage error",
+        ),
+    ],
+)
+
+# Retrieve Memory - Simple workflow memory retrieval
+RETRIEVE_MEMORY_SPEC = NodeSpec(
+    node_type=NodeType.MEMORY,
+    subtype="RETRIEVE",  # Using string since we need separate subtype
+    description="Retrieve data from workflow memory",
+    display_name="Retrieve Memory",
+    category="memory",
+    template_id="memory_retrieve",
+    parameters=[
+        ParameterDef(
+            name="key",
+            type=ParameterType.STRING,
+            required=True,
+            description="Memory key to retrieve data from",
+        ),
+        ParameterDef(
+            name="default_value",
+            type=ParameterType.STRING,
+            required=False,
+            description="Default value if key doesn't exist",
+        ),
+    ],
+    input_ports=[
+        InputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            required=False,
+            description="Optional context for retrieval",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"context": "object", "filters": "object"}',
+            ),
+        )
+    ],
+    output_ports=[
+        OutputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            description="Retrieved data",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"data": "object", "key": "string", "found": "boolean", "timestamp": "string"}',
+            ),
+        ),
+        OutputPortSpec(
+            name="error",
+            type=ConnectionType.ERROR,
+            description="Retrieval error",
         ),
     ],
 )

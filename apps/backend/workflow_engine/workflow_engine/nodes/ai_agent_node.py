@@ -11,21 +11,19 @@ import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
+from shared.models import NodeType
+from shared.models.node_enums import AIAgentSubtype
+from shared.node_specs import node_spec_registry
+from shared.node_specs.base import NodeSpec
 
-try:
-    from shared.node_specs import node_spec_registry
-    from shared.node_specs.base import NodeSpec
-except ImportError:
-    node_spec_registry = None
-    NodeSpec = None
+from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
 
 
 class AIAgentNodeExecutor(BaseNodeExecutor):
     """Executor for AI_AGENT_NODE type with provider-based architecture."""
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, subtype: Optional[str] = None):
+        super().__init__(subtype=subtype)
         self.ai_clients = {}
         self._init_ai_clients()
 
@@ -33,7 +31,7 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         """Get the node specification for AI agent nodes."""
         if node_spec_registry and self._subtype:
             # Return the specific spec for current subtype
-            return node_spec_registry.get_spec("AI_AGENT_NODE", self._subtype)
+            return node_spec_registry.get_spec(NodeType.AI_AGENT.value, self._subtype)
         return None
 
     def _init_ai_clients(self):
@@ -59,21 +57,17 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
 
     def get_supported_subtypes(self) -> List[str]:
         """Get supported AI agent subtypes (provider-based)."""
-        return [
-            "GEMINI_NODE",  # Google Gemini
-            "OPENAI_NODE",  # OpenAI GPT
-            "CLAUDE_NODE",  # Anthropic Claude
-        ]
+        return [subtype.value for subtype in AIAgentSubtype]
 
     def validate(self, node: Any) -> List[str]:
         """Validate AI agent node configuration using spec-based validation."""
         # First use the base class validation which includes spec validation
         errors = super().validate(node)
-        
+
         # If spec validation passed, we can skip manual validation
         if not errors and self.spec:
             return errors
-        
+
         # Fallback to legacy validation if spec not available
         if not node.subtype:
             errors.append("AI Agent subtype is required")
@@ -88,18 +82,18 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             )
 
         return errors
-    
+
     def _validate_legacy(self, node: Any) -> List[str]:
         """Legacy validation for backward compatibility."""
         errors = []
-        
+
         # Validate required parameters
         errors.extend(self._validate_required_parameters(node, ["system_prompt"]))
 
         # Validate model_version if provided
-        if hasattr(node, 'parameters'):
+        if hasattr(node, "parameters"):
             model_version = node.parameters.get("model_version")
-            if model_version and hasattr(node, 'subtype'):
+            if model_version and hasattr(node, "subtype"):
                 valid_models = self._get_valid_models_for_provider(node.subtype)
                 if valid_models and model_version not in valid_models:
                     errors.append(
@@ -107,7 +101,7 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                     )
 
             # Validate provider-specific parameters
-            if hasattr(node, 'subtype'):
+            if hasattr(node, "subtype"):
                 errors.extend(self._validate_provider_specific_parameters(node, node.subtype))
 
         return errors
@@ -121,11 +115,11 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             subtype = context.node.subtype
             logs.append(f"Executing AI agent node with provider: {subtype}")
 
-            if subtype == "GEMINI_NODE":
+            if subtype == AIAgentSubtype.GOOGLE_GEMINI.value:
                 return self._execute_gemini_agent(context, logs, start_time)
-            elif subtype == "OPENAI_NODE":
+            elif subtype == AIAgentSubtype.OPENAI_CHATGPT.value:
                 return self._execute_openai_agent(context, logs, start_time)
-            elif subtype == "CLAUDE_NODE":
+            elif subtype == AIAgentSubtype.ANTHROPIC_CLAUDE.value:
                 return self._execute_claude_agent(context, logs, start_time)
             else:
                 return self._create_error_result(
@@ -301,9 +295,19 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
     def _get_valid_models_for_provider(self, provider: str) -> List[str]:
         """Get valid model versions for a provider."""
         models = {
-            "GEMINI_NODE": ["gemini-pro", "gemini-pro-vision", "gemini-ultra"],
-            "OPENAI_NODE": ["gpt-4", "gpt-4-turbo", "gpt-3.5-turbo", "gpt-4-vision-preview"],
-            "CLAUDE_NODE": ["claude-3-opus", "claude-3-sonnet", "claude-3-haiku", "claude-2.1"],
+            AIAgentSubtype.GOOGLE_GEMINI.value: ["gemini-pro", "gemini-pro-vision", "gemini-ultra"],
+            AIAgentSubtype.OPENAI_CHATGPT.value: [
+                "gpt-4",
+                "gpt-4-turbo",
+                "gpt-3.5-turbo",
+                "gpt-4-vision-preview",
+            ],
+            AIAgentSubtype.ANTHROPIC_CLAUDE.value: [
+                "claude-3-opus",
+                "claude-3-sonnet",
+                "claude-3-haiku",
+                "claude-2.1",
+            ],
         }
         return models.get(provider, [])
 
@@ -311,20 +315,20 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         """Validate provider-specific parameters."""
         errors = []
 
-        if provider == "GEMINI_NODE":
+        if provider == AIAgentSubtype.GOOGLE_GEMINI.value:
             # Validate safety_settings format if provided
             safety_settings = node.parameters.get("safety_settings")
             if safety_settings and not isinstance(safety_settings, dict):
                 errors.append("safety_settings must be a dictionary")
 
-        elif provider == "OPENAI_NODE":
+        elif provider == AIAgentSubtype.OPENAI_CHATGPT.value:
             # Validate penalty values
             for penalty in ["presence_penalty", "frequency_penalty"]:
                 value = node.parameters.get(penalty)
                 if value is not None and not (-2.0 <= value <= 2.0):
                     errors.append(f"{penalty} must be between -2.0 and 2.0")
 
-        elif provider == "CLAUDE_NODE":
+        elif provider == AIAgentSubtype.ANTHROPIC_CLAUDE.value:
             # Validate stop_sequences format if provided
             stop_sequences = node.parameters.get("stop_sequences")
             if stop_sequences and not isinstance(stop_sequences, list):

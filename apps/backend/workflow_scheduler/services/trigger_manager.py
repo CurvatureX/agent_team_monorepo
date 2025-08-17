@@ -2,6 +2,7 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
+from shared.models.node_enums import TriggerSubtype
 from shared.models.trigger import ExecutionResult, TriggerSpec, TriggerStatus, TriggerType
 from workflow_scheduler.services.event_router import EventRouter
 from workflow_scheduler.services.lock_manager import DistributedLockManager
@@ -143,16 +144,13 @@ class TriggerManager:
 
         return status
 
-    async def trigger_manual(
-        self, workflow_id: str, user_id: str, confirmation: bool = False
-    ) -> ExecutionResult:
+    async def trigger_manual(self, workflow_id: str, user_id: str) -> ExecutionResult:
         """
         Manually trigger a workflow execution
 
         Args:
             workflow_id: Workflow to trigger
             user_id: User requesting the trigger
-            confirmation: Whether user confirmed the action
 
         Returns:
             ExecutionResult with execution details
@@ -160,7 +158,7 @@ class TriggerManager:
         try:
             triggers = self._triggers.get(workflow_id, [])
             manual_triggers = [
-                t for t in triggers if t.trigger_type == TriggerType.MANUAL.value and t.enabled
+                t for t in triggers if t.trigger_type == TriggerSubtype.MANUAL.value and t.enabled
             ]
 
             if not manual_triggers:
@@ -175,11 +173,11 @@ class TriggerManager:
 
             # Call the manual trigger's specific method
             if hasattr(manual_trigger, "trigger_manual"):
-                return await manual_trigger.trigger_manual(user_id, confirmation)
+                return await manual_trigger.trigger_manual(user_id)
             else:
                 # Fallback to base trigger method
                 return await manual_trigger._trigger_workflow(
-                    {"trigger_type": "manual", "user_id": user_id, "confirmation": confirmation}
+                    {"trigger_type": TriggerSubtype.MANUAL.value, "user_id": user_id}
                 )
 
         except Exception as e:
@@ -206,7 +204,7 @@ class TriggerManager:
         try:
             triggers = self._triggers.get(workflow_id, [])
             webhook_triggers = [
-                t for t in triggers if t.trigger_type == TriggerType.WEBHOOK.value and t.enabled
+                t for t in triggers if t.trigger_type == TriggerSubtype.WEBHOOK.value and t.enabled
             ]
 
             if not webhook_triggers:
@@ -286,7 +284,9 @@ class TriggerManager:
             # Process all workflows that have GitHub triggers
             for workflow_id, triggers in self._triggers.items():
                 github_triggers = [
-                    t for t in triggers if t.trigger_type == TriggerType.GITHUB.value and t.enabled
+                    t
+                    for t in triggers
+                    if t.trigger_type == TriggerSubtype.GITHUB.value and t.enabled
                 ]
 
                 for trigger in github_triggers:

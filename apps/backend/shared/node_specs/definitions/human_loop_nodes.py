@@ -5,6 +5,7 @@ This module defines specifications for HUMAN_IN_THE_LOOP_NODE subtypes that enab
 human interaction within workflows through various communication channels.
 """
 
+from ...models.node_enums import HumanLoopSubtype, NodeType
 from ..base import (
     ConnectionType,
     DataFormat,
@@ -17,8 +18,8 @@ from ..base import (
 
 # GMAIL Human Loop Node
 GMAIL_HUMAN_LOOP_SPEC = NodeSpec(
-    node_type="HUMAN_IN_THE_LOOP_NODE",
-    subtype="HUMAN_GMAIL",
+    node_type=NodeType.HUMAN_IN_THE_LOOP,
+    subtype=HumanLoopSubtype.GMAIL_INTERACTION,
     description="Send email via Gmail and wait for human response or approval",
     parameters=[
         ParameterDef(
@@ -113,8 +114,8 @@ GMAIL_HUMAN_LOOP_SPEC = NodeSpec(
 
 # SLACK Human Loop Node
 SLACK_HUMAN_LOOP_SPEC = NodeSpec(
-    node_type="HUMAN_IN_THE_LOOP_NODE",
-    subtype="HUMAN_SLACK",
+    node_type=NodeType.HUMAN_IN_THE_LOOP,
+    subtype=HumanLoopSubtype.SLACK_INTERACTION,
     description="Send Slack message and wait for human response or approval",
     parameters=[
         ParameterDef(
@@ -178,8 +179,8 @@ SLACK_HUMAN_LOOP_SPEC = NodeSpec(
 
 # DISCORD Human Loop Node
 DISCORD_HUMAN_LOOP_SPEC = NodeSpec(
-    node_type="HUMAN_IN_THE_LOOP_NODE",
-    subtype="HUMAN_DISCORD",
+    node_type=NodeType.HUMAN_IN_THE_LOOP,
+    subtype=HumanLoopSubtype.DISCORD_INTERACTION,
     description="Send Discord message and wait for human response",
     parameters=[
         ParameterDef(
@@ -227,8 +228,8 @@ DISCORD_HUMAN_LOOP_SPEC = NodeSpec(
 
 # TELEGRAM Human Loop Node
 TELEGRAM_HUMAN_LOOP_SPEC = NodeSpec(
-    node_type="HUMAN_IN_THE_LOOP_NODE",
-    subtype="HUMAN_TELEGRAM",
+    node_type=NodeType.HUMAN_IN_THE_LOOP,
+    subtype=HumanLoopSubtype.TELEGRAM_INTERACTION,
     description="Send Telegram message and wait for human response",
     parameters=[
         ParameterDef(
@@ -276,8 +277,8 @@ TELEGRAM_HUMAN_LOOP_SPEC = NodeSpec(
 
 # APP Human Loop Node
 APP_HUMAN_LOOP_SPEC = NodeSpec(
-    node_type="HUMAN_IN_THE_LOOP_NODE",
-    subtype="HUMAN_APP",
+    node_type=NodeType.HUMAN_IN_THE_LOOP,
+    subtype=HumanLoopSubtype.IN_APP_APPROVAL,
     description="Send in-app notification and wait for human interaction",
     parameters=[
         ParameterDef(
@@ -341,6 +342,52 @@ APP_HUMAN_LOOP_SPEC = NodeSpec(
             name="timeout",
             type=ConnectionType.ERROR,
             description="Output when timeout occurs",
+        ),
+    ],
+)
+
+
+# Human Approval - Generic approval workflow
+APPROVAL_SPEC = NodeSpec(
+    node_type=NodeType.HUMAN_IN_THE_LOOP,
+    subtype="APPROVAL",  # Using string to avoid conflict
+    description="Wait for human approval before proceeding",
+    display_name="Human Approval",
+    category="human_interaction",
+    template_id="human_approval",
+    parameters=[
+        ParameterDef(
+            name="approval_message",
+            type=ParameterType.STRING,
+            required=True,
+            description="Message to display for approval request",
+        ),
+        ParameterDef(
+            name="timeout_hours",
+            type=ParameterType.INTEGER,
+            required=False,
+            default_value=24,
+            description="Hours to wait for approval before timeout",
+        ),
+    ],
+    input_ports=[
+        InputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            required=False,
+            description="Data to include in approval request",
+        )
+    ],
+    output_ports=[
+        OutputPortSpec(
+            name="approved",
+            type=ConnectionType.MAIN,
+            description="Output when request is approved",
+        ),
+        OutputPortSpec(
+            name="rejected",
+            type=ConnectionType.ERROR,
+            description="Output when request is rejected",
         ),
     ],
 )

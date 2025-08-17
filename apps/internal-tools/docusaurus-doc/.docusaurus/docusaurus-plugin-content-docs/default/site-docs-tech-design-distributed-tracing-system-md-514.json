@@ -1,0 +1,24 @@
+{
+  "id": "tech-design/distributed-tracing-system",
+  "title": "AI Teams 分布式监控系统实施指南",
+  "description": "系统概览",
+  "source": "@site/../../../docs/tech-design/distributed-tracing-system.md",
+  "sourceDirName": "tech-design",
+  "slug": "/tech-design/distributed-tracing-system",
+  "permalink": "/docs/tech-design/distributed-tracing-system",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/curvaturex/agent_team_monorepo/tree/main/docs/../../../docs/tech-design/distributed-tracing-system.md",
+  "tags": [],
+  "version": "current",
+  "frontMatter": {},
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "工作流系统数据库设计文档",
+    "permalink": "/docs/tech-design/db-design"
+  },
+  "next": {
+    "title": "GitHub App Integration Architecture",
+    "permalink": "/docs/tech-design/github-app-integration"
+  }
+}

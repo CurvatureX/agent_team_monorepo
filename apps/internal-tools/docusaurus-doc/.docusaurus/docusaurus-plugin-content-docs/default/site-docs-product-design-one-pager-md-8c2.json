@@ -1,0 +1,30 @@
+{
+  "id": "product-design/core-product-design",
+  "title": "Agent Team 产品设计",
+  "description": "1. 执行摘要",
+  "source": "@site/../../../docs/product-design/one-pager.md",
+  "sourceDirName": "product-design",
+  "slug": "/product-design/core-product-design",
+  "permalink": "/docs/product-design/core-product-design",
+  "draft": false,
+  "unlisted": false,
+  "editUrl": "https://github.com/curvaturex/agent_team_monorepo/tree/main/docs/../../../docs/product-design/one-pager.md",
+  "tags": [],
+  "version": "current",
+  "sidebarPosition": 2,
+  "frontMatter": {
+    "id": "core-product-design",
+    "title": "Agent Team 产品设计",
+    "sidebar_label": "产品设计",
+    "sidebar_position": 2
+  },
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "Product Design",
+    "permalink": "/docs/product-design/"
+  },
+  "next": {
+    "title": "Tech Design",
+    "permalink": "/docs/tech-design/"
+  }
+}
