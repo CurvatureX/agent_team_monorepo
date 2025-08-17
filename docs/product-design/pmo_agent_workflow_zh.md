@@ -92,6 +92,14 @@ PMO 智能代理是一个基于 AI 的工作流自动化系统，旨在替代工
 - **智能决策支持**：基于实时数据的任务分配和优先级判断
 - **知识持久化**：自动维护和更新 Notion 中的项目知识库
 
+### 6. 团队入职与初始化引擎
+
+- **交互式设置向导**：基于 Slack 的礼貌对话收集初始团队信息
+- **团队发现**：收集团队成员姓名、角色、技能和 Slack/GitHub 身份
+- **项目发现**：识别当前项目、代码库和正在进行的计划
+- **偏好配置**：设置团队沟通偏好、时区和工作时间
+- **Notion 数据库引导**：自动创建并填充 Notion 中的初始团队结构
+
 ---
 
 ## PMO Agent 在 Notion 中维护的数据结构
@@ -102,124 +110,128 @@ PMO Agent 必须在 Notion 中维护以下关键数据库，作为所有 AI 决�
 
 #### 1. 项目管理数据库 (Projects Database)
 
-| 字段名称 | 类型 | 描述 | 示例 |
-|----------|------|------|------|
-| **项目名称** | Title | 项目的主标题 | “用户认证系统重构” |
-| **优先级** | Select | P0(紧急)/P1(高)/P2(中)/P3(低) | P1 |
-| **状态** | Status | Planning/In Progress/Review/Completed/On Hold | In Progress |
-| **进度** | Number | 0-100% | 65% |
-| **负责人** | Person | 主负责人 | Alice |
-| **团队成员** | Multi-person | 参与者列表 | Alice, Bob, Charlie |
-| **开始日期** | Date | 项目启动日期 | 2025-01-15 |
-| **预计结束** | Date | 计划完成日期 | 2025-03-01 |
-| **实际结束** | Date | 实际完成日期 | - |
-| **GitHub 仓库** | URL | 相关代码仓库 | https://github.com/team/auth-system |
-| **最新 Commit** | Rich Text | 最新提交信息 | "feat: add OAuth integration - 2025-01-28" |
-| **总 Commits** | Number | 累计提交数 | 127 |
-| **代码行数** | Number | 新增/修改代码行数 | +2,341 / -856 |
-| **业务影响** | Select | Critical/High/Medium/Low | High |
-| **技术难度** | Select | Expert/Advanced/Intermediate/Basic | Advanced |
-| **依赖项目** | Relation | 关联其他项目 | [用户数据库设计] |
-| **阻塞问题** | Rich Text | 当前面临的主要障碍 | "第三方 API 限制" |
-| **风险评估** | Select | Low/Medium/High/Critical | Medium |
-| **项目描述** | Rich Text | 详细项目说明 | ... |
+| 字段名称        | 类型         | 描述                                          | 示例                                       |
+| --------------- | ------------ | --------------------------------------------- | ------------------------------------------ |
+| **项目名称**    | Title        | 项目的主标题                                  | “用户认证系统重构”                         |
+| **优先级**      | Select       | P0(紧急)/P1(高)/P2(中)/P3(低)                 | P1                                         |
+| **状态**        | Status       | Planning/In Progress/Review/Completed/On Hold | In Progress                                |
+| **进度**        | Number       | 0-100%                                        | 65%                                        |
+| **负责人**      | Person       | 主负责人                                      | Alice                                      |
+| **团队成员**    | Multi-person | 参与者列表                                    | Alice, Bob, Charlie                        |
+| **开始日期**    | Date         | 项目启动日期                                  | 2025-01-15                                 |
+| **预计结束**    | Date         | 计划完成日期                                  | 2025-03-01                                 |
+| **实际结束**    | Date         | 实际完成日期                                  | -                                          |
+| **GitHub 仓库** | URL          | 相关代码仓库                                  | https://github.com/team/auth-system        |
+| **最新 Commit** | Rich Text    | 最新提交信息                                  | "feat: add OAuth integration - 2025-01-28" |
+| **总 Commits**  | Number       | 累计提交数                                    | 127                                        |
+| **代码行数**    | Number       | 新增/修改代码行数                             | +2,341 / -856                              |
+| **业务影响**    | Select       | Critical/High/Medium/Low                      | High                                       |
+| **技术难度**    | Select       | Expert/Advanced/Intermediate/Basic            | Advanced                                   |
+| **依赖项目**    | Relation     | 关联其他项目                                  | [用户数据库设计]                           |
+| **阻塞问题**    | Rich Text    | 当前面临的主要障碍                            | "第三方 API 限制"                          |
+| **风险评估**    | Select       | Low/Medium/High/Critical                      | Medium                                     |
+| **项目描述**    | Rich Text    | 详细项目说明                                  | ...                                        |
 
 #### 2. 个人任务清单数据库 (Individual Tasks Database)
 
-| 字段名称 | 类型 | 描述 | 示例 |
-|----------|------|------|------|
-| **任务名称** | Title | 具体任务描述 | "实现 JWT 令牌验证逻辑" |
-| **所属项目** | Relation | 关联项目数据库 | 用户认证系统重构 |
-| **分配给** | Person | 任务执行人 | Bob |
-| **任务状态** | Status | Todo/Doing/Review/Done/Blocked | Doing |
-| **优先级** | Select | Urgent/High/Medium/Low | High |
-| **预计工时** | Number | 预估需要的小时数 | 8 |
-| **实际工时** | Number | 实际花费的小时数 | 6.5 |
-| **进度百分比** | Number | 0-100% | 75% |
-| **开始日期** | Date | 任务开始日期 | 2025-01-25 |
-| **截止日期** | Date | 需要完成的日期 | 2025-01-30 |
-| **完成日期** | Date | 实际完成日期 | - |
-| **依赖任务** | Relation | 前置任务 | [设计数据库表结构] |
-| **GitHub PR** | URL | 相关 Pull Request | https://github.com/team/auth/pull/123 |
-| **相关 Commits** | Rich Text | 关联的提交记录 | "fix: JWT validation bug - abc123" |
-| **阻塞原因** | Rich Text | 如果被阻塞，说明原因 | "等待 API 文档更新" |
-| **验收标准** | Rich Text | 任务完成的标准 | "所有单元测试通过" |
-| **备注** | Rich Text | 额外说明信息 | ... |
+| 字段名称         | 类型      | 描述                           | 示例                                  |
+| ---------------- | --------- | ------------------------------ | ------------------------------------- |
+| **任务名称**     | Title     | 具体任务描述                   | "实现 JWT 令牌验证逻辑"               |
+| **所属项目**     | Relation  | 关联项目数据库                 | 用户认证系统重构                      |
+| **分配给**       | Person    | 任务执行人                     | Bob                                   |
+| **任务状态**     | Status    | Todo/Doing/Review/Done/Blocked | Doing                                 |
+| **优先级**       | Select    | Urgent/High/Medium/Low         | High                                  |
+| **预计工时**     | Number    | 预估需要的小时数               | 8                                     |
+| **实际工时**     | Number    | 实际花费的小时数               | 6.5                                   |
+| **进度百分比**   | Number    | 0-100%                         | 75%                                   |
+| **开始日期**     | Date      | 任务开始日期                   | 2025-01-25                            |
+| **截止日期**     | Date      | 需要完成的日期                 | 2025-01-30                            |
+| **完成日期**     | Date      | 实际完成日期                   | -                                     |
+| **依赖任务**     | Relation  | 前置任务                       | [设计数据库表结构]                    |
+| **GitHub PR**    | URL       | 相关 Pull Request              | https://github.com/team/auth/pull/123 |
+| **相关 Commits** | Rich Text | 关联的提交记录                 | "fix: JWT validation bug - abc123"    |
+| **阻塞原因**     | Rich Text | 如果被阻塞，说明原因           | "等待 API 文档更新"                   |
+| **验收标准**     | Rich Text | 任务完成的标准                 | "所有单元测试通过"                    |
+| **备注**         | Rich Text | 额外说明信息                   | ...                                   |
 
 #### 3. 团队成员数据库 (Team Members Database)
 
-| 字段名称 | 类型 | 描述 | 示例 |
-|----------|------|------|------|
-| **姓名** | Title | 团队成员姓名 | "Alice Chen" |
-| **角色** | Select | Senior/Mid/Junior + Frontend/Backend/Fullstack | "Senior Backend" |
-| **技能标签** | Multi-select | 专业技能列表 | [Python, PostgreSQL, Redis, AWS] |
-| **当前工作负载** | Number | 0-100%，当前工作饼满程度 | 85% |
-| **本周任务数** | Rollup | 从任务数据库统计 | 5 |
-| **在进行任务** | Relation | 当前正在执行的任务 | [JWT 验证, API 设计] |
-| **本周完成** | Number | 本周已完成任务数 | 3 |
-| **平均完成时间** | Number | 任务平均完成时间(天) | 2.3 |
-| **累计 Commits** | Number | 本周 Git 提交数 | 23 |
-| **代码贡献** | Number | 本周代码行数(+/-) | +1,247 / -356 |
-| **可用时间** | Rich Text | 特殊时间安排(休假等) | "下周三下午请假" |
-| **擅长领域** | Multi-select | 最适合的项目类型 | [Backend API, Database, Security] |
-| **历史绩效** | Rich Text | 过往项目表现记录 | "平均提前 1.2 天完成" |
+| 字段名称         | 类型         | 描述                                           | 示例                              |
+| ---------------- | ------------ | ---------------------------------------------- | --------------------------------- |
+| **姓名**         | Title        | 团队成员姓名                                   | "Alice Chen"                      |
+| **角色**         | Select       | Senior/Mid/Junior + Frontend/Backend/Fullstack | "Senior Backend"                  |
+| **技能标签**     | Multi-select | 专业技能列表                                   | [Python, PostgreSQL, Redis, AWS]  |
+| **当前工作负载** | Number       | 0-100%，当前工作饼满程度                       | 85%                               |
+| **本周任务数**   | Rollup       | 从任务数据库统计                               | 5                                 |
+| **在进行任务**   | Relation     | 当前正在执行的任务                             | [JWT 验证, API 设计]              |
+| **本周完成**     | Number       | 本周已完成任务数                               | 3                                 |
+| **平均完成时间** | Number       | 任务平均完成时间(天)                           | 2.3                               |
+| **累计 Commits** | Number       | 本周 Git 提交数                                | 23                                |
+| **代码贡献**     | Number       | 本周代码行数(+/-)                              | +1,247 / -356                     |
+| **可用时间**     | Rich Text    | 特殊时间安排(休假等)                           | "下周三下午请假"                  |
+| **擅长领域**     | Multi-select | 最适合的项目类型                               | [Backend API, Database, Security] |
+| **历史绩效**     | Rich Text    | 过往项目表现记录                               | "平均提前 1.2 天完成"             |
 
 #### 4. 会议记录数据库 (Meeting Records Database)
 
-| 字段名称 | 类型 | 描述 | 示例 |
-|----------|------|------|------|
-| **会议标题** | Title | 会议主题和日期 | "周三进度同步 - 2025-01-29" |
-| **会议类型** | Select | 周三同步/周日规划/临时会议 | 周三同步 |
-| **日期时间** | Date | 会议举行时间 | 2025-01-29 14:00 |
-| **参与人员** | Multi-person | 参与会议的人员 | [全团队] |
-| **主持人** | Person | 会议主持者 | PMO Agent |
-| **会议时长** | Number | 实际用时(分钟) | 28 |
-| **主要议题** | Rich Text | 会议核心内容 | "讨论 API 性能优化方案" |
-| **项目进度更新** | Rich Text | 各项目进展情况 | [详细进度报告] |
-| **识别的阻塞** | Rich Text | 会议中发现的问题 | "Redis 集群配置复杂" |
-| **解决方案** | Rich Text | 针对阻塞的行动计划 | "Alice 负责研究可选方案" |
-| **行动项** | Rich Text | 会议产生的待办事项 | [Action Items 清单] |
-| **下周计划** | Rich Text | 下一阶段工作规划 | [任务分配和时间表] |
-| **团队状态** | Select | 整体团队健康度 | “良好” |
-| **关键决策** | Rich Text | 重要决定和转折点 | "决定采用 GraphQL" |
-| **下次会议** | Date | 下次会议时间 | 2025-02-02 10:00 |
+| 字段名称         | 类型         | 描述                       | 示例                        |
+| ---------------- | ------------ | -------------------------- | --------------------------- |
+| **会议标题**     | Title        | 会议主题和日期             | "周三进度同步 - 2025-01-29" |
+| **会议类型**     | Select       | 周三同步/周日规划/临时会议 | 周三同步                    |
+| **日期时间**     | Date         | 会议举行时间               | 2025-01-29 14:00            |
+| **参与人员**     | Multi-person | 参与会议的人员             | [全团队]                    |
+| **主持人**       | Person       | 会议主持者                 | PMO Agent                   |
+| **会议时长**     | Number       | 实际用时(分钟)             | 28                          |
+| **主要议题**     | Rich Text    | 会议核心内容               | "讨论 API 性能优化方案"     |
+| **项目进度更新** | Rich Text    | 各项目进展情况             | [详细进度报告]              |
+| **识别的阻塞**   | Rich Text    | 会议中发现的问题           | "Redis 集群配置复杂"        |
+| **解决方案**     | Rich Text    | 针对阻塞的行动计划         | "Alice 负责研究可选方案"    |
+| **行动项**       | Rich Text    | 会议产生的待办事项         | [Action Items 清单]         |
+| **下周计划**     | Rich Text    | 下一阶段工作规划           | [任务分配和时间表]          |
+| **团队状态**     | Select       | 整体团队健康度             | “良好”                      |
+| **关键决策**     | Rich Text    | 重要决定和转折点           | "决定采用 GraphQL"          |
+| **下次会议**     | Date         | 下次会议时间               | 2025-02-02 10:00            |
 
 #### 5. 知识库数据库 (Knowledge Base Database)
 
-| 字段名称 | 类型 | 描述 | 示例 |
-|----------|------|------|------|
-| **知识条目** | Title | 知识点标题 | "如何处理 Redis 连接超时" |
-| **类别** | Select | 技术方案/最佳实践/故障处理/团队规范 | 技术方案 |
-| **关联项目** | Relation | 相关项目 | [用户认证系统] |
-| **创建者** | Person | 贡献这个知识的人 | Alice |
-| **创建日期** | Date | 知识归档日期 | 2025-01-28 |
-| **最后更新** | Date | 最近修改日期 | 2025-01-29 |
-| **使用频率** | Number | 被参考的次数 | 12 |
-| **内容摘要** | Rich Text | 知识点核心内容 | "设置连接池参数和重试机制" |
-| **解决方案** | Rich Text | 具体实施步骤 | [详细技术步骤] |
-| **相关文档** | URL | 外部参考链接 | https://redis.io/docs/manual/clients/ |
-| **标签** | Multi-select | 便于搜索的标签 | [Redis, 性能优化, 后端] |
+| 字段名称     | 类型         | 描述                                | 示例                                  |
+| ------------ | ------------ | ----------------------------------- | ------------------------------------- |
+| **知识条目** | Title        | 知识点标题                          | "如何处理 Redis 连接超时"             |
+| **类别**     | Select       | 技术方案/最佳实践/故障处理/团队规范 | 技术方案                              |
+| **关联项目** | Relation     | 相关项目                            | [用户认证系统]                        |
+| **创建者**   | Person       | 贡献这个知识的人                    | Alice                                 |
+| **创建日期** | Date         | 知识归档日期                        | 2025-01-28                            |
+| **最后更新** | Date         | 最近修改日期                        | 2025-01-29                            |
+| **使用频率** | Number       | 被参考的次数                        | 12                                    |
+| **内容摘要** | Rich Text    | 知识点核心内容                      | "设置连接池参数和重试机制"            |
+| **解决方案** | Rich Text    | 具体实施步骤                        | [详细技术步骤]                        |
+| **相关文档** | URL          | 外部参考链接                        | https://redis.io/docs/manual/clients/ |
+| **标签**     | Multi-select | 便于搜索的标签                      | [Redis, 性能优化, 后端]               |
 
 ### 自动维护机制
 
 PMO Agent 通过以下机制实时维护这些数据：
 
 #### 实时数据同步
+
 - **Git Webhook 集成**: 自动获取最新 commit 信息、PR 状态、代码行数统计
 - **Slack 消息解析**: 从日常沟通中提取任务更新、进度报告、阻塞信息
 - **会议自动记录**: 实时记录会议内容、决策和行动项
 
 #### 智能数据分析
+
 - **进度计算**: 基于任务完成情况自动更新项目进度
 - **工作负载统计**: 实时计算团队成员当前任务量和容量使用率
 - **风险评估更新**: 根据进度延迟、阻塞情况动态调整风险等级
 
 #### 知识积累与学习
+
 - **问题解决方案归档**: 从会议和讨论中提取有用的技术决策
 - **最佳实践总结**: 基于成功项目经验形成团队规范
 - **性能数据分析**: 持续优化任务估时和资源分配算法
 
 这些结构化数据使 PMO Agent 能够：
+
 1. **做出智能决策**: 基于实际数据进行任务分配和进度预测
 2. **提供上下文感知**: 在会议和讨论中参考历史数据和经验
 3. **保持数据一致性**: Slack 交互、GitHub 活动和 Notion 记录三者实时同步
@@ -228,6 +240,65 @@ PMO Agent 通过以下机制实时维护这些数据：
 ---
 
 ## 代理能力规范
+
+### 团队入职能力
+
+#### 智能团队发现
+
+- **欢迎对话**：当 PMO Agent 首次添加到 Slack 工作区时启动友好介绍
+- **渐进式信息收集**：在自然对话流程中提问，而非压倒性的调查
+- **智能上下文感知**：从 Slack 工作区检测现有团队成员并建议补全
+- **验证与确认**：在填充 Notion 数据库之前验证收集的信息
+
+#### 初始设置流程
+
+- **团队成员注册**："大家好！我是你们新的 PMO 助手。让我来了解一下团队。请每位成员告诉我你们的姓名、角色（前端/后端/全栈/运维/QA）和主要技术技能？"
+- **项目发现**："你们目前在做哪些项目？请分享项目名称、GitHub 代码库和谁在负责什么。"
+- **工作流偏好**："你们更喜欢如何进行团队沟通？你们的工作时间和时区是什么？"
+- **集成设置**："请分享你们的 GitHub 用户名，这样我就能跟踪代码贡献并将其链接到任务。"
+
+#### 对话示例
+
+**团队介绍流程：**
+
+```
+PMO Agent: 👋 大家好！我是你们新的PMO助手，负责帮助简化我们的项目管理。
+
+为了开始工作，我需要了解我们的团队结构。请每位团队成员自我介绍：
+• 您的姓名
+• 您的角色（前端/后端/全栈/运维/QA）
+• 您的主要技术技能
+• 您的GitHub用户名
+
+不用着急 - 大家方便的时候回复就好！😊
+```
+
+**项目发现流程：**
+
+```
+PMO Agent: 谢谢大家的介绍！现在我想了解一下我们当前的项目。
+
+请有人帮我了解一下：
+• 我们正在积极进行哪些项目？
+• 每个项目关联的GitHub代码库是什么？
+• 每个项目的主要贡献者是谁？
+• 每个项目的当前状态和优先级如何？
+
+我会用这些信息在Notion中设置我们的项目跟踪。
+```
+
+**偏好配置：**
+
+```
+PMO Agent: 设置快完成了！关于团队偏好的几个问题：
+
+• 大家都在什么时区？（我看到有不同的提及，想确认一下）
+• 团队会议的首选时间？
+• 我应该多久检查一次状态更新？
+• 项目讨论和一般聊天有特定的频道吗？
+
+我会在所有互动中尊重这些偏好。
+```
 
 ### 核心能力
 
@@ -343,386 +414,385 @@ PMO Agent 通过以下机制实时维护这些数据：
 
 ```json
 {
-  "workflow": {
-    "id": "pmo-agent-workflow",
-    "name": "PMO智能代理工作流",
-    "description": "全面的AI驱动项目管理办公室自动化工作流",
-    "version": "1.0.0",
-    "settings": {
-      "timezone": { "name": "UTC" },
-      "save_execution_progress": true,
-      "save_manual_executions": true,
-      "timeout": 3600,
-      "error_policy": "continue",
-      "caller_policy": "workflow"
-    },
-    "nodes": [
-      {
-        "id": "slack_trigger",
-        "name": "Slack事件触发器",
-        "type": "TRIGGER",
-        "subtype": "CHAT",
-        "position": { "x": 100, "y": 100 },
-        "parameters": {
-          "event_types": [
-            "message",
-            "app_mention",
-            "slash_command",
-            "interactive_message"
-          ],
-          "mention_required": false,
-          "ignore_bots": true,
-          "channel_filter": "#general|#engineering|DM"
-        }
-      },
-      {
-        "id": "cron_daily_standup",
-        "name": "每日站会触发器",
-        "type": "TRIGGER",
-        "subtype": "CRON",
-        "position": { "x": 100, "y": 300 },
-        "parameters": {
-          "cron_expression": "0 9 * * MON-FRI",
-          "timezone": "America/New_York",
-          "enabled": true
-        }
-      },
-      {
-        "id": "cron_wednesday_checkin",
-        "name": "周三检查触发器",
-        "type": "TRIGGER",
-        "subtype": "CRON",
-        "position": { "x": 100, "y": 500 },
-        "parameters": {
-          "cron_expression": "0 14 * * WED",
-          "timezone": "America/New_York",
-          "enabled": true
-        }
-      },
-      {
-        "id": "cron_sunday_planning",
-        "name": "周日规划触发器",
-        "type": "TRIGGER",
-        "subtype": "CRON",
-        "position": { "x": 100, "y": 700 },
-        "parameters": {
-          "cron_expression": "0 10 * * SUN",
-          "timezone": "America/New_York",
-          "enabled": true
-        }
-      },
-      {
-        "id": "git_webhook",
-        "name": "Git活动触发器",
-        "type": "TRIGGER",
-        "subtype": "WEBHOOK",
-        "position": { "x": 100, "y": 900 },
-        "parameters": {
-          "events": ["push", "pull_request", "deployment"],
-          "branches": ["main", "develop"],
-          "ignore_bots": true
-        }
-      },
-      {
-        "id": "notion_knowledge_mcp",
-        "name": "Notion知识库MCP连接器",
-        "type": "MCP",
-        "subtype": "NOTION_CONNECTOR",
-        "position": { "x": 250, "y": 100 },
-        "parameters": {
-          "notion_workspace_id": "{{NOTION_WORKSPACE_ID}}",
-          "databases": {
-            "projects": "{{NOTION_PROJECTS_DB_ID}}",
-            "individual_tasks": "{{NOTION_TASKS_DB_ID}}",
-            "team_members": "{{NOTION_TEAM_DB_ID}}",
-            "meeting_records": "{{NOTION_MEETINGS_DB_ID}}",
-            "knowledge_base": "{{NOTION_KB_DB_ID}}"
-          },
-          "access_permissions": ["read", "write", "query"],
-          "cache_ttl": 300
-        }
-      },
-      {
-        "id": "message_classifier",
-        "name": "消息分类AI",
-        "type": "AI_AGENT",
-        "subtype": "CLAUDE_NODE",
-        "position": { "x": 400, "y": 100 },
-        "parameters": {
-          "system_prompt": "你是PMO运营的消息分类专家。分析传入的Slack消息并将其分类为：'status_update'（状态更新）、'blocker_report'（阻塞报告）、'task_request'（任务请求）、'meeting_response'（会议回复）、'general_discussion'（一般讨论）。提取提到的任何行动项、截止日期或阻塞。你可以通过MCP连接器查询Notion中的相关任务和项目信息来增强分类准确性。用JSON格式回复：{\"category\": \"...\", \"action_items\": [...], \"blockers\": [...], \"urgency\": \"low|medium|high\", \"requires_response\": boolean}",
-          "model_version": "claude-3-sonnet",
-          "temperature": 0.3,
-          "max_tokens": 1024,
-          "mcp_connections": ["notion_knowledge_mcp"]
-        }
-      },
-      {
-        "id": "status_aggregator",
-        "name": "状态聚合AI",
-        "type": "AI_AGENT",
-        "subtype": "OPENAI_NODE",
-        "position": { "x": 400, "y": 300 },
-        "parameters": {
-          "system_prompt": "你是项目状态聚合专家。将个人团队成员状态更新编译成全面的团队状态报告。使用MCP连接器查询Notion中的当前任务状态、项目里程碑和团队容量信息，结合实时数据生成准确的状态报告。包括进度摘要、阻塞、即将到来的交付物和风险评估。为领导层生成可操作的洞察和建议。",
-          "model_version": "gpt-4",
-          "temperature": 0.2,
-          "max_tokens": 2048,
-          "mcp_connections": ["notion_knowledge_mcp"]
-        }
-      },
-      {
-        "id": "wednesday_sync_facilitator",
-        "name": "周三进度同步会议AI",
-        "type": "AI_AGENT",
-        "subtype": "GEMINI_NODE",
-        "position": { "x": 400, "y": 500 },
-        "parameters": {
-          "system_prompt": "你是周三进度同步会议的专家促进者。使用MCP连接器实时查询Notion中的任务状态、项目进度和团队分配情况。主要任务：1) 收集每个团队成员的当前进度更新并与Notion中的任务状态对比 2) 识别和讨论当前阻塞问题，参考历史解决方案 3) 协调解决方案和支持需求 4) 评估本周剩余时间的目标达成情况，基于实际数据调整预期。保持会议专注于进度同步和问题解决，控制在30分钟内。",
-          "model_version": "gemini-pro",
-          "temperature": 0.3,
-          "max_tokens": 2048,
-          "mcp_connections": ["notion_knowledge_mcp"]
-        }
-      },
-      {
-        "id": "sunday_planning_facilitator",
-        "name": "周日规划会议AI",
-        "type": "AI_AGENT",
-        "subtype": "CLAUDE_NODE",
-        "position": { "x": 400, "y": 600 },
-        "parameters": {
-          "system_prompt": "你是周日规划会议的专家促进者。使用MCP连接器深度查询Notion知识库，包括任务历史、团队技能矩阵、项目依赖关系和历史速度数据。主要任务：1) 回顾上周完成情况和里程碑达成，基于Notion中的实际数据 2) 分析团队速度和瓶颈，参考历史模式 3) 规划下周的任务和优先级，考虑团队成员的专长和当前工作负载 4) 智能分配任务给最合适的团队成员 5) 识别依赖关系和风险，基于项目知识库 6) 设定下周的目标和成功标准。平衡回顾和前瞻规划，控制在45分钟内。",
-          "model_version": "claude-3-sonnet",
-          "temperature": 0.4,
-          "max_tokens": 2048,
-          "mcp_connections": ["notion_knowledge_mcp"]
-        }
-      },
-      {
-        "id": "task_manager",
-        "name": "智能任务管理AI",
-        "type": "AI_AGENT",
-        "subtype": "CLAUDE_NODE",
-        "position": { "x": 400, "y": 700 },
-        "parameters": {
-          "system_prompt": "你是智能任务管理系统。使用MCP连接器查询Notion中的团队技能矩阵、当前工作负载、历史任务数据和项目上下文。分析传入的请求和对话以提取可操作的任务。基于实时的团队专业知识、当前工作负载和项目上下文确定最合适的分配者。参考历史类似任务估算工作量，识别依赖关系，基于业务优先级和资源可用性设置合适的优先级。创建具有明确验收标准的结构化任务描述，并自动关联相关的项目和里程碑。",
-          "model_version": "claude-3-opus",
-          "temperature": 0.3,
-          "max_tokens": 1536,
-          "mcp_connections": ["notion_knowledge_mcp"]
-        }
-      },
-      {
-        "id": "analytics_engine",
-        "name": "分析洞察AI",
-        "type": "AI_AGENT",
-        "subtype": "OPENAI_NODE",
-        "position": { "x": 400, "y": 900 },
-        "parameters": {
-          "system_prompt": "你是专门从事工程团队绩效的数据分析专家。使用MCP连接器访问Notion中的完整项目历史、任务完成数据、团队绩效指标和知识库。分析团队指标、速度趋势、沟通模式和项目健康指标。结合历史数据进行趋势分析，为项目交付生成预测洞察，识别反复出现的瓶颈模式，推荐基于数据的优化策略。以清晰、可操作的报告呈现发现，并自动更新Notion中的团队绩效知识库。",
-          "model_version": "gpt-4-turbo",
-          "temperature": 0.1,
-          "max_tokens": 2048,
-          "mcp_connections": ["notion_knowledge_mcp"]
-        }
-      },
-      {
-        "id": "slack_responder",
-        "name": "Slack响应处理器",
-        "type": "ACTION",
-        "subtype": "HTTP_REQUEST",
-        "position": { "x": 700, "y": 200 },
-        "parameters": {
-          "url": "https://slack.com/api/chat.postMessage",
-          "method": "POST",
-          "headers": {
-            "Authorization": "Bearer {{SLACK_BOT_TOKEN}}",
-            "Content-Type": "application/json"
-          },
-          "response_format": "json"
-        }
-      },
-      {
-        "id": "notion_sync",
-        "name": "Notion数据库同步",
-        "type": "ACTION",
-        "subtype": "HTTP_REQUEST",
-        "position": { "x": 700, "y": 400 },
-        "parameters": {
-          "url": "https://api.notion.com/v1/pages",
-          "method": "POST",
-          "headers": {
-            "Authorization": "Bearer {{NOTION_API_TOKEN}}",
-            "Content-Type": "application/json",
-            "Notion-Version": "2022-06-28"
-          },
-          "response_format": "json"
-        }
-      },
-      {
-        "id": "calendar_integration",
-        "name": "日历事件管理器",
-        "type": "ACTION",
-        "subtype": "HTTP_REQUEST",
-        "position": { "x": 700, "y": 600 },
-        "parameters": {
-          "url": "https://www.googleapis.com/calendar/v3/calendars/primary/events",
-          "method": "POST",
-          "headers": {
-            "Authorization": "Bearer {{GOOGLE_CALENDAR_TOKEN}}",
-            "Content-Type": "application/json"
-          },
-          "response_format": "json"
-        }
-      },
-      {
-        "id": "escalation_manager",
-        "name": "响应升级逻辑",
-        "type": "FLOW",
-        "subtype": "IF",
-        "position": { "x": 700, "y": 800 },
-        "parameters": {
-          "condition": "response_time > 4_hours && priority == 'high'",
-          "true_branch": "escalate_to_public",
-          "false_branch": "continue_monitoring"
-        }
-      },
-      {
-        "id": "data_processor",
-        "name": "团队数据聚合器",
-        "type": "ACTION",
-        "subtype": "DATA_TRANSFORMATION",
-        "position": { "x": 1000, "y": 300 },
-        "parameters": {
-          "operation": "aggregate",
-          "grouping_fields": ["team_member", "project", "date"],
-          "aggregation_functions": {
-            "tasks_completed": "sum",
-            "hours_worked": "sum",
-            "blockers_reported": "count"
-          }
-        }
-      },
-      {
-        "id": "report_generator",
-        "name": "高管报告生成器",
-        "type": "ACTION",
-        "subtype": "FILE_OPERATION",
-        "position": { "x": 1000, "y": 500 },
-        "parameters": {
-          "operation": "create",
-          "file_path": "/reports/weekly_status_{{date}}.md",
-          "template": "executive_status_template",
-          "format": "markdown"
-        }
-      },
-      {
-        "id": "database_logger",
-        "name": "活动记录器",
-        "type": "ACTION",
-        "subtype": "DATABASE_OPERATION",
-        "position": { "x": 1000, "y": 700 },
-        "parameters": {
-          "operation": "insert",
-          "table": "pmo_activity_log",
-          "connection": "postgresql://{{DB_HOST}}/pmo_db"
-        }
-      }
-    ],
-    "connections": {
-      "slack_trigger": {
-        "main": [
-          { "node": "notion_knowledge_mcp", "type": "context", "index": 0 },
-          { "node": "message_classifier", "type": "main", "index": 0 }
-        ]
-      },
-      "notion_knowledge_mcp": {
-        "context": [
-          { "node": "message_classifier", "type": "context", "index": 0 },
-          { "node": "status_aggregator", "type": "context", "index": 0 },
-          { "node": "wednesday_sync_facilitator", "type": "context", "index": 0 },
-          { "node": "sunday_planning_facilitator", "type": "context", "index": 0 },
-          { "node": "task_manager", "type": "context", "index": 0 },
-          { "node": "analytics_engine", "type": "context", "index": 0 }
-        ]
-      },
-      "cron_daily_standup": {
-        "main": [{ "node": "status_aggregator", "type": "main", "index": 0 }]
-      },
-      "cron_wednesday_checkin": {
-        "main": [
-          { "node": "wednesday_sync_facilitator", "type": "main", "index": 0 }
-        ]
-      },
-      "cron_sunday_planning": {
-        "main": [
-          { "node": "sunday_planning_facilitator", "type": "main", "index": 0 }
-        ]
-      },
-      "git_webhook": {
-        "main": [{ "node": "analytics_engine", "type": "main", "index": 0 }]
-      },
-      "message_classifier": {
-        "main": [
-          { "node": "task_manager", "type": "main", "index": 0 },
-          { "node": "escalation_manager", "type": "main", "index": 0 }
-        ]
-      },
-      "status_aggregator": {
-        "main": [
-          { "node": "slack_responder", "type": "main", "index": 0 },
-          { "node": "notion_sync", "type": "main", "index": 0 }
-        ]
-      },
-      "wednesday_sync_facilitator": {
-        "main": [
-          { "node": "slack_responder", "type": "main", "index": 0 },
-          { "node": "notion_sync", "type": "main", "index": 0 }
-        ]
-      },
-      "sunday_planning_facilitator": {
-        "main": [
-          { "node": "task_manager", "type": "main", "index": 0 },
-          { "node": "slack_responder", "type": "main", "index": 0 },
-          { "node": "calendar_integration", "type": "main", "index": 0 }
-        ]
-      },
-      "task_manager": {
-        "main": [
-          { "node": "notion_sync", "type": "main", "index": 0 },
-          { "node": "slack_responder", "type": "main", "index": 0 }
-        ]
-      },
-      "analytics_engine": {
-        "main": [
-          { "node": "data_processor", "type": "main", "index": 0 },
-          { "node": "report_generator", "type": "main", "index": 0 }
-        ]
-      },
-      "escalation_manager": {
-        "true": [{ "node": "slack_responder", "type": "main", "index": 0 }],
-        "false": [{ "node": "database_logger", "type": "main", "index": 0 }]
-      },
-      "data_processor": {
-        "main": [{ "node": "database_logger", "type": "main", "index": 0 }]
-      },
-      "report_generator": {
-        "main": [{ "node": "slack_responder", "type": "main", "index": 0 }]
+  "name": "PMO Agent Workflow",
+  "description": "Comprehensive AI-powered project management office automation workflow",
+  "settings": {
+    "timezone": { "name": "Asia/Shanghai" },
+    "save_execution_progress": true,
+    "save_manual_executions": true,
+    "timeout": 3600,
+    "error_policy": "continue",
+    "caller_policy": "workflow"
+  },
+  "nodes": [
+    {
+      "id": "slack_trigger",
+      "name": "Slack Event Trigger",
+      "type": "TRIGGER",
+      "subtype": "SLACK",
+      "position": { "x": 100, "y": 100 },
+      "parameters": {
+        "event_types": "[\"message\", \"app_mention\", \"slash_command\", \"interactive_message\"]",
+        "mention_required": false,
+        "ignore_bots": true,
+        "channel_filter": "#general|#engineering|DM"
       }
     },
-    "static_data": {
-      "team_members": "[\"alice\", \"bob\", \"charlie\", \"diana\", \"eve\", \"frank\", \"grace\", \"henry\"]",
-      "escalation_channels": "{\"high\": \"#engineering-alerts\", \"medium\": \"#general\", \"low\": \"DM\"}",
-      "business_hours": "{\"start\": \"09:00\", \"end\": \"17:00\", \"timezone\": \"America/New_York\"}"
+    {
+      "id": "cron_daily_standup",
+      "name": "Daily Standup Trigger",
+      "type": "TRIGGER",
+      "subtype": "CRON",
+      "position": { "x": 100, "y": 300 },
+      "parameters": {
+        "cron_expression": "0 9 * * MON-FRI",
+        "timezone": "Asia/Shanghai",
+        "enabled": true
+      }
     },
-    "tags": [
-      "pmo",
-      "automation",
-      "team-management",
-      "slack-integration",
-      "notion-sync"
-    ]
-  }
+    {
+      "id": "cron_wednesday_checkin",
+      "name": "Wednesday Check-in Trigger",
+      "type": "TRIGGER",
+      "subtype": "CRON",
+      "position": { "x": 100, "y": 500 },
+      "parameters": {
+        "cron_expression": "0 14 * * WED",
+        "timezone": "Asia/Shanghai",
+        "enabled": true
+      }
+    },
+    {
+      "id": "cron_sunday_planning",
+      "name": "Sunday Planning Trigger",
+      "type": "TRIGGER",
+      "subtype": "CRON",
+      "position": { "x": 100, "y": 700 },
+      "parameters": {
+        "cron_expression": "0 10 * * SUN",
+        "timezone": "Asia/Shanghai",
+        "enabled": true
+      }
+    },
+    {
+      "id": "git_webhook",
+      "name": "Git Activity Trigger",
+      "type": "TRIGGER",
+      "subtype": "GITHUB",
+      "position": { "x": 100, "y": 900 },
+      "parameters": {
+        "github_app_installation_id": "{{GITHUB_APP_INSTALLATION_ID}}",
+        "repository": "{{GITHUB_REPOSITORY}}",
+        "event_config": "{\"push\": {\"branches\": [\"main\", \"develop\"]}, \"pull_request\": {\"actions\": [\"opened\", \"closed\", \"merged\"]}, \"workflow_run\": {\"conclusions\": [\"success\", \"failure\"]}}",
+        "ignore_bots": true
+      }
+    },
+    {
+      "id": "team_onboarding_trigger",
+      "name": "Team Onboarding Trigger",
+      "type": "TRIGGER",
+      "subtype": "MANUAL",
+      "position": { "x": 100, "y": 1100 },
+      "parameters": {
+        "trigger_name": "Initialize PMO Agent",
+        "description": "Start team onboarding process when PMO Agent is first deployed"
+      }
+    },
+    {
+      "id": "team_onboarding_facilitator",
+      "name": "Team Onboarding & Setup AI",
+      "type": "AI_AGENT",
+      "subtype": "ANTHROPIC_CLAUDE",
+      "position": { "x": 400, "y": 1100 },
+      "parameters": {
+        "system_prompt": "You are a friendly team onboarding facilitator for a new PMO Agent deployment. Your goal is to collect essential team information through polite, conversational Slack interactions. Gather: 1) Team member details (names, roles, skills, GitHub usernames, timezones) 2) Current project information (names, repositories, contributors, status) 3) Team preferences (meeting times, communication styles, working hours). Use a warm, professional tone. Ask questions progressively - don't overwhelm with long surveys. Validate information before proceeding. Create structured data for Notion database initialization. Handle incomplete responses gracefully and follow up politely.",
+        "model_version": "claude-3-sonnet",
+        "temperature": 0.4,
+        "max_tokens": 2048
+      }
+    },
+    {
+      "id": "notion_database_initializer",
+      "name": "Notion Database Initializer",
+      "type": "ACTION",
+      "subtype": "HTTP_REQUEST",
+      "position": { "x": 700, "y": 1100 },
+      "parameters": {
+        "url": "https://api.notion.com/v1/databases",
+        "method": "POST",
+        "headers": "{\"Authorization\": \"Bearer {{NOTION_API_TOKEN}}\", \"Content-Type\": \"application/json\", \"Notion-Version\": \"2022-06-28\"}",
+        "response_format": "json"
+      }
+    },
+    {
+      "id": "message_classifier",
+      "name": "Message Classification AI",
+      "type": "AI_AGENT",
+      "subtype": "ANTHROPIC_CLAUDE",
+      "position": { "x": 400, "y": 100 },
+      "parameters": {
+        "system_prompt": "You are a message classification expert for PMO operations with access to real-time Notion project data via MCP connections. Analyze incoming Slack messages and classify them into categories: 'status_update', 'blocker_report', 'task_request', 'meeting_response', 'general_discussion'. Use MCP to query current task statuses, project contexts, and team assignments to enhance classification accuracy. Extract any action items, deadlines, or blockers mentioned, and cross-reference with existing Notion data. Respond with JSON format: {\"category\": \"...\", \"action_items\": [...], \"blockers\": [...], \"urgency\": \"low|medium|high\", \"requires_response\": boolean, \"notion_context\": {...}}",
+        "model_version": "claude-3-sonnet",
+        "temperature": 0.3,
+        "max_tokens": 1024
+      }
+    },
+    {
+      "id": "status_aggregator",
+      "name": "Status Aggregation AI",
+      "type": "AI_AGENT",
+      "subtype": "OPENAI_CHATGPT",
+      "position": { "x": 400, "y": 300 },
+      "parameters": {
+        "system_prompt": "You are a project status aggregation specialist with access to real-time Notion project databases via MCP connections. Query current task statuses, project milestones, team capacity, and historical performance data from Notion. Compile individual team member status updates into a comprehensive team status report that includes progress summary, blockers, upcoming deliverables, and risk assessment. Cross-reference Slack updates with actual Notion task data to identify discrepancies. Generate actionable insights and recommendations for leadership based on real-time project data.",
+        "model_version": "gpt-4",
+        "temperature": 0.2,
+        "max_tokens": 2048
+      }
+    },
+    {
+      "id": "wednesday_sync_facilitator",
+      "name": "Wednesday Progress Sync AI",
+      "type": "AI_AGENT",
+      "subtype": "GOOGLE_GEMINI",
+      "position": { "x": 400, "y": 500 },
+      "parameters": {
+        "system_prompt": "You are a Wednesday progress sync meeting facilitator with access to real-time Notion project data via MCP connections. Query current task statuses, project progress, and team workloads from Notion before and during meetings. Main responsibilities: 1) Collect current progress updates from each team member and compare with Notion data 2) Identify and discuss current blockers, referencing historical solutions in Knowledge Base 3) Coordinate solutions and support needs based on team capacity data 4) Assess goal achievement for remaining week time using actual project metrics. Update Notion meeting records and task statuses in real-time. Keep meetings focused on progress sync and problem resolution, within 30 minutes.",
+        "model_version": "gemini-pro",
+        "temperature": 0.3,
+        "max_tokens": 2048
+      }
+    },
+    {
+      "id": "sunday_planning_facilitator",
+      "name": "Sunday Planning Meeting AI",
+      "type": "AI_AGENT",
+      "subtype": "ANTHROPIC_CLAUDE",
+      "position": { "x": 400, "y": 600 },
+      "parameters": {
+        "system_prompt": "You are a Sunday planning meeting facilitator with deep access to Notion project databases via MCP connections. Query comprehensive project data including task completion history, team performance metrics, sprint velocity, and capacity planning data. Main responsibilities: 1) Review last week's completion and milestone achievement using actual Notion data 2) Analyze team velocity and bottlenecks based on historical task data 3) Plan next week's tasks and priorities considering team skills matrix and current workloads 4) Assign tasks to appropriate team members based on capacity and expertise data from Notion 5) Identify dependencies and risks using project relationship data 6) Set next week's goals and success criteria, updating Notion project milestones. Maintain comprehensive meeting records in Notion. Balance retrospective and forward-looking planning, within 45 minutes.",
+        "model_version": "claude-3-sonnet",
+        "temperature": 0.4,
+        "max_tokens": 2048
+      }
+    },
+    {
+      "id": "task_manager",
+      "name": "Intelligent Task Management AI",
+      "type": "AI_AGENT",
+      "subtype": "ANTHROPIC_CLAUDE",
+      "position": { "x": 400, "y": 700 },
+      "parameters": {
+        "system_prompt": "You are an intelligent task management system with comprehensive access to Notion project and team data via MCP connections. Query team skills matrix, current workload data, project contexts, and historical task completion metrics from Notion. Analyze incoming requests and conversations to extract actionable tasks. Determine appropriate assignees based on real-time team expertise, current workload, and project context from Notion data. Reference historical similar tasks for accurate effort estimation. Identify dependencies using project relationship data and set appropriate priorities based on current project status. Create well-structured task descriptions with clear acceptance criteria and automatically update Notion task database with new assignments.",
+        "model_version": "claude-3-opus",
+        "temperature": 0.3,
+        "max_tokens": 1536
+      }
+    },
+    {
+      "id": "analytics_engine",
+      "name": "Analytics & Insights AI",
+      "type": "AI_AGENT",
+      "subtype": "OPENAI_CHATGPT",
+      "position": { "x": 400, "y": 900 },
+      "parameters": {
+        "system_prompt": "You are a data analytics expert specializing in engineering team performance with full access to Notion project databases via MCP connections. Query comprehensive historical data including task completion rates, team velocity metrics, project timelines, and performance indicators from Notion. Analyze team metrics, velocity trends, communication patterns, and project health indicators using real project data. Generate predictive insights for project delivery based on historical completion patterns, identify bottlenecks using actual task flow data, and recommend optimization strategies. Automatically update Notion Knowledge Base with insights and recommendations. Present findings in clear, actionable reports with data-driven evidence.",
+        "model_version": "gpt-4-turbo",
+        "temperature": 0.1,
+        "max_tokens": 2048
+      }
+    },
+    {
+      "id": "slack_responder",
+      "name": "Slack Response Handler",
+      "type": "ACTION",
+      "subtype": "HTTP_REQUEST",
+      "position": { "x": 700, "y": 200 },
+      "parameters": {
+        "url": "https://slack.com/api/chat.postMessage",
+        "method": "POST",
+        "headers": "{\"Authorization\": \"Bearer {{SLACK_BOT_TOKEN}}\", \"Content-Type\": \"application/json\"}",
+        "response_format": "json"
+      }
+    },
+    {
+      "id": "notion_sync",
+      "name": "Notion Database Sync",
+      "type": "ACTION",
+      "subtype": "HTTP_REQUEST",
+      "position": { "x": 700, "y": 400 },
+      "parameters": {
+        "url": "https://api.notion.com/v1/pages",
+        "method": "POST",
+        "headers": "{\"Authorization\": \"Bearer {{NOTION_API_TOKEN}}\", \"Content-Type\": \"application/json\", \"Notion-Version\": \"2022-06-28\"}",
+        "response_format": "json"
+      }
+    },
+    {
+      "id": "calendar_integration",
+      "name": "Calendar Event Manager",
+      "type": "ACTION",
+      "subtype": "HTTP_REQUEST",
+      "position": { "x": 700, "y": 600 },
+      "parameters": {
+        "url": "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+        "method": "POST",
+        "headers": "{\"Authorization\": \"Bearer {{GOOGLE_CALENDAR_TOKEN}}\", \"Content-Type\": \"application/json\"}",
+        "response_format": "json"
+      }
+    },
+    {
+      "id": "escalation_manager",
+      "name": "Response Escalation Logic",
+      "type": "FLOW",
+      "subtype": "IF",
+      "position": { "x": 700, "y": 800 },
+      "parameters": {
+        "condition": "response_time > 4_hours && priority == 'high'",
+        "true_branch": "escalate_to_public",
+        "false_branch": "continue_monitoring"
+      }
+    },
+    {
+      "id": "data_processor",
+      "name": "Team Data Aggregator",
+      "type": "ACTION",
+      "subtype": "DATA_TRANSFORMATION",
+      "position": { "x": 1000, "y": 300 },
+      "parameters": {
+        "transformation_type": "aggregate",
+        "transformation_rule": "GROUP BY team_member, project, date; SUM(tasks_completed), SUM(hours_worked), COUNT(blockers_reported)",
+        "operation": "aggregate",
+        "grouping_fields": ["team_member", "project", "date"],
+        "aggregation_functions": {
+          "tasks_completed": "sum",
+          "hours_worked": "sum",
+          "blockers_reported": "count"
+        }
+      }
+    },
+    {
+      "id": "notion_report_generator",
+      "name": "Notion Report Generator",
+      "type": "ACTION",
+      "subtype": "HTTP_REQUEST",
+      "position": { "x": 1000, "y": 500 },
+      "parameters": {
+        "url": "https://api.notion.com/v1/pages",
+        "method": "POST",
+        "headers": "{\"Authorization\": \"Bearer {{NOTION_API_TOKEN}}\", \"Content-Type\": \"application/json\", \"Notion-Version\": \"2022-06-28\"}",
+        "response_format": "json"
+      }
+    },
+    {
+      "id": "notion_activity_logger",
+      "name": "Notion Activity Logger",
+      "type": "ACTION",
+      "subtype": "HTTP_REQUEST",
+      "position": { "x": 1000, "y": 700 },
+      "parameters": {
+        "url": "https://api.notion.com/v1/pages",
+        "method": "POST",
+        "headers": "{\"Authorization\": \"Bearer {{NOTION_API_TOKEN}}\", \"Content-Type\": \"application/json\", \"Notion-Version\": \"2022-06-28\"}",
+        "response_format": "json"
+      }
+    }
+  ],
+  "connections": {
+    "slack_trigger": {
+      "main": [{ "node": "message_classifier", "type": "main", "index": 0 }]
+    },
+    "cron_daily_standup": {
+      "main": [{ "node": "status_aggregator", "type": "main", "index": 0 }]
+    },
+    "cron_wednesday_checkin": {
+      "main": [
+        { "node": "wednesday_sync_facilitator", "type": "main", "index": 0 }
+      ]
+    },
+    "cron_sunday_planning": {
+      "main": [
+        { "node": "sunday_planning_facilitator", "type": "main", "index": 0 }
+      ]
+    },
+    "git_webhook": {
+      "main": [{ "node": "analytics_engine", "type": "main", "index": 0 }]
+    },
+    "team_onboarding_trigger": {
+      "main": [
+        { "node": "team_onboarding_facilitator", "type": "main", "index": 0 }
+      ]
+    },
+    "team_onboarding_facilitator": {
+      "main": [
+        { "node": "slack_responder", "type": "main", "index": 0 },
+        { "node": "notion_database_initializer", "type": "main", "index": 0 }
+      ]
+    },
+    "notion_database_initializer": {
+      "main": [{ "node": "notion_sync", "type": "main", "index": 0 }]
+    },
+    "message_classifier": {
+      "main": [
+        { "node": "task_manager", "type": "main", "index": 0 },
+        { "node": "escalation_manager", "type": "main", "index": 0 }
+      ]
+    },
+    "status_aggregator": {
+      "main": [
+        { "node": "slack_responder", "type": "main", "index": 0 },
+        { "node": "notion_sync", "type": "main", "index": 0 }
+      ]
+    },
+    "wednesday_sync_facilitator": {
+      "main": [
+        { "node": "slack_responder", "type": "main", "index": 0 },
+        { "node": "notion_sync", "type": "main", "index": 0 }
+      ]
+    },
+    "sunday_planning_facilitator": {
+      "main": [
+        { "node": "task_manager", "type": "main", "index": 0 },
+        { "node": "slack_responder", "type": "main", "index": 0 },
+        { "node": "calendar_integration", "type": "main", "index": 0 }
+      ]
+    },
+    "task_manager": {
+      "main": [
+        { "node": "notion_sync", "type": "main", "index": 0 },
+        { "node": "slack_responder", "type": "main", "index": 0 }
+      ]
+    },
+    "analytics_engine": {
+      "main": [
+        { "node": "data_processor", "type": "main", "index": 0 },
+        { "node": "notion_report_generator", "type": "main", "index": 0 }
+      ]
+    },
+    "escalation_manager": {
+      "true": [{ "node": "slack_responder", "type": "main", "index": 0 }],
+      "false": [
+        { "node": "notion_activity_logger", "type": "main", "index": 0 }
+      ]
+    },
+    "data_processor": {
+      "main": [{ "node": "notion_activity_logger", "type": "main", "index": 0 }]
+    },
+    "notion_report_generator": {
+      "main": [{ "node": "slack_responder", "type": "main", "index": 0 }]
+    }
+  },
+  "static_data": {
+    "escalation_channels": "{\"high\": \"#all-starmates\", \"medium\": \"#general\", \"low\": \"DM\"}",
+    "business_hours": "{\"start\": \"09:00\", \"end\": \"20:00\", \"timezone\": \"Asia/Shanghai\"}"
+  },
+  "tags": [
+    "pmo",
+    "automation",
+    "team-management",
+    "slack-integration",
+    "notion-sync"
+  ]
 }
 ```
 
