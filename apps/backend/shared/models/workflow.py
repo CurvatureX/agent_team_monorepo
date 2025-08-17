@@ -268,38 +268,8 @@ class WorkflowEdge(BaseModel):
     label: Optional[str] = Field(default=None, description="边的标签")
 
 
-class WorkflowCreateRequest(BaseModel):
-    """
-    工作流创建请求模型
-    """
-
-    name: str = Field(description="工作流名称")
-    description: Optional[str] = Field(default=None, description="工作流描述")
-    type: WorkflowType = Field(default=WorkflowType.SEQUENTIAL, description="工作流类型")
-    nodes: List[NodeData] = Field(default_factory=list, description="工作流节点列表")
-    edges: List[WorkflowEdge] = Field(default_factory=list, description="工作流连接边列表")
-    connections: Optional[Dict[str, Any]] = Field(default_factory=dict, description="节点连接信息（兼容性字段）")
-    variables: Dict[str, Any] = Field(default_factory=dict, description="工作流变量")
-    settings: Dict[str, Any] = Field(default_factory=dict, description="工作流设置")
-    tags: List[str] = Field(default_factory=list, description="工作流标签")
-    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="工作流元数据")
-
-    # Validation methods moved to a service layer for better separation of concerns
-
-
-class WorkflowUpdateRequest(BaseModel):
-    """
-    工作流更新请求模型
-    """
-
-    name: Optional[str] = Field(default=None, description="工作流名称")
-    description: Optional[str] = Field(default=None, description="工作流描述")
-    status: Optional[WorkflowStatus] = Field(default=None, description="工作流状态")
-    nodes: Optional[List[NodeData]] = Field(default=None, description="工作流节点列表")
-    edges: Optional[List[WorkflowEdge]] = Field(default=None, description="工作流连接边列表")
-    variables: Optional[Dict[str, Any]] = Field(default=None, description="工作流变量")
-    settings: Optional[Dict[str, Any]] = Field(default=None, description="工作流设置")
-    tags: Optional[List[str]] = Field(default=None, description="工作流标签")
+# Duplicate definitions removed - use the workflow-engine specific models above
+# API Gateway should use CreateWorkflowRequest and UpdateWorkflowRequest defined earlier
 
 
 class WorkflowExecutionRecord(EntityModel):
