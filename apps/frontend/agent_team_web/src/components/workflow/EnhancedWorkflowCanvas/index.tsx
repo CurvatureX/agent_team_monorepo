@@ -28,6 +28,8 @@ import { isValidConnection } from '@/utils/nodeHelpers';
 interface EnhancedWorkflowCanvasProps {
   workflow?: Workflow;
   onWorkflowChange?: (workflow: Workflow) => void;
+  onSave?: () => void;
+  isSaving?: boolean;
   readOnly?: boolean;
   className?: string;
 }
@@ -39,6 +41,8 @@ const nodeTypes: NodeTypes = {
 
 const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
   workflow,
+  onSave,
+  isSaving = false,
   readOnly = false,
   className,
 }) => {
@@ -54,6 +58,7 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
     addEdge,
     deleteNode,
     importWorkflow,
+    // exportWorkflow,
   } = useWorkflow();
   
   const {
@@ -73,6 +78,13 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
       importWorkflow(workflow, templates);
     }
   }, [workflow, templates, importWorkflow]);
+
+  // Handle save with current editor state
+  const handleSaveWithCurrentState = useCallback(() => {
+    if (onSave) {
+      onSave();
+    }
+  }, [onSave]);
 
   // Handle node changes
   const onNodesChange = useCallback(
@@ -191,7 +203,7 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
   // Edge styles
   const defaultEdgeOptions = useMemo(
     () => ({
-      type: 'smoothstep',
+      type: 'default',
       animated: true,
       style: { 
         strokeWidth: 2, 
@@ -238,7 +250,11 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
           />
         )}
         
-        <CanvasControls readOnly={readOnly} />
+        <CanvasControls 
+          readOnly={readOnly} 
+          onSave={handleSaveWithCurrentState}
+          isSaving={isSaving}
+        />
         
         {showMinimap && (
           <MiniMap

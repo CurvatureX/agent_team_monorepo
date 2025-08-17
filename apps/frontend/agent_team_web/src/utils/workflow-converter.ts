@@ -45,6 +45,8 @@ export function apiNodeToEditorNode(
         ...apiNode.inputs,
       },
       status: apiNode.disabled ? 'error' : 'idle',
+      // Store the original API node data for later export
+      originalData: apiNode,
     },
   };
 }
@@ -80,7 +82,7 @@ export function apiEdgeToEditorEdge(apiEdge: ApiWorkflowEdge): EditorWorkflowEdg
     id: apiEdge.id,
     source: apiEdge.source,
     target: apiEdge.target,
-    type: apiEdge.type || 'default',
+    type: 'default',
     sourceHandle: apiEdge.sourceHandle || null,
     targetHandle: apiEdge.targetHandle || null,
     label: (apiEdge.label || apiEdge.condition || undefined) as string | undefined,
@@ -119,8 +121,8 @@ export function apiWorkflowToEditor(
     name: string;
     description: string;
     version: string;
-    created_at: number;
-    updated_at: number;
+    created_at: string;
+    updated_at: string;
     tags: string[];
   };
 } {
@@ -176,7 +178,7 @@ export function apiWorkflowToEditor(
                     target: connection.node,
                     sourceHandle: `output_${outputIndex}`,
                     targetHandle: 'input_0',
-                    type: 'smoothstep',
+                    type: 'default',
                   });
                 }
               });
@@ -210,7 +212,7 @@ export function apiWorkflowToEditor(
           target: nextNode.id,
           sourceHandle: 'output_0',
           targetHandle: 'input_0',
-          type: 'smoothstep',
+          type: 'default',
         });
       }
     }
@@ -229,8 +231,8 @@ export function apiWorkflowToEditor(
     name: apiWorkflow.name || 'Untitled Workflow',
     description: apiWorkflow.description || '',
     version: String(apiWorkflow.version || '1'),
-    created_at: apiWorkflow.created_at ? new Date(apiWorkflow.created_at).getTime() : Date.now(),
-    updated_at: apiWorkflow.updated_at ? new Date(apiWorkflow.updated_at).getTime() : Date.now(),
+    created_at: apiWorkflow.created_at || new Date().toISOString(),
+    updated_at: apiWorkflow.updated_at || new Date().toISOString(),
     tags: apiWorkflow.tags || [],
   };
 
@@ -306,30 +308,8 @@ export function editorWorkflowToUpdateRequest(
   // Convert nodes to API format
   const apiNodes = nodes.map(editorNodeToApiNode);
 
-  // Build connections object
-  interface ConnectionNode {
-    node: string;
-    type: string;
-    index: number;
-  }
-  
-  interface ConnectionStructure {
-    main: ConnectionNode[][];
-  }
-  
-  const connections: Record<string, ConnectionStructure> = {};
-  edges.forEach((edge) => {
-    if (!connections[edge.source]) {
-      connections[edge.source] = {
-        main: [[]]
-      };
-    }
-    connections[edge.source].main[0].push({
-      node: edge.target,
-      type: 'main',
-      index: 0,
-    });
-  });
+  // Convert edges to API format (according to api1.json spec)
+  const apiEdges = edges.map(editorEdgeToApiEdge);
 
   return {
     workflow_id: workflowId,
@@ -337,7 +317,7 @@ export function editorWorkflowToUpdateRequest(
     description: metadata.description,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     nodes: apiNodes as unknown as any[],
-    connections: connections as Record<string, unknown>,
+    edges: apiEdges,  // Use edges instead of connections for update
     tags: metadata.tags,
     user_id: userId,
   };

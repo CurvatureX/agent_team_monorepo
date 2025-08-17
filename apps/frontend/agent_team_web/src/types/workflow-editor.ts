@@ -7,6 +7,7 @@ export interface WorkflowNodeData {
   template: NodeTemplate;
   parameters: Record<string, unknown>;
   status?: 'idle' | 'running' | 'success' | 'error';
+  originalData?: any; // Store original API node data for export
 }
 
 // Our custom node type

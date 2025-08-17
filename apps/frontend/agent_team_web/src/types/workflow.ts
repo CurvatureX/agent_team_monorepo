@@ -135,7 +135,8 @@ export interface UpdateWorkflowRequest {
   name?: string;
   description?: string;
   nodes?: WorkflowNode[];
-  connections?: Record<string, unknown>;
+  edges?: WorkflowEdge[];                // 根据 api1.json，更新使用 edges
+  connections?: Record<string, unknown>;  // 保留用于兼容性
   settings?: WorkflowSettingsData;
   static_data?: Record<string, unknown>;
   tags?: string[];
