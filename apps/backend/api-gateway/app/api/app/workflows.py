@@ -5,7 +5,7 @@ Workflow API endpoints with authentication and enhanced gRPC client integration
 
 import logging
 import time
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from app.core.config import get_settings
 from app.dependencies import AuthenticatedDeps
@@ -28,7 +28,7 @@ from app.services.workflow_engine_http_client import get_workflow_engine_client
 from app.services.workflow_scheduler_http_client import get_workflow_scheduler_client
 
 # Node converter no longer needed - using unified models directly
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -194,7 +194,7 @@ async def get_workflow(workflow_id: str, deps: AuthenticatedDeps = Depends()):
 @router.put("/{workflow_id}", response_model=WorkflowResponse)
 async def update_workflow(
     workflow_id: str,
-    workflow_update: WorkflowUpdate,
+    request_body: Dict[str, Any] = Body(...),  # Accept raw dict to handle flexible updates
     deps: AuthenticatedDeps = Depends(),
 ):
     """
@@ -203,30 +203,37 @@ async def update_workflow(
     """
     try:
         logger.info(f"📝 Updating workflow {workflow_id} for user {deps.current_user.sub}")
+        logger.info(f"📦 Received request body: {request_body}")
 
-        # Prepare update data (only include non-None fields)
-        update_data = workflow_update.model_dump(exclude_none=True)
-
-        if not update_data:
-            raise ValidationError("No update data provided")
+        # Remove any workflow_id or user_id from the request body
+        request_body.pop('workflow_id', None)
+        request_body.pop('user_id', None)
+        
+        # Build the update request with required fields
+        update_request = WorkflowUpdate(
+            workflow_id=workflow_id,
+            user_id=deps.current_user.sub,
+            **request_body  # All other fields from request
+        )
 
         # Get HTTP client
         settings = get_settings()
-
         http_client = await get_workflow_engine_client()
 
-        # Update workflow via HTTP
+        # Get only the fields that were provided (exclude_none=True)
+        update_data = update_request.model_dump(exclude_none=True)
+        
+        # Debug log
+        logger.info(f"📦 Update data being sent: {update_data}")
+        
+        # Remove workflow_id and user_id to avoid duplication in the call
+        update_data.pop('workflow_id', None)
+        update_data.pop('user_id', None)
+        
         result = await http_client.update_workflow(
             workflow_id=workflow_id,
             user_id=deps.current_user.sub,
-            name=workflow_update.name,
-            description=workflow_update.description,
-            nodes=workflow_update.nodes,
-            connections=workflow_update.connections,
-            settings=workflow_update.settings,
-            static_data=workflow_update.static_data,
-            tags=workflow_update.tags,
-            active=workflow_update.active,
+            **update_data
         )
 
         if not result.get("success", False) or not result.get("workflow"):

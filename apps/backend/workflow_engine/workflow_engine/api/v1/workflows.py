@@ -112,7 +112,32 @@ async def update_workflow(
     request: UpdateWorkflowRequest,
     service: WorkflowService = Depends(get_workflow_service),
 ):
+    import logging
+    logger = logging.getLogger(__name__)
+    
     try:
+        # Debug log incoming request
+        logger.info(f"🐛 DEBUG: Workflow Engine received update request for workflow: {workflow_id}")
+        logger.info(f"🐛 DEBUG: Request type: {type(request)}")
+        logger.info(f"🐛 DEBUG: Request user_id: {request.user_id}")
+        logger.info(f"🐛 DEBUG: Request workflow_id: {request.workflow_id}")
+        
+        # Log each field if present
+        if request.name is not None:
+            logger.info(f"🐛 DEBUG: Updating name: {request.name}")
+        if request.description is not None:
+            logger.info(f"🐛 DEBUG: Updating description: {request.description}")
+        if request.nodes is not None:
+            logger.info(f"🐛 DEBUG: Updating nodes: {len(request.nodes)} nodes")
+            for i, node in enumerate(request.nodes):
+                logger.info(f"🐛 DEBUG: Node {i}: {node.id} - {node.type}/{node.subtype}")
+        if request.connections is not None:
+            logger.info(f"🐛 DEBUG: Updating connections: {list(request.connections.keys())}")
+        if request.settings is not None:
+            logger.info(f"🐛 DEBUG: Updating settings: {request.settings}")
+        if request.tags is not None:
+            logger.info(f"🐛 DEBUG: Updating tags: {request.tags}")
+        
         updated_workflow = service.update_workflow_from_data(
             workflow_id=workflow_id, user_id=request.user_id, update_data=request
         )
@@ -120,6 +145,7 @@ async def update_workflow(
             workflow=updated_workflow, success=True, message="Workflow updated successfully"
         )
     except Exception as e:
+        logger.error(f"🐛 DEBUG: Error updating workflow: {type(e).__name__}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
