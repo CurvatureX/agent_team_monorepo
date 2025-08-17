@@ -11,7 +11,8 @@ import { useResizablePanel } from "@/hooks";
 import { assistants as mockAssistants, Assistant } from "@/lib/assistant-data";
 import { WorkflowData } from "@/types/workflow";
 import { generateWorkflowFromDescription } from "@/utils/workflowGenerator";
-import { useWorkflowsApi } from "@/lib/api/hooks/useWorkflowsApi";
+import { useWorkflowsApi, useWorkflowActions } from "@/lib/api/hooks/useWorkflowsApi";
+import { useToast } from "@/hooks/use-toast";
 
 interface Message {
   id: string;
@@ -25,6 +26,10 @@ const CanvasPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowData | null>(null);
   const [isWorkflowExpanded, setIsWorkflowExpanded] = useState(false);
+  const [isSavingWorkflow, setIsSavingWorkflow] = useState(false);
+  
+  const { toast } = useToast();
+  const { updateWorkflow } = useWorkflowActions();
   
   // Use the custom hook for resizable panels
   const { width: rightPanelWidth, isResizing, resizerProps, overlayProps } = useResizablePanel({
@@ -184,6 +189,63 @@ const CanvasPage = () => {
     console.log('Workflow updated:', updatedWorkflow);
   }, []);
 
+  // Handle saving workflow to API
+  const handleSaveWorkflow = useCallback(async (workflowToSave?: WorkflowData) => {
+    // Use the provided workflow or fall back to currentWorkflow
+    const workflow = workflowToSave || currentWorkflow;
+    
+    if (!workflow || !workflow.id) {
+      toast({
+        title: "Error",
+        description: "No workflow to save",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSavingWorkflow(true);
+    
+    try {
+      // Prepare the update data according to API spec
+      const updateData = {
+        name: workflow.name,
+        description: workflow.description,
+        nodes: workflow.nodes || [],
+        edges: workflow.edges || [],
+        settings: workflow.settings,
+        tags: workflow.tags || [],
+      };
+
+      console.log('Saving workflow to API:', {
+        id: workflow.id,
+        nodesCount: updateData.nodes.length,
+        edgesCount: updateData.edges.length,
+        edges: updateData.edges,
+      });
+      
+      await updateWorkflow(workflow.id, updateData);
+      
+      // Update currentWorkflow with the saved data
+      if (workflowToSave) {
+        setCurrentWorkflow(workflowToSave);
+      }
+      
+      toast({
+        title: "Success",
+        description: "Workflow saved successfully",
+      });
+    } catch (error) {
+      console.error('Failed to save workflow:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save workflow. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingWorkflow(false);
+    }
+  }, [currentWorkflow, updateWorkflow, toast]);
+
   const leftPanelWidth = `calc(100% - ${rightPanelWidth}px)`;
 
   return (
@@ -245,6 +307,8 @@ const CanvasPage = () => {
                 <WorkflowEditor
                   initialWorkflow={currentWorkflow}
                   onSave={handleWorkflowChange}
+                  onApiSave={handleSaveWorkflow}
+                  isSaving={isSavingWorkflow}
                   readOnly={false}
                   className="h-full"
                 />
@@ -387,6 +451,8 @@ const CanvasPage = () => {
               <WorkflowEditor
                 initialWorkflow={currentWorkflow}
                 onSave={handleWorkflowChange}
+                onApiSave={handleSaveWorkflow}
+                isSaving={isSavingWorkflow}
                 readOnly={false}
                 className="h-full"
               />
