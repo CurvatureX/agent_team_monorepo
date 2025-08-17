@@ -101,7 +101,8 @@ export interface WorkflowEntity {
   
   // Workflow structure
   nodes: WorkflowNode[];                // 工作流节点列表
-  edges: WorkflowEdge[];                // 工作流连接边列表
+  edges?: WorkflowEdge[];               // 工作流连接边列表 (可选，某些API返回connections)
+  connections?: Record<string, unknown>; // n8n风格的连接信息 (可选，某些API返回这个而不是edges)
   
   // Additional data
   variables?: Record<string, unknown>;  // 工作流变量
@@ -134,7 +135,8 @@ export interface UpdateWorkflowRequest {
   name?: string;
   description?: string;
   nodes?: WorkflowNode[];
-  connections?: Record<string, unknown>;
+  edges?: WorkflowEdge[];                // 根据 api1.json，更新使用 edges
+  connections?: Record<string, unknown>;  // 保留用于兼容性
   settings?: WorkflowSettingsData;
   static_data?: Record<string, unknown>;
   tags?: string[];

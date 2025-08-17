@@ -48,7 +48,7 @@ export const useWorkflow = () => {
         target: connection.target,
         sourceHandle: connection.sourceHandle,
         targetHandle: connection.targetHandle,
-        type: 'smoothstep',
+        type: 'default',
         animated: true,
         style: { strokeWidth: 2, stroke: '#6b7280' },
       };
@@ -85,28 +85,62 @@ export const useWorkflow = () => {
       name: 'Untitled Workflow',
       description: '',
       version: '1.0.0',
-      created_at: Date.now(),
-      updated_at: Date.now(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
       tags: [],
     });
   }, [setNodes, setEdges, setMetadata]);
 
   // Export workflow
   const exportWorkflow = useCallback(() => {
-    return {
-      metadata,
-      nodes: nodes.map((node) => ({
+    // Export nodes with all original data preserved
+    const exportedNodes = nodes.map((node) => {
+      // If we have original node data, use it as base and update position
+      if (node.data.originalData) {
+        return {
+          ...node.data.originalData,
+          position: node.position, // Update position from editor
+          parameters: {
+            ...node.data.originalData.parameters,
+            ...node.data.parameters, // Merge any updated parameters
+          },
+        };
+      }
+      
+      // Fallback: construct node data from template
+      return {
         id: node.id,
+        name: node.data.label || node.id,
         type: node.data.template.node_type,
         subtype: node.data.template.node_subtype,
+        type_version: 1,
         position: node.position,
-        parameters: node.data.parameters,
-      })),
-      edges: edges.map((edge) => ({
-        id: edge.id,
-        source: edge.source,
-        target: edge.target,
-      })),
+        parameters: node.data.parameters || {},
+        credentials: {},
+        disabled: false,
+        on_error: 'continue',
+        retry_policy: null,
+        notes: {},
+        webhooks: [],
+      };
+    });
+    
+    // Export edges in the correct format
+    const exportedEdges = edges.map((edge) => ({
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      condition: null,
+      label: edge.label || null,
+    }));
+    
+    console.log('Exporting workflow - nodes:', exportedNodes.length, 'edges:', exportedEdges.length);
+    console.log('Exported edges:', exportedEdges);
+    
+    return {
+      metadata,
+      nodes: exportedNodes,
+      edges: exportedEdges,
     };
   }, [nodes, edges, metadata]);
 

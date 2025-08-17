@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PromptInputBox } from "@/components/ui/ai-prompt-box";
 import { PanelResizer } from "@/components/ui/panel-resizer";
@@ -8,9 +8,11 @@ import AssistantList from "@/components/ui/assistant-list";
 import { WorkflowEditor } from "@/components/workflow/WorkflowEditor";
 import { User, Bot, Workflow, Maximize2, ArrowLeft } from "lucide-react";
 import { useResizablePanel } from "@/hooks";
-import { assistants } from "@/lib/assistant-data";
+import { assistants as mockAssistants, Assistant } from "@/lib/assistant-data";
 import { WorkflowData } from "@/types/workflow";
 import { generateWorkflowFromDescription } from "@/utils/workflowGenerator";
+import { useWorkflowsApi, useWorkflowActions } from "@/lib/api/hooks/useWorkflowsApi";
+import { useToast } from "@/hooks/use-toast";
 
 interface Message {
   id: string;
@@ -24,6 +26,10 @@ const CanvasPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowData | null>(null);
   const [isWorkflowExpanded, setIsWorkflowExpanded] = useState(false);
+  const [isSavingWorkflow, setIsSavingWorkflow] = useState(false);
+  
+  const { toast } = useToast();
+  const { updateWorkflow } = useWorkflowActions();
   
   // Use the custom hook for resizable panels
   const { width: rightPanelWidth, isResizing, resizerProps, overlayProps } = useResizablePanel({
@@ -31,6 +37,52 @@ const CanvasPage = () => {
     minWidth: 300,
     maxWidthRatio: 0.6
   });
+
+  // Fetch workflows from API
+  const { workflows: apiWorkflows, isLoading: isLoadingWorkflows, error } = useWorkflowsApi();
+  
+  // Debug logging
+  useEffect(() => {
+    if (apiWorkflows) {
+      console.log('API Workflows loaded:', apiWorkflows);
+    }
+    if (error) {
+      console.error('API Workflows error:', error);
+    }
+  }, [apiWorkflows, error]);
+
+  // Map API workflows to Assistant format and merge with mock data
+  const assistants = useMemo(() => {
+    // Check if apiWorkflows has the expected structure
+    let workflowsArray: any[] = [];
+    
+    if (apiWorkflows) {
+      // If apiWorkflows is an object with a 'workflows' property (like the API response)
+      if (apiWorkflows.workflows && Array.isArray(apiWorkflows.workflows)) {
+        workflowsArray = apiWorkflows.workflows;
+      } 
+      // If apiWorkflows is already an array
+      else if (Array.isArray(apiWorkflows)) {
+        workflowsArray = apiWorkflows;
+      }
+      
+      console.log('Workflows data structure:', apiWorkflows);
+      console.log('Extracted workflows array:', workflowsArray);
+    }
+    
+    const apiAssistants: Assistant[] = workflowsArray.map((workflow: any, index: number) => ({
+      id: `api-workflow-${index}`,
+      name: workflow.name || `Workflow ${index + 1}`,
+      title: workflow.subtype || 'Custom Workflow',
+      description: workflow.description || 'No description available',
+      skills: workflow.tags ? (Array.isArray(workflow.tags) ? workflow.tags : workflow.tags.split(',').map((tag: string) => tag.trim())) : [],
+      imagePath: '/assistant/AlfieKnowledgeBaseQueryAssistantIcon.png', // Default image
+      workflow: workflow as WorkflowData
+    }));
+
+    // Merge API workflows with mock assistants
+    return [...apiAssistants, ...mockAssistants];
+  }, [apiWorkflows]);
 
   // Get initial message from ai-prompt page
   useEffect(() => {
@@ -65,7 +117,7 @@ const CanvasPage = () => {
       const assistantId = customEvent.detail.assistantId;
       
       // Find the worker's workflow
-      const assistant = assistants.find(a => a.id === assistantId);
+      const assistant = assistants.find((a: Assistant) => a.id === assistantId);
       console.log('Selected worker:', assistant);
       
       if (assistant?.workflow) {
@@ -80,7 +132,7 @@ const CanvasPage = () => {
     return () => {
       window.removeEventListener('assistant-selected', handleAssistantSelect);
     };
-  }, []);
+  }, [assistants]);
 
   const handleSendMessage = useCallback((message: string, files?: File[]) => {
     if (!message.trim()) return;
@@ -137,6 +189,63 @@ const CanvasPage = () => {
     console.log('Workflow updated:', updatedWorkflow);
   }, []);
 
+  // Handle saving workflow to API
+  const handleSaveWorkflow = useCallback(async (workflowToSave?: WorkflowData) => {
+    // Use the provided workflow or fall back to currentWorkflow
+    const workflow = workflowToSave || currentWorkflow;
+    
+    if (!workflow || !workflow.id) {
+      toast({
+        title: "Error",
+        description: "No workflow to save",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSavingWorkflow(true);
+    
+    try {
+      // Prepare the update data according to API spec
+      const updateData = {
+        name: workflow.name,
+        description: workflow.description,
+        nodes: workflow.nodes || [],
+        edges: workflow.edges || [],
+        settings: workflow.settings,
+        tags: workflow.tags || [],
+      };
+
+      console.log('Saving workflow to API:', {
+        id: workflow.id,
+        nodesCount: updateData.nodes.length,
+        edgesCount: updateData.edges.length,
+        edges: updateData.edges,
+      });
+      
+      await updateWorkflow(workflow.id, updateData);
+      
+      // Update currentWorkflow with the saved data
+      if (workflowToSave) {
+        setCurrentWorkflow(workflowToSave);
+      }
+      
+      toast({
+        title: "Success",
+        description: "Workflow saved successfully",
+      });
+    } catch (error) {
+      console.error('Failed to save workflow:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save workflow. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingWorkflow(false);
+    }
+  }, [currentWorkflow, updateWorkflow, toast]);
+
   const leftPanelWidth = `calc(100% - ${rightPanelWidth}px)`;
 
   return (
@@ -180,7 +289,7 @@ const CanvasPage = () => {
                   </motion.button>
                   <Workflow className="w-5 h-5 text-primary" />
                   <h3 className="text-lg font-semibold">
-                    {assistants.find(a => a.workflow === currentWorkflow)?.name || ''}&apos;s Workflow
+                    {assistants.find((a: Assistant) => a.workflow === currentWorkflow)?.name || ''}&apos;s Workflow
                   </h3>
                 </div>
                 <motion.button
@@ -198,9 +307,18 @@ const CanvasPage = () => {
                 <WorkflowEditor
                   initialWorkflow={currentWorkflow}
                   onSave={handleWorkflowChange}
+                  onApiSave={handleSaveWorkflow}
+                  isSaving={isSavingWorkflow}
                   readOnly={false}
                   className="h-full"
                 />
+              </div>
+            </div>
+          ) : isLoadingWorkflows ? (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+                <p className="text-muted-foreground">Loading workflows...</p>
               </div>
             </div>
           ) : (
@@ -333,6 +451,8 @@ const CanvasPage = () => {
               <WorkflowEditor
                 initialWorkflow={currentWorkflow}
                 onSave={handleWorkflowChange}
+                onApiSave={handleSaveWorkflow}
+                isSaving={isSavingWorkflow}
                 readOnly={false}
                 className="h-full"
               />
