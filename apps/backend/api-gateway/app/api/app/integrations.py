@@ -42,6 +42,12 @@ class UserIntegrationsResponse(BaseModel):
     total_count: int
 
 
+class InstallLinksResponse(BaseModel):
+    """Integration install links response model"""
+
+    github: str
+
+
 @router.get(
     "/integrations",
     response_model=UserIntegrationsResponse,
@@ -135,6 +141,47 @@ async def get_user_integrations(deps: AuthenticatedDeps = Depends()):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve user integrations",
+        )
+
+
+@router.get(
+    "/integrations/install-links",
+    response_model=InstallLinksResponse,
+    summary="Get Integration Install Links",
+    description="""
+    Get installation links for integrating external services into the system.
+
+    Currently supports:
+    - GitHub App installation with user context
+
+    The GitHub link includes the user_id as state parameter for proper OAuth flow.
+
+    Requires authentication via Supabase JWT token.
+    """,
+)
+async def get_install_links(deps: AuthenticatedDeps = Depends()):
+    """
+    Get installation links for external integrations.
+
+    Returns:
+        InstallLinksResponse with installation URLs
+    """
+    try:
+        user_id = deps.user_data["id"]
+        logger.info(f"🔗 Generating install links for user {user_id}")
+
+        # Generate GitHub App installation link with user_id as state
+        github_install_url = f"https://github.com/apps/starmates/installations/new?state={user_id}"
+
+        logger.info(f"✅ Generated install links for user {user_id}")
+
+        return InstallLinksResponse(github=github_install_url)
+
+    except Exception as e:
+        logger.error(f"❌ Error generating install links: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate install links",
         )
 
 
