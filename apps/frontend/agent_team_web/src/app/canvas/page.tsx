@@ -121,7 +121,7 @@ const CanvasPage = () => {
       console.log('Selected worker:', assistant);
       
       if (assistant?.workflow) {
-        console.log('Setting workflow:', assistant.workflow);
+        console.log('Setting workflow ---:', assistant.workflow);
         setCurrentWorkflow(assistant.workflow);
       } else {
         setCurrentWorkflow(null);
