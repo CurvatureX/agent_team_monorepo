@@ -319,7 +319,7 @@ class WorkflowEngineHTTPClient:
 
         try:
             # Build update data - only include non-None values
-            update_data = {"user_id": user_id}
+            update_data = {"user_id": user_id, "workflow_id": workflow_id}
             if name is not None:
                 update_data["name"] = name
             if description is not None:
@@ -338,22 +338,43 @@ class WorkflowEngineHTTPClient:
                 update_data["active"] = active
 
             log_info(f"📨 HTTP request to update workflow: {workflow_id}")
+            log_info(f"📦 Update data: {update_data}")
+            
+            # Debug log the exact request
+            import json
+            log_info(f"🐛 DEBUG: Update request JSON: {json.dumps(update_data, indent=2)}")
+            log_info(f"🐛 DEBUG: URL: {self.base_url}/v1/workflows/{workflow_id}")
 
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.put(
-                    f"{self.base_url}/v1/workflows/{workflow_id}", json=update_data
-                )
-                response.raise_for_status()
+            client = await self._get_client()
+            response = await client.put(
+                f"{self.base_url}/v1/workflows/{workflow_id}", json=update_data
+            )
+            
+            # Log response details before checking status
+            log_info(f"🐛 DEBUG: Response status: {response.status_code}")
+            if response.status_code != 200:
+                log_error(f"🐛 DEBUG: Response body: {response.text}")
+                
+            response.raise_for_status()
 
-                data = response.json()
-                log_info(f"✅ Updated workflow: {workflow_id}")
-                return data
+            data = response.json()
+            log_info(f"✅ Updated workflow: {workflow_id}")
+            return data
 
         except httpx.HTTPStatusError as e:
+            error_details = ""
+            try:
+                error_details = e.response.text
+                error_json = e.response.json()
+                log_error(f"🐛 DEBUG: Error JSON: {json.dumps(error_json, indent=2)}")
+            except:
+                pass
             log_error(f"❌ HTTP error updating workflow: {e.response.status_code}")
-            return {"success": False, "error": f"HTTP {e.response.status_code}"}
+            log_error(f"🐛 DEBUG: Error response: {error_details}")
+            return {"success": False, "error": f"HTTP {e.response.status_code}: {error_details}"}
         except Exception as e:
             log_error(f"❌ Error updating workflow: {e}")
+            log_error(f"🐛 DEBUG: Exception type: {type(e).__name__}")
             return {"success": False, "error": str(e)}
 
     async def delete_workflow(self, workflow_id: str, user_id: str) -> Dict[str, Any]:
