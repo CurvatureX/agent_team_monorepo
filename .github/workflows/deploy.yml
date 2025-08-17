@@ -167,6 +167,7 @@ jobs:
           TF_VAR_grafana_cloud_api_key: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
           TF_VAR_grafana_cloud_tenant_id: ${{ secrets.GRAFANA_CLOUD_TENANT_ID }}
           TF_VAR_github_app_id: ${{ secrets.GITAPP_APP_ID }}
+          TF_VAR_github_client_id: ${{ vars.GITAPP_CLIENT_ID }}
           TF_VAR_github_app_private_key: ${{ secrets.GITAPP_PRIVATE_KEY }}
           TF_VAR_github_webhook_secret: ${{ secrets.GITAPP_WEBHOOK_SECRET }}
           TF_VAR_smtp_username: ${{ secrets.SMTP_USERNAME }}
@@ -206,6 +207,7 @@ jobs:
           TF_VAR_grafana_cloud_api_key: ${{ secrets.GRAFANA_CLOUD_API_KEY }}
           TF_VAR_grafana_cloud_tenant_id: ${{ secrets.GRAFANA_CLOUD_TENANT_ID }}
           TF_VAR_github_app_id: ${{ secrets.GITAPP_APP_ID }}
+          TF_VAR_github_client_id: ${{ vars.GITAPP_CLIENT_ID }}
           TF_VAR_github_app_private_key: ${{ secrets.GITAPP_PRIVATE_KEY }}
           TF_VAR_github_webhook_secret: ${{ secrets.GITAPP_WEBHOOK_SECRET }}
           TF_VAR_smtp_username: ${{ secrets.SMTP_USERNAME }}
@@ -256,7 +258,7 @@ jobs:
         run: |
           # Base services that should always exist
           BASE_SERVICES="api-gateway-service workflow-agent-service workflow-engine-service workflow-scheduler-service"
-          
+
           # Check which services are actually ACTIVE
           ACTIVE_SERVICES=""
           for service in $BASE_SERVICES; do
@@ -266,7 +268,7 @@ jobs:
               --region ${{ env.AWS_REGION }} \
               --query "services[0].status" \
               --output text 2>/dev/null || echo "")
-            
+
             if [ "$STATUS" = "ACTIVE" ]; then
               ACTIVE_SERVICES="$ACTIVE_SERVICES $service"
               echo "✓ Service $service is ACTIVE"
@@ -274,7 +276,7 @@ jobs:
               echo "⚠ Service $service is not ACTIVE (status: $STATUS), skipping"
             fi
           done
-          
+
           # Check if OTEL collector exists and is ACTIVE
           OTEL_STATUS=$(aws ecs describe-services \
             --cluster agent-prod-cluster \
@@ -282,14 +284,14 @@ jobs:
             --region ${{ env.AWS_REGION }} \
             --query "services[0].status" \
             --output text 2>/dev/null || echo "")
-          
+
           if [ "$OTEL_STATUS" = "ACTIVE" ]; then
             ACTIVE_SERVICES="$ACTIVE_SERVICES agent-prod-otel-collector"
             echo "✓ OTEL Collector service is ACTIVE"
           else
             echo "ℹ OTEL Collector service is not ACTIVE (status: $OTEL_STATUS), skipping"
           fi
-          
+
           # Only wait for ACTIVE services
           if [ -n "$ACTIVE_SERVICES" ]; then
             echo "Waiting for services to stabilize: $ACTIVE_SERVICES"
