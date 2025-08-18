@@ -157,7 +157,6 @@ class WorkflowAgentServicer:
                     "intent_summary": "",
                     "conversations": [],
                     "current_workflow": {},
-                    "debug_loop_count": 0,
                 }
                 logger.warning("Using fallback state due to database access failure", 
                              extra={"session_id": session_id})
@@ -209,54 +208,36 @@ class WorkflowAgentServicer:
                             # 只在特定阶段发送消息响应
                             current_stage = updated_state.get("stage", WorkflowStage.CLARIFICATION)
                             if current_stage == WorkflowStage.CLARIFICATION:
-                                # Check if we have pending questions to send
-                                clarification_context = updated_state.get(
-                                    "clarification_context", {}
+                                # Always check for messages to send after clarification node runs
+                                # This includes both pending questions AND completion messages
+                                message_response = await self._create_message_response(
+                                    session_id, updated_state
                                 )
-                                pending_questions = clarification_context.get(
-                                    "pending_questions", []
-                                )
-                                if pending_questions:
-                                    message_response = await self._create_message_response(
-                                        session_id, updated_state
-                                    )
-                                    if message_response:
-                                        yield f"data: {message_response.model_dump_json()}\n\n"
+                                if message_response:
+                                    logger.info(f"Sending clarification message to user")
+                                    yield f"data: {message_response.model_dump_json()}\n\n"
 
-                            # 只在WORKFLOW_GENERATION节点完成后发送工作流响应
+                            # 在WORKFLOW_GENERATION节点完成后发送消息和工作流响应
                             if (
                                 node_name == "workflow_generation"
                                 and current_stage == WorkflowStage.WORKFLOW_GENERATION
                             ):
-                                # workflow_generation节点完成，发送workflow
+                                # 先发送workflow (重要：必须在状态还包含current_workflow时发送)
                                 workflow_response = await self._create_workflow_response(
                                     session_id, updated_state
                                 )
                                 if workflow_response:
-                                    msg = "Sending workflow response after workflow_gen completed"
-                                    logger.info(msg)
+                                    logger.info("Sending workflow response after workflow_gen completed")
                                     yield f"data: {workflow_response.model_dump_json()}\n\n"
-                            # Send debug result as message when debug node completes
-                            if node_name == "debug" and updated_state.get("debug_result"):
-                                debug_result = updated_state.get("debug_result", {})
-                                # 构建debug消息
-                                if isinstance(debug_result, dict):
-                                    if debug_result.get("success"):
-                                        debug_message = "✅ SUCCESS: 工作流验证通过"
-                                    else:
-                                        error_msg = debug_result.get("error", "工作流存在问题")
-                                        debug_message = f"❌ ERROR: {error_msg}"
-                                else:
-                                    debug_message = "调试完成"
-
-                                debug_response = ConversationResponse(
-                                    session_id=session_id,
-                                    response_type=ResponseType.MESSAGE,
-                                    message=debug_message,
-                                    is_final=debug_result.get("success", False)
+                                
+                                # 然后发送完成消息
+                                message_response = await self._create_message_response(
+                                    session_id, updated_state
                                 )
-                                logger.info("Sending debug result as message after debug completed")
-                                yield f"data: {debug_response.model_dump_json()}\n\n"
+                                if message_response:
+                                    logger.info("Sending completion message after workflow_gen completed")
+                                    yield f"data: {message_response.model_dump_json()}\n\n"
+                            # Debug logic removed - no longer needed in 2-node architecture
 
                             # 更新状态跟踪
                             previous_stage = current_stage
@@ -402,15 +383,12 @@ class WorkflowAgentServicer:
             "updated_at": db_state.get("updated_at", int(time.time() * 1000)),
             "stage": WorkflowStage(db_state.get("stage", "clarification")),
             "intent_summary": db_state.get("intent_summary", ""),
-            "execution_history": db_state.get("execution_history", []),
             "clarification_context": db_state.get(
                 "clarification_context", {"origin": "create", "pending_questions": []}
             ),
             "conversations": db_state.get("conversations", []),
             # gap fields removed in optimized architecture
             "current_workflow": {},
-            "debug_result": db_state.get("debug_result", ""),
-            "debug_loop_count": db_state.get("debug_loop_count", 0),
         }
 
         # 处理 current_workflow
@@ -456,8 +434,6 @@ class WorkflowAgentServicer:
                 else str(current_stage)
             ),
             "intent_summary": current_state.get("intent_summary", ""),
-            "debug_result": current_state.get("debug_result", ""),
-            "debug_loop_count": current_state.get("debug_loop_count", 0),
             "conversations_count": len(current_state.get("conversations", [])),
             "has_workflow": bool(current_state.get("current_workflow", {})),
         }
@@ -485,7 +461,6 @@ class WorkflowAgentServicer:
     async def _create_message_response(
         self, session_id: str, state: WorkflowState
     ) -> Optional[ConversationResponse]:
-        """创建消息响应（仅限 clarification 和 alternative 阶段）"""
         conversations = state.get("conversations", [])
         current_stage = state.get("stage", WorkflowStage.CLARIFICATION)
 
@@ -495,7 +470,6 @@ class WorkflowAgentServicer:
                 # Only set is_final=True when we're in the final stages or when workflow is complete
                 is_final = current_stage in [
                     WorkflowStage.WORKFLOW_GENERATION,
-                    WorkflowStage.DEBUG,
                     "__end__",
                 ]
 
@@ -511,9 +485,19 @@ class WorkflowAgentServicer:
     async def _create_workflow_response(
         self, session_id: str, state: WorkflowState
     ) -> Optional[ConversationResponse]:
-        """创建工作流响应，包含workflow_id"""
         current_workflow = state.get("current_workflow", {})
         workflow_id = state.get("workflow_id")
+
+        logger.info(
+            "Checking workflow for response",
+            extra={
+                "session_id": session_id,
+                "has_workflow": bool(current_workflow),
+                "workflow_type": type(current_workflow).__name__,
+                "workflow_id": workflow_id,
+                "node_count": len(current_workflow.get("nodes", [])) if isinstance(current_workflow, dict) else 0
+            }
+        )
 
         if (
             current_workflow
@@ -527,14 +511,20 @@ class WorkflowAgentServicer:
                 logger.info(
                     "Creating workflow response with workflow_id",
                     extra={
+                        "session_id": session_id,
                         "node_count": len(current_workflow.get("nodes", [])),
-                        "workflow_id": workflow_id
+                        "workflow_id": workflow_id,
+                        "workflow_name": current_workflow.get("name", "Unknown")
                     },
                 )
             else:
                 logger.warning(
                     "Creating workflow response without workflow_id",
-                    extra={"node_count": len(current_workflow.get("nodes", []))},
+                    extra={
+                        "session_id": session_id,
+                        "node_count": len(current_workflow.get("nodes", [])),
+                        "workflow_name": current_workflow.get("name", "Unknown")
+                    },
                 )
             
             workflow_json = json.dumps(workflow_data)
@@ -545,7 +535,13 @@ class WorkflowAgentServicer:
                 is_final=False,
             )
         else:
-            logger.debug("No workflow to send", extra={"current_workflow": current_workflow})
+            logger.warning(
+                "No workflow to send",
+                extra={
+                    "session_id": session_id,
+                    "current_workflow": str(current_workflow)[:200] if current_workflow else None
+                }
+            )
 
         return None
 
