@@ -16,7 +16,6 @@ class WorkflowStageEnum(str, Enum):
     """Workflow stages"""
     CLARIFICATION = "clarification"
     WORKFLOW_GENERATION = "workflow_generation"
-    DEBUG = "debug"
     COMPLETED = "completed"
     FAILED = "failed"
 
