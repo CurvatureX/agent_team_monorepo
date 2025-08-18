@@ -190,6 +190,20 @@ variable "github_client_id" {
   default     = ""
 }
 
+variable "notion_client_id" {
+  description = "Notion integration client ID for OAuth"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "notion_redirect_uri" {
+  description = "Notion OAuth redirect URI"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 # Monitoring Configuration
 variable "alert_email" {
   description = "Email address for CloudWatch alerts"
