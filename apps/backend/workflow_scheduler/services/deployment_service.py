@@ -197,13 +197,16 @@ class DeploymentService:
 
             # Update workflow status to failed
             try:
-                await self.workflow_repository.update_workflow_deployment_status(
+                await self.direct_db_service.update_workflow_deployment_status(
                     workflow_id=workflow_id,
                     deployment_status="DEPLOYMENT_FAILED",
                 )
-                await self.workflow_repository.update_deployment_history_completion(
+                await self.direct_db_service.create_deployment_history_record(
                     workflow_id=workflow_id,
-                    deployment_action="DEPLOY",
+                    deployment_action="DEPLOY_FAILED",
+                    from_status="DRAFT",
+                    to_status="DEPLOYMENT_FAILED",
+                    deployment_version=1,
                     error_message=error_msg,
                 )
             except Exception as db_error:
@@ -229,21 +232,29 @@ class DeploymentService:
             logger.info(f"Undeploying workflow {workflow_id}")
 
             # Get current workflow status for deployment history
-            current_workflow = await self.workflow_repository.get_workflow_by_id(workflow_id)
-            current_status = current_workflow.deployment_status if current_workflow else "DEPLOYED"
-            current_version = current_workflow.deployment_version if current_workflow else 1
+            current_status_info = await self.direct_db_service.get_workflow_current_status(
+                workflow_id
+            )
+            current_status = (
+                current_status_info.get("deployment_status", "DEPLOYED")
+                if current_status_info
+                else "DEPLOYED"
+            )
+            current_version = (
+                current_status_info.get("deployment_version", 1) if current_status_info else 1
+            )
 
             # Create deployment history record
-            await self.workflow_repository.create_deployment_history_record(
+            await self.direct_db_service.create_deployment_history_record(
                 workflow_id=workflow_id,
-                deployment_action="UNDEPLOY",
+                deployment_action="UNDEPLOY_STARTED",
                 from_status=current_status,
                 to_status="UNDEPLOYING",
                 deployment_version=current_version,
             )
 
             # Update workflow status to UNDEPLOYING
-            await self.workflow_repository.update_workflow_deployment_status(
+            await self.direct_db_service.update_workflow_deployment_status(
                 workflow_id=workflow_id,
                 deployment_status="UNDEPLOYING",
             )
@@ -258,29 +269,35 @@ class DeploymentService:
 
             if unregister_result and index_unregister_result:
                 # Update workflow status to UNDEPLOYED
-                await self.workflow_repository.update_workflow_deployment_status(
+                await self.direct_db_service.update_workflow_deployment_status(
                     workflow_id=workflow_id,
                     deployment_status="UNDEPLOYED",
                     undeployed_at=datetime.utcnow(),
                 )
 
                 # Complete deployment history record
-                await self.workflow_repository.update_deployment_history_completion(
+                await self.direct_db_service.create_deployment_history_record(
                     workflow_id=workflow_id,
-                    deployment_action="UNDEPLOY",
-                    deployment_logs={"undeployed_at": datetime.utcnow().isoformat()},
+                    deployment_action="UNDEPLOY_COMPLETED",
+                    from_status="UNDEPLOYING",
+                    to_status="UNDEPLOYED",
+                    deployment_version=current_version,
+                    deployment_config={"undeployed_at": datetime.utcnow().isoformat()},
                 )
             else:
                 # Update workflow status to failed
-                await self.workflow_repository.update_workflow_deployment_status(
+                await self.direct_db_service.update_workflow_deployment_status(
                     workflow_id=workflow_id,
                     deployment_status="DEPLOYMENT_FAILED",
                 )
 
                 # Complete deployment history record with error
-                await self.workflow_repository.update_deployment_history_completion(
+                await self.direct_db_service.create_deployment_history_record(
                     workflow_id=workflow_id,
-                    deployment_action="UNDEPLOY",
+                    deployment_action="UNDEPLOY_FAILED",
+                    from_status="UNDEPLOYING",
+                    to_status="DEPLOYMENT_FAILED",
+                    deployment_version=current_version,
                     error_message="Failed to unregister triggers",
                 )
 
@@ -298,13 +315,16 @@ class DeploymentService:
 
             # Update database with error status
             try:
-                await self.workflow_repository.update_workflow_deployment_status(
+                await self.direct_db_service.update_workflow_deployment_status(
                     workflow_id=workflow_id,
                     deployment_status="DEPLOYMENT_FAILED",
                 )
-                await self.workflow_repository.update_deployment_history_completion(
+                await self.direct_db_service.create_deployment_history_record(
                     workflow_id=workflow_id,
-                    deployment_action="UNDEPLOY",
+                    deployment_action="UNDEPLOY_FAILED",
+                    from_status="DEPLOYED",
+                    to_status="DEPLOYMENT_FAILED",
+                    deployment_version=1,
                     error_message=error_msg,
                 )
             except Exception as db_error:

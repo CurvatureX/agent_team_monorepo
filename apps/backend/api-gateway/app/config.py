@@ -103,6 +103,11 @@ class Settings(BaseSettings):
     ELASTICSEARCH_HOST: str = "localhost"
     ELASTICSEARCH_PORT: int = 9200
 
+    # OAuth Integration Configuration
+    NOTION_CLIENT_ID: str = Field(default_factory=lambda: os.getenv("NOTION_CLIENT_ID", ""))
+    NOTION_CLIENT_SECRET: str = Field(default_factory=lambda: os.getenv("NOTION_CLIENT_SECRET", ""))
+    NOTION_REDIRECT_URI: str = Field(default_factory=lambda: os.getenv("NOTION_REDIRECT_URI", ""))
+
     # Security Configuration
     API_SECRET_KEY: str = Field(
         default="your-secret-key-change-in-production", description="API 签名密钥"
