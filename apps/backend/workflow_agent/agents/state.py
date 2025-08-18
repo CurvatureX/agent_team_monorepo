@@ -1,6 +1,6 @@
 """
 LangGraph state management for Workflow Agent
-State definitions for the optimized 3-node architecture
+State definitions for the optimized 2-node architecture
 Simplified for better user experience with automatic gap handling
 """
 
@@ -9,11 +9,10 @@ from typing import Any, Dict, List, NotRequired, TypedDict
 
 
 class WorkflowStage(str, Enum):
-    """Workflow stages for 3-node architecture"""
+    """Workflow stages for 2-node architecture"""
 
     CLARIFICATION = "clarification"
     WORKFLOW_GENERATION = "workflow_generation"
-    DEBUG = "debug"
     COMPLETED = "completed"
     FAILED = "failed"  # Workflow generation failed after max attempts
 
@@ -52,7 +51,7 @@ class ClarificationContext(TypedDict):
 
 
 class WorkflowState(TypedDict):
-    """Complete workflow state for LangGraph processing in 3-node architecture"""
+    """Complete workflow state for LangGraph processing in 2-node architecture"""
     
     # Session and user info
     session_id: str
@@ -67,7 +66,6 @@ class WorkflowState(TypedDict):
     # Core workflow data
     intent_summary: str
     conversations: List[Conversation]
-    execution_history: NotRequired[List[str]]
     
     # Clarification context
     clarification_context: ClarificationContext
@@ -76,11 +74,6 @@ class WorkflowState(TypedDict):
     current_workflow: NotRequired[Any]  # workflow JSON object
     template_workflow: NotRequired[Any]  # template workflow if editing
     workflow_context: NotRequired[Dict[str, Any]]  # workflow metadata
-    
-    # Debug information - updated to support structured output
-    debug_result: NotRequired[Dict[str, Any]]  # structured debug result from prompt
-    debug_loop_count: NotRequired[int]
-    debug_error_for_regeneration: NotRequired[str]  # Error message to pass to workflow generation
     
     # Workflow creation tracking (new fields for moved workflow creation)
     workflow_id: NotRequired[str]  # ID of created workflow in workflow_engine
@@ -116,10 +109,6 @@ def get_current_workflow(state: WorkflowState) -> Any:
     return state.get("current_workflow")
 
 
-def get_debug_errors(state: WorkflowState) -> List[str]:
-    """Get debug errors from structured debug result"""
-    debug_result = state.get("debug_result", {})
-    return debug_result.get("errors", [])
 
 
 def is_clarification_ready(state: WorkflowState) -> bool:

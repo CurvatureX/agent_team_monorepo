@@ -1,0 +1,53 @@
+Create a workflow for: {{ intent_summary }}
+
+**Workflow Name Requirement:**
+Generate a concise, meaningful name that describes what this workflow does. Examples:
+- If the intent is about GitHub PR notifications → "GitHub PR Slack Notifier"
+- If the intent is about daily reports → "Daily Sales Report Generator"
+- If the intent is about monitoring → "Server Health Monitor"
+If the user explicitly mentioned a name in their request, use that name.
+
+{% if conversation_context %}
+## Context from previous conversations:
+{{ conversation_context }}
+{% endif %}
+
+{% if current_workflow %}
+## Previous workflow attempt:
+{{ current_workflow }}
+{% endif %}
+
+{% if creation_error %}
+## Previous Error - Please Fix:
+{{ creation_error }}
+{% endif %}
+
+## Your Task:
+Use your available MCP tools to generate a complete workflow. Follow this exact sequence:
+
+1. **Call `get_node_types()`** once to discover available nodes
+2. **Call `get_node_details()`** with a SINGLE call containing ALL required nodes as an array
+   - DO NOT call get_node_details multiple times with the same nodes
+   - Pass all nodes in one array: `{"nodes": [{"node_type": "...", "subtype": "..."}, ...]}`
+
+**🚨 CRITICAL - MCP Type Compliance is MANDATORY:**
+When MCP returns node specifications, each parameter includes a "type" field that MUST be strictly followed:
+
+- `type="integer"` → Generate ONLY numbers: `123`, `45678`, `999`
+  - ❌ WRONG: `"123"`, `"mock-id"`, `"{{id}}"`
+  - ✅ RIGHT: `123`, `45678`, `999`
+
+- `type="string"` → Generate ONLY proper strings: `"example text"`, `"user@email.com"`
+  - ❌ WRONG: `"mock-something"`, `"{{variable}}"`, `123` (without quotes)
+  - ✅ RIGHT: `"Hello World"`, `"user@example.com"`, `"Production Server"`
+
+- `type="boolean"` → Generate ONLY: `true` or `false`
+  - ❌ WRONG: `"true"`, `1`, `"false"`
+  - ✅ RIGHT: `true`, `false`
+
+- `type="array"` → Generate JSON arrays: `["item1", "item2"]`, `[]`
+- `type="object"` → Generate JSON objects: `{"key": "value"}`, `{}`
+
+**MCP's type field is the source of truth - ignore parameter names when determining types!**
+
+**Output:** Complete JSON workflow only. Start with `{` and end with `}`. No explanations or markdown.

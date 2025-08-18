@@ -1,6 +1,6 @@
 """
 LangGraph nodes for optimized Workflow Agent architecture
-Implements the 3 core nodes: Clarification, Workflow Generation, and Debug
+Implements the 2 core nodes: Clarification and Workflow Generation
 Simplified architecture with automatic gap handling for better user experience
 """
 
@@ -16,19 +16,11 @@ from langchain_openai import ChatOpenAI
 from workflow_agent.core.config import settings
 from workflow_agent.core.prompt_engine import get_prompt_engine
 
-# Import shared enums for consistent node type handling
-try:
-    from shared.models.node_enums import NodeType, TriggerSubtype
-except ImportError:
-    # Fallback if shared models not available
-    NodeType = None
-    TriggerSubtype = None
 
 from .mcp_tools import MCPToolCaller
 from .state import (
     WorkflowStage,
     WorkflowState,
-    get_current_workflow,
     get_intent_summary,
     get_user_message,
     is_clarification_ready,
@@ -65,15 +57,8 @@ class WorkflowAgentNodes:
         # Bind MCP tools to the LLM
         return llm.bind_tools(self.mcp_tools)
 
-    def _get_session_id(self, state: WorkflowState) -> str:
-        """Get session ID from state"""
-        return state.get("session_id", "")
-
     def _add_conversation(self, state: WorkflowState, role: str, text: str) -> None:
         """Add a new message to conversations"""
-        if "conversations" not in state:
-            state["conversations"] = []
-
         state["conversations"].append(
             {"role": role, "text": text, "timestamp": int(time.time() * 1000)}
         )
@@ -83,7 +68,7 @@ class WorkflowAgentNodes:
         """Extract conversation context from state with proper capping and formatting"""
         conversations = state.get("conversations", [])
         
-        # Define maximum context based on the 3-node architecture
+        # Define maximum context based on the 2-node architecture
         # We want enough context for understanding but not overwhelming the LLM
         MAX_CONVERSATION_PAIRS = 10  # Maximum of 10 user-assistant pairs
         MAX_TEXT_LENGTH = 500  # Truncate long messages to avoid token overflow
@@ -133,75 +118,6 @@ class WorkflowAgentNodes:
         
         return "\n".join(context_parts)
 
-    def _generate_mock_value(self, param_name: str, param_type: str = "string") -> object:
-        """
-        生成符合类型的 mock value
-
-        Args:
-            param_name: 参数名称
-            param_type: 参数类型 (string, integer, float, boolean, json)
-            
-        Returns:
-            符合类型的 mock value
-        """
-        param_lower = param_name.lower()
-        
-        # 根据参数类型生成合适的 mock value
-        if param_type == "integer":
-            # 整数类型 - 生成一个合理的整数
-            import random
-            return random.randint(100, 99999999)  # 随机整数，避免硬编码
-                
-        elif param_type == "float" or param_type == "number":
-            # 浮点数类型
-            if 'temperature' in param_lower:
-                return 0.7
-            elif 'threshold' in param_lower:
-                return 0.5
-            else:
-                return 1.0
-                
-        elif param_type == "boolean":
-            # 布尔类型
-            if 'enable' in param_lower or 'active' in param_lower:
-                return True
-            elif 'disable' in param_lower or 'ignore' in param_lower:
-                return False
-            else:
-                return True
-                
-        elif param_type == "json" or param_type == "array":
-            # JSON/数组类型
-            if 'labels' in param_lower or 'tags' in param_lower:
-                return ["example", "test"]
-            elif 'config' in param_lower or 'settings' in param_lower:
-                return {"key": "value"}
-            else:
-                return []
-                
-        else:  # string 或其他
-            # 字符串类型
-            if 'repository' in param_lower or 'repo' in param_lower:
-                return "owner/repo"
-            elif 'token' in param_lower or 'key' in param_lower:
-                return "mock-token-123456"
-            elif 'email' in param_lower:
-                return "user@example.com"
-            elif 'url' in param_lower or 'webhook' in param_lower:
-                return "https://api.example.com/webhook"
-            elif 'message' in param_lower or 'body' in param_lower:
-                return "Example message content"
-            elif 'title' in param_lower or 'subject' in param_lower:
-                return "Example Title"
-            elif 'channel' in param_lower:
-                return "#general"
-            elif 'cron' in param_lower:
-                return "0 9 * * *"
-            elif 'timestamp' in param_lower or 'date' in param_lower:
-                return "2024-01-01T00:00:00Z"
-            else:
-                return f"mock-{param_name}"
-    
     def _optimize_node_parameters(self, node: dict, node_spec: dict = None) -> dict:
         """
         优化节点参数：只保留必需参数和用户指定的参数
@@ -310,14 +226,11 @@ class WorkflowAgentNodes:
                 
                 if param_type:
                     logger.info(f"Using MCP-provided ParameterType '{param_type}' for parameter '{param_name}'")
-                    parameters[param_name] = self._generate_mock_value(param_name, param_type)
+                    parameters[param_name] = self._generate_proper_value_for_type(param_type)
                 else:
                     # Fallback only if MCP type not available
-                    logger.warning(f"No MCP type info for '{param_name}', using fallback inference")
-                    if 'number' in param_name.lower() or 'id' in param_name.lower() or 'count' in param_name.lower():
-                        parameters[param_name] = self._generate_mock_value(param_name, "integer")
-                    else:
-                        parameters[param_name] = self._generate_mock_value(param_name, "string")
+                    logger.warning(f"No MCP type info for '{param_name}', using fallback")
+                    parameters[param_name] = "example-value"
             
             # Handle template variables (another form of placeholder)
             elif isinstance(param_value, str):
@@ -331,49 +244,21 @@ class WorkflowAgentNodes:
                     logger.warning(f"LLM generated placeholder for '{param_name}': {param_value}")
                     if param_type:
                         logger.info(f"Fixing with MCP ParameterType '{param_type}'")
-                        parameters[param_name] = self._generate_mock_value(param_name, param_type)
+                        parameters[param_name] = self._generate_proper_value_for_type(param_type)
                     else:
                         # Fallback
                         logger.warning(f"No MCP type for '{param_name}', using fallback")
-                        if 'number' in param_name.lower() or 'id' in param_name.lower():
-                            parameters[param_name] = self._generate_mock_value(param_name, "integer")
-                        elif 'enabled' in param_name.lower() or 'bool' in param_name.lower():
-                            parameters[param_name] = self._generate_mock_value(param_name, "boolean")
-                        else:
-                            parameters[param_name] = self._generate_mock_value(param_name, "string")
-            
-            # Handle type mismatches based on MCP ParameterType
-            elif param_type and not self._value_matches_type(param_value, param_type):
-                # LLM generated wrong type - fix based on MCP type
-                logger.warning(f"Type mismatch for '{param_name}': got {type(param_value).__name__} '{param_value}', expected {param_type}")
-                logger.warning(f"LLM should have generated {param_type} value based on MCP ParameterType!")
-                parameters[param_name] = self._generate_proper_value_for_type(param_type)
+                        parameters[param_name] = "example-value"
             
             # Handle invalid zeros for ID fields
             elif isinstance(param_value, int) and param_value == 0:
                 if any(keyword in param_name.lower() for keyword in ['number', 'id', 'count']):
                     logger.warning(f"LLM generated invalid zero for '{param_name}'")
-                    parameters[param_name] = self._generate_mock_value(param_name, "integer")
+                    import random
+                    parameters[param_name] = random.randint(100, 99999999)
                     
         return node
 
-    def _value_matches_type(self, value: object, expected_type: str) -> bool:
-        """Check if a value matches the expected MCP ParameterType"""
-        if expected_type == "integer":
-            return isinstance(value, int) and not isinstance(value, bool) and value > 0
-        elif expected_type == "boolean":
-            return isinstance(value, bool)
-        elif expected_type == "float":
-            return isinstance(value, (int, float)) and not isinstance(value, bool)
-        elif expected_type == "string":
-            # String is valid only if it doesn't contain "mock-" prefix or template syntax
-            if not isinstance(value, str):
-                return False
-            return not ("mock-" in value.lower() or "{{" in value or "${" in value)
-        elif expected_type == "json":
-            return isinstance(value, (dict, list))
-        else:
-            return True  # Unknown type, assume it's OK
     
     def _generate_proper_value_for_type(self, param_type: str) -> object:
         """Generate a proper value based on MCP ParameterType without hardcoding"""
@@ -402,7 +287,7 @@ class WorkflowAgentNodes:
         """
         # Handle workflow_meta if LLM uses old format
         if "workflow_meta" in workflow and not workflow.get("name"):
-            workflow["name"] = workflow["workflow_meta"].get("name", "Generated Workflow")
+            workflow["name"] = workflow["workflow_meta"].get("name", "Automated Workflow")
             workflow["description"] = workflow["workflow_meta"].get("description", "")
         
         # Only add absolutely critical missing fields for nodes
@@ -513,35 +398,45 @@ class WorkflowAgentNodes:
 
     def _create_fallback_workflow(self, intent_summary: str) -> dict:
         """Create a simple fallback workflow when generation fails"""
-        # Use enum values if available, fallback to hardcoded strings
-        node_type = NodeType.TRIGGER.value if NodeType else "trigger"
-        subtype = TriggerSubtype.MANUAL.value if TriggerSubtype else "manual"
-
         return {
             "name": "Fallback Workflow",
             "description": f"Basic workflow for: {intent_summary[:100]}",
             "nodes": [
                 {
                     "id": str(uuid.uuid4()),
-                    "name": "Start",
-                    "type": node_type,
-                    "subtype": subtype,
-                    "properties": {},
-                    "inputs": {},
-                    "outputs": {"trigger_data": {"type": "object"}},
-                    "metadata": {"position": {"x": 100, "y": 100}},
+                    "name": "manual-trigger",
+                    "type": "TRIGGER",
+                    "subtype": "MANUAL",
+                    "parameters": {},
+                    "position": {"x": 100, "y": 100},
+                    "disabled": False,
+                    "on_error": "continue",
+                    "credentials": {},
+                    "notes": {},
+                    "webhooks": []
                 }
             ],
             "connections": {},
-            "settings": {"error_handling": "stop_on_error", "timeout": 300},
+            "settings": {
+                "timezone": {"name": "UTC"},
+                "save_execution_progress": True,
+                "save_manual_executions": True,
+                "timeout": 3600,
+                "error_policy": "continue",
+                "caller_policy": "workflow"
+            },
             "static_data": {},
+            "pin_data": {},
             "tags": ["fallback"],
+            "active": True,
+            "version": "1.0",
+            "id": "fallback-workflow"
         }
 
     def should_continue(self, state: WorkflowState) -> str:
         """
         Determine the next step based on current state
-        Used by LangGraph for conditional routing in optimized 3-node architecture
+        Used by LangGraph for conditional routing in optimized 2-node architecture
         """
         stage = state.get("stage", WorkflowStage.CLARIFICATION)
         logger.info(f"should_continue called with stage: {stage}")
@@ -569,36 +464,15 @@ class WorkflowAgentNodes:
                 return "END"
             # Otherwise, check if we're ready to proceed
             elif clarification_ready:
-                # In optimized architecture, go directly to workflow generation
+                # In 2-node architecture, go directly to workflow generation
                 return "workflow_generation"
             else:
                 return "END"  # Wait for user input
 
         elif stage == WorkflowStage.WORKFLOW_GENERATION:
-            # After workflow generation, always go to debug
-            return "debug"
-
-        elif stage == WorkflowStage.DEBUG:
-            # Check debug result
-            debug_result = state.get("debug_result", {})
-            success = debug_result.get("success", False)
-            debug_loop_count = state.get("debug_loop_count", 0)
-            max_debug_iterations = settings.DEBUG_MAX_ITERATIONS
-
-            logger.info(f"Debug routing: success={success}, loop_count={debug_loop_count}")
-
-            if success:
-                # Workflow validated successfully
-                logger.info("Debug successful, workflow complete")
-                return "END"
-            elif debug_loop_count >= max_debug_iterations:
-                # Max iterations reached
-                logger.info(f"Max debug iterations ({max_debug_iterations}) reached")
-                return "END"
-            else:
-                # Debug failed, regenerate workflow
-                logger.info("Debug failed, regenerating workflow")
-                return "workflow_generation"
+            # After workflow generation, workflow is complete - end the flow
+            logger.info("Workflow generation complete, ending flow")
+            return "END"
 
         # Default case
         logger.warning(f"Unknown stage in should_continue: {stage}")
@@ -606,7 +480,7 @@ class WorkflowAgentNodes:
 
     async def clarification_node(self, state: WorkflowState) -> WorkflowState:
         """
-        Clarification Node - Optimized for 3-node architecture
+        Clarification Node - Optimized for 2-node architecture
         Focuses on understanding user intent quickly with minimal questions
         """
         logger.info("Processing clarification node")
@@ -616,31 +490,21 @@ class WorkflowAgentNodes:
         existing_intent = get_intent_summary(state)
         conversation_history = self._get_conversation_context(state)
         
-        # Track conversation rounds for limiting questions
-        conversation_rounds = len([c for c in state.get("conversations", []) if c.get("role") == "user"])
-        MAX_CLARIFICATION_ROUNDS = 3
-        force_completion = conversation_rounds >= MAX_CLARIFICATION_ROUNDS
-        
         logger.info(
             "Clarification context",
             extra={
                 "user_message": user_message[:100] if user_message else None,
-                "conversation_rounds": conversation_rounds,
-                "force_completion": force_completion,
             },
         )
 
         state["stage"] = WorkflowStage.CLARIFICATION
 
         try:
-            # Simplified template context - only what's needed
+            # Simplified template context - let LLM decide when to complete
             template_context = {
                 "user_message": user_message,
                 "existing_intent": existing_intent,
                 "conversation_history": conversation_history,
-                "force_completion": force_completion,
-                "conversation_rounds": conversation_rounds,
-                "max_rounds": MAX_CLARIFICATION_ROUNDS,
             }
 
             # Use the f2 template system - both system and user prompts
@@ -699,18 +563,8 @@ class WorkflowAgentNodes:
 
                 clarification_output = json.loads(clean_text.strip())
                 
-                # Force completion if we've hit the round limit
-                if force_completion:
-                    clarification_output["is_complete"] = True
-                    clarification_output["clarification_question"] = ""
-                    logger.info(f"Forced completion after {conversation_rounds} rounds")
-                
-                # Check if clarification is ready (for future routing logic)
-                is_ready = clarification_output.get("is_complete", False)  # noqa: F841
-
                 # Map to main branch state structure
                 state["intent_summary"] = clarification_output.get("intent_summary", "")
-
 
                 # Update clarification context with simplified structure
                 state["clarification_context"] = {
@@ -733,7 +587,9 @@ class WorkflowAgentNodes:
                 if clarification_output.get("clarification_question"):
                     assistant_message = clarification_output["clarification_question"]
                 elif clarification_output.get("is_complete"):
-                    assistant_message = f"I understand your requirements: {clarification_output.get('intent_summary', 'Processing your workflow request')}"
+                    # When clarification is complete, inform user we're proceeding to generate workflow
+                    intent = clarification_output.get('intent_summary', 'your workflow request')
+                    assistant_message = f"Perfect! I understand your requirements: {intent}\n\nI'll now generate the workflow for you."
                 else:
                     assistant_message = clarification_output.get("intent_summary", "Processing your request")
                 
@@ -760,15 +616,7 @@ class WorkflowAgentNodes:
                 extra=error_details,
                 exc_info=True,  # This will include the full stack trace
             )
-            # Also log as separate ERROR for visibility
             logger.error(f"Error details: {error_details}")
-            # Store error in debug_result instead of adding undefined field
-            state["debug_result"] = {
-                "success": False,
-                "error": str(e),
-                "error_type": type(e).__name__,
-                "timestamp": int(time.time() * 1000),
-            }
             return {**state, "stage": WorkflowStage.CLARIFICATION}
 
     async def workflow_generation_node(self, state: WorkflowState) -> WorkflowState:
@@ -788,32 +636,20 @@ class WorkflowAgentNodes:
             intent_summary = get_intent_summary(state)
             conversation_context = self._get_conversation_context(state)
 
-            # Check if we're coming from debug with errors or previous generation failures
-            debug_error = state.get("debug_error_for_regeneration")
-            debug_result = state.get("debug_result") or {}
-            creation_error = state.get("workflow_creation_error")  # New field for creation failures
+            # Check if we're coming from previous generation failures
+            creation_error = state.get("workflow_creation_error")  # Field for creation failures
             generation_loop_count = state.get("generation_loop_count", 0)
-
-            # Skip manual MCP fetch - LLM will call it through tools if needed
-            # This avoids duplicate API calls since the LLM with tools will
-            # call get_node_types anyway when it needs the information
-            available_nodes = None
 
             # Prepare template context with creation error if available
             error_context = None
             if creation_error:
                 error_context = f"Previous workflow creation failed with error: {creation_error}. Please fix the issues and regenerate."
-            elif debug_error:
-                error_context = debug_error
-            elif debug_result.get("error") and not debug_result.get("success", True):
-                error_context = debug_result.get("error")
 
             template_context = {
                 "intent_summary": intent_summary,
                 "conversation_context": conversation_context,
-                "available_nodes": available_nodes,
                 "current_workflow": state.get("current_workflow"),
-                "debug_result": error_context,
+                "creation_error": error_context,
             }
 
             # Use the original f1 template system - the working approach
@@ -821,30 +657,18 @@ class WorkflowAgentNodes:
                 "workflow_gen_simplified", **template_context
             )
 
-            # Create user prompt for workflow generation - emphasizing MCP compliance
-            user_prompt_content = f"""Create a workflow for: {intent_summary}
-
-Instructions:
-1. Call get_node_types() to discover available nodes
-2. Call get_node_details() with a SINGLE call containing ALL required nodes as an array
-3. CRITICAL: Study the MCP response carefully - each parameter has a "type" field
-4. Generate values that EXACTLY match the MCP-specified types:
-   - If type="integer": Generate actual numbers (123, 45678)
-   - If type="string": Generate example strings WITHOUT "mock-" prefix
-   - If type="boolean": Generate true/false (no quotes)
-5. Output ONLY the complete JSON workflow (no explanations)"""
-
-            # Add error context to prompt if we're regenerating due to creation failure
-            if error_context:
-                user_prompt_content += f"\n\nIMPORTANT: {error_context}"
+            # Use template for user prompt - proper approach
+            user_prompt_content = await self.prompt_engine.render_prompt(
+                "workflow_generation_user", **template_context
+            )
 
             messages = [
                 SystemMessage(content=system_prompt),
                 HumanMessage(content=user_prompt_content),
             ]
 
-            # Generate workflow using OpenAI with multi-turn tool calling (like the test file)
-            workflow_json = await self._generate_with_multi_turn_tools(messages)
+            # Generate workflow using natural MCP tool calling
+            workflow_json = await self._generate_with_natural_tools(messages)
 
             # Check if we got an empty response
             if not workflow_json or workflow_json.strip() == "":
@@ -906,7 +730,34 @@ Instructions:
                     del state["workflow_creation_error"]
 
                 logger.info(f"Workflow created successfully with ID: {workflow_id}")
-                # Keep stage as WORKFLOW_GENERATION so routing goes to debug node
+                
+                # Add detailed completion message to conversations
+                workflow_name = workflow.get("name", "Workflow")
+                workflow_description = workflow.get("description", "")
+                node_count = len(workflow.get("nodes", []))
+                
+                completion_message = f"""✅ **Workflow Created Successfully!**
+
+I've successfully created your workflow:
+- **Name**: {workflow_name}
+- **ID**: {workflow_id}
+- **Nodes**: {node_count} nodes configured
+{f'- **Description**: {workflow_description}' if workflow_description else ''}
+
+The workflow has been saved and is ready for execution. You can now:
+1. Test the workflow with sample data
+2. Schedule it to run automatically
+3. Modify it as needed
+
+Would you like to make any adjustments or shall we proceed with testing?"""
+                
+                self._add_conversation(
+                    state,
+                    "assistant",
+                    completion_message
+                )
+                
+                # In 2-node architecture, workflow generation completion means END
                 return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
 
             else:
@@ -976,283 +827,85 @@ Instructions:
                 "stage": WorkflowStage.WORKFLOW_GENERATION,
             }
 
-    async def _generate_with_multi_turn_tools(self, messages: List) -> str:
+    async def _generate_with_natural_tools(self, messages: List) -> str:
         """
-        Multi-turn workflow generation following the working pattern from test file.
-
-        This matches the successful approach:
-        1. First call with tools - LLM uses get_node_types
-        2. Process tool responses
-        3. Continue conversation to get node_details
-        4. Final generation with complete JSON output
+        Natural workflow generation - let LLM decide when and how to use MCP tools.
+        Still emphasizes following MCP type specifications but doesn't force specific calling patterns.
         """
         try:
-            # Convert LangChain messages to OpenAI format
-            openai_messages = []
-            for msg in messages:
-                if hasattr(msg, "content"):
-                    role = "system" if type(msg).__name__ == "SystemMessage" else "user"
-                    openai_messages.append({"role": role, "content": msg.content})
-
-            logger.info("Starting multi-turn workflow generation with OpenAI")
-
-            # Step 1: First call - let LLM call get_node_types
-            # Use the LLM with tools bound (not passing tools parameter directly)
+            logger.info("Starting natural workflow generation with MCP tools")
+            
+            # Let LLM use tools naturally - no forced multi-turn pattern
             response = await self.llm_with_tools.ainvoke(messages)
-
-            # Convert back to openai format for processing
-            if hasattr(response, "content") and response.content:
-                openai_messages.append({"role": "assistant", "content": response.content})
-
-            # Process tool calls if any
-            if hasattr(response, "tool_calls") and response.tool_calls:
-                logger.info(f"Processing {len(response.tool_calls)} tool calls from first response")
-
-                # Add tool call responses
+            
+            # Process any tool calls the LLM decided to make
+            current_messages = list(messages)
+            max_iterations = 5  # Prevent infinite loops
+            iteration = 0
+            tool_call_history = []  # Track what tools have been called to avoid duplicates
+            
+            while hasattr(response, "tool_calls") and response.tool_calls and iteration < max_iterations:
+                iteration += 1
+                logger.info(f"LLM made {len(response.tool_calls)} tool calls (iteration {iteration})")
+                
+                # Add assistant response to conversation
+                if hasattr(response, "content") and response.content:
+                    current_messages.append(SystemMessage(content=f"Assistant: {response.content}"))
+                
+                # Process each tool call
                 for tool_call in response.tool_calls:
                     tool_name = getattr(tool_call, "name", tool_call.get("name", ""))
                     tool_args = getattr(tool_call, "args", tool_call.get("args", {}))
-
-                    logger.info(f"Calling tool: {tool_name}")
+                    
+                    # Create a signature for this tool call to detect duplicates
+                    tool_signature = f"{tool_name}:{json.dumps(tool_args, sort_keys=True)}"
+                    
+                    # Skip if this exact tool call was already made
+                    if tool_signature in tool_call_history:
+                        logger.warning(f"Skipping duplicate tool call: {tool_name} with same args")
+                        continue
+                    
+                    tool_call_history.append(tool_signature)
+                    logger.info(f"Processing tool call: {tool_name}")
                     result = await self.mcp_client.call_tool(tool_name, tool_args)
+                    
+                    # Cache node specs for type reference
+                    if tool_name == "get_node_details" and isinstance(result, dict):
+                        nodes_list = result.get("nodes", [])
+                        for node_spec in nodes_list:
+                            if "error" not in node_spec:
+                                node_key = f"{node_spec.get('node_type')}:{node_spec.get('subtype')}"
+                                self.node_specs_cache[node_key] = node_spec
+                                logger.debug(f"Cached node spec for {node_key}")
+                    
+                    # Add tool result to conversation
+                    result_str = json.dumps(result, indent=2) if isinstance(result, dict) else str(result)
+                    current_messages.append(HumanMessage(content=f"Tool result for {tool_name}:\n{result_str}"))
+                
+                # Add stronger reminder about MCP types if we got node details
+                has_node_details = any("get_node_details" in str(tc) for tc in response.tool_calls)
+                if has_node_details:
+                    current_messages.append(HumanMessage(
+                        content="""FINAL REMINDER - MCP Type Compliance:
+You now have the node specifications with exact type requirements. 
+For EVERY parameter, you MUST use the type specified in the MCP response:
+- If MCP says type="integer" → Use numbers WITHOUT quotes (123, not "123")
+- If MCP says type="string" → Use strings WITH quotes ("example", not example)
+- If MCP says type="boolean" → Use true/false WITHOUT quotes
 
-                    # Format as string for conversation
-                    result_str = (
-                        json.dumps(result, indent=2) if isinstance(result, dict) else str(result)
-                    )
-
-                    openai_messages.append(
-                        {
-                            "role": "tool",
-                            "tool_call_id": getattr(tool_call, "id", str(uuid.uuid4())),
-                            "content": result_str,
-                        }
-                    )
-
-                # Step 2: Continue conversation to get node_details and final JSON
-                openai_messages.append(
-                    {
-                        "role": "user",
-                        "content": """Now call get_node_details with a SINGLE call containing ALL the nodes you need (pass them as an array in the 'nodes' parameter).
-
-PAY ATTENTION: The MCP response will include a "type" field for each parameter - this tells you EXACTLY what type of value to generate:
-- type="integer" means you MUST use a number (not a string!)
-- type="string" means a text value (but NOT "mock-something"!)
-- type="boolean" means true or false (no quotes!)
-
-After getting the details, generate the complete JSON workflow following these MCP types EXACTLY.""",
-                    }
-                )
-
-                # Convert back to LangChain format
-                langchain_messages = []
-                for msg in openai_messages:
-                    if msg["role"] == "system":
-                        langchain_messages.append(SystemMessage(content=msg["content"]))
-                    elif msg["role"] == "user":
-                        langchain_messages.append(HumanMessage(content=msg["content"]))
-                    elif msg["role"] == "assistant":
-                        langchain_messages.append(
-                            SystemMessage(content=f"Assistant: {msg['content']}")
-                        )
-                    elif msg["role"] == "tool":
-                        langchain_messages.append(
-                            HumanMessage(content=f"Tool result: {msg['content']}")
-                        )
-
-                # Step 3: Final generation call
-                final_response = await self.llm_with_tools.ainvoke(langchain_messages)
-
-                # Handle any additional tool calls for node_details (with limit to prevent infinite loops)
-                MAX_ADDITIONAL_CALLS = 5  # Prevent runaway tool calling
-                if hasattr(final_response, "tool_calls") and final_response.tool_calls:
-                    num_calls = len(final_response.tool_calls)
-                    if num_calls > MAX_ADDITIONAL_CALLS:
-                        logger.warning(
-                            f"Too many tool calls ({num_calls}), limiting to {MAX_ADDITIONAL_CALLS}"
-                        )
-                        final_response.tool_calls = final_response.tool_calls[:MAX_ADDITIONAL_CALLS]
-
-                    logger.info(
-                        f"Processing {len(final_response.tool_calls)} additional tool calls"
-                    )
-
-                    # Process additional tool calls
-                    for tool_call in final_response.tool_calls:
-                        tool_name = getattr(tool_call, "name", tool_call.get("name", ""))
-                        tool_args = getattr(tool_call, "args", tool_call.get("args", {}))
-
-                        logger.info(
-                            f"Calling additional tool: {tool_name} with args: {json.dumps(tool_args, indent=2) if tool_args else '{}'}"
-                        )
-                        result = await self.mcp_client.call_tool(tool_name, tool_args)
-                        
-                        # Store node specs from get_node_details for type reference
-                        if tool_name == "get_node_details" and isinstance(result, dict):
-                            nodes_list = result.get("nodes", [])
-                            for node_spec in nodes_list:
-                                if "error" not in node_spec:
-                                    # Cache the node spec by type:subtype key
-                                    node_key = f"{node_spec.get('node_type')}:{node_spec.get('subtype')}"
-                                    self.node_specs_cache[node_key] = node_spec
-                                    logger.debug(f"Cached node spec for {node_key}")
-
-                        result_str = (
-                            json.dumps(result, indent=2)
-                            if isinstance(result, dict)
-                            else str(result)
-                        )
-                        langchain_messages.append(
-                            HumanMessage(content=f"Tool result for {tool_name}: {result_str}")
-                        )
-
-                    # Final call to get the JSON workflow with MCP compliance emphasis
-                    langchain_messages.append(
-                        HumanMessage(
-                            content="""You now have all the node details from MCP. CRITICAL REMINDERS:
-1. Each parameter has a "type" field in the MCP response - THIS IS MANDATORY TO FOLLOW
-2. Generate values that MATCH THE EXACT TYPE:
-   - type="integer" → use numbers like 123, 987654 (NOT "mock-123" strings!)
-   - type="string" → use example strings (NOT with "mock-" prefix!)
-   - type="boolean" → use true/false (no quotes!)
-3. Output ONLY the complete JSON workflow. Start with { and end with }. No explanations."""
-                        )
-                    )
-
-                    final_json_response = await self.llm_with_tools.ainvoke(langchain_messages)
-                    return (
-                        str(final_json_response.content)
-                        if hasattr(final_json_response, "content")
-                        else ""
-                    )
-
-                # Return the final response content
-                return str(final_response.content) if hasattr(final_response, "content") else ""
-
-            # No tool calls in first response - return content directly
+Generate the complete JSON workflow now, strictly following these MCP types."""
+                    ))
+                
+                # Continue the conversation
+                response = await self.llm_with_tools.ainvoke(current_messages)
+            
+            if iteration >= max_iterations:
+                logger.warning(f"Reached max iterations ({max_iterations}) in tool calling")
+            
+            # Return the final response content
             return str(response.content) if hasattr(response, "content") else ""
-
+            
         except Exception as e:
-            logger.error(f"Multi-turn tool generation failed: {e}", exc_info=True)
+            logger.error(f"Natural tool generation failed: {e}", exc_info=True)
             return ""
 
-    async def debug_node(self, state: WorkflowState) -> WorkflowState:
-        """
-        Debug Node - Validate workflow using workflow_engine with real execution test
-        Now only handles test data generation and execution since workflow is already created
-        Returns debug result with either success or error message
-        """
-        from workflow_agent.agents.workflow_data_generator import WorkflowDataGenerator
-        from workflow_agent.services.workflow_engine_client import WorkflowEngineClient
-
-        logger.info("Processing debug node with workflow_engine validation")
-
-        # Set stage to DEBUG
-        state["stage"] = WorkflowStage.DEBUG
-
-        try:
-            current_workflow = get_current_workflow(state)
-            workflow_id = state.get("workflow_id")
-
-            # Check if we have workflow creation error from previous workflow generation
-            creation_error = state.get("workflow_creation_error")
-            if creation_error:
-                logger.warning(f"Workflow creation failed previously: {creation_error}")
-                state["debug_result"] = {
-                    "success": False,
-                    "error": f"Workflow creation failed: {creation_error}",
-                    "timestamp": int(time.time() * 1000),
-                }
-                # Keep stage as DEBUG - the routing logic will handle this
-                return {**state, "stage": WorkflowStage.DEBUG}
-
-            if not current_workflow:
-                logger.warning("No workflow to debug")
-                state["debug_result"] = {
-                    "success": False,
-                    "error": "No workflow to debug",
-                    "timestamp": int(time.time() * 1000),
-                }
-                return {**state, "stage": WorkflowStage.DEBUG}
-
-            if not workflow_id:
-                logger.warning(
-                    "No workflow_id available, workflow may not have been created successfully"
-                )
-                state["debug_result"] = {
-                    "success": False,
-                    "error": "No workflow_id available - workflow creation may have failed",
-                    "timestamp": int(time.time() * 1000),
-                }
-                return {**state, "stage": WorkflowStage.DEBUG}
-
-            debug_loop_count = state.get("debug_loop_count", 0)
-
-            # Step 1: Generate test data for the workflow
-            logger.info("Generating test data for workflow execution")
-            test_generator = WorkflowDataGenerator()
-            test_data = await test_generator.generate_test_data(current_workflow)
-
-            # Step 2: Execute the already created workflow using workflow_id
-            logger.info(f"Executing existing workflow in workflow_engine (ID: {workflow_id})")
-            engine_client = WorkflowEngineClient()
-
-            # Get user_id from state or use default
-            user_id = state.get("user_id", "test_user")
-
-            # Execute the workflow directly using workflow_id (no creation needed)
-            execution_result = await engine_client.execute_workflow(
-                workflow_id=workflow_id, trigger_data=test_data, user_id=user_id
-            )
-
-            # Step 3: Check if execution succeeded (no field assumptions)
-            success = False
-            error_message = "ERROR"
-
-            if execution_result and isinstance(execution_result, dict):
-                # Check for success indicator
-                success = execution_result.get("success", False)
-                if not success:
-                    # Extract error message if available, otherwise use default
-                    error_message = execution_result.get("error", "ERROR")
-                    logger.info(f"Workflow execution failed: {error_message}")
-                else:
-                    # Success! Log the execution details
-                    execution_id = execution_result.get("execution_id")
-                    logger.info(f"Workflow executed successfully (execution_id: {execution_id})")
-            else:
-                # No valid result returned
-                logger.error("Invalid or no execution result returned from workflow engine")
-                error_message = "ERROR"
-
-            # Store the simplified debug result
-            state["debug_result"] = {
-                "success": success,
-                "error": error_message if not success else None,
-                "timestamp": int(time.time() * 1000),
-            }
-
-            # Update debug loop count
-            state["debug_loop_count"] = debug_loop_count + 1
-
-            # Keep stage as DEBUG - routing logic will decide based on success
-            return {**state, "stage": WorkflowStage.DEBUG}
-
-        except Exception as e:
-            import traceback
-
-            error_details = {
-                "error": str(e),
-                "error_type": type(e).__name__,
-                "traceback": traceback.format_exc(),
-                "tracking_id": state.get("tracking_id", "unknown"),
-                "location": "agents/nodes.py:debug_node",
-            }
-            logger.error(f"Debug node failed: {str(e)}", extra=error_details, exc_info=True)
-            logger.error(f"Error details: {error_details}")
-            state["debug_result"] = {
-                "success": False,
-                "error": f"Debug validation failed: {str(e)}",
-                "timestamp": int(time.time() * 1000),
-            }
-            return {**state, "stage": WorkflowStage.DEBUG}
