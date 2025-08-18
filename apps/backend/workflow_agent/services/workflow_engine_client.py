@@ -137,7 +137,7 @@ class WorkflowEngineClient:
                 
                 # Prepare the request data according to CreateWorkflowRequest model
                 request_data = {
-                    "name": workflow_copy.get("name", "Generated Workflow"),
+                    "name": workflow_copy.get("name", "Automated Workflow"),
                     "description": workflow_copy.get("description", ""),
                     "nodes": nodes,  # Use the modified nodes
                     "connections": workflow_copy.get("connections", {}),

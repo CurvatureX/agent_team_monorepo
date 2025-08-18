@@ -12,14 +12,18 @@ RUN apt-get update && apt-get install -y \
 RUN pip install --default-timeout=120 --retries 5 uv
 ENV PATH="/root/.local/bin:$PATH"
 
-# Copy pyproject.toml first for better Docker layer caching
+# Copy only pyproject.toml first for better Docker layer caching
 COPY workflow_agent/pyproject.toml ./pyproject.toml
 
-# Copy the workflow_agent module for installation
-COPY workflow_agent/ ./workflow_agent/
+# Create a minimal package structure for dependency installation
+RUN mkdir -p workflow_agent && \
+    echo "# Placeholder for dependency installation" > workflow_agent/__init__.py
 
-# Install Python dependencies using uv with timeout
+# Install Python dependencies first (this layer will be cached if pyproject.toml doesn't change)
 RUN UV_HTTP_TIMEOUT=120 uv pip install --system -e .
+
+# Now copy the actual workflow_agent code (changes here won't invalidate the dependency cache)
+COPY workflow_agent/ ./workflow_agent/
 
 # Production stage
 FROM python:3.11-slim AS production
