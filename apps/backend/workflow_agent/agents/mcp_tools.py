@@ -1,9 +1,9 @@
 """
-MCP (Model Context Protocol) tools for workflow generation.
-Provides tools for discovering and retrieving workflow node specifications.
+Optimized MCP (Model Context Protocol) tools with performance logging.
 """
 
 import json
+import time
 from typing import Any, Dict, List, Optional
 import logging
 import aiohttp
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 class NodeQuery(BaseModel):
     """Query parameters for node details."""
-    node_type: str = Field(..., description="Node type (e.g., TRIGGER_NODE, AI_AGENT_NODE)")
+    node_type: str = Field(..., description="Node type (e.g., TRIGGER, AI_AGENT)")
     subtype: str = Field(..., description="Node subtype (e.g., schedule, webhook)")
 
 
@@ -23,7 +23,7 @@ class GetNodeTypesInput(BaseModel):
     """Input for get_node_types tool."""
     type_filter: Optional[str] = Field(
         None,
-        description="Filter by node type (optional). Options: ACTION_NODE, TRIGGER_NODE, AI_AGENT_NODE, FLOW_NODE, TOOL_NODE, MEMORY_NODE, HUMAN_IN_THE_LOOP_NODE, EXTERNAL_ACTION_NODE"
+        description="Filter by node type (optional). Options: ACTION, TRIGGER, AI_AGENT, FLOW, TOOL, MEMORY, HUMAN_IN_THE_LOOP, EXTERNAL_ACTION"
     )
 
 
@@ -45,19 +45,15 @@ class GetNodeDetailsInput(BaseModel):
 
 class MCPToolCaller:
     """
-    MCP client for connecting to the API Gateway's MCP endpoints.
-    Provides tools for workflow node discovery and specification retrieval.
+    Optimized MCP client with performance tracking and connection reuse.
     """
 
     def __init__(self, server_url: str = None, api_key: str = "dev_default"):
-        # Use API_GATEWAY_URL if set (for AWS/production), otherwise check Docker/local
         import os
         
         if server_url:
-            # Use explicitly provided URL
             self.server_url = server_url
         elif os.getenv("API_GATEWAY_URL"):
-            # Use configured API Gateway URL (AWS/production)
             api_gateway_url = os.getenv("API_GATEWAY_URL").rstrip("/")
             self.server_url = f"{api_gateway_url}/api/v1/mcp"
         elif os.getenv("WORKFLOW_ENGINE_URL", "").startswith("http://workflow-engine"):
@@ -66,6 +62,7 @@ class MCPToolCaller:
         else:
             # Local development
             self.server_url = "http://localhost:8000/api/v1/mcp"
+        
         self.api_key = api_key
         self.headers = {
             "Authorization": f"Bearer {api_key}",
@@ -73,25 +70,51 @@ class MCPToolCaller:
             "Accept": "application/json"
         }
         
-        # Create a shared session with connection pooling for better performance
+        # Singleton session for connection reuse
         self._session = None
+        self._session_created_at = None
         
-        logger.info(f"MCP Tool initialized with server URL: {self.server_url}")
+        logger.info(f"🔧 MCP Tool initialized with server URL: {self.server_url}")
     
-    async def _get_session(self):
-        """Get or create the aiohttp session with connection pooling"""
+    async def _get_or_create_session(self):
+        """Get existing session or create a new one with optimized settings"""
+        start_time = time.time()
+        
         if self._session is None:
+            logger.info("📊 Creating new aiohttp session with connection pooling")
+            
+            # Optimized connector settings for faster connections
             connector = aiohttp.TCPConnector(
                 limit=100,  # Total connection pool limit
-                limit_per_host=30,  # Per-host connection limit
-                ttl_dns_cache=300,  # DNS cache timeout
-                keepalive_timeout=30  # Keep connections alive for reuse
+                limit_per_host=50,  # Increased per-host limit
+                ttl_dns_cache=600,  # Longer DNS cache (10 minutes)
+                keepalive_timeout=60,  # Longer keepalive
+                force_close=False,  # Reuse connections
+                enable_cleanup_closed=True  # Clean up closed connections
             )
-            timeout = aiohttp.ClientTimeout(total=10, connect=2)  # 10s total, 2s connect
+            
+            # Shorter timeouts for faster failure detection
+            timeout = aiohttp.ClientTimeout(
+                total=30,  # Total timeout
+                connect=3,  # Connection timeout
+                sock_connect=3,  # Socket connection timeout
+                sock_read=10  # Socket read timeout
+            )
+            
             self._session = aiohttp.ClientSession(
                 connector=connector,
-                timeout=timeout
+                timeout=timeout,
+                trust_env=True  # Trust environment proxy settings
             )
+            self._session_created_at = time.time()
+            
+            elapsed = time.time() - start_time
+            logger.info(f"✅ Session created in {elapsed:.3f}s")
+        else:
+            # Check if session is still valid
+            session_age = time.time() - (self._session_created_at or 0)
+            logger.debug(f"📊 Reusing existing session (age: {session_age:.1f}s)")
+            
         return self._session
     
     async def close(self):
@@ -99,18 +122,16 @@ class MCPToolCaller:
         if self._session:
             await self._session.close()
             self._session = None
+            self._session_created_at = None
+            logger.info("🔚 MCP session closed")
 
     async def get_node_types(self, type_filter: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Get all available workflow node types and their subtypes.
+        """Get all available workflow node types with performance tracking"""
+        total_start = time.time()
+        metrics = {}
         
-        Args:
-            type_filter: Optional filter by node type
-            
-        Returns:
-            Dictionary with node types and their subtypes
-        """
         try:
+            # Prepare payload
             payload = {
                 "name": "get_node_types",
                 "tool_name": "get_node_types",
@@ -120,55 +141,87 @@ class MCPToolCaller:
             if type_filter:
                 payload["arguments"]["type_filter"] = type_filter
             
-            # Simplified API logging
-            logger.debug(f"MCP API: POST {self.server_url}/invoke")
-                
-            session = await self._get_session()
-            async with session.post(
-                    f"{self.server_url}/invoke",
-                    json=payload,
-                    headers=self.headers
-                ) as response:
-                    response.raise_for_status()
-                    result = await response.json()
-                    
-                    logger.debug(f"MCP API Response: {response.status}")
-                    
-                    # Extract the actual result from MCP response format
-                    if "result" in result:
-                        actual_result = result["result"]
-                        if "structuredContent" in actual_result:
-                            return actual_result["structuredContent"]
-                        elif "content" in actual_result:
-                            # Parse from content if needed
-                            content = actual_result["content"]
-                            if isinstance(content, list) and content:
-                                return {"data": content}
-                    
-                    return result
-                    
-        except Exception as e:
-            logger.error(f"❌ Error getting node types: {e}")
-            return {"error": str(e)}
-
-    async def get_node_details(
-        self,
-        nodes: List[Dict[str, str]],
-        include_examples: bool = True,
-        include_schemas: bool = True
-    ) -> Dict[str, Any]:
-        """
-        Get detailed specifications for workflow nodes.
-        
-        Args:
-            nodes: List of nodes to get details for (each with node_type and subtype)
-            include_examples: Include usage examples
-            include_schemas: Include input/output schemas
+            logger.info(f"🔧 MCP Call: get_node_types ({payload['arguments']})")
             
-        Returns:
-            Dictionary with detailed node specifications
-        """
+            # Get or create session
+            session_start = time.time()
+            session = await self._get_or_create_session()
+            metrics['session_setup'] = time.time() - session_start
+            
+            # Make HTTP request
+            request_start = time.time()
+            logger.info(f"📤 Sending POST request to {self.server_url}/invoke")
+            
+            async with session.post(
+                f"{self.server_url}/invoke",
+                json=payload,
+                headers=self.headers
+            ) as response:
+                metrics['request_time'] = time.time() - request_start
+                
+                # Read response
+                read_start = time.time()
+                response.raise_for_status()
+                result = await response.json()
+                metrics['response_read'] = time.time() - read_start
+                
+                # Process result
+                process_start = time.time()
+                if "result" in result:
+                    actual_result = result["result"]
+                    if "structuredContent" in actual_result:
+                        final_result = actual_result["structuredContent"]
+                    elif "content" in actual_result:
+                        content = actual_result["content"]
+                        if isinstance(content, list) and content:
+                            final_result = {"data": content}
+                        else:
+                            final_result = result
+                    else:
+                        final_result = result
+                else:
+                    final_result = result
+                
+                metrics['result_processing'] = time.time() - process_start
+                metrics['total_time'] = time.time() - total_start
+                
+                # Log performance metrics
+                logger.info(
+                    f"✅ MCP Response: {type(final_result).__name__} "
+                    f"(session: {metrics['session_setup']:.3f}s, "
+                    f"request: {metrics['request_time']:.3f}s, "
+                    f"read: {metrics['response_read']:.3f}s, "
+                    f"process: {metrics['result_processing']:.3f}s, "
+                    f"total: {metrics['total_time']:.3f}s)"
+                )
+                
+                return final_result
+                    
+        except aiohttp.ClientError as e:
+            elapsed = time.time() - total_start
+            logger.error(f"❌ MCP request failed after {elapsed:.3f}s: {e}")
+            raise
+        except Exception as e:
+            elapsed = time.time() - total_start
+            logger.error(f"❌ MCP error after {elapsed:.3f}s: {e}")
+            raise
+
+    async def get_node_details(self, nodes: List[Dict[str, str]], 
+                              include_examples: bool = True,
+                              include_schemas: bool = True) -> Any:
+        """Get detailed specifications for nodes with performance tracking"""
+        total_start = time.time()
+        metrics = {}
+        
         try:
+            # Log the nodes being requested (with smart formatting)
+            node_summary = ", ".join([f"{n['node_type']}:{n['subtype']}" for n in nodes[:3]])
+            if len(nodes) > 3:
+                node_summary += f" (+{len(nodes)-3} more)"
+            
+            logger.info(f"🔧 MCP Call: get_node_details (nodes={len(nodes)} items)")
+            logger.info(f"📦 Getting details for {len(nodes)} nodes: {node_summary}")
+            
             payload = {
                 "name": "get_node_details",
                 "tool_name": "get_node_details",
@@ -179,40 +232,63 @@ class MCPToolCaller:
                 }
             }
             
-            # Simplified logging for node details request
-            node_list = [f"{n.get('node_type', 'unknown')}:{n.get('subtype', 'unknown')}" for n in nodes]
-            logger.info(f"📦 Getting details for {len(nodes)} nodes: {', '.join(node_list[:3])}{'...' if len(node_list) > 3 else ''}")
+            # Get or create session
+            session_start = time.time()
+            session = await self._get_or_create_session()
+            metrics['session_setup'] = time.time() - session_start
             
-            session = await self._get_session()
+            # Make HTTP request
+            request_start = time.time()
+            logger.info(f"📤 Sending POST request to {self.server_url}/invoke")
+            
             async with session.post(
-                    f"{self.server_url}/invoke",
-                    json=payload,
-                    headers=self.headers
-                ) as response:
-                    response.raise_for_status()
-                    result = await response.json()
-                    
-                    logger.debug(f"MCP API Response: {response.status}")
-                    
-                    # Extract the actual result from MCP response format
-                    if "result" in result:
-                        actual_result = result["result"]
-                        if "structuredContent" in actual_result:
-                            content = actual_result["structuredContent"]
-                            if "nodes" in content:
-                                logger.debug(f"Received details for {len(content['nodes'])} nodes")
-                            return content
-                        elif "content" in actual_result:
-                            content = actual_result["content"]
-                            if isinstance(content, list) and content:
-                                logger.debug(f"Received details for {len(content)} nodes")
-                                return {"nodes": content}
-                    
-                    return result
+                f"{self.server_url}/invoke",
+                json=payload,
+                headers=self.headers
+            ) as response:
+                metrics['request_time'] = time.time() - request_start
+                
+                # Read response
+                read_start = time.time()
+                response.raise_for_status()
+                result = await response.json()
+                metrics['response_read'] = time.time() - read_start
+                
+                # Process result
+                process_start = time.time()
+                if "result" in result:
+                    actual_result = result["result"]
+                    if "structuredContent" in actual_result:
+                        nodes_data = actual_result["structuredContent"]
+                        if isinstance(nodes_data, dict) and "nodes" in nodes_data:
+                            final_result = nodes_data["nodes"]
+                        else:
+                            final_result = nodes_data
+                    else:
+                        final_result = result
+                else:
+                    final_result = result
+                
+                metrics['result_processing'] = time.time() - process_start
+                metrics['total_time'] = time.time() - total_start
+                
+                # Log performance metrics
+                result_count = len(final_result) if isinstance(final_result, list) else 1
+                logger.info(
+                    f"✅ MCP Response: {result_count} nodes returned "
+                    f"(session: {metrics['session_setup']:.3f}s, "
+                    f"request: {metrics['request_time']:.3f}s, "
+                    f"read: {metrics['response_read']:.3f}s, "
+                    f"process: {metrics['result_processing']:.3f}s, "
+                    f"total: {metrics['total_time']:.3f}s)"
+                )
+                
+                return final_result
                     
         except Exception as e:
-            logger.error(f"❌ Error getting node details: {e}")
-            return {"error": str(e)}
+            elapsed = time.time() - total_start
+            logger.error(f"❌ MCP get_node_details failed after {elapsed:.3f}s: {e}")
+            raise
 
     async def call_tool(self, tool_name: str, tool_args: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -226,12 +302,9 @@ class MCPToolCaller:
         Returns:
             Dictionary with tool result
         """
-        # Simplified logging - show tool name and brief args
-        args_summary = f"nodes={len(tool_args.get('nodes', []))} items" if 'nodes' in tool_args else str(tool_args)
-        logger.info(f"🔧 MCP Call: {tool_name} ({args_summary})")
+        logger.info(f"🔧 MCP Call Tool: {tool_name}")
         
         try:
-            result = None
             if tool_name == "get_node_types":
                 type_filter = tool_args.get("type_filter")
                 result = await self.get_node_types(type_filter)
@@ -243,136 +316,56 @@ class MCPToolCaller:
             else:
                 result = {"error": f"Unknown tool: {tool_name}"}
             
-            # Simplified response logging
-            if result:
-                if isinstance(result, dict):
-                    if "nodes" in result:
-                        logger.info(f"✅ MCP Response: {len(result['nodes'])} nodes returned")
-                    elif "node_types" in result:
-                        logger.info(f"✅ MCP Response: {len(result.get('node_types', []))} node types")
-                    else:
-                        # For other responses, show keys
-                        logger.info(f"✅ MCP Response: {list(result.keys())}")
-                else:
-                    logger.info(f"✅ MCP Response received")
-            
             return result
             
         except Exception as e:
             logger.error(f"❌ Error calling tool {tool_name}: {e}")
             return {"error": str(e)}
 
-    def get_langchain_tools(self) -> List[Tool]:
-        """
-        Get LangChain tools for use with function calling.
+    def get_tools(self) -> List[Tool]:
+        """Get Langchain tools for MCP operations"""
         
-        Returns:
-            List of LangChain Tool objects
-        """
-        tools = []
-        
-        # Tool for getting node types
-        async def _get_node_types(type_filter: Optional[str] = None) -> str:
+        async def get_node_types_wrapper(type_filter: Optional[str] = None) -> str:
+            """Get available node types"""
             result = await self.get_node_types(type_filter)
             return json.dumps(result, indent=2)
         
-        get_node_types_tool = Tool(
-            name="get_node_types",
-            description="Get all available workflow node types and their subtypes. Use this to discover what nodes are available.",
-            func=None,  # Async function will be set via coroutine
-            coroutine=_get_node_types,
-            args_schema=GetNodeTypesInput
-        )
-        tools.append(get_node_types_tool)
-        
-        # Tool for getting node details
-        async def _get_node_details(
-            nodes: List[Dict[str, str]],
+        async def get_node_details_wrapper(
+            nodes: List[Dict[str, str]], 
             include_examples: bool = True,
             include_schemas: bool = True
         ) -> str:
+            """Get node details"""
             result = await self.get_node_details(nodes, include_examples, include_schemas)
             return json.dumps(result, indent=2)
         
-        get_node_details_tool = Tool(
-            name="get_node_details",
-            description="Get detailed specifications for workflow nodes including parameters, ports, and examples. Use this to get the exact configuration requirements for nodes.",
-            func=None,  # Async function will be set via coroutine
-            coroutine=_get_node_details,
-            args_schema=GetNodeDetailsInput
-        )
-        tools.append(get_node_details_tool)
-        
-        return tools
+        return [
+            Tool(
+                name="get_node_types",
+                func=None,
+                coroutine=get_node_types_wrapper,
+                description="Get all available workflow node types and their subtypes",
+                args_schema=GetNodeTypesInput
+            ),
+            Tool(
+                name="get_node_details",
+                func=None,
+                coroutine=get_node_details_wrapper,
+                description="Get detailed specifications for workflow nodes",
+                args_schema=GetNodeDetailsInput
+            )
+        ]
 
 
-def create_openai_function_definitions() -> List[Dict[str, Any]]:
-    """
-    Create OpenAI function calling definitions for MCP tools.
+# Singleton instance for connection reuse across requests
+_mcp_client_instance = None
+
+def get_mcp_client(server_url: str = None, api_key: str = "dev_default") -> MCPToolCaller:
+    """Get or create singleton MCP client for connection reuse"""
+    global _mcp_client_instance
     
-    Returns:
-        List of OpenAI function definitions
-    """
-    return [
-        {
-            "type": "function",
-            "function": {
-                "name": "get_node_types",
-                "description": "Get all available workflow node types and their subtypes",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "type_filter": {
-                            "type": "string",
-                            "enum": [
-                                "ACTION_NODE",
-                                "TRIGGER_NODE", 
-                                "AI_AGENT_NODE",
-                                "FLOW_NODE",
-                                "TOOL_NODE",
-                                "MEMORY_NODE",
-                                "HUMAN_IN_THE_LOOP_NODE",
-                                "EXTERNAL_ACTION_NODE"
-                            ],
-                            "description": "Filter by node type (optional)"
-                        }
-                    }
-                }
-            }
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "get_node_details",
-                "description": "Get detailed specifications for workflow nodes including parameters, ports, and examples",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "nodes": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "node_type": {"type": "string"},
-                                    "subtype": {"type": "string"}
-                                },
-                                "required": ["node_type", "subtype"]
-                            },
-                            "description": "List of nodes to get details for"
-                        },
-                        "include_examples": {
-                            "type": "boolean",
-                            "default": True,
-                            "description": "Include usage examples"
-                        },
-                        "include_schemas": {
-                            "type": "boolean", 
-                            "default": True,
-                            "description": "Include input/output schemas"
-                        }
-                    },
-                    "required": ["nodes"]
-                }
-            }
-        }
-    ]
+    if _mcp_client_instance is None:
+        _mcp_client_instance = MCPToolCaller(server_url, api_key)
+        logger.info("📊 Created singleton MCP client instance")
+    
+    return _mcp_client_instance

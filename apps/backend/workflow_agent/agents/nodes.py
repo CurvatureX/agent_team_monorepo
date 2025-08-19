@@ -35,9 +35,11 @@ class WorkflowAgentNodes:
     def __init__(self):
         self.llm = self._setup_llm()
         self.prompt_engine = get_prompt_engine()
-        self.mcp_client = MCPToolCaller()
+        # Use singleton MCP client for connection reuse
+        from .mcp_tools import get_mcp_client
+        self.mcp_client = get_mcp_client()
         # Get LangChain tools for MCP
-        self.mcp_tools = self.mcp_client.get_langchain_tools()
+        self.mcp_tools = self.mcp_client.get_tools()
         # Bind tools to LLM if supported
         self.llm_with_tools = self._setup_llm_with_tools()
         # Store MCP node specs for type reference
@@ -219,6 +221,13 @@ class WorkflowAgentNodes:
                         param_required = param_spec.get('required', False)
                         break
             
+            # Special handling: if param_type is "json" but value is list/dict, convert to JSON string
+            if param_type == "json" and isinstance(param_value, (list, dict)):
+                import json
+                parameters[param_name] = json.dumps(param_value)
+                logger.info(f"Converted {param_name} from {type(param_value).__name__} to JSON string for type 'json'")
+                continue
+            
             # Handle reference objects using MCP-provided ParameterType
             if isinstance(param_value, dict) and ('$ref' in param_value or '$expr' in param_value):
                 logger.warning(f"LLM generated reference object for '{param_name}': {param_value}")
@@ -226,7 +235,7 @@ class WorkflowAgentNodes:
                 
                 if param_type:
                     logger.info(f"Using MCP-provided ParameterType '{param_type}' for parameter '{param_name}'")
-                    parameters[param_name] = self._generate_proper_value_for_type(param_type)
+                    parameters[param_name] = self._generate_proper_value_for_type(param_type, param_name)
                 else:
                     # Fallback only if MCP type not available
                     logger.warning(f"No MCP type info for '{param_name}', using fallback")
@@ -242,13 +251,16 @@ class WorkflowAgentNodes:
                 
                 if is_placeholder:
                     logger.warning(f"LLM generated placeholder for '{param_name}': {param_value}")
+                    
+                    # Generic fallback replacement based on MCP type
                     if param_type:
-                        logger.info(f"Fixing with MCP ParameterType '{param_type}'")
-                        parameters[param_name] = self._generate_proper_value_for_type(param_type)
+                        logger.info(f"Fixing placeholder with MCP ParameterType '{param_type}'")
+                        parameters[param_name] = self._generate_proper_value_for_type(param_type, param_name)
                     else:
-                        # Fallback
-                        logger.warning(f"No MCP type for '{param_name}', using fallback")
-                        parameters[param_name] = "example-value"
+                        # Generic string fallback when no type info available
+                        import random
+                        parameters[param_name] = f"example-value-{random.randint(1000, 9999)}"
+                        logger.warning(f"No MCP type for '{param_name}', using generic fallback")
             
             # Handle invalid zeros for ID fields
             elif isinstance(param_value, int) and param_value == 0:
@@ -260,19 +272,19 @@ class WorkflowAgentNodes:
         return node
 
     
-    def _generate_proper_value_for_type(self, param_type: str) -> object:
-        """Generate a proper value based on MCP ParameterType without hardcoding"""
+    def _generate_proper_value_for_type(self, param_type: str, param_name: str = "") -> object:
+        """Generate a proper value based on MCP ParameterType - generic fallback only"""
         import random
         
         if param_type == "integer":
-            # Generate a reasonable integer without hardcoding specific values
+            # Generate a reasonable integer
             return random.randint(100, 99999999)
         elif param_type == "boolean":
-            return random.choice([True, False])
+            return True  # Default to True
         elif param_type == "float":
             return round(random.uniform(0.1, 10.0), 2)
         elif param_type == "string":
-            # Generate a generic example string
+            # Generic example string - no special cases
             return f"example-value-{random.randint(1000, 9999)}"
         elif param_type == "json":
             return {}
@@ -867,16 +879,29 @@ Would you like to make any adjustments or shall we proceed with testing?"""
                     
                     tool_call_history.append(tool_signature)
                     logger.info(f"Processing tool call: {tool_name}")
+                    
+                    # Add performance tracking for MCP calls
+                    import time
+                    call_start = time.time()
                     result = await self.mcp_client.call_tool(tool_name, tool_args)
+                    call_duration = time.time() - call_start
+                    logger.info(f"✅ Tool call '{tool_name}' completed in {call_duration:.3f}s")
                     
                     # Cache node specs for type reference
-                    if tool_name == "get_node_details" and isinstance(result, dict):
-                        nodes_list = result.get("nodes", [])
+                    if tool_name == "get_node_details":
+                        # Handle both dict with "nodes" key and direct list
+                        if isinstance(result, dict):
+                            nodes_list = result.get("nodes", [])
+                        elif isinstance(result, list):
+                            nodes_list = result
+                        else:
+                            nodes_list = []
+                        
                         for node_spec in nodes_list:
-                            if "error" not in node_spec:
+                            if isinstance(node_spec, dict) and "error" not in node_spec:
                                 node_key = f"{node_spec.get('node_type')}:{node_spec.get('subtype')}"
                                 self.node_specs_cache[node_key] = node_spec
-                                logger.debug(f"Cached node spec for {node_key}")
+                                logger.info(f"Cached node spec for {node_key}")  # Changed to info for visibility
                     
                     # Add tool result to conversation
                     result_str = json.dumps(result, indent=2) if isinstance(result, dict) else str(result)

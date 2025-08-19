@@ -92,3 +92,6 @@ Thumbs.db
 *.env
 *.claude
 *.langgraph_api/
+
+# Chat history
+chat_history/

@@ -105,12 +105,10 @@ class WorkflowEngineClient:
                                 # Boolean conversion (only for non-template strings)
                                 if value.lower() in ["true", "false"]:
                                     node["parameters"][key] = value.lower() == "true"
-                                # JSON object/array detection
+                                # JSON object/array detection (already JSON string)
                                 elif value.startswith(("{", "[")) and value.endswith(("}", "]")):
-                                    try:
-                                        node["parameters"][key] = json.loads(value)
-                                    except json.JSONDecodeError:
-                                        pass  # Keep as string if not valid JSON
+                                    # Keep as string - it's already a JSON string
+                                    pass
                                 # Number detection (only for literal numbers, not templates)
                                 elif key in ["timeout", "max_tries", "wait_between_tries", "milestone"]:
                                     try:
@@ -122,10 +120,13 @@ class WorkflowEngineClient:
                                     except ValueError:
                                         pass  # Keep as string if not a number
                             
-                            # Handle dict that should be JSON string (reverse case)
-                            elif isinstance(value, dict) and key in ["event_config", "headers"]:
-                                # Some fields expect JSON strings, not objects
+                            # Handle list/dict that should be JSON string
+                            # This handles cases where the LLM generates list/dict for parameters
+                            # that the workflow engine expects as JSON strings
+                            elif isinstance(value, (list, dict)):
+                                # Convert to JSON string
                                 node["parameters"][key] = json.dumps(value)
+                                logger.debug(f"Converted {key} from {type(value).__name__} to JSON string")
                 
                 # Fix settings if needed
                 settings = workflow_copy.get("settings", {})

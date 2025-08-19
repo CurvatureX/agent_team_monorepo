@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     # Workflow Engine settings
     WORKFLOW_ENGINE_URL: str = os.getenv("WORKFLOW_ENGINE_URL", "http://localhost:8002")
     WORKFLOW_ENGINE_TIMEOUT: int = int(os.getenv("WORKFLOW_ENGINE_TIMEOUT", "60"))  # 60 seconds
+    
+    # Database connection pool settings
+    DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "20"))
+    DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "10"))
+    DB_POOL_TIMEOUT: int = int(os.getenv("DB_POOL_TIMEOUT", "10"))
+    DB_POOL_RECYCLE: int = int(os.getenv("DB_POOL_RECYCLE", "3600"))  # 1 hour
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

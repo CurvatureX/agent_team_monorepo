@@ -603,10 +603,79 @@ async def process_conversation(request: ConversationRequest, request_obj: Reques
         request_obj.state.trace_id = trace_id
 
     async def wrapped_generator():
-        """Wrapper to track client disconnection"""
+        """Wrapper to track client disconnection and send heartbeats"""
+        import asyncio
+        
+        last_activity_time = [time.time()]  # Use list to allow modification in nested function
+        
+        async def conversation_with_heartbeat():
+            """Merge conversation stream with heartbeat messages"""
+            heartbeat_interval = 20  # seconds
+            
+            # Create queue for messages
+            queue = asyncio.Queue()
+            conversation_task = None
+            heartbeat_task = None
+            
+            async def process_conversation_stream():
+                """Process the main conversation"""
+                try:
+                    async for chunk in servicer.process_conversation(request, request_obj):
+                        last_activity_time[0] = time.time()
+                        await queue.put(("data", chunk))
+                    await queue.put(("done", None))
+                except Exception as e:
+                    await queue.put(("error", e))
+            
+            async def send_heartbeats():
+                """Send periodic heartbeats"""
+                while True:
+                    await asyncio.sleep(heartbeat_interval)
+                    current_time = time.time()
+                    if current_time - last_activity_time[0] > heartbeat_interval:
+                        # Send SSE comment as heartbeat
+                        heartbeat = f": heartbeat {session_id}\n\n"
+                        await queue.put(("heartbeat", heartbeat))
+                        logger.debug(f"Queued heartbeat for session {session_id}")
+            
+            try:
+                # Start both tasks
+                conversation_task = asyncio.create_task(process_conversation_stream())
+                heartbeat_task = asyncio.create_task(send_heartbeats())
+                
+                # Process messages from queue
+                while True:
+                    msg_type, msg_data = await queue.get()
+                    
+                    if msg_type == "done":
+                        break
+                    elif msg_type == "error":
+                        raise msg_data
+                    elif msg_type == "heartbeat":
+                        yield msg_data
+                    else:  # "data"
+                        yield msg_data
+                        
+            finally:
+                # Clean up tasks
+                if heartbeat_task and not heartbeat_task.done():
+                    heartbeat_task.cancel()
+                if conversation_task and not conversation_task.done():
+                    conversation_task.cancel()
+                    
+                # Wait for tasks to complete
+                for task in [heartbeat_task, conversation_task]:
+                    if task:
+                        try:
+                            await task
+                        except asyncio.CancelledError:
+                            pass
+        
         try:
             logger.info("Starting streaming response", extra={"session_id": session_id})
-            async for chunk in servicer.process_conversation(request, request_obj):
+            
+            # Process the conversation with heartbeats
+            async for chunk in conversation_with_heartbeat():
                 # Check if client is still connected
                 if await request_obj.is_disconnected():
                     logger.warning(

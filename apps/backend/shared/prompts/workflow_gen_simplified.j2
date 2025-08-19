@@ -28,10 +28,11 @@ The workflow engine validates all parameters against MCP specs - type mismatches
    - **type: "enum"** → Pick from enum_values in the parameter spec
    
    🚫 **NEVER GENERATE**:
-   - Template variables: {{trigger.xxx}}, {{env.xxx}}, ${xxx}
+   - Template variables: {% raw %}{{trigger.xxx}}, {{env.xxx}}{% endraw %}, ${xxx}, ${event}, ${sender.login}
    - Reference objects: {"$ref": "..."}, {"$expr": "..."}
-   - Placeholders: <VALUE>, [VALUE], YOUR_VALUE
+   - Placeholders: <VALUE>, [VALUE], YOUR_VALUE, GitHub event: ${event}
    - Null or empty values for required parameters
+   - Any string containing placeholder symbols like ${} or template brackets
 
 ## Node Types (from MCP)
 - TRIGGER (NOT TRIGGER_NODE)
@@ -112,8 +113,16 @@ Example MCP response:
 - github_app_installation_id: "mock-github_app_installation_id" (string with "mock-" prefix when type is integer!)
 - repository: "mock-repository" (don't add "mock-" prefix!)
 - enabled: "true" (string when type says boolean)
-- issue_number: {{trigger.issue_number}} (template variable)
+- issue_number: {% raw %}{{trigger.issue_number}}{% endraw %} (template variable)
 - issue_number: {"$ref": "trigger.issue_number"} (reference object)
+- message: "GitHub event: ${event} by ${sender.login}" (NEVER use ${} placeholders!)
+- message: "<your_message_here>" (NEVER use <> placeholders!)
+
+✅ **CORRECT** generation for string parameters:
+- message: "A new pull request has been created"
+- description: "This workflow monitors GitHub activity"
+- repository: "octocat/hello-world"
+- channel: "general"
 
 ## Workflow Process
 1. Call get_node_types() to see available nodes
