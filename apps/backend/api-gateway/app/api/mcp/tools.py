@@ -31,6 +31,25 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
+def get_service_for_tool(tool_name: str):
+    """Route tool to appropriate service based on name patterns."""
+    notion_prefixes = ["notion_"]
+    notion_exact_matches = {
+        "notion_search",
+        "notion_page",
+        "notion_database",
+    }
+
+    if (
+        any(tool_name.startswith(prefix) for prefix in notion_prefixes)
+        or tool_name in notion_exact_matches
+    ):
+        return notion_mcp_service
+
+    # Default to main MCP service for all other tools
+    return mcp_service
+
+
 # Node Knowledge MCP Service
 class NodeKnowledgeMCPService:
     def __init__(self):
@@ -306,17 +325,8 @@ async def invoke_tool(
         logger.info(f"⚡ Invoking MCP tool '{tool_name}' for client {deps.mcp_client.client_name}")
 
         # Route tool call to appropriate service
-        if tool_name.startswith("notion_") or tool_name in [
-            "search_notion",
-            "get_notion_page",
-            "create_notion_page",
-            "query_notion_database",
-            "get_notion_database",
-            "update_notion_page",
-        ]:
-            result = await notion_mcp_service.invoke_tool(tool_name=tool_name, params=arguments)
-        else:
-            result = await mcp_service.invoke_tool(tool_name=tool_name, params=arguments)
+        service = get_service_for_tool(tool_name)
+        result = await service.invoke_tool(tool_name=tool_name, params=arguments)
 
         # Store internal metadata
         result._request_id = request_id
@@ -373,17 +383,8 @@ async def get_tool_info(
         )
 
         # Route tool info request to appropriate service
-        if tool_name.startswith("notion_") or tool_name in [
-            "search_notion",
-            "get_notion_page",
-            "create_notion_page",
-            "query_notion_database",
-            "get_notion_database",
-            "update_notion_page",
-        ]:
-            tool_info = notion_mcp_service.get_tool_info(tool_name)
-        else:
-            tool_info = mcp_service.get_tool_info(tool_name)
+        service = get_service_for_tool(tool_name)
+        tool_info = service.get_tool_info(tool_name)
         processing_time = time.time() - start_time
 
         # Add metadata
