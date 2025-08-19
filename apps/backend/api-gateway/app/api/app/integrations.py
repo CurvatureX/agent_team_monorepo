@@ -185,7 +185,9 @@ async def get_install_links(deps: AuthenticatedDeps = Depends()):
         # - owner: "user" (for personal workspaces only) or omit to allow user/organization selection
         # - state: Optional state parameter for security/user tracking
 
-        from app.config import settings
+        from app.core.config import get_settings
+
+        settings = get_settings()
 
         notion_oauth_url = (
             f"https://api.notion.com/v1/oauth/authorize"

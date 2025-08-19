@@ -37,7 +37,9 @@ def setup_logger(name: str = "api-gateway", level: Optional[str] = None) -> logg
         except ImportError:
             try:
                 # Fallback to old config location
-                from app.config import settings
+                from app.core.config import get_settings
+
+                settings = get_settings()
 
                 level = settings.LOG_LEVEL
                 log_format = settings.LOG_FORMAT
