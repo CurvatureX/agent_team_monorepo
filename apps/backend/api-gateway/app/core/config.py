@@ -159,6 +159,24 @@ class ServiceSettings(BaseSettings):
         description="Notion OAuth redirect URI",
     )
 
+    # Slack Integration
+    SLACK_CLIENT_ID: str = Field(
+        default_factory=lambda: os.getenv("SLACK_CLIENT_ID", ""),
+        description="Slack OAuth client ID",
+    )
+    SLACK_CLIENT_SECRET: str = Field(
+        default_factory=lambda: os.getenv("SLACK_CLIENT_SECRET", ""),
+        description="Slack OAuth client secret",
+    )
+    SLACK_REDIRECT_URI: str = Field(
+        default_factory=lambda: os.getenv("SLACK_REDIRECT_URI", ""),
+        description="Slack OAuth redirect URI",
+    )
+    SLACK_SIGNING_SECRET: str = Field(
+        default_factory=lambda: os.getenv("SLACK_SIGNING_SECRET", ""),
+        description="Slack signing secret for webhook verification",
+    )
+
     # Elasticsearch Configuration
     ELASTICSEARCH_HOST: str = Field(default="localhost", description="Elasticsearch主机")
     ELASTICSEARCH_PORT: int = Field(default=9200, description="Elasticsearch端口")
