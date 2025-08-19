@@ -218,221 +218,191 @@ async def github_webhook(
         )
 
 
-@router.post("/webhooks/slack/events")
-async def slack_events_webhook(
+@router.post("/webhooks/slack")
+async def slack_unified_webhook(
     request: Request,
     x_slack_signature: str = Header(..., alias="X-Slack-Signature"),
     x_slack_request_timestamp: str = Header(..., alias="X-Slack-Request-Timestamp"),
 ):
     """
-    Slack Events API webhook endpoint
-    Handles Slack workspace events and routes them to workflow_scheduler
+    Unified Slack webhook endpoint
+    Handles all Slack webhook types: events, interactive components, and slash commands
+    Auto-detects webhook type and routes accordingly
     """
     try:
-        logger.info("Slack events webhook received")
+        logger.info("Slack webhook received - auto-detecting type")
         body = await request.body()
 
         # Verify Slack request signature
         if not _verify_slack_signature(x_slack_request_timestamp, x_slack_signature, body):
             raise HTTPException(status_code=401, detail="Invalid Slack signature")
 
-        # Parse event data
-        try:
-            event_data = json.loads(body.decode())
-        except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            logger.error(f"Failed to parse Slack event payload: {e}")
-            raise HTTPException(status_code=400, detail="Invalid JSON payload")
+        content_type = request.headers.get("content-type", "")
 
-        # Handle URL verification challenge
-        if event_data.get("type") == "url_verification":
-            logger.info("Slack URL verification challenge received")
-            return {"challenge": event_data.get("challenge")}
+        # Detect webhook type based on content type and payload structure
+        if "application/json" in content_type:
+            # Events API - JSON payload
+            return await _handle_slack_events(body)
+        elif "application/x-www-form-urlencoded" in content_type:
+            # Interactive components or slash commands - form data
+            form_data = await request.form()
 
-        # Extract team_id
-        team_id = event_data.get("team_id")
-        if not team_id:
-            raise HTTPException(status_code=400, detail="Missing team_id in Slack event")
-
-        # Forward to workflow_scheduler
-        scheduler_url = f"{settings.workflow_scheduler_http_url}/api/v1/triggers/slack/events"
-
-        slack_event_data = {"team_id": team_id, "event_data": event_data}
-
-        async with httpx.AsyncClient() as client:
-            scheduler_response = await client.post(
-                scheduler_url, json=slack_event_data, timeout=30.0
-            )
-
-            if scheduler_response.status_code == 200:
-                result = scheduler_response.json()
-                logger.info(
-                    f"Slack event processed successfully: {result.get('processed_triggers', 0)} triggers"
-                )
-
-                return {
-                    "ok": True,
-                    "processed_triggers": result.get("processed_triggers", 0),
-                    "results": result.get("results", []),
-                }
+            if "payload" in form_data:
+                # Interactive components
+                return await _handle_slack_interactive(form_data)
+            elif "command" in form_data:
+                # Slash commands
+                return await _handle_slack_commands(form_data)
             else:
-                logger.error(
-                    f"Workflow scheduler Slack event error: {scheduler_response.status_code} - {scheduler_response.text}"
-                )
-                raise HTTPException(
-                    status_code=scheduler_response.status_code,
-                    detail=f"Slack event processing error: {scheduler_response.text}",
-                )
-
-    except HTTPException:
-        raise
-
-    except httpx.TimeoutException:
-        logger.error("Timeout processing Slack event")
-        raise HTTPException(status_code=504, detail="Slack event processing timeout")
-
-    except httpx.RequestError as e:
-        logger.error(f"Request error processing Slack event: {e}")
-        raise HTTPException(status_code=502, detail="Unable to process Slack event")
-
-    except Exception as e:
-        logger.error(f"Error processing Slack event: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Internal server error processing Slack event")
-
-
-@router.post("/webhooks/slack/interactive")
-async def slack_interactive_webhook(
-    request: Request,
-    x_slack_signature: str = Header(..., alias="X-Slack-Signature"),
-    x_slack_request_timestamp: str = Header(..., alias="X-Slack-Request-Timestamp"),
-):
-    """
-    Slack Interactive Components webhook endpoint
-    Handles button clicks, modal submissions, select menus, and other interactive elements
-    """
-    try:
-        logger.info("Slack interactive webhook received")
-        body = await request.body()
-
-        # Verify Slack request signature
-        if not _verify_slack_signature(x_slack_request_timestamp, x_slack_signature, body):
-            raise HTTPException(status_code=401, detail="Invalid Slack signature")
-
-        # Parse form data (interactive components send form-encoded data)
-        form_data = await request.form()
-        payload_str = form_data.get("payload")
-
-        if not payload_str:
-            raise HTTPException(status_code=400, detail="Missing payload in interactive request")
-
-        try:
-            payload = json.loads(payload_str)
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse Slack interactive payload: {e}")
-            raise HTTPException(status_code=400, detail="Invalid JSON in payload")
-
-        # Extract team_id
-        team_id = payload.get("team", {}).get("id")
-        if not team_id:
+                raise HTTPException(status_code=400, detail="Unknown Slack webhook format")
+        else:
             raise HTTPException(
-                status_code=400, detail="Missing team_id in Slack interactive payload"
+                status_code=400, detail="Unsupported content type for Slack webhook"
             )
-
-        # Forward to workflow_scheduler
-        scheduler_url = f"{settings.workflow_scheduler_http_url}/api/v1/triggers/slack/interactive"
-
-        slack_interactive_data = {"team_id": team_id, "payload": payload}
-
-        async with httpx.AsyncClient() as client:
-            scheduler_response = await client.post(
-                scheduler_url, json=slack_interactive_data, timeout=30.0
-            )
-
-            if scheduler_response.status_code == 200:
-                result = scheduler_response.json()
-                logger.info("Slack interactive component processed successfully")
-
-                # Return response expected by Slack
-                return result.get("slack_response", {"ok": True})
-            else:
-                logger.error(
-                    f"Workflow scheduler Slack interactive error: {scheduler_response.status_code} - {scheduler_response.text}"
-                )
-                raise HTTPException(
-                    status_code=scheduler_response.status_code,
-                    detail=f"Slack interactive processing error: {scheduler_response.text}",
-                )
 
     except HTTPException:
         raise
 
     except httpx.TimeoutException:
-        logger.error("Timeout processing Slack interactive component")
-        raise HTTPException(status_code=504, detail="Slack interactive processing timeout")
+        logger.error("Timeout processing Slack webhook")
+        raise HTTPException(status_code=504, detail="Slack webhook processing timeout")
 
     except httpx.RequestError as e:
-        logger.error(f"Request error processing Slack interactive component: {e}")
-        raise HTTPException(status_code=502, detail="Unable to process Slack interactive component")
+        logger.error(f"Request error processing Slack webhook: {e}")
+        raise HTTPException(status_code=502, detail="Unable to process Slack webhook")
 
     except Exception as e:
-        logger.error(f"Error processing Slack interactive component: {e}", exc_info=True)
+        logger.error(f"Error processing Slack webhook: {e}", exc_info=True)
         raise HTTPException(
-            status_code=500, detail="Internal server error processing Slack interactive component"
+            status_code=500, detail="Internal server error processing Slack webhook"
         )
 
 
-@router.post("/webhooks/slack/commands")
-async def slack_slash_commands_webhook(
-    request: Request,
-    x_slack_signature: str = Header(..., alias="X-Slack-Signature"),
-    x_slack_request_timestamp: str = Header(..., alias="X-Slack-Request-Timestamp"),
-):
-    """
-    Slack Slash Commands webhook endpoint
-    Handles slash commands like /workflow, /ai-help, etc.
-    """
+async def _handle_slack_events(body: bytes) -> Dict[str, Any]:
+    """Handle Slack Events API webhooks"""
     try:
-        logger.info("Slack slash command webhook received")
-        body = await request.body()
+        event_data = json.loads(body.decode())
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        logger.error(f"Failed to parse Slack event payload: {e}")
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
-        # Verify Slack request signature
-        if not _verify_slack_signature(x_slack_request_timestamp, x_slack_signature, body):
-            raise HTTPException(status_code=401, detail="Invalid Slack signature")
+    logger.info(f"Processing Slack event: {event_data.get('type', 'unknown')}")
 
-        # Parse form data
-        form_data = await request.form()
+    # Handle URL verification challenge
+    if event_data.get("type") == "url_verification":
+        logger.info("Slack URL verification challenge received")
+        return {"challenge": event_data.get("challenge")}
 
-        command_data = {
-            "token": form_data.get("token"),
-            "team_id": form_data.get("team_id"),
-            "team_domain": form_data.get("team_domain"),
-            "channel_id": form_data.get("channel_id"),
-            "channel_name": form_data.get("channel_name"),
-            "user_id": form_data.get("user_id"),
-            "user_name": form_data.get("user_name"),
-            "command": form_data.get("command"),
-            "text": form_data.get("text", ""),
-            "response_url": form_data.get("response_url"),
-            "trigger_id": form_data.get("trigger_id"),
-        }
+    # Extract team_id
+    team_id = event_data.get("team_id")
+    if not team_id:
+        raise HTTPException(status_code=400, detail="Missing team_id in Slack event")
 
-        team_id = command_data.get("team_id")
-        if not team_id:
-            raise HTTPException(status_code=400, detail="Missing team_id in Slack command")
+    # Forward to workflow_scheduler
+    scheduler_url = f"{settings.workflow_scheduler_http_url}/api/v1/triggers/slack/events"
+    slack_event_data = {"team_id": team_id, "event_data": event_data}
 
-        logger.info(
-            f"Processing Slack command: {command_data.get('command')} from user {command_data.get('user_name')}"
+    async with httpx.AsyncClient() as client:
+        scheduler_response = await client.post(scheduler_url, json=slack_event_data, timeout=30.0)
+
+        if scheduler_response.status_code == 200:
+            result = scheduler_response.json()
+            logger.info(
+                f"Slack event processed successfully: {result.get('processed_triggers', 0)} triggers"
+            )
+
+            return {
+                "ok": True,
+                "processed_triggers": result.get("processed_triggers", 0),
+                "results": result.get("results", []),
+            }
+        else:
+            logger.error(
+                f"Workflow scheduler Slack event error: {scheduler_response.status_code} - {scheduler_response.text}"
+            )
+            raise HTTPException(
+                status_code=scheduler_response.status_code,
+                detail=f"Slack event processing error: {scheduler_response.text}",
+            )
+
+
+async def _handle_slack_interactive(form_data) -> Dict[str, Any]:
+    """Handle Slack Interactive Components webhooks"""
+    payload_str = form_data.get("payload")
+    if not payload_str:
+        raise HTTPException(status_code=400, detail="Missing payload in interactive request")
+
+    try:
+        payload = json.loads(payload_str)
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse Slack interactive payload: {e}")
+        raise HTTPException(status_code=400, detail="Invalid JSON in payload")
+
+    logger.info(f"Processing Slack interactive component: {payload.get('type', 'unknown')}")
+
+    # Extract team_id
+    team_id = payload.get("team", {}).get("id")
+    if not team_id:
+        raise HTTPException(status_code=400, detail="Missing team_id in Slack interactive payload")
+
+    # Forward to workflow_scheduler
+    scheduler_url = f"{settings.workflow_scheduler_http_url}/api/v1/triggers/slack/interactive"
+    slack_interactive_data = {"team_id": team_id, "payload": payload}
+
+    async with httpx.AsyncClient() as client:
+        scheduler_response = await client.post(
+            scheduler_url, json=slack_interactive_data, timeout=30.0
         )
 
-        # Forward to workflow_scheduler
-        scheduler_url = f"{settings.workflow_scheduler_http_url}/api/v1/triggers/slack/commands"
+        if scheduler_response.status_code == 200:
+            result = scheduler_response.json()
+            logger.info("Slack interactive component processed successfully")
+            # Return response expected by Slack
+            return result.get("slack_response", {"ok": True})
+        else:
+            logger.error(
+                f"Workflow scheduler Slack interactive error: {scheduler_response.status_code} - {scheduler_response.text}"
+            )
+            raise HTTPException(
+                status_code=scheduler_response.status_code,
+                detail=f"Slack interactive processing error: {scheduler_response.text}",
+            )
 
+
+async def _handle_slack_commands(form_data) -> Dict[str, Any]:
+    """Handle Slack Slash Commands webhooks"""
+    command_data = {
+        "token": form_data.get("token"),
+        "team_id": form_data.get("team_id"),
+        "team_domain": form_data.get("team_domain"),
+        "channel_id": form_data.get("channel_id"),
+        "channel_name": form_data.get("channel_name"),
+        "user_id": form_data.get("user_id"),
+        "user_name": form_data.get("user_name"),
+        "command": form_data.get("command"),
+        "text": form_data.get("text", ""),
+        "response_url": form_data.get("response_url"),
+        "trigger_id": form_data.get("trigger_id"),
+    }
+
+    team_id = command_data.get("team_id")
+    if not team_id:
+        raise HTTPException(status_code=400, detail="Missing team_id in Slack command")
+
+    logger.info(
+        f"Processing Slack command: {command_data.get('command')} from user {command_data.get('user_name')}"
+    )
+
+    # Forward to workflow_scheduler
+    scheduler_url = f"{settings.workflow_scheduler_http_url}/api/v1/triggers/slack/commands"
+
+    try:
         async with httpx.AsyncClient() as client:
             scheduler_response = await client.post(scheduler_url, json=command_data, timeout=30.0)
 
             if scheduler_response.status_code == 200:
                 result = scheduler_response.json()
                 logger.info("Slack slash command processed successfully")
-
                 # Return response expected by Slack
                 return result.get(
                     "slack_response",
@@ -446,9 +416,6 @@ async def slack_slash_commands_webhook(
                     "response_type": "ephemeral",
                     "text": f"Error processing command: {scheduler_response.text}",
                 }
-
-    except HTTPException:
-        raise
 
     except httpx.TimeoutException:
         logger.error("Timeout processing Slack slash command")
@@ -956,9 +923,7 @@ async def webhook_status():
                         "/api/v1/public/webhook/workflow/{workflow_id}",
                         "/api/v1/public/webhooks/github",
                         "/api/v1/public/webhooks/github/auth",
-                        "/api/v1/public/webhooks/slack/events",
-                        "/api/v1/public/webhooks/slack/interactive",
-                        "/api/v1/public/webhooks/slack/commands",
+                        "/api/v1/public/webhooks/slack",
                         "/api/v1/public/webhooks/slack/auth",
                         "/api/v1/public/webhooks/status",
                         "/api/v1/public/webhooks/notion/auth",

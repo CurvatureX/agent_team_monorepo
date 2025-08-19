@@ -47,6 +47,7 @@ class InstallLinksResponse(BaseModel):
 
     github: str
     notion: str
+    slack: str
 
 
 @router.get(
@@ -155,6 +156,7 @@ async def get_user_integrations(deps: AuthenticatedDeps = Depends()):
     Currently supports:
     - GitHub App installation with user context
     - Notion workspace integration with OAuth flow
+    - Slack workspace integration with OAuth flow
 
     The links include the user_id as state parameter for proper OAuth flow.
 
@@ -193,9 +195,28 @@ async def get_install_links(deps: AuthenticatedDeps = Depends()):
             f"&state={user_id}"
         )
 
+        # Generate Slack OAuth link with user_id as state
+        # Slack OAuth requires these parameters:
+        # - client_id: Your Slack app's client ID
+        # - scope: Permissions requested (comma-separated)
+        # - redirect_uri: Must match exactly what's configured in Slack app
+        # - response_type: Always "code" for authorization code flow
+        # - state: Optional state parameter for security/user tracking
+
+        slack_oauth_url = (
+            f"https://slack.com/oauth/v2/authorize"
+            f"?client_id={settings.SLACK_CLIENT_ID}"
+            f"&scope=app_mentions:read,A:write,calls:read,calls:write,chat:write,chat:write.public,im:read,reminders:read,reminders:write,email,identity.basic"
+            f"&redirect_uri={settings.SLACK_REDIRECT_URI}"
+            f"&response_type=code"
+            f"&state={user_id}"
+        )
+
         logger.info(f"✅ Generated install links for user {user_id}")
 
-        return InstallLinksResponse(github=github_install_url, notion=notion_oauth_url)
+        return InstallLinksResponse(
+            github=github_install_url, notion=notion_oauth_url, slack=slack_oauth_url
+        )
 
     except Exception as e:
         logger.error(f"❌ Error generating install links: {str(e)}", exc_info=True)
