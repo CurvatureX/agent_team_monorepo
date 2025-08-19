@@ -34,3 +34,7 @@ db_allocated_storage = 20
 # github_client_id = "Iv23liJh8JL2TUbW3Hzo"
 # github_app_private_key = "-----BEGIN RSA PRIVATE KEY-----\n..."
 # github_webhook_secret = "your-webhook-secret"
+# slack_bot_token = "xoxb-your-slack-bot-token"
+# notion_client_id = "your-notion-client-id"
+# notion_client_secret = "your-notion-client-secret"
+# notion_redirect_uri = "https://your-domain.com/api/v1/public/webhooks/notion/auth"

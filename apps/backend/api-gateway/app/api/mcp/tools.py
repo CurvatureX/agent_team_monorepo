@@ -25,6 +25,8 @@ from fastapi.responses import JSONResponse
 
 from shared.models.node_enums import ActionSubtype, NodeType
 
+from .notion_tools import notion_mcp_service
+
 logger = get_logger(__name__)
 router = APIRouter()
 
@@ -237,13 +239,30 @@ async def list_tools(
     try:
         logger.info(f"🔧 Retrieving MCP tools for client {deps.mcp_client.client_name}")
 
-        tools_response = mcp_service.get_available_tools()
+        # Get tools from all services
+        node_tools_response = mcp_service.get_available_tools()
+        notion_tools_response = notion_mcp_service.get_available_tools()
+
+        # Combine tools from all services
+        all_tools = node_tools_response.tools + notion_tools_response.tools
+        total_count = len(all_tools)
+        available_count = (
+            node_tools_response.available_count + notion_tools_response.available_count
+        )
+
+        # Combine categories
+        all_categories = list(
+            set(node_tools_response.categories + notion_tools_response.categories)
+        )
+
         processing_time = time.time() - start_time
 
-        logger.info(f"✅ MCP tools retrieved: {tools_response.total_count} tools")
+        logger.info(
+            f"✅ MCP tools retrieved: {total_count} tools ({node_tools_response.total_count} node + {notion_tools_response.total_count} notion)"
+        )
 
         # Return JSON-RPC 2.0 format per MCP standard
-        return {"jsonrpc": "2.0", "id": request_id, "result": {"tools": tools_response.tools}}
+        return {"jsonrpc": "2.0", "id": request_id, "result": {"tools": all_tools}}
 
     except Exception as e:
         processing_time = time.time() - start_time
@@ -286,7 +305,18 @@ async def invoke_tool(
 
         logger.info(f"⚡ Invoking MCP tool '{tool_name}' for client {deps.mcp_client.client_name}")
 
-        result = await mcp_service.invoke_tool(tool_name=tool_name, params=arguments)
+        # Route tool call to appropriate service
+        if tool_name.startswith("notion_") or tool_name in [
+            "search_notion",
+            "get_notion_page",
+            "create_notion_page",
+            "query_notion_database",
+            "get_notion_database",
+            "update_notion_page",
+        ]:
+            result = await notion_mcp_service.invoke_tool(tool_name=tool_name, params=arguments)
+        else:
+            result = await mcp_service.invoke_tool(tool_name=tool_name, params=arguments)
 
         # Store internal metadata
         result._request_id = request_id
@@ -342,7 +372,18 @@ async def get_tool_info(
             f"🔍 Getting tool info for '{tool_name}' for client {deps.mcp_client.client_name}"
         )
 
-        tool_info = mcp_service.get_tool_info(tool_name)
+        # Route tool info request to appropriate service
+        if tool_name.startswith("notion_") or tool_name in [
+            "search_notion",
+            "get_notion_page",
+            "create_notion_page",
+            "query_notion_database",
+            "get_notion_database",
+            "update_notion_page",
+        ]:
+            tool_info = notion_mcp_service.get_tool_info(tool_name)
+        else:
+            tool_info = mcp_service.get_tool_info(tool_name)
         processing_time = time.time() - start_time
 
         # Add metadata
@@ -393,20 +434,36 @@ async def mcp_health(
     try:
         logger.info(f"🏥 Performing MCP health check for client {deps.mcp_client.client_name}")
 
-        health_info = mcp_service.health_check()
+        # Check health of all services
+        node_health = mcp_service.health_check()
+        notion_health = notion_mcp_service.health_check()
+
+        # Combine health status
+        overall_healthy = node_health.healthy and notion_health.healthy
+        all_tools = node_health.available_tools + notion_health.available_tools
+
         processing_time = time.time() - start_time
 
-        # Add metadata
-        health_info.processing_time_ms = round(processing_time * 1000, 2)
-        health_info.request_id = request_id
-
-        status_code = 200 if health_info.healthy else 503
-
-        logger.info(
-            f"✅ MCP health check completed: {'healthy' if health_info.healthy else 'unhealthy'}"
+        # Create combined health response
+        combined_health = MCPHealthCheck(
+            healthy=overall_healthy,
+            version="3.0.0",
+            available_tools=all_tools,
+            timestamp=int(time.time()),
+            error=None
+            if overall_healthy
+            else f"Node service: {node_health.error}, Notion service: {notion_health.error}",
+            request_id=request_id,
+            processing_time_ms=round(processing_time * 1000, 2),
         )
 
-        return JSONResponse(status_code=status_code, content=health_info.model_dump())
+        status_code = 200 if overall_healthy else 503
+
+        logger.info(
+            f"✅ MCP health check completed: {'healthy' if overall_healthy else 'unhealthy'} (Node: {node_health.healthy}, Notion: {notion_health.healthy})"
+        )
+
+        return JSONResponse(status_code=status_code, content=combined_health.model_dump())
 
     except Exception as e:
         processing_time = time.time() - start_time

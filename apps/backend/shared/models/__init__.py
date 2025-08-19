@@ -28,6 +28,7 @@ from .common import *
 from .conversation import *
 from .db_models import *
 from .execution import *
+from .external_actions import *
 from .mcp import *
 from .node import *
 from .node_enums import *  # Import authoritative node enums
@@ -165,4 +166,18 @@ __all__ = [
     "WorkflowExecution",
     "WorkflowDB",
     "NodeTemplateDB",
+    # external_actions.py - External action node models
+    "NotionActionType",
+    "NotionSearchFilter",
+    "NotionPageContent",
+    "NotionBlockOperation",
+    "NotionDatabaseQuery",
+    "NotionExternalActionParams",
+    "NotionExternalActionResult",
+    "GitHubActionType",
+    "GitHubExternalActionParams",
+    "SlackExternalActionParams",
+    "EmailExternalActionParams",
+    "ExternalActionInputData",
+    "ExternalActionOutputData",
 ]
