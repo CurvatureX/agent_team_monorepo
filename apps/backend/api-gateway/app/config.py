@@ -108,6 +108,11 @@ class Settings(BaseSettings):
     NOTION_CLIENT_SECRET: str = Field(default_factory=lambda: os.getenv("NOTION_CLIENT_SECRET", ""))
     NOTION_REDIRECT_URI: str = Field(default_factory=lambda: os.getenv("NOTION_REDIRECT_URI", ""))
 
+    # Slack OAuth Configuration
+    SLACK_CLIENT_ID: str = Field(default_factory=lambda: os.getenv("SLACK_CLIENT_ID", ""))
+    SLACK_CLIENT_SECRET: str = Field(default_factory=lambda: os.getenv("SLACK_CLIENT_SECRET", ""))
+    SLACK_REDIRECT_URI: str = Field(default_factory=lambda: os.getenv("SLACK_REDIRECT_URI", ""))
+
     # Security Configuration
     API_SECRET_KEY: str = Field(
         default="your-secret-key-change-in-production", description="API 签名密钥"
