@@ -172,7 +172,9 @@ jobs:
           TF_VAR_github_webhook_secret: ${{ secrets.GITAPP_WEBHOOK_SECRET }}
           TF_VAR_smtp_username: ${{ secrets.SMTP_USERNAME }}
           TF_VAR_smtp_password: ${{ secrets.SMTP_PASSWORD }}
+          TF_VAR_slack_bot_token: ${{ secrets.DEFAULT_SLACK_BOT_TOKEN }}
           TF_VAR_notion_client_id: ${{ secrets.NOTION_CLIENT_ID }}
+          TF_VAR_notion_client_secret: ${{ secrets.NOTION_CLIENT_SECRET }}
           TF_VAR_notion_redirect_uri: ${{ secrets.NOTION_REDIRECT_URI }}
         run: terraform plan -out=tfplan
 
@@ -214,7 +216,9 @@ jobs:
           TF_VAR_github_webhook_secret: ${{ secrets.GITAPP_WEBHOOK_SECRET }}
           TF_VAR_smtp_username: ${{ secrets.SMTP_USERNAME }}
           TF_VAR_smtp_password: ${{ secrets.SMTP_PASSWORD }}
+          TF_VAR_slack_bot_token: ${{ secrets.DEFAULT_SLACK_BOT_TOKEN }}
           TF_VAR_notion_client_id: ${{ secrets.NOTION_CLIENT_ID }}
+          TF_VAR_notion_client_secret: ${{ secrets.NOTION_CLIENT_SECRET }}
           TF_VAR_notion_redirect_uri: ${{ secrets.NOTION_REDIRECT_URI }}
         run: terraform apply -auto-approve tfplan
 
