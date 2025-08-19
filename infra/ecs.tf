@@ -238,6 +238,10 @@ resource "aws_ecs_task_definition" "api_gateway" {
         {
           name      = "NOTION_REDIRECT_URI"
           valueFrom = aws_ssm_parameter.notion_redirect_uri.arn
+        },
+        {
+          name      = "SLACK_SIGNING_SECRET"
+          valueFrom = aws_ssm_parameter.slack_signing_secret.arn
         }
       ]
 
