@@ -1011,7 +1011,7 @@ async def notion_oauth_callback(
             "redirect_uri": settings.NOTION_REDIRECT_URI,
         }
 
-        # Use Basic auth with client credentials
+        # Use Basic auth with client credentials (per Notion documentation)
         import base64
 
         auth_string = f"{settings.NOTION_CLIENT_ID}:{settings.NOTION_CLIENT_SECRET}"
@@ -1021,6 +1021,7 @@ async def notion_oauth_callback(
         headers = {
             "Authorization": f"Basic {auth_b64}",
             "Content-Type": "application/json",
+            "Accept": "application/json",
             "Notion-Version": "2022-06-28",
         }
 
