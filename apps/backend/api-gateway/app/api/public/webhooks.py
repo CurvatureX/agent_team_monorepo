@@ -876,8 +876,7 @@ def _verify_slack_signature(timestamp: str, signature: str, body: bytes) -> bool
             return False
 
         # Get Slack signing secret from settings
-        # This would need to be added to settings configuration
-        signing_secret = getattr(settings, "slack_signing_secret", None)
+        signing_secret = settings.SLACK_SIGNING_SECRET
         if not signing_secret:
             logger.error("Slack signing secret not configured")
             return False
