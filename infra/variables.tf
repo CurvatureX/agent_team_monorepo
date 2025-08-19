@@ -194,7 +194,6 @@ variable "slack_bot_token" {
   description = "Slack bot token for notifications"
   type        = string
   sensitive   = true
-  default     = ""
 }
 
 variable "notion_client_id" {
@@ -208,7 +207,6 @@ variable "notion_client_secret" {
   description = "Notion integration client secret for OAuth"
   type        = string
   sensitive   = true
-  default     = ""
 }
 
 variable "notion_redirect_uri" {
