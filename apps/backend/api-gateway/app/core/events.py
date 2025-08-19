@@ -172,7 +172,7 @@ async def cleanup_database_connections(app: FastAPI) -> None:
 
     try:
         if hasattr(app.state, "db_manager"):
-            app.state.db_manager.close_connections()
+            await app.state.db_manager.close_connections()
             logger.info("✅ Database connections cleaned up")
     except Exception as e:
         logger.error(f"❌ Error cleaning up database connections: {e}")
