@@ -69,6 +69,7 @@ class ExternalActionSubtype(str, Enum):
     # Productivity
     GOOGLE_CALENDAR = "GOOGLE_CALENDAR"
     TRELLO = "TRELLO"
+    NOTION = "NOTION"
 
     # Generic Actions
     API_CALL = "API_CALL"

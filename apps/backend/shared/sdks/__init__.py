@@ -6,7 +6,7 @@ the workflow engine. All external API calls are centralized here for better
 maintainability and consistency.
 """
 
-from .base import BaseSDK, SDKError, AuthenticationError, RateLimitError
+from .base import AuthenticationError, BaseSDK, RateLimitError, SDKError
 
 # Import new folder-based SDKs with error handling
 try:
@@ -39,14 +39,21 @@ except ImportError as e:
     ApiCallSDK = None
     print(f"Warning: Failed to import ApiCallSDK: {e}")
 
+try:
+    from .notion_sdk_wrapper import NotionSDK
+except ImportError as e:
+    NotionSDK = None
+    print(f"Warning: Failed to import NotionSDK: {e}")
+
 __all__ = [
     "BaseSDK",
-    "SDKError", 
+    "SDKError",
     "AuthenticationError",
     "RateLimitError",
     "GoogleCalendarSDK",
-    "GitHubSDK", 
+    "GitHubSDK",
     "SlackSDK",
     "EmailSDK",
-    "ApiCallSDK"
+    "ApiCallSDK",
+    "NotionSDK",
 ]

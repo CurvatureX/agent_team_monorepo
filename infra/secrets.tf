@@ -122,6 +122,16 @@ resource "aws_ssm_parameter" "github_client_id" {
   })
 }
 
+resource "aws_ssm_parameter" "slack_bot_token" {
+  name  = "/${local.name_prefix}/slack/bot-token"
+  type  = "SecureString"
+  value = var.slack_bot_token
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-slack-bot-token"
+  })
+}
+
 resource "aws_ssm_parameter" "notion_client_id" {
   name  = "/${local.name_prefix}/notion/client-id"
   type  = "SecureString"
@@ -129,6 +139,16 @@ resource "aws_ssm_parameter" "notion_client_id" {
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-notion-client-id"
+  })
+}
+
+resource "aws_ssm_parameter" "notion_client_secret" {
+  name  = "/${local.name_prefix}/notion/client-secret"
+  type  = "SecureString"
+  value = var.notion_client_secret
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-notion-client-secret"
   })
 }
 

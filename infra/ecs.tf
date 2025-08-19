@@ -686,6 +686,10 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
         {
           name      = "GITHUB_CLIENT_ID"
           valueFrom = aws_ssm_parameter.github_client_id.arn
+        },
+        {
+          name      = "DEFAULT_SLACK_BOT_TOKEN"
+          valueFrom = aws_ssm_parameter.slack_bot_token.arn
         }
       ]
 
