@@ -123,6 +123,7 @@ resource "aws_ssm_parameter" "github_client_id" {
 }
 
 resource "aws_ssm_parameter" "slack_bot_token" {
+  count = var.slack_bot_token != "" ? 1 : 0
   name  = "/${local.name_prefix}/slack/bot-token"
   type  = "SecureString"
   value = var.slack_bot_token
@@ -143,6 +144,7 @@ resource "aws_ssm_parameter" "notion_client_id" {
 }
 
 resource "aws_ssm_parameter" "notion_client_secret" {
+  count = var.notion_client_secret != "" ? 1 : 0
   name  = "/${local.name_prefix}/notion/client-secret"
   type  = "SecureString"
   value = var.notion_client_secret
