@@ -573,14 +573,19 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
             "channel"
         )
 
-        parameters = {"channel": channel}
+        parameters = {}
+        
+        # Some operations don't require channel
+        if action not in ["list_users", "get_team_info", "set_presence"]:
+            parameters["channel"] = channel
 
         # Add action-specific parameters
-        if action == "send_message":
+        if action in ["send_message", "post_message"]:
             message_data = context.get_parameter("message_data", {})
             parameters.update(
                 {
-                    "text": message_data.get("text", context.get_parameter("text", "")),
+                    "channel": channel,
+                    "text": message_data.get("text", context.get_parameter("text") or context.get_parameter("message", "")),
                     "blocks": message_data.get("blocks", context.get_parameter("blocks", [])),
                     "attachments": message_data.get(
                         "attachments", context.get_parameter("attachments", [])
@@ -592,24 +597,96 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                     "reply_broadcast": context.get_parameter("reply_broadcast", False),
                 }
             )
+        elif action == "update_message":
+            parameters.update(
+                {
+                    "channel": channel,
+                    "ts": context.get_parameter("ts") or context.get_parameter("message_ts"),
+                    "text": context.get_parameter("text") or context.get_parameter("message", ""),
+                    "blocks": context.get_parameter("blocks", []),
+                    "attachments": context.get_parameter("attachments", []),
+                }
+            )
+        elif action == "delete_message":
+            parameters.update(
+                {
+                    "channel": channel,
+                    "ts": context.get_parameter("ts") or context.get_parameter("message_ts"),
+                }
+            )
         elif action == "list_channels":
             parameters.update(
                 {
                     "types": context.get_parameter("types", "public_channel,private_channel"),
                     "exclude_archived": context.get_parameter("exclude_archived", True),
                     "limit": context.get_parameter("limit", 100),
+                    "cursor": context.get_parameter("cursor"),
+                }
+            )
+        elif action == "get_channel_info":
+            parameters.update(
+                {
+                    "channel": channel or context.get_parameter("channel_id"),
+                }
+            )
+        elif action == "create_channel":
+            parameters.update(
+                {
+                    "name": context.get_parameter("name", ""),
+                    "is_private": context.get_parameter("is_private", False),
+                }
+            )
+        elif action == "invite_to_channel":
+            parameters.update(
+                {
+                    "channel": channel or context.get_parameter("channel_id"),
+                    "users": context.get_parameter("users", []),
+                }
+            )
+        elif action == "list_users":
+            parameters.update(
+                {
+                    "limit": context.get_parameter("limit", 100),
+                    "cursor": context.get_parameter("cursor"),
+                }
+            )
+        elif action == "get_user_info":
+            parameters.update(
+                {
+                    "user": context.get_parameter("user") or context.get_parameter("user_id"),
                 }
             )
         elif action == "upload_file":
             parameters.update(
                 {
-                    "file_content": context.get_parameter("file_content", ""),
-                    "file_name": context.get_parameter("file_name", ""),
+                    "channels": channel,
+                    "content": context.get_parameter("content") or context.get_parameter("file_content", ""),
+                    "filename": context.get_parameter("filename") or context.get_parameter("file_name", ""),
+                    "filetype": context.get_parameter("filetype", "text"),
                     "title": context.get_parameter("title"),
                     "initial_comment": context.get_parameter("initial_comment"),
-                    "channels": channel,
                 }
             )
+        elif action == "get_conversation_history":
+            parameters.update(
+                {
+                    "channel": channel or context.get_parameter("channel_id"),
+                    "limit": context.get_parameter("limit", 100),
+                    "oldest": context.get_parameter("oldest"),
+                    "latest": context.get_parameter("latest"),
+                    "inclusive": context.get_parameter("inclusive", True),
+                    "cursor": context.get_parameter("cursor"),
+                }
+            )
+        elif action == "set_presence":
+            parameters.update(
+                {
+                    "presence": context.get_parameter("presence", "auto"),
+                }
+            )
+        elif action == "get_team_info":
+            # No additional parameters needed
+            pass
 
         return action, parameters
 
@@ -712,10 +789,10 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
         Args:
             user_id: User ID from execution context
-            provider: Provider name (google_calendar, github, slack)
+            provider: Provider name (google_calendar, github, slack, email, api_call, notion)
 
         Returns:
-            Dictionary with access_token or None if not available
+            Dictionary with credentials (access_token for OAuth2, or other fields for non-OAuth2)
         """
         try:
             # Use simplified OAuth2 service
@@ -725,15 +802,30 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
             with get_db_session() as db:
                 oauth2_service_lite = OAuth2ServiceLite(db)
 
-                # Get valid access token
-                access_token = await oauth2_service_lite.get_valid_token(user_id, provider)
-                if access_token:
-                    return {"access_token": access_token}
+                # Check if this is a non-OAuth2 provider (email, api_call)
+                non_oauth2_providers = ["email", "api_call"]
+                
+                if provider in non_oauth2_providers:
+                    # Get non-OAuth2 credentials (SMTP, API keys, etc.)
+                    credentials = await oauth2_service_lite.get_non_oauth2_credentials(user_id, provider)
+                    if credentials:
+                        self.logger.info(f"Found non-OAuth2 credentials for user {user_id}, provider {provider}")
+                        return credentials
+                    else:
+                        self.logger.warning(
+                            f"No non-OAuth2 credentials found for user {user_id}, provider {provider}"
+                        )
+                        return None
                 else:
-                    self.logger.warning(
-                        f"No valid credentials found for user {user_id}, provider {provider}"
-                    )
-                    return None
+                    # Get OAuth2 access token for OAuth2 providers
+                    access_token = await oauth2_service_lite.get_valid_token(user_id, provider)
+                    if access_token:
+                        return {"access_token": access_token}
+                    else:
+                        self.logger.warning(
+                            f"No valid OAuth2 credentials found for user {user_id}, provider {provider}"
+                        )
+                        return None
 
         except Exception as e:
             self.logger.error(
@@ -1284,53 +1376,13 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
             "user_id", "00000000-0000-0000-0000-000000000123"
         )
 
-        logs.append(f"Slack action: {action} in channel: {channel}")
+        if action not in ["list_users", "get_team_info", "set_presence"]:
+            logs.append(f"Slack action: {action} in channel: {channel}")
+        else:
+            logs.append(f"Slack action: {action}")
 
-        # Prepare parameters for Slack API
-        api_parameters = {"channel": channel}
-
-        # Add action-specific parameters
-        if action == "send_message":
-            message_data = context.get_parameter("message_data", {})
-            api_parameters.update(
-                {
-                    "text": message_data.get("text", context.get_parameter("text", "")),
-                    "blocks": message_data.get("blocks", context.get_parameter("blocks", [])),
-                    "attachments": message_data.get(
-                        "attachments", context.get_parameter("attachments", [])
-                    ),
-                    "username": context.get_parameter("username"),
-                    "icon_emoji": context.get_parameter("icon_emoji"),
-                    "icon_url": context.get_parameter("icon_url"),
-                    "thread_ts": context.get_parameter("thread_ts"),
-                    "reply_broadcast": context.get_parameter("reply_broadcast", False),
-                }
-            )
-        elif action == "list_channels":
-            api_parameters.update(
-                {
-                    "types": context.get_parameter("types", "public_channel,private_channel"),
-                    "exclude_archived": context.get_parameter("exclude_archived", True),
-                    "limit": context.get_parameter("limit", 100),
-                }
-            )
-        elif action == "create_channel":
-            api_parameters.update(
-                {
-                    "name": context.get_parameter("name", ""),
-                    "is_private": context.get_parameter("is_private", False),
-                }
-            )
-        elif action == "upload_file":
-            api_parameters.update(
-                {
-                    "file_content": context.get_parameter("file_content", ""),
-                    "file_name": context.get_parameter("file_name", ""),
-                    "title": context.get_parameter("title"),
-                    "initial_comment": context.get_parameter("initial_comment"),
-                    "channels": channel,
-                }
-            )
+        # Use _prepare_slack_operation to get parameters
+        _, api_parameters = self._prepare_slack_operation(context)
 
         # Call real Slack API
         try:

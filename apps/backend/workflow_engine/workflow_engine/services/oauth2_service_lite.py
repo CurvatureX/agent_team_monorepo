@@ -91,6 +91,13 @@ class OAuth2ServiceLite:
                 if os.getenv("API_CALL_SCOPES")
                 else [],
             },
+            "email": {
+                # Email can use OAuth2 (for Gmail/Outlook) or basic auth (for SMTP)
+                "client_id": os.getenv("GMAIL_CLIENT_ID", ""),  # For Gmail OAuth2
+                "client_secret": os.getenv("GMAIL_CLIENT_SECRET", ""),
+                "token_url": "https://oauth2.googleapis.com/token",  # Gmail default
+                "scopes": ["https://www.googleapis.com/auth/gmail.send"],
+            },
             "notion": {
                 "client_id": os.getenv("NOTION_CLIENT_ID", ""),
                 "client_secret": os.getenv("NOTION_CLIENT_SECRET", ""),
@@ -589,3 +596,162 @@ class OAuth2ServiceLite:
             return datetime.now(timezone.utc) + lifetime
 
         return None  # No expiration for this provider
+
+    async def store_non_oauth2_credentials(
+        self, user_id: str, provider: str, credential_type: str, credentials: Dict[str, Any]
+    ) -> bool:
+        """存储非OAuth2凭据（如API密钥、SMTP凭据等）
+
+        Args:
+            user_id: 用户ID
+            provider: 提供商名称 (email, api_call等)
+            credential_type: 凭据类型 (api_key, basic_auth, smtp等)
+            credentials: 凭据数据字典
+
+        Returns:
+            是否存储成功
+        """
+        try:
+            # 检查用户是否存在
+            if not self.check_user_exists(user_id):
+                self.logger.error(f"User does not exist in auth.users: {user_id}")
+                return False
+
+            # 加密凭据数据
+            encrypted_additional_data = {}
+            for key, value in credentials.items():
+                if value and key in ["password", "api_key", "secret", "token"]:
+                    # 敏感数据需要加密
+                    encrypted_additional_data[key] = self.encryption.encrypt_credential(str(value))
+                else:
+                    # 非敏感数据直接存储
+                    encrypted_additional_data[key] = value
+
+            # 检查是否已存在记录
+            check_query = text(
+                """
+                SELECT id FROM user_external_credentials
+                WHERE user_id = :user_id AND provider = :provider
+            """
+            )
+            existing = self.db.execute(
+                check_query, {"user_id": user_id, "provider": provider}
+            ).fetchone()
+
+            if existing:
+                # 更新现有记录
+                update_query = text(
+                    """
+                    UPDATE user_external_credentials
+                    SET credential_type = :credential_type,
+                        encrypted_additional_data = :additional_data,
+                        is_valid = true,
+                        last_validated_at = CURRENT_TIMESTAMP,
+                        validation_error = NULL,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = :user_id AND provider = :provider
+                """
+                )
+                self.db.execute(
+                    update_query,
+                    {
+                        "user_id": user_id,
+                        "provider": provider,
+                        "credential_type": credential_type,
+                        "additional_data": json.dumps(encrypted_additional_data),
+                    },
+                )
+            else:
+                # 插入新记录
+                insert_query = text(
+                    """
+                    INSERT INTO user_external_credentials (
+                        user_id, provider, credential_type,
+                        encrypted_additional_data,
+                        is_valid, last_validated_at
+                    ) VALUES (
+                        :user_id, :provider, :credential_type,
+                        :additional_data,
+                        true, CURRENT_TIMESTAMP
+                    )
+                """
+                )
+                self.db.execute(
+                    insert_query,
+                    {
+                        "user_id": user_id,
+                        "provider": provider,
+                        "credential_type": credential_type,
+                        "additional_data": json.dumps(encrypted_additional_data),
+                    },
+                )
+
+            self.db.commit()
+            self.logger.info(
+                f"Successfully stored {credential_type} credentials for user {user_id}, provider {provider}"
+            )
+            return True
+
+        except Exception as e:
+            self.logger.error(
+                f"Failed to store non-OAuth2 credentials for user {user_id}, provider {provider}: {e}"
+            )
+            self.db.rollback()
+            return False
+
+    async def get_non_oauth2_credentials(
+        self, user_id: str, provider: str
+    ) -> Optional[Dict[str, Any]]:
+        """获取非OAuth2凭据
+
+        Args:
+            user_id: 用户ID
+            provider: 提供商名称
+
+        Returns:
+            解密后的凭据字典，失败返回None
+        """
+        try:
+            query = text(
+                """
+                SELECT credential_type, encrypted_additional_data
+                FROM user_external_credentials
+                WHERE user_id = :user_id AND provider = :provider AND is_valid = true
+            """
+            )
+            result = self.db.execute(query, {"user_id": user_id, "provider": provider}).fetchone()
+
+            if not result:
+                return None
+
+            credential_type, encrypted_data = result
+
+            # 解密凭据数据
+            if encrypted_data:
+                decrypted_data = {}
+                additional_data = (
+                    json.loads(encrypted_data) if isinstance(encrypted_data, str) else encrypted_data
+                )
+                
+                for key, value in additional_data.items():
+                    if key in ["password", "api_key", "secret", "token"] and value:
+                        # 解密敏感数据
+                        try:
+                            decrypted_data[key] = self.encryption.decrypt_credential(value)
+                        except:
+                            # 如果解密失败，可能是未加密的数据
+                            decrypted_data[key] = value
+                    else:
+                        decrypted_data[key] = value
+
+                decrypted_data["credential_type"] = credential_type
+                decrypted_data["provider"] = provider
+                return decrypted_data
+
+            return None
+
+        except Exception as e:
+            self.logger.error(
+                f"Failed to get non-OAuth2 credentials for user {user_id}, provider {provider}: {e}"
+            )
+            return None

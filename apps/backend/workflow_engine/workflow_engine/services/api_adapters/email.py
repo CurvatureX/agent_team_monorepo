@@ -51,12 +51,32 @@ class EmailAdapter(APIAdapter):
         try:
             self.logger.info(f"Email operation: {operation} with params: {list(parameters.keys())}")
             
+            # 合并凭据到参数中（如果凭据中有SMTP信息）
+            if credentials:
+                # 从存储的凭据中提取SMTP配置
+                if 'smtp_host' in credentials:
+                    parameters['smtp_server'] = credentials['smtp_host']
+                if 'smtp_port' in credentials:
+                    parameters['port'] = int(credentials['smtp_port'])
+                if 'username' in credentials:
+                    parameters['username'] = credentials['username']
+                if 'password' in credentials:
+                    parameters['password'] = credentials['password']
+                if 'use_tls' in credentials:
+                    parameters['use_tls'] = credentials.get('use_tls', True)
+                
+                # 支持不同的凭据字段名
+                if 'smtp_server' in credentials and 'smtp_server' not in parameters:
+                    parameters['smtp_server'] = credentials['smtp_server']
+            
             # 验证凭据和参数
             self._validate_parameters(operation, parameters)
             self._validate_smtp_credentials(parameters)
             
-            # 目前主要支持发送邮件
-            if operation == "send_email" or operation == "send":
+            # 支持的操作
+            valid_operations = ["send_email", "send", "send_with_attachment", "send_bulk"]
+            
+            if operation in valid_operations or operation == "send":
                 return await self._send_email(parameters)
             else:
                 # 默认为发送邮件
@@ -82,14 +102,14 @@ class EmailAdapter(APIAdapter):
     
     def _validate_parameters(self, operation: str, parameters: Dict[str, Any]):
         """验证操作参数"""
-        required_params = [
-            "to", "subject", "body", 
-            "smtp_server", "port", "username", "password"
-        ]
+        # 邮件内容相关的必需参数
+        required_email_params = ["to", "subject", "body"]
         
-        for param in required_params:
+        for param in required_email_params:
             if param not in parameters:
                 raise ValidationError(f"Missing required parameter: {param}")
+        
+        # SMTP配置参数将在_validate_smtp_credentials中验证
         
         # 验证收件人格式
         to_recipients = parameters["to"]

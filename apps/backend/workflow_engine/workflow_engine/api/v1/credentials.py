@@ -46,6 +46,14 @@ class CredentialStoreResponse(BaseModel):
     user_id: str
 
 
+class NonOAuth2CredentialStoreRequest(BaseModel):
+    """Request model for storing non-OAuth2 credentials (API keys, SMTP, etc.)"""
+    user_id: str
+    provider: str
+    credential_type: str  # 'api_key', 'smtp', 'basic_auth', etc.
+    credentials: Dict[str, Any]  # Provider-specific credential data
+
+
 class CredentialGetRequest(BaseModel):
     """Request model for getting stored credential details"""
     user_id: str
@@ -128,7 +136,8 @@ async def get_authorization_status(request: CredentialStatusRequest):
             "github", 
             "slack",
             "email",
-            "api_call"
+            "api_call",
+            "notion"
         ]
         
         providers_status = {}
@@ -405,6 +414,54 @@ async def store_credentials(request: CredentialStoreRequest):
                 
     except Exception as e:
         logger.error(f"Failed to store credentials for user {request.user_id}, provider {request.provider}: {e}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to store credentials: {str(e)}"
+        )
+
+
+@router.post("/credentials/store-non-oauth2", response_model=CredentialStoreResponse)
+async def store_non_oauth2_credentials(request: NonOAuth2CredentialStoreRequest):
+    """
+    Store non-OAuth2 credentials (API keys, SMTP credentials, etc.)
+    
+    Args:
+        request: Non-OAuth2 credential store request
+        
+    Returns:
+        CredentialStoreResponse indicating success or failure
+    """
+    try:
+        logger.info(f"Storing {request.credential_type} credentials for user {request.user_id}, provider {request.provider}")
+        
+        with get_db_session() as db:
+            oauth2_service = OAuth2ServiceLite(db)
+            
+            # Store the non-OAuth2 credentials
+            stored = await oauth2_service.store_non_oauth2_credentials(
+                user_id=request.user_id,
+                provider=request.provider,
+                credential_type=request.credential_type,
+                credentials=request.credentials
+            )
+            
+            if stored:
+                logger.info(f"Successfully stored {request.credential_type} credentials for user {request.user_id}, provider {request.provider}")
+                return CredentialStoreResponse(
+                    success=True,
+                    message=f"{request.credential_type} credentials stored successfully",
+                    provider=request.provider,
+                    user_id=request.user_id
+                )
+            else:
+                logger.error(f"Failed to store {request.credential_type} credentials for user {request.user_id}, provider {request.provider}")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to store credentials in database"
+                )
+                
+    except Exception as e:
+        logger.error(f"Failed to store {request.credential_type} credentials for user {request.user_id}, provider {request.provider}: {e}")
         raise HTTPException(
             status_code=400,
             detail=f"Failed to store credentials: {str(e)}"

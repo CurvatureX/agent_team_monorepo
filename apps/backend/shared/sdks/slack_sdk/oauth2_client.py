@@ -336,43 +336,378 @@ class SlackOAuth2SDK(BaseSDK):
         else:
             raise SlackAPIError(f"Unexpected error: {response.status_code}")
     
-    # Placeholder methods for other operations - can be implemented as needed
     async def _update_message(self, parameters: Dict[str, Any], credentials: Dict[str, str]) -> Dict[str, Any]:
         """Update existing message."""
-        raise NotImplementedError("Update message not yet implemented")
+        channel = parameters.get("channel")
+        ts = parameters.get("ts") or parameters.get("message_ts")
+        text = parameters.get("text")
+        blocks = parameters.get("blocks")
+        
+        if not channel:
+            raise SlackAPIError("Missing required parameter: channel")
+        if not ts:
+            raise SlackAPIError("Missing required parameter: ts or message_ts")
+        if not text and not blocks:
+            raise SlackAPIError("Missing required parameter: text or blocks")
+        
+        url = f"{self.base_url}/chat.update"
+        headers = self._prepare_headers(credentials)
+        
+        payload = {
+            "channel": channel,
+            "ts": ts,
+            "text": text
+        }
+        
+        if blocks:
+            payload["blocks"] = blocks
+        
+        response = await self.make_http_request("POST", url, headers=headers, json_data=payload)
+        
+        if not (200 <= response.status_code < 300):
+            self._handle_error(response)
+        
+        response_data = response.json()
+        
+        if not response_data.get("ok"):
+            raise SlackAPIError(f"Slack API error: {response_data.get('error', 'Unknown error')}")
+        
+        return {
+            "message_ts": response_data.get("ts"),
+            "channel": response_data.get("channel"),
+            "text": text,
+            "success": True
+        }
     
     async def _delete_message(self, parameters: Dict[str, Any], credentials: Dict[str, str]) -> Dict[str, Any]:
         """Delete message."""
-        raise NotImplementedError("Delete message not yet implemented")
+        channel = parameters.get("channel")
+        ts = parameters.get("ts") or parameters.get("message_ts")
+        
+        if not channel:
+            raise SlackAPIError("Missing required parameter: channel")
+        if not ts:
+            raise SlackAPIError("Missing required parameter: ts or message_ts")
+        
+        url = f"{self.base_url}/chat.delete"
+        headers = self._prepare_headers(credentials)
+        
+        payload = {
+            "channel": channel,
+            "ts": ts
+        }
+        
+        response = await self.make_http_request("POST", url, headers=headers, json_data=payload)
+        
+        if not (200 <= response.status_code < 300):
+            self._handle_error(response)
+        
+        response_data = response.json()
+        
+        if not response_data.get("ok"):
+            raise SlackAPIError(f"Slack API error: {response_data.get('error', 'Unknown error')}")
+        
+        return {
+            "deleted": True,
+            "channel": channel,
+            "ts": ts,
+            "success": True
+        }
     
     async def _get_channel_info(self, parameters: Dict[str, Any], credentials: Dict[str, str]) -> Dict[str, Any]:
         """Get channel information."""
-        raise NotImplementedError("Get channel info not yet implemented")
+        channel = parameters.get("channel") or parameters.get("channel_id")
+        
+        if not channel:
+            raise SlackAPIError("Missing required parameter: channel")
+        
+        url = f"{self.base_url}/conversations.info"
+        headers = self._prepare_headers(credentials)
+        
+        params = {"channel": channel}
+        
+        response = await self.make_http_request("GET", url, headers=headers, params=params)
+        
+        if not (200 <= response.status_code < 300):
+            self._handle_error(response)
+        
+        response_data = response.json()
+        
+        if not response_data.get("ok"):
+            raise SlackAPIError(f"Slack API error: {response_data.get('error', 'Unknown error')}")
+        
+        channel_data = response_data.get("channel", {})
+        
+        return {
+            "id": channel_data.get("id"),
+            "name": channel_data.get("name"),
+            "is_channel": channel_data.get("is_channel"),
+            "is_private": channel_data.get("is_private"),
+            "is_archived": channel_data.get("is_archived"),
+            "topic": channel_data.get("topic", {}).get("value"),
+            "purpose": channel_data.get("purpose", {}).get("value"),
+            "created": channel_data.get("created"),
+            "creator": channel_data.get("creator"),
+            "num_members": channel_data.get("num_members")
+        }
     
     async def _create_channel(self, parameters: Dict[str, Any], credentials: Dict[str, str]) -> Dict[str, Any]:
         """Create new channel."""
-        raise NotImplementedError("Create channel not yet implemented")
+        name = parameters.get("name")
+        is_private = parameters.get("is_private", False)
+        
+        if not name:
+            raise SlackAPIError("Missing required parameter: name")
+        
+        url = f"{self.base_url}/conversations.create"
+        headers = self._prepare_headers(credentials)
+        
+        payload = {
+            "name": name,
+            "is_private": is_private
+        }
+        
+        response = await self.make_http_request("POST", url, headers=headers, json_data=payload)
+        
+        if not (200 <= response.status_code < 300):
+            self._handle_error(response)
+        
+        response_data = response.json()
+        
+        if not response_data.get("ok"):
+            raise SlackAPIError(f"Slack API error: {response_data.get('error', 'Unknown error')}")
+        
+        channel_data = response_data.get("channel", {})
+        
+        return {
+            "id": channel_data.get("id"),
+            "name": channel_data.get("name"),
+            "created": channel_data.get("created"),
+            "is_private": is_private,
+            "success": True
+        }
     
     async def _invite_to_channel(self, parameters: Dict[str, Any], credentials: Dict[str, str]) -> Dict[str, Any]:
         """Invite user to channel."""
-        raise NotImplementedError("Invite to channel not yet implemented")
+        channel = parameters.get("channel") or parameters.get("channel_id")
+        users = parameters.get("users")
+        
+        if not channel:
+            raise SlackAPIError("Missing required parameter: channel")
+        if not users:
+            raise SlackAPIError("Missing required parameter: users")
+        
+        # Convert single user to list
+        if isinstance(users, str):
+            users = [users]
+        
+        url = f"{self.base_url}/conversations.invite"
+        headers = self._prepare_headers(credentials)
+        
+        payload = {
+            "channel": channel,
+            "users": ",".join(users)
+        }
+        
+        response = await self.make_http_request("POST", url, headers=headers, json_data=payload)
+        
+        if not (200 <= response.status_code < 300):
+            self._handle_error(response)
+        
+        response_data = response.json()
+        
+        if not response_data.get("ok"):
+            raise SlackAPIError(f"Slack API error: {response_data.get('error', 'Unknown error')}")
+        
+        return {
+            "channel": response_data.get("channel", {}).get("id"),
+            "invited_users": users,
+            "success": True
+        }
     
     async def _list_users(self, parameters: Dict[str, Any], credentials: Dict[str, str]) -> Dict[str, Any]:
         """List workspace users."""
-        raise NotImplementedError("List users not yet implemented")
+        limit = min(int(parameters.get("limit", 100)), 1000)
+        cursor = parameters.get("cursor")
+        
+        url = f"{self.base_url}/users.list"
+        headers = self._prepare_headers(credentials)
+        
+        params = {"limit": limit}
+        if cursor:
+            params["cursor"] = cursor
+        
+        response = await self.make_http_request("GET", url, headers=headers, params=params)
+        
+        if not (200 <= response.status_code < 300):
+            self._handle_error(response)
+        
+        response_data = response.json()
+        
+        if not response_data.get("ok"):
+            raise SlackAPIError(f"Slack API error: {response_data.get('error', 'Unknown error')}")
+        
+        users = []
+        for user in response_data.get("members", []):
+            if not user.get("deleted", False):
+                users.append({
+                    "id": user.get("id"),
+                    "name": user.get("name"),
+                    "real_name": user.get("real_name"),
+                    "display_name": user.get("profile", {}).get("display_name"),
+                    "email": user.get("profile", {}).get("email"),
+                    "is_bot": user.get("is_bot", False),
+                    "is_admin": user.get("is_admin", False),
+                    "is_owner": user.get("is_owner", False)
+                })
+        
+        return {
+            "users": users,
+            "total_count": len(users),
+            "next_cursor": response_data.get("response_metadata", {}).get("next_cursor")
+        }
     
     async def _upload_file(self, parameters: Dict[str, Any], credentials: Dict[str, str]) -> Dict[str, Any]:
         """Upload file to Slack."""
-        raise NotImplementedError("Upload file not yet implemented")
+        channels = parameters.get("channels")
+        content = parameters.get("content")
+        filename = parameters.get("filename", "file.txt")
+        filetype = parameters.get("filetype", "text")
+        title = parameters.get("title")
+        initial_comment = parameters.get("initial_comment")
+        
+        if not content:
+            raise SlackAPIError("Missing required parameter: content")
+        
+        url = f"{self.base_url}/files.upload"
+        headers = {
+            "Authorization": f"Bearer {credentials['access_token']}"
+        }
+        
+        form_data = {
+            "content": content,
+            "filename": filename,
+            "filetype": filetype
+        }
+        
+        if channels:
+            if isinstance(channels, list):
+                channels = ",".join(channels)
+            form_data["channels"] = channels
+        
+        if title:
+            form_data["title"] = title
+        
+        if initial_comment:
+            form_data["initial_comment"] = initial_comment
+        
+        response = await self.make_http_request("POST", url, headers=headers, data=form_data)
+        
+        if not (200 <= response.status_code < 300):
+            self._handle_error(response)
+        
+        response_data = response.json()
+        
+        if not response_data.get("ok"):
+            raise SlackAPIError(f"Slack API error: {response_data.get('error', 'Unknown error')}")
+        
+        file_data = response_data.get("file", {})
+        
+        return {
+            "id": file_data.get("id"),
+            "name": file_data.get("name"),
+            "title": file_data.get("title"),
+            "mimetype": file_data.get("mimetype"),
+            "size": file_data.get("size"),
+            "url_private": file_data.get("url_private"),
+            "permalink": file_data.get("permalink"),
+            "success": True
+        }
     
     async def _get_conversations(self, parameters: Dict[str, Any], credentials: Dict[str, str]) -> Dict[str, Any]:
-        """Get conversation list."""
-        raise NotImplementedError("Get conversations not yet implemented")
+        """Get conversation list (alias for list_channels with more options)."""
+        return await self._list_channels(parameters, credentials)
     
     async def _get_conversation_history(self, parameters: Dict[str, Any], credentials: Dict[str, str]) -> Dict[str, Any]:
         """Get conversation messages."""
-        raise NotImplementedError("Get conversation history not yet implemented")
+        channel = parameters.get("channel") or parameters.get("channel_id")
+        limit = min(int(parameters.get("limit", 100)), 1000)
+        oldest = parameters.get("oldest")
+        latest = parameters.get("latest")
+        inclusive = parameters.get("inclusive", True)
+        cursor = parameters.get("cursor")
+        
+        if not channel:
+            raise SlackAPIError("Missing required parameter: channel")
+        
+        url = f"{self.base_url}/conversations.history"
+        headers = self._prepare_headers(credentials)
+        
+        params = {
+            "channel": channel,
+            "limit": limit,
+            "inclusive": inclusive
+        }
+        
+        if oldest:
+            params["oldest"] = oldest
+        if latest:
+            params["latest"] = latest
+        if cursor:
+            params["cursor"] = cursor
+        
+        response = await self.make_http_request("GET", url, headers=headers, params=params)
+        
+        if not (200 <= response.status_code < 300):
+            self._handle_error(response)
+        
+        response_data = response.json()
+        
+        if not response_data.get("ok"):
+            raise SlackAPIError(f"Slack API error: {response_data.get('error', 'Unknown error')}")
+        
+        messages = []
+        for msg in response_data.get("messages", []):
+            messages.append({
+                "ts": msg.get("ts"),
+                "user": msg.get("user"),
+                "text": msg.get("text"),
+                "type": msg.get("type"),
+                "subtype": msg.get("subtype"),
+                "thread_ts": msg.get("thread_ts"),
+                "reply_count": msg.get("reply_count", 0),
+                "reactions": msg.get("reactions", [])
+            })
+        
+        return {
+            "messages": messages,
+            "has_more": response_data.get("has_more", False),
+            "next_cursor": response_data.get("response_metadata", {}).get("next_cursor")
+        }
     
     async def _set_presence(self, parameters: Dict[str, Any], credentials: Dict[str, str]) -> Dict[str, Any]:
         """Set user presence."""
-        raise NotImplementedError("Set presence not yet implemented")
+        presence = parameters.get("presence", "auto")  # auto, away
+        
+        if presence not in ["auto", "away"]:
+            raise SlackAPIError("Invalid presence value. Must be 'auto' or 'away'")
+        
+        url = f"{self.base_url}/users.setPresence"
+        headers = self._prepare_headers(credentials)
+        
+        payload = {"presence": presence}
+        
+        response = await self.make_http_request("POST", url, headers=headers, json_data=payload)
+        
+        if not (200 <= response.status_code < 300):
+            self._handle_error(response)
+        
+        response_data = response.json()
+        
+        if not response_data.get("ok"):
+            raise SlackAPIError(f"Slack API error: {response_data.get('error', 'Unknown error')}")
+        
+        return {
+            "presence": presence,
+            "success": True
+        }

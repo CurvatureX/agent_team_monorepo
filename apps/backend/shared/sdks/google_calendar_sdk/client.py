@@ -3,7 +3,8 @@ Google Calendar SDK client implementation.
 """
 
 import os
-from datetime import datetime, timezone
+import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode
 
@@ -339,41 +340,436 @@ class GoogleCalendarSDK(BaseSDK):
     # Placeholder methods for other operations - can be implemented as needed
     async def _update_event(self, parameters: Dict[str, Any], credentials: Dict[str, str]) -> Dict[str, Any]:
         """Update existing event."""
-        # Implementation similar to create_event but with PATCH
-        raise NotImplementedError("Update event not yet implemented")
+        calendar_id = parameters.get("calendar_id", "primary")
+        event_id = parameters.get("event_id")
+        
+        if not event_id:
+            raise GoogleCalendarValidationError("Missing required parameter: event_id")
+        
+        # Build update data
+        update_data = {}
+        
+        # Update basic fields if provided
+        if "summary" in parameters:
+            update_data["summary"] = parameters["summary"]
+        
+        if "description" in parameters:
+            update_data["description"] = parameters["description"]
+        
+        if "location" in parameters:
+            update_data["location"] = parameters["location"]
+        
+        # Update time if provided
+        if "start" in parameters and "end" in parameters:
+            update_data["start"] = self._format_event_time(parameters["start"])
+            update_data["end"] = self._format_event_time(parameters["end"])
+        elif "start_datetime" in parameters and "end_datetime" in parameters:
+            update_data["start"] = {"dateTime": self._format_google_datetime(parameters["start_datetime"])}
+            update_data["end"] = {"dateTime": self._format_google_datetime(parameters["end_datetime"])}
+        
+        # Update attendees if provided
+        if "attendees" in parameters:
+            update_data["attendees"] = [
+                {"email": email} for email in parameters["attendees"]
+            ]
+        
+        # Update reminders if provided
+        if "reminders" in parameters:
+            update_data["reminders"] = parameters["reminders"]
+        
+        # Update recurrence if provided
+        if "recurrence" in parameters:
+            update_data["recurrence"] = parameters["recurrence"]
+        
+        url = f"{self.base_url}/calendars/{calendar_id}/events/{event_id}"
+        headers = self._prepare_headers(credentials)
+        
+        # Add query parameters if needed
+        query_params = {}
+        if parameters.get("send_notifications"):
+            query_params["sendNotifications"] = "true"
+        if query_params:
+            url += f"?{urlencode(query_params)}"
+        
+        response = await self.make_http_request(
+            "PATCH", url, headers=headers, json_data=update_data
+        )
+        
+        if not (200 <= response.status_code < 300):
+            self._handle_error(response)
+        
+        updated_event = response.json()
+        return {
+            "event": Event.from_dict(updated_event).__dict__,
+            "event_id": updated_event.get("id"),
+            "html_link": updated_event.get("htmlLink")
+        }
     
     async def _delete_event(self, parameters: Dict[str, Any], credentials: Dict[str, str]) -> Dict[str, Any]:
         """Delete event."""
-        raise NotImplementedError("Delete event not yet implemented")
+        calendar_id = parameters.get("calendar_id", "primary")
+        event_id = parameters.get("event_id")
+        
+        if not event_id:
+            raise GoogleCalendarValidationError("Missing required parameter: event_id")
+        
+        url = f"{self.base_url}/calendars/{calendar_id}/events/{event_id}"
+        headers = self._prepare_headers(credentials)
+        
+        # Add query parameters if needed
+        query_params = {}
+        if parameters.get("send_notifications"):
+            query_params["sendNotifications"] = "true"
+        if query_params:
+            url += f"?{urlencode(query_params)}"
+        
+        response = await self.make_http_request("DELETE", url, headers=headers)
+        
+        if response.status_code == 204:
+            # Success - no content
+            return {
+                "success": True,
+                "message": "Event deleted successfully",
+                "event_id": event_id,
+                "calendar_id": calendar_id
+            }
+        elif response.status_code == 410:
+            # Already deleted
+            return {
+                "success": True,
+                "message": "Event was already deleted",
+                "event_id": event_id,
+                "calendar_id": calendar_id
+            }
+        else:
+            self._handle_error(response)
     
     async def _get_event(self, parameters: Dict[str, Any], credentials: Dict[str, str]) -> Dict[str, Any]:
         """Get single event details."""
-        raise NotImplementedError("Get event not yet implemented")
+        calendar_id = parameters.get("calendar_id", "primary")
+        event_id = parameters.get("event_id")
+        
+        if not event_id:
+            raise GoogleCalendarValidationError("Missing required parameter: event_id")
+        
+        url = f"{self.base_url}/calendars/{calendar_id}/events/{event_id}"
+        headers = self._prepare_headers(credentials)
+        
+        # Add query parameters if needed
+        query_params = {}
+        if parameters.get("time_zone"):
+            query_params["timeZone"] = parameters["time_zone"]
+        if query_params:
+            url += f"?{urlencode(query_params)}"
+        
+        response = await self.make_http_request("GET", url, headers=headers)
+        
+        if not (200 <= response.status_code < 300):
+            self._handle_error(response)
+        
+        event_data = response.json()
+        event = Event.from_dict(event_data)
+        
+        return {
+            "event": event.__dict__,
+            "event_object": event,
+            "event_id": event.id,
+            "html_link": event.html_link,
+            "calendar_id": calendar_id
+        }
     
     async def _list_calendars(self, parameters: Dict[str, Any], credentials: Dict[str, str]) -> Dict[str, Any]:
         """List user's calendars."""
-        raise NotImplementedError("List calendars not yet implemented")
+        url = f"{self.base_url}/users/me/calendarList"
+        headers = self._prepare_headers(credentials)
+        
+        # Build query parameters
+        query_params = {}
+        if parameters.get("min_access_role"):
+            query_params["minAccessRole"] = parameters["min_access_role"]
+        if parameters.get("show_deleted"):
+            query_params["showDeleted"] = "true"
+        if parameters.get("show_hidden"):
+            query_params["showHidden"] = "true"
+        if parameters.get("max_results"):
+            query_params["maxResults"] = min(int(parameters["max_results"]), 250)
+        if parameters.get("page_token"):
+            query_params["pageToken"] = parameters["page_token"]
+        
+        if query_params:
+            url += f"?{urlencode(query_params)}"
+        
+        response = await self.make_http_request("GET", url, headers=headers)
+        
+        if not (200 <= response.status_code < 300):
+            self._handle_error(response)
+        
+        data = response.json()
+        
+        # Convert to Calendar objects
+        calendars = []
+        for cal_data in data.get("items", []):
+            calendar = Calendar(
+                id=cal_data.get("id"),
+                summary=cal_data.get("summary"),
+                description=cal_data.get("description"),
+                time_zone=cal_data.get("timeZone")
+            )
+            calendars.append({
+                "id": calendar.id,
+                "summary": calendar.summary,
+                "description": calendar.description,
+                "time_zone": calendar.time_zone,
+                "access_role": cal_data.get("accessRole"),
+                "primary": cal_data.get("primary", False),
+                "selected": cal_data.get("selected", False),
+                "background_color": cal_data.get("backgroundColor"),
+                "foreground_color": cal_data.get("foregroundColor")
+            })
+        
+        return {
+            "calendars": calendars,
+            "calendars_objects": calendars,
+            "next_page_token": data.get("nextPageToken"),
+            "total_count": len(calendars)
+        }
     
     async def _create_calendar(self, parameters: Dict[str, Any], credentials: Dict[str, str]) -> Dict[str, Any]:
         """Create new calendar."""
-        raise NotImplementedError("Create calendar not yet implemented")
+        # Validate required parameters
+        if "summary" not in parameters:
+            raise GoogleCalendarValidationError("Missing required parameter: summary")
+        
+        # Build calendar data directly (don't use Calendar object for creation)
+        calendar_data = {
+            "summary": parameters["summary"],
+            "description": parameters.get("description", ""),
+            "timeZone": parameters.get("time_zone", "UTC")
+        }
+        
+        # Add optional parameters
+        if parameters.get("location"):
+            calendar_data["location"] = parameters["location"]
+        
+        url = f"{self.base_url}/calendars"
+        headers = self._prepare_headers(credentials)
+        
+        response = await self.make_http_request(
+            "POST", url, headers=headers, json_data=calendar_data
+        )
+        
+        if not (200 <= response.status_code < 300):
+            self._handle_error(response)
+        
+        created_calendar = response.json()
+        new_calendar = Calendar.from_dict(created_calendar)
+        
+        return {
+            "calendar": new_calendar.__dict__,
+            "calendar_object": new_calendar,
+            "calendar_id": new_calendar.id,
+            "summary": new_calendar.summary
+        }
     
     async def _get_calendar(self, parameters: Dict[str, Any], credentials: Dict[str, str]) -> Dict[str, Any]:
         """Get calendar details."""
-        raise NotImplementedError("Get calendar not yet implemented")
+        calendar_id = parameters.get("calendar_id", "primary")
+        
+        url = f"{self.base_url}/calendars/{calendar_id}"
+        headers = self._prepare_headers(credentials)
+        
+        response = await self.make_http_request("GET", url, headers=headers)
+        
+        if not (200 <= response.status_code < 300):
+            self._handle_error(response)
+        
+        cal_data = response.json()
+        calendar = Calendar.from_dict(cal_data)
+        
+        return {
+            "calendar": calendar.__dict__,
+            "calendar_object": calendar,
+            "calendar_id": calendar.id,
+            "summary": calendar.summary,
+            "time_zone": calendar.time_zone
+        }
     
     async def _search_events(self, parameters: Dict[str, Any], credentials: Dict[str, str]) -> Dict[str, Any]:
-        """Search events."""
-        raise NotImplementedError("Search events not yet implemented")
+        """Search events across calendars."""
+        # Get search query
+        query = parameters.get("q", parameters.get("query", ""))
+        calendars = parameters.get("calendars", ["primary"])
+        
+        if isinstance(calendars, str):
+            calendars = [calendars]
+        
+        all_events = []
+        
+        # Search each calendar
+        for calendar_id in calendars:
+            url = f"{self.base_url}/calendars/{calendar_id}/events"
+            
+            # Build query parameters
+            query_params = {
+                "q": query,
+                "singleEvents": "true",
+                "orderBy": "startTime"
+            }
+            
+            # Add time range if specified
+            if parameters.get("time_min"):
+                query_params["timeMin"] = self._format_google_datetime(parameters["time_min"])
+            if parameters.get("time_max"):
+                query_params["timeMax"] = self._format_google_datetime(parameters["time_max"])
+            
+            # Limit results
+            max_results = parameters.get("max_results", 100)
+            query_params["maxResults"] = min(int(max_results), 250)
+            
+            url += f"?{urlencode(query_params)}"
+            headers = self._prepare_headers(credentials)
+            
+            try:
+                response = await self.make_http_request("GET", url, headers=headers)
+                
+                if 200 <= response.status_code < 300:
+                    data = response.json()
+                    for event_data in data.get("items", []):
+                        event = Event.from_dict(event_data)
+                        event_dict = event.__dict__
+                        event_dict["calendar_id"] = calendar_id
+                        all_events.append(event_dict)
+            except Exception as e:
+                self.logger.warning(f"Failed to search calendar {calendar_id}: {e}")
+                continue
+        
+        # Sort by start time
+        all_events.sort(key=lambda x: x.get("start", {}).get("dateTime", "") or x.get("start", {}).get("date", ""))
+        
+        return {
+            "events": all_events,
+            "total_count": len(all_events),
+            "query": query,
+            "calendars_searched": calendars
+        }
     
     async def _quick_add(self, parameters: Dict[str, Any], credentials: Dict[str, str]) -> Dict[str, Any]:
         """Quick add event using natural language."""
-        raise NotImplementedError("Quick add not yet implemented")
+        calendar_id = parameters.get("calendar_id", "primary")
+        text = parameters.get("text")
+        
+        if not text:
+            raise GoogleCalendarValidationError("Missing required parameter: text")
+        
+        url = f"{self.base_url}/calendars/{calendar_id}/events/quickAdd"
+        
+        # Build query parameters
+        query_params = {"text": text}
+        if parameters.get("send_notifications"):
+            query_params["sendNotifications"] = "true"
+        
+        url += f"?{urlencode(query_params)}"
+        headers = self._prepare_headers(credentials)
+        
+        response = await self.make_http_request("POST", url, headers=headers)
+        
+        if not (200 <= response.status_code < 300):
+            self._handle_error(response)
+        
+        event_data = response.json()
+        event = Event.from_dict(event_data)
+        
+        return {
+            "event": event.__dict__,
+            "event_object": event,
+            "event_id": event.id,
+            "html_link": event.html_link,
+            "original_text": text,
+            "calendar_id": calendar_id
+        }
     
     async def _watch_events(self, parameters: Dict[str, Any], credentials: Dict[str, str]) -> Dict[str, Any]:
         """Set up webhook for event changes."""
-        raise NotImplementedError("Watch events not yet implemented")
+        calendar_id = parameters.get("calendar_id", "primary")
+        webhook_url = parameters.get("webhook_url")
+        
+        if not webhook_url:
+            raise GoogleCalendarValidationError("Missing required parameter: webhook_url")
+        
+        # Generate unique channel ID if not provided
+        import uuid
+        channel_id = parameters.get("channel_id", str(uuid.uuid4()))
+        
+        # Build watch request
+        watch_data = {
+            "id": channel_id,
+            "type": "web_hook",
+            "address": webhook_url
+        }
+        
+        # Add optional parameters
+        if parameters.get("token"):
+            watch_data["token"] = parameters["token"]
+        
+        # Set expiration (max 1 month from now)
+        if parameters.get("expiration"):
+            watch_data["expiration"] = str(int(parameters["expiration"]))
+        else:
+            # Default to 1 week
+            from datetime import timedelta
+            expiration = datetime.now(timezone.utc) + timedelta(days=7)
+            watch_data["expiration"] = str(int(expiration.timestamp() * 1000))
+        
+        url = f"{self.base_url}/calendars/{calendar_id}/events/watch"
+        headers = self._prepare_headers(credentials)
+        
+        response = await self.make_http_request(
+            "POST", url, headers=headers, json_data=watch_data
+        )
+        
+        if not (200 <= response.status_code < 300):
+            self._handle_error(response)
+        
+        watch_response = response.json()
+        
+        return {
+            "channel_id": watch_response.get("id"),
+            "resource_id": watch_response.get("resourceId"),
+            "resource_uri": watch_response.get("resourceUri"),
+            "token": watch_response.get("token"),
+            "expiration": watch_response.get("expiration"),
+            "calendar_id": calendar_id,
+            "webhook_url": webhook_url
+        }
     
     async def _stop_watching(self, parameters: Dict[str, Any], credentials: Dict[str, str]) -> Dict[str, Any]:
         """Stop webhook monitoring."""
-        raise NotImplementedError("Stop watching not yet implemented")
+        channel_id = parameters.get("channel_id")
+        resource_id = parameters.get("resource_id")
+        
+        if not channel_id or not resource_id:
+            raise GoogleCalendarValidationError("Missing required parameters: channel_id and resource_id")
+        
+        # Build stop request
+        stop_data = {
+            "id": channel_id,
+            "resourceId": resource_id
+        }
+        
+        url = f"{self.base_url}/channels/stop"
+        headers = self._prepare_headers(credentials)
+        
+        response = await self.make_http_request(
+            "POST", url, headers=headers, json_data=stop_data
+        )
+        
+        if response.status_code == 204:
+            # Success - no content
+            return {
+                "success": True,
+                "message": "Channel stopped successfully",
+                "channel_id": channel_id,
+                "resource_id": resource_id
+            }
+        else:
+            self._handle_error(response)

@@ -104,11 +104,8 @@ class APICallAdapter(APIAdapter):
         if "url" not in parameters:
             raise ValidationError("Missing required parameter: url")
         
-        if "method" not in parameters:
-            raise ValidationError("Missing required parameter: method")
-        
-        # 验证HTTP方法
-        method = parameters.get("method", "").upper()
+        # 方法是可选的，默认为GET
+        method = parameters.get("method", "GET").upper()
         valid_methods = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
         if method not in valid_methods:
             raise ValidationError(f"Invalid HTTP method: {method}. Valid methods: {', '.join(valid_methods)}")
@@ -118,21 +115,14 @@ class APICallAdapter(APIAdapter):
         if not url.startswith(("http://", "https://")):
             raise ValidationError("URL must start with http:// or https://")
         
-        # 验证认证类型
-        auth_type = parameters.get("authentication", "none")
-        valid_auth_types = ["none", "bearer", "basic", "api_key"]
+        # 验证认证类型（可选）
+        auth_type = parameters.get("authentication", parameters.get("auth_type", "none"))
+        valid_auth_types = ["none", "bearer", "basic", "api_key", "oauth2"]
         if auth_type not in valid_auth_types:
             raise ValidationError(f"Invalid authentication type: {auth_type}. Valid types: {', '.join(valid_auth_types)}")
         
-        # 验证认证相关参数
-        if auth_type == "bearer" and not parameters.get("auth_token"):
-            raise ValidationError("auth_token is required for bearer authentication")
-        
-        if auth_type == "api_key" and not parameters.get("api_key_header"):
-            raise ValidationError("api_key_header is required for api_key authentication")
-        
-        if auth_type == "api_key" and not parameters.get("auth_token"):
-            raise ValidationError("auth_token is required for api_key authentication")
+        # 认证参数的验证现在更灵活，可以从credentials中获取
+        # 不再强制要求在parameters中提供
         
         # 验证超时值
         timeout = parameters.get("timeout", 30)
@@ -143,20 +133,32 @@ class APICallAdapter(APIAdapter):
     
     def _apply_authentication(self, headers: Dict[str, str], parameters: Dict[str, Any], credentials: Dict[str, str]):
         """应用认证到请求头"""
-        auth_type = parameters.get("authentication", "none")
+        auth_type = parameters.get("authentication", parameters.get("auth_type", "none"))
+        
+        # 如果credentials中有认证类型，优先使用
+        if not auth_type or auth_type == "none":
+            if credentials and credentials.get("credential_type"):
+                cred_type = credentials.get("credential_type")
+                if cred_type == "api_key":
+                    auth_type = "api_key"
+                elif cred_type == "basic_auth":
+                    auth_type = "basic"
+                elif cred_type == "oauth2":
+                    auth_type = "bearer"
         
         if auth_type == "none":
             return
         
-        elif auth_type == "bearer":
-            token = parameters.get("auth_token") or credentials.get("auth_token")
+        elif auth_type == "bearer" or auth_type == "oauth2":
+            # 优先从credentials获取token
+            token = credentials.get("access_token") or credentials.get("auth_token") or credentials.get("api_key") or parameters.get("auth_token")
             if token:
                 headers["Authorization"] = f"Bearer {token}"
         
         elif auth_type == "basic":
             # Basic认证需要username和password
-            username = parameters.get("username") or credentials.get("username")
-            password = parameters.get("password") or credentials.get("password")
+            username = credentials.get("username") or parameters.get("username")
+            password = credentials.get("password") or parameters.get("password")
             if username and password:
                 import base64
                 credentials_str = f"{username}:{password}"
@@ -164,10 +166,17 @@ class APICallAdapter(APIAdapter):
                 headers["Authorization"] = f"Basic {encoded_credentials}"
         
         elif auth_type == "api_key":
-            api_key_header = parameters.get("api_key_header", "X-API-Key")
-            api_key = parameters.get("auth_token") or credentials.get("auth_token")
+            # API Key认证
+            api_key_header = parameters.get("api_key_header") or credentials.get("api_key_header", "X-API-Key")
+            api_key = credentials.get("api_key") or credentials.get("auth_token") or parameters.get("auth_token")
             if api_key:
                 headers[api_key_header] = api_key
+        
+        # 添加其他存储在credentials中的自定义headers
+        if credentials and "custom_headers" in credentials:
+            custom_headers = credentials.get("custom_headers", {})
+            if isinstance(custom_headers, dict):
+                headers.update(custom_headers)
     
     async def _process_response(self, response, url: str, method: str) -> Dict[str, Any]:
         """处理HTTP响应"""
