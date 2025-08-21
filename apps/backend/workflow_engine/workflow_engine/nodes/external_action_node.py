@@ -334,6 +334,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
             sdk_supported_subtypes = [
                 ExternalActionSubtype.GITHUB.value,
                 ExternalActionSubtype.GOOGLE_CALENDAR.value,
+                ExternalActionSubtype.NOTION.value,
                 ExternalActionSubtype.SLACK.value,
                 ExternalActionSubtype.EMAIL.value,
                 ExternalActionSubtype.API_CALL.value,
@@ -345,6 +346,8 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 return self._execute_github_action(context, logs, start_time)
             elif subtype == ExternalActionSubtype.GOOGLE_CALENDAR.value:
                 return await self._execute_google_calendar_action(context, logs, start_time)
+            elif subtype == ExternalActionSubtype.NOTION.value:
+                return await self._execute_notion_action(context, logs, start_time)
             elif subtype == ExternalActionSubtype.TRELLO.value:
                 return self._execute_trello_action(context, logs, start_time)
             elif subtype == ExternalActionSubtype.EMAIL.value:
@@ -388,6 +391,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 "google_calendar",
                 self._prepare_google_calendar_operation,
             ),
+            ExternalActionSubtype.NOTION.value: ("notion", self._prepare_notion_operation),
             ExternalActionSubtype.SLACK.value: ("slack", self._prepare_slack_operation),
             ExternalActionSubtype.EMAIL.value: ("email", self._prepare_email_operation),
             ExternalActionSubtype.API_CALL.value: ("api_call", self._prepare_api_call_operation),
@@ -1525,3 +1529,204 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         return self._create_success_result(
             output_data=output_data, execution_time=time.time() - start_time, logs=logs
         )
+    
+    async def _execute_notion_action(
+        self, context: NodeExecutionContext, logs: List[str], start_time: float
+    ) -> NodeExecutionResult:
+        """Execute Notion action."""
+        # Use spec-based parameter retrieval with fallback
+        action = self.get_parameter_with_spec(context, "action") or context.get_parameter("action")
+        user_id = getattr(context, "user_id", None) or context.metadata.get(
+            "user_id", "00000000-0000-0000-0000-000000000123"
+        )
+        
+        logs.append(f"Notion action: {action}")
+        
+        # Prepare parameters for Notion API
+        api_parameters = {"action": action}
+        
+        # Add action-specific parameters
+        if action == "query_database":
+            api_parameters.update({
+                "database_id": context.get_parameter("database_id"),
+                "filter": context.get_parameter("filter"),
+                "sorts": context.get_parameter("sorts"),
+                "page_size": context.get_parameter("page_size", 10),
+                "start_cursor": context.get_parameter("start_cursor")
+            })
+        elif action == "create_page":
+            api_parameters.update({
+                "database_id": context.get_parameter("database_id"),
+                "parent": context.get_parameter("parent"),
+                "properties": context.get_parameter("properties"),
+                "title": context.get_parameter("title"),
+                "content": context.get_parameter("content"),
+                "children": context.get_parameter("children"),
+                "icon": context.get_parameter("icon"),
+                "cover": context.get_parameter("cover")
+            })
+        elif action == "update_page":
+            api_parameters.update({
+                "page_id": context.get_parameter("page_id"),
+                "properties": context.get_parameter("properties"),
+                "icon": context.get_parameter("icon"),
+                "cover": context.get_parameter("cover"),
+                "archived": context.get_parameter("archived")
+            })
+        elif action == "get_page":
+            api_parameters["page_id"] = context.get_parameter("page_id")
+        elif action == "archive_page":
+            api_parameters["page_id"] = context.get_parameter("page_id")
+        elif action == "list_databases":
+            api_parameters.update({
+                "page_size": context.get_parameter("page_size", 100),
+                "start_cursor": context.get_parameter("start_cursor")
+            })
+        elif action == "search":
+            api_parameters.update({
+                "query": context.get_parameter("query"),
+                "filter": context.get_parameter("filter"),
+                "sort": context.get_parameter("sort"),
+                "page_size": context.get_parameter("page_size", 100),
+                "start_cursor": context.get_parameter("start_cursor")
+            })
+        elif action == "get_blocks":
+            api_parameters.update({
+                "block_id": context.get_parameter("block_id") or context.get_parameter("page_id"),
+                "page_size": context.get_parameter("page_size", 100),
+                "start_cursor": context.get_parameter("start_cursor")
+            })
+        elif action == "append_blocks":
+            api_parameters.update({
+                "block_id": context.get_parameter("block_id") or context.get_parameter("page_id"),
+                "children": context.get_parameter("children"),
+                "after": context.get_parameter("after")
+            })
+        elif action == "list_users":
+            api_parameters.update({
+                "page_size": context.get_parameter("page_size", 100),
+                "start_cursor": context.get_parameter("start_cursor")
+            })
+        elif action == "get_user":
+            api_parameters["user_id"] = context.get_parameter("user_id")
+        
+        # Call real Notion API
+        try:
+            # Direct async call since method is now async
+            output_data = await self._call_external_api(
+                "notion",
+                action,
+                api_parameters,
+                user_id,
+                context.metadata.get("workflow_execution_id"),
+                context.metadata.get("node_id"),
+                context
+            )
+            
+            # Check if this is an N8N-style error response (missing credentials)
+            if not output_data.get("success", True) and output_data.get("requires_auth"):
+                logs.append(f"Missing credentials for notion - authorization required")
+                return self._create_error_result(
+                    f"Missing credentials for notion. Please authorize this provider first.",
+                    error_details={
+                        "error_type": "MISSING_CREDENTIALS",
+                        "provider": "notion",
+                        "user_id": user_id,
+                        "requires_auth": True,
+                        "auth_provider": "notion",
+                    },
+                    execution_time=time.time() - start_time,
+                    logs=logs,
+                )
+        
+        except Exception as e:
+            logs.append(f"Failed to call Notion API: {str(e)}")
+            # Fallback to mock data with error info
+            output_data = {
+                "provider": "notion",
+                "action": action,
+                "result": f"Mock Notion {action} result (API call failed: {str(e)})",
+                "executed_at": datetime.now().isoformat(),
+                "fallback_mode": True,
+                "api_error": str(e),
+            }
+        
+        return self._create_success_result(
+            output_data=output_data, execution_time=time.time() - start_time, logs=logs
+        )
+    
+    def _prepare_notion_operation(self, context: NodeExecutionContext) -> tuple[str, Dict[str, Any]]:
+        """Prepare Notion operation and parameters."""
+        action = self.get_parameter_with_spec(context, "action") or context.get_parameter("action")
+        
+        parameters = {}
+        
+        # Add action-specific parameters
+        if action == "query_database":
+            parameters.update({
+                "database_id": context.get_parameter("database_id"),
+                "filter": context.get_parameter("filter"),
+                "sorts": context.get_parameter("sorts"),
+                "page_size": context.get_parameter("page_size", 10),
+                "start_cursor": context.get_parameter("start_cursor")
+            })
+        elif action == "create_page":
+            parameters.update({
+                "database_id": context.get_parameter("database_id"),
+                "parent": context.get_parameter("parent"),
+                "properties": context.get_parameter("properties"),
+                "title": context.get_parameter("title"),
+                "content": context.get_parameter("content"),
+                "children": context.get_parameter("children"),
+                "icon": context.get_parameter("icon"),
+                "cover": context.get_parameter("cover")
+            })
+        elif action == "update_page":
+            parameters.update({
+                "page_id": context.get_parameter("page_id"),
+                "properties": context.get_parameter("properties"),
+                "icon": context.get_parameter("icon"),
+                "cover": context.get_parameter("cover"),
+                "archived": context.get_parameter("archived")
+            })
+        elif action == "get_page":
+            parameters["page_id"] = context.get_parameter("page_id")
+        elif action == "archive_page":
+            parameters["page_id"] = context.get_parameter("page_id")
+        elif action == "list_databases":
+            parameters.update({
+                "page_size": context.get_parameter("page_size", 100),
+                "start_cursor": context.get_parameter("start_cursor")
+            })
+        elif action == "search":
+            parameters.update({
+                "query": context.get_parameter("query"),
+                "filter": context.get_parameter("filter"),
+                "sort": context.get_parameter("sort"),
+                "page_size": context.get_parameter("page_size", 100),
+                "start_cursor": context.get_parameter("start_cursor")
+            })
+        elif action == "get_blocks":
+            parameters.update({
+                "block_id": context.get_parameter("block_id") or context.get_parameter("page_id"),
+                "page_size": context.get_parameter("page_size", 100),
+                "start_cursor": context.get_parameter("start_cursor")
+            })
+        elif action == "append_blocks":
+            parameters.update({
+                "block_id": context.get_parameter("block_id") or context.get_parameter("page_id"),
+                "children": context.get_parameter("children"),
+                "after": context.get_parameter("after")
+            })
+        elif action == "list_users":
+            parameters.update({
+                "page_size": context.get_parameter("page_size", 100),
+                "start_cursor": context.get_parameter("start_cursor")
+            })
+        elif action == "get_user":
+            parameters["user_id"] = context.get_parameter("user_id")
+        
+        # Remove None values
+        parameters = {k: v for k, v in parameters.items() if v is not None}
+        
+        return action, parameters

@@ -2,30 +2,8 @@
 -- Description: Captures all tables that were created manually in cloud but not tracked in migrations
 -- Created: 2025-08-06
 
--- API Provider Configurations table
-CREATE TABLE api_provider_configs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    provider VARCHAR(255) NOT NULL,
-    display_name VARCHAR(255) NOT NULL,
-    auth_url TEXT NOT NULL,
-    token_url TEXT NOT NULL,
-    revoke_url TEXT,
-    client_id_env_var VARCHAR(255),
-    client_secret_env_var VARCHAR(255),
-    base_api_url TEXT NOT NULL,
-    default_scopes TEXT[] DEFAULT '{}',
-    required_scopes TEXT[] DEFAULT '{}',
-    rate_limit_per_minute INTEGER DEFAULT 1000,
-    max_retries INTEGER DEFAULT 3,
-    backoff_factor DECIMAL DEFAULT 2.0,
-    is_active BOOLEAN DEFAULT true,
-    supports_refresh_token BOOLEAN DEFAULT true,
-    supports_revocation BOOLEAN DEFAULT true,
-    documentation_url TEXT,
-    setup_instructions TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
+-- API Provider Configurations table - REMOVED (not needed in current implementation)
+-- Table api_provider_configs was removed as OAuth2 flow is handled differently
 
 -- Sessions table
 CREATE TABLE sessions (
@@ -135,26 +113,10 @@ CREATE TABLE node_templates (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- OAuth2 Authorization States table
-CREATE TABLE oauth2_authorization_states (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    state_value VARCHAR(255) NOT NULL,
-    user_id UUID NOT NULL,
-    provider VARCHAR(255) NOT NULL,
-    scopes TEXT[] DEFAULT '{}',
-    redirect_uri TEXT,
-    code_challenge VARCHAR(255),
-    code_challenge_method VARCHAR(255) DEFAULT 'S256',
-    nonce VARCHAR(255),
-    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    used_at TIMESTAMP WITH TIME ZONE,
-    is_valid BOOLEAN DEFAULT true,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
+-- OAuth2 Authorization States table - REMOVED (not needed in current implementation)
+-- Table oauth2_authorization_states was removed as OAuth2 state management is handled differently
 
--- Create indexes for better performance
-CREATE INDEX idx_oauth2_authorization_states_state_value ON oauth2_authorization_states(state_value);
-CREATE INDEX idx_oauth2_authorization_states_user_id ON oauth2_authorization_states(user_id);
+-- Indexes for removed tables are also not created
 CREATE INDEX idx_node_templates_template_id ON node_templates(template_id);
 CREATE INDEX idx_external_api_call_logs_user_id ON external_api_call_logs(user_id);
 CREATE INDEX idx_user_external_credentials_user_provider ON user_external_credentials(user_id, provider);

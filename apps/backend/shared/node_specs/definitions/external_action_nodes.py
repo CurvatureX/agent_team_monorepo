@@ -576,3 +576,179 @@ API_CALL_SPEC = NodeSpec(
         ),
     ],
 )
+
+# Notion - Notion operations
+NOTION_SPEC = NodeSpec(
+    node_type=NodeType.EXTERNAL_ACTION,
+    subtype=ExternalActionSubtype.NOTION,
+    description="Execute Notion operations via Notion API",
+    display_name="Notion Integration",
+    category="integrations",
+    template_id="external_notion",
+    parameters=[
+        ParameterDef(
+            name="action",
+            type=ParameterType.ENUM,
+            required=True,
+            enum_values=[
+                "list_databases",
+                "query_database",
+                "create_page",
+                "get_page",
+                "update_page",
+                "archive_page",
+                "get_blocks",
+                "append_blocks",
+                "search",
+                "list_users",
+            ],
+            description="Notion action type",
+        ),
+        ParameterDef(
+            name="database_id",
+            type=ParameterType.STRING,
+            required=False,
+            description="Database ID (UUID format)",
+        ),
+        ParameterDef(
+            name="page_id",
+            type=ParameterType.STRING,
+            required=False,
+            description="Page ID (UUID format)",
+        ),
+        ParameterDef(
+            name="parent",
+            type=ParameterType.JSON,
+            required=False,
+            description="Parent object (database_id or page_id)",
+        ),
+        ParameterDef(
+            name="properties",
+            type=ParameterType.JSON,
+            required=False,
+            description="Page or database properties",
+        ),
+        ParameterDef(
+            name="title",
+            type=ParameterType.STRING,
+            required=False,
+            description="Title for pages or databases",
+        ),
+        ParameterDef(
+            name="content",
+            type=ParameterType.STRING,
+            required=False,
+            description="Content text (will be converted to blocks)",
+        ),
+        ParameterDef(
+            name="children",
+            type=ParameterType.JSON,
+            required=False,
+            description="Block children array",
+        ),
+        ParameterDef(
+            name="filter",
+            type=ParameterType.JSON,
+            required=False,
+            description="Query filter object",
+        ),
+        ParameterDef(
+            name="sorts",
+            type=ParameterType.JSON,
+            required=False,
+            description="Query sorts array",
+        ),
+        ParameterDef(
+            name="query",
+            type=ParameterType.STRING,
+            required=False,
+            description="Search query string",
+        ),
+        ParameterDef(
+            name="page_size",
+            type=ParameterType.INTEGER,
+            required=False,
+            default_value=10,
+            description="Number of results per page (max 100)",
+        ),
+        ParameterDef(
+            name="start_cursor",
+            type=ParameterType.STRING,
+            required=False,
+            description="Pagination cursor",
+        ),
+        ParameterDef(
+            name="icon",
+            type=ParameterType.JSON,
+            required=False,
+            description="Icon object (emoji or external)",
+        ),
+        ParameterDef(
+            name="cover",
+            type=ParameterType.JSON,
+            required=False,
+            description="Cover image object",
+        ),
+        ParameterDef(
+            name="archived",
+            type=ParameterType.BOOLEAN,
+            required=False,
+            default_value=False,
+            description="Archive status",
+        ),
+        ParameterDef(
+            name="block_id",
+            type=ParameterType.STRING,
+            required=False,
+            description="Block ID for block operations",
+        ),
+        ParameterDef(
+            name="after",
+            type=ParameterType.STRING,
+            required=False,
+            description="Block ID to insert after",
+        ),
+        ParameterDef(
+            name="user_id",
+            type=ParameterType.STRING,
+            required=False,
+            description="User ID for user operations",
+        ),
+    ],
+    input_ports=[
+        InputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            required=False,
+            description="Dynamic Notion operation data",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"properties": "object", "filter": "object", "sorts": "array"}',
+                examples=[
+                    '{"properties": {"Name": {"title": [{"text": {"content": "New Page"}}]}}}',
+                    '{"filter": {"property": "Status", "select": {"equals": "Done"}}}',
+                ],
+            ),
+        )
+    ],
+    output_ports=[
+        OutputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            description="Notion API response",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"success": "boolean", "data": "object", "has_more": "boolean", "next_cursor": "string"}',
+                examples=[
+                    '{"success": true, "data": {"id": "page-id", "url": "https://notion.so/..."}}',
+                    '{"success": true, "results": [], "has_more": false}',
+                ],
+            ),
+        ),
+        OutputPortSpec(
+            name="error",
+            type=ConnectionType.ERROR,
+            description="Error output when Notion API call fails",
+        ),
+    ],
+)

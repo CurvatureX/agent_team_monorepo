@@ -116,80 +116,11 @@ CREATE TABLE external_api_call_logs (
     )
 );
 
--- OAuth2 State Management Table
--- Temporary storage for OAuth2 authorization state parameters
-CREATE TABLE oauth2_authorization_states (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    state_value VARCHAR(255) NOT NULL UNIQUE, -- Random state parameter
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    provider VARCHAR(50) NOT NULL,
-    scopes TEXT[] DEFAULT '{}',
-    redirect_uri TEXT,
+-- OAuth2 State Management Table - REMOVED
+-- Table oauth2_authorization_states was removed as OAuth2 state management is handled differently in current implementation
 
-    -- Additional OAuth2 parameters
-    code_challenge VARCHAR(255), -- For PKCE (Proof Key for Code Exchange)
-    code_challenge_method VARCHAR(10) DEFAULT 'S256', -- 'plain' or 'S256'
-    nonce VARCHAR(255), -- For OpenID Connect
-
-    -- Expiration and validation
-    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    used_at TIMESTAMP WITH TIME ZONE, -- When the state was consumed
-    is_valid BOOLEAN DEFAULT true,
-
-    -- Audit
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-
-    -- Constraints
-    CONSTRAINT valid_provider_state CHECK (
-        provider IN ('google_calendar', 'github', 'slack')
-    ),
-    CONSTRAINT valid_code_challenge_method CHECK (
-        code_challenge_method IN ('plain', 'S256')
-    )
-);
-
--- API Provider Configuration Table
--- Store configuration for different API providers
-CREATE TABLE api_provider_configs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    provider VARCHAR(50) NOT NULL UNIQUE,
-    display_name VARCHAR(100) NOT NULL,
-
-    -- OAuth2 Configuration
-    auth_url TEXT NOT NULL,
-    token_url TEXT NOT NULL,
-    revoke_url TEXT,
-    client_id_env_var VARCHAR(100), -- Environment variable name for client_id
-    client_secret_env_var VARCHAR(100), -- Environment variable name for client_secret
-
-    -- API Configuration
-    base_api_url TEXT NOT NULL,
-    default_scopes TEXT[] DEFAULT '{}',
-    required_scopes TEXT[] DEFAULT '{}',
-
-    -- Rate limiting and retries
-    rate_limit_per_minute INTEGER DEFAULT 1000,
-    max_retries INTEGER DEFAULT 3,
-    backoff_factor DECIMAL(3,2) DEFAULT 2.0,
-
-    -- Status and features
-    is_active BOOLEAN DEFAULT true,
-    supports_refresh_token BOOLEAN DEFAULT true,
-    supports_revocation BOOLEAN DEFAULT true,
-
-    -- Documentation and help
-    documentation_url TEXT,
-    setup_instructions TEXT,
-
-    -- Audit
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-
-    -- Constraints
-    CONSTRAINT valid_provider_config CHECK (
-        provider IN ('google_calendar', 'github', 'slack', 'custom_http')
-    )
-);
+-- API Provider Configuration Table - REMOVED  
+-- Table api_provider_configs was removed as provider configuration is handled differently in current implementation
 
 -- Create indexes for performance optimization
 CREATE INDEX idx_sessions_user_id ON sessions(user_id);
@@ -209,13 +140,8 @@ CREATE INDEX idx_api_logs_time ON external_api_call_logs(called_at);
 CREATE INDEX idx_api_logs_success ON external_api_call_logs(success);
 CREATE INDEX idx_api_logs_provider_operation ON external_api_call_logs(provider, operation);
 
-CREATE INDEX idx_oauth2_states_state_value ON oauth2_authorization_states(state_value);
-CREATE INDEX idx_oauth2_states_user_provider ON oauth2_authorization_states(user_id, provider);
-CREATE INDEX idx_oauth2_states_expires_at ON oauth2_authorization_states(expires_at);
-CREATE INDEX idx_oauth2_states_valid ON oauth2_authorization_states(is_valid);
-
-CREATE INDEX idx_provider_configs_provider ON api_provider_configs(provider);
-CREATE INDEX idx_provider_configs_active ON api_provider_configs(is_active);
+-- Indexes for oauth2_authorization_states and api_provider_configs tables - REMOVED
+-- These tables and their indexes were removed as they are not needed in current implementation
 
 -- Create trigger to automatically update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -235,65 +161,17 @@ CREATE TRIGGER update_user_external_credentials_updated_at
     BEFORE UPDATE ON user_external_credentials
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_api_provider_configs_updated_at
-    BEFORE UPDATE ON api_provider_configs
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- Trigger for api_provider_configs table - REMOVED
+-- Table api_provider_configs and its trigger were removed as they are not needed in current implementation
 
--- Insert default API provider configurations
-INSERT INTO api_provider_configs (
-    provider, display_name, auth_url, token_url, revoke_url,
-    client_id_env_var, client_secret_env_var, base_api_url,
-    default_scopes, required_scopes, documentation_url
-) VALUES
--- Google Calendar
-(
-    'google_calendar',
-    'Google Calendar',
-    'https://accounts.google.com/o/oauth2/v2/auth',
-    'https://oauth2.googleapis.com/token',
-    'https://oauth2.googleapis.com/revoke',
-    'GOOGLE_CLIENT_ID',
-    'GOOGLE_CLIENT_SECRET',
-    'https://www.googleapis.com/calendar/v3',
-    ARRAY['https://www.googleapis.com/auth/calendar'],
-    ARRAY['https://www.googleapis.com/auth/calendar'],
-    'https://developers.google.com/calendar/api'
-),
--- GitHub
-(
-    'github',
-    'GitHub',
-    'https://github.com/login/oauth/authorize',
-    'https://github.com/login/oauth/access_token',
-    'https://github.com/settings/connections/applications',
-    'GITHUB_CLIENT_ID',
-    'GITHUB_CLIENT_SECRET',
-    'https://api.github.com',
-    ARRAY['repo', 'read:user'],
-    ARRAY['repo'],
-    'https://docs.github.com/en/rest'
-),
--- Slack
-(
-    'slack',
-    'Slack',
-    'https://slack.com/oauth/v2/authorize',
-    'https://slack.com/api/oauth.v2.access',
-    'https://slack.com/api/auth.revoke',
-    'SLACK_CLIENT_ID',
-    'SLACK_CLIENT_SECRET',
-    'https://slack.com/api',
-    ARRAY['chat:write', 'channels:read'],
-    ARRAY['chat:write'],
-    'https://api.slack.com/web'
-);
+-- Default API provider configurations - REMOVED
+-- INSERT statements for api_provider_configs were removed as the table no longer exists
 
 -- Add comments for documentation
 COMMENT ON TABLE sessions IS 'Session context for workflow executions and API interactions';
 COMMENT ON TABLE user_external_credentials IS 'Stores encrypted OAuth2 tokens and API credentials for each user';
 COMMENT ON TABLE external_api_call_logs IS 'Tracks all external API calls for monitoring, debugging, and analytics';
-COMMENT ON TABLE oauth2_authorization_states IS 'Temporary storage for OAuth2 authorization state parameters';
-COMMENT ON TABLE api_provider_configs IS 'Configuration for different API providers';
+-- Comments for removed tables oauth2_authorization_states and api_provider_configs - REMOVED
 
 COMMENT ON COLUMN user_external_credentials.encrypted_access_token IS 'Fernet-encrypted access token';
 COMMENT ON COLUMN user_external_credentials.encrypted_refresh_token IS 'Fernet-encrypted refresh token';

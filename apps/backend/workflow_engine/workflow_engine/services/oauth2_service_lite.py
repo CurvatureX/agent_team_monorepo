@@ -91,6 +91,12 @@ class OAuth2ServiceLite:
                 if os.getenv("API_CALL_SCOPES")
                 else [],
             },
+            "notion": {
+                "client_id": os.getenv("NOTION_CLIENT_ID", ""),
+                "client_secret": os.getenv("NOTION_CLIENT_SECRET", ""),
+                "token_url": "https://api.notion.com/v1/oauth/token",
+                "scopes": [],  # Notion不使用传统的scope系统
+            },
         }
 
     def check_user_exists(self, user_id: str) -> bool:
@@ -575,6 +581,7 @@ class OAuth2ServiceLite:
             "slack": None,  # Slack refresh tokens don't expire
             "email": timedelta(days=90),  # Generic email provider - 3 months
             "api_call": timedelta(days=90),  # Generic API - 3 months
+            "notion": None,  # Notion tokens don't expire
         }
 
         lifetime = refresh_token_lifetimes.get(provider)
