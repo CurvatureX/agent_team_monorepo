@@ -39,7 +39,7 @@ except ImportError:
 
 
 from shared.models.trigger import TriggerType
-from workflow_scheduler.api import auth, deployment, github, slack, triggers
+from workflow_scheduler.api import auth, deployment, github, google_calendar, slack, triggers
 from workflow_scheduler.core.config import settings
 from workflow_scheduler.dependencies import (
     get_lock_manager,
@@ -47,6 +47,10 @@ from workflow_scheduler.dependencies import (
     set_global_services,
 )
 from workflow_scheduler.services.deployment_service import DeploymentService
+from workflow_scheduler.services.google_calendar_token_manager import (
+    cleanup_google_calendar_token_manager,
+    initialize_google_calendar_token_manager,
+)
 from workflow_scheduler.services.lock_manager import DistributedLockManager
 from workflow_scheduler.services.trigger_manager import TriggerManager
 from workflow_scheduler.triggers.cron_trigger import CronTrigger
@@ -76,6 +80,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     lock_manager = None
     trigger_manager = None
     deployment_service = None
+    google_calendar_token_manager = None
 
     logger.info("Starting workflow_scheduler service")
     logger.info(f"Redis URL configured: {settings.redis_url}")
@@ -99,6 +104,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Initialize deployment service
         deployment_service = DeploymentService(trigger_manager)
 
+        # Initialize Google Calendar token manager for background token refresh
+        try:
+            google_calendar_token_manager = await initialize_google_calendar_token_manager()
+            logger.info("✅ Google Calendar token manager started")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to start Google Calendar token manager: {e}")
+            # Don't fail the entire service if token manager fails
+
         # Set global services for dependency injection
         set_global_services(deployment_service, trigger_manager, lock_manager)
 
@@ -113,6 +126,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     finally:
         # Cleanup
         logger.info("Shutting down workflow_scheduler service")
+
+        # Cleanup Google Calendar token manager
+        try:
+            await cleanup_google_calendar_token_manager()
+            logger.info("✅ Google Calendar token manager stopped")
+        except Exception as e:
+            logger.warning(f"⚠️ Error stopping Google Calendar token manager: {e}")
 
         if trigger_manager:
             await trigger_manager.cleanup()
@@ -176,6 +196,7 @@ app.add_middleware(
 app.include_router(deployment.router, prefix="/api/v1")
 app.include_router(triggers.router, prefix="/api/v1")
 app.include_router(github.router, prefix="/api/v1")
+app.include_router(google_calendar.router, prefix="/api/v1")
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(slack.router)
 

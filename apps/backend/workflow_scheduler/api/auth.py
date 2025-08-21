@@ -1,9 +1,12 @@
 import logging
 from typing import Any, Dict, Optional
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from workflow_scheduler.core.config import settings
+from workflow_scheduler.core.supabase_client import get_supabase_client
 from workflow_scheduler.dependencies import get_trigger_manager
 from workflow_scheduler.services.trigger_manager import TriggerManager
 
@@ -101,27 +104,221 @@ async def slack_oauth_callback(
             f"state={oauth_data.state}"
         )
 
-        # For now, we'll just acknowledge the OAuth flow
-        # In the future, this could:
-        # 1. Exchange the code for access tokens
-        # 2. Store team/workspace credentials for Slack triggers
-        # 3. Update existing Slack triggers with new credentials
-        # 4. Validate bot permissions
+        # Exchange authorization code for access tokens
+        token_url = "https://slack.com/api/oauth.v2.access"
 
-        result = {
-            "team_name": "placeholder_team",
-            "team_id": "placeholder_team_id",
-            "installation_id": oauth_data.state,
-            "status": "processed",
-            "message": "Slack OAuth processed successfully",
+        token_data = {
+            "client_id": settings.slack_client_id,
+            "client_secret": settings.slack_client_secret,
+            "code": oauth_data.code,
+            "redirect_uri": settings.slack_redirect_uri,
         }
 
-        logger.info(f"Slack OAuth processed successfully: state={oauth_data.state}")
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+        }
 
-        return result
+        async with httpx.AsyncClient() as client:
+            token_response = await client.post(
+                token_url, data=token_data, headers=headers, timeout=30.0
+            )
 
+            if token_response.status_code != 200:
+                logger.error(
+                    f"Slack token exchange failed: {token_response.status_code} - {token_response.text}"
+                )
+                raise HTTPException(
+                    status_code=token_response.status_code,
+                    detail=f"Slack token exchange failed: {token_response.text}",
+                )
+
+            token_result = token_response.json()
+
+            if not token_result.get("ok"):
+                error = token_result.get("error", "Unknown error")
+                logger.error(f"Slack OAuth error: {error}")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Slack OAuth error: {error}",
+                )
+
+            # Extract OAuth response data
+            access_token = token_result.get("access_token")
+            bot_access_token = token_result.get("bot_user_id")
+            team_info = token_result.get("team", {})
+            team_name = team_info.get("name", "Unknown Team")
+            team_id = team_info.get("id", "unknown")
+
+            logger.info(f"Slack OAuth successful for team: {team_name} ({team_id})")
+
+            # Store the integration data if user_id provided in state
+            db_store_success = False
+            if oauth_data.state:
+                try:
+                    db_store_success = await _store_slack_integration(
+                        oauth_data.state, access_token, team_id, team_name, token_result
+                    )
+                    if not db_store_success:
+                        logger.warning(
+                            f"⚠️ Failed to store Slack integration data for user {oauth_data.state}"
+                        )
+                except Exception as e:
+                    logger.error(f"❌ Error storing Slack integration: {e}")
+
+            result = {
+                "team_name": team_name,
+                "team_id": team_id,
+                "installation_id": oauth_data.state,
+                "status": "processed",
+                "message": "Slack OAuth processed successfully",
+                "stored_in_database": db_store_success,
+            }
+
+            logger.info(
+                f"Slack OAuth processed successfully: team={team_name}, state={oauth_data.state}"
+            )
+
+            return result
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error processing Slack OAuth callback: {e}", exc_info=True)
         raise HTTPException(
             status_code=500, detail=f"Slack OAuth callback processing failed: {str(e)}"
         )
+
+
+async def _store_slack_integration(
+    user_id: str,
+    access_token: str,
+    team_id: str,
+    team_name: str,
+    token_data: dict,
+) -> bool:
+    """
+    Store Slack integration data in oauth_tokens table
+
+    Args:
+        user_id: User ID who authorized the integration
+        access_token: Slack access token
+        team_id: Slack team/workspace ID
+        team_name: Slack team/workspace name
+        token_data: Full token response from Slack
+
+    Returns:
+        bool: True if stored successfully, False otherwise
+    """
+    try:
+        supabase = get_supabase_client()
+        if not supabase:
+            logger.error("❌ Supabase client not available for Slack integration storage")
+            return False
+
+        # First, ensure the Slack integration exists
+        slack_integration_result = (
+            supabase.table("integrations").select("*").eq("integration_id", "slack").execute()
+        )
+
+        if not slack_integration_result.data:
+            # Create the Slack integration if it doesn't exist
+            logger.info("📝 Creating Slack integration entry")
+            integration_data = {
+                "integration_id": "slack",
+                "integration_type": "slack",
+                "name": "Slack Integration",
+                "description": "Slack workspace integration for messaging and automation",
+                "version": "1.0",
+                "configuration": {
+                    "api_version": "v2",
+                    "callback_url": "/api/v1/public/webhooks/slack/auth",
+                    "scopes": token_data.get("scope", "").split(",")
+                    if token_data.get("scope")
+                    else [],
+                },
+                "supported_operations": [
+                    "channels:read",
+                    "channels:write",
+                    "chat:write",
+                    "users:read",
+                    "team:read",
+                ],
+                "required_scopes": ["chat:write"],
+                "active": True,
+                "verified": True,
+            }
+
+            integration_result = supabase.table("integrations").insert(integration_data).execute()
+
+            if not integration_result.data:
+                logger.error("❌ Failed to create Slack integration")
+                return False
+
+        # Check if this user already has a Slack integration token for this team
+        existing_token_result = (
+            supabase.table("oauth_tokens")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("integration_id", "slack")
+            .execute()
+        )
+
+        # Prepare the token data
+        oauth_token_data = {
+            "user_id": user_id,
+            "integration_id": "slack",
+            "provider": "slack",
+            "access_token": access_token,
+            "token_type": "bearer",
+            "credential_data": {
+                "team_id": team_id,
+                "team_name": team_name,
+                "scope": token_data.get("scope", ""),
+                "bot_user_id": token_data.get("bot_user_id"),
+                "app_id": token_data.get("app_id"),
+                "enterprise": token_data.get("enterprise"),
+                "is_enterprise_install": token_data.get("is_enterprise_install", False),
+                "callback_timestamp": "now()",
+            },
+            "is_active": True,
+        }
+
+        if existing_token_result.data:
+            # Update existing record
+            logger.info(f"🔄 Updating existing Slack integration for user {user_id}")
+
+            update_result = (
+                supabase.table("oauth_tokens")
+                .update(oauth_token_data)
+                .eq("user_id", user_id)
+                .eq("integration_id", "slack")
+                .execute()
+            )
+
+            if not update_result.data:
+                logger.error("❌ Failed to update Slack integration record")
+                return False
+
+            logger.info(
+                f"✅ Slack integration updated successfully - team: {team_name}, user_id: {user_id}"
+            )
+        else:
+            # Insert new record
+            logger.info(f"➕ Creating new Slack integration record for user {user_id}")
+
+            insert_result = supabase.table("oauth_tokens").insert(oauth_token_data).execute()
+
+            if not insert_result.data:
+                logger.error("❌ Failed to store Slack integration record")
+                return False
+
+            logger.info(
+                f"✅ Slack integration stored successfully - team: {team_name}, user_id: {user_id}"
+            )
+
+        return True
+
+    except Exception as e:
+        logger.error(f"❌ Error storing Slack integration data: {str(e)}", exc_info=True)
+        return False

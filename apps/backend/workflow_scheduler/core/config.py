@@ -110,6 +110,33 @@ class Settings(BaseSettings):
         description="Slack bot token",
         validation_alias=AliasChoices("DEFAULT_SLACK_BOT_TOKEN", "slack_bot_token"),
     )
+    slack_client_id: str = Field(
+        default="",
+        description="Slack OAuth client ID",
+        validation_alias=AliasChoices("SLACK_CLIENT_ID", "slack_client_id"),
+    )
+    slack_client_secret: str = Field(
+        default="",
+        description="Slack OAuth client secret",
+        validation_alias=AliasChoices("SLACK_CLIENT_SECRET", "slack_client_secret"),
+    )
+    slack_redirect_uri: str = Field(
+        default="",
+        description="Slack OAuth redirect URI",
+        validation_alias=AliasChoices("SLACK_REDIRECT_URI", "slack_redirect_uri"),
+    )
+
+    # Google OAuth Configuration (for Calendar integration)
+    google_client_id: str = Field(
+        default="",
+        description="Google OAuth Client ID",
+        validation_alias=AliasChoices("GOOGLE_CLIENT_ID", "google_client_id"),
+    )
+    google_client_secret: str = Field(
+        default="",
+        description="Google OAuth Client Secret",
+        validation_alias=AliasChoices("GOOGLE_CLIENT_SECRET", "google_client_secret"),
+    )
 
     # APScheduler Configuration
     scheduler_timezone: str = Field(default="UTC", description="Scheduler timezone")
@@ -152,6 +179,13 @@ class Settings(BaseSettings):
             "client_id": self.github_client_id,
             "private_key": self.github_app_private_key,
             "webhook_secret": self.github_webhook_secret,
+        }
+
+    def get_google_config(self) -> Dict[str, str]:
+        """Get Google OAuth configuration"""
+        return {
+            "client_id": self.google_client_id,
+            "client_secret": self.google_client_secret,
         }
 
 

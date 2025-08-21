@@ -72,7 +72,6 @@ class ExternalActionSubtype(str, Enum):
     NOTION = "NOTION"
 
     # Generic Actions
-    API_CALL = "API_CALL"
     WEBHOOK = "WEBHOOK"
     NOTIFICATION = "NOTIFICATION"
 

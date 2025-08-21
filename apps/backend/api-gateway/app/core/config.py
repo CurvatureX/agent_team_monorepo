@@ -177,6 +177,20 @@ class ServiceSettings(BaseSettings):
         description="Slack signing secret for webhook verification",
     )
 
+    # Google OAuth Integration
+    GOOGLE_CLIENT_ID: str = Field(
+        default_factory=lambda: os.getenv("GOOGLE_CLIENT_ID", ""),
+        description="Google OAuth client ID",
+    )
+    GOOGLE_CLIENT_SECRET: str = Field(
+        default_factory=lambda: os.getenv("GOOGLE_CLIENT_SECRET", ""),
+        description="Google OAuth client secret",
+    )
+    GOOGLE_REDIRECT_URI: str = Field(
+        default_factory=lambda: os.getenv("GOOGLE_REDIRECT_URI", ""),
+        description="Google OAuth redirect URI",
+    )
+
     # Elasticsearch Configuration
     ELASTICSEARCH_HOST: str = Field(default="localhost", description="Elasticsearch主机")
     ELASTICSEARCH_PORT: int = Field(default=9200, description="Elasticsearch端口")
