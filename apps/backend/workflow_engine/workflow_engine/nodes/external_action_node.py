@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 if TYPE_CHECKING:
     from ..services.oauth2_service_lite import OAuth2ServiceLite
 
-from shared.models.node_enums import NodeType, ExternalActionSubtype
+from shared.models.node_enums import ExternalActionSubtype, NodeType
 from shared.node_specs import node_spec_registry
 from shared.node_specs.base import NodeSpec
 
@@ -48,7 +48,7 @@ def _ensure_api_adapters():
 
 # Import new shared SDKs
 try:
-    from shared.sdks import ApiCallSDK, EmailSDK, GitHubSDK, GoogleCalendarSDK, SlackSDK
+    from shared.sdks import ApiCallSDK, EmailSDK, GitHubSDK, GoogleCalendarSDK, NotionSDK, SlackSDK
 
     SDK_AVAILABLE = True
 except ImportError as e:
@@ -58,6 +58,7 @@ except ImportError as e:
     SlackSDK = None
     EmailSDK = None
     ApiCallSDK = None
+    NotionSDK = None
     SDK_AVAILABLE = False
 
 
@@ -92,6 +93,8 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                     self._sdks["email"] = EmailSDK()
                 if ApiCallSDK is not None:
                     self._sdks["api_call"] = ApiCallSDK()
+                if NotionSDK is not None:
+                    self._sdks["notion"] = NotionSDK()
 
                 self.logger.info(
                     f"Initialized {len(self._sdks)} shared SDKs for external actions: {list(self._sdks.keys())}"
@@ -116,7 +119,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         """Get the node specification for external action nodes."""
         if node_spec_registry and self._subtype:
             # Return the specific spec for current subtype
-            return node_spec_registry.get_spec("EXTERNAL_ACTION_NODE", self._subtype)
+            return node_spec_registry.get_spec(NodeType.EXTERNAL_ACTION.value, self._subtype)
         return None
 
     def get_supported_subtypes(self) -> List[str]:
@@ -338,6 +341,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 ExternalActionSubtype.SLACK.value,
                 ExternalActionSubtype.EMAIL.value,
                 ExternalActionSubtype.API_CALL.value,
+                ExternalActionSubtype.NOTION.value,
             ]
             if self._sdks and subtype in sdk_supported_subtypes:
                 return await self._execute_with_sdk(context, logs, start_time)
@@ -395,6 +399,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
             ExternalActionSubtype.SLACK.value: ("slack", self._prepare_slack_operation),
             ExternalActionSubtype.EMAIL.value: ("email", self._prepare_email_operation),
             ExternalActionSubtype.API_CALL.value: ("api_call", self._prepare_api_call_operation),
+            ExternalActionSubtype.NOTION.value: ("notion", self._prepare_notion_operation),
         }
 
         if subtype not in subtype_mapping:
@@ -462,7 +467,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         """Prepare GitHub operation and parameters."""
         # Use get_resolved_parameters to resolve all template variables at once
         resolved_params = context.get_resolved_parameters()
-        
+
         action = resolved_params.get("action", "")
         repository = resolved_params.get("repository", "")
         owner = resolved_params.get("owner", "")
@@ -657,6 +662,36 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 parameters["password"] = password
 
         return "generic_call", parameters
+
+    def _prepare_notion_operation(
+        self, context: NodeExecutionContext
+    ) -> tuple[str, Dict[str, Any]]:
+        """Prepare Notion operation and parameters."""
+        # Use get_resolved_parameters to resolve all template variables at once
+        resolved_params = context.get_resolved_parameters()
+
+        action_type = resolved_params.get("action_type", "")
+
+        parameters = {
+            "action_type": action_type,
+            "query": resolved_params.get("query"),
+            "page_id": resolved_params.get("page_id"),
+            "database_id": resolved_params.get("database_id"),
+            "parent_id": resolved_params.get("parent_id"),
+            "parent_type": resolved_params.get("parent_type", "page"),
+            "properties": resolved_params.get("properties", {}),
+            "content": resolved_params.get("content", {}),
+            "block_operations": resolved_params.get("block_operations", []),
+            "search_filter": resolved_params.get("search_filter", {}),
+            "database_query": resolved_params.get("database_query", {}),
+            "include_content": resolved_params.get("include_content", False),
+            "limit": resolved_params.get("limit", 10),
+        }
+
+        # Remove None values to keep parameters clean
+        parameters = {k: v for k, v in parameters.items() if v is not None}
+
+        return action_type, parameters
 
     async def _get_credentials_for_sdk(
         self, context: NodeExecutionContext, provider: str, user_id: str

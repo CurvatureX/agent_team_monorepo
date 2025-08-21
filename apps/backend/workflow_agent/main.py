@@ -77,8 +77,29 @@ def setup_logging():
         # Use JSON formatter for structured logging
         formatter = JSONFormatter()
     else:
-        # Use simple format for development
-        formatter = logging.Formatter(
+        # Use simple format for development with extra fields support
+        class SimpleFormatterWithExtras(logging.Formatter):
+            def format(self, record):
+                # Start with base format
+                s = super().format(record)
+                
+                # Add extra fields if present
+                extras = []
+                if hasattr(record, 'session_id'):
+                    extras.append(f"session_id={record.session_id}")
+                if hasattr(record, 'error'):
+                    extras.append(f"error={record.error}")
+                if hasattr(record, 'error_type'):
+                    extras.append(f"error_type={record.error_type}")
+                if hasattr(record, 'tracking_id'):
+                    extras.append(f"tracking_id={record.tracking_id}")
+                
+                if extras:
+                    s += " | " + " | ".join(extras)
+                    
+                return s
+        
+        formatter = SimpleFormatterWithExtras(
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s - %(pathname)s:%(lineno)d'
         )
     

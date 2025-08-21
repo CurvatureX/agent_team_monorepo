@@ -141,6 +141,42 @@ class ServiceSettings(BaseSettings):
     NODE_KNOWLEDGE_DEFAULT_THRESHOLD: float = Field(default=0.5, description="节点知识库默认阈值")
     MCP_MAX_RESULTS_PER_TOOL: int = Field(default=100, description="MCP工具最大结果数")
 
+    # Notion Integration
+    NOTION_ACCESS_TOKEN: str = Field(
+        default_factory=lambda: os.getenv("NOTION_ACCESS_TOKEN", ""),
+        description="Notion integration access token",
+    )
+    NOTION_CLIENT_ID: str = Field(
+        default_factory=lambda: os.getenv("NOTION_CLIENT_ID", ""),
+        description="Notion OAuth client ID",
+    )
+    NOTION_CLIENT_SECRET: str = Field(
+        default_factory=lambda: os.getenv("NOTION_CLIENT_SECRET", ""),
+        description="Notion OAuth client secret",
+    )
+    NOTION_REDIRECT_URI: str = Field(
+        default_factory=lambda: os.getenv("NOTION_REDIRECT_URI", ""),
+        description="Notion OAuth redirect URI",
+    )
+
+    # Slack Integration
+    SLACK_CLIENT_ID: str = Field(
+        default_factory=lambda: os.getenv("SLACK_CLIENT_ID", ""),
+        description="Slack OAuth client ID",
+    )
+    SLACK_CLIENT_SECRET: str = Field(
+        default_factory=lambda: os.getenv("SLACK_CLIENT_SECRET", ""),
+        description="Slack OAuth client secret",
+    )
+    SLACK_REDIRECT_URI: str = Field(
+        default_factory=lambda: os.getenv("SLACK_REDIRECT_URI", ""),
+        description="Slack OAuth redirect URI",
+    )
+    SLACK_SIGNING_SECRET: str = Field(
+        default_factory=lambda: os.getenv("SLACK_SIGNING_SECRET", ""),
+        description="Slack signing secret for webhook verification",
+    )
+
     # Elasticsearch Configuration
     ELASTICSEARCH_HOST: str = Field(default="localhost", description="Elasticsearch主机")
     ELASTICSEARCH_PORT: int = Field(default=9200, description="Elasticsearch端口")

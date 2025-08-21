@@ -190,6 +190,60 @@ variable "github_client_id" {
   default     = ""
 }
 
+variable "slack_bot_token" {
+  description = "Slack bot token for notifications"
+  type        = string
+  sensitive   = true
+}
+
+variable "slack_client_id" {
+  description = "Slack OAuth client ID for app installation"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "slack_client_secret" {
+  description = "Slack OAuth client secret for app installation"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "slack_signing_secret" {
+  description = "Slack signing secret for webhook verification"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "slack_redirect_uri" {
+  description = "Slack OAuth redirect URI"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "notion_client_id" {
+  description = "Notion integration client ID for OAuth"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "notion_client_secret" {
+  description = "Notion integration client secret for OAuth"
+  type        = string
+  sensitive   = true
+}
+
+variable "notion_redirect_uri" {
+  description = "Notion OAuth redirect URI"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 # Monitoring Configuration
 variable "alert_email" {
   description = "Email address for CloudWatch alerts"

@@ -230,6 +230,18 @@ resource "aws_ecs_task_definition" "api_gateway" {
         {
           name      = "SUPABASE_ANON_KEY"
           valueFrom = aws_ssm_parameter.supabase_anon_key.arn
+        },
+        {
+          name      = "NOTION_CLIENT_ID"
+          valueFrom = aws_ssm_parameter.notion_client_id.arn
+        },
+        {
+          name      = "NOTION_REDIRECT_URI"
+          valueFrom = aws_ssm_parameter.notion_redirect_uri.arn
+        },
+        {
+          name      = "SLACK_SIGNING_SECRET"
+          valueFrom = aws_ssm_parameter.slack_signing_secret.arn
         }
       ]
 
@@ -678,6 +690,10 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
         {
           name      = "GITHUB_CLIENT_ID"
           valueFrom = aws_ssm_parameter.github_client_id.arn
+        },
+        {
+          name      = "DEFAULT_SLACK_BOT_TOKEN"
+          valueFrom = aws_ssm_parameter.slack_bot_token.arn
         }
       ]
 

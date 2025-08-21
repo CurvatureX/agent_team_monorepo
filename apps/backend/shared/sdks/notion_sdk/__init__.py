@@ -1,54 +1,31 @@
 """
-Notion SDK for workflow automation.
+Notion SDK for workflow integration.
 
-This SDK provides comprehensive Notion integration including:
-- Database management (list, query, create)
-- Page management (create, get, update, archive)
-- Block management (get, append, update, delete)
-- Search functionality
-- User management
-- OAuth2 authentication support
+This package provides Notion API integration with OAuth2 authentication support.
 """
 
-from .client import NotionSDK
+from .client import NotionClient
 from .exceptions import (
-    NotionError,
+    NotionAPIError,
     NotionAuthError,
-    NotionPermissionError,
-    NotionNotFoundError,
-    NotionValidationError,
+    NotionObjectNotFoundError,
     NotionRateLimitError,
-    NotionConflictError,
-    NotionServerError,
-    NotionConnectionError,
+    NotionValidationError,
 )
-from .models import (
-    Database,
-    Page,
-    Block,
-    User,
-    RichText,
-    SearchResult,
-    QueryResult,
-)
+from .models import NotionBlock, NotionDatabase, NotionPage, NotionProperty, NotionUser
+from .oauth2_client import NotionOAuth2SDK
 
-__version__ = "1.0.0"
 __all__ = [
-    "NotionSDK",
-    "NotionError",
+    "NotionClient",
+    "NotionOAuth2SDK",
+    "NotionAPIError",
     "NotionAuthError",
-    "NotionPermissionError",
-    "NotionNotFoundError",
-    "NotionValidationError",
+    "NotionObjectNotFoundError",
     "NotionRateLimitError",
-    "NotionConflictError",
-    "NotionServerError",
-    "NotionConnectionError",
-    "Database",
-    "Page",
-    "Block",
-    "User",
-    "RichText",
-    "SearchResult",
-    "QueryResult",
+    "NotionValidationError",
+    "NotionPage",
+    "NotionDatabase",
+    "NotionBlock",
+    "NotionUser",
+    "NotionProperty",
 ]

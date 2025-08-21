@@ -361,6 +361,153 @@ SLACK_SPEC = NodeSpec(
     ],
 )
 
+# Notion - Notion workspace operations
+NOTION_SPEC = NodeSpec(
+    node_type=NodeType.EXTERNAL_ACTION,
+    subtype=ExternalActionSubtype.NOTION,
+    description="Search Notion content, create and update pages with rich blocks, query databases with advanced filtering, and manage workspace content using Notion API directly",
+    display_name="Notion Workspace",
+    category="productivity",
+    template_id="external_notion",
+    parameters=[
+        ParameterDef(
+            name="action_type",
+            type=ParameterType.ENUM,
+            required=True,
+            enum_values=[
+                "search",
+                "page_get",
+                "page_create",
+                "page_update",
+                "database_get",
+                "database_query",
+            ],
+            description="Notion operation type",
+        ),
+        ParameterDef(
+            name="access_token",
+            type=ParameterType.STRING,
+            required=True,
+            description="Notion integration access token (sensitive)",
+        ),
+        ParameterDef(
+            name="query",
+            type=ParameterType.STRING,
+            required=False,
+            description="Search query text (for search operations)",
+        ),
+        ParameterDef(
+            name="page_id",
+            type=ParameterType.STRING,
+            required=False,
+            description="Notion page ID (for page operations)",
+        ),
+        ParameterDef(
+            name="database_id",
+            type=ParameterType.STRING,
+            required=False,
+            description="Notion database ID (for database operations)",
+        ),
+        ParameterDef(
+            name="parent_id",
+            type=ParameterType.STRING,
+            required=False,
+            description="Parent page/database ID (for page creation)",
+        ),
+        ParameterDef(
+            name="parent_type",
+            type=ParameterType.ENUM,
+            required=False,
+            default_value="page",
+            enum_values=["page", "database"],
+            description="Type of parent for page creation",
+        ),
+        ParameterDef(
+            name="properties",
+            type=ParameterType.JSON,
+            required=False,
+            default_value={},
+            description="Page properties (title, status, tags, etc.)",
+        ),
+        ParameterDef(
+            name="content",
+            type=ParameterType.JSON,
+            required=False,
+            default_value={},
+            description="Page content configuration (blocks and mode)",
+        ),
+        ParameterDef(
+            name="block_operations",
+            type=ParameterType.JSON,
+            required=False,
+            default_value=[],
+            description="Advanced block operations for precise page editing",
+        ),
+        ParameterDef(
+            name="search_filter",
+            type=ParameterType.JSON,
+            required=False,
+            default_value={},
+            description="Search filtering options (object_type, property, value)",
+        ),
+        ParameterDef(
+            name="database_query",
+            type=ParameterType.JSON,
+            required=False,
+            default_value={},
+            description="Database query configuration (filter, sorts, limit)",
+        ),
+        ParameterDef(
+            name="include_content",
+            type=ParameterType.BOOLEAN,
+            required=False,
+            default_value=False,
+            description="Include page/block content in results",
+        ),
+        ParameterDef(
+            name="limit",
+            type=ParameterType.INTEGER,
+            required=False,
+            default_value=10,
+            description="Maximum results to return (1-100)",
+        ),
+    ],
+    input_ports=[
+        InputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            required=False,
+            description="Dynamic Notion operation data and parameters",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"dynamic_properties": "object", "dynamic_content": "object", "template_vars": "object"}',
+                examples=[
+                    '{"dynamic_properties": {"Name": {"title": [{"text": {"content": "Generated Title"}}]}}, "dynamic_content": {"blocks": [...]}, "template_vars": {"user_name": "John"}}'
+                ],
+            ),
+        )
+    ],
+    output_ports=[
+        OutputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            description="Notion operation result",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"action": "string", "result": "object", "status": "string", "operations_performed": "array"}',
+                examples=[
+                    '{"action": "page_create", "result": {"id": "page-123", "url": "https://notion.so/page-123"}, "status": "success", "operations_performed": ["created_page"]}'
+                ],
+            ),
+        ),
+        OutputPortSpec(
+            name="error",
+            type=ConnectionType.ERROR,
+            description="Error output when Notion operation fails",
+        ),
+    ],
+)
+
 # Google Calendar - Google Calendar operations
 GOOGLE_CALENDAR_SPEC = NodeSpec(
     node_type=NodeType.EXTERNAL_ACTION,

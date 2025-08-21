@@ -122,6 +122,86 @@ resource "aws_ssm_parameter" "github_client_id" {
   })
 }
 
+resource "aws_ssm_parameter" "slack_bot_token" {
+  name  = "/${local.name_prefix}/slack/bot-token"
+  type  = "SecureString"
+  value = var.slack_bot_token
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-slack-bot-token"
+  })
+}
+
+resource "aws_ssm_parameter" "slack_client_id" {
+  name  = "/${local.name_prefix}/slack/client-id"
+  type  = "SecureString"
+  value = var.slack_client_id
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-slack-client-id"
+  })
+}
+
+resource "aws_ssm_parameter" "slack_client_secret" {
+  name  = "/${local.name_prefix}/slack/client-secret"
+  type  = "SecureString"
+  value = var.slack_client_secret
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-slack-client-secret"
+  })
+}
+
+resource "aws_ssm_parameter" "slack_signing_secret" {
+  name  = "/${local.name_prefix}/slack/signing-secret"
+  type  = "SecureString"
+  value = var.slack_signing_secret
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-slack-signing-secret"
+  })
+}
+
+resource "aws_ssm_parameter" "slack_redirect_uri" {
+  name  = "/${local.name_prefix}/slack/redirect-uri"
+  type  = "SecureString"
+  value = var.slack_redirect_uri
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-slack-redirect-uri"
+  })
+}
+
+resource "aws_ssm_parameter" "notion_client_id" {
+  name  = "/${local.name_prefix}/notion/client-id"
+  type  = "SecureString"
+  value = var.notion_client_id
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-notion-client-id"
+  })
+}
+
+resource "aws_ssm_parameter" "notion_client_secret" {
+  name  = "/${local.name_prefix}/notion/client-secret"
+  type  = "SecureString"
+  value = var.notion_client_secret
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-notion-client-secret"
+  })
+}
+
+resource "aws_ssm_parameter" "notion_redirect_uri" {
+  name  = "/${local.name_prefix}/notion/redirect-uri"
+  type  = "SecureString"
+  value = var.notion_redirect_uri
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-notion-redirect-uri"
+  })
+}
+
 # IAM policy for ECS tasks to access SSM parameters
 resource "aws_iam_policy" "ecs_ssm_policy" {
   name        = "${local.name_prefix}-ecs-ssm-policy"

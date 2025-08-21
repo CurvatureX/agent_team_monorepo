@@ -42,6 +42,14 @@ class UserIntegrationsResponse(BaseModel):
     total_count: int
 
 
+class InstallLinksResponse(BaseModel):
+    """Integration install links response model"""
+
+    github: str
+    notion: str
+    slack: str
+
+
 @router.get(
     "/integrations",
     response_model=UserIntegrationsResponse,
@@ -135,6 +143,89 @@ async def get_user_integrations(deps: AuthenticatedDeps = Depends()):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve user integrations",
+        )
+
+
+@router.get(
+    "/integrations/install-links",
+    response_model=InstallLinksResponse,
+    summary="Get Integration Install Links",
+    description="""
+    Get installation links for integrating external services into the system.
+
+    Currently supports:
+    - GitHub App installation with user context
+    - Notion workspace integration with OAuth flow
+    - Slack workspace integration with OAuth flow
+
+    The links include the user_id as state parameter for proper OAuth flow.
+
+    Requires authentication via Supabase JWT token.
+    """,
+)
+async def get_install_links(deps: AuthenticatedDeps = Depends()):
+    """
+    Get installation links for external integrations.
+
+    Returns:
+        InstallLinksResponse with installation URLs
+    """
+    try:
+        user_id = deps.user_data["id"]
+        logger.info(f"🔗 Generating install links for user {user_id}")
+
+        # Generate GitHub App installation link with user_id as state
+        github_install_url = f"https://github.com/apps/starmates/installations/new?state={user_id}"
+
+        # Generate Notion OAuth link with user_id as state
+        # Notion OAuth requires these parameters:
+        # - client_id: Your Notion integration's OAuth client ID
+        # - redirect_uri: Must match exactly what's configured in Notion
+        # - response_type: Always "code" for authorization code flow
+        # - owner: "user" (for personal workspaces only) or omit to allow user/organization selection
+        # - state: Optional state parameter for security/user tracking
+
+        from app.core.config import get_settings
+
+        settings = get_settings()
+
+        notion_oauth_url = (
+            f"https://api.notion.com/v1/oauth/authorize"
+            f"?client_id={settings.NOTION_CLIENT_ID}"
+            f"&redirect_uri={settings.NOTION_REDIRECT_URI}"
+            f"&response_type=code"
+            f"&state={user_id}"
+        )
+
+        # Generate Slack OAuth link with user_id as state
+        # Slack OAuth requires these parameters:
+        # - client_id: Your Slack app's client ID
+        # - scope: Permissions requested (comma-separated)
+        # - redirect_uri: Must match exactly what's configured in Slack app
+        # - response_type: Always "code" for authorization code flow
+        # - state: Optional state parameter for security/user tracking
+
+        slack_oauth_url = (
+            f"https://slack.com/oauth/v2/authorize"
+            f"?client_id={settings.SLACK_CLIENT_ID}"
+            f"&scope=app_mentions:read,assistant:write,calls:read,calls:write,chat:write,reminders:read,reminders:write,im:read,chat:write.public"
+            f"&user_scope=email,identity.basic"
+            f"&redirect_uri={settings.SLACK_REDIRECT_URI}"
+            f"&response_type=code"
+            f"&state={user_id}"
+        )
+
+        logger.info(f"✅ Generated install links for user {user_id}")
+
+        return InstallLinksResponse(
+            github=github_install_url, notion=notion_oauth_url, slack=slack_oauth_url
+        )
+
+    except Exception as e:
+        logger.error(f"❌ Error generating install links: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate install links",
         )
 
 
