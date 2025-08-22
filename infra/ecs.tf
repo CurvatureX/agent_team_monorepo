@@ -649,7 +649,7 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
           value = "http://${aws_lb.internal.dns_name}:8000"
         },
         {
-          name  = "redis_url"
+          name  = "REDIS_URL"
           value = "redis://${aws_elasticache_cluster.redis.cache_nodes[0].address}:6379/1"
         },
         {
