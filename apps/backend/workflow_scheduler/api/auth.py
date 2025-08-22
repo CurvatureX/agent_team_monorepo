@@ -114,6 +114,10 @@ async def slack_oauth_callback(
             "redirect_uri": settings.slack_redirect_uri,
         }
 
+        logger.info(
+            f"🔧 Slack OAuth token exchange request - client_id: {settings.slack_client_id}, redirect_uri: {settings.slack_redirect_uri}"
+        )
+
         headers = {
             "Content-Type": "application/x-www-form-urlencoded",
             "Accept": "application/json",
