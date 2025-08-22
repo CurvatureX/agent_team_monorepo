@@ -2,7 +2,7 @@ import json
 import logging
 import uuid
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -15,12 +15,35 @@ from shared.models.trigger import ExecutionResult, TriggerType
 from shared.models.trigger_index import TriggerIndex
 from workflow_scheduler.core.config import settings
 from workflow_scheduler.core.database import async_session_factory
-from workflow_scheduler.core.supabase_client import query_github_triggers
+from workflow_scheduler.core.supabase_client import get_supabase_client, query_github_triggers
 from workflow_scheduler.dependencies import get_trigger_manager
 from workflow_scheduler.services.trigger_manager import TriggerManager
 
-# Import system UUID for consistent system identification
-SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001"
+# Note: We now use the actual workflow owner's user_id from the database
+
+
+async def _get_workflow_owner_id(workflow_id: str) -> Optional[str]:
+    """Get the workflow owner's user_id from the database"""
+    try:
+        supabase = get_supabase_client()
+        if not supabase:
+            logger.error("Supabase client not available")
+            return None
+
+        response = supabase.table("workflows").select("user_id").eq("id", workflow_id).execute()
+
+        if response.data and len(response.data) > 0:
+            user_id = response.data[0].get("user_id")
+            logger.info(f"Found workflow owner: {user_id} for workflow {workflow_id}")
+            return str(user_id) if user_id else None
+        else:
+            logger.warning(f"Workflow {workflow_id} not found in database")
+            return None
+
+    except Exception as e:
+        logger.error(f"Error fetching workflow owner for {workflow_id}: {e}", exc_info=True)
+        return None
+
 
 logger = logging.getLogger(__name__)
 
@@ -54,14 +77,23 @@ class GitHubTriggerRequest(BaseModel):
 async def trigger_manual(
     workflow_id: str,
     request: ManualTriggerRequest,
-    user_id: str = SYSTEM_USER_ID,  # System-triggered execution
     trigger_manager: TriggerManager = Depends(get_trigger_manager),
 ):
     """Manually trigger a workflow execution"""
     try:
-        logger.info(f"Manual trigger requested for workflow {workflow_id} by user {user_id}")
+        # Get the workflow owner ID
+        workflow_owner_id = await _get_workflow_owner_id(workflow_id)
+        if not workflow_owner_id:
+            logger.error(f"Could not determine workflow owner for {workflow_id}")
+            raise HTTPException(status_code=400, detail="Could not determine workflow owner")
 
-        result = await trigger_manager.trigger_manual(workflow_id=workflow_id, user_id=user_id)
+        logger.info(
+            f"Manual trigger requested for workflow {workflow_id} by owner {workflow_owner_id}"
+        )
+
+        result = await trigger_manager.trigger_manual(
+            workflow_id=workflow_id, user_id=workflow_owner_id
+        )
 
         return result
 

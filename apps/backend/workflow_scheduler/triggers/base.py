@@ -9,11 +9,11 @@ import httpx
 
 from shared.models.trigger import ExecutionResult, TriggerStatus
 from workflow_scheduler.core.config import settings
+from workflow_scheduler.core.supabase_client import get_supabase_client
 
 logger = logging.getLogger(__name__)
 
-# System UUID for system-triggered workflow executions
-SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001"
+# Note: We now use the actual workflow owner's user_id from the database
 
 
 class BaseTrigger(ABC):
@@ -81,6 +81,30 @@ class BaseTrigger(ABC):
                 trigger_data=trigger_data or {},
             )
 
+    async def _get_workflow_owner_id(self, workflow_id: str) -> Optional[str]:
+        """
+        Get the workflow owner's user_id from the database
+        """
+        try:
+            supabase = get_supabase_client()
+            if not supabase:
+                logger.error("Supabase client not available")
+                return None
+
+            response = supabase.table("workflows").select("user_id").eq("id", workflow_id).execute()
+
+            if response.data and len(response.data) > 0:
+                user_id = response.data[0].get("user_id")
+                logger.info(f"Found workflow owner: {user_id} for workflow {workflow_id}")
+                return str(user_id) if user_id else None
+            else:
+                logger.warning(f"Workflow {workflow_id} not found in database")
+                return None
+
+        except Exception as e:
+            logger.error(f"Error fetching workflow owner for {workflow_id}: {e}", exc_info=True)
+            return None
+
     async def _execute_workflow(
         self, execution_id: str, trigger_data: Optional[Dict[str, Any]] = None
     ) -> ExecutionResult:
@@ -103,11 +127,22 @@ class BaseTrigger(ABC):
                 }
             )
 
+            # Get the workflow owner's user_id
+            workflow_owner_id = await self._get_workflow_owner_id(str(self.workflow_id))
+            if not workflow_owner_id:
+                logger.error(f"Could not determine workflow owner for {self.workflow_id}")
+                return ExecutionResult(
+                    execution_id=execution_id,
+                    status="error",
+                    message="Could not determine workflow owner",
+                    trigger_data=trigger_data or {},
+                )
+
             # Prepare execution payload matching ExecuteWorkflowRequest format
             payload = {
                 "workflow_id": str(self.workflow_id),
                 "trigger_data": formatted_trigger_data,
-                "user_id": SYSTEM_USER_ID,  # System-triggered execution
+                "user_id": workflow_owner_id,  # Use actual workflow owner
             }
 
             # Call workflow_engine execute endpoint
