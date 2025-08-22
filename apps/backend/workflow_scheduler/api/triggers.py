@@ -498,16 +498,105 @@ async def handle_slack_events(
     try:
         team_id = slack_event_data.get("team_id")
         event_data = slack_event_data.get("event_data", {})
+        event_type = event_data.get("type", "unknown")
 
         logger.info(f"Slack event received from API Gateway for team {team_id}")
+        logger.info(f"Processing Slack event type: {event_type}")
 
-        # For now, just acknowledge the event
-        # In the future, this could route to appropriate Slack triggers
+        # Query for workflows with Slack triggers
+        async with async_session_factory() as db_session:
+            query = select(TriggerIndex.workflow_id, TriggerIndex.trigger_config).where(
+                and_(
+                    TriggerIndex.trigger_type == TriggerType.SLACK,
+                    TriggerIndex.is_active == True,
+                )
+            )
+            result = await db_session.execute(query)
+            matching_workflows = result.fetchall()
+
+        if not matching_workflows:
+            logger.info("No Slack triggers found in database")
+            return {
+                "message": "No Slack triggers configured",
+                "team_id": team_id,
+                "processed_workflows": 0,
+                "results": [],
+            }
+
+        # Process each matching workflow
+        results = []
+        processed_workflows = 0
+
+        # Import SlackTrigger here to avoid circular imports
+        from workflow_scheduler.triggers.slack_trigger import SlackTrigger
+
+        for workflow_id, trigger_config in matching_workflows:
+            try:
+                # Create SlackTrigger instance and check if event matches
+                slack_trigger = SlackTrigger(workflow_id, trigger_config)
+
+                # Check if this event should trigger the workflow
+                should_trigger = await slack_trigger.process_slack_event(event_data)
+
+                if should_trigger:
+                    logger.info(f"Slack trigger matched for workflow {workflow_id}")
+
+                    # Execute workflow directly via workflow engine
+                    result = await _execute_workflow_directly(
+                        workflow_id=workflow_id,
+                        trigger_type="SLACK",
+                        trigger_data={
+                            "event_type": event_type,
+                            "payload": event_data,
+                            "team_id": team_id,
+                            "trigger_config": trigger_config,
+                        },
+                    )
+
+                    if result:
+                        results.append(
+                            {
+                                "workflow_id": workflow_id,
+                                "execution_id": result.execution_id,
+                                "status": result.status,
+                                "message": result.message,
+                            }
+                        )
+                        processed_workflows += 1
+
+                        logger.info(
+                            f"Slack workflow executed {workflow_id}: "
+                            f"execution_id={result.execution_id}, status={result.status}"
+                        )
+                else:
+                    logger.debug(
+                        f"Slack event did not match trigger filters for workflow {workflow_id}"
+                    )
+
+            except Exception as e:
+                logger.error(
+                    f"Error processing Slack trigger for workflow {workflow_id}: {e}",
+                    exc_info=True,
+                )
+                results.append(
+                    {
+                        "workflow_id": workflow_id,
+                        "execution_id": None,
+                        "status": "error",
+                        "message": f"Processing failed: {str(e)}",
+                    }
+                )
+
+        logger.info(
+            f"Processed {processed_workflows} Slack workflows from {len(matching_workflows)} triggers"
+        )
+
         return {
             "message": "Slack event processed",
             "team_id": team_id,
-            "processed_triggers": 0,
-            "results": [],
+            "event_type": event_type,
+            "processed_workflows": processed_workflows,
+            "results": results,
         }
 
     except Exception as e:
