@@ -1276,6 +1276,14 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         channel = self.get_parameter_with_spec(context, "channel") or context.get_parameter(
             "channel"
         )
+
+        # Use trigger channel if parameter channel is a placeholder or empty
+        trigger_channel = context.metadata.get("trigger_channel_id")
+        if trigger_channel and (not channel or channel.startswith("example-value")):
+            channel = trigger_channel
+            logs.append(f"Using trigger channel: {channel} (parameter was placeholder/empty)")
+        elif not channel:
+            logs.append("Warning: No channel specified and no trigger channel available")
         user_id = getattr(context, "user_id", None) or context.metadata.get(
             "user_id", "00000000-0000-0000-0000-000000000123"
         )
@@ -1288,9 +1296,19 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         # Add action-specific parameters
         if action == "send_message":
             message_data = context.get_parameter("message_data", {})
+
+            # Get message text with fallback for placeholder values
+            message_text = message_data.get("text", context.get_parameter("text", ""))
+            if not message_text or message_text.startswith("example-value"):
+                # Use a contextual message based on trigger data
+                trigger_data = context.metadata.get("trigger_data", {})
+                trigger_type = trigger_data.get("trigger_type", "unknown")
+                message_text = f"🤖 Workflow triggered by {trigger_type} event"
+                logs.append(f"Using default message (parameter was placeholder): {message_text}")
+
             api_parameters.update(
                 {
-                    "text": message_data.get("text", context.get_parameter("text", "")),
+                    "text": message_text,
                     "blocks": message_data.get("blocks", context.get_parameter("blocks", [])),
                     "attachments": message_data.get(
                         "attachments", context.get_parameter("attachments", [])
