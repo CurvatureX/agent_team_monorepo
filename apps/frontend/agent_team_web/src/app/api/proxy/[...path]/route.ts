@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // Use environment variable for backend URL
-const BACKEND_URL = process.env.BACKEND_API_URL || 'http://agent-prod-alb-352817645.us-east-1.elb.amazonaws.com/api';
+const BACKEND_URL = process.env.BACKEND_API_URL || 'https://api.starmates.ai/api';
 
 async function handler(
   request: NextRequest,
@@ -16,9 +16,11 @@ async function handler(
   try {
     const headers = new Headers();
     
-    // Forward important headers
-    const authHeader = request.headers.get('authorization');
+    // Forward important headers (check both cases)
+    const authHeader = request.headers.get('authorization') || request.headers.get('Authorization');
+    
     if (authHeader) {
+      // Ensure proper capitalization for backend
       headers.set('Authorization', authHeader);
     }
     headers.set('Content-Type', 'application/json');
@@ -44,6 +46,21 @@ async function handler(
     
     console.log('Backend response status:', response.status);
     
+    // Log error details for authentication failures
+    if (response.status === 401 || response.status === 403) {
+      const errorText = await response.text();
+      console.error('Authentication error from backend:', {
+        status: response.status,
+        statusText: response.statusText,
+        body: errorText.substring(0, 200),
+        sentAuth: headers.get('Authorization') ? 'Yes' : 'No'
+      });
+      return NextResponse.json(
+        JSON.parse(errorText),
+        { status: response.status }
+      );
+    }
+    
     // Handle redirects on the server side
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get('location');
@@ -52,7 +69,12 @@ async function handler(
       if (location) {
         // If it's redirecting to the full backend URL, follow it server-side
         if (location.startsWith('http')) {
-          const redirectResponse = await fetch(location, {
+          // Force HTTPS for security (backend incorrectly redirects to HTTP)
+          const secureLocation = location.replace(/^http:\/\//, 'https://');
+          console.log('Following redirect to:', secureLocation);
+          console.log('Redirect auth present:', headers.get('Authorization') ? 'Yes' : 'No');
+          
+          const redirectResponse = await fetch(secureLocation, {
             method: request.method,
             headers,
             body,
