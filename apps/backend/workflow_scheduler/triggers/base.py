@@ -9,7 +9,6 @@ import httpx
 
 from shared.models.trigger import ExecutionResult, TriggerStatus
 from workflow_scheduler.core.config import settings
-from workflow_scheduler.services.notification_service import NotificationService
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +22,6 @@ class BaseTrigger(ABC):
         self.enabled = trigger_config.get("enabled", True)
         self.status = TriggerStatus.PENDING
         self._client = httpx.AsyncClient(timeout=30.0)
-        self._notification_service = NotificationService()
 
     @property
     @abstractmethod
@@ -51,7 +49,6 @@ class BaseTrigger(ABC):
     ) -> ExecutionResult:
         """
         Trigger workflow execution by calling workflow_engine HTTP API
-        Also sends optional notification based on configuration
         """
         if not self.enabled:
             logger.warning(
@@ -64,24 +61,8 @@ class BaseTrigger(ABC):
         execution_id = f"exec_{uuid.uuid4()}"
 
         try:
-            # 1. Execute workflow first
+            # Execute workflow
             execution_result = await self._execute_workflow(execution_id, trigger_data)
-
-            # 2. Send notification if workflow execution was successful (optional)
-            if execution_result.status == "started":
-                try:
-                    await self._notification_service.send_trigger_notification(
-                        workflow_id=self.workflow_id,
-                        trigger_type=self.trigger_type,
-                        trigger_data=trigger_data or {},
-                    )
-                    logger.info(f"📧 Notification sent for workflow {self.workflow_id}")
-                except Exception as notification_error:
-                    logger.warning(
-                        f"Notification failed (workflow still executed): {notification_error}"
-                    )
-                    # Don't fail the whole trigger if notification fails
-
             return execution_result
 
         except Exception as e:
