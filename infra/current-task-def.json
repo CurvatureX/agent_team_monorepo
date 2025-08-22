@@ -1,0 +1,123 @@
+{
+    "family": "agent-prod-api-gateway",
+    "taskRoleArn": "arn:aws:iam::982081090398:role/agent-prod-ecs-task-role",
+    "executionRoleArn": "arn:aws:iam::982081090398:role/agent-prod-ecs-task-execution-role",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "cpu": "512",
+    "memory": "1024",
+    "containerDefinitions": [
+        {
+            "name": "api-gateway",
+            "image": "982081090398.dkr.ecr.us-east-1.amazonaws.com/agent-team/api-gateway:284eb96e65ade0e59de0b20eb38b87ef42d533d9",
+            "cpu": 0,
+            "portMappings": [
+                {
+                    "containerPort": 8000,
+                    "hostPort": 8000,
+                    "protocol": "tcp"
+                }
+            ],
+            "essential": true,
+            "environment": [
+                {
+                    "name": "LOG_FORMAT",
+                    "value": "json"
+                },
+                {
+                    "name": "AWS_REGION",
+                    "value": "us-east-1"
+                },
+                {
+                    "name": "PYTHONUNBUFFERED",
+                    "value": "1"
+                },
+                {
+                    "name": "OTEL_SDK_DISABLED",
+                    "value": "true"
+                },
+                {
+                    "name": "WORKFLOW_SERVICE_DNS_NAME",
+                    "value": "workflow-agent.agent-prod.local"
+                },
+                {
+                    "name": "WORKFLOW_ENGINE_URL",
+                    "value": "http://internal-agent-prod-int-alb-118700787.us-east-1.elb.amazonaws.com:8002"
+                },
+                {
+                    "name": "WORKFLOW_SCHEDULER_URL",
+                    "value": "http://internal-agent-prod-int-alb-118700787.us-east-1.elb.amazonaws.com:8003"
+                },
+                {
+                    "name": "ENVIRONMENT",
+                    "value": "production"
+                },
+                {
+                    "name": "WORKFLOW_AGENT_URL",
+                    "value": "http://internal-agent-prod-int-alb-118700787.us-east-1.elb.amazonaws.com:8001"
+                },
+                {
+                    "name": "DEBUG",
+                    "value": "false"
+                },
+                {
+                    "name": "LOG_LEVEL",
+                    "value": "INFO"
+                },
+                {
+                    "name": "REDIS_URL",
+                    "value": "redis://agent-prod-redis.mqc7z9.0001.use1.cache.amazonaws.com:6379/0"
+                }
+            ],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "secrets": [
+                {
+                    "name": "SUPABASE_URL",
+                    "valueFrom": "arn:aws:ssm:us-east-1:982081090398:parameter/agent-prod/supabase/url"
+                },
+                {
+                    "name": "SUPABASE_SECRET_KEY",
+                    "valueFrom": "arn:aws:ssm:us-east-1:982081090398:parameter/agent-prod/supabase/secret-key"
+                },
+                {
+                    "name": "SUPABASE_ANON_KEY",
+                    "valueFrom": "arn:aws:ssm:us-east-1:982081090398:parameter/agent-prod/supabase/anon-key"
+                },
+                {
+                    "name": "NOTION_CLIENT_ID",
+                    "valueFrom": "arn:aws:ssm:us-east-1:982081090398:parameter/agent-prod/notion/client-id"
+                },
+                {
+                    "name": "NOTION_REDIRECT_URI",
+                    "valueFrom": "arn:aws:ssm:us-east-1:982081090398:parameter/agent-prod/notion/redirect-uri"
+                },
+                {
+                    "name": "SLACK_SIGNING_SECRET",
+                    "valueFrom": "arn:aws:ssm:us-east-1:982081090398:parameter/agent-prod/slack/signing-secret"
+                }
+            ],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/agent-prod",
+                    "awslogs-region": "us-east-1",
+                    "awslogs-stream-prefix": "api-gateway"
+                }
+            },
+            "healthCheck": {
+                "command": [
+                    "CMD-SHELL",
+                    "curl -f http://localhost:8000/health || exit 1"
+                ],
+                "interval": 30,
+                "timeout": 5,
+                "retries": 3,
+                "startPeriod": 60
+            },
+            "systemControls": []
+        }
+    ]
+}

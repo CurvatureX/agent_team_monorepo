@@ -502,6 +502,7 @@ async def handle_slack_events(
 
         logger.info(f"Slack event received from API Gateway for team {team_id}")
         logger.info(f"Processing Slack event type: {event_type}")
+        logger.info(f"Full event data: {event_data}")
 
         # Query for workflows with Slack triggers
         async with async_session_factory() as db_session:

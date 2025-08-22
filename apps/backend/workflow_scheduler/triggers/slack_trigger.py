@@ -117,12 +117,19 @@ class SlackTrigger(BaseTrigger):
             bool: True if the event matches and should trigger the workflow
         """
         try:
+            logger.info(f"🔍 Processing Slack event for workflow {self.workflow_id}")
+            logger.info(f"📦 Event data structure: {event_data}")
+
             event_type = event_data.get("type", "")
+            logger.info(f"🏷️  Event type extracted: '{event_type}'")
+            logger.info(f"🎯 Expected event types: {self.event_types}")
 
             # Event type filter
             if event_type not in self.event_types:
-                logger.debug(f"Event type {event_type} not in {self.event_types}")
+                logger.info(f"❌ Event type '{event_type}' not in expected types {self.event_types}")
                 return False
+
+            logger.info(f"✅ Event type '{event_type}' matches expected types")
 
             # Channel filter
             channel_id = event_data.get("channel", "")
