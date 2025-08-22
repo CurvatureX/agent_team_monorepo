@@ -157,23 +157,26 @@ class NotificationService:
     ) -> list:
         """Generate Slack blocks for rich message formatting"""
 
+        # Ensure workflow_id is a string (handle UUID objects from database)
+        workflow_id_str = str(workflow_id)
+
         # Header block with emoji and title
         blocks = [
             SlackBlockBuilder.header(f"🚀 Workflow Triggered"),
             SlackBlockBuilder.section(
-                f"*Workflow ID:* `{workflow_id}`\n*Trigger Type:* {display_trigger_type}\n*Time:* {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"
+                f"*Workflow ID:* `{workflow_id_str}`\n*Trigger Type:* {display_trigger_type}\n*Time:* {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}"
             ),
         ]
 
         # Add trigger-specific details
         trigger_details = []
 
-        if "CRON" in workflow_id.upper():
+        if "CRON" in workflow_id_str.upper():
             cron_expr = trigger_data.get("cron_expression", "Unknown")
             timezone = trigger_data.get("timezone", "UTC")
             trigger_details.extend([f"*Cron Expression:* `{cron_expr}`", f"*Timezone:* {timezone}"])
 
-        elif "MANUAL" in workflow_id.upper():
+        elif "MANUAL" in workflow_id_str.upper():
             user_id = trigger_data.get("user_id", "Unknown")
             confirmation = trigger_data.get("confirmation", False)
             trigger_details.extend(
@@ -183,7 +186,7 @@ class NotificationService:
                 ]
             )
 
-        elif "WEBHOOK" in workflow_id.upper():
+        elif "WEBHOOK" in workflow_id_str.upper():
             method = trigger_data.get("method", "Unknown")
             path = trigger_data.get("path", "Unknown")
             remote_addr = trigger_data.get("remote_addr", "Unknown")
@@ -191,7 +194,7 @@ class NotificationService:
                 [f"*HTTP Method:* {method}", f"*Path:* `{path}`", f"*Remote IP:* {remote_addr}"]
             )
 
-        elif "GITHUB" in workflow_id.upper():
+        elif "GITHUB" in workflow_id_str.upper():
             event_type = trigger_data.get("event_type", "Unknown")
             payload = trigger_data.get("payload", {})
             repository = payload.get("repository", {}).get("full_name", "Unknown")
