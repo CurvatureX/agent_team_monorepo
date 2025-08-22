@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { FcGoogle } from "react-icons/fc";
 import { Loader2 } from "lucide-react";
@@ -22,6 +22,7 @@ interface LoginSupabaseProps {
   googleText?: string;
   signupText?: string;
   redirectUrl?: string;
+  defaultMode?: "signin" | "signup";
 }
 
 const LoginSupabase = ({
@@ -36,16 +37,22 @@ const LoginSupabase = ({
   googleText = "Sign in with Google",
   signupText = "Don't have an account?",
   redirectUrl = "/workflow-editor",
+  defaultMode = "signin",
 }: LoginSupabaseProps) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(defaultMode === "signup");
   
   const { signIn, signUp } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
   const supabase = createClient();
+
+  // Update isSignUp when defaultMode changes
+  useEffect(() => {
+    setIsSignUp(defaultMode === "signup");
+  }, [defaultMode]);
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,9 +140,12 @@ const LoginSupabase = ({
   };
 
   return (
-    <section className="bg-muted bg-background h-screen">
-      <div className="flex h-full items-center justify-center">
-        <div className="border-muted bg-background flex w-full max-w-sm flex-col items-center gap-y-8 rounded-md border px-6 py-12 shadow-md">
+    <section className="min-h-screen bg-background transition-colors duration-300">
+      {/* Background Gradient Overlay - same as homepage */}
+      <div className="fixed inset-0 bg-[radial-gradient(125%_125%_at_50%_101%,rgba(245,87,2,0.1)_10.5%,rgba(245,120,2,0.08)_16%,rgba(245,140,2,0.06)_17.5%,rgba(245,170,100,0.04)_25%,rgba(238,174,202,0.02)_40%,rgba(202,179,214,0.01)_65%,rgba(148,201,233,0.005)_100%)] dark:bg-[radial-gradient(125%_125%_at_50%_101%,rgba(245,87,2,0.05)_10.5%,rgba(245,120,2,0.04)_16%,rgba(245,140,2,0.03)_17.5%,rgba(245,170,100,0.02)_25%,rgba(238,174,202,0.01)_40%,rgba(202,179,214,0.005)_65%,rgba(148,201,233,0.002)_100%)] pointer-events-none" />
+      
+      <div className="relative z-10 flex h-screen items-center justify-center">
+        <div className="border-muted bg-background/95 backdrop-blur-sm flex w-full max-w-sm flex-col items-center gap-y-8 rounded-md border px-6 py-12 shadow-md">
           <div className="flex flex-col items-center gap-y-2">
             {/* Logo */}
             <div className="flex items-center gap-1 lg:justify-start">
