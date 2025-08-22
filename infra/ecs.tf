@@ -706,6 +706,22 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
         {
           name      = "DEFAULT_SLACK_BOT_TOKEN"
           valueFrom = aws_ssm_parameter.slack_bot_token.arn
+        },
+        {
+          name      = "SLACK_CLIENT_ID"
+          valueFrom = aws_ssm_parameter.slack_client_id.arn
+        },
+        {
+          name      = "SLACK_CLIENT_SECRET"
+          valueFrom = aws_ssm_parameter.slack_client_secret.arn
+        },
+        {
+          name      = "SLACK_REDIRECT_URI"
+          valueFrom = aws_ssm_parameter.slack_redirect_uri.arn
+        },
+        {
+          name      = "SLACK_SIGNING_SECRET"
+          valueFrom = aws_ssm_parameter.slack_signing_secret.arn
         }
       ]
 
