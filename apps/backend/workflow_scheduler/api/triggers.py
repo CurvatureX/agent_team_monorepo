@@ -499,10 +499,46 @@ async def handle_slack_events(
         team_id = slack_event_data.get("team_id")
         event_data = slack_event_data.get("event_data", {})
         event_type = event_data.get("type", "unknown")
+        event_id = event_data.get("event_id", "")
+        event_time = event_data.get("event_time", 0)
 
         logger.info(f"Slack event received from API Gateway for team {team_id}")
-        logger.info(f"Processing Slack event type: {event_type}")
+        logger.info(f"Processing Slack event type: {event_type}, event_id: {event_id}")
         logger.info(f"Full event data: {event_data}")
+
+        # Check for duplicate event processing using event_id
+        if event_id:
+            # Use a simple in-memory cache for recent events (production would use Redis)
+            import time
+
+            current_time = time.time()
+
+            # Simple duplicate detection - store event_id with timestamp
+            if not hasattr(handle_slack_events, "_processed_events"):
+                handle_slack_events._processed_events = {}
+
+            # Clean old events (older than 5 minutes)
+            cutoff_time = current_time - 300  # 5 minutes
+            handle_slack_events._processed_events = {
+                eid: timestamp
+                for eid, timestamp in handle_slack_events._processed_events.items()
+                if timestamp > cutoff_time
+            }
+
+            # Check if this event was already processed
+            if event_id in handle_slack_events._processed_events:
+                logger.info(f"🔄 Duplicate Slack event detected: {event_id}, skipping processing")
+                return {
+                    "message": "Duplicate event, already processed",
+                    "event_id": event_id,
+                    "team_id": team_id,
+                    "processed_workflows": 0,
+                    "results": [],
+                }
+
+            # Mark this event as processed
+            handle_slack_events._processed_events[event_id] = current_time
+            logger.info(f"✅ New Slack event {event_id} marked for processing")
 
         # Query for workflows with Slack triggers
         async with async_session_factory() as db_session:
@@ -542,17 +578,8 @@ async def handle_slack_events(
                 if should_trigger:
                     logger.info(f"Slack trigger matched for workflow {workflow_id}")
 
-                    # Execute workflow directly via workflow engine
-                    result = await _execute_workflow_directly(
-                        workflow_id=workflow_id,
-                        trigger_type="SLACK",
-                        trigger_data={
-                            "event_type": event_type,
-                            "payload": event_data,
-                            "team_id": team_id,
-                            "trigger_config": trigger_config,
-                        },
-                    )
+                    # Execute workflow via SlackTrigger method (includes proper channel context)
+                    result = await slack_trigger.trigger_from_slack_event(event_data)
 
                     if result:
                         results.append(
