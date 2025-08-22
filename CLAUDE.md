@@ -269,6 +269,98 @@ psql $SUPABASE_DATABASE_URL -c "SELECT version();"
 4. **Infrastructure**: `infra/` - Terraform configurations for AWS deployment
 5. **Database Schema**: `supabase/migrations/` - Database structure and RLS policies
 
+## OAuth Integration & External Service Checklist
+
+### Adding New OAuth Providers (Slack, GitHub, Notion, etc.)
+
+**1. GitHub Secrets Configuration**
+- [ ] Add all OAuth secrets to GitHub repository secrets:
+  - `{PROVIDER}_CLIENT_ID`
+  - `{PROVIDER}_CLIENT_SECRET`
+  - `{PROVIDER}_REDIRECT_URI`
+  - `{PROVIDER}_SIGNING_SECRET` (if applicable)
+- [ ] Verify secrets are accessible in GitHub Actions environment
+
+**2. Terraform Infrastructure Updates**
+- [ ] Add variables to `infra/variables.tf`:
+  ```hcl
+  variable "{provider}_client_id" {
+    description = "{Provider} OAuth client ID"
+    type        = string
+    sensitive   = true
+    default     = ""
+  }
+  ```
+- [ ] Add SSM parameters to `infra/secrets.tf`:
+  ```hcl
+  resource "aws_ssm_parameter" "{provider}_client_id" {
+    name  = "/${local.name_prefix}/{provider}/client-id"
+    type  = "SecureString"
+    value = var.{provider}_client_id
+  }
+  ```
+- [ ] Add environment variables to **ALL** relevant ECS task definitions in `infra/ecs.tf`:
+  - API Gateway (if generating install links)
+  - Workflow Scheduler (if handling OAuth callbacks)
+  - Any other service that needs OAuth credentials
+
+**3. GitHub Actions Workflow Updates**
+- [ ] Add environment variables to `.github/workflows/deploy.yml`:
+  ```yaml
+  TF_VAR_{provider}_client_id: ${{ secrets.{PROVIDER}_CLIENT_ID }}
+  TF_VAR_{provider}_client_secret: ${{ secrets.{PROVIDER}_CLIENT_SECRET }}
+  ```
+- [ ] Add to both `Terraform Plan` and `Terraform Apply` steps
+
+**4. Service Configuration Updates**
+- [ ] Add OAuth settings to service configuration files (`core/config.py`)
+- [ ] Update service-specific environment variable handling
+- [ ] Ensure proper error handling for missing OAuth credentials
+
+**5. Deployment & Testing Checklist**
+- [ ] Deploy infrastructure changes through proper CI/CD (not manual AWS CLI)
+- [ ] Verify SSM parameters are created with correct values
+- [ ] Check ECS task definitions include all required environment variables
+- [ ] Test OAuth install links generate with correct client IDs
+- [ ] Test OAuth callback flow completes successfully
+- [ ] Verify OAuth tokens are stored in database correctly
+
+### Common OAuth Integration Pitfalls
+
+❌ **Don't Do This:**
+- Manually updating ECS task definitions via AWS CLI
+- Adding secrets to only one service when multiple services need them
+- Forgetting to add environment variables to GitHub Actions workflow
+- Using placeholder values in terraform.tfvars for sensitive data
+
+✅ **Do This:**
+- Always use GitHub Secrets → GitHub Actions → Terraform → SSM → ECS flow
+- Add OAuth environment variables to ALL services that need them
+- Test the complete OAuth flow end-to-end after deployment
+- Use descriptive variable names and consistent naming conventions
+
+### Debugging OAuth Issues
+
+**When OAuth fails with "invalid_client_id" or similar:**
+1. Check GitHub Secrets are properly configured
+2. Verify GitHub Actions workflow includes the new TF_VAR mappings
+3. Confirm SSM parameters exist and have correct values:
+   ```bash
+   aws ssm get-parameter --name "/agent-prod/{provider}/client-id" --with-decryption
+   ```
+4. Check ECS task definition includes the environment variable:
+   ```bash
+   aws ecs describe-task-definition --task-definition {service}:latest
+   ```
+5. Verify service logs show environment variables are loaded (not empty)
+
+### Service-Specific OAuth Requirements
+
+- **API Gateway**: Needs OAuth credentials for generating install links (`/integrations/install-links`)
+- **Workflow Scheduler**: Needs OAuth credentials for handling callbacks (`/auth/{provider}/callback`)
+- **Workflow Agent**: May need credentials for AI-driven OAuth operations
+- **Workflow Engine**: Usually doesn't need OAuth credentials directly
+
 ## Migration History
 
 ### Major Architectural Changes
@@ -276,5 +368,6 @@ psql $SUPABASE_DATABASE_URL -c "SELECT version();"
 - **Three-Layer API Architecture**: Public/App/MCP authentication layers
 - **Node Specification System**: Centralized validation with automatic type conversion
 - **Workflow Scheduler Addition**: Dedicated trigger management service
+- **OAuth Integration Standardization**: Comprehensive checklist for external service integrations
 
 Remember: Each service has its own detailed `CLAUDE.md` file with service-specific guidance. Always check the service-specific documentation for detailed implementation patterns and best practices.
