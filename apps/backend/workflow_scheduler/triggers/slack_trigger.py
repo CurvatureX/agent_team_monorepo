@@ -65,7 +65,7 @@ class SlackTrigger(BaseTrigger):
             from workflow_scheduler.services.slack_event_router import SlackEventRouter
 
             # Get the global Slack event router instance
-            slack_router = SlackEventRouter.get_instance()
+            slack_router = await SlackEventRouter.get_instance()
 
             # Register this trigger with the router
             await slack_router.register_trigger(workspace_id=self.workspace_id, trigger=self)
@@ -79,7 +79,7 @@ class SlackTrigger(BaseTrigger):
                 f"❌ Failed to start SlackTrigger for workflow {self.workflow_id}: {e}",
                 exc_info=True,
             )
-            self.status = TriggerStatus.FAILED
+            self.status = TriggerStatus.ERROR
             return False
 
     async def stop(self) -> bool:
@@ -91,7 +91,7 @@ class SlackTrigger(BaseTrigger):
             from workflow_scheduler.services.slack_event_router import SlackEventRouter
 
             # Get the global Slack event router instance
-            slack_router = SlackEventRouter.get_instance()
+            slack_router = await SlackEventRouter.get_instance()
 
             # Unregister this trigger from the router
             await slack_router.unregister_trigger(workspace_id=self.workspace_id, trigger=self)

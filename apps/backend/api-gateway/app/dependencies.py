@@ -3,7 +3,7 @@ FastAPI Dependencies for Dependency Injection
 依赖注入函数，遵循FastAPI最佳实践
 """
 
-from typing import Any, Dict, Generator, Optional
+from typing import Any, Dict, Optional
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -195,7 +195,12 @@ async def get_mcp_api_key(request: Request) -> Optional[str]:
     # 2. 检查Authorization Bearer头部
     auth_header = request.headers.get("Authorization")
     if auth_header and auth_header.startswith("Bearer "):
-        return auth_header.split(" ")[1]
+        # Safe token extraction to handle malformed Authorization headers
+        parts = auth_header.split(" ", 1)  # Split only on first space
+        if len(parts) == 2:
+            token = parts[1].strip()
+            return token if token else None
+        return None
 
     # 3. 检查查询参数（不推荐，仅用于测试）
     api_key = request.query_params.get("api_key")

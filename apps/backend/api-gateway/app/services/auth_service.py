@@ -4,14 +4,37 @@ JWT Token Verification for Frontend Authentication with Caching
 """
 
 import hashlib
+import logging
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from app.core.database import get_supabase
 from app.services.cache import cache_service
-import logging
 
 logger = logging.getLogger("app.services.auth_service")
+
+
+def _validate_jwt_format(token: str) -> bool:
+    """
+    Validate JWT token format before sending to Supabase
+    JWT should have exactly 3 segments separated by dots
+    """
+    if not token or not isinstance(token, str):
+        return False
+
+    # JWT tokens should have exactly 3 parts separated by dots
+    parts = token.split(".")
+    if len(parts) != 3:
+        return False
+
+    # Each part should be non-empty
+    if any(not part or part.strip() == "" for part in parts):
+        return False
+
+    # Basic length check - JWT parts are typically base64 encoded and have minimum lengths
+    if any(len(part) < 4 for part in parts):
+        return False
+
+    return True
 
 
 async def verify_supabase_token(token: str, use_cache: bool = True) -> Optional[Dict[str, Any]]:
@@ -27,6 +50,22 @@ async def verify_supabase_token(token: str, use_cache: bool = True) -> Optional[
         User data if token is valid, None otherwise
     """
     try:
+        # Log token analysis for debugging
+        token_info = {
+            "token_length": len(token) if token else 0,
+            "token_prefix": token[:10] + "..." if token and len(token) > 10 else token,
+            "segment_count": len(token.split(".")) if token else 0,
+        }
+        logger.debug(f"JWT token analysis: {token_info}")
+
+        # Early validation of JWT format
+        if not _validate_jwt_format(token):
+            logger.warning(
+                f"Invalid JWT token format: token does not contain exactly 3 segments. "
+                f"Token info: {token_info}"
+            )
+            return None
+
         # Create token hash for caching
         token_hash = hashlib.sha256(token.encode()).hexdigest()
 
@@ -39,13 +78,13 @@ async def verify_supabase_token(token: str, use_cache: bool = True) -> Optional[
 
         # Token not in cache or cache disabled, verify with Supabase
         # Create a new Supabase client to avoid DNS caching issues
-        from supabase import create_client
         from app.core.config import settings
-        
+        from supabase import create_client
+
         if not settings.SUPABASE_URL or not settings.SUPABASE_SECRET_KEY:
             logger.error("Supabase configuration missing")
             return None
-            
+
         # Create client with retry for DNS issues
         max_retries = 3
         for attempt in range(max_retries):
@@ -55,8 +94,12 @@ async def verify_supabase_token(token: str, use_cache: bool = True) -> Optional[
                 break
             except Exception as e:
                 if "name resolution" in str(e) and attempt < max_retries - 1:
-                    logger.warning(f"DNS resolution failed, retrying... (attempt {attempt + 1}/{max_retries})")
+                    logger.warning(
+                        f"DNS resolution failed, retrying... "
+                        f"(attempt {attempt + 1}/{max_retries})"
+                    )
                     import time
+
                     time.sleep(1)  # Wait 1 second before retry
                     continue
                 else:
@@ -67,8 +110,14 @@ async def verify_supabase_token(token: str, use_cache: bool = True) -> Optional[
                 "id": response.user.id,  # AuthUser expects 'id' field
                 "sub": response.user.id,
                 "email": response.user.email,
-                "email_confirmed_at": response.user.email_confirmed_at.isoformat() if response.user.email_confirmed_at else None,
-                "created_at": response.user.created_at.isoformat() if response.user.created_at else None,
+                "email_confirmed_at": (
+                    response.user.email_confirmed_at.isoformat()
+                    if response.user.email_confirmed_at
+                    else None
+                ),
+                "created_at": (
+                    response.user.created_at.isoformat() if response.user.created_at else None
+                ),
                 "user_metadata": response.user.user_metadata,
                 "app_metadata": response.user.app_metadata,
                 # Add token validation metadata

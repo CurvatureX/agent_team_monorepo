@@ -3,21 +3,43 @@ Authentication Middleware for Three-Layer API Architecture
 支持多种认证方式：Supabase OAuth、API Key、无认证
 """
 
-import hashlib
-import time
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app.core.config import get_settings
+from app.services.auth_service import verify_supabase_token
+from fastapi import Request
+from fastapi.responses import JSONResponse
 
 settings = get_settings()
-import logging
-
-from app.services.auth_service import verify_supabase_token
-
 logger = logging.getLogger("app.middleware.auth")
-from fastapi import HTTPException, Request
-from fastapi.responses import JSONResponse
+
+
+def log_jwt_issue_summary(error_type: str, client_info: dict, additional_data: dict = None):
+    """
+    Log JWT issues in a structured format for monitoring and alerting
+
+    Args:
+        error_type: Type of JWT issue (malformed_token, empty_token, etc.)
+        client_info: Client information (IP, user agent, path)
+        additional_data: Additional data specific to the error type
+    """
+    summary = {
+        "event": "jwt_auth_failure",
+        "error_type": error_type,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "client_info": client_info,
+    }
+
+    if additional_data:
+        summary.update(additional_data)
+
+    # Use a specific logger for monitoring systems to pick up
+    monitoring_logger = logging.getLogger("app.monitoring.jwt_auth")
+    monitoring_logger.warning(f"JWT_AUTH_FAILURE: {summary}")
+
+    return summary
 
 
 class AuthResult:
@@ -177,24 +199,163 @@ class MCPAuthenticator:
 mcp_authenticator = MCPAuthenticator()
 
 
+def _validate_jwt_format_middleware(token: str) -> bool:
+    """
+    Validate JWT token format in middleware
+    JWT should have exactly 3 segments separated by dots
+    """
+    if not token or not isinstance(token, str):
+        return False
+
+    # JWT tokens should have exactly 3 parts separated by dots
+    parts = token.split(".")
+    if len(parts) != 3:
+        return False
+
+    # Each part should be non-empty
+    if any(not part or part.strip() == "" for part in parts):
+        return False
+
+    # Basic length check - JWT parts are typically base64 encoded and have minimum lengths
+    if any(len(part) < 4 for part in parts):
+        return False
+
+    return True
+
+
 async def authenticate_supabase_user(request: Request) -> AuthResult:
     """Supabase OAuth 用户认证"""
     try:
+        # Get client info for logging
+        client_ip = request.headers.get(
+            "X-Real-IP", request.headers.get("X-Forwarded-For", "unknown")
+        )
+        user_agent = request.headers.get("User-Agent", "unknown")[:100]  # Truncate long agents
+
         # 提取 Bearer Token
         auth_header = request.headers.get("Authorization")
+
+        # Log authorization header analysis
+        header_info = {
+            "path": request.url.path,
+            "method": request.method,
+            "client_ip": client_ip.split(",")[0].strip() if client_ip != "unknown" else "unknown",
+            "user_agent_prefix": user_agent,
+            "has_auth_header": bool(auth_header),
+            "auth_header_length": len(auth_header) if auth_header else 0,
+            "starts_with_bearer": auth_header.startswith("Bearer ") if auth_header else False,
+        }
+        logger.debug(f"Auth request analysis: {header_info}")
+
         if not auth_header or not auth_header.startswith("Bearer "):
+            logger.info(f"Missing or invalid Authorization header: {header_info}")
             return AuthResult(success=False, error="missing_token")
 
-        token = auth_header.split(" ")[1]
+        # Safe token extraction to handle malformed Authorization headers
+        parts = auth_header.split(" ", 1)  # Split only on first space
+        if len(parts) != 2:
+            logger.warning(
+                f"Malformed Authorization header: missing token after 'Bearer'. "
+                f"Header: '{auth_header[:50]}...', Parts count: {len(parts)}, "
+                f"Client: {header_info['client_ip']}"
+            )
+            return AuthResult(success=False, error="malformed_auth_header")
+
+        token = parts[1].strip()
+        if not token:
+            logger.warning(
+                f"Empty token in Authorization header. "
+                f"Header: '{auth_header[:50]}...', Token after strip: '{token}', "
+                f"Client: {header_info['client_ip']}"
+            )
+
+            # Log for monitoring systems
+            log_jwt_issue_summary(
+                error_type="empty_jwt_token",
+                client_info={
+                    "ip": header_info["client_ip"],
+                    "user_agent": header_info["user_agent_prefix"],
+                    "path": header_info["path"],
+                    "method": header_info["method"],
+                },
+                additional_data={
+                    "auth_header_preview": auth_header[:50] + "..."
+                    if len(auth_header) > 50
+                    else auth_header
+                },
+            )
+
+            return AuthResult(success=False, error="empty_token")
+
+        # Log token extraction details
+        token_details = {
+            "token_length": len(token),
+            "token_prefix": token[:20] + "..." if len(token) > 20 else token,
+            "token_suffix": "..." + token[-10:] if len(token) > 30 else "",
+            "segment_count": len(token.split(".")),
+            "appears_base64": all(c.isalnum() or c in "-_=" for c in token.replace(".", "")),
+        }
+        logger.debug(f"Token extraction details: {token_details}")
+
+        # Early validation of JWT format to prevent malformed tokens from reaching Supabase
+        if not _validate_jwt_format_middleware(token):
+            # Log detailed information about malformed tokens for pattern analysis
+            malformed_pattern = {
+                "error_type": "malformed_jwt_token",
+                "client_ip": header_info["client_ip"],
+                "user_agent": header_info["user_agent_prefix"],
+                "path": header_info["path"],
+                "token_analysis": token_details,
+                "common_issues": {
+                    "too_few_segments": len(token.split(".")) < 3,
+                    "too_many_segments": len(token.split(".")) > 3,
+                    "empty_segments": any(not seg.strip() for seg in token.split(".")),
+                    "too_short_segments": any(len(seg) < 4 for seg in token.split(".")),
+                },
+            }
+            logger.warning(f"Malformed JWT token pattern detected: {malformed_pattern}")
+
+            # Log for monitoring systems
+            log_jwt_issue_summary(
+                error_type="malformed_jwt_token",
+                client_info={
+                    "ip": header_info["client_ip"],
+                    "user_agent": header_info["user_agent_prefix"],
+                    "path": header_info["path"],
+                    "method": header_info["method"],
+                },
+                additional_data={
+                    "token_length": token_details["token_length"],
+                    "segment_count": token_details["segment_count"],
+                    "pattern_analysis": malformed_pattern["common_issues"],
+                },
+            )
+
+            return AuthResult(success=False, error="malformed_token")
 
         # 验证 JWT Token
         user_data = await verify_supabase_token(token)
         if not user_data:
+            logger.info(
+                f"JWT token validation failed with Supabase. "
+                f"Client: {header_info['client_ip']}, Path: {header_info['path']}, "
+                f"Token length: {len(token)}, Segments: {len(token.split('.'))}"
+            )
             return AuthResult(success=False, error="invalid_token")
 
         # 检查用户状态
         if not user_data.get("email_confirmed", True):  # 默认为True以兼容测试
+            logger.info(
+                f"Email not confirmed for user: {user_data.get('email', 'unknown')} "
+                f"from {header_info['client_ip']}"
+            )
             return AuthResult(success=False, error="email_not_confirmed")
+
+        # Log successful authentication
+        logger.info(
+            f"Successful JWT authentication: user={user_data.get('email', 'unknown')}, "
+            f"client={header_info['client_ip']}, path={header_info['path']}"
+        )
 
         return AuthResult(success=True, user=user_data, token=token)
 
@@ -212,7 +373,12 @@ async def authenticate_mcp_client(request: Request) -> AuthResult:
             # 尝试从Authorization header获取
             auth_header = request.headers.get("Authorization")
             if auth_header and auth_header.startswith("Bearer "):
-                api_key = auth_header.split(" ")[1]
+                # Safe token extraction to handle malformed Authorization headers
+                parts = auth_header.split(" ", 1)  # Split only on first space
+                if len(parts) == 2:
+                    api_key = parts[1].strip()
+                    if not api_key:
+                        api_key = None  # Empty token
 
         if not api_key:
             # 尝试从查询参数获取（不推荐，仅用于测试）
@@ -317,14 +483,37 @@ async def unified_auth_middleware(request: Request, call_next):
         if not auth_result.success:
             logger.warning(f"Supabase auth failed: {path} - {auth_result.error}")
 
-            return JSONResponse(
-                status_code=401,
-                content={
-                    "error": "unauthorized",
-                    "message": f"Authentication failed: {auth_result.error}",
-                    "required_auth": "Bearer token via Authorization header",
-                },
-            )
+            # Provide more specific error messages for different failure types
+            if auth_result.error in ["malformed_token", "malformed_auth_header", "empty_token"]:
+                error_messages = {
+                    "malformed_token": (
+                        "Invalid JWT token format: "
+                        "token must contain exactly 3 segments separated by dots"
+                    ),
+                    "malformed_auth_header": (
+                        "Malformed Authorization header: " "format must be 'Bearer <token>'"
+                    ),
+                    "empty_token": (
+                        "Empty token in Authorization header: " "token cannot be blank"
+                    ),
+                }
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": "bad_request",
+                        "message": error_messages.get(auth_result.error, "Invalid request format"),
+                        "required_auth": "Bearer token via Authorization header",
+                    },
+                )
+            else:
+                return JSONResponse(
+                    status_code=401,
+                    content={
+                        "error": "unauthorized",
+                        "message": f"Authentication failed: {auth_result.error}",
+                        "required_auth": "Bearer token via Authorization header",
+                    },
+                )
 
         # 添加用户信息到请求状态
         request.state.user = auth_result.user

@@ -5,16 +5,24 @@ Chat API endpoints with integrated workflow agent
 
 import json
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Any, Dict
 
 from app.core.database import create_user_supabase_client
 from app.dependencies import AuthenticatedDeps, get_session_id
 from app.exceptions import NotFoundError, ValidationError
 from app.models import (
-    ChatHistory, ChatMessage, ChatRequest, MessageType,
-    ChatSSEEvent, SSEEventType, ChatStreamResponse,
-    MessageEventData, StatusChangeEventData, WorkflowEventData,
-    ErrorEventData, DebugEventData
+    ChatHistory,
+    ChatMessage,
+    ChatRequest,
+    ChatSSEEvent,
+    ChatStreamResponse,
+    DebugEventData,
+    ErrorEventData,
+    MessageEventData,
+    MessageType,
+    SSEEventType,
+    StatusChangeEventData,
+    WorkflowEventData,
 )
 from app.utils.logger import get_logger
 from app.utils.sse import create_mock_chat_stream, format_sse_event
@@ -26,10 +34,7 @@ router = APIRouter()
 
 
 def create_sse_event(
-    event_type: SSEEventType,
-    data: Dict[str, Any],
-    session_id: str,
-    is_final: bool = False
+    event_type: SSEEventType, data: Dict[str, Any], session_id: str, is_final: bool = False
 ) -> ChatSSEEvent:
     """创建类型化的SSE事件"""
     return ChatSSEEvent(
@@ -37,7 +42,7 @@ def create_sse_event(
         data=data,
         session_id=session_id,
         timestamp=datetime.now(timezone.utc).isoformat(),
-        is_final=is_final
+        is_final=is_final,
     )
 
 
@@ -54,12 +59,12 @@ def create_sse_event(
                     "schema": {
                         "type": "string",
                         "format": "event-stream",
-                        "example": "data: {\"type\":\"message\",\"data\":{\"text\":\"Hello\",\"role\":\"assistant\"},\"session_id\":\"123\",\"timestamp\":\"2025-07-31T00:00:00Z\"}\n\n"
+                        "example": 'data: {"type":"message","data":{"text":"Hello","role":"assistant"},"session_id":"123","timestamp":"2025-07-31T00:00:00Z"}\n\n',
                     }
                 }
-            }
+            },
         }
-    }
+    },
 )
 async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depends()):
     """
@@ -150,7 +155,7 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                         "status": "processing",
                         "message": "Connecting to workflow agent...",
                     },
-                    session_id=chat_request.session_id
+                    session_id=chat_request.session_id,
                 )
                 yield format_sse_event(initial_event.model_dump())
 
@@ -180,7 +185,7 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                             event_type=SSEEventType.ERROR,
                             data=error_data,
                             session_id=chat_request.session_id,
-                            is_final=True
+                            is_final=True,
                         )
                         yield format_sse_event(error_event.model_dump())
                         return
@@ -194,10 +199,10 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                                 "previous_stage": status_change.get("previous_stage"),
                                 "current_stage": status_change.get("current_stage"),
                                 "stage_state": status_change.get("stage_state", {}),
-                                "node_name": status_change.get("node_name")
+                                "node_name": status_change.get("node_name"),
                             },
                             session_id=chat_request.session_id,
-                            is_final=response.get("is_final", False)
+                            is_final=response.get("is_final", False),
                         )
                         yield format_sse_event(status_event.model_dump())
                         # 状态变化不需要存储到数据库，继续处理下一个响应
@@ -233,7 +238,7 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                             event_type=SSEEventType.MESSAGE,
                             data={"text": message_content, "role": "assistant"},
                             session_id=chat_request.session_id,
-                            is_final=response.get("is_final", False)
+                            is_final=response.get("is_final", False),
                         )
                         yield format_sse_event(message_event.model_dump())
 
@@ -263,15 +268,19 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                             try:
                                 session_update_result = (
                                     admin_client.table("sessions")
-                                    .update({"workflow_id": workflow_id})
+                                    .update({"source_workflow_id": workflow_id})
                                     .eq("id", chat_request.session_id)
                                     .eq("user_id", deps.current_user.sub)
                                     .execute()
                                 )
                                 if session_update_result.data:
-                                    logger.info(f"✅ Updated session {chat_request.session_id} with workflow_id: {workflow_id}")
+                                    logger.info(
+                                        f"✅ Updated session {chat_request.session_id} with workflow_id: {workflow_id}"
+                                    )
                                 else:
-                                    logger.warning(f"Failed to update session with workflow_id: {workflow_id}")
+                                    logger.warning(
+                                        f"Failed to update session with workflow_id: {workflow_id}"
+                                    )
                             except Exception as e:
                                 logger.warning(f"Failed to update session with workflow_id: {e}")
 
@@ -302,7 +311,7 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                             event_type=SSEEventType.WORKFLOW,
                             data={"text": workflow_message, "workflow": workflow_data},
                             session_id=chat_request.session_id,
-                            is_final=response.get("is_final", False)
+                            is_final=response.get("is_final", False),
                         )
                         yield format_sse_event(workflow_event.model_dump())
 
@@ -317,9 +326,9 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                             event_type=SSEEventType.DEBUG,
                             data={
                                 "message": f"Received unknown response type: {response_type}",
-                                "raw_response": response
+                                "raw_response": response,
                             },
-                            session_id=chat_request.session_id
+                            session_id=chat_request.session_id,
                         )
                         yield format_sse_event(debug_event.model_dump())
 
@@ -329,7 +338,7 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                     event_type=SSEEventType.ERROR,
                     data={"error": str(e), "error_type": "STREAM_ERROR"},
                     session_id=chat_request.session_id,
-                    is_final=True
+                    is_final=True,
                 )
                 yield format_sse_event(error_event.model_dump())
 
@@ -349,6 +358,7 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
         raise
     except Exception as e:
         import traceback
+
         logger.error(f"❌ Error in chat stream: {e}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Internal server error")

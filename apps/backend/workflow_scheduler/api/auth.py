@@ -134,6 +134,7 @@ async def slack_oauth_callback(
                 )
 
             token_result = token_response.json()
+            logger.info(f"Slack OAuth token exchange response: {token_result}")
 
             if not token_result.get("ok"):
                 error = token_result.get("error", "Unknown error")
@@ -144,8 +145,13 @@ async def slack_oauth_callback(
                 )
 
             # Extract OAuth response data
-            access_token = token_result.get("access_token")
-            bot_access_token = token_result.get("bot_user_id")
+            # In Slack OAuth v2, access_token is the bot token when using bot scopes
+            bot_access_token = token_result.get("access_token")  # Bot token (for posting messages)
+            bot_user_id = token_result.get("bot_user_id")
+
+            # User token is under authed_user if user scopes were requested
+            authed_user = token_result.get("authed_user", {})
+            user_access_token = authed_user.get("access_token")  # User token (optional)
             team_info = token_result.get("team", {})
             team_name = team_info.get("name", "Unknown Team")
             team_id = team_info.get("id", "unknown")
@@ -155,16 +161,27 @@ async def slack_oauth_callback(
             # Store the integration data if user_id provided in state
             db_store_success = False
             if oauth_data.state:
+                logger.info(
+                    f"🔄 Attempting to store Slack integration for user_id: {oauth_data.state}"
+                )
                 try:
                     db_store_success = await _store_slack_integration(
-                        oauth_data.state, access_token, team_id, team_name, token_result
+                        oauth_data.state, bot_access_token, team_id, team_name, token_result
                     )
                     if not db_store_success:
                         logger.warning(
                             f"⚠️ Failed to store Slack integration data for user {oauth_data.state}"
                         )
+                    else:
+                        logger.info(
+                            f"✅ Successfully stored Slack integration for user {oauth_data.state}"
+                        )
                 except Exception as e:
-                    logger.error(f"❌ Error storing Slack integration: {e}")
+                    logger.error(f"❌ Error storing Slack integration: {e}", exc_info=True)
+            else:
+                logger.warning(
+                    "⚠️ No state (user_id) provided in OAuth callback - cannot store integration"
+                )
 
             result = {
                 "team_name": team_name,
