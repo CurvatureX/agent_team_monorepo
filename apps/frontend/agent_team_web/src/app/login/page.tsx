@@ -2,9 +2,9 @@
 
 import { LoginSupabase } from "@/components/ui/login-supabase";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 
-export default function LoginPage() {
+function LoginContent() {
   const searchParams = useSearchParams();
   const [defaultMode, setDefaultMode] = useState<"signin" | "signup">("signin");
 
@@ -32,5 +32,17 @@ export default function LoginPage() {
       redirectUrl="/"
       defaultMode={defaultMode}
     />
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex h-screen items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    }>
+      <LoginContent />
+    </Suspense>
   );
 }

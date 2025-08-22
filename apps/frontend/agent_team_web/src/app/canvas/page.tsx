@@ -444,7 +444,7 @@ const CanvasPage = () => {
                   </motion.button>
                   <Workflow className="w-5 h-5 text-primary" />
                   <h3 className="text-lg font-semibold">
-                    {assistants.find((a: Assistant) => a.workflow === currentWorkflow)?.name || ''}&apos;s Workflow
+                    {currentWorkflow.name || 'Untitled'}&apos;s Workflow
                   </h3>
                 </div>
                 <motion.button
@@ -643,9 +643,28 @@ const CanvasPage = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-background z-50"
+            className="fixed inset-0 bg-background z-50 flex flex-col"
           >
-            <div className="w-full h-full">
+            {/* Fullscreen Header */}
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Workflow className="w-5 h-5 text-primary" />
+                <h3 className="text-lg font-semibold">
+                  {currentWorkflow.name || 'Untitled'}&apos;s Workflow
+                </h3>
+              </div>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setIsWorkflowExpanded(false)}
+                className="p-2 hover:bg-accent rounded-lg transition-colors"
+                title="Exit Fullscreen"
+              >
+                <Maximize2 className="w-4 h-4" />
+              </motion.button>
+            </div>
+            {/* Workflow Editor */}
+            <div className="flex-1">
               <WorkflowEditor
                 initialWorkflow={currentWorkflow}
                 onSave={handleWorkflowChange}
