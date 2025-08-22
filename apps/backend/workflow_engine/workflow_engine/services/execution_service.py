@@ -48,7 +48,7 @@ class ExecutionService:
         self.execution_engine = WorkflowExecutionEngine()
         self.workflow_service = WorkflowService(db_session)
 
-    def execute_workflow(self, request: ExecuteWorkflowRequest) -> str:
+    async def execute_workflow(self, request: ExecuteWorkflowRequest) -> str:
         """Execute a workflow and return the execution ID."""
         try:
             self.logger.info(f"Executing workflow: {request.workflow_id}")
@@ -98,7 +98,7 @@ class ExecutionService:
                 self.db.commit()
 
                 # Execute the workflow using the execution engine
-                execution_result = self.execution_engine.execute_workflow(
+                execution_result = await self.execution_engine.execute_workflow(
                     workflow_id=request.workflow_id,
                     execution_id=execution_id,
                     workflow_definition=workflow.dict(),

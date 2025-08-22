@@ -35,7 +35,7 @@ class EnhancedWorkflowExecutionEngine:
         # Performance monitoring
         self.performance_metrics: Dict[str, Dict[str, Any]] = {}
 
-    def execute_workflow(
+    async def execute_workflow(
         self,
         workflow_id: str,
         execution_id: str,
@@ -76,7 +76,7 @@ class EnhancedWorkflowExecutionEngine:
 
             # Execute nodes in order with enhanced tracking
             for node_id in execution_order:
-                node_result = self._execute_node_with_enhanced_tracking(
+                node_result = await self._execute_node_with_enhanced_tracking(
                     node_id,
                     workflow_definition,
                     execution_state,
@@ -179,7 +179,7 @@ class EnhancedWorkflowExecutionEngine:
             "data_flow": {"data_transfers": [], "data_transformations": [], "data_sources": {}},
         }
 
-    def _execute_node_with_enhanced_tracking(
+    async def _execute_node_with_enhanced_tracking(
         self,
         node_id: str,
         workflow_definition: Dict[str, Any],
@@ -249,8 +249,17 @@ class EnhancedWorkflowExecutionEngine:
         )
 
         try:
-            # Execute node
-            result = executor.execute(context)
+            # Execute node - handle both sync and async executors
+            if hasattr(executor.execute, "__call__") and hasattr(executor.execute, "__code__"):
+                # Check if it's a coroutine function
+                import asyncio
+
+                if asyncio.iscoroutinefunction(executor.execute):
+                    result = await executor.execute(context)
+                else:
+                    result = executor.execute(context)
+            else:
+                result = executor.execute(context)
 
             # Record node execution end
             node_end_time = time.time()
