@@ -56,22 +56,16 @@ async def trigger_manual(
 ):
     """Manually trigger a workflow execution"""
     try:
-        logger.info(
-            f"Manual trigger requested for workflow {workflow_id} by user {user_id}"
-        )
+        logger.info(f"Manual trigger requested for workflow {workflow_id} by user {user_id}")
 
-        result = await trigger_manager.trigger_manual(
-            workflow_id=workflow_id, user_id=user_id
-        )
+        result = await trigger_manager.trigger_manual(workflow_id=workflow_id, user_id=user_id)
 
         return result
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(
-            f"Error in manual trigger for workflow {workflow_id}: {e}", exc_info=True
-        )
+        logger.error(f"Error in manual trigger for workflow {workflow_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Manual trigger failed: {str(e)}")
 
 
@@ -116,12 +110,8 @@ async def process_webhook(
         return result
 
     except Exception as e:
-        logger.error(
-            f"Error processing webhook for workflow {workflow_id}: {e}", exc_info=True
-        )
-        raise HTTPException(
-            status_code=500, detail=f"Webhook processing failed: {str(e)}"
-        )
+        logger.error(f"Error processing webhook for workflow {workflow_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Webhook processing failed: {str(e)}")
 
 
 @router.post("/github/events", response_model=Dict[str, Any])
@@ -245,9 +235,7 @@ async def handle_github_events(
         raise
     except Exception as e:
         logger.error(f"Error handling GitHub webhook event: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail=f"GitHub webhook processing failed: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"GitHub webhook processing failed: {str(e)}")
 
 
 @router.post("/github", response_model=Dict[str, Any])
@@ -334,9 +322,7 @@ async def handle_github_trigger(
                         f"execution_id={result.execution_id}, status={result.status}"
                     )
                 else:
-                    logger.debug(
-                        f"GitHub trigger filtered out for workflow {workflow_id}"
-                    )
+                    logger.debug(f"GitHub trigger filtered out for workflow {workflow_id}")
 
             except Exception as e:
                 logger.error(
@@ -367,9 +353,7 @@ async def handle_github_trigger(
             f"Error handling GitHub trigger {trigger_request.event_type}: {e}",
             exc_info=True,
         )
-        raise HTTPException(
-            status_code=500, detail=f"GitHub trigger processing failed: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"GitHub trigger processing failed: {str(e)}")
 
 
 async def _find_workflows_with_github_triggers(
@@ -399,12 +383,8 @@ async def _find_workflows_with_github_triggers(
                 workflow_id = trigger_record["workflow_id"]
 
                 # Check installation ID match
-                trigger_installation_id = trigger_config.get(
-                    "github_app_installation_id"
-                )
-                if trigger_installation_id and str(trigger_installation_id) != str(
-                    installation_id
-                ):
+                trigger_installation_id = trigger_config.get("github_app_installation_id")
+                if trigger_installation_id and str(trigger_installation_id) != str(installation_id):
                     logger.debug(
                         f"Installation ID mismatch: {trigger_installation_id} != {installation_id}"
                     )
@@ -413,9 +393,7 @@ async def _find_workflows_with_github_triggers(
                 # Check repository match (already filtered by index_key, but double-check)
                 trigger_repository = trigger_config.get("repository")
                 if trigger_repository and trigger_repository != repository_name:
-                    logger.debug(
-                        f"Repository mismatch: {trigger_repository} != {repository_name}"
-                    )
+                    logger.debug(f"Repository mismatch: {trigger_repository} != {repository_name}")
                     continue
 
                 # Check event configuration
@@ -437,9 +415,7 @@ async def _find_workflows_with_github_triggers(
                     action = payload.get("action")
                     expected_actions = event_config[event_type].get("actions", [])
                     if action not in expected_actions:
-                        logger.debug(
-                            f"Action {action} not in expected actions: {expected_actions}"
-                        )
+                        logger.debug(f"Action {action} not in expected actions: {expected_actions}")
                         continue
 
                 # This trigger matches! Add to execution list
@@ -470,9 +446,7 @@ async def get_trigger_status(
         status = await trigger_manager.get_trigger_status(workflow_id)
 
         if not status:
-            raise HTTPException(
-                status_code=404, detail="No triggers found for workflow"
-            )
+            raise HTTPException(status_code=404, detail="No triggers found for workflow")
 
         return {"workflow_id": workflow_id, "trigger_status": status}
 
@@ -483,9 +457,7 @@ async def get_trigger_status(
             f"Error getting trigger status for workflow {workflow_id}: {e}",
             exc_info=True,
         )
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get trigger status: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to get trigger status: {str(e)}")
 
 
 @router.get("/types")
@@ -510,9 +482,7 @@ async def get_trigger_types():
 
     except Exception as e:
         logger.error(f"Error getting trigger types: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get trigger types: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to get trigger types: {str(e)}")
 
 
 # Slack endpoints that the API Gateway expects
@@ -542,9 +512,7 @@ async def handle_slack_events(
 
         # Check for duplicate event processing using Redis-based deduplication
         if event_id:
-            from workflow_scheduler.services.event_deduplication import (
-                get_deduplication_service,
-            )
+            from workflow_scheduler.services.event_deduplication import get_deduplication_service
 
             dedup_service = await get_deduplication_service()
             is_duplicate = await dedup_service.is_duplicate_event(event_id, "slack")
@@ -558,16 +526,22 @@ async def handle_slack_events(
                     "results": [],
                 }
 
-        # Query for workflows with Slack triggers
-        async with async_session_factory() as db_session:
-            query = select(TriggerIndex.workflow_id, TriggerIndex.trigger_config).where(
-                and_(
-                    TriggerIndex.trigger_type == TriggerType.SLACK,
-                    TriggerIndex.deployment_status == "active",
-                )
-            )
-            result = await db_session.execute(query)
-            matching_workflows = result.fetchall()
+        # Query for workflows with Slack triggers using Supabase client
+        try:
+            from workflow_scheduler.core.supabase_client import query_slack_triggers
+            
+            trigger_records = await query_slack_triggers()
+            
+            # Convert Supabase response to expected format (workflow_id, trigger_config)
+            matching_workflows = [
+                (record["workflow_id"], record["trigger_config"]) 
+                for record in trigger_records
+            ]
+            
+        except Exception as e:
+            logger.error(f"Supabase Slack triggers query failed: {e}", exc_info=True)
+            # Fallback to empty results if database query fails
+            matching_workflows = []
 
         if not matching_workflows:
             logger.info("No Slack triggers found in database")
@@ -647,9 +621,7 @@ async def handle_slack_events(
 
     except Exception as e:
         logger.error(f"Error handling Slack event: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail=f"Slack event processing failed: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Slack event processing failed: {str(e)}")
 
 
 @router.post("/slack/interactive", response_model=Dict[str, Any])
@@ -669,9 +641,7 @@ async def handle_slack_interactive(
         team_id = slack_interactive_data.get("team_id")
         payload = slack_interactive_data.get("payload", {})
 
-        logger.info(
-            f"Slack interactive component received from API Gateway for team {team_id}"
-        )
+        logger.info(f"Slack interactive component received from API Gateway for team {team_id}")
 
         # For now, just acknowledge the interaction
         # In the future, this could route to appropriate Slack triggers
@@ -721,9 +691,7 @@ async def handle_slack_commands(
 
     except Exception as e:
         logger.error(f"Error handling Slack command: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail=f"Slack command processing failed: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Slack command processing failed: {str(e)}")
 
 
 @router.get("/health")
@@ -767,9 +735,7 @@ async def _execute_workflow_directly(
             pr_title = payload.get("pull_request", {}).get("title", "Unknown PR")
             pr_number = payload.get("pull_request", {}).get("number", "N/A")
             pr_url = payload.get("pull_request", {}).get("html_url", "")
-            user = (
-                payload.get("pull_request", {}).get("user", {}).get("login", "unknown")
-            )
+            user = payload.get("pull_request", {}).get("user", {}).get("login", "unknown")
 
             message = (
                 f"🎯 **GitHub Webhook Triggered Successfully!**\n"
