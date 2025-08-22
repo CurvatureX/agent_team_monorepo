@@ -28,7 +28,13 @@ export const NavigationHeader = () => {
 
     useEffect(() => {
         setMounted(true);
-    }, []);
+        // Prefetch common routes for faster navigation
+        router.prefetch('/');
+        router.prefetch('/canvas');
+        router.prefetch('/pricing');
+        router.prefetch('/profile');
+        router.prefetch('/login');
+    }, [router]);
 
     const tabs = [
         { title: "Home", icon: Home },
@@ -54,12 +60,13 @@ export const NavigationHeader = () => {
     }, [pathname]);
 
     // Handle tab click events
-    const handleTabChange = async (index: number | null) => {
+    const handleTabChange = (index: number | null) => {
         if (index === null) return;
 
-        setActiveTabIndex(index); // Update selected state first
-
         const tab = tabs[index];
+        
+        // Update state immediately for instant visual feedback
+        setActiveTabIndex(index);
 
         // Navigate to corresponding page based on selected tab
         switch (tab.title) {
