@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { createClient } from '@/lib/supabase/client';
+import { WorkflowData } from '@/types/workflow';
 
 export interface ChatMessage {
   id: string;
@@ -26,7 +27,7 @@ export interface ChatSSEEvent {
   type: 'message' | 'status_change' | 'workflow' | 'error' | 'debug';
   data: {
     text?: string;
-    workflow?: unknown;
+    workflow?: WorkflowData;
     message?: string;
     [key: string]: unknown;
   };
@@ -100,10 +101,10 @@ class ChatService {
       // Extract session ID from response
       if (data.session?.id) {
         this.sessionId = data.session.id;
-        return this.sessionId;
+        return data.session.id;
       } else if (data.id) {
         this.sessionId = data.id;
-        return this.sessionId;
+        return data.id;
       } else {
         throw new Error('Session ID not found in response');
       }

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,15 +9,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { 
   Globe, 
-  Play, 
   CheckCircle, 
   XCircle, 
-  AlertCircle,
   Loader2,
-  Shield,
-  ExternalLink,
   Send,
-  Code,
   Link2,
   Database,
   Key
@@ -26,10 +21,22 @@ import { useToast } from '@/hooks/use-toast';
 
 const USER_ID = '7ba36345-a2bb-4ec9-a001-bb46d79d629d';
 
+interface APICallOutput {
+  status_code?: number;
+  headers?: Record<string, string>;
+  body?: unknown;
+  error?: string;
+  success?: boolean;
+  method?: string;
+  content_length?: number;
+  url?: string;
+  data?: unknown;
+}
+
 interface ExecutionResult {
   execution_id: string;
   status: string;
-  output_data: any;
+  output_data: APICallOutput | null;
   error_message?: string;
   logs: string[];
 }
@@ -174,31 +181,31 @@ export default function APICallTestPage() {
       // 解析JSON字段
       let headers = {};
       let queryParams = {};
-      let body = null;
+      let body: unknown = null;
 
       try {
         headers = JSON.parse(formData.headers || '{}');
-      } catch (e) {
+      } catch (_e) {
         throw new Error('Headers必须是有效的JSON格式');
       }
 
       try {
         queryParams = JSON.parse(formData.queryParams || '{}');
-      } catch (e) {
+      } catch (_e) {
         throw new Error('Query Parameters必须是有效的JSON格式');
       }
 
       if (formData.body.trim()) {
         try {
           body = JSON.parse(formData.body);
-        } catch (e) {
+        } catch (_e) {
           // 如果不是JSON，作为字符串处理
           body = formData.body;
         }
       }
 
       // 构建参数
-      const parameters: any = {
+      const parameters: Record<string, unknown> = {
         method: formData.method,
         url: formData.url,
         headers: headers,
@@ -222,7 +229,7 @@ export default function APICallTestPage() {
         parameters.password = formData.password;
       }
 
-      const requestBody: any = {
+      const requestBody: Record<string, unknown> = {
         user_id: USER_ID,
         input_data: {},
         execution_context: {
@@ -278,11 +285,12 @@ export default function APICallTestPage() {
         });
       }
 
-    } catch (error: any) {
+    } catch (error) {
       console.error('Execution error:', error);
+      const errorMessage = error instanceof Error ? error.message : "发生未知错误";
       toast({
         title: "执行失败",
-        description: error.message || "发生未知错误",
+        description: errorMessage,
         variant: "destructive"
       });
     } finally {
@@ -299,7 +307,7 @@ export default function APICallTestPage() {
         const formatted = JSON.stringify(parsed, null, 2);
         setFormData({...formData, [field]: formatted});
       }
-    } catch (e) {
+    } catch (_e) {
       toast({
         title: "JSON格式错误",
         description: `${field} 不是有效的JSON格式`,
@@ -606,7 +614,7 @@ export default function APICallTestPage() {
               </div>
 
               {/* 成功结果展示 */}
-              {lastResult.status === 'COMPLETED' && lastResult.output_data?.success !== false && (
+              {lastResult.status === 'COMPLETED' && lastResult.output_data && lastResult.output_data?.success !== false && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-3">
                   <h5 className="font-medium text-green-800 flex items-center gap-2">
                     <CheckCircle className="w-4 h-4" />
@@ -616,7 +624,7 @@ export default function APICallTestPage() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                     <div>
                       <p><strong>状态码:</strong> 
-                        <Badge variant={lastResult.output_data.status_code < 300 ? 'default' : 'destructive'} className="ml-2">
+                        <Badge variant={(lastResult.output_data.status_code ?? 0) < 300 ? 'default' : 'destructive'} className="ml-2">
                           {lastResult.output_data.status_code}
                         </Badge>
                       </p>
@@ -634,15 +642,14 @@ export default function APICallTestPage() {
                     <code className="text-xs bg-gray-100 p-1 rounded break-all">{lastResult.output_data.url}</code>
                   </div>
 
-                  {/* 响应数据预览 */}
-                  {lastResult.output_data.data && (
+                  {lastResult.output_data.data !== undefined && (
                     <div>
                       <p><strong>响应数据预览:</strong></p>
                       <div className="bg-gray-50 border rounded p-3 max-h-40 overflow-auto">
                         <pre className="text-xs">
                           {typeof lastResult.output_data.data === 'object' 
                             ? JSON.stringify(lastResult.output_data.data, null, 2) 
-                            : lastResult.output_data.data}
+                            : String(lastResult.output_data.data)}
                         </pre>
                       </div>
                     </div>
@@ -658,7 +665,7 @@ export default function APICallTestPage() {
                 <div className="p-3 pt-0">
                   <div className="space-y-3">
                     {/* 响应头 */}
-                    {lastResult.output_data.headers && (
+                    {lastResult.output_data && lastResult.output_data.headers && (
                       <div>
                         <h6 className="font-medium mb-2">响应头:</h6>
                         <pre className="text-xs overflow-auto bg-white p-3 rounded border max-h-32">
