@@ -128,7 +128,11 @@ async def test_event_routing():
             "sender": {"login": "testuser"},
             "ref": "refs/heads/main",
             "commits": [
-                {"added": ["src/new_file.py"], "modified": ["src/existing_file.py"], "removed": []}
+                {
+                    "added": ["src/new_file.py"],
+                    "modified": ["src/existing_file.py"],
+                    "removed": [],
+                }
             ],
         }
 

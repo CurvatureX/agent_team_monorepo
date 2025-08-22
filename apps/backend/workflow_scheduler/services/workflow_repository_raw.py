@@ -155,7 +155,8 @@ class RawSQLWorkflowRepository:
 
         except Exception as e:
             logger.error(
-                f"Error updating workflow deployment status {workflow_id}: {e}", exc_info=True
+                f"Error updating workflow deployment status {workflow_id}: {e}",
+                exc_info=True,
             )
             return False
 
@@ -221,7 +222,8 @@ class RawSQLWorkflowRepository:
 
         except Exception as e:
             logger.error(
-                f"Error creating deployment history record {workflow_id}: {e}", exc_info=True
+                f"Error creating deployment history record {workflow_id}: {e}",
+                exc_info=True,
             )
             return False
 
@@ -293,7 +295,8 @@ class RawSQLWorkflowRepository:
 
         except Exception as e:
             logger.error(
-                f"Error updating deployment history completion {workflow_id}: {e}", exc_info=True
+                f"Error updating deployment history completion {workflow_id}: {e}",
+                exc_info=True,
             )
             return False
 
@@ -332,5 +335,8 @@ class RawSQLWorkflowRepository:
                 await conn.close()
 
         except Exception as e:
-            logger.error(f"Error getting deployment history for {workflow_id}: {e}", exc_info=True)
+            logger.error(
+                f"Error getting deployment history for {workflow_id}: {e}",
+                exc_info=True,
+            )
             return []

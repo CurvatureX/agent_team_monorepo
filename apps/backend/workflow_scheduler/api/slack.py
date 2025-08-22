@@ -51,7 +51,9 @@ def verify_slack_signature(body: bytes, timestamp: str, signature: str) -> bool:
         my_signature = (
             "v0="
             + hmac.new(
-                settings.SLACK_SIGNING_SECRET.encode(), sig_basestring.encode(), hashlib.sha256
+                settings.SLACK_SIGNING_SECRET.encode(),
+                sig_basestring.encode(),
+                hashlib.sha256,
             ).hexdigest()
         )
 
@@ -202,7 +204,10 @@ async def handle_slack_commands(
         )
 
         # Return response to Slack
-        return {"response_type": "ephemeral", "text": response_text}  # Only visible to the user
+        return {
+            "response_type": "ephemeral",
+            "text": response_text,
+        }  # Only visible to the user
 
     except HTTPException:
         raise
@@ -244,7 +249,11 @@ async def slack_stats():
         slack_router = await SlackEventRouter.get_instance()
         stats = await slack_router.get_router_stats()
 
-        return {"service": "slack_integration", "statistics": stats, "timestamp": int(time.time())}
+        return {
+            "service": "slack_integration",
+            "statistics": stats,
+            "timestamp": int(time.time()),
+        }
 
     except Exception as e:
         logger.error(f"Failed to get Slack stats: {e}")

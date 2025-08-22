@@ -85,7 +85,8 @@ async def github_installation_callback(
     except Exception as e:
         logger.error(f"Error processing GitHub installation callback: {e}", exc_info=True)
         raise HTTPException(
-            status_code=500, detail=f"GitHub installation callback processing failed: {str(e)}"
+            status_code=500,
+            detail=f"GitHub installation callback processing failed: {str(e)}",
         )
 
 
@@ -170,7 +171,11 @@ async def slack_oauth_callback(
                 )
                 try:
                     db_store_success = await _store_slack_integration(
-                        oauth_data.state, bot_access_token, team_id, team_name, token_result
+                        oauth_data.state,
+                        bot_access_token,
+                        team_id,
+                        team_name,
+                        token_result,
                     )
                     if not db_store_success:
                         logger.warning(

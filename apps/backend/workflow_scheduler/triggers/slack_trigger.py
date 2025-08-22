@@ -102,7 +102,8 @@ class SlackTrigger(BaseTrigger):
 
         except Exception as e:
             logger.error(
-                f"❌ Failed to stop SlackTrigger for workflow {self.workflow_id}: {e}", exc_info=True
+                f"❌ Failed to stop SlackTrigger for workflow {self.workflow_id}: {e}",
+                exc_info=True,
             )
             return False
 
@@ -173,7 +174,8 @@ class SlackTrigger(BaseTrigger):
 
         except Exception as e:
             logger.error(
-                f"Error processing Slack event for workflow {self.workflow_id}: {e}", exc_info=True
+                f"Error processing Slack event for workflow {self.workflow_id}: {e}",
+                exc_info=True,
             )
             return False
 

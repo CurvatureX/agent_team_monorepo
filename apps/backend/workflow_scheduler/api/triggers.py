@@ -529,15 +529,14 @@ async def handle_slack_events(
         # Query for workflows with Slack triggers using Supabase client
         try:
             from workflow_scheduler.core.supabase_client import query_slack_triggers
-            
+
             trigger_records = await query_slack_triggers()
-            
+
             # Convert Supabase response to expected format (workflow_id, trigger_config)
             matching_workflows = [
-                (record["workflow_id"], record["trigger_config"]) 
-                for record in trigger_records
+                (record["workflow_id"], record["trigger_config"]) for record in trigger_records
             ]
-            
+
         except Exception as e:
             logger.error(f"Supabase Slack triggers query failed: {e}", exc_info=True)
             # Fallback to empty results if database query fails

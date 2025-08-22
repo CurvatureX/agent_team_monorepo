@@ -165,7 +165,10 @@ if not otel_disabled:
         otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4317")
 
     setup_telemetry(
-        app, service_name="workflow-scheduler", service_version="0.1.0", otlp_endpoint=otlp_endpoint
+        app,
+        service_name="workflow-scheduler",
+        service_version="0.1.0",
+        otlp_endpoint=otlp_endpoint,
     )
 
     # 添加遥测中间件

@@ -51,7 +51,8 @@ class ManualTrigger(BaseTrigger):
 
         except Exception as e:
             logger.error(
-                f"Failed to stop manual trigger for workflow {self.workflow_id}: {e}", exc_info=True
+                f"Failed to stop manual trigger for workflow {self.workflow_id}: {e}",
+                exc_info=True,
             )
             return False
 

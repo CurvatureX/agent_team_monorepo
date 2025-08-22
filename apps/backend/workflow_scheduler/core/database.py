@@ -28,12 +28,18 @@ base_url = settings.database_url.replace("postgresql://", "postgresql+asyncpg://
 if "?" in base_url:
     base_url = base_url.split("?")[0]
 
+# Add pgbouncer connection parameter to URL to force disable prepared statements
+if "?" in base_url:
+    base_url += "&prepared_statement_cache_size=0"
+else:
+    base_url += "?prepared_statement_cache_size=0"
+
 engine = create_async_engine(
     base_url,
     echo=settings.debug,
-    # Disable connection pooling completely
+    # Disable connection pooling completely to avoid pgbouncer conflicts
     poolclass=NullPool,
-    # Force asyncpg to never use prepared statements via connect_args only
+    # Completely disable prepared statements for pgbouncer compatibility
     connect_args={
         "statement_cache_size": 0,
         "prepared_statement_cache_size": 0,
@@ -41,6 +47,11 @@ engine = create_async_engine(
         "server_settings": {
             "application_name": f"workflow_scheduler_{unique_suffix}",
         },
+    },
+    # Additional SQLAlchemy-level settings for pgbouncer
+    execution_options={
+        "compiled_cache": {},  # Disable compiled statement cache
+        "autocommit": False,
     },
 )
 

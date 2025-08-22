@@ -245,7 +245,8 @@ class GoogleCalendarTokenManager:
             return False
         except Exception as e:
             logger.error(
-                f"❌ Unexpected error refreshing token for {user_email}: {e}", exc_info=True
+                f"❌ Unexpected error refreshing token for {user_email}: {e}",
+                exc_info=True,
             )
             return False
 
@@ -348,7 +349,10 @@ class GoogleCalendarTokenManager:
             )
 
             if not result.data:
-                return False, f"No active Google Calendar token found for user {user_id}"
+                return (
+                    False,
+                    f"No active Google Calendar token found for user {user_id}",
+                )
 
             token_record = result.data[0]
             success = await self._refresh_single_token(token_record)

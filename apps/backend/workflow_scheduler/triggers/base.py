@@ -55,7 +55,9 @@ class BaseTrigger(ABC):
                 f"Trigger {self.trigger_type} for workflow {self.workflow_id} is disabled"
             )
             return ExecutionResult(
-                status="skipped", message="Trigger is disabled", trigger_data=trigger_data or {}
+                status="skipped",
+                message="Trigger is disabled",
+                trigger_data=trigger_data or {},
             )
 
         execution_id = f"exec_{uuid.uuid4()}"

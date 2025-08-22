@@ -39,7 +39,9 @@ class TestTriggerSpec:
     def test_trigger_spec_creation(self):
         """Test creating a trigger specification"""
         spec = TriggerSpec(
-            subtype=TriggerType.MANUAL, parameters={"require_confirmation": True}, enabled=True
+            subtype=TriggerType.MANUAL,
+            parameters={"require_confirmation": True},
+            enabled=True,
         )
 
         assert spec.node_type == NodeType.TRIGGER.value

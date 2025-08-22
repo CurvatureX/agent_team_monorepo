@@ -48,9 +48,7 @@ class EventDeduplicationService:
         except Exception as e:
             logger.error(f"Error cleaning up event deduplication service: {e}")
 
-    async def is_duplicate_event(
-        self, event_id: str, event_source: str = "slack"
-    ) -> bool:
+    async def is_duplicate_event(self, event_id: str, event_source: str = "slack") -> bool:
         """
         Check if an event has already been processed
 
@@ -71,14 +69,10 @@ class EventDeduplicationService:
 
             # Check if key exists (SET with NX only sets if key doesn't exist)
             # Use EX for expiration in seconds (300 = 5 minutes)
-            was_set = await self._redis.set(
-                redis_key, int(time.time()), nx=True, ex=300
-            )
+            was_set = await self._redis.set(redis_key, int(time.time()), nx=True, ex=300)
 
             if was_set:
-                logger.info(
-                    f"✅ New {event_source} event {event_id} marked for processing"
-                )
+                logger.info(f"✅ New {event_source} event {event_id} marked for processing")
                 return False  # Not a duplicate
             else:
                 logger.info(
@@ -113,9 +107,7 @@ class EventDeduplicationService:
                     expired_count += 1
 
             if expired_count > 0:
-                logger.info(
-                    f"Redis TTL cleaned up {expired_count} expired event records"
-                )
+                logger.info(f"Redis TTL cleaned up {expired_count} expired event records")
 
             return expired_count
 

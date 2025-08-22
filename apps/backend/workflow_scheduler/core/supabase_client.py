@@ -26,9 +26,7 @@ def get_supabase_client() -> Client:
         if not settings.supabase_url or not settings.supabase_secret_key:
             raise ValueError("Supabase URL and secret key must be configured")
 
-        _supabase_client = create_client(
-            settings.supabase_url, settings.supabase_secret_key
-        )
+        _supabase_client = create_client(settings.supabase_url, settings.supabase_secret_key)
         logger.info("✅ Supabase client initialized successfully")
 
     return _supabase_client
@@ -57,22 +55,18 @@ async def query_github_triggers(repository_name: str) -> List[Dict[str, Any]]:
             .execute()
         )
 
-        logger.info(
-            f"Found {len(response.data)} GitHub triggers for repository {repository_name}"
-        )
+        logger.info(f"Found {len(response.data)} GitHub triggers for repository {repository_name}")
         return response.data
 
     except Exception as e:
-        logger.error(
-            f"Error querying GitHub triggers from Supabase: {e}", exc_info=True
-        )
+        logger.error(f"Error querying GitHub triggers from Supabase: {e}", exc_info=True)
         return []
 
 
 async def query_slack_triggers() -> List[Dict[str, Any]]:
     """
     Query active Slack triggers using Supabase client
-    
+
     Returns:
         List of trigger records with workflow_id and trigger_config
     """
@@ -88,15 +82,11 @@ async def query_slack_triggers() -> List[Dict[str, Any]]:
             .execute()
         )
 
-        logger.info(
-            f"Found {len(response.data)} Slack triggers via Supabase"
-        )
+        logger.info(f"Found {len(response.data)} Slack triggers via Supabase")
         return response.data
 
     except Exception as e:
-        logger.error(
-            f"Error querying Slack triggers from Supabase: {e}", exc_info=True
-        )
+        logger.error(f"Error querying Slack triggers from Supabase: {e}", exc_info=True)
         return []
 
 

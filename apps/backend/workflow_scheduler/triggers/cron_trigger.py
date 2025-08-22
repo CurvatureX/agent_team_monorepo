@@ -117,7 +117,8 @@ class CronTrigger(BaseTrigger):
 
         except Exception as e:
             logger.error(
-                f"Failed to start cron trigger for workflow {self.workflow_id}: {e}", exc_info=True
+                f"Failed to start cron trigger for workflow {self.workflow_id}: {e}",
+                exc_info=True,
             )
             self.status = TriggerStatus.ERROR
             return False
@@ -144,7 +145,8 @@ class CronTrigger(BaseTrigger):
 
         except Exception as e:
             logger.error(
-                f"Failed to stop cron trigger for workflow {self.workflow_id}: {e}", exc_info=True
+                f"Failed to stop cron trigger for workflow {self.workflow_id}: {e}",
+                exc_info=True,
             )
             return False
 
@@ -182,7 +184,8 @@ class CronTrigger(BaseTrigger):
 
         except Exception as e:
             logger.error(
-                f"Error in cron execution for workflow {self.workflow_id}: {e}", exc_info=True
+                f"Error in cron execution for workflow {self.workflow_id}: {e}",
+                exc_info=True,
             )
 
     async def _execute_cron(self) -> None:
@@ -208,7 +211,8 @@ class CronTrigger(BaseTrigger):
 
         except Exception as e:
             logger.error(
-                f"Error executing cron trigger for workflow {self.workflow_id}: {e}", exc_info=True
+                f"Error executing cron trigger for workflow {self.workflow_id}: {e}",
+                exc_info=True,
             )
 
     async def health_check(self) -> Dict[str, Any]:

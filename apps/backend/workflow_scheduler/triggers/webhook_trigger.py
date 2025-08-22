@@ -190,7 +190,10 @@ class WebhookTrigger(BaseTrigger):
 
         except Exception as e:
             logger.error(f"Error validating webhook auth: {e}", exc_info=True)
-            return {"valid": False, "error": f"Authentication validation error: {str(e)}"}
+            return {
+                "valid": False,
+                "error": f"Authentication validation error: {str(e)}",
+            }
 
     async def health_check(self) -> Dict[str, Any]:
         """Return health status of the webhook trigger"""

@@ -116,7 +116,9 @@ class NotificationService:
             logger.error(error_msg, exc_info=True)
 
             return ExecutionResult(
-                status="notification_failed", message=error_msg, trigger_data=trigger_data
+                status="notification_failed",
+                message=error_msg,
+                trigger_data=trigger_data,
             )
 
     async def _send_slack_notification(
@@ -191,7 +193,11 @@ class NotificationService:
             path = trigger_data.get("path", "Unknown")
             remote_addr = trigger_data.get("remote_addr", "Unknown")
             trigger_details.extend(
-                [f"*HTTP Method:* {method}", f"*Path:* `{path}`", f"*Remote IP:* {remote_addr}"]
+                [
+                    f"*HTTP Method:* {method}",
+                    f"*Path:* `{path}`",
+                    f"*Remote IP:* {remote_addr}",
+                ]
             )
 
         elif "GITHUB" in workflow_id_str.upper():

@@ -44,7 +44,10 @@ class DistributedLockManager:
 
     @asynccontextmanager
     async def acquire(
-        self, lock_key: str, timeout: Optional[int] = None, retry_delay: Optional[float] = None
+        self,
+        lock_key: str,
+        timeout: Optional[int] = None,
+        retry_delay: Optional[float] = None,
     ) -> AsyncGenerator[bool, None]:
         """
         Acquire a distributed lock using Redis
