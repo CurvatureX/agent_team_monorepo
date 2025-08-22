@@ -17,7 +17,6 @@ import { useTheme } from "next-themes";
 import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { GlowButton } from "@/components/ui/shiny-button-1";
 
 export const NavigationHeader = () => {
     const router = useRouter();
