@@ -146,8 +146,9 @@ class SlackTrigger(BaseTrigger):
                 return False
 
             # Bot filter - extract from the nested event
-            if self.ignore_bots and actual_event.get("bot_id"):
-                logger.debug("Ignoring bot message")
+            bot_id = actual_event.get("bot_id")
+            if self.ignore_bots and bot_id:
+                logger.info(f"🤖 Ignoring bot message from bot_id: {bot_id}")
                 return False
 
             # Mention filter - pass the nested event

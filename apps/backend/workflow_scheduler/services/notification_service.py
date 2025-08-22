@@ -214,10 +214,10 @@ class NotificationService:
         # Add divider
         blocks.append(SlackBlockBuilder.divider())
 
-        # Add note about test mode
+        # Add note about workflow execution
         blocks.append(
             SlackBlockBuilder.section(
-                "💡 *Note:* This is a test notification. The actual workflow was not executed."
+                "✅ *Workflow executed successfully!* Check the execution results for details."
             )
         )
 
