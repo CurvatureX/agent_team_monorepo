@@ -102,13 +102,26 @@ class BaseTrigger(ABC):
         Execute workflow by calling workflow_engine HTTP API
         """
         try:
-            # Prepare execution payload
+            # Convert trigger_data to string format as expected by workflow engine
+            formatted_trigger_data = {}
+            if trigger_data:
+                for key, value in trigger_data.items():
+                    formatted_trigger_data[key] = str(value) if value is not None else ""
+
+            # Add trigger metadata
+            formatted_trigger_data.update(
+                {
+                    "trigger_type": str(self.trigger_type),
+                    "execution_id": execution_id,
+                    "triggered_at": datetime.utcnow().isoformat(),
+                }
+            )
+
+            # Prepare execution payload matching ExecuteWorkflowRequest format
             payload = {
-                "execution_id": execution_id,
-                "workflow_id": self.workflow_id,
-                "trigger_type": self.trigger_type,
-                "trigger_data": trigger_data or {},
-                "triggered_at": datetime.utcnow().isoformat(),
+                "workflow_id": str(self.workflow_id),
+                "trigger_data": formatted_trigger_data,
+                "user_id": "system",  # System-triggered execution
             }
 
             # Call workflow_engine execute endpoint
@@ -120,14 +133,30 @@ class BaseTrigger(ABC):
                 engine_url, json=payload, headers={"Content-Type": "application/json"}
             )
 
-            if response.status_code == 202:  # Accepted
+            if response.status_code == 200:  # OK (FastAPI default for successful POST)
                 result_data = response.json()
-                logger.info(f"✅ Workflow {self.workflow_id} execution started: {execution_id}")
+                actual_execution_id = result_data.get("execution_id", execution_id)
+                logger.info(
+                    f"✅ Workflow {self.workflow_id} execution started: {actual_execution_id}"
+                )
 
                 return ExecutionResult(
-                    execution_id=result_data.get("execution_id", execution_id),
+                    execution_id=actual_execution_id,
                     status="started",
-                    message="Workflow execution started successfully",
+                    message=result_data.get("message", "Workflow execution started successfully"),
+                    trigger_data=trigger_data or {},
+                )
+            elif response.status_code == 202:  # Also accept 202 Accepted
+                result_data = response.json()
+                actual_execution_id = result_data.get("execution_id", execution_id)
+                logger.info(
+                    f"✅ Workflow {self.workflow_id} execution accepted: {actual_execution_id}"
+                )
+
+                return ExecutionResult(
+                    execution_id=actual_execution_id,
+                    status="started",
+                    message=result_data.get("message", "Workflow execution accepted"),
                     trigger_data=trigger_data or {},
                 )
             else:
