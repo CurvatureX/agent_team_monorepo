@@ -508,7 +508,7 @@ async def handle_slack_events(
             query = select(TriggerIndex.workflow_id, TriggerIndex.trigger_config).where(
                 and_(
                     TriggerIndex.trigger_type == TriggerType.SLACK,
-                    TriggerIndex.is_active == True,
+                    TriggerIndex.deployment_status == "active",
                 )
             )
             result = await db_session.execute(query)
