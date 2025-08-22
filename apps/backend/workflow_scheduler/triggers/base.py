@@ -12,6 +12,9 @@ from workflow_scheduler.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+# System UUID for system-triggered workflow executions
+SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001"
+
 
 class BaseTrigger(ABC):
     """Base class for all trigger types"""
@@ -104,7 +107,7 @@ class BaseTrigger(ABC):
             payload = {
                 "workflow_id": str(self.workflow_id),
                 "trigger_data": formatted_trigger_data,
-                "user_id": "system",  # System-triggered execution
+                "user_id": SYSTEM_USER_ID,  # System-triggered execution
             }
 
             # Call workflow_engine execute endpoint

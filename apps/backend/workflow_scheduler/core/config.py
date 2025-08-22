@@ -46,7 +46,11 @@ class Settings(BaseSettings):
         description="Database connection URL",
         validation_alias=AliasChoices("DATABASE_URL", "database_url"),
     )
-    redis_url: str = Field(default="redis://localhost:6379/1", description="Redis connection URL")
+    redis_url: str = Field(
+        default="redis://localhost:6379/1",
+        description="Redis connection URL",
+        validation_alias=AliasChoices("REDIS_URL", "redis_url"),
+    )
 
     # Supabase Configuration
     supabase_url: str = Field(

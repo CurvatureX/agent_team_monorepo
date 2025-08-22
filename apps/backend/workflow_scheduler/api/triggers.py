@@ -19,6 +19,9 @@ from workflow_scheduler.core.supabase_client import query_github_triggers
 from workflow_scheduler.dependencies import get_trigger_manager
 from workflow_scheduler.services.trigger_manager import TriggerManager
 
+# Import system UUID for consistent system identification
+SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000001"
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/triggers", tags=["triggers"])
@@ -51,7 +54,7 @@ class GitHubTriggerRequest(BaseModel):
 async def trigger_manual(
     workflow_id: str,
     request: ManualTriggerRequest,
-    user_id: str = "system",  # TODO: Extract from auth
+    user_id: str = SYSTEM_USER_ID,  # System-triggered execution
     trigger_manager: TriggerManager = Depends(get_trigger_manager),
 ):
     """Manually trigger a workflow execution"""
