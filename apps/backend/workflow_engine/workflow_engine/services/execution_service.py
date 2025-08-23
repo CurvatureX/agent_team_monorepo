@@ -31,7 +31,7 @@ from shared.models import (
 from shared.models.db_models import WorkflowModeEnum
 
 from ..core.config import get_settings
-from ..execution_engine import EnhancedWorkflowExecutionEngine as WorkflowExecutionEngine
+from ..execution_engine import WorkflowExecutionEngine
 from ..models import ExecutionModel
 from .workflow_service import WorkflowService
 
