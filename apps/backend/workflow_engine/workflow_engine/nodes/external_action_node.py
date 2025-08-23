@@ -320,11 +320,22 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         logs = []
 
         try:
-            self.logger.info(f"ExternalActionNodeExecutor.execute() called")
+            self.logger.info(f"🔧 ExternalActionNodeExecutor.execute() called")
+            self.logger.info(f"📋 Node type: {context.node.type}, subtype: {context.node.subtype}")
+            self.logger.info(f"🔐 Credentials available: {bool(context.credentials)}")
             self.logger.info(
-                f"Context node type: {context.node.type}, subtype: {context.node.subtype}"
+                f"📥 Input data keys: {list(context.input_data.keys()) if context.input_data else 'None'}"
             )
-            self.logger.info(f"Context credentials available: {bool(context.credentials)}")
+            self.logger.info(f"⚙️ Node parameters: {context.node.parameters}")
+            self.logger.info(f"🛠️ SDKs initialized: {bool(self._sdks)}")
+
+            # Log SDK details if available
+            if self._sdks:
+                self.logger.info(
+                    f"📦 Available SDKs: {list(self._sdks.keys()) if hasattr(self._sdks, 'keys') else 'SDK object available'}"
+                )
+
+            subtype = context.node.subtype
             if context.credentials:
                 self.logger.info(
                     f"Available credential providers: {list(context.credentials.keys())}"
@@ -342,36 +353,67 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 ExternalActionSubtype.API_CALL.value,
                 ExternalActionSubtype.NOTION.value,
             ]
+
+            self.logger.info(f"🔍 Checking execution path for subtype: {subtype}")
+            self.logger.info(f"🎯 SDK supported subtypes: {sdk_supported_subtypes}")
+            self.logger.info(f"🧪 Subtype in SDK list: {subtype in sdk_supported_subtypes}")
+
             if self._sdks and subtype in sdk_supported_subtypes:
+                self.logger.info(f"🚀 Using SDK execution path for {subtype}")
                 return await self._execute_with_sdk(context, logs, start_time)
             # Fallback to original implementation
-            elif subtype == ExternalActionSubtype.GITHUB.value:
-                return self._execute_github_action(context, logs, start_time)
-            elif subtype == ExternalActionSubtype.GOOGLE_CALENDAR.value:
-                return await self._execute_google_calendar_action(context, logs, start_time)
-            elif subtype == ExternalActionSubtype.TRELLO.value:
-                return self._execute_trello_action(context, logs, start_time)
-            elif subtype == ExternalActionSubtype.EMAIL.value:
-                return await self._execute_email_action(context, logs, start_time)
-            elif subtype == ExternalActionSubtype.SLACK.value:
-                return self._execute_slack_action(context, logs, start_time)
-            elif subtype == ExternalActionSubtype.API_CALL.value:
-                return await self._execute_api_call_action(context, logs, start_time)
-            elif subtype == ExternalActionSubtype.WEBHOOK.value:
-                return self._execute_webhook_action(context, logs, start_time)
-            elif subtype == ExternalActionSubtype.NOTIFICATION.value:
-                return self._execute_notification_action(context, logs, start_time)
             else:
-                return self._create_error_result(
-                    f"Unsupported external action subtype: {subtype}",
-                    execution_time=time.time() - start_time,
-                    logs=logs,
-                )
+                self.logger.info(f"🔄 Using fallback execution path for {subtype}")
+
+                if subtype == ExternalActionSubtype.GITHUB.value:
+                    self.logger.info(f"📦 Executing GitHub action")
+                    return self._execute_github_action(context, logs, start_time)
+                elif subtype == ExternalActionSubtype.GOOGLE_CALENDAR.value:
+                    self.logger.info(f"📅 Executing Google Calendar action")
+                    return await self._execute_google_calendar_action(context, logs, start_time)
+                elif subtype == ExternalActionSubtype.TRELLO.value:
+                    self.logger.info(f"📋 Executing Trello action")
+                    return self._execute_trello_action(context, logs, start_time)
+                elif subtype == ExternalActionSubtype.EMAIL.value:
+                    self.logger.info(f"📧 Executing Email action")
+                    return await self._execute_email_action(context, logs, start_time)
+                elif subtype == ExternalActionSubtype.SLACK.value:
+                    self.logger.info(f"💬 Executing Slack action")
+                    return self._execute_slack_action(context, logs, start_time)
+                elif subtype == ExternalActionSubtype.API_CALL.value:
+                    self.logger.info(f"🌐 Executing API Call action")
+                    return await self._execute_api_call_action(context, logs, start_time)
+                elif subtype == ExternalActionSubtype.WEBHOOK.value:
+                    self.logger.info(f"🔗 Executing Webhook action")
+                    return self._execute_webhook_action(context, logs, start_time)
+                elif subtype == ExternalActionSubtype.NOTIFICATION.value:
+                    self.logger.info(f"🔔 Executing Notification action")
+                    return self._execute_notification_action(context, logs, start_time)
+                else:
+                    self.logger.error(f"❌ Unsupported external action subtype: {subtype}")
+                    return self._create_error_result(
+                        f"Unsupported external action subtype: {subtype}",
+                        execution_time=time.time() - start_time,
+                        logs=logs,
+                    )
 
         except Exception as e:
+            self.logger.error(f"💥 ExternalActionNodeExecutor exception details:")
+            self.logger.error(f"   - Exception type: {type(e).__name__}")
+            self.logger.error(f"   - Exception message: {str(e)}")
+            self.logger.error(f"   - Node subtype: {context.node.subtype}")
+            self.logger.error(f"   - Node parameters: {context.node.parameters}")
+            self.logger.error(f"   - SDKs available: {bool(self._sdks)}")
+            self.logger.exception("Full stack trace:")
+
             return self._create_error_result(
                 f"Error executing external action: {str(e)}",
-                error_details={"exception": str(e)},
+                error_details={
+                    "exception": str(e),
+                    "exception_type": type(e).__name__,
+                    "subtype": context.node.subtype,
+                    "sdks_available": bool(self._sdks),
+                },
                 execution_time=time.time() - start_time,
                 logs=logs,
             )
@@ -381,9 +423,12 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
     ) -> NodeExecutionResult:
         """Execute external action using new shared SDK system."""
         subtype = context.node.subtype
+        self.logger.info(f"🛠️ _execute_with_sdk called for subtype: {subtype}")
+
         user_id = getattr(context, "user_id", None) or context.metadata.get(
             "user_id", "00000000-0000-0000-0000-000000000123"
         )
+        self.logger.info(f"👤 User ID for SDK: {user_id}")
 
         # Map subtypes to provider names and operations
         subtype_mapping = {
@@ -399,6 +444,9 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         }
 
         if subtype not in subtype_mapping:
+            self.logger.error(
+                f"❌ Subtype {subtype} not in SDK mapping: {list(subtype_mapping.keys())}"
+            )
             return self._create_error_result(
                 f"SDK not available for subtype: {subtype}",
                 execution_time=time.time() - start_time,
@@ -406,10 +454,14 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
             )
 
         provider, operation_preparer = subtype_mapping[subtype]
+        self.logger.info(f"📦 Mapped to provider: {provider}")
 
         try:
             # Prepare operation and parameters
+            self.logger.info(f"🔧 Preparing operation with {operation_preparer.__name__}")
             operation, parameters = operation_preparer(context)
+            self.logger.info(f"✅ Prepared {provider} operation: {operation}")
+            self.logger.info(f"⚙️ Parameters: {parameters}")
             logs.append(f"Prepared {provider} operation: {operation}")
 
             # Get credentials from OAuth2 service (N8N-style automatic querying)
@@ -564,10 +616,19 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
     def _prepare_slack_operation(self, context: NodeExecutionContext) -> tuple[str, Dict[str, Any]]:
         """Prepare Slack operation and parameters."""
+        self.logger.info(f"🔧 _prepare_slack_operation called")
         action = self.get_parameter_with_spec(context, "action") or context.get_parameter("action")
         channel = self.get_parameter_with_spec(context, "channel") or context.get_parameter(
             "channel"
         )
+
+        self.logger.info(f"💬 Slack action: {action}")
+        self.logger.info(f"📢 Slack channel: {channel}")
+
+        if not action:
+            self.logger.error(f"❌ No Slack action specified")
+        if not channel:
+            self.logger.error(f"❌ No Slack channel specified")
 
         parameters = {"channel": channel}
 
@@ -607,6 +668,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 }
             )
 
+        self.logger.info(f"✅ Returning Slack operation: action='{action}', parameters={parameters}")
         return action, parameters
 
     def _prepare_email_operation(self, context: NodeExecutionContext) -> tuple[str, Dict[str, Any]]:

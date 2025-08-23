@@ -213,6 +213,7 @@ class WorkflowExecutionEngine:
         self.logger.info(
             f"✅ Found node definition: {node_def.get('name', 'Unnamed')} (type: {node_def.get('type', 'Unknown')}, subtype: {node_def.get('subtype', 'None')})"
         )
+        self.logger.info(f"🔍 Full node definition: {node_def}")
 
         # Record node execution start
         node_start_time = time.time()

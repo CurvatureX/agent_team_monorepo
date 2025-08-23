@@ -117,10 +117,21 @@ class ExecutionService:
 
                 # Execute the workflow using the execution engine
                 self.logger.info("🚀 Calling WorkflowExecutionEngine.execute_workflow...")
+
+                # Log the workflow definition before passing it to the engine
+                workflow_dict = workflow.dict()
+                self.logger.info(
+                    f"📋 Workflow definition nodes: {len(workflow_dict.get('nodes', []))}"
+                )
+                for i, node in enumerate(workflow_dict.get("nodes", [])):
+                    self.logger.info(
+                        f"   Node {i+1}: {node.get('name', 'Unnamed')} (type: {node.get('type')}, subtype: {node.get('subtype')}, id: {node.get('id')})"
+                    )
+
                 execution_result = await self.execution_engine.execute_workflow(
                     workflow_id=request.workflow_id,
                     execution_id=execution_id,
-                    workflow_definition=workflow.dict(),
+                    workflow_definition=workflow_dict,
                     initial_data=request.trigger_data,
                     credentials={},  # TODO: Add credential handling
                 )
