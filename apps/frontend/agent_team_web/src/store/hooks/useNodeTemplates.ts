@@ -10,8 +10,44 @@ import {
   categoryCounts,
   getTemplateByIdAtom,
 } from '../atoms/nodeTemplates';
-import type { NodeCategory } from '@/types/node-template';
+import type { NodeCategory, NodeTemplate } from '@/types/node-template';
 import { useNodeTemplatesApi } from '@/lib/api';
+
+// Normalize category names to match the expected format
+const normalizeCategoryName = (category: string | null | undefined): NodeCategory => {
+  if (!category) {
+    // Default category based on node_type if category is null
+    return 'Actions'; // Default fallback
+  }
+  
+  const categoryMap: Record<string, NodeCategory> = {
+    'trigger': 'Trigger',
+    'triggers': 'Trigger',
+    'ai_agent': 'AI Agents',
+    'ai_agents': 'AI Agents',
+    'ai agents': 'AI Agents',
+    'action': 'Actions',
+    'actions': 'Actions',
+    'flow_control': 'Flow Control',
+    'flow control': 'Flow Control',
+    'human_interaction': 'Human Interaction',
+    'human interaction': 'Human Interaction',
+    'memory': 'Memory',
+    'tool': 'Tools',
+    'tools': 'Tools',
+  };
+
+  const lowerCategory = category.toLowerCase();
+  return categoryMap[lowerCategory] || (category as NodeCategory);
+};
+
+// Normalize templates data
+const normalizeTemplates = (templates: NodeTemplate[]): NodeTemplate[] => {
+  return templates.map(template => ({
+    ...template,
+    category: normalizeCategoryName(template.category),
+  }));
+};
 
 export const useNodeTemplates = () => {
   const [templates, setTemplates] = useAtom(nodeTemplatesAtom);
@@ -29,7 +65,9 @@ export const useNodeTemplates = () => {
   // Sync API data with Jotai atoms
   useEffect(() => {
     if (apiTemplates && apiTemplates.length > 0) {
-      setTemplates(apiTemplates);
+      // Normalize templates before setting
+      const normalized = normalizeTemplates(apiTemplates);
+      setTemplates(normalized);
       setLoading(false);
       setError(null);
     }

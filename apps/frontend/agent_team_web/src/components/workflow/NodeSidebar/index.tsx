@@ -167,37 +167,41 @@ export const NodeSidebar: React.FC<NodeSidebarProps> = ({
             </div>
 
             {/* Categories and nodes */}
-            <ScrollArea className="flex-1 p-4" onDragEnd={handleNodeDragEnd}>
-              {searchQuery && displayTemplates.length === 0 ? (
-                <div className="text-sm text-muted-foreground text-center py-8">
-                  No nodes found for &quot;{searchQuery}&quot;
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {categoriesToShow.map((category) => {
-                    const categoryTemplates = selectedCategory
-                      ? displayTemplates
-                      : templatesByCategory[category]?.filter(t =>
-                        displayTemplates.includes(t)
-                      ) || [];
+            <div className="flex-1 overflow-hidden">
+              <ScrollArea className="h-full" onDragEnd={handleNodeDragEnd}>
+                <div className="p-4">
+                  {searchQuery && displayTemplates.length === 0 ? (
+                    <div className="text-sm text-muted-foreground text-center py-8">
+                      No nodes found for &quot;{searchQuery}&quot;
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {categoriesToShow.map((category) => {
+                        const categoryTemplates = selectedCategory
+                          ? displayTemplates
+                          : templatesByCategory[category]?.filter(t =>
+                            displayTemplates.includes(t)
+                          ) || [];
 
-                    if (categoryTemplates.length === 0) return null;
+                        if (categoryTemplates.length === 0) return null;
 
-                    return (
-                      <NodeCategory
-                        key={category}
-                        category={category}
-                        templates={categoryTemplates}
-                        count={categoryTemplates.length}
-                        defaultExpanded={!!searchQuery || !!selectedCategory}
-                        onNodeSelect={onNodeSelect}
-                        onNodeDragStart={handleNodeDragStart}
-                      />
-                    );
-                  })}
+                        return (
+                          <NodeCategory
+                            key={category}
+                            category={category}
+                            templates={categoryTemplates}
+                            count={categoryTemplates.length}
+                            defaultExpanded={!!searchQuery || !!selectedCategory}
+                            onNodeSelect={onNodeSelect}
+                            onNodeDragStart={handleNodeDragStart}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
-            </ScrollArea>
+              </ScrollArea>
+            </div>
 
             {/* Footer */}
             <Separator />
