@@ -2,7 +2,7 @@ import json
 import logging
 import uuid
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -15,9 +15,35 @@ from shared.models.trigger import ExecutionResult, TriggerType
 from shared.models.trigger_index import TriggerIndex
 from workflow_scheduler.core.config import settings
 from workflow_scheduler.core.database import async_session_factory
-from workflow_scheduler.core.supabase_client import query_github_triggers
+from workflow_scheduler.core.supabase_client import get_supabase_client, query_github_triggers
 from workflow_scheduler.dependencies import get_trigger_manager
 from workflow_scheduler.services.trigger_manager import TriggerManager
+
+# Note: We now use the actual workflow owner's user_id from the database
+
+
+async def _get_workflow_owner_id(workflow_id: str) -> Optional[str]:
+    """Get the workflow owner's user_id from the database"""
+    try:
+        supabase = get_supabase_client()
+        if not supabase:
+            logger.error("Supabase client not available")
+            return None
+
+        response = supabase.table("workflows").select("user_id").eq("id", workflow_id).execute()
+
+        if response.data and len(response.data) > 0:
+            user_id = response.data[0].get("user_id")
+            logger.info(f"Found workflow owner: {user_id} for workflow {workflow_id}")
+            return str(user_id) if user_id else None
+        else:
+            logger.warning(f"Workflow {workflow_id} not found in database")
+            return None
+
+    except Exception as e:
+        logger.error(f"Error fetching workflow owner for {workflow_id}: {e}", exc_info=True)
+        return None
+
 
 logger = logging.getLogger(__name__)
 
@@ -51,14 +77,23 @@ class GitHubTriggerRequest(BaseModel):
 async def trigger_manual(
     workflow_id: str,
     request: ManualTriggerRequest,
-    user_id: str = "system",  # TODO: Extract from auth
     trigger_manager: TriggerManager = Depends(get_trigger_manager),
 ):
     """Manually trigger a workflow execution"""
     try:
-        logger.info(f"Manual trigger requested for workflow {workflow_id} by user {user_id}")
+        # Get the workflow owner ID
+        workflow_owner_id = await _get_workflow_owner_id(workflow_id)
+        if not workflow_owner_id:
+            logger.error(f"Could not determine workflow owner for {workflow_id}")
+            raise HTTPException(status_code=400, detail="Could not determine workflow owner")
 
-        result = await trigger_manager.trigger_manual(workflow_id=workflow_id, user_id=user_id)
+        logger.info(
+            f"Manual trigger requested for workflow {workflow_id} by owner {workflow_owner_id}"
+        )
+
+        result = await trigger_manager.trigger_manual(
+            workflow_id=workflow_id, user_id=workflow_owner_id
+        )
 
         return result
 
@@ -350,7 +385,8 @@ async def handle_github_trigger(
 
     except Exception as e:
         logger.error(
-            f"Error handling GitHub trigger {trigger_request.event_type}: {e}", exc_info=True
+            f"Error handling GitHub trigger {trigger_request.event_type}: {e}",
+            exc_info=True,
         )
         raise HTTPException(status_code=500, detail=f"GitHub trigger processing failed: {str(e)}")
 
@@ -452,7 +488,10 @@ async def get_trigger_status(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting trigger status for workflow {workflow_id}: {e}", exc_info=True)
+        logger.error(
+            f"Error getting trigger status for workflow {workflow_id}: {e}",
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail=f"Failed to get trigger status: {str(e)}")
 
 
@@ -498,16 +537,120 @@ async def handle_slack_events(
     try:
         team_id = slack_event_data.get("team_id")
         event_data = slack_event_data.get("event_data", {})
+        event_type = event_data.get("type", "unknown")
+        event_id = event_data.get("event_id", "")
+        event_time = event_data.get("event_time", 0)
 
         logger.info(f"Slack event received from API Gateway for team {team_id}")
+        logger.info(f"Processing Slack event type: {event_type}, event_id: {event_id}")
+        logger.info(f"Full event data: {event_data}")
 
-        # For now, just acknowledge the event
-        # In the future, this could route to appropriate Slack triggers
+        # Check for duplicate event processing using Redis-based deduplication
+        if event_id:
+            from workflow_scheduler.services.event_deduplication import get_deduplication_service
+
+            dedup_service = await get_deduplication_service()
+            is_duplicate = await dedup_service.is_duplicate_event(event_id, "slack")
+
+            if is_duplicate:
+                return {
+                    "message": "Duplicate event, already processed",
+                    "event_id": event_id,
+                    "team_id": team_id,
+                    "processed_workflows": 0,
+                    "results": [],
+                }
+
+        # Query for workflows with Slack triggers using Supabase client
+        try:
+            from workflow_scheduler.core.supabase_client import query_slack_triggers
+
+            trigger_records = await query_slack_triggers()
+
+            # Convert Supabase response to expected format (workflow_id, trigger_config)
+            matching_workflows = [
+                (record["workflow_id"], record["trigger_config"]) for record in trigger_records
+            ]
+
+        except Exception as e:
+            logger.error(f"Supabase Slack triggers query failed: {e}", exc_info=True)
+            # Fallback to empty results if database query fails
+            matching_workflows = []
+
+        if not matching_workflows:
+            logger.info("No Slack triggers found in database")
+            return {
+                "message": "No Slack triggers configured",
+                "team_id": team_id,
+                "processed_workflows": 0,
+                "results": [],
+            }
+
+        # Process each matching workflow
+        results = []
+        processed_workflows = 0
+
+        # Import SlackTrigger here to avoid circular imports
+        from workflow_scheduler.triggers.slack_trigger import SlackTrigger
+
+        for workflow_id, trigger_config in matching_workflows:
+            try:
+                # Create SlackTrigger instance and check if event matches
+                slack_trigger = SlackTrigger(workflow_id, trigger_config)
+
+                # Check if this event should trigger the workflow
+                should_trigger = await slack_trigger.process_slack_event(event_data)
+
+                if should_trigger:
+                    logger.info(f"Slack trigger matched for workflow {workflow_id}")
+
+                    # Execute workflow via SlackTrigger method (includes proper channel context)
+                    result = await slack_trigger.trigger_from_slack_event(event_data)
+
+                    if result:
+                        results.append(
+                            {
+                                "workflow_id": workflow_id,
+                                "execution_id": result.execution_id,
+                                "status": result.status,
+                                "message": result.message,
+                            }
+                        )
+                        processed_workflows += 1
+
+                        logger.info(
+                            f"Slack workflow executed {workflow_id}: "
+                            f"execution_id={result.execution_id}, status={result.status}"
+                        )
+                else:
+                    logger.debug(
+                        f"Slack event did not match trigger filters for workflow {workflow_id}"
+                    )
+
+            except Exception as e:
+                logger.error(
+                    f"Error processing Slack trigger for workflow {workflow_id}: {e}",
+                    exc_info=True,
+                )
+                results.append(
+                    {
+                        "workflow_id": workflow_id,
+                        "execution_id": None,
+                        "status": "error",
+                        "message": f"Processing failed: {str(e)}",
+                    }
+                )
+
+        logger.info(
+            f"Processed {processed_workflows} Slack workflows from {len(matching_workflows)} triggers"
+        )
+
         return {
             "message": "Slack event processed",
             "team_id": team_id,
-            "processed_triggers": 0,
-            "results": [],
+            "event_type": event_type,
+            "processed_workflows": processed_workflows,
+            "results": results,
         }
 
     except Exception as e:
@@ -545,7 +688,8 @@ async def handle_slack_interactive(
     except Exception as e:
         logger.error(f"Error handling Slack interactive component: {e}", exc_info=True)
         raise HTTPException(
-            status_code=500, detail=f"Slack interactive component processing failed: {str(e)}"
+            status_code=500,
+            detail=f"Slack interactive component processing failed: {str(e)}",
         )
 
 
@@ -585,7 +729,9 @@ async def handle_slack_commands(
 
 
 @router.get("/health")
-async def get_health_status(trigger_manager: TriggerManager = Depends(get_trigger_manager)):
+async def get_health_status(
+    trigger_manager: TriggerManager = Depends(get_trigger_manager),
+):
     """Get health status of all managed triggers"""
     try:
         health_status = await trigger_manager.health_check()
@@ -648,7 +794,9 @@ async def _execute_workflow_directly(
 
         # Send Slack notification
         await notification_service.send_trigger_notification(
-            workflow_id=workflow_id, trigger_type=trigger_type, trigger_data=trigger_data
+            workflow_id=workflow_id,
+            trigger_type=trigger_type,
+            trigger_data=trigger_data,
         )
 
         logger.info(
@@ -665,7 +813,8 @@ async def _execute_workflow_directly(
     except Exception as e:
         error_msg = f"Exception during workflow notification: {str(e)}"
         logger.error(
-            f"❌ Failed to send notification for workflow {workflow_id}: {error_msg}", exc_info=True
+            f"❌ Failed to send notification for workflow {workflow_id}: {error_msg}",
+            exc_info=True,
         )
 
         return ExecutionResult(

@@ -57,7 +57,8 @@ class DirectDBService:
                 current_version = 1
                 if increment_version:
                     current_version_result = await conn.fetchval(
-                        "SELECT deployment_version FROM workflows WHERE id = $1", workflow_uuid
+                        "SELECT deployment_version FROM workflows WHERE id = $1",
+                        workflow_uuid,
                     )
                     current_version = (current_version_result or 0) + 1
 
@@ -113,7 +114,8 @@ class DirectDBService:
 
         except Exception as e:
             logger.error(
-                f"❌ Error updating workflow deployment status {workflow_id}: {e}", exc_info=True
+                f"❌ Error updating workflow deployment status {workflow_id}: {e}",
+                exc_info=True,
             )
             return False
 
@@ -187,7 +189,8 @@ class DirectDBService:
 
         except Exception as e:
             logger.error(
-                f"❌ Error creating deployment history record {workflow_id}: {e}", exc_info=True
+                f"❌ Error creating deployment history record {workflow_id}: {e}",
+                exc_info=True,
             )
             return False
 

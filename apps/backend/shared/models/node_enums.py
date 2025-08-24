@@ -55,6 +55,11 @@ class AIAgentSubtype(str, Enum):
 class ExternalActionSubtype(str, Enum):
     """External Action Node Subtypes - Third-party integrations"""
 
+    # Generic Actions
+    API_CALL = "API_CALL"
+    WEBHOOK = "WEBHOOK"
+    NOTIFICATION = "NOTIFICATION"
+
     # Communication
     SLACK = "SLACK"
     DISCORD_ACTION = "DISCORD_ACTION"
@@ -70,11 +75,6 @@ class ExternalActionSubtype(str, Enum):
     GOOGLE_CALENDAR = "GOOGLE_CALENDAR"
     TRELLO = "TRELLO"
     NOTION = "NOTION"
-
-    # Generic Actions
-    API_CALL = "API_CALL"
-    WEBHOOK = "WEBHOOK"
-    NOTIFICATION = "NOTIFICATION"
 
     # Cloud Services
     AWS_ACTION = "AWS_ACTION"

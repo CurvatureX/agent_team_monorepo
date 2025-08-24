@@ -242,6 +242,18 @@ resource "aws_ecs_task_definition" "api_gateway" {
         {
           name      = "SLACK_SIGNING_SECRET"
           valueFrom = aws_ssm_parameter.slack_signing_secret.arn
+        },
+        {
+          name      = "SLACK_CLIENT_ID"
+          valueFrom = aws_ssm_parameter.slack_client_id.arn
+        },
+        {
+          name      = "SLACK_CLIENT_SECRET"
+          valueFrom = aws_ssm_parameter.slack_client_secret.arn
+        },
+        {
+          name      = "SLACK_REDIRECT_URI"
+          valueFrom = aws_ssm_parameter.slack_redirect_uri.arn
         }
       ]
 
@@ -637,7 +649,7 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
           value = "http://${aws_lb.internal.dns_name}:8000"
         },
         {
-          name  = "redis_url"
+          name  = "REDIS_URL"
           value = "redis://${aws_elasticache_cluster.redis.cache_nodes[0].address}:6379/1"
         },
         {
@@ -694,6 +706,22 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
         {
           name      = "DEFAULT_SLACK_BOT_TOKEN"
           valueFrom = aws_ssm_parameter.slack_bot_token.arn
+        },
+        {
+          name      = "SLACK_CLIENT_ID"
+          valueFrom = aws_ssm_parameter.slack_client_id.arn
+        },
+        {
+          name      = "SLACK_CLIENT_SECRET"
+          valueFrom = aws_ssm_parameter.slack_client_secret.arn
+        },
+        {
+          name      = "SLACK_REDIRECT_URI"
+          valueFrom = aws_ssm_parameter.slack_redirect_uri.arn
+        },
+        {
+          name      = "SLACK_SIGNING_SECRET"
+          valueFrom = aws_ssm_parameter.slack_signing_secret.arn
         }
       ]
 

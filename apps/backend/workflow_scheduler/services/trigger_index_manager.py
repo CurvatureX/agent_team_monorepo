@@ -35,7 +35,10 @@ class TriggerIndexManager:
         self.session_factory = async_session_factory
 
     async def register_workflow_triggers(
-        self, workflow_id: str, trigger_specs: List[TriggerSpec], deployment_status: str = "active"
+        self,
+        workflow_id: str,
+        trigger_specs: List[TriggerSpec],
+        deployment_status: str = "active",
     ) -> bool:
         """
         Register all triggers for a workflow in the index
@@ -73,7 +76,8 @@ class TriggerIndexManager:
 
         except Exception as e:
             logger.error(
-                f"Error registering triggers for workflow {workflow_id}: {e}", exc_info=True
+                f"Error registering triggers for workflow {workflow_id}: {e}",
+                exc_info=True,
             )
             return False
 
@@ -100,7 +104,8 @@ class TriggerIndexManager:
 
         except Exception as e:
             logger.error(
-                f"Error unregistering triggers for workflow {workflow_id}: {e}", exc_info=True
+                f"Error unregistering triggers for workflow {workflow_id}: {e}",
+                exc_info=True,
             )
             return False
 
@@ -137,7 +142,8 @@ class TriggerIndexManager:
 
         except Exception as e:
             logger.error(
-                f"Error updating trigger status for workflow {workflow_id}: {e}", exc_info=True
+                f"Error updating trigger status for workflow {workflow_id}: {e}",
+                exc_info=True,
             )
             return False
 
@@ -257,7 +263,8 @@ class TriggerIndexManager:
 
         except Exception as e:
             logger.error(
-                f"Error registering GitHub installation {installation_id}: {e}", exc_info=True
+                f"Error registering GitHub installation {installation_id}: {e}",
+                exc_info=True,
             )
             return False
 
@@ -367,7 +374,11 @@ class TriggerIndexManager:
             return {"error": str(e)}
 
     async def _register_single_trigger(
-        self, session: AsyncSession, workflow_id: str, spec: TriggerSpec, deployment_status: str
+        self,
+        session: AsyncSession,
+        workflow_id: str,
+        spec: TriggerSpec,
+        deployment_status: str,
     ) -> bool:
         """Register a single trigger specification in the index"""
         try:
@@ -441,7 +452,8 @@ class TriggerIndexManager:
                 return True  # Consider duplicate as success
             else:
                 logger.error(
-                    f"Error registering single trigger {spec.subtype.value}: {e}", exc_info=True
+                    f"Error registering single trigger {spec.subtype.value}: {e}",
+                    exc_info=True,
                 )
                 return False
 
@@ -462,7 +474,10 @@ class TriggerIndexManager:
             return True
 
         except Exception as e:
-            logger.error(f"Error removing triggers for workflow {workflow_id}: {e}", exc_info=True)
+            logger.error(
+                f"Error removing triggers for workflow {workflow_id}: {e}",
+                exc_info=True,
+            )
             return False
 
     async def health_check(self) -> Dict[str, Any]:

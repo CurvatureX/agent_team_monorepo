@@ -48,6 +48,7 @@ class InstallLinksResponse(BaseModel):
     github: str
     notion: str
     slack: str
+    google_calendar: str
 
 
 @router.get(
@@ -157,6 +158,7 @@ async def get_user_integrations(deps: AuthenticatedDeps = Depends()):
     - GitHub App installation with user context
     - Notion workspace integration with OAuth flow
     - Slack workspace integration with OAuth flow
+    - Google Calendar integration with OAuth flow
 
     The links include the user_id as state parameter for proper OAuth flow.
 
@@ -215,10 +217,34 @@ async def get_install_links(deps: AuthenticatedDeps = Depends()):
             f"&state={user_id}"
         )
 
+        # Generate Google Calendar OAuth link with user_id as state
+        # Google OAuth requires these parameters:
+        # - client_id: Your Google OAuth client ID
+        # - redirect_uri: Must match exactly what's configured in Google Console
+        # - response_type: Always "code" for authorization code flow
+        # - scope: Calendar permissions (space-separated or URL-encoded)
+        # - state: Optional state parameter for security/user tracking
+        # - access_type: "offline" to get refresh tokens
+        # - prompt: "consent" to force consent screen (needed for refresh tokens)
+
+        google_calendar_oauth_url = (
+            f"https://accounts.google.com/o/oauth2/auth"
+            f"?client_id={settings.GOOGLE_CLIENT_ID}"
+            f"&redirect_uri={settings.GOOGLE_REDIRECT_URI}"
+            f"&response_type=code"
+            f"&scope=https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events"
+            f"&access_type=offline"
+            f"&prompt=consent"
+            f"&state={user_id}"
+        )
+
         logger.info(f"✅ Generated install links for user {user_id}")
 
         return InstallLinksResponse(
-            github=github_install_url, notion=notion_oauth_url, slack=slack_oauth_url
+            github=github_install_url,
+            notion=notion_oauth_url,
+            slack=slack_oauth_url,
+            google_calendar=google_calendar_oauth_url,
         )
 
     except Exception as e:

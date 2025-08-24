@@ -211,11 +211,14 @@ class DeploymentService:
                 )
             except Exception as db_error:
                 logger.error(
-                    f"Failed to update database after deployment error: {db_error}", exc_info=True
+                    f"Failed to update database after deployment error: {db_error}",
+                    exc_info=True,
                 )
 
             return DeploymentResult(
-                deployment_id=deployment_id, status=DeploymentStatus.FAILED, message=error_msg
+                deployment_id=deployment_id,
+                status=DeploymentStatus.FAILED,
+                message=error_msg,
             )
 
     async def undeploy_workflow(self, workflow_id: str) -> bool:
@@ -329,7 +332,8 @@ class DeploymentService:
                 )
             except Exception as db_error:
                 logger.error(
-                    f"Failed to update database after undeploy error: {db_error}", exc_info=True
+                    f"Failed to update database after undeploy error: {db_error}",
+                    exc_info=True,
                 )
 
             return False
@@ -543,7 +547,10 @@ class DeploymentService:
 
             # Check for required fields
             if "nodes" not in workflow_spec:
-                return {"valid": False, "error": "Workflow spec must contain 'nodes' field"}
+                return {
+                    "valid": False,
+                    "error": "Workflow spec must contain 'nodes' field",
+                }
 
             nodes = workflow_spec["nodes"]
             if not isinstance(nodes, list):
@@ -553,13 +560,19 @@ class DeploymentService:
             trigger_nodes = [node for node in nodes if node.get("type") == NodeType.TRIGGER.value]
 
             if not trigger_nodes:
-                return {"valid": False, "error": "Workflow must contain at least one trigger node"}
+                return {
+                    "valid": False,
+                    "error": "Workflow must contain at least one trigger node",
+                }
 
             # Validate trigger node configurations
             for node in trigger_nodes:
                 subtype = node.get("subtype")
                 if not subtype or subtype not in [t.value for t in TriggerType]:
-                    return {"valid": False, "error": f"Invalid trigger subtype: {subtype}"}
+                    return {
+                        "valid": False,
+                        "error": f"Invalid trigger subtype: {subtype}",
+                    }
 
                 # Basic parameter validation
                 parameters = node.get("parameters", {})
@@ -628,5 +641,6 @@ class DeploymentService:
             )
         except Exception as db_error:
             logger.error(
-                f"Failed to update database after deployment error: {db_error}", exc_info=True
+                f"Failed to update database after deployment error: {db_error}",
+                exc_info=True,
             )

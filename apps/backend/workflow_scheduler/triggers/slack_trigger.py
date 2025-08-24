@@ -65,7 +65,7 @@ class SlackTrigger(BaseTrigger):
             from workflow_scheduler.services.slack_event_router import SlackEventRouter
 
             # Get the global Slack event router instance
-            slack_router = SlackEventRouter.get_instance()
+            slack_router = await SlackEventRouter.get_instance()
 
             # Register this trigger with the router
             await slack_router.register_trigger(workspace_id=self.workspace_id, trigger=self)
@@ -79,7 +79,7 @@ class SlackTrigger(BaseTrigger):
                 f"❌ Failed to start SlackTrigger for workflow {self.workflow_id}: {e}",
                 exc_info=True,
             )
-            self.status = TriggerStatus.FAILED
+            self.status = TriggerStatus.ERROR
             return False
 
     async def stop(self) -> bool:
@@ -91,7 +91,7 @@ class SlackTrigger(BaseTrigger):
             from workflow_scheduler.services.slack_event_router import SlackEventRouter
 
             # Get the global Slack event router instance
-            slack_router = SlackEventRouter.get_instance()
+            slack_router = await SlackEventRouter.get_instance()
 
             # Unregister this trigger from the router
             await slack_router.unregister_trigger(workspace_id=self.workspace_id, trigger=self)
@@ -102,7 +102,8 @@ class SlackTrigger(BaseTrigger):
 
         except Exception as e:
             logger.error(
-                f"❌ Failed to stop SlackTrigger for workflow {self.workflow_id}: {e}", exc_info=True
+                f"❌ Failed to stop SlackTrigger for workflow {self.workflow_id}: {e}",
+                exc_info=True,
             )
             return False
 
@@ -117,43 +118,53 @@ class SlackTrigger(BaseTrigger):
             bool: True if the event matches and should trigger the workflow
         """
         try:
-            event_type = event_data.get("type", "")
+            logger.info(f"🔍 Processing Slack event for workflow {self.workflow_id}")
+
+            # For Slack events, the actual event is nested under 'event' key
+            actual_event = event_data.get("event", {})
+            event_type = actual_event.get("type", "")
+
+            logger.info(f"🏷️  Event type extracted: '{event_type}' (from nested event)")
+            logger.info(f"🎯 Expected event types: {self.event_types}")
 
             # Event type filter
             if event_type not in self.event_types:
-                logger.debug(f"Event type {event_type} not in {self.event_types}")
+                logger.info(f"❌ Event type '{event_type}' not in expected types {self.event_types}")
                 return False
 
-            # Channel filter
-            channel_id = event_data.get("channel", "")
+            logger.info(f"✅ Event type '{event_type}' matches expected types")
+
+            # Channel filter - extract from the nested event
+            channel_id = actual_event.get("channel", "")
             if not self._matches_channel_filter(channel_id):
                 logger.debug(f"Channel {channel_id} doesn't match filter {self.channel_filter}")
                 return False
 
-            # User filter
-            user_id = event_data.get("user", "")
+            # User filter - extract from the nested event
+            user_id = actual_event.get("user", "")
             if not self._matches_user_filter(user_id):
                 logger.debug(f"User {user_id} doesn't match filter {self.user_filter}")
                 return False
 
-            # Bot filter
-            if self.ignore_bots and event_data.get("bot_id"):
-                logger.debug("Ignoring bot message")
+            # Bot filter - extract from the nested event
+            bot_id = actual_event.get("bot_id")
+            if self.ignore_bots and bot_id:
+                logger.info(f"🤖 Ignoring bot message from bot_id: {bot_id}")
                 return False
 
-            # Mention filter
-            if self.mention_required and not self._has_bot_mention(event_data):
+            # Mention filter - pass the nested event
+            if self.mention_required and not self._has_bot_mention(actual_event):
                 logger.debug("Required mention not found")
                 return False
 
-            # Thread filter
-            if self.require_thread and not event_data.get("thread_ts"):
+            # Thread filter - extract from the nested event
+            if self.require_thread and not actual_event.get("thread_ts"):
                 logger.debug("Required thread not found")
                 return False
 
             # Command prefix filter (for message events)
             if event_type == "message" and self.command_prefix:
-                message_text = event_data.get("text", "")
+                message_text = actual_event.get("text", "")
                 if not message_text.strip().startswith(self.command_prefix):
                     logger.debug(f"Message doesn't start with command prefix {self.command_prefix}")
                     return False
@@ -163,7 +174,8 @@ class SlackTrigger(BaseTrigger):
 
         except Exception as e:
             logger.error(
-                f"Error processing Slack event for workflow {self.workflow_id}: {e}", exc_info=True
+                f"Error processing Slack event for workflow {self.workflow_id}: {e}",
+                exc_info=True,
             )
             return False
 
@@ -178,16 +190,19 @@ class SlackTrigger(BaseTrigger):
             ExecutionResult with execution details
         """
         try:
+            # Extract the nested event data
+            actual_event = event_data.get("event", {})
+
             # Extract relevant data from the event
             trigger_data = {
                 "trigger_type": self.trigger_type,
-                "event_type": event_data.get("type", ""),
-                "message": event_data.get("text", ""),
-                "user_id": event_data.get("user", ""),
-                "channel_id": event_data.get("channel", ""),
-                "team_id": event_data.get("team", ""),
-                "timestamp": event_data.get("ts", ""),
-                "thread_ts": event_data.get("thread_ts"),
+                "event_type": actual_event.get("type", ""),
+                "message": actual_event.get("text", ""),
+                "user_id": actual_event.get("user", ""),
+                "channel_id": actual_event.get("channel", ""),
+                "team_id": event_data.get("team_id", ""),  # team_id is at top level
+                "timestamp": actual_event.get("ts", ""),
+                "thread_ts": actual_event.get("thread_ts"),
                 "workspace_id": self.workspace_id,
                 "event_data": event_data,
             }

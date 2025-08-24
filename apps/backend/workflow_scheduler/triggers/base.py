@@ -9,9 +9,11 @@ import httpx
 
 from shared.models.trigger import ExecutionResult, TriggerStatus
 from workflow_scheduler.core.config import settings
-from workflow_scheduler.services.notification_service import NotificationService
+from workflow_scheduler.core.supabase_client import get_supabase_client
 
 logger = logging.getLogger(__name__)
+
+# Note: We now use the actual workflow owner's user_id from the database
 
 
 class BaseTrigger(ABC):
@@ -23,7 +25,6 @@ class BaseTrigger(ABC):
         self.enabled = trigger_config.get("enabled", True)
         self.status = TriggerStatus.PENDING
         self._client = httpx.AsyncClient(timeout=30.0)
-        self._notification_service = NotificationService()
 
     @property
     @abstractmethod
@@ -50,85 +51,133 @@ class BaseTrigger(ABC):
         self, trigger_data: Optional[Dict[str, Any]] = None
     ) -> ExecutionResult:
         """
-        Send notification when workflow trigger conditions are met
-        FOR TESTING: Sends email notification instead of executing workflow
-        """
-        if not self.enabled:
-            logger.warning(
-                f"Trigger {self.trigger_type} for workflow {self.workflow_id} is disabled"
-            )
-            return ExecutionResult(
-                status="skipped", message="Trigger is disabled", trigger_data=trigger_data or {}
-            )
-
-        try:
-            # Send notification instead of executing workflow
-            result = await self._notification_service.send_trigger_notification(
-                workflow_id=self.workflow_id,
-                trigger_type=self.trigger_type,
-                trigger_data=trigger_data or {},
-            )
-
-            logger.info(
-                f"✅ Trigger notification sent for workflow {self.workflow_id} (trigger: {self.trigger_type})"
-            )
-            return result
-
-        except Exception as e:
-            error_msg = f"Error sending trigger notification: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-
-            return ExecutionResult(
-                status="notification_error", message=error_msg, trigger_data=trigger_data or {}
-            )
-
-    async def _trigger_workflow_original(
-        self, trigger_data: Optional[Dict[str, Any]] = None
-    ) -> ExecutionResult:
-        """
-        ORIGINAL METHOD (COMMENTED OUT FOR TESTING):
         Trigger workflow execution by calling workflow_engine HTTP API
         """
-        # NOTE: This method is temporarily disabled for testing
-        # When ready for production, replace _trigger_workflow with this implementation
-
         if not self.enabled:
             logger.warning(
                 f"Trigger {self.trigger_type} for workflow {self.workflow_id} is disabled"
             )
             return ExecutionResult(
-                status="skipped", message="Trigger is disabled", trigger_data=trigger_data or {}
+                status="skipped",
+                message="Trigger is disabled",
+                trigger_data=trigger_data or {},
             )
 
         execution_id = f"exec_{uuid.uuid4()}"
 
         try:
-            # Prepare execution payload
+            # Execute workflow
+            execution_result = await self._execute_workflow(execution_id, trigger_data)
+            return execution_result
+
+        except Exception as e:
+            error_msg = f"Error triggering workflow: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+
+            return ExecutionResult(
+                execution_id=execution_id,
+                status="error",
+                message=error_msg,
+                trigger_data=trigger_data or {},
+            )
+
+    async def _get_workflow_owner_id(self, workflow_id: str) -> Optional[str]:
+        """
+        Get the workflow owner's user_id from the database
+        """
+        try:
+            supabase = get_supabase_client()
+            if not supabase:
+                logger.error("Supabase client not available")
+                return None
+
+            response = supabase.table("workflows").select("user_id").eq("id", workflow_id).execute()
+
+            if response.data and len(response.data) > 0:
+                user_id = response.data[0].get("user_id")
+                logger.info(f"Found workflow owner: {user_id} for workflow {workflow_id}")
+                return str(user_id) if user_id else None
+            else:
+                logger.warning(f"Workflow {workflow_id} not found in database")
+                return None
+
+        except Exception as e:
+            logger.error(f"Error fetching workflow owner for {workflow_id}: {e}", exc_info=True)
+            return None
+
+    async def _execute_workflow(
+        self, execution_id: str, trigger_data: Optional[Dict[str, Any]] = None
+    ) -> ExecutionResult:
+        """
+        Execute workflow by calling workflow_engine HTTP API
+        """
+        try:
+            # Convert trigger_data to string format as expected by workflow engine
+            formatted_trigger_data = {}
+            if trigger_data:
+                for key, value in trigger_data.items():
+                    formatted_trigger_data[key] = str(value) if value is not None else ""
+
+            # Add trigger metadata
+            formatted_trigger_data.update(
+                {
+                    "trigger_type": str(self.trigger_type),
+                    "execution_id": execution_id,
+                    "triggered_at": datetime.utcnow().isoformat(),
+                }
+            )
+
+            # Get the workflow owner's user_id
+            workflow_owner_id = await self._get_workflow_owner_id(str(self.workflow_id))
+            if not workflow_owner_id:
+                logger.error(f"Could not determine workflow owner for {self.workflow_id}")
+                return ExecutionResult(
+                    execution_id=execution_id,
+                    status="error",
+                    message="Could not determine workflow owner",
+                    trigger_data=trigger_data or {},
+                )
+
+            # Prepare execution payload matching ExecuteWorkflowRequest format
             payload = {
-                "execution_id": execution_id,
-                "workflow_id": self.workflow_id,
-                "trigger_type": self.trigger_type,
-                "trigger_data": trigger_data or {},
-                "triggered_at": datetime.utcnow().isoformat(),
+                "workflow_id": str(self.workflow_id),
+                "trigger_data": formatted_trigger_data,
+                "user_id": workflow_owner_id,  # Use actual workflow owner
             }
 
             # Call workflow_engine execute endpoint
             engine_url = f"{settings.workflow_engine_url}/v1/workflows/{self.workflow_id}/execute"
 
-            logger.info(f"Triggering workflow {self.workflow_id} via {engine_url}")
+            logger.info(f"🚀 Triggering workflow {self.workflow_id} via {engine_url}")
 
             response = await self._client.post(
                 engine_url, json=payload, headers={"Content-Type": "application/json"}
             )
 
-            if response.status_code == 202:  # Accepted
+            if response.status_code == 200:  # OK (FastAPI default for successful POST)
                 result_data = response.json()
-                logger.info(f"Workflow {self.workflow_id} execution started: {execution_id}")
+                actual_execution_id = result_data.get("execution_id", execution_id)
+                logger.info(
+                    f"✅ Workflow {self.workflow_id} execution started: {actual_execution_id}"
+                )
 
                 return ExecutionResult(
-                    execution_id=result_data.get("execution_id", execution_id),
+                    execution_id=actual_execution_id,
                     status="started",
-                    message="Workflow execution started successfully",
+                    message=result_data.get("message", "Workflow execution started successfully"),
+                    trigger_data=trigger_data or {},
+                )
+            elif response.status_code == 202:  # Also accept 202 Accepted
+                result_data = response.json()
+                actual_execution_id = result_data.get("execution_id", execution_id)
+                logger.info(
+                    f"✅ Workflow {self.workflow_id} execution accepted: {actual_execution_id}"
+                )
+
+                return ExecutionResult(
+                    execution_id=actual_execution_id,
+                    status="started",
+                    message=result_data.get("message", "Workflow execution accepted"),
                     trigger_data=trigger_data or {},
                 )
             else:
@@ -143,7 +192,7 @@ class BaseTrigger(ABC):
                 )
 
         except Exception as e:
-            error_msg = f"Error triggering workflow: {str(e)}"
+            error_msg = f"Error calling workflow engine: {str(e)}"
             logger.error(error_msg, exc_info=True)
 
             return ExecutionResult(

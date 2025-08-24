@@ -73,7 +73,8 @@ class EmailTrigger(BaseTrigger):
 
         except Exception as e:
             logger.error(
-                f"Failed to start email trigger for workflow {self.workflow_id}: {e}", exc_info=True
+                f"Failed to start email trigger for workflow {self.workflow_id}: {e}",
+                exc_info=True,
             )
             self.status = TriggerStatus.ERROR
             return False
@@ -97,7 +98,8 @@ class EmailTrigger(BaseTrigger):
 
         except Exception as e:
             logger.error(
-                f"Failed to stop email trigger for workflow {self.workflow_id}: {e}", exc_info=True
+                f"Failed to stop email trigger for workflow {self.workflow_id}: {e}",
+                exc_info=True,
             )
             return False
 
@@ -134,7 +136,8 @@ class EmailTrigger(BaseTrigger):
 
             except Exception as e:
                 logger.error(
-                    f"Error in email monitoring for workflow {self.workflow_id}: {e}", exc_info=True
+                    f"Error in email monitoring for workflow {self.workflow_id}: {e}",
+                    exc_info=True,
                 )
                 await asyncio.sleep(self.check_interval)
 
@@ -184,7 +187,8 @@ class EmailTrigger(BaseTrigger):
 
         except Exception as e:
             logger.error(
-                f"Error checking emails for workflow {self.workflow_id}: {e}", exc_info=True
+                f"Error checking emails for workflow {self.workflow_id}: {e}",
+                exc_info=True,
             )
 
         finally:

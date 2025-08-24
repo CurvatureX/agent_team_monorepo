@@ -58,7 +58,10 @@ def update_workflow_deployment_status(workflow_id: str, status: str = "DEPLOYED"
                     WHERE id = %s
                 """
 
-                cur.execute(update_query, (status, current_time, current_timestamp, workflow_uuid))
+                cur.execute(
+                    update_query,
+                    (status, current_time, current_timestamp, workflow_uuid),
+                )
                 affected_rows = cur.rowcount
 
                 if affected_rows > 0:

@@ -50,7 +50,8 @@ async def deploy_workflow(
 
 @router.delete("/workflows/{workflow_id}/undeploy")
 async def undeploy_workflow(
-    workflow_id: str, deployment_service: DeploymentService = Depends(get_deployment_service)
+    workflow_id: str,
+    deployment_service: DeploymentService = Depends(get_deployment_service),
 ):
     """Undeploy a workflow and cleanup its triggers"""
     try:
@@ -61,7 +62,10 @@ async def undeploy_workflow(
         if not success:
             raise HTTPException(status_code=500, detail="Failed to undeploy workflow")
 
-        return {"message": "Workflow undeployed successfully", "workflow_id": workflow_id}
+        return {
+            "message": "Workflow undeployed successfully",
+            "workflow_id": workflow_id,
+        }
 
     except HTTPException:
         raise
@@ -93,7 +97,8 @@ async def update_deployment(
 
 @router.get("/workflows/{workflow_id}/status", response_model=Optional[DeploymentStatusResponse])
 async def get_deployment_status(
-    workflow_id: str, deployment_service: DeploymentService = Depends(get_deployment_service)
+    workflow_id: str,
+    deployment_service: DeploymentService = Depends(get_deployment_service),
 ):
     """Get deployment status for a workflow"""
     try:
@@ -108,13 +113,16 @@ async def get_deployment_status(
         raise
     except Exception as e:
         logger.error(
-            f"Error getting deployment status for workflow {workflow_id}: {e}", exc_info=True
+            f"Error getting deployment status for workflow {workflow_id}: {e}",
+            exc_info=True,
         )
         raise HTTPException(status_code=500, detail=f"Failed to get status: {str(e)}")
 
 
 @router.get("/workflows", response_model=List[DeploymentStatusResponse])
-async def list_deployments(deployment_service: DeploymentService = Depends(get_deployment_service)):
+async def list_deployments(
+    deployment_service: DeploymentService = Depends(get_deployment_service),
+):
     """List all current deployments"""
     try:
         deployments = await deployment_service.list_deployments()

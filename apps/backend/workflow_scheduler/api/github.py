@@ -60,7 +60,8 @@ async def github_webhook(
 
     except Exception as e:
         logger.error(
-            f"Error processing GitHub webhook {webhook_data.event_type}: {e}", exc_info=True
+            f"Error processing GitHub webhook {webhook_data.event_type}: {e}",
+            exc_info=True,
         )
         raise HTTPException(status_code=500, detail=f"GitHub webhook processing failed: {str(e)}")
 
@@ -177,7 +178,8 @@ async def handle_github_trigger(
 
     except Exception as e:
         logger.error(
-            f"Error handling GitHub trigger {trigger_request.event_type}: {e}", exc_info=True
+            f"Error handling GitHub trigger {trigger_request.event_type}: {e}",
+            exc_info=True,
         )
         raise HTTPException(status_code=500, detail=f"GitHub trigger processing failed: {str(e)}")
 
