@@ -204,7 +204,7 @@ We may suspend or terminate your account immediately if you:
 - **Third-Party Dependencies:** Uptime may be affected by third-party service availability
 
 ### Performance Standards
-- **Response Times:** API response times under normal conditions should be <2 seconds
+- **Response Times:** API response times under normal conditions should be &lt;2 seconds
 - **Agent Execution:** AI agents should execute within reasonable timeframes based on complexity
 - **Support Response:** Support ticket response within 24 hours for paid plans
 

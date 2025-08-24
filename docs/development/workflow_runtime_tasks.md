@@ -1,6 +1,6 @@
 # Workflow Runtime Development Tasks
 
-Based on [workflow-runtime-architecture.md](../tech-design/workflow-runtime-architecture.md), here are the detailed development tasks for implementing workflow_runtime service.
+Here are the detailed development tasks for implementing workflow_runtime service.
 
 ## Project Overview
 
