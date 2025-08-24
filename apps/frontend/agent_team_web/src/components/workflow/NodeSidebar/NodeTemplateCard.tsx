@@ -54,8 +54,9 @@ export const NodeTemplateCard: React.FC<NodeTemplateCardProps> = ({
               colorScheme.bg,
               'group-hover:bg-opacity-80'
             )}
+            style={colorScheme.bgStyle}
           >
-            <Icon className={cn('w-4 h-4', colorScheme.icon)} />
+            <Icon className={cn('w-4 h-4', colorScheme.icon)} style={colorScheme.iconStyle} />
           </div>
           <div className="flex-1 min-w-0">
             <h4 className="text-sm font-medium truncate">{template.name}</h4>

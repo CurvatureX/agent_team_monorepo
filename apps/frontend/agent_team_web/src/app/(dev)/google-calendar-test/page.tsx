@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,18 +9,16 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { 
   Calendar, 
-  Play, 
   CheckCircle, 
   XCircle, 
-  // AlertCircle,
   Loader2,
-  Shield,
   ExternalLink,
   Plus,
   Copy,
-  Code,
   Settings,
-  RefreshCw
+  RefreshCw,
+  Shield,
+  Code
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -30,10 +28,27 @@ const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/calendar https://www.goog
 const REDIRECT_URI = 'http://localhost:3000/oauth-callback';
 const USER_ID = '7ba36345-a2bb-4ec9-a001-bb46d79d629d'; // 固定用户ID
 
+interface CalendarEventOutput {
+  success?: boolean;
+  event?: {
+    id?: string;
+    summary?: string;
+    start?: string;
+    end?: string;
+    location?: string;
+    description?: string;
+  };
+  event_id?: string;
+  event_link?: string;
+  html_link?: string;
+  error?: string;
+  message?: string;
+}
+
 interface ExecutionResult {
   execution_id: string;
   status: string;
-  output_data: unknown;
+  output_data: CalendarEventOutput | null;
   error_message?: string;
   logs: string[];
 }
@@ -241,7 +256,7 @@ export default function GoogleCalendarTestPage() {
   };
 
   // 执行Google Calendar节点
-  const executeGoogleCalendarNode = async (credentials?: any) => {
+  const executeGoogleCalendarNode = async (credentials?: Record<string, unknown>) => {
     try {
       // 确保有工作流ID
       let currentWorkflowId = workflowId;

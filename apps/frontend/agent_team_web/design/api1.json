@@ -290,8 +290,84 @@
                             ],
                             "title": "X-Hub-Signature-256"
                         }
+                    },
+                    {
+                        "name": "X-GitHub-Hook-ID",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Github-Hook-Id"
+                        }
+                    },
+                    {
+                        "name": "X-GitHub-Hook-Installation-Target-ID",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Github-Hook-Installation-Target-Id"
+                        }
+                    },
+                    {
+                        "name": "X-GitHub-Hook-Installation-Target-Type",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Github-Hook-Installation-Target-Type"
+                        }
+                    },
+                    {
+                        "name": "X-Hub-Signature",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Hub-Signature"
+                        }
                     }
                 ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": true,
+                                "title": "Webhook Payload"
+                            }
+                        }
+                    }
+                },
                 "responses": {
                     "200": {
                         "description": "Successful Response",
@@ -320,129 +396,15 @@
                 }
             }
         },
-        "/api/v1/public/webhooks/slack/events": {
+        "/api/v1/public/webhooks/slack": {
             "post": {
                 "tags": [
                     "Public API",
                     "Public - Webhooks"
                 ],
-                "summary": "Slack Events Webhook",
-                "description": "Slack Events API webhook endpoint\nHandles Slack workspace events and routes them to workflow_scheduler",
-                "operationId": "slack_events_webhook_api_v1_public_webhooks_slack_events_post",
-                "parameters": [
-                    {
-                        "name": "X-Slack-Signature",
-                        "in": "header",
-                        "required": true,
-                        "schema": {
-                            "type": "string",
-                            "title": "X-Slack-Signature"
-                        }
-                    },
-                    {
-                        "name": "X-Slack-Request-Timestamp",
-                        "in": "header",
-                        "required": true,
-                        "schema": {
-                            "type": "string",
-                            "title": "X-Slack-Request-Timestamp"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/json": {
-                                "schema": {}
-                            }
-                        }
-                    },
-                    "429": {
-                        "description": "Rate limit exceeded"
-                    },
-                    "500": {
-                        "description": "Internal server error"
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/public/webhooks/slack/interactive": {
-            "post": {
-                "tags": [
-                    "Public API",
-                    "Public - Webhooks"
-                ],
-                "summary": "Slack Interactive Webhook",
-                "description": "Slack Interactive Components webhook endpoint\nHandles button clicks, modal submissions, select menus, and other interactive elements",
-                "operationId": "slack_interactive_webhook_api_v1_public_webhooks_slack_interactive_post",
-                "parameters": [
-                    {
-                        "name": "X-Slack-Signature",
-                        "in": "header",
-                        "required": true,
-                        "schema": {
-                            "type": "string",
-                            "title": "X-Slack-Signature"
-                        }
-                    },
-                    {
-                        "name": "X-Slack-Request-Timestamp",
-                        "in": "header",
-                        "required": true,
-                        "schema": {
-                            "type": "string",
-                            "title": "X-Slack-Request-Timestamp"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Successful Response",
-                        "content": {
-                            "application/json": {
-                                "schema": {}
-                            }
-                        }
-                    },
-                    "429": {
-                        "description": "Rate limit exceeded"
-                    },
-                    "500": {
-                        "description": "Internal server error"
-                    },
-                    "422": {
-                        "description": "Validation Error",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/HTTPValidationError"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/public/webhooks/slack/commands": {
-            "post": {
-                "tags": [
-                    "Public API",
-                    "Public - Webhooks"
-                ],
-                "summary": "Slack Slash Commands Webhook",
-                "description": "Slack Slash Commands webhook endpoint\nHandles slash commands like /workflow, /ai-help, etc.",
-                "operationId": "slack_slash_commands_webhook_api_v1_public_webhooks_slack_commands_post",
+                "summary": "Slack Unified Webhook",
+                "description": "Unified Slack webhook endpoint\nHandles all Slack webhook types: events, interactive components, and slash commands\nAuto-detects webhook type and routes accordingly",
+                "operationId": "slack_unified_webhook_api_v1_public_webhooks_slack_post",
                 "parameters": [
                     {
                         "name": "X-Slack-Signature",
@@ -752,6 +714,228 @@
                     },
                     "500": {
                         "description": "Internal server error"
+                    }
+                }
+            }
+        },
+        "/api/v1/public/webhooks/notion/auth": {
+            "get": {
+                "tags": [
+                    "Public API",
+                    "Public - Webhooks"
+                ],
+                "summary": "Notion Oauth Callback",
+                "description": "Notion OAuth callback endpoint\nHandles Notion integration OAuth flow",
+                "operationId": "notion_oauth_callback_api_v1_public_webhooks_notion_auth_get",
+                "parameters": [
+                    {
+                        "name": "code",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Code"
+                        }
+                    },
+                    {
+                        "name": "state",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "State"
+                        }
+                    },
+                    {
+                        "name": "error",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Error"
+                        }
+                    },
+                    {
+                        "name": "error_description",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Error Description"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit exceeded"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/public/webhooks/google/auth": {
+            "get": {
+                "tags": [
+                    "Public API",
+                    "Public - Webhooks"
+                ],
+                "summary": "Google Oauth Callback",
+                "description": "Google OAuth callback endpoint\nHandles Google OAuth integration flow for all Google services\n(Calendar, Gmail, Drive, etc.)",
+                "operationId": "google_oauth_callback_api_v1_public_webhooks_google_auth_get",
+                "parameters": [
+                    {
+                        "name": "code",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Code"
+                        }
+                    },
+                    {
+                        "name": "state",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "State"
+                        }
+                    },
+                    {
+                        "name": "error",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Error"
+                        }
+                    },
+                    {
+                        "name": "error_description",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Error Description"
+                        }
+                    },
+                    {
+                        "name": "scope",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Scope"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limit exceeded"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1233,7 +1417,7 @@
                     "App - Workflows"
                 ],
                 "summary": "List All Node Templates",
-                "description": "List all available node templates via HTTP.",
+                "description": "List all available node templates from node specs.\n\nThis endpoint has been updated to use the node specs system instead of\nthe deprecated node_templates database table.",
                 "operationId": "list_all_node_templates_api_v1_app_workflows_node_templates_get",
                 "security": [
                     {
@@ -1339,7 +1523,7 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/WorkflowCreateRequest"
+                                "$ref": "#/components/schemas/CreateWorkflowRequest"
                             }
                         }
                     }
@@ -1567,7 +1751,9 @@
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/WorkflowUpdateRequest"
+                                "type": "object",
+                                "additionalProperties": true,
+                                "title": "Request Body"
                             }
                         }
                     }
@@ -1870,6 +2056,67 @@
                 }
             }
         },
+        "/api/v1/app/workflows/{workflow_id}/undeploy": {
+            "delete": {
+                "tags": [
+                    "App API",
+                    "App - Workflows"
+                ],
+                "summary": "Undeploy Workflow",
+                "description": "Undeploy a workflow and cleanup its triggers\n卸载工作流并清理其触发器",
+                "operationId": "undeploy_workflow_api_v1_app_workflows__workflow_id__undeploy_delete",
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "workflow_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Workflow Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ResponseModel"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Insufficient permissions"
+                    },
+                    "429": {
+                        "description": "Rate limit exceeded"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/app/workflows/{workflow_id}/deployment/status": {
             "get": {
                 "tags": [
@@ -2136,6 +2383,46 @@
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/UserIntegrationsResponse"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Authentication required"
+                    },
+                    "403": {
+                        "description": "Insufficient permissions"
+                    },
+                    "429": {
+                        "description": "Rate limit exceeded"
+                    },
+                    "500": {
+                        "description": "Internal server error"
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/app/integrations/install-links": {
+            "get": {
+                "tags": [
+                    "App API",
+                    "App - Integrations"
+                ],
+                "summary": "Get Integration Install Links",
+                "description": "Get installation links for integrating external services into the system.\n\n    Currently supports:\n    - GitHub App installation with user context\n    - Notion workspace integration with OAuth flow\n    - Slack workspace integration with OAuth flow\n    - Google Calendar integration with OAuth flow\n\n    The links include the user_id as state parameter for proper OAuth flow.\n\n    Requires authentication via Supabase JWT token.",
+                "operationId": "get_install_links_api_v1_app_integrations_install_links_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/InstallLinksResponse"
                                 }
                             }
                         }
@@ -2703,6 +2990,89 @@
                 "title": "ChatStreamResponse",
                 "description": "注意：实际响应为SSE (Server-Sent Events) 流式格式，此模型仅用于文档展示"
             },
+            "CreateWorkflowRequest": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "title": "Name"
+                    },
+                    "description": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 1000
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Description"
+                    },
+                    "nodes": {
+                        "items": {
+                            "$ref": "#/components/schemas/NodeData"
+                        },
+                        "type": "array",
+                        "minItems": 1,
+                        "title": "Nodes"
+                    },
+                    "connections": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "title": "Connections"
+                    },
+                    "settings": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/WorkflowSettingsData"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "static_data": {
+                        "additionalProperties": {
+                            "type": "string"
+                        },
+                        "type": "object",
+                        "title": "Static Data"
+                    },
+                    "tags": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Tags"
+                    },
+                    "user_id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "title": "User Id"
+                    },
+                    "session_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Session Id"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "nodes",
+                    "user_id"
+                ],
+                "title": "CreateWorkflowRequest",
+                "description": "创建工作流请求"
+            },
             "DeploymentResult": {
                 "properties": {
                     "deployment_id": {
@@ -3081,6 +3451,35 @@
                 ],
                 "title": "HealthCheckModel",
                 "description": "健康检查模型"
+            },
+            "InstallLinksResponse": {
+                "properties": {
+                    "github": {
+                        "type": "string",
+                        "title": "Github"
+                    },
+                    "notion": {
+                        "type": "string",
+                        "title": "Notion"
+                    },
+                    "slack": {
+                        "type": "string",
+                        "title": "Slack"
+                    },
+                    "google_calendar": {
+                        "type": "string",
+                        "title": "Google Calendar"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "github",
+                    "notion",
+                    "slack",
+                    "google_calendar"
+                ],
+                "title": "InstallLinksResponse",
+                "description": "Integration install links response model"
             },
             "IntegrationInfo": {
                 "properties": {
@@ -3513,21 +3912,6 @@
                 "type": "object",
                 "title": "NodeTemplateListResponse",
                 "description": "Response model for a list of node templates."
-            },
-            "NodeType": {
-                "type": "string",
-                "enum": [
-                    "TRIGGER",
-                    "AI_AGENT",
-                    "EXTERNAL_ACTION",
-                    "ACTION",
-                    "FLOW",
-                    "HUMAN_IN_THE_LOOP",
-                    "TOOL",
-                    "MEMORY"
-                ],
-                "title": "NodeType",
-                "description": "Core Node Types - Based on database schema constraints\n\nThese are the 8 fundamental node categories in the workflow engine."
             },
             "PositionData": {
                 "properties": {
@@ -3982,100 +4366,6 @@
                 ],
                 "title": "ValidationError"
             },
-            "WorkflowCreateRequest": {
-                "properties": {
-                    "name": {
-                        "type": "string",
-                        "title": "Name",
-                        "description": "工作流名称"
-                    },
-                    "description": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Description",
-                        "description": "工作流描述"
-                    },
-                    "type": {
-                        "$ref": "#/components/schemas/WorkflowType",
-                        "description": "工作流类型",
-                        "default": "sequential"
-                    },
-                    "nodes": {
-                        "items": {
-                            "$ref": "#/components/schemas/WorkflowNode"
-                        },
-                        "type": "array",
-                        "title": "Nodes",
-                        "description": "工作流节点列表"
-                    },
-                    "edges": {
-                        "items": {
-                            "$ref": "#/components/schemas/WorkflowEdge"
-                        },
-                        "type": "array",
-                        "title": "Edges",
-                        "description": "工作流连接边列表"
-                    },
-                    "connections": {
-                        "anyOf": [
-                            {
-                                "additionalProperties": true,
-                                "type": "object"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Connections",
-                        "description": "节点连接信息（兼容性字段）"
-                    },
-                    "variables": {
-                        "additionalProperties": true,
-                        "type": "object",
-                        "title": "Variables",
-                        "description": "工作流变量"
-                    },
-                    "settings": {
-                        "additionalProperties": true,
-                        "type": "object",
-                        "title": "Settings",
-                        "description": "工作流设置"
-                    },
-                    "tags": {
-                        "items": {
-                            "type": "string"
-                        },
-                        "type": "array",
-                        "title": "Tags",
-                        "description": "工作流标签"
-                    },
-                    "metadata": {
-                        "anyOf": [
-                            {
-                                "additionalProperties": true,
-                                "type": "object"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Metadata",
-                        "description": "工作流元数据"
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "name"
-                ],
-                "title": "WorkflowCreateRequest",
-                "description": "工作流创建请求模型"
-            },
             "WorkflowData": {
                 "properties": {
                     "id": {
@@ -4182,57 +4472,6 @@
                 "title": "WorkflowData",
                 "description": "工作流数据"
             },
-            "WorkflowEdge": {
-                "properties": {
-                    "id": {
-                        "type": "string",
-                        "title": "Id",
-                        "description": "边的唯一标识符"
-                    },
-                    "source": {
-                        "type": "string",
-                        "title": "Source",
-                        "description": "源节点ID"
-                    },
-                    "target": {
-                        "type": "string",
-                        "title": "Target",
-                        "description": "目标节点ID"
-                    },
-                    "condition": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Condition",
-                        "description": "边的条件表达式"
-                    },
-                    "label": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Label",
-                        "description": "边的标签"
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "id",
-                    "source",
-                    "target"
-                ],
-                "title": "WorkflowEdge",
-                "description": "工作流连接边模型"
-            },
             "WorkflowExecutionRequest": {
                 "properties": {
                     "inputs": {
@@ -4323,79 +4562,6 @@
                 "title": "WorkflowExecutionResponse",
                 "description": "工作流执行响应模型"
             },
-            "WorkflowNode": {
-                "properties": {
-                    "id": {
-                        "type": "string",
-                        "title": "Id",
-                        "description": "节点唯一标识符"
-                    },
-                    "type": {
-                        "$ref": "#/components/schemas/NodeType",
-                        "description": "节点类型"
-                    },
-                    "name": {
-                        "type": "string",
-                        "title": "Name",
-                        "description": "节点名称"
-                    },
-                    "description": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Description",
-                        "description": "节点描述"
-                    },
-                    "config": {
-                        "additionalProperties": true,
-                        "type": "object",
-                        "title": "Config",
-                        "description": "节点配置"
-                    },
-                    "position": {
-                        "anyOf": [
-                            {
-                                "additionalProperties": {
-                                    "type": "number"
-                                },
-                                "type": "object"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Position",
-                        "description": "节点在画布上的位置 {x, y}"
-                    },
-                    "connections": {
-                        "items": {
-                            "type": "string"
-                        },
-                        "type": "array",
-                        "title": "Connections",
-                        "description": "连接到的下一个节点ID列表"
-                    },
-                    "enabled": {
-                        "type": "boolean",
-                        "title": "Enabled",
-                        "description": "节点是否启用",
-                        "default": true
-                    }
-                },
-                "type": "object",
-                "required": [
-                    "id",
-                    "type",
-                    "name"
-                ],
-                "title": "WorkflowNode",
-                "description": "工作流节点模型"
-            },
             "WorkflowResponse": {
                 "properties": {
                     "workflow": {
@@ -4464,144 +4630,6 @@
                 "type": "object",
                 "title": "WorkflowSettingsData",
                 "description": "工作流设置数据"
-            },
-            "WorkflowStatus": {
-                "type": "string",
-                "enum": [
-                    "draft",
-                    "active",
-                    "paused",
-                    "completed",
-                    "failed",
-                    "archived"
-                ],
-                "title": "WorkflowStatus",
-                "description": "工作流状态枚举"
-            },
-            "WorkflowType": {
-                "type": "string",
-                "enum": [
-                    "sequential",
-                    "parallel",
-                    "conditional",
-                    "loop",
-                    "hybrid"
-                ],
-                "title": "WorkflowType",
-                "description": "工作流类型枚举"
-            },
-            "WorkflowUpdateRequest": {
-                "properties": {
-                    "name": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Name",
-                        "description": "工作流名称"
-                    },
-                    "description": {
-                        "anyOf": [
-                            {
-                                "type": "string"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Description",
-                        "description": "工作流描述"
-                    },
-                    "status": {
-                        "anyOf": [
-                            {
-                                "$ref": "#/components/schemas/WorkflowStatus"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "description": "工作流状态"
-                    },
-                    "nodes": {
-                        "anyOf": [
-                            {
-                                "items": {
-                                    "$ref": "#/components/schemas/WorkflowNode"
-                                },
-                                "type": "array"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Nodes",
-                        "description": "工作流节点列表"
-                    },
-                    "edges": {
-                        "anyOf": [
-                            {
-                                "items": {
-                                    "$ref": "#/components/schemas/WorkflowEdge"
-                                },
-                                "type": "array"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Edges",
-                        "description": "工作流连接边列表"
-                    },
-                    "variables": {
-                        "anyOf": [
-                            {
-                                "additionalProperties": true,
-                                "type": "object"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Variables",
-                        "description": "工作流变量"
-                    },
-                    "settings": {
-                        "anyOf": [
-                            {
-                                "additionalProperties": true,
-                                "type": "object"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Settings",
-                        "description": "工作流设置"
-                    },
-                    "tags": {
-                        "anyOf": [
-                            {
-                                "items": {
-                                    "type": "string"
-                                },
-                                "type": "array"
-                            },
-                            {
-                                "type": "null"
-                            }
-                        ],
-                        "title": "Tags",
-                        "description": "工作流标签"
-                    }
-                },
-                "type": "object",
-                "title": "WorkflowUpdateRequest",
-                "description": "工作流更新请求模型"
             }
         },
         "securitySchemes": {

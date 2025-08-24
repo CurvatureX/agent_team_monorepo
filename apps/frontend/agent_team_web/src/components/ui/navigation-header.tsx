@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { ExpandableTabs } from "@/components/ui/expandable-tabs";
-import { Home, Bell, User, Settings, Bot, DollarSign, LogIn, LogOut, Moon, Sun } from "lucide-react";
+import { Home, Bell, User, Settings, Bot, DollarSign, LogOut, Moon, Sun } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
     DropdownMenu,
@@ -28,7 +28,13 @@ export const NavigationHeader = () => {
 
     useEffect(() => {
         setMounted(true);
-    }, []);
+        // Prefetch common routes for faster navigation
+        router.prefetch('/');
+        router.prefetch('/canvas');
+        router.prefetch('/pricing');
+        router.prefetch('/profile');
+        router.prefetch('/login');
+    }, [router]);
 
     const tabs = [
         { title: "Home", icon: Home },
@@ -36,9 +42,8 @@ export const NavigationHeader = () => {
         { title: "Pricing", icon: DollarSign },
         { title: "Notifications", icon: Bell },
         { type: "separator" as const },
-        user ? { title: "Profile", icon: User } : { title: "Login", icon: LogIn },
+        { title: "Profile", icon: User },
         { title: "Settings", icon: Settings },
-        ...(user ? [{ title: "Logout", icon: LogOut }] : []),
     ];
 
     // Set active tab based on current path
@@ -55,13 +60,14 @@ export const NavigationHeader = () => {
     }, [pathname]);
 
     // Handle tab click events
-    const handleTabChange = async (index: number | null) => {
+    const handleTabChange = (index: number | null) => {
         if (index === null) return;
 
-        setActiveTabIndex(index); // Update selected state first
-        
         const tab = tabs[index];
         
+        // Update state immediately for instant visual feedback
+        setActiveTabIndex(index);
+
         // Navigate to corresponding page based on selected tab
         switch (tab.title) {
             case 'Home':
@@ -73,15 +79,8 @@ export const NavigationHeader = () => {
             case 'Pricing':
                 router.push('/pricing');
                 break;
-            case 'Login':
-                router.push('/login');
-                break;
             case 'Profile':
                 router.push('/profile');
-                break;
-            case 'Logout':
-                await signOut();
-                router.push('/');
                 break;
             default:
                 console.log("Selected tab:", tab);
@@ -146,10 +145,10 @@ export const NavigationHeader = () => {
                                 <Avatar className="h-8 w-8 bg-primary/10 border border-primary/20 hover:scale-105 transition-transform">
                                     <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-primary font-semibold text-sm">
                                         {(() => {
-                                            const name = user.user_metadata?.full_name || 
-                                                        user.user_metadata?.name || 
-                                                        user.email || 
-                                                        'User';
+                                            const name = user.user_metadata?.full_name ||
+                                                user.user_metadata?.name ||
+                                                user.email ||
+                                                'User';
                                             const parts = name.split('@')[0].split(' ');
                                             if (parts.length > 1) {
                                                 return parts.map((p: string) => p[0]).join('').toUpperCase().slice(0, 2);
@@ -208,16 +207,19 @@ export const NavigationHeader = () => {
                         </DropdownMenuContent>
                     </DropdownMenu>
                 ) : (
-                    <div 
-                        className="cursor-pointer"
-                        onClick={() => router.push('/login')}
-                        title="Login"
-                    >
-                        <Avatar className="h-8 w-8 bg-muted hover:scale-105 transition-transform">
-                            <AvatarFallback className="bg-muted">
-                                <LogIn className="h-4 w-4 text-muted-foreground" />
-                            </AvatarFallback>
-                        </Avatar>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => router.push('/login?mode=signin')}
+                            className="px-4 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                            Sign In
+                        </button>
+                        <button
+                            onClick={() => router.push('/login?mode=signup')}
+                            className="px-4 py-1.5 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+                        >
+                            Sign Up
+                        </button>
                     </div>
                 )}
             </motion.div>

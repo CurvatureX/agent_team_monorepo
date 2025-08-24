@@ -1,18 +1,18 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PromptInputBox } from "@/components/ui/ai-prompt-box";
 import { PanelResizer } from "@/components/ui/panel-resizer";
 import AssistantList from "@/components/ui/assistant-list";
 import { WorkflowEditor } from "@/components/workflow/WorkflowEditor";
-import { User, Bot, Workflow, Maximize2, ArrowLeft } from "lucide-react";
+import { User, Bot, Workflow, Maximize2, ArrowLeft, StopCircle, RefreshCw } from "lucide-react";
 import { useResizablePanel } from "@/hooks";
 import { assistants as mockAssistants, Assistant } from "@/lib/assistant-data";
 import { WorkflowData } from "@/types/workflow";
-import { generateWorkflowFromDescription } from "@/utils/workflowGenerator";
 import { useWorkflowsApi, useWorkflowActions } from "@/lib/api/hooks/useWorkflowsApi";
 import { useToast } from "@/hooks/use-toast";
+import { chatService, ChatSSEEvent } from "@/lib/api/chatService";
 
 interface Message {
   id: string;
@@ -27,9 +27,22 @@ const CanvasPage = () => {
   const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowData | null>(null);
   const [isWorkflowExpanded, setIsWorkflowExpanded] = useState(false);
   const [isSavingWorkflow, setIsSavingWorkflow] = useState(false);
+  const [streamCancelFn, setStreamCancelFn] = useState<(() => void) | null>(null);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   
   const { toast } = useToast();
   const { updateWorkflow } = useWorkflowActions();
+  
+  // Auto-scroll to bottom when new messages arrive
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+  
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
   
   // Use the custom hook for resizable panels
   const { width: rightPanelWidth, isResizing, resizerProps, overlayProps } = useResizablePanel({
@@ -84,30 +97,43 @@ const CanvasPage = () => {
     return [...apiAssistants, ...mockAssistants];
   }, [apiWorkflows]);
 
-  // Get initial message from ai-prompt page
+  // Load chat history on mount and ensure session exists
   useEffect(() => {
+    const initializeChat = async () => {
+      try {
+        // First ensure we have a session
+        console.log('Initializing chat session...');
+        const sessionId = await chatService.createNewSession();
+        console.log('Chat session initialized:', sessionId);
+        
+        // Then try to load history
+        const history = await chatService.getChatHistory();
+        if (history.messages && history.messages.length > 0) {
+          const formattedMessages: Message[] = history.messages.map((msg: any) => ({
+            id: msg.id,
+            content: msg.content,
+            sender: msg.role === 'user' ? 'user' : 'assistant',
+            timestamp: new Date(msg.created_at)
+          }));
+          setMessages(formattedMessages);
+        }
+      } catch (error) {
+        console.log('Error initializing chat:', error);
+      }
+    };
+
+    initializeChat();
+
+    // Check for initial message from ai-prompt page
     const initialMessage = sessionStorage.getItem('initialMessage');
     if (initialMessage) {
-      const userMessage: Message = {
-        id: Date.now().toString(),
-        content: initialMessage,
-        sender: 'user',
-        timestamp: new Date()
-      };
-      setMessages([userMessage]);
       sessionStorage.removeItem('initialMessage');
-      
-      // Simulate AI response
+      // Send initial message after component mounts
       setTimeout(() => {
-        const aiMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          content: "I understand your requirements. Let me create a solution for you.",
-          sender: 'assistant',
-          timestamp: new Date()
-        };
-        setMessages(prev => [...prev, aiMessage]);
-      }, 1000);
+        handleSendMessage(initialMessage);
+      }, 100);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Handle worker selection from AssistantList
@@ -121,7 +147,7 @@ const CanvasPage = () => {
       console.log('Selected worker:', assistant);
       
       if (assistant?.workflow) {
-        console.log('Setting workflow:', assistant.workflow);
+        console.log('Setting workflow ---:', assistant.workflow);
         setCurrentWorkflow(assistant.workflow);
       } else {
         setCurrentWorkflow(null);
@@ -134,8 +160,16 @@ const CanvasPage = () => {
     };
   }, [assistants]);
 
-  const handleSendMessage = useCallback((message: string, files?: File[]) => {
+  const handleSendMessage = useCallback(async (message: string, files?: File[]) => {
+    console.log('handleSendMessage called with:', message);
     if (!message.trim()) return;
+
+    // Cancel any ongoing stream
+    if (streamCancelFn) {
+      console.log('Cancelling previous stream');
+      streamCancelFn();
+      setStreamCancelFn(null);
+    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -144,50 +178,216 @@ const CanvasPage = () => {
       timestamp: new Date()
     };
 
+    console.log('Adding user message to UI');
     setMessages(prev => [...prev, userMessage]);
     setIsLoading(true);
+    setIsStreaming(true);
 
     // Handle file uploads if any
     if (files && files.length > 0) {
       console.log('Processing uploaded files:', files);
     }
 
-    // Check if this is a workflow generation request
-    const lowerMessage = message.toLowerCase();
-    if (lowerMessage.includes('create workflow') || lowerMessage.includes('generate workflow') || lowerMessage.includes('make flow')) {
-      // Generate workflow
-      const newWorkflow = generateWorkflowFromDescription(message);
-      setCurrentWorkflow(newWorkflow);
+    // Prepare AI message placeholder
+    const currentAiMessageId = (Date.now() + 1).toString();
+    let accumulatedContent = '';
+    let hasReceivedContent = false;
+
+    console.log('About to call chatService.sendChatMessage');
+    try {
+      // Send message to chat API with streaming
+      const cancelFn = await chatService.sendChatMessage(
+        message,
+        (event: ChatSSEEvent) => {
+          console.log('Received SSE event:', event);
+          hasReceivedContent = true;
+          
+          // Handle different message types from the SSE stream
+          if (event.type === 'message') {
+            // Check if it's a text message from assistant
+            if (event.data?.text) {
+              accumulatedContent += event.data.text;
+              
+              // Update or create AI message
+              setMessages(prev => {
+                const existingIndex = prev.findIndex(m => m.id === currentAiMessageId);
+                const aiMessage: Message = {
+                  id: currentAiMessageId,
+                  content: accumulatedContent,
+                  sender: 'assistant',
+                  timestamp: new Date()
+                };
+                
+                if (existingIndex !== -1) {
+                  const updated = [...prev];
+                  updated[existingIndex] = aiMessage;
+                  return updated;
+                } else {
+                  return [...prev, aiMessage];
+                }
+              });
+            } 
+            // Handle status/processing messages (these are transient, we can optionally show them)
+            else if (event.data?.message && event.data?.status === 'processing') {
+              // Optionally show processing status as a temporary message
+              console.log('Processing status:', event.data.message);
+            }
+            // Handle role-based messages (when data contains text and role)
+            else if (event.data?.role === 'assistant') {
+              // This is for messages that come with a role field
+              const messageText = event.data.text || event.data.message || '';
+              if (messageText) {
+                accumulatedContent = messageText; // Replace accumulated content
+                
+                setMessages(prev => {
+                  const existingIndex = prev.findIndex(m => m.id === currentAiMessageId);
+                  const aiMessage: Message = {
+                    id: currentAiMessageId,
+                    content: accumulatedContent,
+                    sender: 'assistant',
+                    timestamp: new Date()
+                  };
+                  
+                  if (existingIndex !== -1) {
+                    const updated = [...prev];
+                    updated[existingIndex] = aiMessage;
+                    return updated;
+                  } else {
+                    return [...prev, aiMessage];
+                  }
+                });
+              }
+            }
+          } else if (event.type === 'workflow' && event.data) {
+            // Handle workflow generation if the AI creates one
+            if (event.data.workflow) {
+              console.log('Received workflow:', event.data.workflow);
+              setCurrentWorkflow(event.data.workflow);
+              
+              // Also show a message about workflow creation if there's text
+              if (event.data.text) {
+                const workflowMessage = event.data.text;
+                setMessages(prev => {
+                  const existingIndex = prev.findIndex(m => m.id === currentAiMessageId);
+                  const aiMessage: Message = {
+                    id: currentAiMessageId,
+                    content: workflowMessage,
+                    sender: 'assistant',
+                    timestamp: new Date()
+                  };
+                  
+                  if (existingIndex !== -1) {
+                    const updated = [...prev];
+                    updated[existingIndex] = aiMessage;
+                    return updated;
+                  } else {
+                    return [...prev, aiMessage];
+                  }
+                });
+              }
+            }
+          } else if (event.type === 'status_change') {
+            // Log status changes for debugging but don't show them as messages
+            console.log('Workflow status change:', event.data);
+          } else if (event.type === 'error') {
+            toast({
+              title: "Error",
+              description: event.data?.message || "An error occurred while processing your message",
+              variant: "destructive",
+            });
+          }
+        },
+        (error) => {
+          console.error('Chat API error:', error);
+          
+          // If no content was received, show a fallback message
+          if (!hasReceivedContent) {
+            const fallbackMessage: Message = {
+              id: currentAiMessageId,
+              content: "I'm sorry, I couldn't connect to the AI service. Please check if the backend service is running.",
+              sender: 'assistant',
+              timestamp: new Date()
+            };
+            setMessages(prev => [...prev, fallbackMessage]);
+          }
+          
+          toast({
+            title: "Connection Error",
+            description: "Failed to connect to AI service. Make sure the backend is running.",
+            variant: "destructive",
+          });
+          setIsLoading(false);
+          setIsStreaming(false);
+        },
+        () => {
+          console.log('Stream completed, received content:', hasReceivedContent);
+          setIsLoading(false);
+          setIsStreaming(false);
+          setStreamCancelFn(null);
+        }
+      );
+
+      setStreamCancelFn(() => cancelFn);
+    } catch (error) {
+      console.error('Failed to send message:', error);
       
-      setTimeout(() => {
-        const aiMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          content: `I've created a workflow based on your description. You can view and edit it on the left. The workflow contains ${newWorkflow.nodes.length} nodes. You can drag to adjust node positions or add new nodes from the panel.`,
-          sender: 'assistant',
-          timestamp: new Date()
-        };
-        setMessages(prev => [...prev, aiMessage]);
-        setIsLoading(false);
-      }, 1000);
-    } else {
-      // Regular conversation response
-      setTimeout(() => {
-        const aiMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          content: `I received your message: "${message}". I can help you create a workflow. Just tell me what kind of flow you need. For example: "Create a workflow that starts with AI analysis, then processes data, and finally sends notifications."`,
-          sender: 'assistant',
-          timestamp: new Date()
-        };
-        setMessages(prev => [...prev, aiMessage]);
-        setIsLoading(false);
-      }, 1500);
+      // Show error message
+      const errorMessage: Message = {
+        id: currentAiMessageId,
+        content: "I'm having trouble connecting to the AI service. Please make sure the backend server is running.",
+        sender: 'assistant',
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMessage]);
+      
+      setIsLoading(false);
+      setIsStreaming(false);
     }
-  }, []);
+  }, [currentWorkflow, toast, streamCancelFn]);
+
+  // Handle stop streaming
+  const handleStopStreaming = useCallback(() => {
+    if (streamCancelFn) {
+      streamCancelFn();
+      setStreamCancelFn(null);
+      setIsStreaming(false);
+      setIsLoading(false);
+    }
+  }, [streamCancelFn]);
+
+  // Handle retry last message
+  const handleRetryLastMessage = useCallback(() => {
+    const lastUserMessage = [...messages].reverse().find(m => m.sender === 'user');
+    if (lastUserMessage) {
+      // Remove last AI message if it exists
+      setMessages(prev => {
+        const lastAiIndex = prev.map((m, i) => m.sender === 'assistant' ? i : -1)
+          .filter(i => i !== -1)
+          .pop();
+        if (lastAiIndex !== undefined && lastAiIndex > -1) {
+          return prev.slice(0, lastAiIndex);
+        }
+        return prev;
+      });
+      // Resend the message
+      handleSendMessage(lastUserMessage.content);
+    }
+  }, [messages, handleSendMessage]);
 
   const handleWorkflowChange = useCallback((updatedWorkflow: WorkflowData) => {
     setCurrentWorkflow(updatedWorkflow);
     console.log('Workflow updated:', updatedWorkflow);
   }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (streamCancelFn) {
+        streamCancelFn();
+      }
+      // Don't clear session to preserve chat history
+    };
+  }, [streamCancelFn]);
 
   // Handle saving workflow to API
   const handleSaveWorkflow = useCallback(async (workflowToSave?: WorkflowData) => {
@@ -206,12 +406,29 @@ const CanvasPage = () => {
     setIsSavingWorkflow(true);
     
     try {
+      // Convert edges to connections format (n8n style)
+      const connections: Record<string, any> = {};
+      if (workflow.edges) {
+        workflow.edges.forEach((edge: any) => {
+          if (!connections[edge.source]) {
+            connections[edge.source] = {
+              main: [[]]
+            };
+          }
+          connections[edge.source].main[0].push({
+            node: edge.target,
+            type: 'main',
+            index: 0,
+          });
+        });
+      }
+
       // Prepare the update data according to API spec
       const updateData = {
         name: workflow.name,
         description: workflow.description,
         nodes: workflow.nodes || [],
-        edges: workflow.edges || [],
+        connections: connections,
         settings: workflow.settings,
         tags: workflow.tags || [],
       };
@@ -219,8 +436,7 @@ const CanvasPage = () => {
       console.log('Saving workflow to API:', {
         id: workflow.id,
         nodesCount: updateData.nodes.length,
-        edgesCount: updateData.edges.length,
-        edges: updateData.edges,
+        connections: connections,
       });
       
       await updateWorkflow(workflow.id, updateData);
@@ -289,7 +505,7 @@ const CanvasPage = () => {
                   </motion.button>
                   <Workflow className="w-5 h-5 text-primary" />
                   <h3 className="text-lg font-semibold">
-                    {assistants.find((a: Assistant) => a.workflow === currentWorkflow)?.name || ''}&apos;s Workflow
+                    {currentWorkflow.name || 'Untitled'}&apos;s Workflow
                   </h3>
                 </div>
                 <motion.button
@@ -362,7 +578,7 @@ const CanvasPage = () => {
           </div>
           
           {/* Chat Messages */}
-          <div className="flex-1 p-4 overflow-y-auto pt-2">
+          <div ref={chatContainerRef} className="flex-1 p-4 overflow-y-auto pt-2">
             <div className="space-y-4">
               <AnimatePresence>
                 {messages.map((message) => (
@@ -400,7 +616,9 @@ const CanvasPage = () => {
                 ))}
               </AnimatePresence>
               
-              {isLoading && (
+              <div ref={messagesEndRef} />
+              
+              {isLoading && !isStreaming && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -420,6 +638,47 @@ const CanvasPage = () => {
               )}
             </div>
           </div>
+
+          {/* Action Buttons */}
+          {(isStreaming || messages.length > 0) && (
+            <div className="px-4 py-2 border-t border-border/30 flex items-center gap-2">
+              {isStreaming && (
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleStopStreaming}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors text-sm"
+                >
+                  <StopCircle className="w-4 h-4" />
+                  <span>Stop</span>
+                </motion.button>
+              )}
+              {!isLoading && messages.length > 0 && (
+                <>
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={handleRetryLastMessage}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-muted hover:bg-accent transition-colors text-sm"
+                  >
+                    <RefreshCw className="w-4 h-4" />
+                    <span>Retry</span>
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => {
+                      setMessages([]);
+                      chatService.clearSession();
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-muted hover:bg-accent transition-colors text-sm ml-auto"
+                  >
+                    <span>Clear Chat</span>
+                  </motion.button>
+                </>
+              )}
+            </div>
+          )}
 
           {/* Input Area */}
           <motion.div
@@ -445,9 +704,28 @@ const CanvasPage = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-background z-50"
+            className="fixed inset-0 bg-background z-50 flex flex-col"
           >
-            <div className="w-full h-full">
+            {/* Fullscreen Header */}
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Workflow className="w-5 h-5 text-primary" />
+                <h3 className="text-lg font-semibold">
+                  {currentWorkflow.name || 'Untitled'}&apos;s Workflow
+                </h3>
+              </div>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setIsWorkflowExpanded(false)}
+                className="p-2 hover:bg-accent rounded-lg transition-colors"
+                title="Exit Fullscreen"
+              >
+                <Maximize2 className="w-4 h-4" />
+              </motion.button>
+            </div>
+            {/* Workflow Editor */}
+            <div className="flex-1">
               <WorkflowEditor
                 initialWorkflow={currentWorkflow}
                 onSave={handleWorkflowChange}

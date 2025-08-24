@@ -255,7 +255,7 @@ export function editorWorkflowToCreateRequest(
   // Convert nodes to API format
   const apiNodes = nodes.map(editorNodeToApiNode);
 
-  // Build connections object (n8n style)
+  // Build connections object (n8n style) from edges
   interface ConnectionNode {
     node: string;
     type: string;
@@ -308,8 +308,30 @@ export function editorWorkflowToUpdateRequest(
   // Convert nodes to API format
   const apiNodes = nodes.map(editorNodeToApiNode);
 
-  // Convert edges to API format (according to api1.json spec)
-  const apiEdges = edges.map(editorEdgeToApiEdge);
+  // Build connections object (n8n style) from edges for update
+  interface ConnectionNode {
+    node: string;
+    type: string;
+    index: number;
+  }
+  
+  interface ConnectionStructure {
+    main: ConnectionNode[][];
+  }
+  
+  const connections: Record<string, ConnectionStructure> = {};
+  edges.forEach((edge) => {
+    if (!connections[edge.source]) {
+      connections[edge.source] = {
+        main: [[]]
+      };
+    }
+    connections[edge.source].main[0].push({
+      node: edge.target,
+      type: 'main',
+      index: 0,
+    });
+  });
 
   return {
     workflow_id: workflowId,
@@ -317,7 +339,7 @@ export function editorWorkflowToUpdateRequest(
     description: metadata.description,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     nodes: apiNodes as unknown as any[],
-    edges: apiEdges,  // Use edges instead of connections for update
+    connections: connections as Record<string, unknown>,
     tags: metadata.tags,
     user_id: userId,
   };
