@@ -114,7 +114,12 @@ class NodeSpecValidator:
 
         elif param_def.type == ParameterType.JSON:
             try:
-                json.loads(str(value))
+                # If value is already a Python object (list, dict, etc.), convert it to JSON first
+                if isinstance(value, (list, dict, bool, int, float)) or value is None:
+                    json.dumps(value)  # Validate that it's JSON-serializable
+                else:
+                    # If it's a string, try to parse it as JSON
+                    json.loads(str(value))
             except (json.JSONDecodeError, TypeError):
                 errors.append(f"Parameter {param_def.name} must be valid JSON")
 

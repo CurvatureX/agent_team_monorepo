@@ -8,15 +8,15 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 backend_dir = Path(__file__).parent.parent.parent.parent.parent
 sys.path.insert(0, str(backend_dir))
 
+from shared.models import (
+    ExecuteSingleNodeRequest,
+    ExecuteWorkflowRequest,
+    ExecuteWorkflowResponse,
+    Execution,
+    SingleNodeExecutionResponse,
+)
 from sqlalchemy.orm import Session
 
-from shared.models import (
-    ExecuteWorkflowRequest, 
-    ExecuteWorkflowResponse, 
-    Execution,
-    ExecuteSingleNodeRequest,
-    SingleNodeExecutionResponse
-)
 from workflow_engine.models.database import get_db
 from workflow_engine.services.execution_service import ExecutionService
 
@@ -29,19 +29,20 @@ def get_execution_service(db: Session = Depends(get_db)):
 
 @router.post("/workflows/{workflow_id}/execute", response_model=ExecuteWorkflowResponse)
 async def execute_workflow(
-    request: ExecuteWorkflowRequest, 
+    request: ExecuteWorkflowRequest,
     request_obj: Request,
-    service: ExecutionService = Depends(get_execution_service)
+    service: ExecutionService = Depends(get_execution_service),
 ):
     try:
         # 获取 trace_id
-        trace_id = getattr(request_obj.state, 'trace_id', None)
+        trace_id = getattr(request_obj.state, "trace_id", None)
         if trace_id:
             import logging
+
             logger = logging.getLogger(__name__)
             logger.info(f"Executing workflow with trace_id: {trace_id}")
-            
-        execution_id = service.execute_workflow(request)
+
+        execution_id = await service.execute_workflow(request)
         return ExecuteWorkflowResponse(
             execution_id=execution_id,
             status="NEW",  # Changed from PENDING to NEW
@@ -89,45 +90,43 @@ async def get_execution_history(
 
 
 @router.post(
-    "/workflows/{workflow_id}/nodes/{node_id}/execute", 
+    "/workflows/{workflow_id}/nodes/{node_id}/execute",
     response_model=SingleNodeExecutionResponse,
     summary="Execute a single node",
     description="""
     Execute a single node within a workflow without running the entire workflow.
-    
+
     This endpoint is useful for:
     - Testing individual nodes
     - Re-running failed nodes
     - Manual node execution
     - Debugging workflow components
-    """
+    """,
 )
 async def execute_single_node(
     workflow_id: str,
     node_id: str,
     request: ExecuteSingleNodeRequest,
-    service: ExecutionService = Depends(get_execution_service)
+    service: ExecutionService = Depends(get_execution_service),
 ):
     """
     Execute a single node in a workflow.
-    
+
     Args:
         workflow_id: The ID of the workflow containing the node
         node_id: The ID of the node to execute
         request: Execution request containing input data and context
-        
+
     Returns:
         SingleNodeExecutionResponse with execution results
-        
+
     Raises:
         404: If workflow or node not found
         500: If execution fails
     """
     try:
         result = await service.execute_single_node(
-            workflow_id=workflow_id,
-            node_id=node_id,
-            request=request
+            workflow_id=workflow_id, node_id=node_id, request=request
         )
         return result
     except ValueError as e:

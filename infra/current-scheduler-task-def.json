@@ -1,0 +1,139 @@
+{
+    "family": "agent-prod-workflow-scheduler",
+    "taskRoleArn": "arn:aws:iam::982081090398:role/agent-prod-ecs-task-role",
+    "executionRoleArn": "arn:aws:iam::982081090398:role/agent-prod-ecs-task-execution-role",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "cpu": "512",
+    "memory": "1024",
+    "containerDefinitions": [
+        {
+            "name": "workflow-scheduler",
+            "image": "982081090398.dkr.ecr.us-east-1.amazonaws.com/agent-team/workflow-scheduler:796a296f31f7b9bf1c28d08423375ac6fc814b62",
+            "cpu": 0,
+            "portMappings": [
+                {
+                    "containerPort": 8003,
+                    "hostPort": 8003,
+                    "protocol": "tcp"
+                }
+            ],
+            "essential": true,
+            "environment": [
+                {
+                    "name": "LOG_FORMAT",
+                    "value": "json"
+                },
+                {
+                    "name": "PYTHONUNBUFFERED",
+                    "value": "1"
+                },
+                {
+                    "name": "PORT",
+                    "value": "8003"
+                },
+                {
+                    "name": "OTEL_SDK_DISABLED",
+                    "value": "true"
+                },
+                {
+                    "name": "WORKFLOW_ENGINE_URL",
+                    "value": "http://internal-agent-prod-int-alb-118700787.us-east-1.elb.amazonaws.com:8002"
+                },
+                {
+                    "name": "redis_url",
+                    "value": "redis://agent-prod-redis.mqc7z9.0001.use1.cache.amazonaws.com:6379/1"
+                },
+                {
+                    "name": "ENVIRONMENT",
+                    "value": "production"
+                },
+                {
+                    "name": "HOST",
+                    "value": "0.0.0.0"
+                },
+                {
+                    "name": "DEBUG",
+                    "value": "false"
+                },
+                {
+                    "name": "LOG_LEVEL",
+                    "value": "INFO"
+                },
+                {
+                    "name": "API_GATEWAY_URL",
+                    "value": "http://internal-agent-prod-int-alb-118700787.us-east-1.elb.amazonaws.com:8000"
+                }
+            ],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "secrets": [
+                {
+                    "name": "SUPABASE_URL",
+                    "valueFrom": "arn:aws:ssm:us-east-1:982081090398:parameter/agent-prod/supabase/url"
+                },
+                {
+                    "name": "SUPABASE_SECRET_KEY",
+                    "valueFrom": "arn:aws:ssm:us-east-1:982081090398:parameter/agent-prod/supabase/secret-key"
+                },
+                {
+                    "name": "SUPABASE_ANON_KEY",
+                    "valueFrom": "arn:aws:ssm:us-east-1:982081090398:parameter/agent-prod/supabase/anon-key"
+                },
+                {
+                    "name": "DATABASE_URL",
+                    "valueFrom": "arn:aws:ssm:us-east-1:982081090398:parameter/agent-prod/database/url"
+                },
+                {
+                    "name": "SMTP_USERNAME",
+                    "valueFrom": "arn:aws:ssm:us-east-1:982081090398:parameter/agent-prod/smtp/username"
+                },
+                {
+                    "name": "SMTP_PASSWORD",
+                    "valueFrom": "arn:aws:ssm:us-east-1:982081090398:parameter/agent-prod/smtp/password"
+                },
+                {
+                    "name": "GITHUB_APP_ID",
+                    "valueFrom": "arn:aws:ssm:us-east-1:982081090398:parameter/agent-prod/github/app-id"
+                },
+                {
+                    "name": "GITHUB_APP_PRIVATE_KEY",
+                    "valueFrom": "arn:aws:ssm:us-east-1:982081090398:parameter/agent-prod/github/app-private-key"
+                },
+                {
+                    "name": "GITHUB_WEBHOOK_SECRET",
+                    "valueFrom": "arn:aws:ssm:us-east-1:982081090398:parameter/agent-prod/github/webhook-secret"
+                },
+                {
+                    "name": "GITHUB_CLIENT_ID",
+                    "valueFrom": "arn:aws:ssm:us-east-1:982081090398:parameter/agent-prod/github/client-id"
+                },
+                {
+                    "name": "DEFAULT_SLACK_BOT_TOKEN",
+                    "valueFrom": "arn:aws:ssm:us-east-1:982081090398:parameter/agent-prod/slack/bot-token"
+                }
+            ],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/agent-prod",
+                    "awslogs-region": "us-east-1",
+                    "awslogs-stream-prefix": "workflow-scheduler"
+                }
+            },
+            "healthCheck": {
+                "command": [
+                    "CMD-SHELL",
+                    "curl -f http://localhost:8003/health || exit 1"
+                ],
+                "interval": 30,
+                "timeout": 15,
+                "retries": 3,
+                "startPeriod": 180
+            },
+            "systemControls": []
+        }
+    ]
+}

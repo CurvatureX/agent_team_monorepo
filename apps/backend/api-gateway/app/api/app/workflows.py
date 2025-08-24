@@ -5,9 +5,10 @@ Workflow API endpoints with authentication and enhanced gRPC client integration
 
 import logging
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from app.core.config import get_settings
+from app.core.database import get_supabase_admin
 from app.dependencies import AuthenticatedDeps
 from app.exceptions import NotFoundError, ValidationError
 from app.models import (
@@ -65,6 +66,195 @@ def _clear_workflow_cache(workflow_id: str, user_id: str):
     if cache_key in WORKFLOW_CACHE:
         del WORKFLOW_CACHE[cache_key]
         logger.info(f"📋 Cleared cached workflow data for {workflow_id}")
+
+
+async def _inject_oauth_credentials(workflow_data: Dict[str, Any], user_id: str) -> Dict[str, Any]:
+    """
+    Inject OAuth credentials from oauth_tokens table into workflow nodes.
+
+    Updates trigger nodes and external action nodes with their corresponding OAuth tokens.
+    """
+    try:
+        logger.info(f"🔐 Injecting OAuth credentials for workflow deployment - user {user_id}")
+
+        # Get Supabase admin client for database access (need admin to access oauth_tokens)
+        supabase = get_supabase_admin()
+
+        # Fetch user's OAuth tokens
+        oauth_tokens_result = (
+            supabase.table("oauth_tokens")
+            .select("provider, integration_id, access_token, refresh_token, credential_data")
+            .eq("user_id", user_id)
+            .eq("is_active", True)
+            .execute()
+        )
+
+        if not oauth_tokens_result.data:
+            logger.info("🔐 No OAuth tokens found for user, skipping credential injection")
+            return workflow_data
+
+        # Create provider -> token mapping with integration_id handling
+        provider_tokens = {}
+        for token_record in oauth_tokens_result.data:
+            provider = token_record["provider"]
+            integration_id = token_record["integration_id"]
+
+            # Map integration_id to provider names used by workflow nodes
+            provider_key = provider
+            if integration_id == "github_app":
+                provider_key = "github"
+            elif integration_id == "google_calendar":
+                provider_key = "google_calendar"
+            elif integration_id == "gmail":
+                provider_key = "gmail"
+            # slack, notion use provider name directly
+
+            provider_tokens[provider_key] = {
+                "access_token": token_record["access_token"],
+                "refresh_token": token_record["refresh_token"],
+                "credential_data": token_record["credential_data"] or {},
+                "integration_id": integration_id,
+                "provider": provider,
+            }
+
+        logger.info(f"🔐 Found OAuth tokens for providers: {list(provider_tokens.keys())}")
+
+        # Make a deep copy to avoid modifying the original
+        updated_workflow = workflow_data.copy()
+
+        # Process nodes in workflow_data (could be in different formats)
+        nodes_data = None
+        if "nodes" in updated_workflow:
+            nodes_data = updated_workflow["nodes"]
+        elif "workflow_data" in updated_workflow and "nodes" in updated_workflow["workflow_data"]:
+            nodes_data = updated_workflow["workflow_data"]["nodes"]
+
+        if not nodes_data:
+            logger.warning("🔐 No nodes found in workflow data structure")
+            return workflow_data
+
+        # Track injected credentials for logging
+        injected_count = 0
+
+        # Process each node
+        for node in nodes_data:
+            node_type = node.get("node_type", node.get("type"))
+            node_subtype = node.get("node_subtype", node.get("subtype"))
+
+            if not node_type or not node_subtype:
+                continue
+
+            # Initialize parameters if not present
+            if "parameters" not in node:
+                node["parameters"] = {}
+
+            # Handle External Action nodes
+            if node_type == "EXTERNAL_ACTION":
+                token_injected = False
+
+                if node_subtype == "GITHUB" and "github" in provider_tokens:
+                    # GitHub external actions use auth_token parameter
+                    node["parameters"]["auth_token"] = provider_tokens["github"]["access_token"]
+                    token_injected = True
+
+                elif node_subtype == "SLACK" and "slack" in provider_tokens:
+                    # Slack external actions use bot_token parameter
+                    node["parameters"]["bot_token"] = provider_tokens["slack"]["access_token"]
+                    token_injected = True
+
+                elif node_subtype == "NOTION" and "notion" in provider_tokens:
+                    # Notion external actions use access_token parameter
+                    node["parameters"]["access_token"] = provider_tokens["notion"]["access_token"]
+                    token_injected = True
+
+                elif node_subtype == "GOOGLE_CALENDAR" and "google_calendar" in provider_tokens:
+                    # Google Calendar external actions use access_token parameter
+                    node["parameters"]["access_token"] = provider_tokens["google_calendar"][
+                        "access_token"
+                    ]
+                    token_injected = True
+
+                elif node_subtype == "EMAIL" and "gmail" in provider_tokens:
+                    # Gmail external actions use oauth_token parameter for OAuth flow
+                    node["parameters"]["oauth_token"] = provider_tokens["gmail"]["access_token"]
+                    token_injected = True
+
+                if token_injected:
+                    injected_count += 1
+                    logger.info(
+                        f"🔐 Injected {node_subtype} credentials for node {node.get('node_id', 'unknown')}"
+                    )
+
+            # Handle Action nodes (for HTTP_REQUEST with authentication)
+            elif node_type == "ACTION":
+                if node_subtype == "HTTP_REQUEST":
+                    # HTTP_REQUEST nodes with authentication may need OAuth tokens
+                    auth_method = node["parameters"].get("authentication", "none")
+                    if auth_method in ["bearer", "api_key"]:
+                        # Try to inject token from any available provider if not already specified
+                        if not node["parameters"].get("auth_token"):
+                            # Prefer github for code-related APIs, then slack, then others
+                            for provider in ["github", "slack", "notion", "google_calendar"]:
+                                if provider in provider_tokens:
+                                    node["parameters"]["auth_token"] = provider_tokens[provider][
+                                        "access_token"
+                                    ]
+                                    logger.info(
+                                        f"🔐 Injected {provider} token for HTTP_REQUEST node {node.get('node_id', 'unknown')}"
+                                    )
+                                    injected_count += 1
+                                    break
+
+            # Handle Trigger nodes - these need credentials for webhook setup and event processing
+            elif node_type == "TRIGGER":
+                if node_subtype == "SLACK":
+                    # Slack triggers don't directly execute with bot tokens during runtime
+                    # but may need workspace info for webhook registration
+                    if "slack" in provider_tokens:
+                        slack_data = provider_tokens["slack"]["credential_data"]
+                        if "workspace_id" in slack_data:
+                            node["parameters"]["workspace_id"] = slack_data["workspace_id"]
+                        if "team_id" in slack_data:
+                            node["parameters"]["team_id"] = slack_data["team_id"]
+                        injected_count += 1
+                        logger.info(
+                            f"🔐 Injected Slack workspace info for trigger node {node.get('node_id', 'unknown')}"
+                        )
+
+                elif node_subtype == "GITHUB":
+                    # GitHub triggers use GitHub App installation managed by scheduler
+                    # Inject installation_id if available for webhook registration
+                    if "github" in provider_tokens:
+                        github_data = provider_tokens["github"]["credential_data"]
+                        if "installation_id" in github_data:
+                            node["parameters"]["github_app_installation_id"] = github_data[
+                                "installation_id"
+                            ]
+                            injected_count += 1
+                            logger.info(
+                                f"🔐 Injected GitHub installation_id for trigger node {node.get('node_id', 'unknown')}"
+                            )
+
+                elif node_subtype == "EMAIL":
+                    # Email triggers might need OAuth credentials for Gmail monitoring
+                    if "gmail" in provider_tokens:
+                        node["parameters"]["oauth_token"] = provider_tokens["gmail"]["access_token"]
+                        injected_count += 1
+                        logger.info(
+                            f"🔐 Injected Gmail OAuth for email trigger node {node.get('node_id', 'unknown')}"
+                        )
+
+                # Note: WEBHOOK and CRON triggers typically don't need OAuth credentials
+                # MANUAL triggers are user-initiated and don't need external credentials
+
+        logger.info(f"✅ OAuth credential injection completed: {injected_count} nodes updated")
+        return updated_workflow
+
+    except Exception as e:
+        logger.error(f"❌ Error injecting OAuth credentials: {e}")
+        # Return original workflow data if credential injection fails
+        # This ensures deployment continues even if credential injection has issues
+        return workflow_data
 
 
 @router.get("/node-templates", response_model=NodeTemplateListResponse)
@@ -464,13 +654,42 @@ async def deploy_workflow(
             # Cache the workflow data for future deployments
             _cache_workflow(workflow_id, deps.current_user.sub, workflow_data)
 
+        # Inject OAuth credentials into workflow nodes
+        workflow_data_with_credentials = await _inject_oauth_credentials(
+            workflow_data, deps.current_user.sub
+        )
+
+        # Update workflow with injected credentials before deployment
+        if workflow_data_with_credentials != workflow_data:
+            logger.info(f"🔐 Updating workflow {workflow_id} with injected OAuth credentials")
+
+            # Update the workflow in the workflow engine with the injected credentials
+            workflow_engine_client = await get_workflow_engine_client()
+
+            # Extract the workflow data structure for the update
+            update_data = {}
+            if "nodes" in workflow_data_with_credentials:
+                update_data["nodes"] = workflow_data_with_credentials["nodes"]
+            elif "workflow_data" in workflow_data_with_credentials:
+                update_data["workflow_data"] = workflow_data_with_credentials["workflow_data"]
+
+            # Update the workflow if we have node data to update
+            if update_data:
+                await workflow_engine_client.update_workflow(
+                    workflow_id=workflow_id, user_id=deps.current_user.sub, **update_data
+                )
+                logger.info(f"✅ Workflow {workflow_id} updated with OAuth credentials")
+
+                # Clear cache since workflow was updated
+                _clear_workflow_cache(workflow_id, deps.current_user.sub)
+
         # Get workflow scheduler client
         scheduler_client = await get_workflow_scheduler_client()
 
-        # Deploy workflow via scheduler
+        # Deploy workflow via scheduler with updated credentials
         result = await scheduler_client.deploy_workflow(
             workflow_id=workflow_id,
-            workflow_spec=workflow_data,
+            workflow_spec=workflow_data_with_credentials,
             trace_id=getattr(deps.request.state, "trace_id", None),
         )
 

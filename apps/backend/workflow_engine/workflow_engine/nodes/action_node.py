@@ -201,7 +201,7 @@ class ActionNodeExecutor(BaseNodeExecutor):
     def _execute_http_request(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
-        """Execute HTTP request."""
+        """Execute HTTP request with authentication support."""
         # Use spec-based parameter retrieval
         method = self.get_parameter_with_spec(context, "method")
         url = self.get_parameter_with_spec(context, "url")
@@ -209,6 +209,8 @@ class ActionNodeExecutor(BaseNodeExecutor):
         data = self.get_parameter_with_spec(context, "data")
         timeout = self.get_parameter_with_spec(context, "timeout")
         authentication = self.get_parameter_with_spec(context, "authentication")
+        auth_token = self.get_parameter_with_spec(context, "auth_token")
+        api_key_header = self.get_parameter_with_spec(context, "api_key_header")
         retry_attempts = self.get_parameter_with_spec(context, "retry_attempts")
 
         # Convert method to uppercase
@@ -216,20 +218,46 @@ class ActionNodeExecutor(BaseNodeExecutor):
             method = method.upper()
 
         # Debug logging
-        logs.append(f"Parameters: {context.node.parameters}")
-        logs.append(f"Headers type: {type(headers)}, value: {headers}")
-        logs.append(f"Making {method} request to {url}")
+        logs.append(f"Making {method} request to {url} with auth: {authentication}")
 
         try:
             # Ensure headers is a dictionary
             if isinstance(headers, str):
                 headers = {}
                 logs.append("WARNING: headers was a string, using empty dict")
+            elif headers is None:
+                headers = {}
+            else:
+                # Make a copy to avoid modifying the original
+                headers = dict(headers)
 
             # Also ensure data is a dictionary
             if isinstance(data, str):
                 data = {}
                 logs.append("WARNING: data was a string, using empty dict")
+
+            # Handle authentication
+            auth_obj = None
+            if authentication and authentication != "none" and auth_token:
+                if authentication == "bearer":
+                    headers["Authorization"] = f"Bearer {auth_token}"
+                    logs.append("Added Bearer token authentication")
+                elif authentication == "api_key":
+                    key_header = api_key_header or "X-API-Key"
+                    headers[key_header] = auth_token
+                    logs.append(f"Added API key authentication to {key_header} header")
+                elif authentication == "basic":
+                    from requests.auth import HTTPBasicAuth
+
+                    # For basic auth, auth_token should be "username:password"
+                    if ":" in auth_token:
+                        username, password = auth_token.split(":", 1)
+                        auth_obj = HTTPBasicAuth(username, password)
+                        logs.append("Added Basic authentication")
+                    else:
+                        logs.append(
+                            "WARNING: Basic auth token should be in 'username:password' format"
+                        )
 
             response = requests.request(
                 method=method,
@@ -238,6 +266,7 @@ class ActionNodeExecutor(BaseNodeExecutor):
                 json=data if method in ["POST", "PUT", "PATCH"] else None,
                 params=data if method == "GET" else None,
                 timeout=timeout,
+                auth=auth_obj,
             )
 
             output_data = {

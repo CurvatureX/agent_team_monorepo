@@ -236,7 +236,12 @@ class EventRouter:
             return []
 
     async def route_email_event(
-        self, sender: str, subject: str, body: str, recipients: List[str], headers: Dict[str, str]
+        self,
+        sender: str,
+        subject: str,
+        body: str,
+        recipients: List[str],
+        headers: Dict[str, str],
     ) -> List[Dict[str, Any]]:
         """
         Route email events to matching workflows
@@ -578,7 +583,12 @@ class EventRouter:
             return True  # Default to allow if validation fails
 
     async def _matches_email_filter(
-        self, trigger: TriggerIndex, sender: str, subject: str, body: str, recipients: List[str]
+        self,
+        trigger: TriggerIndex,
+        sender: str,
+        subject: str,
+        body: str,
+        recipients: List[str],
     ) -> bool:
         """Check if email matches trigger filter criteria"""
         try:
@@ -697,7 +707,11 @@ class EventRouter:
                 result = await session.execute("SELECT 1")
                 result.fetchone()
 
-                return {"service": "event_router", "database_connected": True, "status": "healthy"}
+                return {
+                    "service": "event_router",
+                    "database_connected": True,
+                    "status": "healthy",
+                }
 
         except Exception as e:
             logger.error(f"Event router health check failed: {e}")

@@ -926,6 +926,7 @@ async def webhook_status():
                         "/api/v1/public/webhooks/slack/auth",
                         "/api/v1/public/webhooks/status",
                         "/api/v1/public/webhooks/notion/auth",
+                        "/api/v1/public/webhooks/google/auth",
                     ],
                 }
             else:
@@ -1227,4 +1228,343 @@ async def _store_notion_integration(
 
     except Exception as e:
         logger.error(f"❌ Error storing Notion integration data: {str(e)}", exc_info=True)
+        return False
+
+
+@router.get("/webhooks/google/auth")
+async def google_oauth_callback(
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+    error_description: Optional[str] = None,
+    scope: Optional[str] = None,
+):
+    """
+    Google OAuth callback endpoint
+    Handles Google OAuth integration flow for all Google services
+    (Calendar, Gmail, Drive, etc.)
+    """
+    try:
+        logger.info(f"Google OAuth callback received: code={'present' if code else 'missing'}")
+
+        # Check for OAuth errors
+        if error:
+            logger.error(f"Google OAuth error: {error} - {error_description}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Google OAuth error: {error} - {error_description or 'Unknown error'}",
+            )
+
+        if not code:
+            raise HTTPException(status_code=400, detail="Missing authorization code")
+
+        # Exchange code for access token
+        token_url = "https://oauth2.googleapis.com/token"
+
+        # Prepare token exchange request
+        token_data = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+            "client_id": settings.GOOGLE_CLIENT_ID,
+            "client_secret": settings.GOOGLE_CLIENT_SECRET,
+        }
+
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+        }
+
+        async with httpx.AsyncClient() as client:
+            token_response = await client.post(
+                token_url, data=token_data, headers=headers, timeout=30.0
+            )
+
+            if token_response.status_code != 200:
+                logger.error(
+                    f"Google Calendar token exchange failed: {token_response.status_code} - {token_response.text}"
+                )
+                raise HTTPException(
+                    status_code=token_response.status_code,
+                    detail=f"Google Calendar token exchange failed: {token_response.text}",
+                )
+
+            token_result = token_response.json()
+            access_token = token_result.get("access_token")
+            refresh_token = token_result.get("refresh_token")
+            expires_in = token_result.get("expires_in", 3600)
+            token_type = token_result.get("token_type", "Bearer")
+            granted_scope = token_result.get("scope", scope)
+
+            if not access_token:
+                raise HTTPException(status_code=500, detail="No access token received from Google")
+
+            logger.info(f"Google OAuth successful, expires_in: {expires_in}s")
+
+            # Get user info from Google
+            userinfo_url = "https://www.googleapis.com/oauth2/v1/userinfo"
+            userinfo_headers = {"Authorization": f"Bearer {access_token}"}
+
+            userinfo_response = await client.get(
+                userinfo_url, headers=userinfo_headers, timeout=30.0
+            )
+            user_info = {}
+            if userinfo_response.status_code == 200:
+                user_info = userinfo_response.json()
+                logger.info(f"Google user info retrieved: {user_info.get('email', 'unknown')}")
+
+            # Store the integration data if user_id provided in state
+            db_store_success = False
+            if state:
+                try:
+                    db_store_success = await _store_google_integration(
+                        state,
+                        access_token,
+                        refresh_token,
+                        expires_in,
+                        granted_scope,
+                        user_info,
+                        token_result,
+                    )
+                    if not db_store_success:
+                        logger.warning(
+                            f"⚠️ Failed to store Google integration data for user {state}"
+                        )
+                except Exception as e:
+                    logger.error(f"❌ Error storing Google integration: {e}")
+
+            # Forward to workflow_scheduler if available
+            scheduler_success = False
+            try:
+                scheduler_url = (
+                    f"{settings.workflow_scheduler_http_url}/api/v1/auth/google/callback"
+                )
+
+                google_data = {
+                    "access_token": access_token,
+                    "refresh_token": refresh_token,
+                    "expires_in": expires_in,
+                    "token_type": token_type,
+                    "scope": granted_scope,
+                    "user_info": user_info,
+                    "user_id": state,
+                    "token_data": token_result,
+                }
+
+                scheduler_response = await client.post(
+                    scheduler_url, json=google_data, timeout=30.0
+                )
+
+                if scheduler_response.status_code == 200:
+                    logger.info(
+                        f"Google OAuth processed by scheduler for user: {user_info.get('email', 'unknown')}"
+                    )
+                    scheduler_success = True
+                else:
+                    logger.warning(
+                        f"Scheduler Google OAuth error: {scheduler_response.status_code} - {scheduler_response.text}"
+                    )
+
+            except Exception as e:
+                logger.warning(f"Failed to forward to workflow_scheduler: {e}")
+
+            return {
+                "success": True,
+                "message": "Google integration connected successfully!",
+                "user_email": user_info.get("email"),
+                "user_name": user_info.get("name"),
+                "expires_in": expires_in,
+                "scope": granted_scope,
+                "user_id": state if state else None,
+                "stored_in_database": db_store_success if state else False,
+                "scheduler_processed": scheduler_success,
+            }
+
+    except HTTPException:
+        raise
+
+    except httpx.TimeoutException:
+        logger.error("Timeout processing Google OAuth callback")
+        raise HTTPException(status_code=504, detail="Google OAuth processing timeout")
+
+    except httpx.RequestError as e:
+        logger.error(f"Request error processing Google OAuth callback: {e}")
+        raise HTTPException(status_code=502, detail="Unable to process Google OAuth callback")
+
+    except Exception as e:
+        logger.error(f"Error processing Google OAuth callback: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail="Internal server error processing Google OAuth callback"
+        )
+
+
+async def _store_google_integration(
+    user_id: str,
+    access_token: str,
+    refresh_token: str,
+    expires_in: int,
+    scope: str,
+    user_info: dict,
+    token_data: dict,
+) -> bool:
+    """
+    Store Google integration data in oauth_tokens table
+
+    Args:
+        user_id: User ID who authorized the integration
+        access_token: Google access token
+        refresh_token: Google refresh token (for offline access)
+        expires_in: Token expiration time in seconds
+        scope: Granted OAuth scopes
+        user_info: Google user information
+        token_data: Full token response from Google
+
+    Returns:
+        bool: True if stored successfully, False otherwise
+    """
+    try:
+        supabase_admin = get_supabase_admin()
+
+        if not supabase_admin:
+            logger.error("❌ Database connection unavailable for Google integration storage")
+            return False
+
+        # Determine integration type based on scope
+        integration_id = "google_calendar"  # Default to calendar for backward compatibility
+        integration_name = "Google Calendar Integration"
+        integration_description = "Google Calendar integration for calendar events and scheduling"
+
+        # Check scope to determine which Google service is being integrated
+        if scope and "calendar" in scope:
+            integration_id = "google_calendar"
+            integration_name = "Google Calendar Integration"
+            integration_description = (
+                "Google Calendar integration for calendar events and scheduling"
+            )
+        elif scope and "gmail" in scope:
+            integration_id = "google_gmail"
+            integration_name = "Google Gmail Integration"
+            integration_description = "Google Gmail integration for email management"
+        elif scope and "drive" in scope:
+            integration_id = "google_drive"
+            integration_name = "Google Drive Integration"
+            integration_description = "Google Drive integration for file storage and sharing"
+
+        # First, ensure the Google integration exists
+        google_integration_result = (
+            supabase_admin.table("integrations")
+            .select("*")
+            .eq("integration_id", integration_id)
+            .execute()
+        )
+
+        if not google_integration_result.data:
+            # Create the Google integration if it doesn't exist
+            logger.info(f"📝 Creating {integration_name} entry")
+            integration_data = {
+                "integration_id": integration_id,
+                "integration_type": "google",
+                "name": integration_name,
+                "description": integration_description,
+                "version": "1.0",
+                "configuration": {
+                    "api_version": "v3",
+                    "callback_url": "/api/v1/public/webhooks/google/auth",
+                    "scopes": scope.split() if scope else [],
+                },
+                "supported_operations": [
+                    "calendars:read" if "calendar" in (scope or "") else "data:read",
+                    "calendars:write" if "calendar" in (scope or "") else "data:write",
+                    "events:read" if "calendar" in (scope or "") else "data:read",
+                    "events:write" if "calendar" in (scope or "") else "data:write",
+                    "events:delete" if "calendar" in (scope or "") else "data:delete",
+                ],
+                "required_scopes": scope.split() if scope else [],
+                "active": True,
+                "verified": True,
+            }
+
+            integration_result = (
+                supabase_admin.table("integrations").insert(integration_data).execute()
+            )
+
+            if not integration_result.data:
+                logger.error(f"❌ Failed to create {integration_name}")
+                return False
+
+        # Check if this user already has a Google integration token for this service
+        existing_token_result = (
+            supabase_admin.table("oauth_tokens")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("integration_id", integration_id)
+            .execute()
+        )
+
+        # Calculate expiry timestamp
+        import datetime
+
+        expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(
+            seconds=expires_in
+        )
+
+        # Prepare the token data
+        oauth_token_data = {
+            "user_id": user_id,
+            "integration_id": integration_id,
+            "provider": "google",
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+            "expires_at": expires_at.isoformat(),
+            "credential_data": {
+                "scope": scope,
+                "user_email": user_info.get("email"),
+                "user_name": user_info.get("name"),
+                "user_id": user_info.get("id"),
+                "picture": user_info.get("picture"),
+                "locale": user_info.get("locale"),
+                "expires_in": expires_in,
+                "callback_timestamp": "now()",
+            },
+            "is_active": True,
+        }
+
+        if existing_token_result.data:
+            # Update existing record
+            logger.info(f"🔄 Updating existing {integration_name} for user {user_id}")
+
+            update_result = (
+                supabase_admin.table("oauth_tokens")
+                .update(oauth_token_data)
+                .eq("user_id", user_id)
+                .eq("integration_id", integration_id)
+                .execute()
+            )
+
+            if not update_result.data:
+                logger.error(f"❌ Failed to update {integration_name} record")
+                return False
+
+            logger.info(
+                f"✅ {integration_name} updated successfully - user: {user_info.get('email', 'unknown')}, user_id: {user_id}"
+            )
+        else:
+            # Insert new record
+            logger.info(f"➕ Creating new {integration_name} record for user {user_id}")
+
+            insert_result = supabase_admin.table("oauth_tokens").insert(oauth_token_data).execute()
+
+            if not insert_result.data:
+                logger.error(f"❌ Failed to store {integration_name} record")
+                return False
+
+            logger.info(
+                f"✅ {integration_name} stored successfully - user: {user_info.get('email', 'unknown')}, user_id: {user_id}"
+            )
+
+        return True
+
+    except Exception as e:
+        logger.error(f"❌ Error storing Google integration data: {str(e)}", exc_info=True)
         return False

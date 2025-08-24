@@ -95,12 +95,12 @@ RUN_CODE_SPEC = NodeSpec(
 )
 
 
-# HTTP Request - make HTTP API calls
+# HTTP Request - make HTTP API calls with authentication
 HTTP_REQUEST_SPEC = NodeSpec(
     node_type=NodeType.ACTION,
     subtype=ActionSubtype.HTTP_REQUEST,
-    description="Make HTTP requests to external APIs",
-    display_name="HTTP Request",
+    description="Make HTTP requests to external APIs with authentication support",
+    display_name="HTTP Request / API Call",
     category="actions",
     template_id="action_http_request",
     parameters=[
@@ -125,12 +125,30 @@ HTTP_REQUEST_SPEC = NodeSpec(
             description="HTTP headers as JSON object",
         ),
         ParameterDef(
+            name="data",
+            type=ParameterType.JSON,
+            required=False,
+            description="Request body data as JSON object",
+        ),
+        ParameterDef(
             name="authentication",
             type=ParameterType.ENUM,
             required=False,
             default_value="none",
             enum_values=["none", "bearer", "basic", "api_key", "oauth2"],
             description="Authentication method",
+        ),
+        ParameterDef(
+            name="auth_token",
+            type=ParameterType.STRING,
+            required=False,
+            description="Authentication token (injected from OAuth credentials)",
+        ),
+        ParameterDef(
+            name="api_key_header",
+            type=ParameterType.STRING,
+            required=False,
+            description="API key header name (for api_key auth)",
         ),
         ParameterDef(
             name="timeout",
@@ -145,6 +163,14 @@ HTTP_REQUEST_SPEC = NodeSpec(
             required=False,
             default_value=3,
             description="Number of retry attempts on failure",
+        ),
+        ParameterDef(
+            name="response_format",
+            type=ParameterType.ENUM,
+            required=False,
+            default_value="auto",
+            enum_values=["auto", "json", "text", "binary"],
+            description="Expected response format",
         ),
     ],
     input_ports=[
@@ -170,12 +196,12 @@ HTTP_REQUEST_SPEC = NodeSpec(
             description="HTTP response data",
             data_format=DataFormat(
                 mime_type="application/json",
-                schema='{"status_code": "number", "headers": "object", "body": "object", "response_time": "number"}',
+                schema='{"status_code": "number", "headers": "object", "response_text": "string", "response_json": "object", "response_time": "number"}',
                 examples=[
-                    '{"status_code": 200, "headers": {"content-type": "application/json"}, "body": {"result": "success"}, "response_time": 0.25}'
+                    '{"status_code": 200, "headers": {"content-type": "application/json"}, "response_text": "{\\"result\\": \\"success\\"}", "response_json": {"result": "success"}, "response_time": 0.25}'
                 ],
             ),
-            validation_schema='{"type": "object", "properties": {"status_code": {"type": "number"}, "headers": {"type": "object"}, "body": {"type": "object"}, "response_time": {"type": "number"}}, "required": ["status_code"]}',
+            validation_schema='{"type": "object", "properties": {"status_code": {"type": "number"}, "headers": {"type": "object"}, "response_text": {"type": "string"}, "response_json": {"type": "object"}, "response_time": {"type": "number"}}, "required": ["status_code"]}',
         ),
         OutputPortSpec(
             name="error", type=ConnectionType.ERROR, description="Error output for failed requests"

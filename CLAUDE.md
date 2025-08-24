@@ -9,136 +9,365 @@ This is a monorepo for building 24/7 AI Teams, containing multiple interconnecte
 ### Core Services Architecture
 
 ```
-┌─────────────────┐     ┌──────────────────┐     ┌──────────────────┐
-│   API Gateway   │────▶│ Workflow Agent   │────▶│ Workflow Engine  │
-│   (FastAPI)     │     │ (LangGraph/AI)   │     │ (Execution)      │
-└─────────────────┘     └──────────────────┘     └──────────────────┘
-        │                                                    │
-        └────────────────── Supabase ────────────────────────┘
+┌─────────────────┐     ┌──────────────────┐     ┌──────────────────┐     ┌──────────────────┐
+│   API Gateway   │────▶│ Workflow Agent   │────▶│ Workflow Engine  │────▶│Workflow Scheduler│
+│   (FastAPI)     │     │ (LangGraph/AI)   │     │ (Execution)      │     │ (Triggers)       │
+└─────────────────┘     └──────────────────┘     └──────────────────┘     └──────────────────┘
+        │                                                    │                         │
+        └────────────────── Supabase ─────────────────────────────────────────────────┘
                     (Auth, State, Vector Store)
 ```
 
-## Global Development Rules
+## Essential Development Commands
 
-### 1. Service Communication
-- **Internal Services**: Use HTTP/REST between services (migrated from gRPC)
-- **External API**: FastAPI-based API Gateway handles all client requests
-- **Shared Models**: Use `shared/models/` for cross-service data structures
-
-### 2. State Management
-- **Session State**: Managed in Supabase with service-specific tables
-- **Workflow State**: Persisted across service boundaries using session IDs
-- **Cache**: Redis for temporary state and performance optimization
-
-### 3. Error Handling
-- **Service Errors**: Return structured error responses with correlation IDs
-- **Graceful Degradation**: Services should handle downstream failures
-- **Logging**: Use structured JSON logging with service context
-
-### 4. Authentication & Security
-- **Auth Flow**: Supabase Auth via API Gateway
-- **Service-to-Service**: Internal services trust API Gateway authentication
-- **Secrets**: Use environment variables, never commit credentials
-
-### 5. Development Workflow
-- **Branch Strategy**: Feature branches → main → deployment
-- **Testing**: Unit tests required for business logic, integration tests for APIs
-- **Documentation**: Update service-specific CLAUDE.md for significant changes
-
-## Service-Specific Guides
-
-Each service has its own CLAUDE.md with detailed information:
-
-- **[API Gateway](./apps/backend/api-gateway/CLAUDE.md)**: Client-facing API, authentication, routing
-- **[Workflow Agent](./apps/backend/workflow_agent/CLAUDE.md)**: AI consultant for workflow generation
-- **[Workflow Engine](./apps/backend/workflow_engine/README.md)**: Workflow execution and orchestration
-
-## Common Development Commands
-
-### Environment Setup
+### Python Environment Setup
 ```bash
-# Copy environment template
-cp apps/backend/env.example apps/backend/.env
+# Backend uses uv for dependency management
+cd apps/backend
+uv sync                          # Install all workspace dependencies
 
-# Install dependencies (Python 3.11+ required)
-cd apps/backend/<service>
-uv pip install --system -e .
+# Install service-specific dependencies
+cd api-gateway && uv sync
+cd workflow_agent && uv sync
+cd workflow_engine && pip install -e .  # Legacy pip install
+cd workflow_scheduler && uv sync
 ```
 
-### Running Services Locally
+### Running Services
 ```bash
-# Start all services
+# Start all services with Docker Compose (recommended)
 cd apps/backend
-docker-compose up
+docker-compose up --build
 
-# Or run individually
-cd apps/backend/api-gateway && python main.py
-cd apps/backend/workflow_agent && python main.py
-cd apps/backend/workflow_engine && python main.py
+# Start individual services for development
+cd api-gateway && uv run uvicorn app.main:app --reload --port 8000
+cd workflow_agent && python main.py
+cd workflow_engine && python -m workflow_engine.main
+cd workflow_scheduler && python main.py
+
+# Start with observability stack (development)
+docker-compose --profile development up
+```
+
+### Frontend Development
+```bash
+# Next.js frontend
+cd apps/frontend/agent_team_web
+npm run dev                      # Start development server
+npm run build                    # Build for production
+npm run lint                     # Run linter
 ```
 
 ### Testing
 ```bash
-# Run all tests
-pytest apps/backend/
+# Backend testing
+cd apps/backend
+pytest                           # Run all tests
+pytest api-gateway/tests/        # Service-specific tests
+uv run pytest --cov=app         # With coverage
 
-# Run service-specific tests
-pytest apps/backend/workflow_agent/tests/
+# Frontend testing
+cd apps/frontend/agent_team_web
+npm test                         # Run tests
 ```
 
-## Architectural Decisions
+### Database Operations
+```bash
+# Supabase migrations
+supabase db reset                # Reset local database
+supabase db push                 # Push migrations
+supabase functions deploy        # Deploy edge functions
 
-### 1. Monorepo Structure
-- **Shared Code**: Common models and utilities in `shared/`
-- **Service Isolation**: Each service can be deployed independently
-- **Unified CI/CD**: Single deployment pipeline with service-level controls
+# Workflow Engine database
+cd workflow_engine
+make db-init                     # Initialize database
+make db-migrate MSG="description" # Create migration
+alembic upgrade head            # Run migrations
+```
 
-### 2. AI Integration Pattern
-- **LangGraph**: For complex stateful AI workflows (Workflow Agent)
-- **Direct LLM**: For simpler transformations (Workflow Engine)
-- **RAG**: Supabase pgvector for knowledge retrieval
+### Build & Deployment
+```bash
+# Docker builds (for ECS deployment)
+docker build --platform linux/amd64 -f api-gateway/Dockerfile -t api-gateway .
+docker build --platform linux/amd64 -f workflow_agent/Dockerfile -t workflow-agent .
+docker build --platform linux/amd64 -f workflow_engine/Dockerfile -t workflow-engine .
 
-### 3. Data Flow
-- **Request Flow**: Client → API Gateway → Workflow Agent → Workflow Engine
-- **State Flow**: Services communicate through shared database state
-- **Event Flow**: Async operations use message passing (future: event bus)
+# Infrastructure deployment
+cd infra
+terraform init
+terraform plan
+terraform apply
+```
 
-## Migration Notes
+## Service Architecture & Communication
 
-### From gRPC to FastAPI (Completed)
-- All services now use FastAPI for consistency
-- Protobuf definitions kept for data validation
-- See migration guides in service-specific docs
+### Service Ports
+- **API Gateway**: 8000 (HTTP/REST) - Client-facing three-layer API
+- **Workflow Agent**: 8001 (HTTP/REST) - AI workflow generation with LangGraph
+- **Workflow Engine**: 8002 (HTTP/REST) - Node-based workflow execution
+- **Workflow Scheduler**: 8003 (HTTP/REST) - Trigger management and scheduling
 
-### Deployment (AWS ECS)
-- Services deployed as ECS tasks
-- Service discovery via AWS Cloud Map
-- Infrastructure as Code in `infra/`
+### Authentication Layers
+- **Public API** (`/api/public/*`): No auth, rate-limited public endpoints
+- **App API** (`/api/app/*`): Supabase OAuth + JWT for web/mobile apps
+- **MCP API** (`/api/mcp/*`): API Key authentication for LLM clients
 
-## Key Technologies
+### Service Communication
+- **Internal**: HTTP/REST between services (migrated from gRPC)
+- **External**: API Gateway handles all client requests with proper auth
+- **State**: Shared via Supabase with Row Level Security (RLS)
+- **Cache**: Redis for performance optimization and session state
 
-- **Backend**: Python 3.11+, FastAPI, LangGraph, LangChain
-- **Database**: PostgreSQL (via Supabase), Redis
-- **AI/ML**: OpenAI, Anthropic, pgvector for embeddings
-- **Infrastructure**: Docker, AWS ECS, Terraform
-- **Frontend**: Next.js, React (in `frontend/`)
+## Key Architectural Patterns
 
-## Important Files to Review
+### Node-Based Workflow System
+The core workflow execution uses a sophisticated node system:
 
-1. **Workflow DSL Specification**: `apps/backend/workflow_agent/dsl/README.md`
-2. **API Documentation**: `apps/backend/api-gateway/docs/API_DOC.md`
-3. **Node Types**: `docs/tech-design/node_spec.md`
-4. **Database Schema**: `apps/backend/workflow_engine/database/schema.sql`
+- **Node Types**: 8 core types (TRIGGER, AI_AGENT, ACTION, EXTERNAL_ACTION, FLOW, HUMAN_LOOP, TOOL, MEMORY)
+- **Node Specifications**: Centralized specs in `shared/node_specs/` with automatic validation
+- **Factory Pattern**: Dynamic node creation with type registration
+- **Execution Context**: Unified execution environment with parameter validation
 
-## Getting Help
+### AI Integration Strategy
+- **LangGraph**: Complex stateful AI workflows in Workflow Agent
+- **RAG System**: Supabase pgvector for knowledge retrieval
+- **Multi-Provider**: OpenAI, Anthropic API support
+- **MCP Integration**: Model Context Protocol for tool discovery
 
-- **Architecture Questions**: Review `docs/tech-design/`
-- **Deployment Issues**: Check `infra/README.md`
-- **Service-Specific**: Consult individual service CLAUDE.md files
+### Data Management
+- **Primary Database**: Supabase PostgreSQL with RLS for multi-tenant isolation
+- **Vector Store**: pgvector for semantic search and RAG
+- **Cache Layer**: Redis for sessions, rate limiting, and temporary state
+- **File Storage**: Supabase Storage for file uploads and artifacts
 
-Remember: When in doubt, check the service-specific CLAUDE.md for detailed guidance.
+## Development Environment Configuration
 
-## Backend Development Guidelines
+### Required Environment Variables
+```bash
+# Supabase (Primary Database & Auth)
+SUPABASE_URL="https://your-project.supabase.co"
+SUPABASE_SECRET_KEY="service-role-key"
+SUPABASE_ANON_KEY="anon-key"
 
-- **Python Project Management**: Use `uv` and `.venv` to manage Python projects
+# AI Providers
+OPENAI_API_KEY="sk-..."
+ANTHROPIC_API_KEY="sk-ant-..."
 
+# Cache & Infrastructure
+REDIS_URL="redis://localhost:6379"
+
+# Service URLs (for docker-compose networking)
+WORKFLOW_AGENT_URL="http://workflow-agent:8001"
+WORKFLOW_ENGINE_URL="http://workflow-engine:8002"
+WORKFLOW_SCHEDULER_URL="http://workflow-scheduler:8003"
+```
+
+### Docker Compose Profiles
+```bash
+# Basic services only
+docker-compose up
+
+# Development tools (includes Redis Commander UI)
+docker-compose --profile development up
+
+# Full observability stack (Jaeger, OpenTelemetry)
+docker-compose --profile observability up
+```
+
+## Testing Strategy
+
+### Backend Testing Patterns
+```bash
+# API Gateway: Comprehensive three-layer testing
+cd api-gateway && uv run pytest tests/ -v
+
+# Workflow Agent: LangGraph state machine testing
+cd workflow_agent && pytest tests/
+
+# Workflow Engine: Node execution and validation testing
+cd workflow_engine && pytest tests/
+
+# Integration testing across services
+pytest apps/backend/tests/
+```
+
+### Authentication Testing
+- **Test Credentials**: Use real Supabase test accounts from `.env`
+- **JWT Tokens**: Test authentication flows with valid tokens
+- **RLS Testing**: Verify row-level security isolation
+
+## Code Quality & Standards
+
+### Python Standards
+```bash
+# Formatting and linting (configured in pyproject.toml)
+uv run black . --line-length 100
+uv run isort . --profile black
+uv run flake8
+uv run mypy
+
+# Pre-commit hooks (API Gateway)
+cd api-gateway && pre-commit run --all-files
+```
+
+### TypeScript Standards
+```bash
+# Frontend linting and formatting
+cd apps/frontend/agent_team_web
+npm run lint
+npm run type-check
+```
+
+## Deployment & Infrastructure
+
+### AWS ECS Deployment
+- **Platform**: AWS ECS Fargate with service discovery
+- **Networking**: VPC with private subnets, NAT gateways
+- **Load Balancing**: Application Load Balancer with health checks
+- **Security**: SecurityGroups, IAM roles, encrypted secrets
+
+### Health Check Configuration
+- **API Gateway**: `curl -f http://localhost:8000/api/v1/public/health` (120s start period)
+- **Workflow Agent**: `curl -f http://localhost:8001/health` (120s start period)
+- **Workflow Engine**: `curl -f http://localhost:8002/health` (90s start period)
+- **Workflow Scheduler**: `curl -f http://localhost:8003/health` (60s start period)
+
+### Critical Deployment Requirements
+- **Platform**: Build with `--platform linux/amd64` for ECS
+- **Dependencies**: All dependencies must be in requirements.txt/pyproject.toml
+- **Import Structure**: Preserve Python package hierarchy in Docker images
+- **Environment**: All secrets via AWS SSM Parameters
+
+## Troubleshooting
+
+### Common Development Issues
+1. **Import Errors**: Ensure Docker preserves package structure with proper COPY commands
+2. **Port Conflicts**: Services must use designated ports (8000-8003)
+3. **Database Connection**: Check Supabase connection strings and SSL requirements
+4. **Authentication**: Verify JWT tokens and RLS policies in Supabase
+
+### Service Health Checks
+```bash
+# Check service status
+curl http://localhost:8000/api/v1/public/health  # API Gateway
+curl http://localhost:8001/health                 # Workflow Agent
+curl http://localhost:8002/health                 # Workflow Engine
+curl http://localhost:8003/health                 # Workflow Scheduler
+
+# Check Redis
+redis-cli ping
+
+# Check database connectivity
+psql $SUPABASE_DATABASE_URL -c "SELECT version();"
+```
+
+## Important Architectural Files
+
+1. **Service Configurations**: Each service has detailed `CLAUDE.md` files
+2. **Node Specifications**: `shared/node_specs/` - Centralized node type definitions
+3. **API Documentation**: `apps/backend/api-gateway/docs/` - OpenAPI specifications
+4. **Infrastructure**: `infra/` - Terraform configurations for AWS deployment
+5. **Database Schema**: `supabase/migrations/` - Database structure and RLS policies
+
+## OAuth Integration & External Service Checklist
+
+### Adding New OAuth Providers (Slack, GitHub, Notion, etc.)
+
+**1. GitHub Secrets Configuration**
+- [ ] Add all OAuth secrets to GitHub repository secrets:
+  - `{PROVIDER}_CLIENT_ID`
+  - `{PROVIDER}_CLIENT_SECRET`
+  - `{PROVIDER}_REDIRECT_URI`
+  - `{PROVIDER}_SIGNING_SECRET` (if applicable)
+- [ ] Verify secrets are accessible in GitHub Actions environment
+
+**2. Terraform Infrastructure Updates**
+- [ ] Add variables to `infra/variables.tf`:
+  ```hcl
+  variable "{provider}_client_id" {
+    description = "{Provider} OAuth client ID"
+    type        = string
+    sensitive   = true
+    default     = ""
+  }
+  ```
+- [ ] Add SSM parameters to `infra/secrets.tf`:
+  ```hcl
+  resource "aws_ssm_parameter" "{provider}_client_id" {
+    name  = "/${local.name_prefix}/{provider}/client-id"
+    type  = "SecureString"
+    value = var.{provider}_client_id
+  }
+  ```
+- [ ] Add environment variables to **ALL** relevant ECS task definitions in `infra/ecs.tf`:
+  - API Gateway (if generating install links)
+  - Workflow Scheduler (if handling OAuth callbacks)
+  - Any other service that needs OAuth credentials
+
+**3. GitHub Actions Workflow Updates**
+- [ ] Add environment variables to `.github/workflows/deploy.yml`:
+  ```yaml
+  TF_VAR_{provider}_client_id: ${{ secrets.{PROVIDER}_CLIENT_ID }}
+  TF_VAR_{provider}_client_secret: ${{ secrets.{PROVIDER}_CLIENT_SECRET }}
+  ```
+- [ ] Add to both `Terraform Plan` and `Terraform Apply` steps
+
+**4. Service Configuration Updates**
+- [ ] Add OAuth settings to service configuration files (`core/config.py`)
+- [ ] Update service-specific environment variable handling
+- [ ] Ensure proper error handling for missing OAuth credentials
+
+**5. Deployment & Testing Checklist**
+- [ ] Deploy infrastructure changes through proper CI/CD (not manual AWS CLI)
+- [ ] Verify SSM parameters are created with correct values
+- [ ] Check ECS task definitions include all required environment variables
+- [ ] Test OAuth install links generate with correct client IDs
+- [ ] Test OAuth callback flow completes successfully
+- [ ] Verify OAuth tokens are stored in database correctly
+
+### Common OAuth Integration Pitfalls
+
+❌ **Don't Do This:**
+- Manually updating ECS task definitions via AWS CLI
+- Adding secrets to only one service when multiple services need them
+- Forgetting to add environment variables to GitHub Actions workflow
+- Using placeholder values in terraform.tfvars for sensitive data
+
+✅ **Do This:**
+- Always use GitHub Secrets → GitHub Actions → Terraform → SSM → ECS flow
+- Add OAuth environment variables to ALL services that need them
+- Test the complete OAuth flow end-to-end after deployment
+- Use descriptive variable names and consistent naming conventions
+
+### Debugging OAuth Issues
+
+**When OAuth fails with "invalid_client_id" or similar:**
+1. Check GitHub Secrets are properly configured
+2. Verify GitHub Actions workflow includes the new TF_VAR mappings
+3. Confirm SSM parameters exist and have correct values:
+   ```bash
+   aws ssm get-parameter --name "/agent-prod/{provider}/client-id" --with-decryption
+   ```
+4. Check ECS task definition includes the environment variable:
+   ```bash
+   aws ecs describe-task-definition --task-definition {service}:latest
+   ```
+5. Verify service logs show environment variables are loaded (not empty)
+
+### Service-Specific OAuth Requirements
+
+- **API Gateway**: Needs OAuth credentials for generating install links (`/integrations/install-links`)
+- **Workflow Scheduler**: Needs OAuth credentials for handling callbacks (`/auth/{provider}/callback`)
+- **Workflow Agent**: May need credentials for AI-driven OAuth operations
+- **Workflow Engine**: Usually doesn't need OAuth credentials directly
+
+## Migration History
+
+### Major Architectural Changes
+- **gRPC → FastAPI Migration**: All services now use HTTP/REST for consistency
+- **Three-Layer API Architecture**: Public/App/MCP authentication layers
+- **Node Specification System**: Centralized validation with automatic type conversion
+- **Workflow Scheduler Addition**: Dedicated trigger management service
+- **OAuth Integration Standardization**: Comprehensive checklist for external service integrations
+
+Remember: Each service has its own detailed `CLAUDE.md` file with service-specific guidance. Always check the service-specific documentation for detailed implementation patterns and best practices.

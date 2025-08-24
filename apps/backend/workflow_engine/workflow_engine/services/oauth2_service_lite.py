@@ -56,7 +56,7 @@ class OAuth2ServiceLite:
 
         # 初始化Supabase客户端
         supabase_url = os.getenv("SUPABASE_URL")
-        supabase_service_key = os.getenv("SUPABASE_SERVICE_KEY")
+        supabase_service_key = os.getenv("SUPABASE_SECRET_KEY")
         if supabase_url and supabase_service_key:
             self.supabase: Client = create_client(supabase_url, supabase_service_key)
         else:
@@ -338,9 +338,8 @@ class OAuth2ServiceLite:
         try:
             query = text(
                 """
-                SELECT encrypted_access_token, encrypted_refresh_token,
-                       token_expires_at, is_valid, refresh_token_expires_at
-                FROM user_external_credentials
+                SELECT access_token, refresh_token, expires_at, is_active
+                FROM oauth_tokens
                 WHERE user_id = :user_id AND provider = :provider
                 ORDER BY updated_at DESC
                 LIMIT 1
@@ -353,14 +352,13 @@ class OAuth2ServiceLite:
                 return None
 
             (
-                encrypted_access_token,
-                encrypted_refresh_token,
+                access_token,
+                refresh_token,
                 expires_at,
-                is_valid,
-                refresh_expires_at,
+                is_active,
             ) = result
 
-            if not is_valid:
+            if not is_active:
                 self.logger.debug(
                     f"Credentials marked as invalid for user {user_id}, provider {provider}"
                 )
@@ -384,34 +382,18 @@ class OAuth2ServiceLite:
 
             # 如果访问令牌未过期，直接返回
             if not token_expired:
-                access_token = self.encryption.decrypt_credential(encrypted_access_token)
                 self.logger.debug(f"Retrieved valid token for user {user_id}, provider {provider}")
                 return access_token
 
             # 访问令牌已过期，尝试使用刷新令牌自动刷新
-            if not encrypted_refresh_token:
+            if not refresh_token:
                 self.logger.warning(
                     f"Access token expired but no refresh token for user {user_id}, provider {provider}"
                 )
                 return None
 
-            # 检查刷新令牌是否过期（如果有过期时间）
-            if refresh_expires_at:
-                if isinstance(refresh_expires_at, str):
-                    refresh_expires_at = datetime.fromisoformat(
-                        refresh_expires_at.replace("Z", "+00:00")
-                    )
-
-                if refresh_expires_at <= now:
-                    self.logger.warning(
-                        f"Refresh token expired for user {user_id}, provider {provider}"
-                    )
-                    # 标记凭据为无效，需要用户重新授权
-                    await self._mark_credentials_invalid(user_id, provider, "refresh_token_expired")
-                    return None
-
-            # 尝试刷新访问令牌
-            refresh_token = self.encryption.decrypt_credential(encrypted_refresh_token)
+            # 尝试刷新访问令牌 (tokens in oauth_tokens are stored plaintext)
+            # Note: oauth_tokens table doesn't track refresh token expiration
             new_token_response = await self._refresh_access_token(refresh_token, provider)
 
             if new_token_response:

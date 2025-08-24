@@ -31,7 +31,7 @@ from shared.models import (
 from shared.models.db_models import WorkflowModeEnum
 
 from ..core.config import get_settings
-from ..execution_engine import EnhancedWorkflowExecutionEngine as WorkflowExecutionEngine
+from ..execution_engine import WorkflowExecutionEngine
 from ..models import ExecutionModel
 from .workflow_service import WorkflowService
 
@@ -48,13 +48,20 @@ class ExecutionService:
         self.execution_engine = WorkflowExecutionEngine()
         self.workflow_service = WorkflowService(db_session)
 
-    def execute_workflow(self, request: ExecuteWorkflowRequest) -> str:
+    async def execute_workflow(self, request: ExecuteWorkflowRequest) -> str:
         """Execute a workflow and return the execution ID."""
         try:
-            self.logger.info(f"Executing workflow: {request.workflow_id}")
+            self.logger.info(
+                f"🚀 ExecutionService: Starting workflow execution for: {request.workflow_id}"
+            )
+            self.logger.info(
+                f"📋 Request details - User: {request.user_id}, Trigger data keys: {list(request.trigger_data.keys()) if request.trigger_data else 'None'}"
+            )
 
             execution_id = str(uuid.uuid4())
             now = int(datetime.now().timestamp())
+
+            self.logger.info(f"🆔 Generated execution ID: {execution_id}")
 
             # Determine execution mode based on trigger_source
             trigger_source = request.trigger_data.get("trigger_source", "manual").lower()
@@ -85,26 +92,56 @@ class ExecutionService:
             self.db.commit()
 
             # Get workflow definition for execution
+            self.logger.info(f"📖 Fetching workflow definition for: {request.workflow_id}")
             workflow = self.workflow_service.get_workflow(request.workflow_id, request.user_id)
             if not workflow:
+                self.logger.error(
+                    f"❌ Workflow not found: {request.workflow_id} for user: {request.user_id}"
+                )
                 raise ValueError(f"Workflow not found: {request.workflow_id}")
 
-            self.logger.info(f"Starting workflow execution: {execution_id}")
+            self.logger.info(
+                f"✅ Found workflow: {workflow.name} (nodes: {len(workflow.nodes) if workflow.nodes else 0})"
+            )
+            self.logger.info(f"🔗 Workflow has connections: {bool(workflow.connections)}")
+
+            self.logger.info(f"🏁 Starting workflow execution: {execution_id}")
 
             # Start workflow execution in the background
             try:
                 # Update status to RUNNING before starting execution
+                self.logger.info("📝 Updating execution status to RUNNING...")
                 db_execution.status = ExecutionStatus.RUNNING.value
                 self.db.commit()
+                self.logger.info("✅ Database status updated to RUNNING")
 
                 # Execute the workflow using the execution engine
-                execution_result = self.execution_engine.execute_workflow(
+                self.logger.info("🚀 Calling WorkflowExecutionEngine.execute_workflow...")
+
+                # Log the workflow definition before passing it to the engine
+                workflow_dict = workflow.dict()
+                self.logger.info(
+                    f"📋 Workflow definition nodes: {len(workflow_dict.get('nodes', []))}"
+                )
+                for i, node in enumerate(workflow_dict.get("nodes", [])):
+                    self.logger.info(
+                        f"   Node {i+1}: {node.get('name', 'Unnamed')} (type: {node.get('type')}, subtype: {node.get('subtype')}, id: {node.get('id')})"
+                    )
+
+                execution_result = await self.execution_engine.execute_workflow(
                     workflow_id=request.workflow_id,
                     execution_id=execution_id,
-                    workflow_definition=workflow.dict(),
+                    workflow_definition=workflow_dict,
                     initial_data=request.trigger_data,
                     credentials={},  # TODO: Add credential handling
+                    user_id=request.user_id,
                 )
+
+                self.logger.info(
+                    f"🏁 Execution engine returned - status: {execution_result.get('status', 'UNKNOWN')}"
+                )
+                if execution_result.get("errors"):
+                    self.logger.error(f"⚠️ Execution errors: {execution_result['errors']}")
 
                 # Update execution record with results
                 if execution_result["status"] == "completed":

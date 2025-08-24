@@ -83,7 +83,8 @@ class TriggerManager:
 
         except Exception as e:
             logger.error(
-                f"Failed to register triggers for workflow {workflow_id}: {e}", exc_info=True
+                f"Failed to register triggers for workflow {workflow_id}: {e}",
+                exc_info=True,
             )
             return False
 
@@ -122,7 +123,8 @@ class TriggerManager:
 
         except Exception as e:
             logger.error(
-                f"Failed to unregister triggers for workflow {workflow_id}: {e}", exc_info=True
+                f"Failed to unregister triggers for workflow {workflow_id}: {e}",
+                exc_info=True,
             )
             return False
 
@@ -261,7 +263,11 @@ class TriggerManager:
         logger.info("TriggerManager cleanup complete")
 
     async def process_github_webhook(
-        self, event_type: str, delivery_id: str, payload: dict, signature: Optional[str] = None
+        self,
+        event_type: str,
+        delivery_id: str,
+        payload: dict,
+        signature: Optional[str] = None,
     ) -> dict:
         """
         Process GitHub webhook events across all workflows
@@ -370,7 +376,9 @@ class TriggerManager:
 
                 # In testing mode, send notification instead of executing
                 result = await self.notification_service.send_trigger_notification(
-                    workflow_id=workflow_id, trigger_type="CRON_TRIGGER", trigger_data=trigger_data
+                    workflow_id=workflow_id,
+                    trigger_type="CRON_TRIGGER",
+                    trigger_data=trigger_data,
                 )
 
                 results.append(
@@ -524,7 +532,12 @@ class TriggerManager:
             raise
 
     async def route_and_trigger_email_event(
-        self, sender: str, subject: str, body: str, recipients: List[str], headers: Dict[str, str]
+        self,
+        sender: str,
+        subject: str,
+        body: str,
+        recipients: List[str],
+        headers: Dict[str, str],
     ) -> Dict[str, Any]:
         """
         Use EventRouter to find and trigger workflows matching an email
@@ -554,7 +567,9 @@ class TriggerManager:
 
                 # In testing mode, send notification instead of executing
                 result = await self.notification_service.send_trigger_notification(
-                    workflow_id=workflow_id, trigger_type="EMAIL_TRIGGER", trigger_data=trigger_data
+                    workflow_id=workflow_id,
+                    trigger_type="EMAIL_TRIGGER",
+                    trigger_data=trigger_data,
                 )
 
                 results.append(

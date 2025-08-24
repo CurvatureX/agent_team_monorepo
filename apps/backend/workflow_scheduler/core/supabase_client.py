@@ -63,6 +63,33 @@ async def query_github_triggers(repository_name: str) -> List[Dict[str, Any]]:
         return []
 
 
+async def query_slack_triggers() -> List[Dict[str, Any]]:
+    """
+    Query active Slack triggers using Supabase client
+
+    Returns:
+        List of trigger records with workflow_id and trigger_config
+    """
+    try:
+        client = get_supabase_client()
+
+        # Query trigger_index table for active Slack triggers
+        response = (
+            client.table("trigger_index")
+            .select("workflow_id, trigger_config")
+            .eq("trigger_type", "SLACK")
+            .eq("deployment_status", "active")
+            .execute()
+        )
+
+        logger.info(f"Found {len(response.data)} Slack triggers via Supabase")
+        return response.data
+
+    except Exception as e:
+        logger.error(f"Error querying Slack triggers from Supabase: {e}", exc_info=True)
+        return []
+
+
 async def health_check() -> Dict[str, Any]:
     """
     Health check for Supabase connection
@@ -73,8 +100,16 @@ async def health_check() -> Dict[str, Any]:
         # Simple query to test connection
         response = client.table("trigger_index").select("count").limit(1).execute()
 
-        return {"status": "healthy", "supabase_url": settings.supabase_url, "connection": "ok"}
+        return {
+            "status": "healthy",
+            "supabase_url": settings.supabase_url,
+            "connection": "ok",
+        }
 
     except Exception as e:
         logger.error(f"Supabase health check failed: {e}")
-        return {"status": "unhealthy", "supabase_url": settings.supabase_url, "error": str(e)}
+        return {
+            "status": "unhealthy",
+            "supabase_url": settings.supabase_url,
+            "error": str(e),
+        }

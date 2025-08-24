@@ -121,7 +121,9 @@ class SlackEventRouter:
             # Process workspace-specific triggers
             if workspace_id in self.workspace_triggers:
                 workspace_results = await self._process_triggers(
-                    self.workspace_triggers[workspace_id], event_data, f"workspace {workspace_id}"
+                    self.workspace_triggers[workspace_id],
+                    event_data,
+                    f"workspace {workspace_id}",
                 )
                 results.extend(workspace_results)
                 processed_count += len(workspace_results)
@@ -231,8 +233,16 @@ class SlackEventRouter:
         try:
             stats = await self.get_router_stats()
 
-            return {"service": "slack_event_router", "status": "healthy", "statistics": stats}
+            return {
+                "service": "slack_event_router",
+                "status": "healthy",
+                "statistics": stats,
+            }
 
         except Exception as e:
             logger.error(f"SlackEventRouter health check failed: {e}")
-            return {"service": "slack_event_router", "status": "unhealthy", "error": str(e)}
+            return {
+                "service": "slack_event_router",
+                "status": "unhealthy",
+                "error": str(e),
+            }
