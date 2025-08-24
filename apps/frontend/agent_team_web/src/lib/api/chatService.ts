@@ -29,10 +29,17 @@ export interface ChatSSEEvent {
     text?: string;
     workflow?: WorkflowData;
     message?: string;
+    status?: string;
+    role?: 'assistant' | 'user';
+    previous_stage?: string;
+    current_stage?: string;
+    stage_state?: any;
+    node_name?: string;
     [key: string]: unknown;
   };
   session_id: string;
   timestamp: string;
+  is_final?: boolean;
 }
 
 class ChatService {
@@ -221,6 +228,13 @@ class ChatService {
                 try {
                   const event: ChatSSEEvent = JSON.parse(data);
                   onMessage(event);
+                  
+                  // Check if this is the final message
+                  if (event.is_final) {
+                    if (onComplete) onComplete();
+                    reader.cancel();
+                    return;
+                  }
                 } catch (e) {
                   console.error('Failed to parse SSE event:', e);
                 }

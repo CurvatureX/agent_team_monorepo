@@ -202,32 +202,93 @@ const CanvasPage = () => {
           console.log('Received SSE event:', event);
           hasReceivedContent = true;
           
-          if (event.type === 'message' && event.data?.text) {
-            accumulatedContent += event.data.text;
-            
-            // Update or create AI message
-            setMessages(prev => {
-              const existingIndex = prev.findIndex(m => m.id === currentAiMessageId);
-              const aiMessage: Message = {
-                id: currentAiMessageId,
-                content: accumulatedContent,
-                sender: 'assistant',
-                timestamp: new Date()
-              };
+          // Handle different message types from the SSE stream
+          if (event.type === 'message') {
+            // Check if it's a text message from assistant
+            if (event.data?.text) {
+              accumulatedContent += event.data.text;
               
-              if (existingIndex !== -1) {
-                const updated = [...prev];
-                updated[existingIndex] = aiMessage;
-                return updated;
-              } else {
-                return [...prev, aiMessage];
+              // Update or create AI message
+              setMessages(prev => {
+                const existingIndex = prev.findIndex(m => m.id === currentAiMessageId);
+                const aiMessage: Message = {
+                  id: currentAiMessageId,
+                  content: accumulatedContent,
+                  sender: 'assistant',
+                  timestamp: new Date()
+                };
+                
+                if (existingIndex !== -1) {
+                  const updated = [...prev];
+                  updated[existingIndex] = aiMessage;
+                  return updated;
+                } else {
+                  return [...prev, aiMessage];
+                }
+              });
+            } 
+            // Handle status/processing messages (these are transient, we can optionally show them)
+            else if (event.data?.message && event.data?.status === 'processing') {
+              // Optionally show processing status as a temporary message
+              console.log('Processing status:', event.data.message);
+            }
+            // Handle role-based messages (when data contains text and role)
+            else if (event.data?.role === 'assistant') {
+              // This is for messages that come with a role field
+              const messageText = event.data.text || event.data.message || '';
+              if (messageText) {
+                accumulatedContent = messageText; // Replace accumulated content
+                
+                setMessages(prev => {
+                  const existingIndex = prev.findIndex(m => m.id === currentAiMessageId);
+                  const aiMessage: Message = {
+                    id: currentAiMessageId,
+                    content: accumulatedContent,
+                    sender: 'assistant',
+                    timestamp: new Date()
+                  };
+                  
+                  if (existingIndex !== -1) {
+                    const updated = [...prev];
+                    updated[existingIndex] = aiMessage;
+                    return updated;
+                  } else {
+                    return [...prev, aiMessage];
+                  }
+                });
               }
-            });
+            }
           } else if (event.type === 'workflow' && event.data) {
             // Handle workflow generation if the AI creates one
             if (event.data.workflow) {
+              console.log('Received workflow:', event.data.workflow);
               setCurrentWorkflow(event.data.workflow);
+              
+              // Also show a message about workflow creation if there's text
+              if (event.data.text) {
+                const workflowMessage = event.data.text;
+                setMessages(prev => {
+                  const existingIndex = prev.findIndex(m => m.id === currentAiMessageId);
+                  const aiMessage: Message = {
+                    id: currentAiMessageId,
+                    content: workflowMessage,
+                    sender: 'assistant',
+                    timestamp: new Date()
+                  };
+                  
+                  if (existingIndex !== -1) {
+                    const updated = [...prev];
+                    updated[existingIndex] = aiMessage;
+                    return updated;
+                  } else {
+                    return [...prev, aiMessage];
+                  }
+                });
+              }
             }
+          } else if (event.type === 'status_change') {
+            // Log status changes for debugging but don't show them as messages
+            console.log('Workflow status change:', event.data);
           } else if (event.type === 'error') {
             toast({
               title: "Error",
