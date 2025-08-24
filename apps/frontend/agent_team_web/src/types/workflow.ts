@@ -121,7 +121,7 @@ export interface CreateWorkflowRequest {
   name: string;
   description?: string;
   nodes: Omit<WorkflowNode, 'id'>[];   // 创建时节点可能没有ID
-  connections?: Record<string, unknown>;    // 连接信息（旧格式兼容）
+  connections?: Record<string, unknown>;    // 连接信息（n8n格式）
   settings?: WorkflowSettingsData;
   static_data?: Record<string, unknown>;
   tags?: string[];
@@ -135,8 +135,7 @@ export interface UpdateWorkflowRequest {
   name?: string;
   description?: string;
   nodes?: WorkflowNode[];
-  edges?: WorkflowEdge[];                // 根据 api1.json，更新使用 edges
-  connections?: Record<string, unknown>;  // 保留用于兼容性
+  connections?: Record<string, unknown>;  // 连接信息（n8n格式）
   settings?: WorkflowSettingsData;
   static_data?: Record<string, unknown>;
   tags?: string[];

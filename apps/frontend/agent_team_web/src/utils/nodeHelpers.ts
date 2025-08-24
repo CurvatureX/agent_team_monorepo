@@ -45,7 +45,7 @@ const NODE_SUBTYPE_ICONS: Record<string, LucideIcon> = {
   TRIGGER_EMAIL: Mail,
   TRIGGER_FORM: FileText,
   TRIGGER_CRON: Clock,
-  
+
   // Flow Control
   FLOW_IF: ToggleLeft,
   FLOW_FILTER: Filter,
@@ -53,47 +53,89 @@ const NODE_SUBTYPE_ICONS: Record<string, LucideIcon> = {
   FLOW_MERGE: Merge,
   FLOW_SWITCH: GitBranch,
   FLOW_WAIT: PauseCircle,
-  
+
   // Default fallback to parent type
 };
 
-// Category color schemes
-export const CATEGORY_COLORS: Record<NodeCategory, NodeColorScheme> = {
+// Category color schemes with inline styles
+export interface NodeColorSchemeWithStyles extends NodeColorScheme {
+  bgStyle?: React.CSSProperties;
+  iconStyle?: React.CSSProperties;
+  borderStyle?: React.CSSProperties;
+}
+
+export const CATEGORY_COLORS: Record<NodeCategory, NodeColorSchemeWithStyles> = {
   'Trigger': {
     border: 'border-green-500',
     bg: 'bg-green-50 dark:bg-green-950',
     icon: 'text-green-600 dark:text-green-400',
+    bgStyle: { backgroundColor: 'rgb(240 253 244)' }, // green-50
+    iconStyle: { color: 'rgb(22 163 74)' }, // green-600
+    borderStyle: { borderColor: 'rgb(34 197 94)' }, // green-500
   },
   'AI Agents': {
     border: 'border-indigo-500',
     bg: 'bg-indigo-50 dark:bg-indigo-950',
     icon: 'text-indigo-600 dark:text-indigo-400',
+    bgStyle: { backgroundColor: 'rgb(238 242 255)' }, // indigo-50
+    iconStyle: { color: 'rgb(79 70 229)' }, // indigo-600
+    borderStyle: { borderColor: 'rgb(99 102 241)' }, // indigo-500
   },
   'Actions': {
     border: 'border-amber-500',
     bg: 'bg-amber-50 dark:bg-amber-950',
     icon: 'text-amber-600 dark:text-amber-400',
+    bgStyle: { backgroundColor: 'rgb(255 251 235)' }, // amber-50
+    iconStyle: { color: 'rgb(217 119 6)' }, // amber-600
+    borderStyle: { borderColor: 'rgb(245 158 11)' }, // amber-500
   },
   'Flow Control': {
     border: 'border-purple-500',
     bg: 'bg-purple-50 dark:bg-purple-950',
     icon: 'text-purple-600 dark:text-purple-400',
+    bgStyle: { backgroundColor: 'rgb(250 245 255)' }, // purple-50
+    iconStyle: { color: 'rgb(147 51 234)' }, // purple-600
+    borderStyle: { borderColor: 'rgb(168 85 247)' }, // purple-500
   },
   'Human Interaction': {
     border: 'border-pink-500',
     bg: 'bg-pink-50 dark:bg-pink-950',
     icon: 'text-pink-600 dark:text-pink-400',
+    bgStyle: { backgroundColor: 'rgb(253 242 248)' }, // pink-50
+    iconStyle: { color: 'rgb(219 39 119)' }, // pink-600
+    borderStyle: { borderColor: 'rgb(236 72 153)' }, // pink-500
   },
   'Memory': {
     border: 'border-orange-500',
     bg: 'bg-orange-50 dark:bg-orange-950',
     icon: 'text-orange-600 dark:text-orange-400',
+    bgStyle: { backgroundColor: 'rgb(255 247 237)' }, // orange-50
+    iconStyle: { color: 'rgb(234 88 12)' }, // orange-600
+    borderStyle: { borderColor: 'rgb(249 115 22)' }, // orange-500
   },
   'Tools': {
     border: 'border-cyan-500',
     bg: 'bg-cyan-50 dark:bg-cyan-950',
     icon: 'text-cyan-600 dark:text-cyan-400',
+    bgStyle: { backgroundColor: 'rgb(236 254 255)' }, // cyan-50
+    iconStyle: { color: 'rgb(8 145 178)' }, // cyan-600
+    borderStyle: { borderColor: 'rgb(6 182 212)' }, // cyan-500
   },
+};
+
+// Get color scheme for category
+export const getCategoryColor = (category: NodeCategory): NodeColorSchemeWithStyles => {
+  return CATEGORY_COLORS[category] || {
+    // border: 'border-gray-500',
+    // bg: 'bg-gray-50 dark:bg-gray-950',
+    // icon: 'text-gray-600 dark:text-gray-400',
+    border: 'border-gray-500',
+    bg: 'bg-gray-50 dark:bg-gray-950',
+    icon: 'text-gray-600 dark:text-gray-400',
+    bgStyle: { backgroundColor: 'rgb(249 250 251)' },
+    iconStyle: { color: 'rgb(75 85 99)' },
+    borderStyle: { borderColor: 'rgb(107 114 128)' },
+  };
 };
 
 // Get icon for node type
@@ -102,15 +144,6 @@ export const getNodeIcon = (nodeType: NodeTypeEnum, nodeSubtype?: string): Lucid
     return NODE_SUBTYPE_ICONS[nodeSubtype];
   }
   return NODE_TYPE_ICONS[nodeType] || Circle;
-};
-
-// Get color scheme for category
-export const getCategoryColor = (category: NodeCategory): NodeColorScheme => {
-  return CATEGORY_COLORS[category] || {
-    border: 'border-gray-500',
-    bg: 'bg-gray-50 dark:bg-gray-950',
-    icon: 'text-gray-600 dark:text-gray-400',
-  };
 };
 
 // Format parameter value for display
@@ -130,11 +163,11 @@ export const getParameterPreview = (parameters: Record<string, unknown>, maxItem
   const preview = entries
     .slice(0, maxItems)
     .map(([key, value]) => `${key}: ${formatParameterValue(value)}`);
-  
+
   if (entries.length > maxItems) {
     preview.push(`+${entries.length - maxItems} more`);
   }
-  
+
   return preview;
 };
 
@@ -156,7 +189,7 @@ export const isValidConnection = (
 ): boolean => {
   // Triggers can only be sources, not targets
   if (targetType === 'TRIGGER') return false;
-  
+
   // All other connections are valid for now
   // Add more specific rules as needed
   return true;

@@ -48,6 +48,7 @@ export const NodeCategory: React.FC<NodeCategoryProps> = ({
         <Badge 
           variant="secondary" 
           className={cn('text-xs h-5', colorScheme.bg, colorScheme.icon)}
+          style={{ ...colorScheme.bgStyle, ...colorScheme.iconStyle }}
         >
           {count}
         </Badge>
