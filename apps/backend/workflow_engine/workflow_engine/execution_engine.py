@@ -37,6 +37,7 @@ class WorkflowExecutionEngine:
         workflow_definition: Dict[str, Any],
         initial_data: Optional[Dict[str, Any]] = None,
         credentials: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Execute a complete workflow with enhanced tracking."""
 
@@ -53,7 +54,7 @@ class WorkflowExecutionEngine:
 
         # Initialize enhanced execution state
         execution_state = self._initialize_enhanced_execution_state(
-            workflow_id, execution_id, workflow_definition, initial_data, credentials
+            workflow_id, execution_id, workflow_definition, initial_data, credentials, user_id
         )
         self.execution_states[execution_id] = execution_state
 
@@ -106,6 +107,7 @@ class WorkflowExecutionEngine:
                         execution_state,
                         initial_data or {},
                         credentials or {},
+                        user_id,
                     )
 
                     self.logger.info(
@@ -195,6 +197,7 @@ class WorkflowExecutionEngine:
         execution_state: Dict[str, Any],
         initial_data: Dict[str, Any],
         credentials: Dict[str, Any],
+        user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Execute a single node with enhanced tracking and data collection."""
 
@@ -290,6 +293,7 @@ class WorkflowExecutionEngine:
                 "trigger_data": trigger_data,
                 "trigger_channel_id": trigger_data.get("channel_id"),
                 "trigger_user_id": trigger_data.get("user_id"),
+                "user_id": user_id,  # Add the actual executing user ID
             },
         )
 
@@ -398,6 +402,7 @@ class WorkflowExecutionEngine:
         workflow_definition: Dict[str, Any],
         initial_data: Optional[Dict[str, Any]],
         credentials: Optional[Dict[str, Any]],
+        user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Initialize enhanced execution state with detailed tracking."""
 
@@ -431,6 +436,7 @@ class WorkflowExecutionEngine:
                 "execution_start_time": int(time.time()),
                 "execution_mode": "manual",
                 "triggered_by": "system",
+                "user_id": user_id,
                 "metadata": {},
             },
             "performance_metrics": {
@@ -997,7 +1003,7 @@ class WorkflowExecutionEngine:
         total_execution_time = 0
         if execution_state["performance_metrics"]["node_execution_times"]:
             total_execution_time = sum(
-                metrics.get("duration", 0)
+                metrics.get("duration", 0) or 0
                 for metrics in execution_state["performance_metrics"][
                     "node_execution_times"
                 ].values()

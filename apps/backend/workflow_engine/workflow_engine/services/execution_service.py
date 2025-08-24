@@ -134,6 +134,7 @@ class ExecutionService:
                     workflow_definition=workflow_dict,
                     initial_data=request.trigger_data,
                     credentials={},  # TODO: Add credential handling
+                    user_id=request.user_id,
                 )
 
                 self.logger.info(

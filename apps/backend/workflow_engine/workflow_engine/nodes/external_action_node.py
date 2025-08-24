@@ -491,7 +491,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 parameters=parameters,
                 credentials=credentials,
                 user_id=user_id,
-                workflow_execution_id=context.metadata.get("workflow_execution_id"),
+                workflow_execution_id=context.execution_id,
                 node_id=context.metadata.get("node_id"),
             )
 
