@@ -374,6 +374,28 @@ class TriggerNodeExecutor(BaseNodeExecutor):
             if "text" in input_data:
                 return input_data["text"]
 
+            # Enhanced Slack content extraction
+            # Check direct message field
+            if "message" in input_data:
+                return input_data["message"]
+
+            # Check for Slack-specific content field
+            if "content" in input_data:
+                return input_data["content"]
+
+            # Check for any field that contains the actual message content
+            # This handles cases where the message is passed directly as a string value
+            for key, value in input_data.items():
+                if isinstance(value, str) and len(value.strip()) > 0:
+                    # Look for patterns that suggest this is the actual message
+                    if (
+                        key in ["slack_message", "user_message", "channel_message"]
+                        or "<@" in value
+                        or "@" in value
+                        or len(value) > 5
+                    ):  # Slack mentions or meaningful content
+                        return value
+
         elif trigger_type == "github":
             # Extract GitHub event content
             github_data = input_data.get("github_data", {})

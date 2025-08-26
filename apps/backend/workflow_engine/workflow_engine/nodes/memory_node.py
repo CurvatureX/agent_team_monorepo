@@ -1462,14 +1462,76 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             self.logger.info("🧠 MEMORY NODE: No input data provided")
 
         try:
-            # Handle incoming message data
+            # Handle incoming message data with robust extraction
+            message_content = ""
+            message_role = "user"
+            message_metadata = {}
+            message_timestamp = datetime.now().isoformat()
+
+            if context.input_data:
+                # Try multiple extraction strategies to get the actual message content
+
+                # Strategy 1: Direct content field
+                message_content = context.input_data.get("content", "")
+
+                # Strategy 2: Look in text field (common for text-based nodes)
+                if not message_content:
+                    message_content = context.input_data.get("text", "")
+
+                # Strategy 3: Look in response field (common for AI agent outputs)
+                if not message_content:
+                    message_content = context.input_data.get("response", "")
+
+                # Strategy 4: Look in message field
+                if not message_content:
+                    message_content = context.input_data.get("message", "")
+
+                # Strategy 5: If input_data has nested content structures, try to extract from them
+                if not message_content and isinstance(context.input_data, dict):
+                    for key, value in context.input_data.items():
+                        if isinstance(value, dict):
+                            nested_content = (
+                                value.get("content", "")
+                                or value.get("text", "")
+                                or value.get("response", "")
+                            )
+                            if nested_content:
+                                message_content = nested_content
+                                break
+                        elif (
+                            isinstance(value, str)
+                            and len(value.strip()) > 0
+                            and key
+                            not in ["timestamp", "format_type", "source_node", "role", "metadata"]
+                        ):
+                            # Use any non-empty string value that isn't obviously metadata
+                            message_content = value
+                            break
+
+                # Extract other message fields
+                message_role = context.input_data.get("role", "user")
+                message_timestamp = context.input_data.get("timestamp", datetime.now().isoformat())
+                message_metadata = context.input_data.get("metadata", {})
+
+                # Log extraction details for debugging
+                self.logger.info(
+                    f"🧠 MEMORY NODE: Content extraction - Found content: '{message_content[:100]}{'...' if len(message_content) > 100 else ''}' ({len(message_content)} chars)"
+                )
+                if not message_content:
+                    self.logger.warning(
+                        f"🧠 MEMORY NODE: ⚠️ No content found in input_data keys: {list(context.input_data.keys())}"
+                    )
+                    # Log the full input data for debugging (truncated)
+                    input_data_str = str(context.input_data)[:500]
+                    self.logger.warning(f"🧠 MEMORY NODE: Input data sample: {input_data_str}...")
+
             if context.input_data:
                 # Store new message
                 message = {
-                    "role": context.input_data.get("role", "user"),
-                    "content": context.input_data.get("content", ""),
-                    "timestamp": context.input_data.get("timestamp", datetime.now().isoformat()),
-                    "metadata": context.input_data.get("metadata", {}),
+                    "role": message_role,
+                    "content": message_content,
+                    "timestamp": message_timestamp,
+                    "metadata": message_metadata,
                 }
 
                 # Add message to buffer
