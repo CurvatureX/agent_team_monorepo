@@ -91,7 +91,7 @@ class FlowNodeExecutor(BaseNodeExecutor):
 
         try:
             subtype = context.node.subtype
-            logs.append(f"Executing flow node with subtype: {subtype}")
+            self.logger.info(f"Executing flow node with subtype: {subtype}")
 
             if subtype == FlowSubtype.IF.value:
                 return self._execute_if_condition(context, logs, start_time)
@@ -139,11 +139,12 @@ class FlowNodeExecutor(BaseNodeExecutor):
     def _execute_if_condition(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing if condition")
         """Execute if condition."""
         # Use spec-based parameter retrieval
         condition = self.get_parameter_with_spec(context, "condition")
 
-        logs.append(f"Evaluating if condition: {condition}")
+        self.logger.info(f"Evaluating if condition: {condition}")
 
         # Evaluate condition
         condition_result = self._evaluate_condition(condition, context.input_data)
@@ -159,10 +160,10 @@ class FlowNodeExecutor(BaseNodeExecutor):
         # Add routing information
         if condition_result:
             output_data["next_route"] = "true_branch"
-            logs.append("Condition evaluated to TRUE")
+            self.logger.info("Condition evaluated to TRUE")
         else:
             output_data["next_route"] = "false_branch"
-            logs.append("Condition evaluated to FALSE")
+            self.logger.info("Condition evaluated to FALSE")
 
         return self._create_success_result(
             output_data=output_data, execution_time=time.time() - start_time, logs=logs
@@ -171,11 +172,12 @@ class FlowNodeExecutor(BaseNodeExecutor):
     def _execute_filter(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing filter")
         """Execute filter operation."""
         # Use spec-based parameter retrieval
         filter_condition = self.get_parameter_with_spec(context, "filter_condition")
 
-        logs.append(f"Applying filter: {filter_condition}")
+        self.logger.info(f"Applying filter: {filter_condition}")
 
         input_data = context.input_data
 
@@ -204,12 +206,13 @@ class FlowNodeExecutor(BaseNodeExecutor):
     def _execute_loop(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing loop")
         """Execute loop operation."""
         # Use spec-based parameter retrieval
         loop_type = self.get_parameter_with_spec(context, "loop_type")
         max_iterations = self.get_parameter_with_spec(context, "max_iterations")
 
-        logs.append(f"Executing {loop_type} loop with max iterations: {max_iterations}")
+        self.logger.info(f"Executing {loop_type} loop with max iterations: {max_iterations}")
 
         input_data = context.input_data
 
@@ -240,11 +243,12 @@ class FlowNodeExecutor(BaseNodeExecutor):
     def _execute_merge(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing merge")
         """Execute merge operation."""
         # Use spec-based parameter retrieval
         merge_strategy = self.get_parameter_with_spec(context, "merge_strategy")
 
-        logs.append(f"Merging data with strategy: {merge_strategy}")
+        self.logger.info(f"Merging data with strategy: {merge_strategy}")
 
         input_data = context.input_data
 
@@ -273,12 +277,13 @@ class FlowNodeExecutor(BaseNodeExecutor):
     def _execute_switch(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing switch")
         """Execute switch operation."""
         # Use spec-based parameter retrieval
         switch_cases = self.get_parameter_with_spec(context, "switch_cases")
         switch_value = context.input_data.get("switch_value", "")
 
-        logs.append(f"Executing switch with value: {switch_value}")
+        self.logger.info(f"Executing switch with value: {switch_value}")
 
         # Find matching case
         matched_case = None
@@ -309,27 +314,28 @@ class FlowNodeExecutor(BaseNodeExecutor):
     def _execute_wait(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing wait")
         """Execute wait operation."""
         # Use spec-based parameter retrieval
         wait_type = self.get_parameter_with_spec(context, "wait_type")
 
-        logs.append(f"Executing wait with type: {wait_type}")
+        self.logger.info(f"Executing wait with type: {wait_type}")
 
         if wait_type == "time":
             duration = self.get_parameter_with_spec(context, "duration")  # seconds
-            logs.append(f"Waiting for {duration} seconds")
+            self.logger.info(f"Waiting for {duration} seconds")
             # In real implementation, would actually wait
             wait_result = {"waited_seconds": duration}
 
         elif wait_type == "condition":
             condition = self.get_parameter_with_spec(context, "wait_condition")
-            logs.append(f"Waiting for condition: {condition}")
+            self.logger.info(f"Waiting for condition: {condition}")
             # In real implementation, would poll condition
             wait_result = {"condition": condition, "condition_met": True}
 
         elif wait_type == "event":
             event_name = self.get_parameter_with_spec(context, "event_name")
-            logs.append(f"Waiting for event: {event_name}")
+            self.logger.info(f"Waiting for event: {event_name}")
             # In real implementation, would wait for event
             wait_result = {"event_name": event_name, "event_received": True}
 
@@ -457,12 +463,13 @@ class FlowNodeExecutor(BaseNodeExecutor):
     def _execute_split(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing split")
         """Execute split operation."""
         # Use spec-based parameter retrieval
         split_key = self.get_parameter_with_spec(context, "split_key")
         split_type = self.get_parameter_with_spec(context, "split_type")
 
-        logs.append(f"Splitting data by {split_key} using {split_type}")
+        self.logger.info(f"Splitting data by {split_key} using {split_type}")
 
         input_data = context.input_data
 
@@ -491,12 +498,13 @@ class FlowNodeExecutor(BaseNodeExecutor):
     def _execute_sort(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing sort")
         """Execute sort operation."""
         # Use spec-based parameter retrieval
         sort_key = self.get_parameter_with_spec(context, "sort_key")
         sort_order = self.get_parameter_with_spec(context, "sort_order")
 
-        logs.append(f"Sorting data by {sort_key} in {sort_order} order")
+        self.logger.info(f"Sorting data by {sort_key} in {sort_order} order")
 
         input_data = context.input_data
 

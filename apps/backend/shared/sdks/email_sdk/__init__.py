@@ -11,13 +11,13 @@ This SDK provides comprehensive email integration including:
 
 from .client import EmailSDK
 from .exceptions import (
-    EmailError,
     EmailAuthError,
+    EmailConnectionError,
+    EmailError,
     EmailSendError,
     EmailValidationError,
-    EmailConnectionError,
 )
-from .models import EmailMessage, EmailAttachment
+from .models import EmailAttachment, EmailMessage
 
 __version__ = "1.0.0"
 __all__ = [

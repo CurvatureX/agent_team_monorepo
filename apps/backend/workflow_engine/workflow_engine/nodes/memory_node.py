@@ -114,7 +114,21 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
         try:
             subtype = context.node.subtype
-            logs.append(f"Executing memory node with subtype: {subtype}")
+
+            # Log detailed context information
+            self.logger.info(f"🧠🔥 MEMORY NODE EXECUTE: Starting with subtype: {subtype}")
+            self.logger.info(
+                f"🧠🔥 MEMORY NODE EXECUTE: Workflow ID: {getattr(context, 'workflow_id', 'NONE')}"
+            )
+            self.logger.info(
+                f"🧠🔥 MEMORY NODE EXECUTE: Execution ID: {getattr(context, 'execution_id', 'NONE')}"
+            )
+            self.logger.info(
+                f"🧠🔥 MEMORY NODE EXECUTE: Node ID: {getattr(context.node, 'id', 'NONE') if hasattr(context, 'node') else 'NO_NODE'}"
+            )
+            self.logger.info(
+                f"🧠🔥 MEMORY NODE EXECUTE: Input data keys: {list(context.input_data.keys()) if hasattr(context, 'input_data') and context.input_data else 'NO_INPUT'}"
+            )
 
             if subtype == MemorySubtype.CONVERSATION_BUFFER.value:
                 return self._execute_conversation_buffer(context, logs, start_time)
@@ -155,7 +169,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute vector database operations with real OpenAI embeddings."""
-        logs.append("🧠 MEMORY NODE: Starting VECTOR_DATABASE execution")
+        logs.append(f"Starting vector database operation")
 
         # Use spec-based parameter retrieval
         try:
@@ -168,7 +182,8 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         except (KeyError, AttributeError):
             collection_name = "default"
 
-        logs.append(
+        logs.append(f"Vector DB operation: {operation} on collection '{collection_name}'")
+        self.logger.info(
             f"🧠 MEMORY NODE: Vector DB operation '{operation}' on collection '{collection_name}'"
         )
 
@@ -185,9 +200,11 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     )
 
                 if not text_content:
+                    logs.append("Error: No text content provided for vector storage")
                     raise ValueError("No text content provided for vector storage")
 
-                logs.append(
+                logs.append(f"Storing vector: {len(text_content)} characters")
+                self.logger.info(
                     f"🧠 MEMORY NODE: Embedding text content: '{text_content[:100]}...' ({len(text_content)} chars)"
                 )
                 result = self._store_vector_with_embedding(
@@ -207,7 +224,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 if not query_text:
                     raise ValueError("No query text provided for vector search")
 
-                logs.append(
+                self.logger.info(
                     f"🧠 MEMORY NODE: Searching for: '{query_text[:100]}...' (top_k={top_k}, threshold={similarity_threshold})"
                 )
                 result = self._search_vectors_with_embedding(
@@ -226,7 +243,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
             else:
                 result = {"error": f"Unknown vector operation: {operation}"}
-                logs.append(f"🧠 MEMORY NODE: ❌ Unknown operation '{operation}'")
 
             # Enhanced output data with memory context for LLM
             output_data = {
@@ -244,19 +260,15 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 output_data["memory_context"] = memory_context
                 output_data["formatted_context"] = memory_context
 
-                logs.append(f"🧠 MEMORY NODE: ✅ Generated vector search context:")
-                logs.append(f"🧠 MEMORY NODE:   📊 {len(result['results'])} relevant results found")
-                logs.append(
+                self.logger.info(
                     f"🧠 MEMORY NODE:   📝 Formatted context length: {len(memory_context)} characters"
                 )
-                logs.append(f"🧠 MEMORY NODE:   🔗 Ready for LLM integration")
 
             return self._create_success_result(
                 output_data=output_data, execution_time=time.time() - start_time, logs=logs
             )
 
         except Exception as e:
-            logs.append(f"🧠 MEMORY NODE: ❌ Error in vector DB operation: {str(e)}")
             return self._create_error_result(
                 f"Error in vector DB operation: {str(e)}",
                 error_details={"exception": str(e)},
@@ -271,8 +283,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         # Use spec-based parameter retrieval
         operation = self.get_parameter_with_spec(context, "operation")
         key = self.get_parameter_with_spec(context, "key")
-
-        logs.append(f"Key-Value: {operation} for key {key}")
 
         try:
             if operation == "get":
@@ -313,7 +323,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute document operations with full-text search and indexing."""
-        logs.append("🧠 MEMORY NODE: Starting DOCUMENT_STORE execution")
+        logs.append("Starting document store operation")
 
         # Use spec-based parameter retrieval with fallbacks
         try:
@@ -322,8 +332,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             operation = context.input_data.get("operation", "search")
 
         document_id = context.input_data.get("document_id", "")
-
-        logs.append(f"🧠 MEMORY NODE: Document operation '{operation}' for document '{document_id}'")
 
         try:
             if operation == "store":
@@ -339,8 +347,8 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
                 if not document_id:
                     document_id = f"doc_{len(self._document_store) + 1}"
-
-                logs.append(
+                logs.append(f"Storing document '{document_id}' ({len(content)} chars)")
+                self.logger.info(
                     f"🧠 MEMORY NODE: Storing document '{document_id}' with content length: {len(content)} chars"
                 )
                 result = self._store_document_with_indexing(
@@ -381,7 +389,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 if not query:
                     raise ValueError("No query provided for document search")
 
-                logs.append(
+                self.logger.info(
                     f"🧠 MEMORY NODE: Searching documents for: '{query[:100]}...' (type: {search_type}, max: {max_results})"
                 )
                 result = self._search_documents_enhanced(query, max_results, search_type, logs)
@@ -392,7 +400,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
             else:
                 result = {"error": f"Unknown document operation: {operation}"}
-                logs.append(f"🧠 MEMORY NODE: ❌ Unknown operation '{operation}'")
 
             # Enhanced output data with memory context for LLM
             output_data = {
@@ -410,21 +417,15 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 output_data["memory_context"] = memory_context
                 output_data["formatted_context"] = memory_context
 
-                logs.append(f"🧠 MEMORY NODE: ✅ Generated document search context:")
-                logs.append(
+                self.logger.info(
                     f"🧠 MEMORY NODE:   📊 {len(result['documents'])} relevant documents found"
                 )
-                logs.append(
-                    f"🧠 MEMORY NODE:   📝 Formatted context length: {len(memory_context)} characters"
-                )
-                logs.append(f"🧠 MEMORY NODE:   🔗 Ready for LLM integration")
 
             return self._create_success_result(
                 output_data=output_data, execution_time=time.time() - start_time, logs=logs
             )
 
         except Exception as e:
-            logs.append(f"🧠 MEMORY NODE: ❌ Error in document operation: {str(e)}")
             return self._create_error_result(
                 f"Error in document operation: {str(e)}",
                 error_details={"exception": str(e)},
@@ -519,21 +520,17 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
             api_key = os.getenv("OPENAI_API_KEY")
             if not api_key:
-                logs.append("🧠 MEMORY NODE: ⚠️ OPENAI_API_KEY not found, using mock embedding")
                 # Return mock embedding for testing
                 return [0.1] * 1536  # OpenAI text-embedding-ada-002 dimension
 
             client = OpenAI(api_key=api_key)
 
-            logs.append("🧠 MEMORY NODE: 🔗 Calling OpenAI embedding API...")
             response = client.embeddings.create(model="text-embedding-ada-002", input=text)
 
             embedding = response.data[0].embedding
-            logs.append(f"🧠 MEMORY NODE: ✅ Generated embedding (dimension: {len(embedding)})")
             return embedding
 
         except Exception as e:
-            logs.append(f"🧠 MEMORY NODE: ❌ OpenAI embedding failed: {str(e)}, using mock")
             return [0.1] * 1536  # Fallback mock embedding
 
     def _calculate_cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
@@ -561,7 +558,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         """Store text content with OpenAI embedding."""
         if collection_name not in self._vector_db:
             self._vector_db[collection_name] = []
-            logs.append(f"🧠 MEMORY NODE: Created new collection '{collection_name}'")
 
         # Generate embedding for text content
         embedding = self._get_openai_embedding(text_content, logs)
@@ -576,8 +572,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         }
 
         self._vector_db[collection_name].append(vector_entry)
-
-        logs.append(f"🧠 MEMORY NODE: ✅ Stored vector {vector_id} with text content")
 
         return {
             "vector_id": vector_id,
@@ -597,7 +591,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
     ) -> Dict[str, Any]:
         """Search vectors using OpenAI embedding and real cosine similarity."""
         if collection_name not in self._vector_db:
-            logs.append(f"🧠 MEMORY NODE: ⚠️ Collection '{collection_name}' not found")
             return {"results": [], "count": 0, "query": query_text}
 
         # Generate embedding for query
@@ -625,14 +618,12 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         # Return top_k results
         results = similarities[:top_k]
 
-        logs.append(
+        self.logger.info(
             f"🧠 MEMORY NODE: 📊 Found {len(similarities)} results above threshold {similarity_threshold}"
         )
-        logs.append(f"🧠 MEMORY NODE: 📋 Returning top {len(results)} results")
 
         if results:
             avg_similarity = sum(r["similarity"] for r in results) / len(results)
-            logs.append(f"🧠 MEMORY NODE: 📈 Average similarity: {avg_similarity:.3f}")
 
         return {
             "results": results,
@@ -647,22 +638,18 @@ class MemoryNodeExecutor(BaseNodeExecutor):
     ) -> Dict[str, Any]:
         """Delete vector from collection with logging."""
         if collection_name not in self._vector_db:
-            logs.append(f"🧠 MEMORY NODE: ❌ Collection '{collection_name}' not found")
             return {"error": "Collection not found"}
 
         for i, vector_entry in enumerate(self._vector_db[collection_name]):
             if vector_entry["id"] == vector_id:
                 del self._vector_db[collection_name][i]
-                logs.append(f"🧠 MEMORY NODE: ✅ Deleted vector {vector_id}")
                 return {"deleted": True, "vector_id": vector_id}
 
-        logs.append(f"🧠 MEMORY NODE: ❌ Vector {vector_id} not found")
         return {"error": "Vector not found"}
 
     def _list_vectors(self, collection_name: str, logs: List[str]) -> Dict[str, Any]:
         """List all vectors in collection."""
         if collection_name not in self._vector_db:
-            logs.append(f"🧠 MEMORY NODE: ⚠️ Collection '{collection_name}' not found")
             return {"vectors": [], "count": 0}
 
         vectors = []
@@ -677,8 +664,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     "created_at": vector_entry.get("created_at", ""),
                 }
             )
-
-        logs.append(
+        self.logger.info(
             f"🧠 MEMORY NODE: 📋 Listed {len(vectors)} vectors from collection '{collection_name}'"
         )
         return {"vectors": vectors, "count": len(vectors)}
@@ -707,7 +693,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             context_parts.append(context_part)
 
         formatted_context = "\n\n".join(context_parts)
-        logs.append(f"🧠 MEMORY NODE: 📝 Formatted {len(search_results)} results for LLM context")
 
         return formatted_context
 
@@ -831,8 +816,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
         self._document_store[document_id] = document_entry
 
-        logs.append(f"🧠 MEMORY NODE: ✅ Stored document with {len(word_index)} unique words indexed")
-
         return {
             "stored": True,
             "document_id": document_id,
@@ -845,12 +828,9 @@ class MemoryNodeExecutor(BaseNodeExecutor):
     def _retrieve_document_enhanced(self, document_id: str, logs: List[str]) -> Dict[str, Any]:
         """Retrieve document with enhanced metadata."""
         if document_id not in self._document_store:
-            logs.append(f"🧠 MEMORY NODE: ❌ Document '{document_id}' not found")
             return {"error": "Document not found"}
 
         doc = self._document_store[document_id]
-
-        logs.append(f"🧠 MEMORY NODE: ✅ Retrieved document '{document_id}'")
 
         return {
             "document_id": document_id,
@@ -869,7 +849,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
     ) -> Dict[str, Any]:
         """Update document with re-indexing."""
         if document_id not in self._document_store:
-            logs.append(f"🧠 MEMORY NODE: ❌ Document '{document_id}' not found for update")
             return {"error": "Document not found"}
 
         # Re-create index with new content
@@ -890,7 +869,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             }
         )
 
-        logs.append(
+        self.logger.info(
             f"🧠 MEMORY NODE: ✅ Updated document '{document_id}' with {len(word_index)} unique words indexed"
         )
 
@@ -905,11 +884,9 @@ class MemoryNodeExecutor(BaseNodeExecutor):
     def _delete_document_with_indexing(self, document_id: str, logs: List[str]) -> Dict[str, Any]:
         """Delete document and its index."""
         if document_id not in self._document_store:
-            logs.append(f"🧠 MEMORY NODE: ❌ Document '{document_id}' not found for deletion")
             return {"error": "Document not found"}
 
         del self._document_store[document_id]
-        logs.append(f"🧠 MEMORY NODE: ✅ Deleted document '{document_id}' and its index")
 
         return {"deleted": True, "document_id": document_id}
 
@@ -922,7 +899,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         query_words = set(re.findall(r"\b\w+\b", query.lower()))
         results = []
 
-        logs.append(
+        self.logger.info(
             f"🧠 MEMORY NODE: Searching {len(self._document_store)} documents with query words: {list(query_words)}"
         )
 
@@ -977,10 +954,8 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         # Limit results
         results = results[:max_results]
 
-        logs.append(f"🧠 MEMORY NODE: 📊 Found {len(results)} relevant documents")
         if results:
             avg_score = sum(r["score"] for r in results) / len(results)
-            logs.append(f"🧠 MEMORY NODE: 📈 Average relevance score: {avg_score:.3f}")
 
         return {
             "documents": results,
@@ -1045,8 +1020,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         # Sort by creation date (newest first)
         documents.sort(key=lambda x: x.get("created_at", ""), reverse=True)
 
-        logs.append(f"🧠 MEMORY NODE: 📋 Listed {len(documents)} documents")
-
         return {"documents": documents, "count": len(documents)}
 
     def _format_document_search_context(
@@ -1074,7 +1047,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             context_parts.append(context_part)
 
         formatted_context = "\n\n".join(context_parts)
-        logs.append(f"🧠 MEMORY NODE: 📝 Formatted {len(search_results)} documents for LLM context")
 
         return formatted_context
 
@@ -1099,8 +1071,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         # Use spec-based parameter retrieval
         operation = self.get_parameter_with_spec(context, "operation")
         buffer_name = self.get_parameter_with_spec(context, "buffer_name")
-
-        logs.append(f"Buffer Memory: {operation} on buffer {buffer_name}")
 
         # Initialize buffer if not exists
         if buffer_name not in self._key_value_store:
@@ -1147,8 +1117,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         # Use spec-based parameter retrieval
         operation = self.get_parameter_with_spec(context, "operation")
         knowledge_id = self.get_parameter_with_spec(context, "knowledge_id")
-
-        logs.append(f"Knowledge Memory: {operation} for {knowledge_id}")
 
         # Initialize knowledge store if not exists
         if "knowledge" not in self._document_store:
@@ -1203,8 +1171,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         # Use spec-based parameter retrieval
         operation = self.get_parameter_with_spec(context, "operation")
         embedding_model = self.get_parameter_with_spec(context, "embedding_model")
-
-        logs.append(f"Embedding Memory: {operation} using {embedding_model}")
 
         if operation == "embed":
             text = context.input_data.get("text", "")
@@ -1277,7 +1243,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         try:
             supabase = self._get_supabase_client()
             if not supabase:
-                logs.append(
+                self.logger.info(
                     "🧠 DATABASE: ⚠️ Supabase client not available, using in-memory storage only"
                 )
                 return
@@ -1318,16 +1284,13 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     .execute()
                 )
 
-                logs.append(f"🧠 DATABASE: Updated existing memory record for key '{memory_key}'")
             else:
                 # Insert new record
                 result = supabase.table("workflow_memory").insert(memory_record).execute()
-                logs.append(f"🧠 DATABASE: Saved new memory record for key '{memory_key}'")
-
-            logs.append(f"🧠 DATABASE: Memory data persisted to Supabase successfully")
 
         except Exception as e:
-            logs.append(f"🧠 DATABASE: ❌ Error saving memory data: {str(e)}")
+            self.logger.warning(f"🧠 DATABASE: ⚠️ Failed to save memory to database: {str(e)}")
+            self.logger.error(f"Database save warning: {str(e)}")
 
     def _load_from_database(
         self, workflow_id: str, execution_id: str, memory_key: str, logs: List[str]
@@ -1336,7 +1299,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         try:
             supabase = self._get_supabase_client()
             if not supabase:
-                logs.append(
+                self.logger.warn(
                     "🧠 DATABASE: ⚠️ Supabase client not available, using in-memory storage only"
                 )
                 return None
@@ -1354,17 +1317,14 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
             if result.data:
                 memory_data = result.data[0]["memory_value"]
-                logs.append(f"🧠 DATABASE: Loaded existing memory data for key '{memory_key}'")
-                logs.append(
+                self.logger.warn(
                     f"🧠 DATABASE: Found {len(memory_data.get('messages', []))} stored messages"
                 )
                 return memory_data
             else:
-                logs.append(f"🧠 DATABASE: No existing memory data found for key '{memory_key}'")
                 return None
 
         except Exception as e:
-            logs.append(f"🧠 DATABASE: ❌ Error loading memory data: {str(e)}")
             return None
 
     def _load_conversation_history_from_workflow(
@@ -1374,7 +1334,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         try:
             supabase = self._get_supabase_client()
             if not supabase:
-                logs.append(
+                self.logger.warn(
                     "🧠 DATABASE: ⚠️ Supabase client not available, using in-memory storage only"
                 )
                 return []
@@ -1398,24 +1358,25 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             # Sort by timestamp and limit to recent messages
             all_messages.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
             recent_messages = all_messages[:20]  # Last 20 messages across all executions
-
-            logs.append(
+            self.logger.info(
                 f"🧠 DATABASE: Loaded {len(recent_messages)} messages from conversation history"
             )
             return recent_messages
 
         except Exception as e:
-            logs.append(f"🧠 DATABASE: ❌ Error loading conversation history: {str(e)}")
             return []
 
     def _execute_conversation_buffer(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute conversation buffer memory operations."""
-        logs.append("🧠 MEMORY NODE: Starting CONVERSATION_BUFFER execution")
-        logs.append(f"🧠 MEMORY NODE: Execution ID: {getattr(context, 'execution_id', 'unknown')}")
-        logs.append(
-            f"🧠 MEMORY NODE: Node ID: {getattr(context.node, 'id', 'unknown') if hasattr(context, 'node') else 'unknown'}"
+        logs.append("Starting conversation buffer memory operation")
+        self.logger.info("🧠🔥 MEMORY NODE: Starting CONVERSATION_BUFFER execution")
+        self.logger.info(
+            f"🧠🔥 MEMORY NODE: Execution ID: {getattr(context, 'execution_id', 'unknown')}"
+        )
+        self.logger.info(
+            f"🧠🔥 MEMORY NODE: Node ID: {getattr(context.node, 'id', 'unknown') if hasattr(context, 'node') else 'unknown'}"
         )
 
         # Get parameters from the node specification
@@ -1442,6 +1403,9 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             include_system_messages = True
 
         logs.append(
+            f"Memory configuration: window_size={window_size}, window_type={window_type}, backend={storage_backend}"
+        )
+        self.logger.info(
             f"🧠 MEMORY NODE: Configuration - window_size: {window_size}, window_type: {window_type}, backend: {storage_backend}"
         )
 
@@ -1462,6 +1426,9 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         if existing_buffer:
             buffer = existing_buffer
             logs.append(
+                f"Loaded existing conversation history ({len(existing_buffer.get('messages', []))} messages)"
+            )
+            self.logger.info(
                 f"🧠 MEMORY NODE: Loaded existing buffer from database with key: {buffer_key}"
             )
         else:
@@ -1471,25 +1438,28 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 "messages": workflow_history,  # Start with historical messages
                 "created_at": datetime.now().isoformat(),
             }
-            logs.append(f"🧠 MEMORY NODE: Created new buffer with key: {buffer_key}")
             if workflow_history:
                 logs.append(
+                    f"Initialized conversation buffer with {len(workflow_history)} historical messages"
+                )
+                self.logger.info(
                     f"🧠 MEMORY NODE: Initialized with {len(workflow_history)} historical messages"
                 )
+            else:
+                logs.append("Initialized empty conversation buffer")
 
         # Log input data analysis
         if hasattr(context, "input_data") and context.input_data:
-            logs.append(f"🧠 MEMORY NODE: Input data keys: {list(context.input_data.keys())}")
             if isinstance(context.input_data, dict):
                 for key, value in context.input_data.items():
                     if isinstance(value, str) and len(value) > 100:
-                        logs.append(
+                        self.logger.info(
                             f"🧠 MEMORY NODE: Input '{key}': {value[:100]}... ({len(value)} chars)"
                         )
                     else:
-                        logs.append(f"🧠 MEMORY NODE: Input '{key}': {value}")
+                        self.logger.info(f"🧠 MEMORY NODE: Input '{key}': {value}")
         else:
-            logs.append("🧠 MEMORY NODE: No input data provided")
+            self.logger.info("🧠 MEMORY NODE: No input data provided")
 
         try:
             # Handle incoming message data
@@ -1504,11 +1474,9 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
                 # Add message to buffer
                 buffer["messages"].append(message)
-                logs.append(
+                logs.append(f"Added new {message['role']} message to conversation buffer")
+                self.logger.info(
                     f"🧠 MEMORY NODE: Added message to buffer - role: {message['role']}, content: '{message['content'][:100]}{'...' if len(message['content']) > 100 else ''}'"
-                )
-                logs.append(
-                    f"🧠 MEMORY NODE: Buffer now contains {len(buffer['messages'])} messages"
                 )
 
                 # Apply windowing policy
@@ -1516,7 +1484,11 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     old_count = len(buffer["messages"])
                     # Remove oldest messages beyond window size
                     buffer["messages"] = buffer["messages"][-window_size:]
+
                     logs.append(
+                        f"Applied windowing: trimmed conversation from {old_count} to {len(buffer['messages'])} messages"
+                    )
+                    self.logger.info(
                         f"🧠 MEMORY NODE: Trimmed buffer from {old_count} to {len(buffer['messages'])} messages (window_size: {window_size})"
                     )
 
@@ -1529,7 +1501,8 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 ]
                 filtered_count = len(messages_to_return)
                 if original_count != filtered_count:
-                    logs.append(
+                    logs.append(f"Filtered out {original_count - filtered_count} system messages")
+                    self.logger.info(
                         f"🧠 MEMORY NODE: Filtered out {original_count - filtered_count} system messages"
                     )
 
@@ -1537,14 +1510,13 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             total_tokens = sum(len(msg.get("content", "").split()) for msg in messages_to_return)
 
             # Log detailed message analysis
-            logs.append(f"🧠 MEMORY NODE: Final message set analysis:")
             for i, msg in enumerate(messages_to_return):
                 content_preview = (
                     msg.get("content", "")[:50] + "..."
                     if len(msg.get("content", "")) > 50
                     else msg.get("content", "")
                 )
-                logs.append(
+                self.logger.info(
                     f"🧠 MEMORY NODE:   Message {i+1}: {msg.get('role', 'unknown')} - '{content_preview}'"
                 )
 
@@ -1568,27 +1540,31 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 "memory_context"
             ] = memory_context_for_llm  # Also provide as memory_context for AI agent
 
-            logs.append(f"🧠 MEMORY NODE: ✅ Generated conversation context:")
-            logs.append(
-                f"🧠 MEMORY NODE:   📊 {len(messages_to_return)} messages, ~{total_tokens} tokens"
-            )
-            logs.append(
+            self.logger.info(
                 f"🧠 MEMORY NODE:   📝 Formatted context length: {len(memory_context_for_llm)} characters"
             )
-            logs.append(f"🧠 MEMORY NODE:   🔗 Ready for LLM integration")
 
             # Save updated buffer to database for persistence across executions
             if context.input_data:  # Only save if we actually processed new data
                 self._save_to_database(workflow_id, execution_id, buffer_key, buffer, node_id, logs)
                 # Also update in-memory store for backwards compatibility
                 self._key_value_store[buffer_key] = buffer
+                logs.append("Saved conversation buffer to database for persistence")
+
+            logs.append(
+                f"Conversation buffer complete: {len(messages_to_return)} messages, ~{total_tokens} tokens"
+            )
+            self.logger.info(
+                f"🧠🔥 MEMORY NODE: ✅ CONVERSATION_BUFFER SUCCESS - Generated {len(messages_to_return)} messages, ~{total_tokens} tokens"
+            )
+            self.logger.info(f"🧠🔥 MEMORY NODE: ✅ Output data keys: {list(context_data.keys())}")
 
             return self._create_success_result(
                 output_data=context_data, execution_time=time.time() - start_time, logs=logs
             )
 
         except Exception as e:
-            logs.append(f"🧠 MEMORY NODE: ❌ Error in conversation buffer operation: {str(e)}")
+            logs.append(f"Conversation buffer operation failed: {str(e)}")
             return self._create_error_result(
                 f"Error in conversation buffer operation: {str(e)}",
                 error_details={"exception": str(e)},
@@ -1599,7 +1575,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
     def _format_conversation_context(self, messages: List[Dict], logs: List[str]) -> str:
         """Format conversation messages into a readable context string for LLM integration."""
         if not messages:
-            logs.append("🧠 MEMORY NODE: No messages to format for LLM context")
             return ""
 
         formatted_lines = []
@@ -1628,7 +1603,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         formatted_lines.append("=== End of Conversation History ===")
         formatted_context = "\n".join(formatted_lines)
 
-        logs.append(
+        self.logger.info(
             f"🧠 MEMORY NODE: Formatted {len(messages)} messages into {len(formatted_context)} character context"
         )
         return formatted_context
@@ -1668,7 +1643,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     break
 
             summary = ". ".join(summary_parts)
-            logs.append(f"🧠 MEMORY NODE: Generated extractive summary ({len(summary)} chars)")
             return summary
 
         elif strategy == "abstractive":
@@ -1684,13 +1658,11 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             else:
                 summary = truncated + "..."
 
-            logs.append(f"🧠 MEMORY NODE: Generated abstractive summary ({len(summary)} chars)")
             return summary
 
         else:
             # Default - just truncate
             summary = text[:max_length] + "..." if len(text) > max_length else text
-            logs.append(f"🧠 MEMORY NODE: Generated default summary ({len(summary)} chars)")
             return summary
 
     def _format_conversation_summary_context(
@@ -1704,7 +1676,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             return "No conversation summary available yet."
 
         context = f"Conversation Summary ({message_count} messages):\n{summary}"
-        logs.append(f"🧠 MEMORY NODE: Formatted conversation summary context ({len(context)} chars)")
         return context
 
     def _extract_entities_simple(self, text: str, logs: List[str]) -> List[Dict[str, Any]]:
@@ -1741,7 +1712,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                         }
                     )
 
-        logs.append(f"🧠 MEMORY NODE: Extracted {len(entities)} entities from text")
         return entities
 
     def _format_entity_memory_context(self, entity_data: Dict[str, Any], logs: List[str]) -> str:
@@ -1774,7 +1744,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 )
 
         formatted_context = "\n".join(context_parts)
-        logs.append(f"🧠 MEMORY NODE: Formatted entity context ({len(formatted_context)} chars)")
         return formatted_context
 
     def _format_knowledge_base_context(
@@ -1814,7 +1783,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             context_parts.append(f"\nKnowledge Categories: {', '.join(categories.keys())}")
 
         formatted_context = "\n".join(context_parts)
-        logs.append(
+        self.logger.info(
             f"🧠 MEMORY NODE: Formatted knowledge base context ({len(formatted_context)} chars)"
         )
         return formatted_context
@@ -1823,7 +1792,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute conversation summary memory operations."""
-        logs.append("🧠 MEMORY NODE: Starting CONVERSATION_SUMMARY execution")
 
         # Get parameters with fallbacks
         try:
@@ -1841,9 +1809,9 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         except (KeyError, AttributeError):
             storage_backend = "memory"
 
-        logs.append(
-            f"🧠 MEMORY NODE: Summary config - max_length: {max_length}, strategy: {summary_strategy}, backend: {storage_backend}"
-        )
+            self.logger.info(
+                f"🧠 MEMORY NODE: Summary config - max_length: {max_length}, strategy: {summary_strategy}, backend: {storage_backend}"
+            )
 
         # Initialize conversation summary storage
         summary_key = f"conversation_summary_{context.execution_id or 'default'}"
@@ -1866,7 +1834,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 )
 
                 if new_messages:
-                    logs.append(
+                    self.logger.info(
                         f"🧠 MEMORY NODE: Processing {len(new_messages)} new messages for summary"
                     )
                     text_to_summarize = "\n".join(
@@ -1876,7 +1844,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                         ]
                     )
                 elif new_text:
-                    logs.append(
+                    self.logger.info(
                         f"🧠 MEMORY NODE: Processing new text content ({len(new_text)} chars) for summary"
                     )
                     text_to_summarize = new_text
@@ -1888,7 +1856,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     combined_text = f"{summary_data['summary']}\n\n{text_to_summarize}".strip()
 
                     if len(combined_text) > max_length * 2:  # Need to compress
-                        logs.append(
+                        self.logger.info(
                             f"🧠 MEMORY NODE: Content exceeds threshold, generating new summary..."
                         )
                         new_summary = self._generate_conversation_summary(
@@ -1918,19 +1886,15 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 "formatted_context": memory_context,
             }
 
-            logs.append(f"🧠 MEMORY NODE: ✅ Generated conversation summary context:")
-            logs.append(f"🧠 MEMORY NODE:   📊 {summary_data['message_count']} messages summarized")
-            logs.append(
+            self.logger.info(
                 f"🧠 MEMORY NODE:   📝 Summary length: {summary_data['total_chars']} characters"
             )
-            logs.append(f"🧠 MEMORY NODE:   🔗 Ready for LLM integration")
 
             return self._create_success_result(
                 output_data=context_data, execution_time=time.time() - start_time, logs=logs
             )
 
         except Exception as e:
-            logs.append(f"🧠 MEMORY NODE: ❌ Error in conversation summary operation: {str(e)}")
             return self._create_error_result(
                 f"Error in conversation summary operation: {str(e)}",
                 error_details={"exception": str(e)},
@@ -1942,7 +1906,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute entity memory operations."""
-        logs.append("🧠 MEMORY NODE: Starting ENTITY_MEMORY execution")
 
         # Get parameters with fallbacks
         try:
@@ -1955,7 +1918,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         except (KeyError, AttributeError):
             storage_backend = "memory"
 
-        logs.append(
+        self.logger.info(
             f"🧠 MEMORY NODE: Entity operation '{operation}' with backend: {storage_backend}"
         )
 
@@ -1979,7 +1942,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 if not text_input:
                     raise ValueError("No text provided for entity extraction")
 
-                logs.append(
+                self.logger.info(
                     f"🧠 MEMORY NODE: Extracting entities from text ({len(text_input)} chars)"
                 )
                 extracted_entities = self._extract_entities_simple(text_input, logs)
@@ -1989,7 +1952,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     entity_id = entity["id"]
                     if entity_id not in entity_data["entities"]:
                         entity_data["entities"][entity_id] = entity
-                        logs.append(
+                        self.logger.info(
                             f"🧠 MEMORY NODE: Added new entity: {entity['name']} ({entity['type']})"
                         )
                     else:
@@ -1999,7 +1962,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                             "mentions", 1
                         )
                         existing["last_seen"] = datetime.now().isoformat()
-                        logs.append(
+                        self.logger.info(
                             f"🧠 MEMORY NODE: Updated entity: {entity['name']} (mentions: {existing['mentions']})"
                         )
 
@@ -2021,7 +1984,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     ):
                         matching_entities.append(entity)
 
-                logs.append(
+                self.logger.info(
                     f"🧠 MEMORY NODE: Found {len(matching_entities)} entities matching query"
                 )
                 result = {
@@ -2047,7 +2010,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 }
 
                 entity_data["relationships"].append(relationship)
-                logs.append(
+                self.logger.info(
                     f"🧠 MEMORY NODE: Added relationship: {entity1} --{relation_type}--> {entity2}"
                 )
                 result = {
@@ -2058,7 +2021,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             elif operation == "list":
                 # List all entities
                 all_entities = list(entity_data["entities"].values())
-                logs.append(f"🧠 MEMORY NODE: Listed {len(all_entities)} entities")
                 result = {"entities": all_entities, "count": len(all_entities)}
 
             else:
@@ -2079,17 +2041,11 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 "executed_at": datetime.now().isoformat(),
             }
 
-            logs.append(f"🧠 MEMORY NODE: ✅ Generated entity memory context:")
-            logs.append(f"🧠 MEMORY NODE:   👥 {len(entity_data['entities'])} entities tracked")
-            logs.append(f"🧠 MEMORY NODE:   🔗 {len(entity_data['relationships'])} relationships")
-            logs.append(f"🧠 MEMORY NODE:   🔗 Ready for LLM integration")
-
             return self._create_success_result(
                 output_data=output_data, execution_time=time.time() - start_time, logs=logs
             )
 
         except Exception as e:
-            logs.append(f"🧠 MEMORY NODE: ❌ Error in entity memory operation: {str(e)}")
             return self._create_error_result(
                 f"Error in entity memory operation: {str(e)}",
                 error_details={"exception": str(e)},
@@ -2102,7 +2058,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
     ) -> NodeExecutionResult:
         """Execute episodic memory operations (placeholder)."""
         _ = context  # Mark as used to avoid linting warnings
-        logs.append("Episodic memory not yet implemented")
         return self._create_error_result(
             "Episodic memory not yet implemented",
             execution_time=time.time() - start_time,
@@ -2113,7 +2068,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute knowledge base memory operations."""
-        logs.append("🧠 MEMORY NODE: Starting KNOWLEDGE_BASE execution")
 
         # Get parameters with fallbacks
         try:
@@ -2126,9 +2080,9 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         except (KeyError, AttributeError):
             storage_backend = "memory"
 
-        logs.append(
-            f"🧠 MEMORY NODE: Knowledge operation '{operation}' with backend: {storage_backend}"
-        )
+            self.logger.info(
+                f"🧠 MEMORY NODE: Knowledge operation '{operation}' with backend: {storage_backend}"
+            )
 
         # Initialize knowledge base storage
         kb_key = f"knowledge_base_{context.execution_id or 'default'}"
@@ -2171,7 +2125,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     kb_data["categories"][category] = 0
                 kb_data["categories"][category] += 1
 
-                logs.append(
+                self.logger.info(
                     f"🧠 MEMORY NODE: Added fact '{fact_text[:50]}...' to category '{category}'"
                 )
                 result = {
@@ -2212,7 +2166,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     key=lambda x: (x["confidence"], x["access_count"]), reverse=True
                 )
 
-                logs.append(f"🧠 MEMORY NODE: Found {len(matching_facts)} facts matching query")
                 result = {
                     "matching_facts": matching_facts,
                     "query": query_text,
@@ -2241,12 +2194,10 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 }
 
                 kb_data["rules"].append(rule_entry)
-                logs.append(f"🧠 MEMORY NODE: Added rule '{rule_text[:50]}...' (type: {rule_type})")
                 result = {"rule_added": True, "total_rules": len(kb_data["rules"])}
 
             elif operation == "get_categories":
                 # Get all categories with counts
-                logs.append(f"🧠 MEMORY NODE: Retrieved {len(kb_data['categories'])} categories")
                 result = {
                     "categories": kb_data["categories"],
                     "total_categories": len(kb_data["categories"]),
@@ -2270,7 +2221,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                             applicable_rules.append(rule)
                             rule["applied_count"] += 1
 
-                logs.append(f"🧠 MEMORY NODE: Applied {len(applicable_rules)} inference rules")
                 result = {"applicable_rules": applicable_rules, "inferences": len(applicable_rules)}
 
             else:
@@ -2294,18 +2244,11 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 "executed_at": datetime.now().isoformat(),
             }
 
-            logs.append(f"🧠 MEMORY NODE: ✅ Generated knowledge base context:")
-            logs.append(f"🧠 MEMORY NODE:   📚 {len(kb_data['facts'])} facts stored")
-            logs.append(f"🧠 MEMORY NODE:   ⚙️ {len(kb_data['rules'])} rules defined")
-            logs.append(f"🧠 MEMORY NODE:   🏷️ {len(kb_data['categories'])} categories")
-            logs.append(f"🧠 MEMORY NODE:   🔗 Ready for LLM integration")
-
             return self._create_success_result(
                 output_data=output_data, execution_time=time.time() - start_time, logs=logs
             )
 
         except Exception as e:
-            logs.append(f"🧠 MEMORY NODE: ❌ Error in knowledge base operation: {str(e)}")
             return self._create_error_result(
                 f"Error in knowledge base operation: {str(e)}",
                 error_details={"exception": str(e)},
@@ -2318,7 +2261,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
     ) -> NodeExecutionResult:
         """Execute graph memory operations (placeholder)."""
         _ = context  # Mark as used to avoid linting warnings
-        logs.append("Graph memory not yet implemented")
         return self._create_error_result(
             "Graph memory not yet implemented", execution_time=time.time() - start_time, logs=logs
         )
@@ -2328,7 +2270,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
     ) -> NodeExecutionResult:
         """Execute working memory operations (placeholder)."""
         _ = context  # Mark as used to avoid linting warnings
-        logs.append("Working memory not yet implemented")
         return self._create_error_result(
             "Working memory not yet implemented", execution_time=time.time() - start_time, logs=logs
         )

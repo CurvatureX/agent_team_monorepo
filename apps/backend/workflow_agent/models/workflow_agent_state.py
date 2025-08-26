@@ -8,12 +8,13 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing_extensions import Literal
 
 
 class WorkflowStageEnum(str, Enum):
     """Workflow stages"""
+
     CLARIFICATION = "clarification"
     WORKFLOW_GENERATION = "workflow_generation"
     COMPLETED = "completed"
@@ -22,6 +23,7 @@ class WorkflowStageEnum(str, Enum):
 
 class ConversationMessage(BaseModel):
     """Conversation message structure"""
+
     role: Literal["user", "assistant", "system"]
     text: str
     timestamp: Optional[int] = None
@@ -33,12 +35,10 @@ class WorkflowAgentStateModel(BaseModel):
     Pydantic model for workflow_agent_states table.
     Provides validation, serialization, and type safety.
     """
+
     model_config = ConfigDict(
         from_attributes=True,
-        json_encoders={
-            UUID: str,
-            datetime: lambda v: int(v.timestamp() * 1000)
-        }
+        json_encoders={UUID: str, datetime: lambda v: int(v.timestamp() * 1000)},
     )
 
     # Primary key
@@ -72,7 +72,7 @@ class WorkflowAgentStateModel(BaseModel):
     final_error_message: Optional[str] = None
 
     # Validators
-    @field_validator('stage', 'previous_stage')
+    @field_validator("stage", "previous_stage")
     @classmethod
     def validate_stage(cls, v: Optional[str]) -> Optional[str]:
         """Validate stage values"""
@@ -80,22 +80,20 @@ class WorkflowAgentStateModel(BaseModel):
             raise ValueError(f"Invalid stage: {v}")
         return v
 
-    @field_validator('conversations', mode='before')
+    @field_validator("conversations", mode="before")
     @classmethod
     def validate_conversations(cls, v: Any) -> List[ConversationMessage]:
         """Convert raw conversation data to ConversationMessage objects"""
         if isinstance(v, str):
             import json
+
             v = json.loads(v)
 
         if isinstance(v, list):
-            return [
-                ConversationMessage(**msg) if isinstance(msg, dict) else msg
-                for msg in v
-            ]
+            return [ConversationMessage(**msg) if isinstance(msg, dict) else msg for msg in v]
         return v
 
-    @field_validator('template_workflow', mode='before')
+    @field_validator("template_workflow", mode="before")
     @classmethod
     def validate_template_workflow(cls, v: Any) -> Optional[Dict[str, Any]]:
         """Validate and parse template workflow JSON"""
@@ -103,6 +101,7 @@ class WorkflowAgentStateModel(BaseModel):
             return None
         if isinstance(v, str):
             import json
+
             return json.loads(v)
         return v
 
@@ -113,7 +112,7 @@ class WorkflowAgentStateModel(BaseModel):
             role=role,
             text=text,
             timestamp=int(datetime.now().timestamp() * 1000),
-            metadata=metadata or {}
+            metadata=metadata or {},
         )
         self.conversations.append(msg)
         self.updated_at = int(datetime.now().timestamp() * 1000)
@@ -141,10 +140,10 @@ class WorkflowAgentStateModel(BaseModel):
 
     def to_db_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for database insertion"""
-        data = self.model_dump(mode='json')
+        data = self.model_dump(mode="json")
 
         # Convert conversations to JSON string for database
-        data['conversations'] = [
+        data["conversations"] = [
             msg.model_dump() if isinstance(msg, ConversationMessage) else msg
             for msg in self.conversations
         ]
@@ -159,23 +158,24 @@ class WorkflowAgentStateModel(BaseModel):
         state = self.to_db_dict()
 
         # Add derived fields for runtime use
-        state['clarification_context'] = self._derive_clarification_context()
-        
+        state["clarification_context"] = self._derive_clarification_context()
+
         # current_workflow is NOT stored in DB - it's a runtime field
         # It gets populated during workflow generation and passed to debug node in memory
         # We don't initialize it here since it's transient data
-        
+
         # Convert debug_result from text to dict if needed (for LangGraph compatibility)
-        if state.get('debug_result') and isinstance(state['debug_result'], str):
+        if state.get("debug_result") and isinstance(state["debug_result"], str):
             try:
                 import json
-                state['debug_result'] = json.loads(state['debug_result'])
+
+                state["debug_result"] = json.loads(state["debug_result"])
             except (json.JSONDecodeError, TypeError):
                 # If not valid JSON, convert to simple dict format
-                state['debug_result'] = {
+                state["debug_result"] = {
                     "success": False,
-                    "error": state['debug_result'],
-                    "timestamp": int(datetime.now().timestamp() * 1000)
+                    "error": state["debug_result"],
+                    "timestamp": int(datetime.now().timestamp() * 1000),
                 }
 
         return state
@@ -187,8 +187,8 @@ class WorkflowAgentStateModel(BaseModel):
         for msg in reversed(self.conversations):
             if msg.role == "assistant" and "?" in msg.text:
                 # Simple heuristic - extract questions
-                lines = msg.text.split('\n')
-                questions = [line.strip() for line in lines if line.strip().endswith('?')]
+                lines = msg.text.split("\n")
+                questions = [line.strip() for line in lines if line.strip().endswith("?")]
                 pending_questions.extend(questions)
                 break  # Only look at most recent assistant message
 
@@ -196,7 +196,7 @@ class WorkflowAgentStateModel(BaseModel):
             "purpose": "initial_intent",
             "collected_info": {},
             "pending_questions": pending_questions,
-            "origin": "create"
+            "origin": "create",
         }
 
     @classmethod
@@ -206,8 +206,9 @@ class WorkflowAgentStateModel(BaseModel):
         debug_result = state.get("debug_result")
         if isinstance(debug_result, dict):
             import json
+
             debug_result = json.dumps(debug_result)
-        
+
         return cls(
             session_id=state.get("session_id"),
             user_id=state.get("user_id"),

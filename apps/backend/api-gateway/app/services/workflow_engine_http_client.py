@@ -339,9 +339,10 @@ class WorkflowEngineHTTPClient:
 
             log_info(f"📨 HTTP request to update workflow: {workflow_id}")
             log_info(f"📦 Update data: {update_data}")
-            
+
             # Debug log the exact request
             import json
+
             log_info(f"🐛 DEBUG: Update request JSON: {json.dumps(update_data, indent=2)}")
             log_info(f"🐛 DEBUG: URL: {self.base_url}/v1/workflows/{workflow_id}")
 
@@ -349,12 +350,12 @@ class WorkflowEngineHTTPClient:
             response = await client.put(
                 f"{self.base_url}/v1/workflows/{workflow_id}", json=update_data
             )
-            
+
             # Log response details before checking status
             log_info(f"🐛 DEBUG: Response status: {response.status_code}")
             if response.status_code != 200:
                 log_error(f"🐛 DEBUG: Response body: {response.text}")
-                
+
             response.raise_for_status()
 
             data = response.json()

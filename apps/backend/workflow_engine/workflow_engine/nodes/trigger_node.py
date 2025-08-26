@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from croniter import croniter
+
 from shared.models import NodeType
 from shared.models.node_enums import TriggerSubtype
 from shared.node_specs import node_spec_registry
@@ -91,7 +92,7 @@ class TriggerNodeExecutor(BaseNodeExecutor):
 
         try:
             subtype = context.node.subtype
-            logs.append(f"Executing trigger node with subtype: {subtype}")
+            self.logger.info(f"Executing trigger node with subtype: {subtype}")
 
             if subtype == TriggerSubtype.MANUAL.value:
                 return self._execute_manual_trigger(context, logs, start_time)
@@ -124,11 +125,13 @@ class TriggerNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute manual trigger."""
+        logs.append("Executing manual trigger")
         # Use spec-based parameter retrieval
         trigger_name = self.get_parameter_with_spec(context, "trigger_name")
         description = self.get_parameter_with_spec(context, "description")
 
-        logs.append(f"Manual trigger executed")
+        logs.append(f"Manual trigger '{trigger_name}' activated")
+        self.logger.info(f"Manual trigger executed")
 
         # Extract content from input data for standard communication format
         content = self._extract_trigger_content(context.input_data, "manual")
@@ -150,6 +153,7 @@ class TriggerNodeExecutor(BaseNodeExecutor):
             "timestamp": datetime.now().isoformat(),
         }
 
+        logs.append("Manual trigger completed successfully")
         return self._create_success_result(
             output_data=output_data, execution_time=time.time() - start_time, logs=logs
         )
@@ -158,11 +162,12 @@ class TriggerNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute webhook trigger."""
+        logs.append("Processing webhook trigger")
         method = context.get_parameter("method", "POST").upper()
         path = context.get_parameter("path", "/webhook")
         authentication = context.get_parameter("authentication", "none")
 
-        logs.append(f"Webhook trigger: {method} {path}, auth: {authentication}")
+        self.logger.info(f"Webhook trigger: {method} {path}, auth: {authentication}")
 
         # Extract webhook data from input
         webhook_data = context.input_data.get("webhook_data", {})
@@ -179,6 +184,7 @@ class TriggerNodeExecutor(BaseNodeExecutor):
             "triggered_at": datetime.now().isoformat(),
         }
 
+        logs.append("Webhook trigger processed successfully")
         return self._create_success_result(
             output_data=output_data, execution_time=time.time() - start_time, logs=logs
         )
@@ -187,10 +193,11 @@ class TriggerNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute cron trigger."""
+        logs.append("Executing cron trigger")
         cron_expression = context.get_parameter("cron_expression", "0 9 * * MON")
         timezone = context.get_parameter("timezone", "UTC")
 
-        logs.append(f"Cron trigger: {cron_expression} ({timezone})")
+        self.logger.info(f"Cron trigger: {cron_expression} ({timezone})")
 
         # Check if it's time to trigger
         now = datetime.now()
@@ -207,6 +214,7 @@ class TriggerNodeExecutor(BaseNodeExecutor):
             "triggered_at": datetime.now().isoformat(),
         }
 
+        logs.append(f"Cron trigger scheduled: {cron_expression}")
         return self._create_success_result(
             output_data=output_data, execution_time=time.time() - start_time, logs=logs
         )
@@ -219,7 +227,7 @@ class TriggerNodeExecutor(BaseNodeExecutor):
         event_filter = context.get_parameter("event_filter", "")
         webhook_secret = context.get_parameter("webhook_secret", "")
 
-        logs.append(f"GitHub trigger: {repository}, filter: {event_filter}")
+        self.logger.info(f"GitHub trigger: {repository}, filter: {event_filter}")
 
         # Extract GitHub content for standard communication format
         content = self._extract_trigger_content(context.input_data, "github")
@@ -256,7 +264,7 @@ class TriggerNodeExecutor(BaseNodeExecutor):
         email_filter = context.get_parameter("email_filter", "")
         email_provider = context.get_parameter("email_provider", "gmail")
 
-        logs.append(f"Email trigger: {email_provider}, filter: {email_filter}")
+        self.logger.info(f"Email trigger: {email_provider}, filter: {email_filter}")
 
         # Extract email data from input
         email_data = context.input_data.get("email_data", {})
@@ -285,7 +293,7 @@ class TriggerNodeExecutor(BaseNodeExecutor):
         message_filter = context.get_parameter("message_filter", "")
         bot_token = context.get_parameter("bot_token", "")
 
-        logs.append(f"Slack trigger: {channel}, filter: {message_filter}")
+        self.logger.info(f"Slack trigger: {channel}, filter: {message_filter}")
 
         # Extract Slack message content for standard communication format
         content = self._extract_trigger_content(context.input_data, "slack")

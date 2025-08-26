@@ -104,7 +104,7 @@ class ToolNodeExecutor(BaseNodeExecutor):
 
         try:
             subtype = context.node.subtype
-            logs.append(f"Executing tool node with subtype: {subtype}")
+            self.logger.info(f"Executing tool node with subtype: {subtype}")
 
             if subtype == ToolSubtype.MCP_TOOL.value:
                 return self._execute_mcp_tool(context, logs, start_time)
@@ -138,13 +138,14 @@ class ToolNodeExecutor(BaseNodeExecutor):
     def _execute_mcp_tool(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing mcp tool")
         """Execute MCP tool."""
         # Use spec-based parameter retrieval
         tool_name = self.get_parameter_with_spec(context, "tool_name")
         operation = self.get_parameter_with_spec(context, "operation")
         parameters = self.get_parameter_with_spec(context, "parameters")
 
-        logs.append(f"MCP tool: {tool_name}, operation: {operation}")
+        self.logger.info(f"MCP tool: {tool_name}, operation: {operation}")
 
         # Mock MCP tool execution
         tool_result = {
@@ -172,6 +173,7 @@ class ToolNodeExecutor(BaseNodeExecutor):
     def _execute_calendar_tool(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing calendar tool")
         """Execute calendar tool."""
         # Use spec-based parameter retrieval
         calendar_id = self.get_parameter_with_spec(context, "calendar_id")
@@ -179,7 +181,7 @@ class ToolNodeExecutor(BaseNodeExecutor):
         start_date = self.get_parameter_with_spec(context, "start_date")
         end_date = self.get_parameter_with_spec(context, "end_date")
 
-        logs.append(f"Calendar tool: {operation} on {calendar_id}")
+        self.logger.info(f"Calendar tool: {operation} on {calendar_id}")
 
         # Mock calendar operations
         if operation == "list_events":
@@ -214,12 +216,13 @@ class ToolNodeExecutor(BaseNodeExecutor):
     def _execute_email_tool(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing email tool")
         """Execute email tool."""
         # Use spec-based parameter retrieval
         operation = self.get_parameter_with_spec(context, "operation")
         email_provider = self.get_parameter_with_spec(context, "email_provider")
 
-        logs.append(f"Email tool: {operation} via {email_provider}")
+        self.logger.info(f"Email tool: {operation} via {email_provider}")
 
         # Mock email operations
         if operation == "send":
@@ -255,6 +258,7 @@ class ToolNodeExecutor(BaseNodeExecutor):
     def _execute_http_tool(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing http tool")
         """Execute HTTP tool."""
         # Use spec-based parameter retrieval
         method = self.get_parameter_with_spec(context, "method")
@@ -267,7 +271,7 @@ class ToolNodeExecutor(BaseNodeExecutor):
         if method:
             method = method.upper()
 
-        logs.append(f"HTTP tool: {method} {url}")
+        self.logger.info(f"HTTP tool: {method} {url}")
 
         # Mock HTTP request
         mock_response = {
@@ -374,12 +378,13 @@ class ToolNodeExecutor(BaseNodeExecutor):
     def _execute_code_tool(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing code tool")
         """Execute code execution tool."""
         # Use spec-based parameter retrieval
         code = self.get_parameter_with_spec(context, "code")
         language = self.get_parameter_with_spec(context, "language")
 
-        logs.append(f"Code Execution Tool: {language} - {len(code)} characters")
+        self.logger.info(f"Code Execution Tool: {language} - {len(code)} characters")
 
         # Mock code execution (in real implementation, would use sandbox)
         output_data = {
@@ -399,12 +404,13 @@ class ToolNodeExecutor(BaseNodeExecutor):
     def _execute_file_processor(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing file processor")
         """Execute file processor tool."""
         # Use spec-based parameter retrieval
         operation = self.get_parameter_with_spec(context, "operation")
         file_path = self.get_parameter_with_spec(context, "file_path")
 
-        logs.append(f"File Processor Tool: {operation} on {file_path}")
+        self.logger.info(f"File Processor Tool: {operation} on {file_path}")
 
         # Mock file processing
         output_data = {
@@ -423,12 +429,13 @@ class ToolNodeExecutor(BaseNodeExecutor):
     def _execute_image_processor(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing image processor")
         """Execute image processor tool."""
         # Use spec-based parameter retrieval
         operation = self.get_parameter_with_spec(context, "operation")
         image_path = self.get_parameter_with_spec(context, "image_path")
 
-        logs.append(f"Image Processor Tool: {operation} on {image_path}")
+        self.logger.info(f"Image Processor Tool: {operation} on {image_path}")
 
         # Mock image processing
         output_data = {

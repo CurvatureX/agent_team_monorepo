@@ -256,9 +256,11 @@ async def rate_limit_middleware(request: Request, call_next):
     allowed, info = await check_rate_limit_for_request(request)
 
     if not allowed:
-        logger.warning(f"Rate limit exceeded: {request.method} {request.url.path} "
-                      f"[{info.get('limit_type', 'unknown')}] "
-                      f"{info.get('current_count', 0)}/{info.get('limit', 0)}")
+        logger.warning(
+            f"Rate limit exceeded: {request.method} {request.url.path} "
+            f"[{info.get('limit_type', 'unknown')}] "
+            f"{info.get('current_count', 0)}/{info.get('limit', 0)}"
+        )
 
         # 构建限流响应
         headers = {}

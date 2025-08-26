@@ -151,7 +151,7 @@ class Settings(BaseSettings):
     lock_retry_delay: float = Field(default=0.1, description="Lock retry delay in seconds")
 
     # Logging Configuration
-    log_level: str = Field(default="INFO", description="Log level")
+    log_level: str = Field(default="INFO", description="Log level", alias="LOG_LEVEL")
     log_format: str = Field(default="text", description="Log format (text/json)")
 
     def get_database_config(self) -> Dict[str, str]:

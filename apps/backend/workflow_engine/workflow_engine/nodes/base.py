@@ -72,7 +72,7 @@ class NodeExecutionContext:
 
         if hasattr(parameters, "get"):
             value = parameters.get(key, default)
-            
+
             # Resolve template variables if TemplateResolver is available
             if TemplateResolver and value is not None:
                 # Build resolution context
@@ -85,15 +85,15 @@ class NodeExecutionContext:
                     "metadata": self.metadata,
                     "data": self.input_data,  # Alias for input data
                 }
-                
+
                 # Resolve the value
                 resolved_value = TemplateResolver.resolve_value(value, context)
                 return resolved_value if resolved_value is not None else default
-            
+
             return value
         else:
             return default
-    
+
     def get_resolved_parameters(self) -> Dict[str, Any]:
         """Get all parameters with template variables resolved."""
         # Handle case where parameters might be a string (JSON)
@@ -109,7 +109,7 @@ class NodeExecutionContext:
 
         if not TemplateResolver:
             return dict(parameters) if hasattr(parameters, "items") else {}
-        
+
         # Build resolution context
         context = {
             "payload": self.input_data.get("payload", {}),
@@ -120,7 +120,7 @@ class NodeExecutionContext:
             "metadata": self.metadata,
             "data": self.input_data,  # Alias for input data
         }
-        
+
         # Resolve all parameters
         return TemplateResolver.resolve_parameters(dict(parameters), context)
 
