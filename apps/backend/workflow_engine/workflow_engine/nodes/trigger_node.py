@@ -11,7 +11,6 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from croniter import croniter
-
 from shared.models import NodeType
 from shared.models.node_enums import TriggerSubtype
 from shared.node_specs import node_spec_registry
@@ -131,12 +130,24 @@ class TriggerNodeExecutor(BaseNodeExecutor):
 
         logs.append(f"Manual trigger executed")
 
+        # Extract content from input data for standard communication format
+        content = self._extract_trigger_content(context.input_data, "manual")
+
+        # Use standard communication format
         output_data = {
-            "trigger_type": "manual",
-            "triggered_at": datetime.now().isoformat(),
-            "input_data": context.input_data,
-            "user_id": context.metadata.get("user_id"),
-            "session_id": context.metadata.get("session_id"),
+            "content": content,
+            "metadata": {
+                "trigger_type": "manual",
+                "trigger_name": trigger_name,
+                "description": description,
+                "triggered_at": datetime.now().isoformat(),
+                "user_id": context.metadata.get("user_id"),
+                "session_id": context.metadata.get("session_id"),
+                "input_data": context.input_data,
+            },
+            "format_type": "text",
+            "source_node": context.node.id if hasattr(context, "node") and context.node else None,
+            "timestamp": datetime.now().isoformat(),
         }
 
         return self._create_success_result(
@@ -210,18 +221,28 @@ class TriggerNodeExecutor(BaseNodeExecutor):
 
         logs.append(f"GitHub trigger: {repository}, filter: {event_filter}")
 
+        # Extract GitHub content for standard communication format
+        content = self._extract_trigger_content(context.input_data, "github")
+
         # Extract GitHub webhook data from input
         github_data = context.input_data.get("github_data", {})
 
+        # Use standard communication format
         output_data = {
-            "trigger_type": "github",
-            "repository": repository,
-            "event_filter": event_filter,
-            "github_data": github_data,
-            "event": github_data.get("event", ""),
-            "action": github_data.get("action", ""),
-            "sender": github_data.get("sender", {}),
-            "triggered_at": datetime.now().isoformat(),
+            "content": content,
+            "metadata": {
+                "trigger_type": "github",
+                "repository": repository,
+                "event_filter": event_filter,
+                "github_data": github_data,
+                "event": github_data.get("event", ""),
+                "action": github_data.get("action", ""),
+                "sender": github_data.get("sender", {}),
+                "triggered_at": datetime.now().isoformat(),
+            },
+            "format_type": "text",
+            "source_node": context.node.id if hasattr(context, "node") and context.node else None,
+            "timestamp": datetime.now().isoformat(),
         }
 
         return self._create_success_result(
@@ -266,23 +287,111 @@ class TriggerNodeExecutor(BaseNodeExecutor):
 
         logs.append(f"Slack trigger: {channel}, filter: {message_filter}")
 
+        # Extract Slack message content for standard communication format
+        content = self._extract_trigger_content(context.input_data, "slack")
+
         # Extract Slack webhook data from input
         slack_data = context.input_data.get("slack_data", {})
 
+        # Use standard communication format
         output_data = {
-            "trigger_type": "slack",
-            "channel": channel,
-            "message_filter": message_filter,
-            "slack_data": slack_data,
-            "text": slack_data.get("text", ""),
-            "user": slack_data.get("user", ""),
-            "timestamp": slack_data.get("timestamp", ""),
-            "triggered_at": datetime.now().isoformat(),
+            "content": content,
+            "metadata": {
+                "trigger_type": "slack",
+                "channel": channel,
+                "message_filter": message_filter,
+                "slack_data": slack_data,
+                "text": slack_data.get("text", ""),
+                "user": slack_data.get("user", ""),
+                "event_timestamp": slack_data.get("timestamp", ""),
+                "triggered_at": datetime.now().isoformat(),
+            },
+            "format_type": "text",
+            "source_node": context.node.id if hasattr(context, "node") and context.node else None,
+            "timestamp": datetime.now().isoformat(),
         }
 
         return self._create_success_result(
             output_data=output_data, execution_time=time.time() - start_time, logs=logs
         )
+
+    def _extract_trigger_content(self, input_data: Dict[str, Any], trigger_type: str) -> str:
+        """Extract meaningful content from trigger input data for standard communication format."""
+        if not input_data:
+            return f"Triggered by {trigger_type} event"
+
+        # Handle different trigger types
+        if trigger_type == "slack":
+            # Extract Slack message content
+            slack_data = input_data.get("slack_data", {})
+            if slack_data and "text" in slack_data:
+                return slack_data["text"]
+
+            # Check for payload structure (webhook format)
+            if "payload" in input_data:
+                payload = input_data["payload"]
+                if isinstance(payload, dict):
+                    # Slack event format
+                    if "event" in payload and "text" in payload["event"]:
+                        return payload["event"]["text"]
+
+            # Check direct text field
+            if "text" in input_data:
+                return input_data["text"]
+
+        elif trigger_type == "github":
+            # Extract GitHub event content
+            github_data = input_data.get("github_data", {})
+            if github_data:
+                # Try to extract meaningful content from GitHub event
+                action = github_data.get("action", "")
+                event_type = github_data.get("event", "")
+                if action and event_type:
+                    return f"GitHub {event_type} event: {action}"
+                elif event_type:
+                    return f"GitHub {event_type} event"
+
+        elif trigger_type == "email":
+            # Extract email content
+            email_data = input_data.get("email_data", {})
+            if email_data:
+                subject = email_data.get("subject", "")
+                body = email_data.get("body", "")
+                if subject:
+                    return f"Email: {subject}"
+                elif body:
+                    return f"Email content: {body[:100]}..."  # Truncate long content
+
+        elif trigger_type == "webhook":
+            # Extract webhook content
+            if "body" in input_data:
+                body = input_data["body"]
+                if isinstance(body, dict):
+                    # Look for common message fields
+                    for field in ["message", "text", "content", "data"]:
+                        if field in body and body[field]:
+                            return str(body[field])
+                elif isinstance(body, str):
+                    return body
+
+        elif trigger_type == "manual":
+            # Extract manual trigger content
+            if "message" in input_data:
+                return str(input_data["message"])
+            elif "text" in input_data:
+                return str(input_data["text"])
+
+        # Fallback: try to find any meaningful text content
+        for field in ["message", "text", "content", "data", "payload"]:
+            if field in input_data and input_data[field]:
+                value = input_data[field]
+                if isinstance(value, str):
+                    return value
+                elif isinstance(value, dict) and "text" in value:
+                    return str(value["text"])
+
+        # Final fallback
+        return f"Triggered by {trigger_type} event"
 
     def _is_valid_cron(self, cron_expression: str) -> bool:
         """Validate cron expression."""

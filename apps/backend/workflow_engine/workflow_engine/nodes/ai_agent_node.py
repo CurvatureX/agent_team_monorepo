@@ -387,8 +387,47 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         if isinstance(input_data, str):
             return input_data
 
-        # Convert dict to structured text
         if isinstance(input_data, dict):
+            # First check for standard communication format (from trigger or other nodes)
+            if "content" in input_data:
+                content = input_data["content"]
+                self.logger.info(f"🎯 Extracted standard format content: {content}")
+                return str(content)
+
+            # Legacy support: Check for direct message/text fields
+            if "message" in input_data:
+                message_content = input_data["message"]
+                self.logger.info(f"🎯 Extracted legacy message field: {message_content}")
+                return str(message_content)
+
+            if "text" in input_data:
+                text_content = input_data["text"]
+                self.logger.info(f"🎯 Extracted legacy text field: {text_content}")
+                return str(text_content)
+
+            # Legacy support: Check for trigger payload structures
+            if "payload" in input_data:
+                payload = input_data["payload"]
+                if isinstance(payload, dict):
+                    # Slack message event
+                    if "event" in payload and "text" in payload["event"]:
+                        slack_text = payload["event"]["text"]
+                        self.logger.info(f"🎯 Extracted legacy Slack message: {slack_text}")
+                        return slack_text
+
+                    # Direct text field in payload
+                    elif "text" in payload:
+                        text_content = payload["text"]
+                        self.logger.info(f"🎯 Extracted legacy payload text: {text_content}")
+                        return text_content
+
+            # Log what we received for debugging
+            self.logger.warning(
+                f"⚠️ No extractable message found in input_data keys: {list(input_data.keys())}"
+            )
+            self.logger.info(f"🔍 Full input_data: {input_data}")
+
+            # Convert entire dict to structured text as fallback
             return json.dumps(input_data, indent=2, ensure_ascii=False)
 
         return str(input_data)
