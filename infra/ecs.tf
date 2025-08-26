@@ -347,6 +347,10 @@ resource "aws_ecs_task_definition" "workflow_engine" {
           valueFrom = aws_ssm_parameter.anthropic_api_key.arn
         },
         {
+          name      = "GEMINI_API_KEY"
+          valueFrom = aws_ssm_parameter.gemini_api_key.arn
+        },
+        {
           name      = "SUPABASE_URL"
           valueFrom = aws_ssm_parameter.supabase_url.arn
         },
@@ -501,6 +505,10 @@ resource "aws_ecs_task_definition" "workflow_agent" {
         {
           name      = "ANTHROPIC_API_KEY"
           valueFrom = aws_ssm_parameter.anthropic_api_key.arn
+        },
+        {
+          name      = "GEMINI_API_KEY"
+          valueFrom = aws_ssm_parameter.gemini_api_key.arn
         },
         {
           name      = "SUPABASE_URL"

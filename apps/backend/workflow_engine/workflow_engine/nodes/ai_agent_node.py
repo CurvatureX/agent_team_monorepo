@@ -447,17 +447,39 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         max_tokens: int,
         safety_settings: Dict,
     ) -> str:
-        """Call Gemini API (mock implementation)."""
-        # TODO: Replace with actual Gemini API call
-        import json
+        """Call actual Gemini API."""
+        try:
+            import google.generativeai as genai
 
-        # Create proper JSON response
-        truncated_input = input_text[:50].replace("\n", " ")
-        response_data = {
-            "response": f"Mock Gemini response for: {truncated_input}...",
-            "model": model,
-        }
-        return json.dumps(response_data)
+            # Configure with API key (use GEMINI_API_KEY as suggested)
+            gemini_key = os.getenv("GEMINI_API_KEY")
+            if not gemini_key:
+                raise ValueError(
+                    "GEMINI_API_KEY not found in environment - Gemini integration not configured in AWS infrastructure"
+                )
+
+            genai.configure(api_key=gemini_key)
+
+            # Create model instance
+            model_instance = genai.GenerativeModel(model)
+
+            # Combine system prompt and input
+            full_prompt = f"{system_prompt}\n\nInput: {input_text}"
+
+            # Make API call
+            response = model_instance.generate_content(
+                full_prompt,
+                generation_config=genai.types.GenerationConfig(
+                    temperature=temperature, max_output_tokens=max_tokens
+                ),
+            )
+
+            return response.text
+
+        except Exception as e:
+            self.logger.error(f"Gemini API call failed: {e}")
+            # Return error message that will be handled by external action nodes
+            return f"⚠️ Gemini API unavailable: {str(e)}"
 
     def _call_openai_api(
         self,
@@ -469,17 +491,42 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         presence_penalty: float,
         frequency_penalty: float,
     ) -> str:
-        """Call OpenAI API (mock implementation)."""
-        # TODO: Replace with actual OpenAI API call
-        import json
+        """Call actual OpenAI API."""
+        try:
+            from openai import OpenAI
 
-        # Create proper JSON response
-        truncated_input = input_text[:50].replace("\n", " ")
-        response_data = {
-            "response": f"Mock OpenAI response for: {truncated_input}...",
-            "model": model,
-        }
-        return json.dumps(response_data)
+            # Get API key
+            openai_key = os.getenv("OPENAI_API_KEY")
+            if not openai_key:
+                raise ValueError("OPENAI_API_KEY not found in environment")
+
+            # Create client
+            client = OpenAI(api_key=openai_key)
+
+            # Make API call
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": input_text},
+                ],
+                temperature=temperature,
+                max_tokens=max_tokens,
+                presence_penalty=presence_penalty,
+                frequency_penalty=frequency_penalty,
+            )
+
+            return response.choices[0].message.content
+
+        except Exception as e:
+            self.logger.error(f"OpenAI API call failed: {e}")
+            # Return user-friendly error message
+            if "api key" in str(e).lower():
+                return f"⚠️ OpenAI API key is invalid or missing"
+            elif "rate limit" in str(e).lower():
+                return f"⚠️ OpenAI API rate limit exceeded. Please try again later."
+            else:
+                return f"⚠️ OpenAI API error: {str(e)}"
 
     def _call_claude_api(
         self,
@@ -490,14 +537,36 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         max_tokens: int,
         stop_sequences: List[str],
     ) -> str:
-        """Call Claude API (mock implementation)."""
-        # TODO: Replace with actual Claude API call
-        import json
+        """Call actual Claude API."""
+        try:
+            import anthropic
 
-        # Create proper JSON response
-        truncated_input = input_text[:50].replace("\n", " ")
-        response_data = {
-            "response": f"Mock Claude response for: {truncated_input}...",
-            "model": model,
-        }
-        return json.dumps(response_data)
+            # Get API key
+            anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+            if not anthropic_key:
+                raise ValueError("ANTHROPIC_API_KEY not found in environment")
+
+            # Create client
+            client = anthropic.Anthropic(api_key=anthropic_key)
+
+            # Make API call
+            response = client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                system=system_prompt,
+                messages=[{"role": "user", "content": input_text}],
+                stop_sequences=stop_sequences if stop_sequences else None,
+            )
+
+            return response.content[0].text
+
+        except Exception as e:
+            self.logger.error(f"Claude API call failed: {e}")
+            # Return user-friendly error message
+            if "api key" in str(e).lower():
+                return f"⚠️ Anthropic API key is invalid or missing"
+            elif "rate limit" in str(e).lower():
+                return f"⚠️ Anthropic API rate limit exceeded. Please try again later."
+            else:
+                return f"⚠️ Anthropic Claude API error: {str(e)}"
