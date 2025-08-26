@@ -210,6 +210,35 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         api_logger = get_api_call_logger()
         start_time = time.time()
 
+        # Check if operation is valid
+        if not operation:
+            error_message = f"No operation specified for provider {provider}"
+            self.logger.error(error_message)
+
+            if api_logger:
+                await api_logger.log_api_call(
+                    user_id=user_id,
+                    provider=provider,
+                    operation=operation or "unknown",
+                    api_endpoint="N/A",
+                    http_method="N/A",
+                    success=False,
+                    status_code=400,
+                    response_time_ms=int((time.time() - start_time) * 1000),
+                    workflow_execution_id=workflow_execution_id,
+                    node_id=node_id,
+                    request_data=parameters,
+                    error_type="InvalidOperation",
+                    error_message=error_message,
+                )
+
+            return {
+                "success": False,
+                "error": error_message,
+                "provider": provider,
+                "operation": operation,
+            }
+
         # Check if we have the SDK
         if provider not in self._sdks:
             error_message = f"Provider {provider} not available in shared SDKs"
@@ -625,27 +654,91 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         self.logger.info(f"💬 Slack action: {action}")
         self.logger.info(f"📢 Slack channel: {channel}")
 
+        # Provide default action if none specified
         if not action:
-            self.logger.error(f"❌ No Slack action specified")
+            action = "send_message"  # Default to send_message
+            self.logger.warning(f"❌ No Slack action specified, defaulting to: {action}")
+
+        # Handle channel validation and fallbacks
         if not channel:
             self.logger.error(f"❌ No Slack channel specified")
+        elif channel.startswith("example-value-"):
+            # Replace example/placeholder values with a test channel or better error
+            self.logger.warning(
+                f"⚠️ Placeholder channel '{channel}' detected. This needs to be replaced with a real Slack channel ID."
+            )
+            # For demo purposes, we can either:
+            # 1. Use a test channel (if available): channel = "C1234567890"
+            # 2. Or provide a clear error message
+            channel = None  # This will cause a clear error message
 
         parameters = {"channel": channel}
 
         # Add action-specific parameters
         if action == "send_message":
             message_data = context.get_parameter("message_data", {})
+
+            # Get text and blocks with proper parameter resolution
+            text = message_data.get("text", context.get_parameter("text", ""))
+
+            # Also check for 'message' parameter (common in workflow definitions)
+            if not text:
+                text = context.get_parameter("message", "")
+                self.logger.info(f"📝 Found 'message' parameter: {text}")
+
+                # Check if this is a placeholder value that should be replaced
+                if text and text.startswith("example-value-"):
+                    self.logger.warning(
+                        f"⚠️ Detected placeholder message value: {text}, will look for AI response"
+                    )
+                    text = ""  # Clear placeholder so we check input data
+
+            # Check for input data from connected nodes (standard communication format)
+            if not text and context.input_data:
+                # Check for new standard communication format
+                if "content" in context.input_data:
+                    text = context.input_data["content"]
+                    self.logger.info(f"✅ Found standard format content: {text}")
+
+                    # Log metadata if available for debugging
+                    if "metadata" in context.input_data:
+                        metadata = context.input_data["metadata"]
+                        provider = metadata.get("provider", "unknown")
+                        model = metadata.get("model", "unknown")
+                        self.logger.info(f"📊 AI provider: {provider}, model: {model}")
+                else:
+                    self.logger.warning(
+                        f"⚠️ Input data available but no 'content' field found. Keys: {list(context.input_data.keys())}"
+                    )
+                    self.logger.info(f"🔍 Full input data: {context.input_data}")
+                    # Try to extract any string content from input data as fallback
+                    for key, value in context.input_data.items():
+                        if isinstance(value, str) and value.strip():
+                            text = value
+                            self.logger.info(f"✅ Using fallback content from key '{key}': {text}")
+                            break
+
+            blocks = message_data.get("blocks", context.get_parameter("blocks", []))
+
+            # Provide default text if both text and blocks are empty
+            if not text and not blocks:
+                # Use contextual message based on trigger data or generic message
+                trigger_data = context.metadata.get("trigger_data", {})
+                trigger_type = trigger_data.get("trigger_type", "workflow")
+                text = f"🤖 Workflow executed via {trigger_type} trigger"
+                self.logger.info(f"✅ Using default Slack message: {text}")
+
             parameters.update(
                 {
-                    "text": message_data.get("text", context.get_parameter("text", "")),
-                    "blocks": message_data.get("blocks", context.get_parameter("blocks", [])),
+                    "text": text,
+                    "blocks": blocks,
                     "attachments": message_data.get(
                         "attachments", context.get_parameter("attachments", [])
                     ),
                     "username": context.get_parameter("username"),
                     "icon_emoji": context.get_parameter("icon_emoji"),
                     "icon_url": context.get_parameter("icon_url"),
-                    "thread_ts": context.get_parameter("thread_ts"),
+                    "thread_ts": self._clean_thread_ts(context.get_parameter("thread_ts")),
                     "reply_broadcast": context.get_parameter("reply_broadcast", False),
                 }
             )
@@ -671,6 +764,18 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         self.logger.info(f"✅ Returning Slack operation: action='{action}', parameters={parameters}")
         return action, parameters
 
+    def _clean_thread_ts(self, thread_ts: str) -> str:
+        """Clean thread_ts parameter, removing placeholder values."""
+        if not thread_ts:
+            return None
+
+        # Remove placeholder values
+        if thread_ts.startswith("example-value-"):
+            self.logger.info(f"🧹 Removing placeholder thread_ts: {thread_ts}")
+            return None
+
+        return thread_ts
+
     def _prepare_email_operation(self, context: NodeExecutionContext) -> tuple[str, Dict[str, Any]]:
         """Prepare Email operation and parameters."""
         action = self.get_parameter_with_spec(context, "action") or "send"
@@ -678,11 +783,22 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         parameters = {}
 
         if action == "send":
+            # Get email body from standard communication format first
+            body = ""
+
+            # First check for input data from connected nodes (standard format)
+            if context.input_data and "content" in context.input_data:
+                body = context.input_data["content"]
+                self.logger.info(f"✅ Using standard format content for email body: {body}")
+            else:
+                # Fallback to parameter-based body
+                body = context.get_parameter("body", context.get_parameter("message", ""))
+
             parameters.update(
                 {
                     "recipients": self.get_parameter_with_spec(context, "recipients"),
                     "subject": self.get_parameter_with_spec(context, "subject"),
-                    "body": context.get_parameter("body", context.get_parameter("message", "")),
+                    "body": body,
                     "from_email": context.get_parameter("from_email"),
                 }
             )
@@ -1270,11 +1386,22 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         api_parameters = {}
 
         if action == "send":
+            # Get email body from standard communication format first
+            body = ""
+
+            # First check for input data from connected nodes (standard format)
+            if context.input_data and "content" in context.input_data:
+                body = context.input_data["content"]
+                logs.append(f"✅ Using standard format content for email body: {body}")
+            else:
+                # Fallback to parameter-based body
+                body = context.get_parameter("body", context.get_parameter("message", ""))
+
             api_parameters.update(
                 {
                     "recipients": self.get_parameter_with_spec(context, "recipients"),
                     "subject": self.get_parameter_with_spec(context, "subject"),
-                    "body": context.get_parameter("body", context.get_parameter("message", "")),
+                    "body": body,
                     "from_email": context.get_parameter("from_email"),
                 }
             )
@@ -1359,14 +1486,38 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         if action == "send_message":
             message_data = context.get_parameter("message_data", {})
 
-            # Get message text with fallback for placeholder values
-            message_text = message_data.get("text", context.get_parameter("text", ""))
-            if not message_text or message_text.startswith("example-value"):
-                # Use a contextual message based on trigger data
+            # Get message text from standard communication format first
+            message_text = ""
+
+            # First check for input data from connected nodes (standard format)
+            if context.input_data and "content" in context.input_data:
+                message_text = context.input_data["content"]
+                logs.append(f"✅ Found standard format content: {message_text}")
+
+                # Log metadata if available for debugging
+                if "metadata" in context.input_data:
+                    metadata = context.input_data["metadata"]
+                    provider = metadata.get("provider", "unknown")
+                    model = metadata.get("model", "unknown")
+                    logs.append(f"📊 AI provider: {provider}, model: {model}")
+
+            # Fallback to parameter-based message
+            if not message_text:
+                message_text = message_data.get("text", context.get_parameter("text", ""))
+
+            # Check if parameter value is placeholder and clear it
+            if message_text and message_text.startswith("example-value"):
+                logs.append(
+                    f"⚠️ Detected placeholder message value: {message_text}, clearing to use default"
+                )
+                message_text = ""
+
+            # Final fallback to contextual message
+            if not message_text:
                 trigger_data = context.metadata.get("trigger_data", {})
                 trigger_type = trigger_data.get("trigger_type", "unknown")
                 message_text = f"🤖 Workflow triggered by {trigger_type} event"
-                logs.append(f"Using default message (parameter was placeholder): {message_text}")
+                logs.append(f"Using default message: {message_text}")
 
             api_parameters.update(
                 {

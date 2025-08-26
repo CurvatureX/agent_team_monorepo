@@ -16,6 +16,7 @@ from ..base import (
     ParameterDef,
     ParameterType,
 )
+from ..communication_protocol import STANDARD_TEXT_OUTPUT
 
 
 # Base AI Agent specification with common parameters
@@ -104,15 +105,9 @@ def _create_ai_agent_spec(
             OutputPortSpec(
                 name="main",
                 type=ConnectionType.MAIN,
-                description="AI agent response and metadata",
-                data_format=DataFormat(
-                    mime_type="application/json",
-                    schema='{"response": "string", "metadata": "object", "usage": "object", "processing_time": "number"}',
-                    examples=[
-                        '{"response": "Analysis complete: The data shows...", "metadata": {"model": "gpt-4", "temperature": 0.7}, "usage": {"prompt_tokens": 50, "completion_tokens": 100}, "processing_time": 2.5}'
-                    ],
-                ),
-                validation_schema='{"type": "object", "properties": {"response": {"type": "string"}, "metadata": {"type": "object"}, "usage": {"type": "object"}, "processing_time": {"type": "number"}}, "required": ["response"]}',
+                description="AI agent response in standard text format",
+                data_format=STANDARD_TEXT_OUTPUT,
+                validation_schema='{"type": "object", "properties": {"content": {"type": "string"}, "metadata": {"type": "object"}, "format_type": {"type": "string"}, "source_node": {"type": "string"}, "timestamp": {"type": "string"}}, "required": ["content"]}',
             ),
             OutputPortSpec(
                 name="error",
