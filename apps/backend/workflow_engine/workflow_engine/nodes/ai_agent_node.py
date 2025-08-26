@@ -561,7 +561,7 @@ Please use this context appropriately when responding. Reference relevant inform
                 "timestamp": datetime.now().isoformat(),
             }
 
-            logs.append(f"AI agent completed: {subtype}")
+            logs.append(f"AI agent completed: {context.node.subtype}")
             return self._create_success_result(
                 output_data=output_data,
                 execution_time=time.time() - start_time,
@@ -652,7 +652,7 @@ Please use this context appropriately when responding. Reference relevant inform
                 "timestamp": datetime.now().isoformat(),
             }
 
-            logs.append(f"AI agent completed: {subtype}")
+            logs.append(f"AI agent completed: {context.node.subtype}")
             return self._create_success_result(
                 output_data=output_data,
                 execution_time=time.time() - start_time,
@@ -723,7 +723,7 @@ Please use this context appropriately when responding. Reference relevant inform
                 "timestamp": datetime.now().isoformat(),
             }
 
-            logs.append(f"AI agent completed: {subtype}")
+            logs.append(f"AI agent completed: {context.node.subtype}")
             return self._create_success_result(
                 output_data=output_data,
                 execution_time=time.time() - start_time,
