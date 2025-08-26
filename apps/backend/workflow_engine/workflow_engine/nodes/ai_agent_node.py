@@ -45,7 +45,10 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             # Initialize Anthropic client
             anthropic_key = os.getenv("ANTHROPIC_API_KEY")
             if anthropic_key:
-                self.ai_clients["anthropic"] = {"api_key": anthropic_key, "client": None}
+                self.ai_clients["anthropic"] = {
+                    "api_key": anthropic_key,
+                    "client": None,
+                }
 
             # Initialize Google client
             google_key = os.getenv("GOOGLE_API_KEY")
@@ -163,20 +166,33 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                 safety_settings=safety_settings,
             )
 
+            # Parse AI response to extract just the content
+            content = self._parse_ai_response(ai_response)
+
+            # Use standard communication format
             output_data = {
-                "provider": "gemini",
-                "model": model_version,
-                "system_prompt": system_prompt,
-                "input_text": input_text,
-                "ai_response": ai_response,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-                "safety_settings": safety_settings,
-                "executed_at": datetime.now().isoformat(),
+                "content": content,
+                "metadata": {
+                    "provider": "gemini",
+                    "model": model_version,
+                    "system_prompt": system_prompt,
+                    "input_text": input_text,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                    "safety_settings": safety_settings,
+                    "executed_at": datetime.now().isoformat(),
+                },
+                "format_type": "text",
+                "source_node": context.node.id
+                if hasattr(context, "node") and context.node
+                else None,
+                "timestamp": datetime.now().isoformat(),
             }
 
             return self._create_success_result(
-                output_data=output_data, execution_time=time.time() - start_time, logs=logs
+                output_data=output_data,
+                execution_time=time.time() - start_time,
+                logs=logs,
             )
 
         except Exception as e:
@@ -216,21 +232,34 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                 frequency_penalty=frequency_penalty,
             )
 
+            # Parse AI response to extract just the content
+            content = self._parse_ai_response(ai_response)
+
+            # Use standard communication format
             output_data = {
-                "provider": "openai",
-                "model": model_version,
-                "system_prompt": system_prompt,
-                "input_text": input_text,
-                "ai_response": ai_response,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-                "presence_penalty": presence_penalty,
-                "frequency_penalty": frequency_penalty,
-                "executed_at": datetime.now().isoformat(),
+                "content": content,
+                "metadata": {
+                    "provider": "openai",
+                    "model": model_version,
+                    "system_prompt": system_prompt,
+                    "input_text": input_text,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                    "presence_penalty": presence_penalty,
+                    "frequency_penalty": frequency_penalty,
+                    "executed_at": datetime.now().isoformat(),
+                },
+                "format_type": "text",
+                "source_node": context.node.id
+                if hasattr(context, "node") and context.node
+                else None,
+                "timestamp": datetime.now().isoformat(),
             }
 
             return self._create_success_result(
-                output_data=output_data, execution_time=time.time() - start_time, logs=logs
+                output_data=output_data,
+                execution_time=time.time() - start_time,
+                logs=logs,
             )
 
         except Exception as e:
@@ -268,20 +297,33 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                 stop_sequences=stop_sequences,
             )
 
+            # Parse AI response to extract just the content
+            content = self._parse_ai_response(ai_response)
+
+            # Use standard communication format
             output_data = {
-                "provider": "claude",
-                "model": model_version,
-                "system_prompt": system_prompt,
-                "input_text": input_text,
-                "ai_response": ai_response,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-                "stop_sequences": stop_sequences,
-                "executed_at": datetime.now().isoformat(),
+                "content": content,
+                "metadata": {
+                    "provider": "claude",
+                    "model": model_version,
+                    "system_prompt": system_prompt,
+                    "input_text": input_text,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                    "stop_sequences": stop_sequences,
+                    "executed_at": datetime.now().isoformat(),
+                },
+                "format_type": "text",
+                "source_node": context.node.id
+                if hasattr(context, "node") and context.node
+                else None,
+                "timestamp": datetime.now().isoformat(),
             }
 
             return self._create_success_result(
-                output_data=output_data, execution_time=time.time() - start_time, logs=logs
+                output_data=output_data,
+                execution_time=time.time() - start_time,
+                logs=logs,
             )
 
         except Exception as e:
@@ -295,7 +337,11 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
     def _get_valid_models_for_provider(self, provider: str) -> List[str]:
         """Get valid model versions for a provider."""
         models = {
-            AIAgentSubtype.GOOGLE_GEMINI.value: ["gemini-pro", "gemini-pro-vision", "gemini-ultra"],
+            AIAgentSubtype.GOOGLE_GEMINI.value: [
+                "gemini-pro",
+                "gemini-pro-vision",
+                "gemini-ultra",
+            ],
             AIAgentSubtype.OPENAI_CHATGPT.value: [
                 "gpt-4",
                 "gpt-4-turbo",
@@ -341,11 +387,95 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         if isinstance(input_data, str):
             return input_data
 
-        # Convert dict to structured text
         if isinstance(input_data, dict):
+            # First check for standard communication format (from trigger or other nodes)
+            if "content" in input_data:
+                content = input_data["content"]
+                self.logger.info(f"🎯 Extracted standard format content: {content}")
+                return str(content)
+
+            # Legacy support: Check for direct message/text fields
+            if "message" in input_data:
+                message_content = input_data["message"]
+                self.logger.info(f"🎯 Extracted legacy message field: {message_content}")
+                return str(message_content)
+
+            if "text" in input_data:
+                text_content = input_data["text"]
+                self.logger.info(f"🎯 Extracted legacy text field: {text_content}")
+                return str(text_content)
+
+            # Legacy support: Check for trigger payload structures
+            if "payload" in input_data:
+                payload = input_data["payload"]
+                if isinstance(payload, dict):
+                    # Slack message event
+                    if "event" in payload and "text" in payload["event"]:
+                        slack_text = payload["event"]["text"]
+                        self.logger.info(f"🎯 Extracted legacy Slack message: {slack_text}")
+                        return slack_text
+
+                    # Direct text field in payload
+                    elif "text" in payload:
+                        text_content = payload["text"]
+                        self.logger.info(f"🎯 Extracted legacy payload text: {text_content}")
+                        return text_content
+
+            # Log what we received for debugging
+            self.logger.warning(
+                f"⚠️ No extractable message found in input_data keys: {list(input_data.keys())}"
+            )
+            self.logger.info(f"🔍 Full input_data: {input_data}")
+
+            # Convert entire dict to structured text as fallback
             return json.dumps(input_data, indent=2, ensure_ascii=False)
 
         return str(input_data)
+
+    def _parse_ai_response(self, ai_response: str) -> str:
+        """Parse AI response to extract just the content, removing JSON wrapper."""
+        if not ai_response:
+            return ""
+
+        try:
+            # Try to parse as JSON
+            if isinstance(ai_response, str) and ai_response.strip().startswith("{"):
+                import json
+
+                data = json.loads(ai_response)
+
+                # Extract response content from common JSON structures
+                if "response" in data:
+                    response_content = data["response"]
+                    # If the response is still JSON, try to extract further
+                    if isinstance(response_content, str) and response_content.strip().startswith(
+                        "{"
+                    ):
+                        try:
+                            inner_data = json.loads(response_content)
+                            if "response" in inner_data:
+                                return inner_data["response"]
+                        except:
+                            pass
+                    return response_content
+                elif "content" in data:
+                    return data["content"]
+                elif "text" in data:
+                    return data["text"]
+                elif "message" in data:
+                    return data["message"]
+                else:
+                    # If no known key, return the first string value found
+                    for value in data.values():
+                        if isinstance(value, str):
+                            return value
+        except json.JSONDecodeError:
+            pass
+        except Exception:
+            pass
+
+        # If not JSON or no extractable content, return as-is
+        return str(ai_response)
 
     def _call_gemini_api(
         self,
@@ -356,11 +486,39 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         max_tokens: int,
         safety_settings: Dict,
     ) -> str:
-        """Call Gemini API (mock implementation)."""
-        # TODO: Replace with actual Gemini API call
-        return (
-            f'{{"response": "Mock Gemini response for: {input_text[:50]}...", "model": "{model}"}}'
-        )
+        """Call actual Gemini API."""
+        try:
+            import google.generativeai as genai
+
+            # Configure with API key (use GEMINI_API_KEY as suggested)
+            gemini_key = os.getenv("GEMINI_API_KEY")
+            if not gemini_key:
+                raise ValueError(
+                    "GEMINI_API_KEY not found in environment - Gemini integration not configured in AWS infrastructure"
+                )
+
+            genai.configure(api_key=gemini_key)
+
+            # Create model instance
+            model_instance = genai.GenerativeModel(model)
+
+            # Combine system prompt and input
+            full_prompt = f"{system_prompt}\n\nInput: {input_text}"
+
+            # Make API call
+            response = model_instance.generate_content(
+                full_prompt,
+                generation_config=genai.types.GenerationConfig(
+                    temperature=temperature, max_output_tokens=max_tokens
+                ),
+            )
+
+            return response.text
+
+        except Exception as e:
+            self.logger.error(f"Gemini API call failed: {e}")
+            # Return error message that will be handled by external action nodes
+            return f"⚠️ Gemini API unavailable: {str(e)}"
 
     def _call_openai_api(
         self,
@@ -372,11 +530,42 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         presence_penalty: float,
         frequency_penalty: float,
     ) -> str:
-        """Call OpenAI API (mock implementation)."""
-        # TODO: Replace with actual OpenAI API call
-        return (
-            f'{{"response": "Mock OpenAI response for: {input_text[:50]}...", "model": "{model}"}}'
-        )
+        """Call actual OpenAI API."""
+        try:
+            from openai import OpenAI
+
+            # Get API key
+            openai_key = os.getenv("OPENAI_API_KEY")
+            if not openai_key:
+                raise ValueError("OPENAI_API_KEY not found in environment")
+
+            # Create client
+            client = OpenAI(api_key=openai_key)
+
+            # Make API call
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": input_text},
+                ],
+                temperature=temperature,
+                max_tokens=max_tokens,
+                presence_penalty=presence_penalty,
+                frequency_penalty=frequency_penalty,
+            )
+
+            return response.choices[0].message.content
+
+        except Exception as e:
+            self.logger.error(f"OpenAI API call failed: {e}")
+            # Return user-friendly error message
+            if "api key" in str(e).lower():
+                return f"⚠️ OpenAI API key is invalid or missing"
+            elif "rate limit" in str(e).lower():
+                return f"⚠️ OpenAI API rate limit exceeded. Please try again later."
+            else:
+                return f"⚠️ OpenAI API error: {str(e)}"
 
     def _call_claude_api(
         self,
@@ -387,8 +576,36 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         max_tokens: int,
         stop_sequences: List[str],
     ) -> str:
-        """Call Claude API (mock implementation)."""
-        # TODO: Replace with actual Claude API call
-        return (
-            f'{{"response": "Mock Claude response for: {input_text[:50]}...", "model": "{model}"}}'
-        )
+        """Call actual Claude API."""
+        try:
+            import anthropic
+
+            # Get API key
+            anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+            if not anthropic_key:
+                raise ValueError("ANTHROPIC_API_KEY not found in environment")
+
+            # Create client
+            client = anthropic.Anthropic(api_key=anthropic_key)
+
+            # Make API call
+            response = client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                system=system_prompt,
+                messages=[{"role": "user", "content": input_text}],
+                stop_sequences=stop_sequences if stop_sequences else None,
+            )
+
+            return response.content[0].text
+
+        except Exception as e:
+            self.logger.error(f"Claude API call failed: {e}")
+            # Return user-friendly error message
+            if "api key" in str(e).lower():
+                return f"⚠️ Anthropic API key is invalid or missing"
+            elif "rate limit" in str(e).lower():
+                return f"⚠️ Anthropic API rate limit exceeded. Please try again later."
+            else:
+                return f"⚠️ Anthropic Claude API error: {str(e)}"
