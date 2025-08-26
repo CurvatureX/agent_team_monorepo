@@ -11,7 +11,6 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 from croniter import croniter
-
 from shared.models import NodeType
 from shared.models.node_enums import TriggerSubtype
 from shared.node_specs import node_spec_registry
@@ -43,20 +42,39 @@ class TriggerNodeExecutor(BaseNodeExecutor):
 
     def validate(self, node: Any) -> List[str]:
         """Validate trigger node configuration using spec-based validation."""
+        self.logger.info(
+            f"🎆 TRIGGER: Starting validation for node: {getattr(node, 'id', 'unknown')}"
+        )
+        self.logger.info(f"🎆 TRIGGER: Node subtype: {getattr(node, 'subtype', 'none')}")
+
         # First use the base class validation which includes spec validation
         errors = super().validate(node)
 
+        if errors:
+            self.logger.warning(f"🎆 TRIGGER: ⚠️ Base validation found {len(errors)} errors")
+            for error in errors:
+                self.logger.warning(f"🎆 TRIGGER:   - {error}")
+
         # If spec validation passed, we're done
         if not errors and self.spec:
+            self.logger.info("🎆 TRIGGER: ✅ Spec-based validation passed")
             return errors
 
         # Fallback if spec not available
+        self.logger.info("🎆 TRIGGER: Using legacy validation")
+
         if not node.subtype:
-            errors.append("Trigger subtype is required")
+            error_msg = "Trigger subtype is required"
+            errors.append(error_msg)
+            self.logger.error(f"🎆 TRIGGER: ❌ {error_msg}")
             return errors
 
         if node.subtype not in self.get_supported_subtypes():
-            errors.append(f"Unsupported trigger subtype: {node.subtype}")
+            error_msg = f"Unsupported trigger subtype: {node.subtype}"
+            errors.append(error_msg)
+            self.logger.error(f"🎆 TRIGGER: ❌ {error_msg}")
+        else:
+            self.logger.info(f"🎆 TRIGGER: ✅ Subtype {node.subtype} is supported")
 
         return errors
 
@@ -92,7 +110,13 @@ class TriggerNodeExecutor(BaseNodeExecutor):
 
         try:
             subtype = context.node.subtype
-            self.logger.info(f"Executing trigger node with subtype: {subtype}")
+            self.logger.info(f"🎆 TRIGGER: Starting execution with subtype: {subtype}")
+            self.logger.info(
+                f"🎆 TRIGGER: Node ID: {getattr(context.node, 'id', 'unknown') if hasattr(context, 'node') else 'unknown'}"
+            )
+            self.logger.info(
+                f"🎆 TRIGGER: Execution ID: {getattr(context, 'execution_id', 'unknown')}"
+            )
 
             if subtype == TriggerSubtype.MANUAL.value:
                 return self._execute_manual_trigger(context, logs, start_time)
@@ -107,13 +131,16 @@ class TriggerNodeExecutor(BaseNodeExecutor):
             elif subtype == TriggerSubtype.SLACK.value:
                 return self._execute_slack_trigger(context, logs, start_time)
             else:
+                error_msg = f"Unsupported trigger subtype: {subtype}"
+                self.logger.error(f"🎆 TRIGGER: ❌ {error_msg}")
                 return self._create_error_result(
-                    f"Unsupported trigger subtype: {subtype}",
+                    error_msg,
                     execution_time=time.time() - start_time,
                     logs=logs,
                 )
 
         except Exception as e:
+            self.logger.error(f"🎆 TRIGGER: ❌ Error executing trigger: {str(e)}")
             return self._create_error_result(
                 f"Error executing trigger: {str(e)}",
                 error_details={"exception": str(e)},
@@ -131,7 +158,7 @@ class TriggerNodeExecutor(BaseNodeExecutor):
         description = self.get_parameter_with_spec(context, "description")
 
         logs.append(f"Manual trigger '{trigger_name}' activated")
-        self.logger.info(f"Manual trigger executed")
+        self.logger.info(f"🎆 TRIGGER: ✅ Manual trigger executed successfully")
 
         # Extract content from input data for standard communication format
         content = self._extract_trigger_content(context.input_data, "manual")
@@ -167,7 +194,7 @@ class TriggerNodeExecutor(BaseNodeExecutor):
         path = context.get_parameter("path", "/webhook")
         authentication = context.get_parameter("authentication", "none")
 
-        self.logger.info(f"Webhook trigger: {method} {path}, auth: {authentication}")
+        self.logger.info(f"🎆 TRIGGER: Webhook - {method} {path}, auth: {authentication}")
 
         # Extract webhook data from input
         webhook_data = context.input_data.get("webhook_data", {})
@@ -197,7 +224,7 @@ class TriggerNodeExecutor(BaseNodeExecutor):
         cron_expression = context.get_parameter("cron_expression", "0 9 * * MON")
         timezone = context.get_parameter("timezone", "UTC")
 
-        self.logger.info(f"Cron trigger: {cron_expression} ({timezone})")
+        self.logger.info(f"🎆 TRIGGER: Cron schedule: {cron_expression} ({timezone})")
 
         # Check if it's time to trigger
         now = datetime.now()
@@ -227,7 +254,7 @@ class TriggerNodeExecutor(BaseNodeExecutor):
         event_filter = context.get_parameter("event_filter", "")
         webhook_secret = context.get_parameter("webhook_secret", "")
 
-        self.logger.info(f"GitHub trigger: {repository}, filter: {event_filter}")
+        self.logger.info(f"🎆 TRIGGER: GitHub - repo: {repository}, filter: {event_filter}")
 
         # Extract GitHub content for standard communication format
         content = self._extract_trigger_content(context.input_data, "github")
@@ -264,7 +291,7 @@ class TriggerNodeExecutor(BaseNodeExecutor):
         email_filter = context.get_parameter("email_filter", "")
         email_provider = context.get_parameter("email_provider", "gmail")
 
-        self.logger.info(f"Email trigger: {email_provider}, filter: {email_filter}")
+        self.logger.info(f"🎆 TRIGGER: Email - provider: {email_provider}, filter: {email_filter}")
 
         # Extract email data from input
         email_data = context.input_data.get("email_data", {})
@@ -293,7 +320,7 @@ class TriggerNodeExecutor(BaseNodeExecutor):
         message_filter = context.get_parameter("message_filter", "")
         bot_token = context.get_parameter("bot_token", "")
 
-        self.logger.info(f"Slack trigger: {channel}, filter: {message_filter}")
+        self.logger.info(f"🎆 TRIGGER: Slack - channel: {channel}, filter: {message_filter}")
 
         # Extract Slack message content for standard communication format
         content = self._extract_trigger_content(context.input_data, "slack")

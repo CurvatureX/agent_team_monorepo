@@ -48,27 +48,43 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
     def __init__(self, subtype: Optional[str] = None):
         super().__init__(subtype=subtype)
         self.ai_clients = {}
+        self.logger.info(f"🤖 AI AGENT: Initializing AIAgentNodeExecutor with subtype: {subtype}")
         self._init_ai_clients()
 
         # Initialize memory context merger
         self.memory_merger = MemoryContextMerger(
             {"max_total_tokens": 4000, "merge_strategy": "priority", "token_buffer": 0.1}
         )
+        self.logger.info("🤖 AI AGENT: Memory context merger initialized")
 
     def _get_node_spec(self) -> Optional[NodeSpec]:
         """Get the node specification for AI agent nodes."""
+        self.logger.info(f"🤖 AI AGENT: Getting node spec for subtype: {self._subtype}")
+
         if node_spec_registry and self._subtype:
             # Return the specific spec for current subtype
-            return node_spec_registry.get_spec(NodeType.AI_AGENT.value, self._subtype)
+            spec = node_spec_registry.get_spec(NodeType.AI_AGENT.value, self._subtype)
+            if spec:
+                self.logger.info(f"🤖 AI AGENT: ✅ Found node spec for {self._subtype}")
+            else:
+                self.logger.info(f"🤖 AI AGENT: ⚠️ No node spec found for {self._subtype}")
+            return spec
+
+        self.logger.info("🤖 AI AGENT: No registry or subtype available")
         return None
 
     def _init_ai_clients(self):
         """Initialize AI provider clients."""
+        self.logger.info("🤖 AI AGENT: Initializing AI provider clients...")
+
         try:
             # Initialize OpenAI client
             openai_key = os.getenv("OPENAI_API_KEY")
             if openai_key:
                 self.ai_clients["openai"] = {"api_key": openai_key, "client": None}
+                self.logger.info("🤖 AI AGENT: ✅ OpenAI client configured")
+            else:
+                self.logger.info("🤖 AI AGENT: ⚠️ OpenAI API key not found")
 
             # Initialize Anthropic client
             anthropic_key = os.getenv("ANTHROPIC_API_KEY")
@@ -77,13 +93,22 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                     "api_key": anthropic_key,
                     "client": None,
                 }
+                self.logger.info("🤖 AI AGENT: ✅ Anthropic client configured")
+            else:
+                self.logger.info("🤖 AI AGENT: ⚠️ Anthropic API key not found")
 
             # Initialize Google client
             google_key = os.getenv("GOOGLE_API_KEY")
             if google_key:
                 self.ai_clients["google"] = {"api_key": google_key, "client": None}
+                self.logger.info("🤖 AI AGENT: ✅ Google/Gemini client configured")
+            else:
+                self.logger.info("🤖 AI AGENT: ⚠️ Google API key not found")
+
+            self.logger.info(f"🤖 AI AGENT: Total configured clients: {len(self.ai_clients)}")
 
         except Exception as e:
+            self.logger.error(f"🤖 AI AGENT: ❌ Failed to initialize AI clients: {e}")
             self.logger.warning(f"Failed to initialize AI clients: {e}")
 
     def get_supported_subtypes(self) -> List[str]:
@@ -92,25 +117,46 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
 
     def validate(self, node: Any) -> List[str]:
         """Validate AI agent node configuration using spec-based validation."""
+        self.logger.info(
+            f"🤖 AI AGENT: Starting validation for node: {getattr(node, 'id', 'unknown')}"
+        )
+        self.logger.info(f"🤖 AI AGENT: Node subtype: {getattr(node, 'subtype', 'none')}")
+
         # First use the base class validation which includes spec validation
         errors = super().validate(node)
 
+        if errors:
+            self.logger.info(f"🤖 AI AGENT: ⚠️ Base validation found {len(errors)} errors")
+            for error in errors:
+                self.logger.info(f"🤖 AI AGENT:   - {error}")
+
         # If spec validation passed, we can skip manual validation
         if not errors and self.spec:
+            self.logger.info("🤖 AI AGENT: ✅ Spec-based validation passed")
             return errors
 
         # Fallback to legacy validation if spec not available
+        self.logger.info("🤖 AI AGENT: Using legacy validation")
+
         if not node.subtype:
-            errors.append("AI Agent subtype is required")
+            error_msg = "AI Agent subtype is required"
+            errors.append(error_msg)
+            self.logger.error(f"🤖 AI AGENT: ❌ {error_msg}")
             return errors
 
         subtype = node.subtype
         supported_subtypes = self.get_supported_subtypes()
 
+        self.logger.info(
+            f"🤖 AI AGENT: Checking if {subtype} is in supported types: {supported_subtypes}"
+        )
+
         if subtype not in supported_subtypes:
-            errors.append(
-                f"Unsupported AI agent subtype: {subtype}. Supported types: {', '.join(supported_subtypes)}"
-            )
+            error_msg = f"Unsupported AI agent subtype: {subtype}. Supported types: {', '.join(supported_subtypes)}"
+            errors.append(error_msg)
+            self.logger.error(f"🤖 AI AGENT: ❌ {error_msg}")
+        else:
+            self.logger.info(f"🤖 AI AGENT: ✅ Subtype {subtype} is supported")
 
         return errors
 
@@ -845,19 +891,25 @@ Please use this context appropriately when responding. Reference relevant inform
 
     def _parse_ai_response(self, ai_response: str) -> str:
         """Parse AI response to extract just the content, removing JSON wrapper."""
+        self.logger.info(f"🤖 AI AGENT: Parsing AI response ({len(str(ai_response))} characters)")
+
         if not ai_response:
+            self.logger.info("🤖 AI AGENT: Empty response received")
             return ""
 
         try:
             # Try to parse as JSON
             if isinstance(ai_response, str) and ai_response.strip().startswith("{"):
+                self.logger.info("🤖 AI AGENT: Response appears to be JSON, attempting to parse")
                 import json
 
                 data = json.loads(ai_response)
+                self.logger.info(f"🤖 AI AGENT: JSON parsed successfully, keys: {list(data.keys())}")
 
                 # Extract response content from common JSON structures
                 if "response" in data:
                     response_content = data["response"]
+                    self.logger.info("🤖 AI AGENT: Found 'response' key in JSON")
                     # If the response is still JSON, try to extract further
                     if isinstance(response_content, str) and response_content.strip().startswith(
                         "{"
@@ -865,27 +917,35 @@ Please use this context appropriately when responding. Reference relevant inform
                         try:
                             inner_data = json.loads(response_content)
                             if "response" in inner_data:
+                                self.logger.info("🤖 AI AGENT: Found nested 'response' key")
                                 return inner_data["response"]
                         except:
                             pass
                     return response_content
                 elif "content" in data:
+                    self.logger.info("🤖 AI AGENT: Found 'content' key in JSON")
                     return data["content"]
                 elif "text" in data:
+                    self.logger.info("🤖 AI AGENT: Found 'text' key in JSON")
                     return data["text"]
                 elif "message" in data:
+                    self.logger.info("🤖 AI AGENT: Found 'message' key in JSON")
                     return data["message"]
                 else:
                     # If no known key, return the first string value found
+                    self.logger.info("🤖 AI AGENT: No known keys found, using first string value")
                     for value in data.values():
                         if isinstance(value, str):
                             return value
         except json.JSONDecodeError:
+            self.logger.info("🤖 AI AGENT: Response is not valid JSON, using as-is")
             pass
-        except Exception:
+        except Exception as e:
+            self.logger.warning(f"🤖 AI AGENT: Error parsing response: {e}")
             pass
 
         # If not JSON or no extractable content, return as-is
+        self.logger.info("🤖 AI AGENT: Using response as-is (no JSON parsing needed)")
         return str(ai_response)
 
     def _call_gemini_api(
@@ -898,25 +958,32 @@ Please use this context appropriately when responding. Reference relevant inform
         safety_settings: Dict,
     ) -> str:
         """Call actual Gemini API."""
+        self.logger.info(f"🤖 AI AGENT: Starting Gemini API call with model: {model}")
+        self.logger.info(f"🤖 AI AGENT: Temperature: {temperature}, Max tokens: {max_tokens}")
+
         try:
             import google.generativeai as genai
 
             # Configure with API key (use GEMINI_API_KEY as suggested)
             gemini_key = os.getenv("GEMINI_API_KEY")
             if not gemini_key:
-                raise ValueError(
-                    "GEMINI_API_KEY not found in environment - Gemini integration not configured in AWS infrastructure"
-                )
+                error_msg = "GEMINI_API_KEY not found in environment - Gemini integration not configured in AWS infrastructure"
+                self.logger.error(f"🤖 AI AGENT: ❌ {error_msg}")
+                raise ValueError(error_msg)
 
+            self.logger.info("🤖 AI AGENT: Configuring Gemini API client")
             genai.configure(api_key=gemini_key)
 
             # Create model instance
+            self.logger.info(f"🤖 AI AGENT: Creating Gemini model instance: {model}")
             model_instance = genai.GenerativeModel(model)
 
             # Combine system prompt and input
             full_prompt = f"{system_prompt}\n\nInput: {input_text}"
+            self.logger.info(f"🤖 AI AGENT: Full prompt prepared ({len(full_prompt)} characters)")
 
             # Make API call
+            self.logger.info("🤖 AI AGENT: Making Gemini API call...")
             response = model_instance.generate_content(
                 full_prompt,
                 generation_config=genai.types.GenerationConfig(
@@ -924,9 +991,14 @@ Please use this context appropriately when responding. Reference relevant inform
                 ),
             )
 
-            return response.text
+            response_text = response.text
+            self.logger.info(
+                f"🤖 AI AGENT: ✅ Gemini API call successful, response length: {len(response_text)}"
+            )
+            return response_text
 
         except Exception as e:
+            self.logger.error(f"🤖 AI AGENT: ❌ Gemini API call failed: {e}")
             self.logger.error(f"Gemini API call failed: {e}")
             # Return error message that will be handled by external action nodes
             return f"⚠️ Gemini API unavailable: {str(e)}"
@@ -942,18 +1014,28 @@ Please use this context appropriately when responding. Reference relevant inform
         frequency_penalty: float,
     ) -> str:
         """Call actual OpenAI API."""
+        self.logger.info(f"🤖 AI AGENT: Starting OpenAI API call with model: {model}")
+        self.logger.info(f"🤖 AI AGENT: Temperature: {temperature}, Max tokens: {max_tokens}")
+        self.logger.info(
+            f"🤖 AI AGENT: Presence penalty: {presence_penalty}, Frequency penalty: {frequency_penalty}"
+        )
+
         try:
             from openai import OpenAI
 
             # Get API key
             openai_key = os.getenv("OPENAI_API_KEY")
             if not openai_key:
-                raise ValueError("OPENAI_API_KEY not found in environment")
+                error_msg = "OPENAI_API_KEY not found in environment"
+                self.logger.error(f"🤖 AI AGENT: ❌ {error_msg}")
+                raise ValueError(error_msg)
 
             # Create client
+            self.logger.info("🤖 AI AGENT: Creating OpenAI client")
             client = OpenAI(api_key=openai_key)
 
             # Make API call
+            self.logger.info("🤖 AI AGENT: Making OpenAI API call...")
             response = client.chat.completions.create(
                 model=model,
                 messages=[
@@ -966,10 +1048,16 @@ Please use this context appropriately when responding. Reference relevant inform
                 frequency_penalty=frequency_penalty,
             )
 
-            return response.choices[0].message.content
+            response_content = response.choices[0].message.content
+            self.logger.info(
+                f"🤖 AI AGENT: ✅ OpenAI API call successful, response length: {len(response_content)}"
+            )
+            return response_content
 
         except Exception as e:
+            self.logger.error(f"🤖 AI AGENT: ❌ OpenAI API call failed: {e}")
             self.logger.error(f"OpenAI API call failed: {e}")
+
             # Return user-friendly error message
             if "api key" in str(e).lower():
                 return f"⚠️ OpenAI API key is invalid or missing"
@@ -988,18 +1076,26 @@ Please use this context appropriately when responding. Reference relevant inform
         stop_sequences: List[str],
     ) -> str:
         """Call actual Claude API."""
+        self.logger.info(f"🤖 AI AGENT: Starting Anthropic Claude API call with model: {model}")
+        self.logger.info(f"🤖 AI AGENT: Temperature: {temperature}, Max tokens: {max_tokens}")
+        self.logger.info(f"🤖 AI AGENT: Stop sequences: {stop_sequences}")
+
         try:
             import anthropic
 
             # Get API key
             anthropic_key = os.getenv("ANTHROPIC_API_KEY")
             if not anthropic_key:
-                raise ValueError("ANTHROPIC_API_KEY not found in environment")
+                error_msg = "ANTHROPIC_API_KEY not found in environment"
+                self.logger.error(f"🤖 AI AGENT: ❌ {error_msg}")
+                raise ValueError(error_msg)
 
             # Create client
+            self.logger.info("🤖 AI AGENT: Creating Anthropic client")
             client = anthropic.Anthropic(api_key=anthropic_key)
 
             # Make API call
+            self.logger.info("🤖 AI AGENT: Making Claude API call...")
             response = client.messages.create(
                 model=model,
                 max_tokens=max_tokens,
@@ -1009,10 +1105,16 @@ Please use this context appropriately when responding. Reference relevant inform
                 stop_sequences=stop_sequences if stop_sequences else None,
             )
 
-            return response.content[0].text
+            response_text = response.content[0].text
+            self.logger.info(
+                f"🤖 AI AGENT: ✅ Claude API call successful, response length: {len(response_text)}"
+            )
+            return response_text
 
         except Exception as e:
+            self.logger.error(f"🤖 AI AGENT: ❌ Claude API call failed: {e}")
             self.logger.error(f"Claude API call failed: {e}")
+
             # Return user-friendly error message
             if "api key" in str(e).lower():
                 return f"⚠️ Anthropic API key is invalid or missing"
