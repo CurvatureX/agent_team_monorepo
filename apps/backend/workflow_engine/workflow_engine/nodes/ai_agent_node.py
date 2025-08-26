@@ -45,7 +45,10 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             # Initialize Anthropic client
             anthropic_key = os.getenv("ANTHROPIC_API_KEY")
             if anthropic_key:
-                self.ai_clients["anthropic"] = {"api_key": anthropic_key, "client": None}
+                self.ai_clients["anthropic"] = {
+                    "api_key": anthropic_key,
+                    "client": None,
+                }
 
             # Initialize Google client
             google_key = os.getenv("GOOGLE_API_KEY")
@@ -163,20 +166,31 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                 safety_settings=safety_settings,
             )
 
+            # Parse AI response to extract just the content
+            content = self._parse_ai_response(ai_response)
+
+            # Use standard communication format
             output_data = {
-                "provider": "gemini",
-                "model": model_version,
-                "system_prompt": system_prompt,
-                "input_text": input_text,
-                "ai_response": ai_response,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-                "safety_settings": safety_settings,
-                "executed_at": datetime.now().isoformat(),
+                "content": content,
+                "metadata": {
+                    "provider": "gemini",
+                    "model": model_version,
+                    "system_prompt": system_prompt,
+                    "input_text": input_text,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                    "safety_settings": safety_settings,
+                    "executed_at": datetime.now().isoformat(),
+                },
+                "format_type": "text",
+                "source_node": context.node.get("id") if hasattr(context, "node") else None,
+                "timestamp": datetime.now().isoformat(),
             }
 
             return self._create_success_result(
-                output_data=output_data, execution_time=time.time() - start_time, logs=logs
+                output_data=output_data,
+                execution_time=time.time() - start_time,
+                logs=logs,
             )
 
         except Exception as e:
@@ -216,21 +230,32 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                 frequency_penalty=frequency_penalty,
             )
 
+            # Parse AI response to extract just the content
+            content = self._parse_ai_response(ai_response)
+
+            # Use standard communication format
             output_data = {
-                "provider": "openai",
-                "model": model_version,
-                "system_prompt": system_prompt,
-                "input_text": input_text,
-                "ai_response": ai_response,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-                "presence_penalty": presence_penalty,
-                "frequency_penalty": frequency_penalty,
-                "executed_at": datetime.now().isoformat(),
+                "content": content,
+                "metadata": {
+                    "provider": "openai",
+                    "model": model_version,
+                    "system_prompt": system_prompt,
+                    "input_text": input_text,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                    "presence_penalty": presence_penalty,
+                    "frequency_penalty": frequency_penalty,
+                    "executed_at": datetime.now().isoformat(),
+                },
+                "format_type": "text",
+                "source_node": context.node.get("id") if hasattr(context, "node") else None,
+                "timestamp": datetime.now().isoformat(),
             }
 
             return self._create_success_result(
-                output_data=output_data, execution_time=time.time() - start_time, logs=logs
+                output_data=output_data,
+                execution_time=time.time() - start_time,
+                logs=logs,
             )
 
         except Exception as e:
@@ -268,20 +293,31 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                 stop_sequences=stop_sequences,
             )
 
+            # Parse AI response to extract just the content
+            content = self._parse_ai_response(ai_response)
+
+            # Use standard communication format
             output_data = {
-                "provider": "claude",
-                "model": model_version,
-                "system_prompt": system_prompt,
-                "input_text": input_text,
-                "ai_response": ai_response,
-                "temperature": temperature,
-                "max_tokens": max_tokens,
-                "stop_sequences": stop_sequences,
-                "executed_at": datetime.now().isoformat(),
+                "content": content,
+                "metadata": {
+                    "provider": "claude",
+                    "model": model_version,
+                    "system_prompt": system_prompt,
+                    "input_text": input_text,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                    "stop_sequences": stop_sequences,
+                    "executed_at": datetime.now().isoformat(),
+                },
+                "format_type": "text",
+                "source_node": context.node.get("id") if hasattr(context, "node") else None,
+                "timestamp": datetime.now().isoformat(),
             }
 
             return self._create_success_result(
-                output_data=output_data, execution_time=time.time() - start_time, logs=logs
+                output_data=output_data,
+                execution_time=time.time() - start_time,
+                logs=logs,
             )
 
         except Exception as e:
@@ -295,7 +331,11 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
     def _get_valid_models_for_provider(self, provider: str) -> List[str]:
         """Get valid model versions for a provider."""
         models = {
-            AIAgentSubtype.GOOGLE_GEMINI.value: ["gemini-pro", "gemini-pro-vision", "gemini-ultra"],
+            AIAgentSubtype.GOOGLE_GEMINI.value: [
+                "gemini-pro",
+                "gemini-pro-vision",
+                "gemini-ultra",
+            ],
             AIAgentSubtype.OPENAI_CHATGPT.value: [
                 "gpt-4",
                 "gpt-4-turbo",
@@ -347,6 +387,51 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
 
         return str(input_data)
 
+    def _parse_ai_response(self, ai_response: str) -> str:
+        """Parse AI response to extract just the content, removing JSON wrapper."""
+        if not ai_response:
+            return ""
+
+        try:
+            # Try to parse as JSON
+            if isinstance(ai_response, str) and ai_response.strip().startswith("{"):
+                import json
+
+                data = json.loads(ai_response)
+
+                # Extract response content from common JSON structures
+                if "response" in data:
+                    response_content = data["response"]
+                    # If the response is still JSON, try to extract further
+                    if isinstance(response_content, str) and response_content.strip().startswith(
+                        "{"
+                    ):
+                        try:
+                            inner_data = json.loads(response_content)
+                            if "response" in inner_data:
+                                return inner_data["response"]
+                        except:
+                            pass
+                    return response_content
+                elif "content" in data:
+                    return data["content"]
+                elif "text" in data:
+                    return data["text"]
+                elif "message" in data:
+                    return data["message"]
+                else:
+                    # If no known key, return the first string value found
+                    for value in data.values():
+                        if isinstance(value, str):
+                            return value
+        except json.JSONDecodeError:
+            pass
+        except Exception:
+            pass
+
+        # If not JSON or no extractable content, return as-is
+        return str(ai_response)
+
     def _call_gemini_api(
         self,
         system_prompt: str,
@@ -358,9 +443,15 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
     ) -> str:
         """Call Gemini API (mock implementation)."""
         # TODO: Replace with actual Gemini API call
-        return (
-            f'{{"response": "Mock Gemini response for: {input_text[:50]}...", "model": "{model}"}}'
-        )
+        import json
+
+        # Create proper JSON response
+        truncated_input = input_text[:50].replace("\n", " ")
+        response_data = {
+            "response": f"Mock Gemini response for: {truncated_input}...",
+            "model": model,
+        }
+        return json.dumps(response_data)
 
     def _call_openai_api(
         self,
@@ -374,9 +465,15 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
     ) -> str:
         """Call OpenAI API (mock implementation)."""
         # TODO: Replace with actual OpenAI API call
-        return (
-            f'{{"response": "Mock OpenAI response for: {input_text[:50]}...", "model": "{model}"}}'
-        )
+        import json
+
+        # Create proper JSON response
+        truncated_input = input_text[:50].replace("\n", " ")
+        response_data = {
+            "response": f"Mock OpenAI response for: {truncated_input}...",
+            "model": model,
+        }
+        return json.dumps(response_data)
 
     def _call_claude_api(
         self,
@@ -389,6 +486,12 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
     ) -> str:
         """Call Claude API (mock implementation)."""
         # TODO: Replace with actual Claude API call
-        return (
-            f'{{"response": "Mock Claude response for: {input_text[:50]}...", "model": "{model}"}}'
-        )
+        import json
+
+        # Create proper JSON response
+        truncated_input = input_text[:50].replace("\n", " ")
+        response_data = {
+            "response": f"Mock Claude response for: {truncated_input}...",
+            "model": model,
+        }
+        return json.dumps(response_data)

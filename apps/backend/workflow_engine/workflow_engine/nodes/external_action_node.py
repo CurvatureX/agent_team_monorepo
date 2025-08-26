@@ -678,8 +678,62 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         if action == "send_message":
             message_data = context.get_parameter("message_data", {})
 
-            # Get text and blocks
+            # Get text and blocks with proper parameter resolution
             text = message_data.get("text", context.get_parameter("text", ""))
+
+            # Also check for 'message' parameter (common in workflow definitions)
+            if not text:
+                text = context.get_parameter("message", "")
+                self.logger.info(f"📝 Found 'message' parameter: {text}")
+
+                # Check if this is a placeholder value that should be replaced
+                if text and text.startswith("example-value-"):
+                    self.logger.warning(
+                        f"⚠️ Detected placeholder message value: {text}, will look for AI response"
+                    )
+                    text = ""  # Clear placeholder so we check input data
+
+            # Check for input data from connected nodes (AI agent response)
+            if not text and context.input_data:
+                # Try to extract AI response from input data
+                if "ai_response" in context.input_data:
+                    ai_response = context.input_data["ai_response"]
+                    self.logger.info(f"🤖 Found AI response in input data: {ai_response}")
+
+                    # Parse AI response if it's JSON
+                    try:
+                        if isinstance(ai_response, str):
+                            import json
+
+                            ai_data = json.loads(ai_response)
+                            # Extract the actual response content, not the wrapper
+                            if "response" in ai_data:
+                                text = ai_data["response"]
+                                # If response is still JSON-like, extract further
+                                if isinstance(text, str) and text.startswith('{"'):
+                                    try:
+                                        inner_data = json.loads(text)
+                                        if "response" in inner_data:
+                                            text = inner_data["response"]
+                                    except:
+                                        pass  # Use outer response if inner parsing fails
+                            else:
+                                text = str(ai_data)
+                        else:
+                            text = str(ai_response)
+                        self.logger.info(f"✅ Extracted AI response content: {text}")
+                    except (json.JSONDecodeError, Exception) as e:
+                        self.logger.warning(f"⚠️ Failed to parse AI response, using raw: {e}")
+                        text = str(ai_response)
+
+                # Also check for general response or output from upstream nodes
+                elif "response" in context.input_data:
+                    text = str(context.input_data["response"])
+                    self.logger.info(f"✅ Using upstream response as message: {text}")
+                elif "output" in context.input_data:
+                    text = str(context.input_data["output"])
+                    self.logger.info(f"✅ Using upstream output as message: {text}")
+
             blocks = message_data.get("blocks", context.get_parameter("blocks", []))
 
             # Provide default text if both text and blocks are empty
