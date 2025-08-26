@@ -389,7 +389,7 @@ def test_end_to_end_communication():
 ### Technical Achievements
 - ✅ **100% AI agent nodes standardized**: All providers (Gemini, OpenAI, Claude) use standard format
 - ✅ **Zero JSON parsing errors**: Intelligent response parsing system working correctly
-- ✅ **<10ms response parsing time**: High-performance content extraction
+- ✅ **&lt;10ms response parsing time**: High-performance content extraction
 - ✅ **Zero breaking changes**: Backward compatibility maintained
 
 ### Quality Achievements
