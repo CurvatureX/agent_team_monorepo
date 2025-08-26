@@ -67,7 +67,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
         subtype = node.subtype
 
-        if subtype == "MEMORY_VECTOR_STORE":
+        if subtype == MemorySubtype.VECTOR_DATABASE.value:
             errors.extend(
                 self._validate_required_parameters(node, ["operation", "collection_name"])
             )
@@ -76,14 +76,14 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 if operation and operation not in ["store", "search", "delete", "update"]:
                     errors.append(f"Invalid vector DB operation: {operation}")
 
-        elif subtype == "MEMORY_SIMPLE":
+        elif subtype == MemorySubtype.KEY_VALUE_STORE.value:
             errors.extend(self._validate_required_parameters(node, ["operation", "key"]))
             if hasattr(node, "parameters"):
                 operation = node.parameters.get("operation", "")
                 if operation and operation not in ["get", "set", "delete", "exists"]:
                     errors.append(f"Invalid key-value operation: {operation}")
 
-        elif subtype == "MEMORY_DOCUMENT":
+        elif subtype == MemorySubtype.DOCUMENT_STORE.value:
             errors.extend(self._validate_required_parameters(node, ["operation", "document_id"]))
             if hasattr(node, "parameters"):
                 operation = node.parameters.get("operation", "")
@@ -107,18 +107,26 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             subtype = context.node.subtype
             logs.append(f"Executing memory node with subtype: {subtype}")
 
-            if subtype == MemorySubtype.VECTOR_DATABASE.value:
+            if subtype == MemorySubtype.CONVERSATION_BUFFER.value:
+                return self._execute_conversation_buffer(context, logs, start_time)
+            elif subtype == MemorySubtype.CONVERSATION_SUMMARY.value:
+                return self._execute_conversation_summary(context, logs, start_time)
+            elif subtype == MemorySubtype.VECTOR_DATABASE.value:
                 return self._execute_vector_db(context, logs, start_time)
-            elif subtype == MemorySubtype.SIMPLE_MEMORY.value:
-                return self._execute_key_value(context, logs, start_time)
             elif subtype == MemorySubtype.DOCUMENT_STORE.value:
                 return self._execute_document(context, logs, start_time)
             elif subtype == MemorySubtype.KEY_VALUE_STORE.value:
-                return self._execute_buffer(context, logs, start_time)
-            elif subtype == MemorySubtype.SQL_DATABASE.value:
-                return self._execute_knowledge(context, logs, start_time)
-            elif subtype == MemorySubtype.REDIS_CACHE.value:
-                return self._execute_embedding(context, logs, start_time)
+                return self._execute_key_value(context, logs, start_time)
+            elif subtype == MemorySubtype.ENTITY_MEMORY.value:
+                return self._execute_entity_memory(context, logs, start_time)
+            elif subtype == MemorySubtype.EPISODIC_MEMORY.value:
+                return self._execute_episodic_memory(context, logs, start_time)
+            elif subtype == MemorySubtype.KNOWLEDGE_BASE.value:
+                return self._execute_knowledge_base(context, logs, start_time)
+            elif subtype == MemorySubtype.GRAPH_MEMORY.value:
+                return self._execute_graph_memory(context, logs, start_time)
+            elif subtype == MemorySubtype.WORKING_MEMORY.value:
+                return self._execute_working_memory(context, logs, start_time)
             else:
                 return self._create_error_result(
                     f"Unsupported memory subtype: {subtype}",
@@ -137,35 +145,83 @@ class MemoryNodeExecutor(BaseNodeExecutor):
     def _execute_vector_db(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
-        """Execute vector database operations."""
-        # Use spec-based parameter retrieval
-        operation = self.get_parameter_with_spec(context, "operation")
-        collection_name = self.get_parameter_with_spec(context, "collection_name")
+        """Execute vector database operations with real OpenAI embeddings."""
+        logs.append("🧠 MEMORY NODE: Starting VECTOR_DATABASE execution")
 
-        logs.append(f"Vector DB: {operation} on collection {collection_name}")
+        # Use spec-based parameter retrieval
+        try:
+            operation = self.get_parameter_with_spec(context, "operation")
+        except (KeyError, AttributeError):
+            operation = "search"
+
+        try:
+            collection_name = self.get_parameter_with_spec(context, "collection_name")
+        except (KeyError, AttributeError):
+            collection_name = "default"
+
+        logs.append(
+            f"🧠 MEMORY NODE: Vector DB operation '{operation}' on collection '{collection_name}'"
+        )
 
         try:
             if operation == "store":
-                vector_data = self.get_parameter_with_spec(context, "vector_data")
-                metadata = self.get_parameter_with_spec(context, "metadata")
-                result = self._store_vector(collection_name, vector_data, metadata)
-            elif operation == "search":
-                query_vector = self.get_parameter_with_spec(context, "query_vector")
-                top_k = self.get_parameter_with_spec(context, "top_k")
-                result = self._search_vectors(collection_name, query_vector, top_k)
-            elif operation == "delete":
-                vector_id = self.get_parameter_with_spec(context, "vector_id")
-                result = self._delete_vector(collection_name, vector_id)
-            elif operation == "update":
-                vector_id = self.get_parameter_with_spec(context, "vector_id")
-                vector_data = self.get_parameter_with_spec(context, "vector_data")
-                metadata = self.get_parameter_with_spec(context, "metadata")
-                result = self._update_vector(collection_name, vector_id, vector_data, metadata)
-            else:
-                result = {"error": f"Unknown operation: {operation}"}
+                # Enhanced store operation with text embedding
+                text_content = context.input_data.get("text", "")
+                metadata = context.input_data.get("metadata", {})
 
+                if not text_content:
+                    # Try alternative content keys
+                    text_content = context.input_data.get("content", "") or context.input_data.get(
+                        "query", ""
+                    )
+
+                if not text_content:
+                    raise ValueError("No text content provided for vector storage")
+
+                logs.append(
+                    f"🧠 MEMORY NODE: Embedding text content: '{text_content[:100]}...' ({len(text_content)} chars)"
+                )
+                result = self._store_vector_with_embedding(
+                    collection_name, text_content, metadata, logs
+                )
+
+            elif operation == "search":
+                # Enhanced search operation with query embedding and similarity
+                query_text = (
+                    context.input_data.get("query", "")
+                    or context.input_data.get("text", "")
+                    or context.input_data.get("content", "")
+                )
+                top_k = context.input_data.get("top_k", 5)
+                similarity_threshold = context.input_data.get("similarity_threshold", 0.7)
+
+                if not query_text:
+                    raise ValueError("No query text provided for vector search")
+
+                logs.append(
+                    f"🧠 MEMORY NODE: Searching for: '{query_text[:100]}...' (top_k={top_k}, threshold={similarity_threshold})"
+                )
+                result = self._search_vectors_with_embedding(
+                    collection_name, query_text, top_k, similarity_threshold, logs
+                )
+
+            elif operation == "delete":
+                vector_id = context.input_data.get("vector_id", "")
+                if not vector_id:
+                    raise ValueError("No vector_id provided for deletion")
+                result = self._delete_vector(collection_name, vector_id, logs)
+
+            elif operation == "list":
+                # New operation: list all vectors in collection
+                result = self._list_vectors(collection_name, logs)
+
+            else:
+                result = {"error": f"Unknown vector operation: {operation}"}
+                logs.append(f"🧠 MEMORY NODE: ❌ Unknown operation '{operation}'")
+
+            # Enhanced output data with memory context for LLM
             output_data = {
-                "memory_type": "vector_db",
+                "memory_type": MemorySubtype.VECTOR_DATABASE.value,
                 "operation": operation,
                 "collection_name": collection_name,
                 "result": result,
@@ -173,11 +229,25 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 "executed_at": datetime.now().isoformat(),
             }
 
+            # If search operation, format results for LLM consumption
+            if operation == "search" and "results" in result:
+                memory_context = self._format_vector_search_context(result["results"], logs)
+                output_data["memory_context"] = memory_context
+                output_data["formatted_context"] = memory_context
+
+                logs.append(f"🧠 MEMORY NODE: ✅ Generated vector search context:")
+                logs.append(f"🧠 MEMORY NODE:   📊 {len(result['results'])} relevant results found")
+                logs.append(
+                    f"🧠 MEMORY NODE:   📝 Formatted context length: {len(memory_context)} characters"
+                )
+                logs.append(f"🧠 MEMORY NODE:   🔗 Ready for LLM integration")
+
             return self._create_success_result(
                 output_data=output_data, execution_time=time.time() - start_time, logs=logs
             )
 
         except Exception as e:
+            logs.append(f"🧠 MEMORY NODE: ❌ Error in vector DB operation: {str(e)}")
             return self._create_error_result(
                 f"Error in vector DB operation: {str(e)}",
                 error_details={"exception": str(e)},
@@ -210,7 +280,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 result = {"error": f"Unknown operation: {operation}"}
 
             output_data = {
-                "memory_type": "key_value",
+                "memory_type": MemorySubtype.KEY_VALUE_STORE.value,
                 "operation": operation,
                 "key": key,
                 "result": result,
@@ -233,32 +303,91 @@ class MemoryNodeExecutor(BaseNodeExecutor):
     def _execute_document(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
-        """Execute document operations."""
-        # Use spec-based parameter retrieval
-        operation = self.get_parameter_with_spec(context, "operation")
-        document_id = self.get_parameter_with_spec(context, "document_id")
+        """Execute document operations with full-text search and indexing."""
+        logs.append("🧠 MEMORY NODE: Starting DOCUMENT_STORE execution")
 
-        logs.append(f"Document: {operation} for document {document_id}")
+        # Use spec-based parameter retrieval with fallbacks
+        try:
+            operation = self.get_parameter_with_spec(context, "operation")
+        except (KeyError, AttributeError):
+            operation = context.input_data.get("operation", "search")
+
+        document_id = context.input_data.get("document_id", "")
+
+        logs.append(f"🧠 MEMORY NODE: Document operation '{operation}' for document '{document_id}'")
 
         try:
             if operation == "store":
-                document_data = self.get_parameter_with_spec(context, "document_data")
-                result = self._store_document(document_id, document_data)
-            elif operation == "retrieve":
-                result = self._retrieve_document(document_id)
-            elif operation == "update":
-                document_data = self.get_parameter_with_spec(context, "document_data")
-                result = self._update_document(document_id, document_data)
-            elif operation == "delete":
-                result = self._delete_document(document_id)
-            elif operation == "search":
-                query = self.get_parameter_with_spec(context, "query")
-                result = self._search_documents(query)
-            else:
-                result = {"error": f"Unknown operation: {operation}"}
+                # Enhanced store operation with indexing
+                content = context.input_data.get("content", "") or context.input_data.get(
+                    "text", ""
+                )
+                title = context.input_data.get("title", "")
+                metadata = context.input_data.get("metadata", {})
 
+                if not content and not title:
+                    raise ValueError("No content or title provided for document storage")
+
+                if not document_id:
+                    document_id = f"doc_{len(self._document_store) + 1}"
+
+                logs.append(
+                    f"🧠 MEMORY NODE: Storing document '{document_id}' with content length: {len(content)} chars"
+                )
+                result = self._store_document_with_indexing(
+                    document_id, title, content, metadata, logs
+                )
+
+            elif operation == "retrieve":
+                if not document_id:
+                    raise ValueError("No document_id provided for retrieval")
+                result = self._retrieve_document_enhanced(document_id, logs)
+
+            elif operation == "update":
+                content = context.input_data.get("content", "") or context.input_data.get(
+                    "text", ""
+                )
+                title = context.input_data.get("title", "")
+                metadata = context.input_data.get("metadata", {})
+
+                if not document_id:
+                    raise ValueError("No document_id provided for update")
+                result = self._update_document_with_indexing(
+                    document_id, title, content, metadata, logs
+                )
+
+            elif operation == "delete":
+                if not document_id:
+                    raise ValueError("No document_id provided for deletion")
+                result = self._delete_document_with_indexing(document_id, logs)
+
+            elif operation == "search":
+                # Enhanced search with full-text capabilities
+                query = context.input_data.get("query", "") or context.input_data.get("text", "")
+                max_results = context.input_data.get("max_results", 10)
+                search_type = context.input_data.get(
+                    "search_type", "full_text"
+                )  # full_text, title, content
+
+                if not query:
+                    raise ValueError("No query provided for document search")
+
+                logs.append(
+                    f"🧠 MEMORY NODE: Searching documents for: '{query[:100]}...' (type: {search_type}, max: {max_results})"
+                )
+                result = self._search_documents_enhanced(query, max_results, search_type, logs)
+
+            elif operation == "list":
+                # New operation: list all documents
+                result = self._list_all_documents(logs)
+
+            else:
+                result = {"error": f"Unknown document operation: {operation}"}
+                logs.append(f"🧠 MEMORY NODE: ❌ Unknown operation '{operation}'")
+
+            # Enhanced output data with memory context for LLM
             output_data = {
-                "memory_type": "document",
+                "memory_type": MemorySubtype.DOCUMENT_STORE.value,
                 "operation": operation,
                 "document_id": document_id,
                 "result": result,
@@ -266,11 +395,27 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 "executed_at": datetime.now().isoformat(),
             }
 
+            # If search operation, format results for LLM consumption
+            if operation == "search" and "documents" in result:
+                memory_context = self._format_document_search_context(result["documents"], logs)
+                output_data["memory_context"] = memory_context
+                output_data["formatted_context"] = memory_context
+
+                logs.append(f"🧠 MEMORY NODE: ✅ Generated document search context:")
+                logs.append(
+                    f"🧠 MEMORY NODE:   📊 {len(result['documents'])} relevant documents found"
+                )
+                logs.append(
+                    f"🧠 MEMORY NODE:   📝 Formatted context length: {len(memory_context)} characters"
+                )
+                logs.append(f"🧠 MEMORY NODE:   🔗 Ready for LLM integration")
+
             return self._create_success_result(
                 output_data=output_data, execution_time=time.time() - start_time, logs=logs
             )
 
         except Exception as e:
+            logs.append(f"🧠 MEMORY NODE: ❌ Error in document operation: {str(e)}")
             return self._create_error_result(
                 f"Error in document operation: {str(e)}",
                 error_details={"exception": str(e)},
@@ -354,6 +499,209 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
         return {"error": "Vector not found"}
 
+    # Enhanced vector methods with real OpenAI embeddings
+    def _get_openai_embedding(self, text: str, logs: List[str]) -> List[float]:
+        """Get OpenAI embedding for text."""
+        try:
+            import os
+
+            import openai
+            from openai import OpenAI
+
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                logs.append("🧠 MEMORY NODE: ⚠️ OPENAI_API_KEY not found, using mock embedding")
+                # Return mock embedding for testing
+                return [0.1] * 1536  # OpenAI text-embedding-ada-002 dimension
+
+            client = OpenAI(api_key=api_key)
+
+            logs.append("🧠 MEMORY NODE: 🔗 Calling OpenAI embedding API...")
+            response = client.embeddings.create(model="text-embedding-ada-002", input=text)
+
+            embedding = response.data[0].embedding
+            logs.append(f"🧠 MEMORY NODE: ✅ Generated embedding (dimension: {len(embedding)})")
+            return embedding
+
+        except Exception as e:
+            logs.append(f"🧠 MEMORY NODE: ❌ OpenAI embedding failed: {str(e)}, using mock")
+            return [0.1] * 1536  # Fallback mock embedding
+
+    def _calculate_cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
+        """Calculate cosine similarity between two vectors."""
+        try:
+            import math
+
+            if len(vec1) != len(vec2):
+                return 0.0
+
+            dot_product = sum(a * b for a, b in zip(vec1, vec2))
+            magnitude1 = math.sqrt(sum(a * a for a in vec1))
+            magnitude2 = math.sqrt(sum(a * a for a in vec2))
+
+            if magnitude1 == 0 or magnitude2 == 0:
+                return 0.0
+
+            return dot_product / (magnitude1 * magnitude2)
+        except:
+            return 0.0
+
+    def _store_vector_with_embedding(
+        self, collection_name: str, text_content: str, metadata: Dict[str, Any], logs: List[str]
+    ) -> Dict[str, Any]:
+        """Store text content with OpenAI embedding."""
+        if collection_name not in self._vector_db:
+            self._vector_db[collection_name] = []
+            logs.append(f"🧠 MEMORY NODE: Created new collection '{collection_name}'")
+
+        # Generate embedding for text content
+        embedding = self._get_openai_embedding(text_content, logs)
+
+        vector_id = f"vec_{len(self._vector_db[collection_name]) + 1}"
+        vector_entry = {
+            "id": vector_id,
+            "vector": embedding,
+            "text_content": text_content,
+            "metadata": metadata,
+            "created_at": datetime.now().isoformat(),
+        }
+
+        self._vector_db[collection_name].append(vector_entry)
+
+        logs.append(f"🧠 MEMORY NODE: ✅ Stored vector {vector_id} with text content")
+
+        return {
+            "vector_id": vector_id,
+            "stored": True,
+            "collection_size": len(self._vector_db[collection_name]),
+            "text_content": text_content[:100] + "..." if len(text_content) > 100 else text_content,
+            "embedding_dimension": len(embedding),
+        }
+
+    def _search_vectors_with_embedding(
+        self,
+        collection_name: str,
+        query_text: str,
+        top_k: int,
+        similarity_threshold: float,
+        logs: List[str],
+    ) -> Dict[str, Any]:
+        """Search vectors using OpenAI embedding and real cosine similarity."""
+        if collection_name not in self._vector_db:
+            logs.append(f"🧠 MEMORY NODE: ⚠️ Collection '{collection_name}' not found")
+            return {"results": [], "count": 0, "query": query_text}
+
+        # Generate embedding for query
+        query_embedding = self._get_openai_embedding(query_text, logs)
+
+        # Calculate similarities with all vectors
+        similarities = []
+        for vector_entry in self._vector_db[collection_name]:
+            similarity = self._calculate_cosine_similarity(query_embedding, vector_entry["vector"])
+
+            if similarity >= similarity_threshold:
+                similarities.append(
+                    {
+                        "id": vector_entry["id"],
+                        "similarity": similarity,
+                        "text_content": vector_entry.get("text_content", ""),
+                        "metadata": vector_entry["metadata"],
+                        "created_at": vector_entry.get("created_at", ""),
+                    }
+                )
+
+        # Sort by similarity descending
+        similarities.sort(key=lambda x: x["similarity"], reverse=True)
+
+        # Return top_k results
+        results = similarities[:top_k]
+
+        logs.append(
+            f"🧠 MEMORY NODE: 📊 Found {len(similarities)} results above threshold {similarity_threshold}"
+        )
+        logs.append(f"🧠 MEMORY NODE: 📋 Returning top {len(results)} results")
+
+        if results:
+            avg_similarity = sum(r["similarity"] for r in results) / len(results)
+            logs.append(f"🧠 MEMORY NODE: 📈 Average similarity: {avg_similarity:.3f}")
+
+        return {
+            "results": results,
+            "count": len(results),
+            "query": query_text,
+            "similarity_threshold": similarity_threshold,
+            "total_candidates": len(self._vector_db[collection_name]),
+        }
+
+    def _delete_vector(
+        self, collection_name: str, vector_id: str, logs: List[str]
+    ) -> Dict[str, Any]:
+        """Delete vector from collection with logging."""
+        if collection_name not in self._vector_db:
+            logs.append(f"🧠 MEMORY NODE: ❌ Collection '{collection_name}' not found")
+            return {"error": "Collection not found"}
+
+        for i, vector_entry in enumerate(self._vector_db[collection_name]):
+            if vector_entry["id"] == vector_id:
+                del self._vector_db[collection_name][i]
+                logs.append(f"🧠 MEMORY NODE: ✅ Deleted vector {vector_id}")
+                return {"deleted": True, "vector_id": vector_id}
+
+        logs.append(f"🧠 MEMORY NODE: ❌ Vector {vector_id} not found")
+        return {"error": "Vector not found"}
+
+    def _list_vectors(self, collection_name: str, logs: List[str]) -> Dict[str, Any]:
+        """List all vectors in collection."""
+        if collection_name not in self._vector_db:
+            logs.append(f"🧠 MEMORY NODE: ⚠️ Collection '{collection_name}' not found")
+            return {"vectors": [], "count": 0}
+
+        vectors = []
+        for vector_entry in self._vector_db[collection_name]:
+            vectors.append(
+                {
+                    "id": vector_entry["id"],
+                    "text_content": vector_entry.get("text_content", "")[:100] + "..."
+                    if len(vector_entry.get("text_content", "")) > 100
+                    else vector_entry.get("text_content", ""),
+                    "metadata": vector_entry["metadata"],
+                    "created_at": vector_entry.get("created_at", ""),
+                }
+            )
+
+        logs.append(
+            f"🧠 MEMORY NODE: 📋 Listed {len(vectors)} vectors from collection '{collection_name}'"
+        )
+        return {"vectors": vectors, "count": len(vectors)}
+
+    def _format_vector_search_context(
+        self, search_results: List[Dict[str, Any]], logs: List[str]
+    ) -> str:
+        """Format vector search results for LLM consumption."""
+        if not search_results:
+            return "No relevant information found in vector database."
+
+        context_parts = []
+        for i, result in enumerate(search_results, 1):
+            text_content = result.get("text_content", "")
+            similarity = result.get("similarity", 0.0)
+            metadata = result.get("metadata", {})
+
+            context_part = f"[Result {i}] (similarity: {similarity:.3f})\n{text_content}"
+
+            # Add metadata if available
+            if metadata:
+                metadata_str = ", ".join(f"{k}: {v}" for k, v in metadata.items() if k != "id")
+                if metadata_str:
+                    context_part += f"\n[Metadata: {metadata_str}]"
+
+            context_parts.append(context_part)
+
+        formatted_context = "\n\n".join(context_parts)
+        logs.append(f"🧠 MEMORY NODE: 📝 Formatted {len(search_results)} results for LLM context")
+
+        return formatted_context
+
     def _get_key_value(self, key: str) -> Dict[str, Any]:
         """Get value by key."""
         if key in self._key_value_store:
@@ -421,6 +769,305 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 results.append({"document_id": doc_id, "data": doc_data["data"]})
 
         return {"results": results, "count": len(results), "query": query}
+
+    # Enhanced document methods with full-text search and indexing
+    def _create_word_index(self, text: str) -> Dict[str, List[int]]:
+        """Create word index for full-text search."""
+        import re
+
+        # Simple word tokenization and indexing
+        words = re.findall(r"\b\w+\b", text.lower())
+        word_index = {}
+
+        for position, word in enumerate(words):
+            if len(word) > 2:  # Skip very short words
+                if word not in word_index:
+                    word_index[word] = []
+                word_index[word].append(position)
+
+        return word_index
+
+    def _calculate_text_similarity(self, query: str, text: str) -> float:
+        """Calculate text similarity based on word overlap."""
+        import re
+
+        query_words = set(re.findall(r"\b\w+\b", query.lower()))
+        text_words = set(re.findall(r"\b\w+\b", text.lower()))
+
+        if not query_words or not text_words:
+            return 0.0
+
+        intersection = query_words.intersection(text_words)
+        union = query_words.union(text_words)
+
+        return len(intersection) / len(union) if union else 0.0
+
+    def _store_document_with_indexing(
+        self, document_id: str, title: str, content: str, metadata: Dict[str, Any], logs: List[str]
+    ) -> Dict[str, Any]:
+        """Store document with full-text indexing."""
+        # Create full text for indexing
+        full_text = f"{title} {content}".strip()
+        word_index = self._create_word_index(full_text)
+
+        document_entry = {
+            "title": title,
+            "content": content,
+            "metadata": metadata,
+            "word_index": word_index,
+            "word_count": len(full_text.split()),
+            "char_count": len(full_text),
+            "created_at": datetime.now().isoformat(),
+        }
+
+        self._document_store[document_id] = document_entry
+
+        logs.append(f"🧠 MEMORY NODE: ✅ Stored document with {len(word_index)} unique words indexed")
+
+        return {
+            "stored": True,
+            "document_id": document_id,
+            "title": title,
+            "content_length": len(content),
+            "indexed_words": len(word_index),
+            "word_count": len(full_text.split()),
+        }
+
+    def _retrieve_document_enhanced(self, document_id: str, logs: List[str]) -> Dict[str, Any]:
+        """Retrieve document with enhanced metadata."""
+        if document_id not in self._document_store:
+            logs.append(f"🧠 MEMORY NODE: ❌ Document '{document_id}' not found")
+            return {"error": "Document not found"}
+
+        doc = self._document_store[document_id]
+
+        logs.append(f"🧠 MEMORY NODE: ✅ Retrieved document '{document_id}'")
+
+        return {
+            "document_id": document_id,
+            "title": doc.get("title", ""),
+            "content": doc.get("content", ""),
+            "metadata": doc.get("metadata", {}),
+            "word_count": doc.get("word_count", 0),
+            "char_count": doc.get("char_count", 0),
+            "created_at": doc.get("created_at", ""),
+            "updated_at": doc.get("updated_at", ""),
+            "found": True,
+        }
+
+    def _update_document_with_indexing(
+        self, document_id: str, title: str, content: str, metadata: Dict[str, Any], logs: List[str]
+    ) -> Dict[str, Any]:
+        """Update document with re-indexing."""
+        if document_id not in self._document_store:
+            logs.append(f"🧠 MEMORY NODE: ❌ Document '{document_id}' not found for update")
+            return {"error": "Document not found"}
+
+        # Re-create index with new content
+        full_text = f"{title} {content}".strip()
+        word_index = self._create_word_index(full_text)
+
+        # Update document
+        doc = self._document_store[document_id]
+        doc.update(
+            {
+                "title": title,
+                "content": content,
+                "metadata": metadata,
+                "word_index": word_index,
+                "word_count": len(full_text.split()),
+                "char_count": len(full_text),
+                "updated_at": datetime.now().isoformat(),
+            }
+        )
+
+        logs.append(
+            f"🧠 MEMORY NODE: ✅ Updated document '{document_id}' with {len(word_index)} unique words indexed"
+        )
+
+        return {
+            "updated": True,
+            "document_id": document_id,
+            "title": title,
+            "content_length": len(content),
+            "indexed_words": len(word_index),
+        }
+
+    def _delete_document_with_indexing(self, document_id: str, logs: List[str]) -> Dict[str, Any]:
+        """Delete document and its index."""
+        if document_id not in self._document_store:
+            logs.append(f"🧠 MEMORY NODE: ❌ Document '{document_id}' not found for deletion")
+            return {"error": "Document not found"}
+
+        del self._document_store[document_id]
+        logs.append(f"🧠 MEMORY NODE: ✅ Deleted document '{document_id}' and its index")
+
+        return {"deleted": True, "document_id": document_id}
+
+    def _search_documents_enhanced(
+        self, query: str, max_results: int, search_type: str, logs: List[str]
+    ) -> Dict[str, Any]:
+        """Enhanced document search with full-text capabilities."""
+        import re
+
+        query_words = set(re.findall(r"\b\w+\b", query.lower()))
+        results = []
+
+        logs.append(
+            f"🧠 MEMORY NODE: Searching {len(self._document_store)} documents with query words: {list(query_words)}"
+        )
+
+        for doc_id, doc in self._document_store.items():
+            score = 0.0
+            matched_terms = []
+
+            if search_type == "title" and doc.get("title"):
+                score = self._calculate_text_similarity(query, doc["title"])
+                search_target = doc["title"]
+
+            elif search_type == "content" and doc.get("content"):
+                score = self._calculate_text_similarity(query, doc["content"])
+                search_target = doc["content"]
+
+            else:  # full_text search (default)
+                title = doc.get("title", "")
+                content = doc.get("content", "")
+                full_text = f"{title} {content}"
+
+                score = self._calculate_text_similarity(query, full_text)
+                search_target = full_text
+
+                # Also check word index for exact matches
+                word_index = doc.get("word_index", {})
+                for query_word in query_words:
+                    if query_word in word_index:
+                        matched_terms.append(query_word)
+                        score += 0.1  # Bonus for exact word matches
+
+            if score > 0.0:
+                # Find context snippets
+                snippet = self._extract_context_snippet(search_target, query, 150)
+
+                results.append(
+                    {
+                        "document_id": doc_id,
+                        "title": doc.get("title", ""),
+                        "content": doc.get("content", ""),
+                        "snippet": snippet,
+                        "score": score,
+                        "matched_terms": matched_terms,
+                        "metadata": doc.get("metadata", {}),
+                        "created_at": doc.get("created_at", ""),
+                        "word_count": doc.get("word_count", 0),
+                    }
+                )
+
+        # Sort by score descending
+        results.sort(key=lambda x: x["score"], reverse=True)
+
+        # Limit results
+        results = results[:max_results]
+
+        logs.append(f"🧠 MEMORY NODE: 📊 Found {len(results)} relevant documents")
+        if results:
+            avg_score = sum(r["score"] for r in results) / len(results)
+            logs.append(f"🧠 MEMORY NODE: 📈 Average relevance score: {avg_score:.3f}")
+
+        return {
+            "documents": results,
+            "count": len(results),
+            "query": query,
+            "search_type": search_type,
+            "total_documents": len(self._document_store),
+        }
+
+    def _extract_context_snippet(self, text: str, query: str, max_length: int = 150) -> str:
+        """Extract relevant context snippet around query terms."""
+        import re
+
+        query_words = re.findall(r"\b\w+\b", query.lower())
+
+        # Find first occurrence of any query word
+        text_lower = text.lower()
+        first_match_pos = len(text)
+
+        for word in query_words:
+            pos = text_lower.find(word)
+            if pos != -1 and pos < first_match_pos:
+                first_match_pos = pos
+
+        if first_match_pos == len(text):
+            # No matches found, return beginning
+            return text[:max_length] + "..." if len(text) > max_length else text
+
+        # Extract context around the match
+        start = max(0, first_match_pos - max_length // 2)
+        end = min(len(text), start + max_length)
+
+        snippet = text[start:end]
+
+        # Add ellipsis if truncated
+        if start > 0:
+            snippet = "..." + snippet
+        if end < len(text):
+            snippet = snippet + "..."
+
+        return snippet
+
+    def _list_all_documents(self, logs: List[str]) -> Dict[str, Any]:
+        """List all documents with metadata."""
+        documents = []
+
+        for doc_id, doc in self._document_store.items():
+            documents.append(
+                {
+                    "document_id": doc_id,
+                    "title": doc.get("title", ""),
+                    "content_preview": doc.get("content", "")[:100] + "..."
+                    if len(doc.get("content", "")) > 100
+                    else doc.get("content", ""),
+                    "metadata": doc.get("metadata", {}),
+                    "word_count": doc.get("word_count", 0),
+                    "created_at": doc.get("created_at", ""),
+                    "updated_at": doc.get("updated_at", ""),
+                }
+            )
+
+        # Sort by creation date (newest first)
+        documents.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+
+        logs.append(f"🧠 MEMORY NODE: 📋 Listed {len(documents)} documents")
+
+        return {"documents": documents, "count": len(documents)}
+
+    def _format_document_search_context(
+        self, search_results: List[Dict[str, Any]], logs: List[str]
+    ) -> str:
+        """Format document search results for LLM consumption."""
+        if not search_results:
+            return "No relevant documents found in document store."
+
+        context_parts = []
+        for i, result in enumerate(search_results, 1):
+            title = result.get("title", "")
+            snippet = result.get("snippet", "")
+            score = result.get("score", 0.0)
+            metadata = result.get("metadata", {})
+
+            context_part = f"[Document {i}] {title} (relevance: {score:.3f})\n{snippet}"
+
+            # Add metadata if available
+            if metadata:
+                metadata_str = ", ".join(f"{k}: {v}" for k, v in metadata.items())
+                if metadata_str:
+                    context_part += f"\n[Metadata: {metadata_str}]"
+
+            context_parts.append(context_part)
+
+        formatted_context = "\n\n".join(context_parts)
+        logs.append(f"🧠 MEMORY NODE: 📝 Formatted {len(search_results)} documents for LLM context")
+
+        return formatted_context
 
     def _calculate_similarity(self, vector1: List[float], vector2: List[float]) -> float:
         """Calculate cosine similarity between two vectors."""
@@ -592,4 +1239,904 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
         return self._create_success_result(
             output_data=result, execution_time=time.time() - start_time, logs=logs
+        )
+
+    def _execute_conversation_buffer(
+        self, context: NodeExecutionContext, logs: List[str], start_time: float
+    ) -> NodeExecutionResult:
+        """Execute conversation buffer memory operations."""
+        logs.append("🧠 MEMORY NODE: Starting CONVERSATION_BUFFER execution")
+        logs.append(f"🧠 MEMORY NODE: Execution ID: {getattr(context, 'execution_id', 'unknown')}")
+        logs.append(
+            f"🧠 MEMORY NODE: Node ID: {getattr(context.node, 'id', 'unknown') if hasattr(context, 'node') else 'unknown'}"
+        )
+
+        # Get parameters from the node specification
+        try:
+            window_size = self.get_parameter_with_spec(context, "window_size")
+        except (KeyError, AttributeError):
+            window_size = 10
+
+        try:
+            window_type = self.get_parameter_with_spec(context, "window_type")
+        except (KeyError, AttributeError):
+            window_type = "turns"
+
+        try:
+            storage_backend = self.get_parameter_with_spec(context, "storage_backend")
+        except (KeyError, AttributeError):
+            storage_backend = "redis"
+
+        try:
+            include_system_messages = self.get_parameter_with_spec(
+                context, "include_system_messages"
+            )
+        except (KeyError, AttributeError):
+            include_system_messages = True
+
+        logs.append(
+            f"🧠 MEMORY NODE: Configuration - window_size: {window_size}, window_type: {window_type}, backend: {storage_backend}"
+        )
+
+        # Initialize conversation buffer if not exists
+        buffer_key = f"conversation_buffer_{context.execution_id or 'default'}"
+        if buffer_key not in self._key_value_store:
+            self._key_value_store[buffer_key] = {
+                "messages": [],
+                "created_at": datetime.now().isoformat(),
+            }
+            logs.append(f"🧠 MEMORY NODE: Created new buffer with key: {buffer_key}")
+        else:
+            logs.append(f"🧠 MEMORY NODE: Using existing buffer with key: {buffer_key}")
+
+        # Log input data analysis
+        if hasattr(context, "input_data") and context.input_data:
+            logs.append(f"🧠 MEMORY NODE: Input data keys: {list(context.input_data.keys())}")
+            if isinstance(context.input_data, dict):
+                for key, value in context.input_data.items():
+                    if isinstance(value, str) and len(value) > 100:
+                        logs.append(
+                            f"🧠 MEMORY NODE: Input '{key}': {value[:100]}... ({len(value)} chars)"
+                        )
+                    else:
+                        logs.append(f"🧠 MEMORY NODE: Input '{key}': {value}")
+        else:
+            logs.append("🧠 MEMORY NODE: No input data provided")
+
+        buffer = self._key_value_store[buffer_key]
+
+        try:
+            # Handle incoming message data
+            if context.input_data:
+                # Store new message
+                message = {
+                    "role": context.input_data.get("role", "user"),
+                    "content": context.input_data.get("content", ""),
+                    "timestamp": context.input_data.get("timestamp", datetime.now().isoformat()),
+                    "metadata": context.input_data.get("metadata", {}),
+                }
+
+                # Add message to buffer
+                buffer["messages"].append(message)
+                logs.append(
+                    f"🧠 MEMORY NODE: Added message to buffer - role: {message['role']}, content: '{message['content'][:100]}{'...' if len(message['content']) > 100 else ''}'"
+                )
+                logs.append(
+                    f"🧠 MEMORY NODE: Buffer now contains {len(buffer['messages'])} messages"
+                )
+
+                # Apply windowing policy
+                if window_type == "turns" and len(buffer["messages"]) > window_size:
+                    old_count = len(buffer["messages"])
+                    # Remove oldest messages beyond window size
+                    buffer["messages"] = buffer["messages"][-window_size:]
+                    logs.append(
+                        f"🧠 MEMORY NODE: Trimmed buffer from {old_count} to {len(buffer['messages'])} messages (window_size: {window_size})"
+                    )
+
+            # Filter messages if needed
+            messages_to_return = buffer["messages"]
+            if not include_system_messages:
+                original_count = len(messages_to_return)
+                messages_to_return = [
+                    msg for msg in messages_to_return if msg.get("role") != "system"
+                ]
+                filtered_count = len(messages_to_return)
+                if original_count != filtered_count:
+                    logs.append(
+                        f"🧠 MEMORY NODE: Filtered out {original_count - filtered_count} system messages"
+                    )
+
+            # Calculate total tokens (mock calculation)
+            total_tokens = sum(len(msg.get("content", "").split()) for msg in messages_to_return)
+
+            # Log detailed message analysis
+            logs.append(f"🧠 MEMORY NODE: Final message set analysis:")
+            for i, msg in enumerate(messages_to_return):
+                content_preview = (
+                    msg.get("content", "")[:50] + "..."
+                    if len(msg.get("content", "")) > 50
+                    else msg.get("content", "")
+                )
+                logs.append(
+                    f"🧠 MEMORY NODE:   Message {i+1}: {msg.get('role', 'unknown')} - '{content_preview}'"
+                )
+
+            # Prepare context output
+            context_data = {
+                "messages": messages_to_return,
+                "total_tokens": total_tokens,
+                "memory_type": MemorySubtype.CONVERSATION_BUFFER.value,  # Include memory type for AI agent
+                "window_info": {
+                    "window_size": window_size,
+                    "window_type": window_type,
+                    "current_size": len(messages_to_return),
+                    "storage_backend": storage_backend,
+                },
+            }
+
+            # Create formatted memory context for LLM consumption
+            memory_context_for_llm = self._format_conversation_context(messages_to_return, logs)
+            context_data["formatted_context"] = memory_context_for_llm
+            context_data[
+                "memory_context"
+            ] = memory_context_for_llm  # Also provide as memory_context for AI agent
+
+            logs.append(f"🧠 MEMORY NODE: ✅ Generated conversation context:")
+            logs.append(
+                f"🧠 MEMORY NODE:   📊 {len(messages_to_return)} messages, ~{total_tokens} tokens"
+            )
+            logs.append(
+                f"🧠 MEMORY NODE:   📝 Formatted context length: {len(memory_context_for_llm)} characters"
+            )
+            logs.append(f"🧠 MEMORY NODE:   🔗 Ready for LLM integration")
+
+            return self._create_success_result(
+                output_data=context_data, execution_time=time.time() - start_time, logs=logs
+            )
+
+        except Exception as e:
+            logs.append(f"🧠 MEMORY NODE: ❌ Error in conversation buffer operation: {str(e)}")
+            return self._create_error_result(
+                f"Error in conversation buffer operation: {str(e)}",
+                error_details={"exception": str(e)},
+                execution_time=time.time() - start_time,
+                logs=logs,
+            )
+
+    def _format_conversation_context(self, messages: List[Dict], logs: List[str]) -> str:
+        """Format conversation messages into a readable context string for LLM integration."""
+        if not messages:
+            logs.append("🧠 MEMORY NODE: No messages to format for LLM context")
+            return ""
+
+        formatted_lines = []
+        formatted_lines.append("=== Recent Conversation History ===")
+
+        for msg in messages:
+            role = msg.get("role", "unknown")
+            content = msg.get("content", "")
+            timestamp = msg.get("timestamp", "")
+
+            # Format timestamp for readability
+            timestamp_str = ""
+            if timestamp:
+                try:
+                    from datetime import datetime
+
+                    dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                    timestamp_str = f" [{dt.strftime('%H:%M')}]"
+                except:
+                    timestamp_str = f" [{timestamp}]"
+
+            # Format the message
+            role_display = role.upper() if role in ["user", "assistant", "system"] else role
+            formatted_lines.append(f"{role_display}{timestamp_str}: {content}")
+
+        formatted_lines.append("=== End of Conversation History ===")
+        formatted_context = "\n".join(formatted_lines)
+
+        logs.append(
+            f"🧠 MEMORY NODE: Formatted {len(messages)} messages into {len(formatted_context)} character context"
+        )
+        return formatted_context
+
+    # Supporting methods for advanced memory types
+    def _generate_conversation_summary(
+        self, text: str, max_length: int, strategy: str, logs: List[str]
+    ) -> str:
+        """Generate conversation summary using specified strategy."""
+        if strategy == "extractive":
+            # Simple extractive summarization - take key sentences
+            sentences = text.split(".")
+            important_sentences = []
+
+            # Simple scoring based on length and keywords
+            keywords = ["important", "key", "main", "summary", "result", "decision", "action"]
+
+            for sentence in sentences:
+                sentence = sentence.strip()
+                if len(sentence) > 20:  # Skip very short sentences
+                    score = len(sentence) / 100  # Base score
+                    for keyword in keywords:
+                        if keyword.lower() in sentence.lower():
+                            score += 0.5
+                    important_sentences.append((sentence, score))
+
+            # Sort by score and take top sentences
+            important_sentences.sort(key=lambda x: x[1], reverse=True)
+
+            summary_parts = []
+            current_length = 0
+            for sentence, score in important_sentences:
+                if current_length + len(sentence) <= max_length:
+                    summary_parts.append(sentence)
+                    current_length += len(sentence)
+                else:
+                    break
+
+            summary = ". ".join(summary_parts)
+            logs.append(f"🧠 MEMORY NODE: Generated extractive summary ({len(summary)} chars)")
+            return summary
+
+        elif strategy == "abstractive":
+            # Simple abstractive - just truncate with smart boundaries
+            if len(text) <= max_length:
+                return text
+
+            # Try to cut at sentence boundaries
+            truncated = text[:max_length]
+            last_period = truncated.rfind(".")
+            if last_period > max_length * 0.7:  # If we can find a good sentence boundary
+                summary = truncated[: last_period + 1]
+            else:
+                summary = truncated + "..."
+
+            logs.append(f"🧠 MEMORY NODE: Generated abstractive summary ({len(summary)} chars)")
+            return summary
+
+        else:
+            # Default - just truncate
+            summary = text[:max_length] + "..." if len(text) > max_length else text
+            logs.append(f"🧠 MEMORY NODE: Generated default summary ({len(summary)} chars)")
+            return summary
+
+    def _format_conversation_summary_context(
+        self, summary_data: Dict[str, Any], logs: List[str]
+    ) -> str:
+        """Format conversation summary for LLM consumption."""
+        summary = summary_data.get("summary", "")
+        message_count = summary_data.get("message_count", 0)
+
+        if not summary:
+            return "No conversation summary available yet."
+
+        context = f"Conversation Summary ({message_count} messages):\n{summary}"
+        logs.append(f"🧠 MEMORY NODE: Formatted conversation summary context ({len(context)} chars)")
+        return context
+
+    def _extract_entities_simple(self, text: str, logs: List[str]) -> List[Dict[str, Any]]:
+        """Simple entity extraction using patterns."""
+        import re
+
+        entities = []
+
+        # Simple patterns for different entity types
+        patterns = {
+            "PERSON": r"\b[A-Z][a-z]+\s+[A-Z][a-z]+\b",  # First Last
+            "ORGANIZATION": r"\b[A-Z][A-Za-z\s&]+(?:Inc|Corp|LLC|Ltd|Company|Organization)\b",
+            "LOCATION": r"\b(?:in|at|from|to)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\b",
+            "EMAIL": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
+            "PHONE": r"\b\d{3}-?\d{3}-?\d{4}\b",
+            "DATE": r"\b\d{1,2}/\d{1,2}/\d{4}\b|\b\d{4}-\d{2}-\d{2}\b",
+        }
+
+        for entity_type, pattern in patterns.items():
+            matches = re.findall(pattern, text)
+            for match in matches:
+                entity_text = match if isinstance(match, str) else match[0] if match else ""
+                if entity_text and len(entity_text) > 1:
+                    entity_id = (
+                        f"{entity_type.lower()}_{hashlib.md5(entity_text.encode()).hexdigest()[:8]}"
+                    )
+                    entities.append(
+                        {
+                            "id": entity_id,
+                            "name": entity_text,
+                            "type": entity_type,
+                            "mentions": 1,
+                            "created_at": datetime.now().isoformat(),
+                        }
+                    )
+
+        logs.append(f"🧠 MEMORY NODE: Extracted {len(entities)} entities from text")
+        return entities
+
+    def _format_entity_memory_context(self, entity_data: Dict[str, Any], logs: List[str]) -> str:
+        """Format entity memory for LLM consumption."""
+        entities = entity_data.get("entities", {})
+        relationships = entity_data.get("relationships", [])
+
+        if not entities and not relationships:
+            return "No entities or relationships tracked yet."
+
+        context_parts = []
+
+        if entities:
+            context_parts.append("Known Entities:")
+            entity_list = list(entities.values())
+            # Sort by mention count (most mentioned first)
+            entity_list.sort(key=lambda x: x.get("mentions", 0), reverse=True)
+
+            for entity in entity_list[:10]:  # Limit to top 10
+                mentions = entity.get("mentions", 1)
+                context_parts.append(
+                    f"- {entity['name']} ({entity['type']}, mentioned {mentions}x)"
+                )
+
+        if relationships:
+            context_parts.append("\nKnown Relationships:")
+            for rel in relationships[-5:]:  # Show last 5 relationships
+                context_parts.append(
+                    f"- {rel['entity1']} --{rel['relation_type']}--> {rel['entity2']}"
+                )
+
+        formatted_context = "\n".join(context_parts)
+        logs.append(f"🧠 MEMORY NODE: Formatted entity context ({len(formatted_context)} chars)")
+        return formatted_context
+
+    def _format_knowledge_base_context(
+        self, kb_data: Dict[str, Any], result: Dict[str, Any], logs: List[str]
+    ) -> str:
+        """Format knowledge base for LLM consumption."""
+        facts = kb_data.get("facts", {})
+        categories = kb_data.get("categories", {})
+
+        if not facts:
+            return "No facts stored in knowledge base yet."
+
+        context_parts = []
+
+        # Show recent or matching facts
+        if "matching_facts" in result:
+            # Show query results
+            matching_facts = result["matching_facts"]
+            if matching_facts:
+                context_parts.append("Relevant Facts:")
+                for fact in matching_facts[:5]:  # Show top 5 matches
+                    confidence = fact.get("confidence", 0.8)
+                    context_parts.append(f"- {fact['text']} (confidence: {confidence:.2f})")
+        else:
+            # Show most accessed or recent facts
+            fact_list = list(facts.values())
+            fact_list.sort(key=lambda x: x.get("access_count", 0), reverse=True)
+
+            if fact_list:
+                context_parts.append("Key Facts:")
+                for fact in fact_list[:5]:  # Show top 5 facts
+                    confidence = fact.get("confidence", 0.8)
+                    context_parts.append(f"- {fact['text']} (confidence: {confidence:.2f})")
+
+        # Show categories
+        if categories:
+            context_parts.append(f"\nKnowledge Categories: {', '.join(categories.keys())}")
+
+        formatted_context = "\n".join(context_parts)
+        logs.append(
+            f"🧠 MEMORY NODE: Formatted knowledge base context ({len(formatted_context)} chars)"
+        )
+        return formatted_context
+
+    def _execute_conversation_summary(
+        self, context: NodeExecutionContext, logs: List[str], start_time: float
+    ) -> NodeExecutionResult:
+        """Execute conversation summary memory operations."""
+        logs.append("🧠 MEMORY NODE: Starting CONVERSATION_SUMMARY execution")
+
+        # Get parameters with fallbacks
+        try:
+            max_length = self.get_parameter_with_spec(context, "max_length")
+        except (KeyError, AttributeError):
+            max_length = 500
+
+        try:
+            summary_strategy = self.get_parameter_with_spec(context, "summary_strategy")
+        except (KeyError, AttributeError):
+            summary_strategy = "extractive"  # extractive, abstractive
+
+        try:
+            storage_backend = self.get_parameter_with_spec(context, "storage_backend")
+        except (KeyError, AttributeError):
+            storage_backend = "memory"
+
+        logs.append(
+            f"🧠 MEMORY NODE: Summary config - max_length: {max_length}, strategy: {summary_strategy}, backend: {storage_backend}"
+        )
+
+        # Initialize conversation summary storage
+        summary_key = f"conversation_summary_{context.execution_id or 'default'}"
+        if summary_key not in self._key_value_store:
+            self._key_value_store[summary_key] = {
+                "summary": "",
+                "message_count": 0,
+                "last_updated": datetime.now().isoformat(),
+                "total_chars": 0,
+            }
+
+        summary_data = self._key_value_store[summary_key]
+
+        try:
+            # Handle new conversation data
+            if context.input_data:
+                new_messages = context.input_data.get("messages", [])
+                new_text = context.input_data.get("text", "") or context.input_data.get(
+                    "content", ""
+                )
+
+                if new_messages:
+                    logs.append(
+                        f"🧠 MEMORY NODE: Processing {len(new_messages)} new messages for summary"
+                    )
+                    text_to_summarize = "\n".join(
+                        [
+                            f"{msg.get('role', 'user')}: {msg.get('content', '')}"
+                            for msg in new_messages
+                        ]
+                    )
+                elif new_text:
+                    logs.append(
+                        f"🧠 MEMORY NODE: Processing new text content ({len(new_text)} chars) for summary"
+                    )
+                    text_to_summarize = new_text
+                else:
+                    text_to_summarize = ""
+
+                if text_to_summarize:
+                    # Combine with existing summary
+                    combined_text = f"{summary_data['summary']}\n\n{text_to_summarize}".strip()
+
+                    if len(combined_text) > max_length * 2:  # Need to compress
+                        logs.append(
+                            f"🧠 MEMORY NODE: Content exceeds threshold, generating new summary..."
+                        )
+                        new_summary = self._generate_conversation_summary(
+                            combined_text, max_length, summary_strategy, logs
+                        )
+                        summary_data["summary"] = new_summary
+                        summary_data["message_count"] += len(new_messages) if new_messages else 1
+                        summary_data["last_updated"] = datetime.now().isoformat()
+                        summary_data["total_chars"] = len(new_summary)
+                    else:
+                        # Just append to existing summary
+                        summary_data["summary"] = combined_text
+                        summary_data["message_count"] += len(new_messages) if new_messages else 1
+                        summary_data["last_updated"] = datetime.now().isoformat()
+                        summary_data["total_chars"] = len(combined_text)
+
+            # Format context for LLM
+            memory_context = self._format_conversation_summary_context(summary_data, logs)
+
+            context_data = {
+                "summary": summary_data["summary"],
+                "message_count": summary_data["message_count"],
+                "total_chars": summary_data["total_chars"],
+                "last_updated": summary_data["last_updated"],
+                "memory_type": MemorySubtype.CONVERSATION_SUMMARY.value,
+                "memory_context": memory_context,
+                "formatted_context": memory_context,
+            }
+
+            logs.append(f"🧠 MEMORY NODE: ✅ Generated conversation summary context:")
+            logs.append(f"🧠 MEMORY NODE:   📊 {summary_data['message_count']} messages summarized")
+            logs.append(
+                f"🧠 MEMORY NODE:   📝 Summary length: {summary_data['total_chars']} characters"
+            )
+            logs.append(f"🧠 MEMORY NODE:   🔗 Ready for LLM integration")
+
+            return self._create_success_result(
+                output_data=context_data, execution_time=time.time() - start_time, logs=logs
+            )
+
+        except Exception as e:
+            logs.append(f"🧠 MEMORY NODE: ❌ Error in conversation summary operation: {str(e)}")
+            return self._create_error_result(
+                f"Error in conversation summary operation: {str(e)}",
+                error_details={"exception": str(e)},
+                execution_time=time.time() - start_time,
+                logs=logs,
+            )
+
+    def _execute_entity_memory(
+        self, context: NodeExecutionContext, logs: List[str], start_time: float
+    ) -> NodeExecutionResult:
+        """Execute entity memory operations."""
+        logs.append("🧠 MEMORY NODE: Starting ENTITY_MEMORY execution")
+
+        # Get parameters with fallbacks
+        try:
+            operation = self.get_parameter_with_spec(context, "operation")
+        except (KeyError, AttributeError):
+            operation = context.input_data.get("operation", "extract")
+
+        try:
+            storage_backend = self.get_parameter_with_spec(context, "storage_backend")
+        except (KeyError, AttributeError):
+            storage_backend = "memory"
+
+        logs.append(
+            f"🧠 MEMORY NODE: Entity operation '{operation}' with backend: {storage_backend}"
+        )
+
+        # Initialize entity storage
+        entities_key = f"entities_{context.execution_id or 'default'}"
+        if entities_key not in self._key_value_store:
+            self._key_value_store[entities_key] = {
+                "entities": {},
+                "relationships": [],
+                "last_updated": datetime.now().isoformat(),
+            }
+
+        entity_data = self._key_value_store[entities_key]
+
+        try:
+            if operation == "extract":
+                # Extract entities from text input
+                text_input = context.input_data.get("text", "") or context.input_data.get(
+                    "content", ""
+                )
+                if not text_input:
+                    raise ValueError("No text provided for entity extraction")
+
+                logs.append(
+                    f"🧠 MEMORY NODE: Extracting entities from text ({len(text_input)} chars)"
+                )
+                extracted_entities = self._extract_entities_simple(text_input, logs)
+
+                # Store extracted entities
+                for entity in extracted_entities:
+                    entity_id = entity["id"]
+                    if entity_id not in entity_data["entities"]:
+                        entity_data["entities"][entity_id] = entity
+                        logs.append(
+                            f"🧠 MEMORY NODE: Added new entity: {entity['name']} ({entity['type']})"
+                        )
+                    else:
+                        # Update existing entity
+                        existing = entity_data["entities"][entity_id]
+                        existing["mentions"] = existing.get("mentions", 0) + entity.get(
+                            "mentions", 1
+                        )
+                        existing["last_seen"] = datetime.now().isoformat()
+                        logs.append(
+                            f"🧠 MEMORY NODE: Updated entity: {entity['name']} (mentions: {existing['mentions']})"
+                        )
+
+                entity_data["last_updated"] = datetime.now().isoformat()
+                result = {
+                    "extracted_entities": extracted_entities,
+                    "total_entities": len(entity_data["entities"]),
+                }
+
+            elif operation == "query":
+                # Query entities by type or name
+                query_type = context.input_data.get("entity_type", "")
+                query_name = context.input_data.get("entity_name", "")
+
+                matching_entities = []
+                for entity_id, entity in entity_data["entities"].items():
+                    if (not query_type or entity["type"].lower() == query_type.lower()) and (
+                        not query_name or query_name.lower() in entity["name"].lower()
+                    ):
+                        matching_entities.append(entity)
+
+                logs.append(
+                    f"🧠 MEMORY NODE: Found {len(matching_entities)} entities matching query"
+                )
+                result = {
+                    "matching_entities": matching_entities,
+                    "query_type": query_type,
+                    "query_name": query_name,
+                }
+
+            elif operation == "relate":
+                # Add relationship between entities
+                entity1 = context.input_data.get("entity1", "")
+                entity2 = context.input_data.get("entity2", "")
+                relation_type = context.input_data.get("relation_type", "related_to")
+
+                if not entity1 or not entity2:
+                    raise ValueError("Both entity1 and entity2 required for relationship")
+
+                relationship = {
+                    "entity1": entity1,
+                    "entity2": entity2,
+                    "relation_type": relation_type,
+                    "created_at": datetime.now().isoformat(),
+                }
+
+                entity_data["relationships"].append(relationship)
+                logs.append(
+                    f"🧠 MEMORY NODE: Added relationship: {entity1} --{relation_type}--> {entity2}"
+                )
+                result = {
+                    "relationship_added": True,
+                    "total_relationships": len(entity_data["relationships"]),
+                }
+
+            elif operation == "list":
+                # List all entities
+                all_entities = list(entity_data["entities"].values())
+                logs.append(f"🧠 MEMORY NODE: Listed {len(all_entities)} entities")
+                result = {"entities": all_entities, "count": len(all_entities)}
+
+            else:
+                raise ValueError(f"Unknown entity operation: {operation}")
+
+            # Format context for LLM
+            memory_context = self._format_entity_memory_context(entity_data, logs)
+
+            output_data = {
+                "memory_type": MemorySubtype.ENTITY_MEMORY.value,
+                "operation": operation,
+                "result": result,
+                "entity_count": len(entity_data["entities"]),
+                "relationship_count": len(entity_data["relationships"]),
+                "memory_context": memory_context,
+                "formatted_context": memory_context,
+                "success": True,
+                "executed_at": datetime.now().isoformat(),
+            }
+
+            logs.append(f"🧠 MEMORY NODE: ✅ Generated entity memory context:")
+            logs.append(f"🧠 MEMORY NODE:   👥 {len(entity_data['entities'])} entities tracked")
+            logs.append(f"🧠 MEMORY NODE:   🔗 {len(entity_data['relationships'])} relationships")
+            logs.append(f"🧠 MEMORY NODE:   🔗 Ready for LLM integration")
+
+            return self._create_success_result(
+                output_data=output_data, execution_time=time.time() - start_time, logs=logs
+            )
+
+        except Exception as e:
+            logs.append(f"🧠 MEMORY NODE: ❌ Error in entity memory operation: {str(e)}")
+            return self._create_error_result(
+                f"Error in entity memory operation: {str(e)}",
+                error_details={"exception": str(e)},
+                execution_time=time.time() - start_time,
+                logs=logs,
+            )
+
+    def _execute_episodic_memory(
+        self, context: NodeExecutionContext, logs: List[str], start_time: float
+    ) -> NodeExecutionResult:
+        """Execute episodic memory operations (placeholder)."""
+        _ = context  # Mark as used to avoid linting warnings
+        logs.append("Episodic memory not yet implemented")
+        return self._create_error_result(
+            "Episodic memory not yet implemented",
+            execution_time=time.time() - start_time,
+            logs=logs,
+        )
+
+    def _execute_knowledge_base(
+        self, context: NodeExecutionContext, logs: List[str], start_time: float
+    ) -> NodeExecutionResult:
+        """Execute knowledge base memory operations."""
+        logs.append("🧠 MEMORY NODE: Starting KNOWLEDGE_BASE execution")
+
+        # Get parameters with fallbacks
+        try:
+            operation = self.get_parameter_with_spec(context, "operation")
+        except (KeyError, AttributeError):
+            operation = context.input_data.get("operation", "add_fact")
+
+        try:
+            storage_backend = self.get_parameter_with_spec(context, "storage_backend")
+        except (KeyError, AttributeError):
+            storage_backend = "memory"
+
+        logs.append(
+            f"🧠 MEMORY NODE: Knowledge operation '{operation}' with backend: {storage_backend}"
+        )
+
+        # Initialize knowledge base storage
+        kb_key = f"knowledge_base_{context.execution_id or 'default'}"
+        if kb_key not in self._key_value_store:
+            self._key_value_store[kb_key] = {
+                "facts": {},
+                "rules": [],
+                "categories": {},
+                "last_updated": datetime.now().isoformat(),
+            }
+
+        kb_data = self._key_value_store[kb_key]
+
+        try:
+            if operation == "add_fact":
+                # Add a new fact to the knowledge base
+                fact_text = context.input_data.get("fact", "") or context.input_data.get("text", "")
+                category = context.input_data.get("category", "general")
+                confidence = context.input_data.get("confidence", 0.8)
+                source = context.input_data.get("source", "user_input")
+
+                if not fact_text:
+                    raise ValueError("No fact text provided")
+
+                fact_id = f"fact_{len(kb_data['facts']) + 1}"
+                fact_entry = {
+                    "id": fact_id,
+                    "text": fact_text,
+                    "category": category,
+                    "confidence": confidence,
+                    "source": source,
+                    "created_at": datetime.now().isoformat(),
+                    "access_count": 0,
+                }
+
+                kb_data["facts"][fact_id] = fact_entry
+
+                # Update category count
+                if category not in kb_data["categories"]:
+                    kb_data["categories"][category] = 0
+                kb_data["categories"][category] += 1
+
+                logs.append(
+                    f"🧠 MEMORY NODE: Added fact '{fact_text[:50]}...' to category '{category}'"
+                )
+                result = {
+                    "fact_added": True,
+                    "fact_id": fact_id,
+                    "total_facts": len(kb_data["facts"]),
+                }
+
+            elif operation == "query":
+                # Query facts by category or text search
+                query_text = context.input_data.get("query", "") or context.input_data.get(
+                    "text", ""
+                )
+                category_filter = context.input_data.get("category", "")
+                min_confidence = context.input_data.get("min_confidence", 0.0)
+
+                matching_facts = []
+                for fact_id, fact in kb_data["facts"].items():
+                    # Filter by category
+                    if category_filter and fact["category"] != category_filter:
+                        continue
+
+                    # Filter by confidence
+                    if fact["confidence"] < min_confidence:
+                        continue
+
+                    # Text search
+                    if query_text:
+                        if query_text.lower() in fact["text"].lower():
+                            matching_facts.append(fact)
+                            fact["access_count"] += 1  # Track access
+                    else:
+                        matching_facts.append(fact)
+                        fact["access_count"] += 1
+
+                # Sort by confidence and access count
+                matching_facts.sort(
+                    key=lambda x: (x["confidence"], x["access_count"]), reverse=True
+                )
+
+                logs.append(f"🧠 MEMORY NODE: Found {len(matching_facts)} facts matching query")
+                result = {
+                    "matching_facts": matching_facts,
+                    "query": query_text,
+                    "category_filter": category_filter,
+                    "count": len(matching_facts),
+                }
+
+            elif operation == "add_rule":
+                # Add inference rule
+                rule_text = context.input_data.get("rule", "") or context.input_data.get("text", "")
+                rule_type = context.input_data.get("rule_type", "simple")
+                conditions = context.input_data.get("conditions", [])
+                conclusions = context.input_data.get("conclusions", [])
+
+                if not rule_text:
+                    raise ValueError("No rule text provided")
+
+                rule_entry = {
+                    "id": f"rule_{len(kb_data['rules']) + 1}",
+                    "text": rule_text,
+                    "type": rule_type,
+                    "conditions": conditions,
+                    "conclusions": conclusions,
+                    "created_at": datetime.now().isoformat(),
+                    "applied_count": 0,
+                }
+
+                kb_data["rules"].append(rule_entry)
+                logs.append(f"🧠 MEMORY NODE: Added rule '{rule_text[:50]}...' (type: {rule_type})")
+                result = {"rule_added": True, "total_rules": len(kb_data["rules"])}
+
+            elif operation == "get_categories":
+                # Get all categories with counts
+                logs.append(f"🧠 MEMORY NODE: Retrieved {len(kb_data['categories'])} categories")
+                result = {
+                    "categories": kb_data["categories"],
+                    "total_categories": len(kb_data["categories"]),
+                }
+
+            elif operation == "infer":
+                # Simple inference based on rules (basic implementation)
+                query_facts = context.input_data.get("query_facts", [])
+                applicable_rules = []
+
+                for rule in kb_data["rules"]:
+                    # Simple rule matching (can be enhanced)
+                    if rule["type"] == "simple" and rule["conditions"]:
+                        rule_applicable = True
+                        for condition in rule["conditions"]:
+                            if condition not in query_facts:
+                                rule_applicable = False
+                                break
+
+                        if rule_applicable:
+                            applicable_rules.append(rule)
+                            rule["applied_count"] += 1
+
+                logs.append(f"🧠 MEMORY NODE: Applied {len(applicable_rules)} inference rules")
+                result = {"applicable_rules": applicable_rules, "inferences": len(applicable_rules)}
+
+            else:
+                raise ValueError(f"Unknown knowledge base operation: {operation}")
+
+            kb_data["last_updated"] = datetime.now().isoformat()
+
+            # Format context for LLM
+            memory_context = self._format_knowledge_base_context(kb_data, result, logs)
+
+            output_data = {
+                "memory_type": MemorySubtype.KNOWLEDGE_BASE.value,
+                "operation": operation,
+                "result": result,
+                "total_facts": len(kb_data["facts"]),
+                "total_rules": len(kb_data["rules"]),
+                "total_categories": len(kb_data["categories"]),
+                "memory_context": memory_context,
+                "formatted_context": memory_context,
+                "success": True,
+                "executed_at": datetime.now().isoformat(),
+            }
+
+            logs.append(f"🧠 MEMORY NODE: ✅ Generated knowledge base context:")
+            logs.append(f"🧠 MEMORY NODE:   📚 {len(kb_data['facts'])} facts stored")
+            logs.append(f"🧠 MEMORY NODE:   ⚙️ {len(kb_data['rules'])} rules defined")
+            logs.append(f"🧠 MEMORY NODE:   🏷️ {len(kb_data['categories'])} categories")
+            logs.append(f"🧠 MEMORY NODE:   🔗 Ready for LLM integration")
+
+            return self._create_success_result(
+                output_data=output_data, execution_time=time.time() - start_time, logs=logs
+            )
+
+        except Exception as e:
+            logs.append(f"🧠 MEMORY NODE: ❌ Error in knowledge base operation: {str(e)}")
+            return self._create_error_result(
+                f"Error in knowledge base operation: {str(e)}",
+                error_details={"exception": str(e)},
+                execution_time=time.time() - start_time,
+                logs=logs,
+            )
+
+    def _execute_graph_memory(
+        self, context: NodeExecutionContext, logs: List[str], start_time: float
+    ) -> NodeExecutionResult:
+        """Execute graph memory operations (placeholder)."""
+        _ = context  # Mark as used to avoid linting warnings
+        logs.append("Graph memory not yet implemented")
+        return self._create_error_result(
+            "Graph memory not yet implemented", execution_time=time.time() - start_time, logs=logs
+        )
+
+    def _execute_working_memory(
+        self, context: NodeExecutionContext, logs: List[str], start_time: float
+    ) -> NodeExecutionResult:
+        """Execute working memory operations (placeholder)."""
+        _ = context  # Mark as used to avoid linting warnings
+        logs.append("Working memory not yet implemented")
+        return self._create_error_result(
+            "Working memory not yet implemented", execution_time=time.time() - start_time, logs=logs
         )

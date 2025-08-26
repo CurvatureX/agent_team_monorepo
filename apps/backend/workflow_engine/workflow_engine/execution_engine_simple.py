@@ -125,8 +125,18 @@ class WorkflowExecutionEngine:
             for conn in connections:
                 target = conn.get("target")
                 source = conn.get("source")
+                conn_type = conn.get("type", "flow")  # Default to flow connection
+
                 if target and source and target in dependencies and source in node_ids:
-                    dependencies[target].add(source)
+                    if conn_type == "memory":
+                        # For memory connections: AI agent (source) depends on memory node (target)
+                        # This ensures memory nodes execute before AI agents that use them
+                        dependencies[source].add(target)
+                        self.logger.debug(f"Memory dependency: {source} depends on {target}")
+                    else:
+                        # For regular flow connections: target depends on source (normal flow)
+                        dependencies[target].add(source)
+                        self.logger.debug(f"Flow dependency: {target} depends on {source}")
 
             # Topological sort
             result = []
