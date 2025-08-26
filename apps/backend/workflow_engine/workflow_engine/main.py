@@ -58,7 +58,14 @@ logger = logging.getLogger(__name__)
 
 # Configure logging to reduce SQLAlchemy noise
 def setup_logging():
-    """Configure logging to reduce database noise while preserving app logs."""
+    """Configure logging to reduce database noise while preserving app logs and enable node executor logging."""
+    # Configure console handler if not already configured
+    if not logging.getLogger().handlers:
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        console_handler.setFormatter(formatter)
+        logging.getLogger().addHandler(console_handler)
     # Set SQLAlchemy logging based on database_echo setting
     if settings.database_echo:
         # Allow SQLAlchemy INFO logs when debugging is enabled
@@ -72,6 +79,25 @@ def setup_logging():
     # Keep application logging at INFO level
     logging.getLogger("workflow_engine").setLevel(logging.INFO)
     logging.getLogger("uvicorn").setLevel(logging.INFO)
+
+    # Enable INFO level logging for all node executors
+    logging.getLogger("AIAgentNodeExecutor").setLevel(logging.INFO)
+    logging.getLogger("ActionNodeExecutor").setLevel(logging.INFO)
+    logging.getLogger("ExternalActionNodeExecutor").setLevel(logging.INFO)
+    logging.getLogger("FlowNodeExecutor").setLevel(logging.INFO)
+    logging.getLogger("HumanLoopNodeExecutor").setLevel(logging.INFO)
+    logging.getLogger("MemoryNodeExecutor").setLevel(logging.INFO)
+    logging.getLogger("ToolNodeExecutor").setLevel(logging.INFO)
+    logging.getLogger("TriggerNodeExecutor").setLevel(logging.INFO)
+    logging.getLogger("BaseNodeExecutor").setLevel(logging.INFO)
+
+    # Alternative: Enable all node executor logging with a pattern
+    # Set root logger to INFO to catch all node executor logs
+    root_logger = logging.getLogger()
+    if root_logger.level > logging.INFO:
+        root_logger.setLevel(logging.INFO)
+
+    logger.info("Logging configuration complete - node executors should now log at INFO level")
 
 
 settings = get_settings()
@@ -119,6 +145,23 @@ else:
 @app.on_event("startup")
 def on_startup():
     logger.info("Workflow Engine service starting up")
+
+    # Test node executor logging configuration
+    test_loggers = [
+        "AIAgentNodeExecutor",
+        "ActionNodeExecutor",
+        "FlowNodeExecutor",
+        "ToolNodeExecutor",
+        "TriggerNodeExecutor",
+    ]
+
+    for logger_name in test_loggers:
+        test_logger = logging.getLogger(logger_name)
+        logger.info(
+            f"Logger {logger_name} level: {test_logger.level} (effective: {test_logger.getEffectiveLevel()})"
+        )
+
+    logger.info("Node executor logging configuration complete")
 
 
 # Trace ID middleware
