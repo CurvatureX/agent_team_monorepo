@@ -113,15 +113,16 @@ async def update_workflow(
     service: WorkflowService = Depends(get_workflow_service),
 ):
     import logging
+
     logger = logging.getLogger(__name__)
-    
+
     try:
         # Debug log incoming request
         logger.info(f"🐛 DEBUG: Workflow Engine received update request for workflow: {workflow_id}")
         logger.info(f"🐛 DEBUG: Request type: {type(request)}")
         logger.info(f"🐛 DEBUG: Request user_id: {request.user_id}")
         logger.info(f"🐛 DEBUG: Request workflow_id: {request.workflow_id}")
-        
+
         # Log each field if present
         if request.name is not None:
             logger.info(f"🐛 DEBUG: Updating name: {request.name}")
@@ -137,7 +138,7 @@ async def update_workflow(
             logger.info(f"🐛 DEBUG: Updating settings: {request.settings}")
         if request.tags is not None:
             logger.info(f"🐛 DEBUG: Updating tags: {request.tags}")
-        
+
         updated_workflow = service.update_workflow_from_data(
             workflow_id=workflow_id, user_id=request.user_id, update_data=request
         )

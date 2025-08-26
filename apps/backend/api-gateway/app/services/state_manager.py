@@ -10,11 +10,11 @@ Updated to follow current API Gateway design patterns:
 """
 
 import json
+import logging
 import time
 from typing import Any, Dict, List, Optional
 
 from app.core.database import create_user_supabase_client, get_supabase_admin
-import logging
 
 logger = logging.getLogger("app.services.state_manager")
 
@@ -27,14 +27,14 @@ class WorkflowStateManager:
 
     def __init__(self):
         self.table_name = "workflow_agent_states"
-    
+
     def _get_client(self, access_token: Optional[str] = None):
         """
         Get appropriate Supabase client based on access token
-        
+
         Args:
             access_token: User's JWT token for RLS operations
-            
+
         Returns:
             Supabase client or None if failed to create
         """
@@ -106,7 +106,7 @@ class WorkflowStateManager:
                 return None
 
             result = client.table(self.table_name).insert(state_data).execute()
-            
+
             if result.data:
                 state_id = result.data[0]["id"]
                 logger.info(f"Created workflow state for session {session_id}: {state_id}")
@@ -139,8 +139,10 @@ class WorkflowStateManager:
                 logger.error("Failed to create database client")
                 return None
 
-            result = client.table(self.table_name).select("*").eq("session_id", session_id).execute()
-            
+            result = (
+                client.table(self.table_name).select("*").eq("session_id", session_id).execute()
+            )
+
             if result.data:
                 # Return the most recent state for this session
                 states = result.data
@@ -176,7 +178,7 @@ class WorkflowStateManager:
                 return None
 
             result = client.table(self.table_name).select("*").eq("id", state_id).execute()
-            
+
             if result.data:
                 state = result.data[0]
                 logger.debug(f"Retrieved workflow state by ID {state_id}")
@@ -222,7 +224,7 @@ class WorkflowStateManager:
                 return False
 
             result = client.table(self.table_name).update(updates).eq("id", state_id).execute()
-            
+
             if result.data:
                 logger.info(f"Updated workflow state for session {session_id}")
                 return True
@@ -300,7 +302,7 @@ class WorkflowStateManager:
                 return []
 
             result = client.table(self.table_name).select("*").eq("user_id", user_id).execute()
-            
+
             states = result.data if result.data else []
             logger.debug(f"Retrieved {len(states)} workflow states for user {user_id}")
             return states

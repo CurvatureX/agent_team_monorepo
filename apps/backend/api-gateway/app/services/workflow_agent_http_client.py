@@ -26,16 +26,14 @@ class WorkflowAgentHTTPClient:
         # Increased timeout for streaming operations and RAG embedding generation
         self.timeout = httpx.Timeout(
             timeout=300.0,  # 5 minutes total timeout
-            connect=10.0,   # 10 seconds connection timeout
-            read=60.0,      # 60 seconds read timeout per chunk
-            write=30.0      # 30 seconds write timeout
+            connect=10.0,  # 10 seconds connection timeout
+            read=60.0,  # 60 seconds read timeout per chunk
+            write=30.0,  # 30 seconds write timeout
         )
         self.connected = False
         # Add connection pooling for better connection reuse
         self.limits = httpx.Limits(
-            max_keepalive_connections=5,
-            max_connections=10,
-            keepalive_expiry=30.0
+            max_keepalive_connections=5, max_connections=10, keepalive_expiry=30.0
         )
 
     async def connect(self):
@@ -55,7 +53,6 @@ class WorkflowAgentHTTPClient:
         """Close HTTP connection (no-op for HTTP)"""
         self.connected = False
         log_info("Closed Workflow Agent HTTP connection")
-
 
     async def process_conversation_stream(
         self,
@@ -81,12 +78,12 @@ class WorkflowAgentHTTPClient:
                 "user_message": user_message,
                 "access_token": access_token or "",
             }
-            
+
             # 正确处理 workflow_context - 需要匹配 WorkflowContext 模型
             if workflow_context:
                 request_data["workflow_context"] = {
                     "origin": workflow_context.get("origin", "create"),
-                    "source_workflow_id": workflow_context.get("source_workflow_id", "")
+                    "source_workflow_id": workflow_context.get("source_workflow_id", ""),
                 }
 
             log_info(f"📨 Sending HTTP request to {self.base_url}/process-conversation")
@@ -95,7 +92,7 @@ class WorkflowAgentHTTPClient:
             async with httpx.AsyncClient(
                 timeout=self.timeout,
                 limits=self.limits,
-                http2=True  # Enable HTTP/2 for better streaming
+                http2=True,  # Enable HTTP/2 for better streaming
             ) as client:
                 async with client.stream(
                     "POST",
@@ -138,7 +135,7 @@ class WorkflowAgentHTTPClient:
                     "message": f"HTTP request failed: {e.response.status_code}",
                     "details": str(e),
                     "is_recoverable": True,
-                }
+                },
             }
         except Exception as e:
             log_error(f"❌ Error in process_conversation_stream: {e}")
@@ -152,7 +149,7 @@ class WorkflowAgentHTTPClient:
                     "message": f"Failed to process conversation: {str(e)}",
                     "details": str(e),
                     "is_recoverable": True,
-                }
+                },
             }
 
 

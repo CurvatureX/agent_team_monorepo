@@ -51,6 +51,12 @@ class ExecutionService:
     async def execute_workflow(self, request: ExecuteWorkflowRequest) -> str:
         """Execute a workflow and return the execution ID."""
         try:
+            self.logger.info(f"🔥🔥🔥 EXECUTION SERVICE ENTRY: workflow_id={request.workflow_id}")
+            self.logger.info(f"🔥🔥🔥 EXECUTION SERVICE: user_id={request.user_id}")
+            self.logger.info(
+                f"🔥🔥🔥 EXECUTION SERVICE: trigger_data_keys={list(request.trigger_data.keys()) if request.trigger_data else 'NO_TRIGGER_DATA'}"
+            )
+
             self.logger.info(
                 f"🚀 ExecutionService: Starting workflow execution for: {request.workflow_id}"
             )

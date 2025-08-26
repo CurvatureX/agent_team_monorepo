@@ -144,42 +144,44 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
 
         try:
             subtype = context.node.subtype
-            logs.append(f"🤖 AI AGENT: Starting {subtype} execution")
-            logs.append(
+            self.logger.info(f"🤖 AI AGENT: Starting {subtype} execution")
+            self.logger.info(
                 f"🤖 AI AGENT: Node ID: {getattr(context.node, 'id', 'unknown') if hasattr(context, 'node') else 'unknown'}"
             )
-            logs.append(f"🤖 AI AGENT: Execution ID: {getattr(context, 'execution_id', 'unknown')}")
+            self.logger.info(
+                f"🤖 AI AGENT: Execution ID: {getattr(context, 'execution_id', 'unknown')}"
+            )
 
             # Log input data analysis
             if hasattr(context, "input_data") and context.input_data:
-                logs.append(f"🤖 AI AGENT: Input data analysis:")
+                self.logger.info(f"🤖 AI AGENT: Input data analysis:")
                 if isinstance(context.input_data, dict):
                     for key, value in context.input_data.items():
                         if key == "memory_context":
-                            logs.append(
+                            self.logger.info(
                                 f"🤖 AI AGENT:   📥 Found '{key}': {len(str(value))} characters"
                             )
                         elif isinstance(value, str) and len(value) > 100:
-                            logs.append(
+                            self.logger.info(
                                 f"🤖 AI AGENT:   📥 Input '{key}': {value[:100]}... ({len(value)} chars)"
                             )
                         else:
-                            logs.append(f"🤖 AI AGENT:   📥 Input '{key}': {value}")
+                            self.logger.info(f"🤖 AI AGENT:   📥 Input '{key}': {value}")
                 else:
-                    logs.append(
+                    self.logger.info(
                         f"🤖 AI AGENT:   📥 Input data (non-dict): {str(context.input_data)[:200]}..."
                     )
             else:
-                logs.append("🤖 AI AGENT: No input data provided")
+                self.logger.info("🤖 AI AGENT: No input data provided")
 
             # Process memory contexts if present
             memory_contexts = self._extract_memory_contexts(context)
             if memory_contexts:
-                logs.append(
+                self.logger.info(
                     f"🤖 AI AGENT: 🧠 Memory integration detected - {len(memory_contexts)} contexts found"
                 )
                 for i, memory_context in enumerate(memory_contexts):
-                    logs.append(
+                    self.logger.info(
                         f"🤖 AI AGENT:   🧠 Context {i+1}: {len(str(memory_context))} characters"
                     )
                     if len(str(memory_context)) > 0:
@@ -188,9 +190,9 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                             if len(str(memory_context)) > 150
                             else str(memory_context)
                         )
-                        logs.append(f"🤖 AI AGENT:   🧠 Preview: {preview}")
+                        self.logger.info(f"🤖 AI AGENT:   🧠 Preview: {preview}")
             else:
-                logs.append("🤖 AI AGENT: 🧠 No memory contexts detected")
+                self.logger.info("🤖 AI AGENT: 🧠 No memory contexts detected")
 
             # Enhanced context with memory integration
             enhanced_context = self._enhance_context_with_memory(context, memory_contexts, logs)
@@ -252,14 +254,16 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         """Enhance the execution context with memory contexts."""
         try:
             if not memory_contexts:
-                logs.append("🤖 AI AGENT: 🧠 No memory contexts to merge, using original context")
+                self.logger.info(
+                    "🤖 AI AGENT: 🧠 No memory contexts to merge, using original context"
+                )
                 return context
 
-            logs.append(f"🤖 AI AGENT: 🧠 Starting memory context enhancement...")
+            self.logger.info(f"🤖 AI AGENT: 🧠 Starting memory context enhancement...")
 
             # Merge all memory contexts into a single context string
             merged_memory_context = "\n\n".join(memory_contexts)
-            logs.append(
+            self.logger.info(
                 f"🤖 AI AGENT: 🧠 Merged {len(memory_contexts)} contexts into {len(merged_memory_context)} characters"
             )
 
@@ -271,12 +275,12 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             enhanced_input_data["memory_context"] = merged_memory_context
             enhanced_input_data["has_memory_context"] = True
 
-            logs.append(f"🤖 AI AGENT: 🧠 Enhanced input data:")
-            logs.append(f"🤖 AI AGENT: 🧠   Original keys: {original_keys}")
-            logs.append(
+            self.logger.info(f"🤖 AI AGENT: 🧠 Enhanced input data:")
+            self.logger.info(f"🤖 AI AGENT: 🧠   Original keys: {original_keys}")
+            self.logger.info(
                 f"🤖 AI AGENT: 🧠   Added 'memory_context' ({len(merged_memory_context)} chars)"
             )
-            logs.append(f"🤖 AI AGENT: 🧠   Added 'has_memory_context': True")
+            self.logger.info(f"🤖 AI AGENT: 🧠   Added 'has_memory_context': True")
 
             # Create new context with enhanced input
             enhanced_context = NodeExecutionContext(
@@ -287,11 +291,11 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                 credentials=getattr(context, "credentials", None),
             )
 
-            logs.append("🤖 AI AGENT: 🧠 ✅ Context enhanced with memory data")
+            self.logger.info("🤖 AI AGENT: 🧠 ✅ Context enhanced with memory data")
             return enhanced_context
 
         except Exception as e:
-            logs.append(f"🤖 AI AGENT: 🧠 ❌ Memory enhancement failed: {e}")
+            self.logger.info(f"🤖 AI AGENT: 🧠 ❌ Memory enhancement failed: {e}")
             self.logger.warning(f"Memory enhancement error: {e}")
 
         # Return original context if memory enhancement fails or no memory contexts
@@ -302,15 +306,19 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
     ) -> str:
         """Enhance the system prompt with memory context using memory-type-specific injection logic."""
         try:
-            logs.append("🤖 AI AGENT: 💭 Checking for memory context to inject into system prompt")
+            self.logger.info(
+                "🤖 AI AGENT: 💭 Checking for memory context to inject into system prompt"
+            )
 
             if not input_data or not isinstance(input_data, dict):
-                logs.append("🤖 AI AGENT: 💭 No input data available, using original system prompt")
+                self.logger.info(
+                    "🤖 AI AGENT: 💭 No input data available, using original system prompt"
+                )
                 return base_prompt
 
             # Check if memory context is available
             if "memory_context" not in input_data:
-                logs.append(
+                self.logger.info(
                     "🤖 AI AGENT: 💭 No 'memory_context' key found, using original system prompt"
                 )
                 return base_prompt
@@ -321,36 +329,44 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             )  # Keep "UNKNOWN" as fallback for missing types
 
             if not memory_context:
-                logs.append("🤖 AI AGENT: 💭 Memory context is empty, using original system prompt")
+                self.logger.info(
+                    "🤖 AI AGENT: 💭 Memory context is empty, using original system prompt"
+                )
                 return base_prompt
 
-            logs.append(f"🤖 AI AGENT: 💭 ✅ Memory context found! Type: {memory_type}")
-            logs.append(f"🤖 AI AGENT: 💭   Original prompt length: {len(base_prompt)} characters")
-            logs.append(f"🤖 AI AGENT: 💭   Memory context length: {len(memory_context)} characters")
+            self.logger.info(f"🤖 AI AGENT: 💭 ✅ Memory context found! Type: {memory_type}")
+            self.logger.info(
+                f"🤖 AI AGENT: 💭   Original prompt length: {len(base_prompt)} characters"
+            )
+            self.logger.info(
+                f"🤖 AI AGENT: 💭   Memory context length: {len(memory_context)} characters"
+            )
 
             # Show preview of memory context being injected
             memory_preview = (
                 memory_context[:200] + "..." if len(memory_context) > 200 else memory_context
             )
-            logs.append(f"🤖 AI AGENT: 💭   Memory context preview: {memory_preview}")
+            self.logger.info(f"🤖 AI AGENT: 💭   Memory context preview: {memory_preview}")
 
             # Memory-type-specific context injection
             enhanced_prompt = self._inject_memory_by_type(
                 base_prompt, memory_context, memory_type, logs
             )
 
-            logs.append(
+            self.logger.info(
                 f"🤖 AI AGENT: 💭   Enhanced prompt length: {len(enhanced_prompt)} characters"
             )
-            logs.append(
+            self.logger.info(
                 f"🤖 AI AGENT: 💭   Added {len(enhanced_prompt) - len(base_prompt)} characters from memory"
             )
-            logs.append("🤖 AI AGENT: 💭 🎯 System prompt successfully enhanced with memory context!")
+            self.logger.info(
+                "🤖 AI AGENT: 💭 🎯 System prompt successfully enhanced with memory context!"
+            )
 
             return enhanced_prompt
 
         except Exception as e:
-            logs.append(f"🤖 AI AGENT: 💭 ❌ System prompt enhancement failed: {e}")
+            self.logger.info(f"🤖 AI AGENT: 💭 ❌ System prompt enhancement failed: {e}")
             self.logger.warning(f"System prompt enhancement error: {e}")
             return base_prompt
 
@@ -360,7 +376,7 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         """Inject memory context using type-specific formatting and instructions."""
         from shared.models.node_enums import MemorySubtype
 
-        logs.append(f"🤖 AI AGENT: 💭 🎯 Using {memory_type}-specific context injection")
+        self.logger.info(f"🤖 AI AGENT: 💭 🎯 Using {memory_type}-specific context injection")
 
         if memory_type == MemorySubtype.CONVERSATION_BUFFER.value:
             return f"""{base_prompt}
@@ -476,7 +492,7 @@ Use these documents to:
 
         else:
             # Fallback for unknown memory types or legacy support
-            logs.append(
+            self.logger.info(
                 f"🤖 AI AGENT: 💭 ⚠️ Unknown memory type '{memory_type}', using generic injection"
             )
             return f"""{base_prompt}
@@ -493,6 +509,7 @@ Please use this context appropriately when responding. Reference relevant inform
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute Gemini AI agent."""
+        logs.append("Executing Google Gemini agent")
         # Use spec-based parameter retrieval
         base_system_prompt = self.get_parameter_with_spec(context, "system_prompt")
         model_version = self.get_parameter_with_spec(context, "model_version")
@@ -505,7 +522,7 @@ Please use this context appropriately when responding. Reference relevant inform
             base_system_prompt, context.input_data, logs
         )
 
-        logs.append(f"Gemini agent: {model_version}, temp: {temperature}")
+        self.logger.info(f"Gemini agent: {model_version}, temp: {temperature}")
 
         # Prepare input for AI processing
         input_text = self._prepare_input_for_ai(context.input_data)
@@ -544,6 +561,7 @@ Please use this context appropriately when responding. Reference relevant inform
                 "timestamp": datetime.now().isoformat(),
             }
 
+            logs.append(f"AI agent completed: {subtype}")
             return self._create_success_result(
                 output_data=output_data,
                 execution_time=time.time() - start_time,
@@ -562,6 +580,7 @@ Please use this context appropriately when responding. Reference relevant inform
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute OpenAI AI agent."""
+        logs.append("Executing OpenAI GPT agent")
         # Use spec-based parameter retrieval
         base_system_prompt = self.get_parameter_with_spec(context, "system_prompt")
         model_version = self.get_parameter_with_spec(context, "model_version")
@@ -575,25 +594,25 @@ Please use this context appropriately when responding. Reference relevant inform
             base_system_prompt, context.input_data, logs
         )
 
-        logs.append(
+        self.logger.info(
             f"🤖 AI AGENT: OpenAI configuration - model: {model_version}, temp: {temperature}"
         )
-        logs.append(f"🤖 AI AGENT: Final system prompt length: {len(system_prompt)} characters")
+        self.logger.info(f"🤖 AI AGENT: Final system prompt length: {len(system_prompt)} characters")
 
         # Show system prompt preview (first and last parts)
         if len(system_prompt) > 300:
-            logs.append(
+            self.logger.info(
                 f"🤖 AI AGENT: System prompt preview (first 150 chars): {system_prompt[:150]}..."
             )
-            logs.append(
+            self.logger.info(
                 f"🤖 AI AGENT: System prompt preview (last 150 chars): ...{system_prompt[-150:]}"
             )
         else:
-            logs.append(f"🤖 AI AGENT: Full system prompt: {system_prompt}")
+            self.logger.info(f"🤖 AI AGENT: Full system prompt: {system_prompt}")
 
         # Prepare input for AI processing
         input_text = self._prepare_input_for_ai(context.input_data)
-        logs.append(
+        self.logger.info(
             f"🤖 AI AGENT: User input prepared: '{input_text[:100]}{'...' if len(input_text) > 100 else ''}' ({len(input_text)} chars)"
         )
 
@@ -633,6 +652,7 @@ Please use this context appropriately when responding. Reference relevant inform
                 "timestamp": datetime.now().isoformat(),
             }
 
+            logs.append(f"AI agent completed: {subtype}")
             return self._create_success_result(
                 output_data=output_data,
                 execution_time=time.time() - start_time,
@@ -651,6 +671,7 @@ Please use this context appropriately when responding. Reference relevant inform
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
         """Execute Claude AI agent."""
+        logs.append("Executing Anthropic Claude agent")
         # Use spec-based parameter retrieval
         base_system_prompt = self.get_parameter_with_spec(context, "system_prompt")
         model_version = self.get_parameter_with_spec(context, "model_version")
@@ -663,7 +684,7 @@ Please use this context appropriately when responding. Reference relevant inform
             base_system_prompt, context.input_data, logs
         )
 
-        logs.append(f"Claude agent: {model_version}, temp: {temperature}")
+        self.logger.info(f"Claude agent: {model_version}, temp: {temperature}")
 
         # Prepare input for AI processing
         input_text = self._prepare_input_for_ai(context.input_data)
@@ -702,6 +723,7 @@ Please use this context appropriately when responding. Reference relevant inform
                 "timestamp": datetime.now().isoformat(),
             }
 
+            logs.append(f"AI agent completed: {subtype}")
             return self._create_success_result(
                 output_data=output_data,
                 execution_time=time.time() - start_time,

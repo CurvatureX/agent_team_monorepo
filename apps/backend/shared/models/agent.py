@@ -1,5 +1,7 @@
-from pydantic import BaseModel, Field
 from typing import Dict, List, Optional
+
+from pydantic import BaseModel, Field
+
 from .workflow import WorkflowData
 
 
@@ -37,4 +39,4 @@ class WorkflowValidationRequest(BaseModel):
 class WorkflowValidationResponse(BaseModel):
     valid: bool
     errors: List[str] = Field(default_factory=list)
-    warnings: List[str] = Field(default_factory=list) 
+    warnings: List[str] = Field(default_factory=list)

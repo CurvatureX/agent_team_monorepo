@@ -96,7 +96,7 @@ class HumanLoopNodeExecutor(BaseNodeExecutor):
 
         try:
             subtype = context.node.subtype
-            logs.append(f"Executing human-in-the-loop node with subtype: {subtype}")
+            self.logger.info(f"Executing human-in-the-loop node with subtype: {subtype}")
 
             if subtype == HumanLoopSubtype.GMAIL_INTERACTION.value:
                 return self._execute_gmail_interaction(context, logs, start_time)
@@ -130,6 +130,7 @@ class HumanLoopNodeExecutor(BaseNodeExecutor):
     def _execute_gmail_interaction(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing gmail interaction")
         """Execute Gmail interaction."""
         # Use spec-based parameter retrieval
         email_template = self.get_parameter_with_spec(context, "email_template")
@@ -137,7 +138,7 @@ class HumanLoopNodeExecutor(BaseNodeExecutor):
         subject = self.get_parameter_with_spec(context, "subject")
         timeout_hours = self.get_parameter_with_spec(context, "timeout_hours")
 
-        logs.append(f"Gmail interaction: sending to {len(recipients)} recipients")
+        self.logger.info(f"Gmail interaction: sending to {len(recipients)} recipients")
 
         # Mock email sending
         email_data = {
@@ -166,13 +167,14 @@ class HumanLoopNodeExecutor(BaseNodeExecutor):
     def _execute_slack_interaction(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing slack interaction")
         """Execute Slack interaction."""
         # Use spec-based parameter retrieval
         channel = self.get_parameter_with_spec(context, "channel")
         message_template = self.get_parameter_with_spec(context, "message_template")
         timeout_minutes = self.get_parameter_with_spec(context, "timeout_minutes")
 
-        logs.append(f"Slack interaction: sending to channel {channel}")
+        self.logger.info(f"Slack interaction: sending to channel {channel}")
 
         # Mock Slack message sending
         message_data = {
@@ -199,13 +201,14 @@ class HumanLoopNodeExecutor(BaseNodeExecutor):
     def _execute_discord_interaction(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing discord interaction")
         """Execute Discord interaction."""
         # Use spec-based parameter retrieval
         channel_id = self.get_parameter_with_spec(context, "channel_id")
         message_template = self.get_parameter_with_spec(context, "message_template")
         timeout_minutes = self.get_parameter_with_spec(context, "timeout_minutes")
 
-        logs.append(f"Discord interaction: sending to channel {channel_id}")
+        self.logger.info(f"Discord interaction: sending to channel {channel_id}")
 
         # Mock Discord message sending
         message_data = {
@@ -232,13 +235,14 @@ class HumanLoopNodeExecutor(BaseNodeExecutor):
     def _execute_telegram_interaction(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing telegram interaction")
         """Execute Telegram interaction."""
         # Use spec-based parameter retrieval
         chat_id = self.get_parameter_with_spec(context, "chat_id")
         message_template = self.get_parameter_with_spec(context, "message_template")
         timeout_minutes = self.get_parameter_with_spec(context, "timeout_minutes")
 
-        logs.append(f"Telegram interaction: sending to chat {chat_id}")
+        self.logger.info(f"Telegram interaction: sending to chat {chat_id}")
 
         # Mock Telegram message sending
         message_data = {
@@ -265,6 +269,7 @@ class HumanLoopNodeExecutor(BaseNodeExecutor):
     def _execute_app_interaction(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing app interaction")
         """Execute app interaction."""
         # Use spec-based parameter retrieval
         notification_type = self.get_parameter_with_spec(context, "notification_type")
@@ -272,7 +277,7 @@ class HumanLoopNodeExecutor(BaseNodeExecutor):
         message = self.get_parameter_with_spec(context, "message")
         timeout_minutes = self.get_parameter_with_spec(context, "timeout_minutes")
 
-        logs.append(f"App interaction: {notification_type} notification")
+        self.logger.info(f"App interaction: {notification_type} notification")
 
         # Mock app notification
         notification_data = {

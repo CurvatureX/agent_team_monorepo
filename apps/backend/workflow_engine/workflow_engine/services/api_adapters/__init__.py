@@ -4,17 +4,17 @@ API adapters for external service integrations.
 
 from .base import (
     APIAdapter,
-    OAuth2Config,
     APIError,
-    ValidationError,
     AuthenticationError,
     AuthorizationError,
+    OAuth2Config,
+    PermanentError,
     RateLimitError,
     TemporaryError,
-    PermanentError,
-    register_adapter,
+    ValidationError,
     get_adapter,
-    list_adapters
+    list_adapters,
+    register_adapter,
 )
 
 try:
@@ -24,7 +24,7 @@ except ImportError as e:
 
 __all__ = [
     "APIAdapter",
-    "OAuth2Config", 
+    "OAuth2Config",
     "APIError",
     "ValidationError",
     "AuthenticationError",

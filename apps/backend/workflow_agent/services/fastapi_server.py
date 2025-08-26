@@ -50,11 +50,8 @@ if TYPE_CHECKING:
     setup_telemetry = telemetry_setup
 else:
     try:
-        from shared.telemetry import (
-            MetricsMiddleware,
-            TrackingMiddleware,
-            setup_telemetry,
-        )
+        from shared.telemetry import MetricsMiddleware, TrackingMiddleware, setup_telemetry
+
         TELEMETRY_AVAILABLE = True
     except ImportError:
         # Fallback for deployment - create dummy implementations
@@ -76,6 +73,7 @@ else:
 
             async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
                 await self.app(scope, receive, send)
+
 
 logger = logging.getLogger(__name__)
 
@@ -158,9 +156,11 @@ class WorkflowAgentServicer:
                     "conversations": [],
                     "current_workflow": {},
                 }
-                logger.warning("Using fallback state due to database access failure", 
-                             extra={"session_id": session_id})
-            
+                logger.warning(
+                    "Using fallback state due to database access failure",
+                    extra={"session_id": session_id},
+                )
+
             conversations = current_state.get("conversations", [])
             if request.user_message:
                 conversations.append(
@@ -227,15 +227,19 @@ class WorkflowAgentServicer:
                                     session_id, updated_state
                                 )
                                 if workflow_response:
-                                    logger.info("Sending workflow response after workflow_gen completed")
+                                    logger.info(
+                                        "Sending workflow response after workflow_gen completed"
+                                    )
                                     yield f"data: {workflow_response.model_dump_json()}\n\n"
-                                
+
                                 # 然后发送完成消息
                                 message_response = await self._create_message_response(
                                     session_id, updated_state
                                 )
                                 if message_response:
-                                    logger.info("Sending completion message after workflow_gen completed")
+                                    logger.info(
+                                        "Sending completion message after workflow_gen completed"
+                                    )
                                     yield f"data: {message_response.model_dump_json()}\n\n"
                             # Debug logic removed - no longer needed in 2-node architecture
 
@@ -495,8 +499,10 @@ class WorkflowAgentServicer:
                 "has_workflow": bool(current_workflow),
                 "workflow_type": type(current_workflow).__name__,
                 "workflow_id": workflow_id,
-                "node_count": len(current_workflow.get("nodes", [])) if isinstance(current_workflow, dict) else 0
-            }
+                "node_count": len(current_workflow.get("nodes", []))
+                if isinstance(current_workflow, dict)
+                else 0,
+            },
         )
 
         if (
@@ -514,7 +520,7 @@ class WorkflowAgentServicer:
                         "session_id": session_id,
                         "node_count": len(current_workflow.get("nodes", [])),
                         "workflow_id": workflow_id,
-                        "workflow_name": current_workflow.get("name", "Unknown")
+                        "workflow_name": current_workflow.get("name", "Unknown"),
                     },
                 )
             else:
@@ -523,10 +529,10 @@ class WorkflowAgentServicer:
                     extra={
                         "session_id": session_id,
                         "node_count": len(current_workflow.get("nodes", [])),
-                        "workflow_name": current_workflow.get("name", "Unknown")
+                        "workflow_name": current_workflow.get("name", "Unknown"),
                     },
                 )
-            
+
             workflow_json = json.dumps(workflow_data)
             return ConversationResponse(
                 session_id=session_id,
@@ -539,8 +545,8 @@ class WorkflowAgentServicer:
                 "No workflow to send",
                 extra={
                     "session_id": session_id,
-                    "current_workflow": str(current_workflow)[:200] if current_workflow else None
-                }
+                    "current_workflow": str(current_workflow)[:200] if current_workflow else None,
+                },
             )
 
         return None

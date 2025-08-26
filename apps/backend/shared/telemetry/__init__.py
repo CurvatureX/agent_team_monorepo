@@ -5,14 +5,14 @@ AI Teams 分布式监控系统
 """
 
 from .complete_stack import setup_telemetry
-from .middleware import TrackingMiddleware, MetricsMiddleware
-from .metrics import get_metrics
 from .formatter import CloudWatchTracingFormatter
+from .metrics import get_metrics
+from .middleware import MetricsMiddleware, TrackingMiddleware
 
 __all__ = [
     "setup_telemetry",
-    "TrackingMiddleware", 
+    "TrackingMiddleware",
     "MetricsMiddleware",
     "get_metrics",
-    "CloudWatchTracingFormatter"
+    "CloudWatchTracingFormatter",
 ]

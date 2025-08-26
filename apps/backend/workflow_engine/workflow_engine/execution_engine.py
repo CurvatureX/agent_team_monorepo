@@ -311,6 +311,15 @@ class WorkflowExecutionEngine:
         try:
             # Execute node - handle both sync and async executors
             self.logger.info(
+                f"🔥🚀 EXECUTING NODE: {node_id} with executor {executor.__class__.__name__}"
+            )
+            self.logger.info(f"🔥🚀 NODE TYPE: {node_type}, SUBTYPE: {node_subtype}")
+            self.logger.info(
+                f"🔥🚀 INPUT DATA KEYS: {list(input_data.keys()) if input_data else 'NO_INPUT_DATA'}"
+            )
+            self.logger.info(f"🔥🚀 CREDENTIALS PROVIDED: {bool(credentials)}")
+
+            self.logger.info(
                 f"🚀 Executing node {node_id} with executor {executor.__class__.__name__}"
             )
             self.logger.info(
@@ -323,6 +332,29 @@ class WorkflowExecutionEngine:
             else:
                 self.logger.info("⏳ Running sync executor...")
                 result = executor.execute(context)
+
+            self.logger.info(f"🔥✅ NODE EXECUTION COMPLETED: {node_id}")
+            self.logger.info(f"🔥✅ RESULT TYPE: {type(result).__name__}")
+            if hasattr(result, "status"):
+                self.logger.info(f"🔥✅ RESULT STATUS: {result.status}")
+            if hasattr(result, "output_data"):
+                if isinstance(result.output_data, dict):
+                    self.logger.info(f"🔥✅ OUTPUT DATA KEYS: {list(result.output_data.keys())}")
+                    for key, value in result.output_data.items():
+                        if isinstance(value, str) and len(value) > 200:
+                            self.logger.info(
+                                f"🔥✅ OUTPUT '{key}': {value[:200]}... ({len(value)} chars)"
+                            )
+                        else:
+                            self.logger.info(f"🔥✅ OUTPUT '{key}': {value}")
+                else:
+                    self.logger.info(f"🔥✅ OUTPUT DATA (non-dict): {result.output_data}")
+            if hasattr(result, "error_message") and result.error_message:
+                self.logger.info(f"🔥❌ RESULT ERROR: {result.error_message}")
+            if hasattr(result, "logs") and result.logs:
+                self.logger.info(f"🔥📝 RESULT LOGS ({len(result.logs)} entries):")
+                for i, log_entry in enumerate(result.logs):
+                    self.logger.info(f"🔥📝 [{i+1}] {log_entry}")
 
             self.logger.info(f"✅ Node execution completed - result type: {type(result).__name__}")
             if hasattr(result, "status"):

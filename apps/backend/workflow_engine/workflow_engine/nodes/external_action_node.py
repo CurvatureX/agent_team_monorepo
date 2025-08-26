@@ -371,7 +371,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 )
 
             subtype = context.node.subtype
-            logs.append(f"Executing external action node with subtype: {subtype}")
+            self.logger.info(f"Executing external action node with subtype: {subtype}")
 
             # Try new shared SDK approach first
             sdk_supported_subtypes = [
@@ -450,6 +450,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
     async def _execute_with_sdk(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing with sdk")
         """Execute external action using new shared SDK system."""
         subtype = context.node.subtype
         self.logger.info(f"🛠️ _execute_with_sdk called for subtype: {subtype}")
@@ -491,7 +492,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
             operation, parameters = operation_preparer(context)
             self.logger.info(f"✅ Prepared {provider} operation: {operation}")
             self.logger.info(f"⚙️ Parameters: {parameters}")
-            logs.append(f"Prepared {provider} operation: {operation}")
+            self.logger.info(f"Prepared {provider} operation: {operation}")
 
             # Get credentials from OAuth2 service (N8N-style automatic querying)
             credentials = await self._get_credentials_for_sdk(context, provider, user_id)
@@ -499,7 +500,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
             # Check if credentials are available (N8N-style error handling)
             if not credentials:
                 # Return standardized error for missing authorization (referencing N8N pattern)
-                logs.append(f"No credentials found for {provider} - authorization required")
+                self.logger.info(f"No credentials found for {provider} - authorization required")
                 return self._create_error_result(
                     f"Missing credentials for {provider}. Please authorize this provider first.",
                     error_details={
@@ -524,14 +525,14 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 node_id=context.metadata.get("node_id"),
             )
 
-            logs.append(f"SDK call completed for {provider}: {result.get('success', False)}")
+            self.logger.info(f"SDK call completed for {provider}: {result.get('success', False)}")
 
             return self._create_success_result(
                 output_data=result, execution_time=time.time() - start_time, logs=logs
             )
 
         except Exception as e:
-            logs.append(f"SDK execution failed: {str(e)}")
+            self.logger.info(f"SDK execution failed: {str(e)}")
             return self._create_error_result(
                 f"SDK execution failed for {subtype}: {str(e)}",
                 execution_time=time.time() - start_time,
@@ -1117,6 +1118,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
     def _execute_github_action(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing github action")
         """Execute GitHub action."""
         # Use spec-based parameter retrieval with fallback
         action = self.get_parameter_with_spec(context, "action") or context.get_parameter("action")
@@ -1128,7 +1130,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
             "user_id", "00000000-0000-0000-0000-000000000123"
         )
 
-        logs.append(f"GitHub action: {action} on repository: {repository}")
+        self.logger.info(f"GitHub action: {action} on repository: {repository}")
 
         # Prepare parameters for GitHub API
         api_parameters = {"action": action, "repository": repository, "owner": owner}
@@ -1214,7 +1216,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
             # Check if this is an N8N-style error response (missing credentials)
             if not output_data.get("success", True) and output_data.get("requires_auth"):
-                logs.append(f"Missing credentials for github - authorization required")
+                self.logger.info(f"Missing credentials for github - authorization required")
                 return self._create_error_result(
                     f"Missing credentials for github. Please authorize this provider first.",
                     error_details={
@@ -1229,7 +1231,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 )
 
         except Exception as e:
-            logs.append(f"Failed to call GitHub API: {str(e)}")
+            self.logger.info(f"Failed to call GitHub API: {str(e)}")
             # Fallback to mock data with error info
             output_data = {
                 "provider": "github",
@@ -1248,6 +1250,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
     async def _execute_google_calendar_action(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing google calendar action")
         """Execute Google Calendar action."""
         # Use spec-based parameter retrieval with fallback
         action = self.get_parameter_with_spec(context, "action") or context.get_parameter("action")
@@ -1258,7 +1261,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
             "user_id", "00000000-0000-0000-0000-000000000123"
         )
 
-        logs.append(f"Google Calendar action: {action} on calendar: {calendar_id}")
+        self.logger.info(f"Google Calendar action: {action} on calendar: {calendar_id}")
 
         # Prepare parameters for Google Calendar API
         api_parameters = {"calendar_id": calendar_id}
@@ -1316,7 +1319,9 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
             # Check if this is an N8N-style error response (missing credentials)
             if not output_data.get("success", True) and output_data.get("requires_auth"):
-                logs.append(f"Missing credentials for google_calendar - authorization required")
+                self.logger.info(
+                    f"Missing credentials for google_calendar - authorization required"
+                )
                 return self._create_error_result(
                     f"Missing credentials for google_calendar. Please authorize this provider first.",
                     error_details={
@@ -1331,7 +1336,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 )
 
         except Exception as e:
-            logs.append(f"Failed to call Google Calendar API: {str(e)}")
+            self.logger.info(f"Failed to call Google Calendar API: {str(e)}")
             # Fallback to mock data with error info
             output_data = {
                 "provider": "google_calendar",
@@ -1350,12 +1355,13 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
     def _execute_trello_action(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing trello action")
         """Execute Trello action."""
         # Use spec-based parameter retrieval
         action = self.get_parameter_with_spec(context, "action")
         board_id = self.get_parameter_with_spec(context, "board_id")
 
-        logs.append(f"Trello action: {action} on board: {board_id}")
+        self.logger.info(f"Trello action: {action} on board: {board_id}")
 
         # Mock implementation - replace with actual Trello API calls
         output_data = {
@@ -1373,6 +1379,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
     async def _execute_email_action(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing email action")
         """Execute email action."""
         # Use spec-based parameter retrieval with fallback
         action = self.get_parameter_with_spec(context, "action") or "send"
@@ -1380,7 +1387,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
             "user_id", "00000000-0000-0000-0000-000000000123"
         )
 
-        logs.append(f"Email action: {action}")
+        self.logger.info(f"Email action: {action}")
 
         # Prepare parameters for Email API
         api_parameters = {}
@@ -1392,7 +1399,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
             # First check for input data from connected nodes (standard format)
             if context.input_data and "content" in context.input_data:
                 body = context.input_data["content"]
-                logs.append(f"✅ Using standard format content for email body: {body}")
+                self.logger.info(f"✅ Using standard format content for email body: {body}")
             else:
                 # Fallback to parameter-based body
                 body = context.get_parameter("body", context.get_parameter("message", ""))
@@ -1421,7 +1428,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
             # Check if this is an N8N-style error response (missing credentials)
             if not output_data.get("success", True) and output_data.get("requires_auth"):
-                logs.append(f"Missing credentials for email - authorization required")
+                self.logger.info(f"Missing credentials for email - authorization required")
                 return self._create_error_result(
                     f"Missing credentials for email. Please authorize this provider first.",
                     error_details={
@@ -1436,7 +1443,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 )
 
         except Exception as e:
-            logs.append(f"Failed to call Email API: {str(e)}")
+            self.logger.info(f"Failed to call Email API: {str(e)}")
             # Fallback to mock data with error info
             output_data = {
                 "provider": "email",
@@ -1459,6 +1466,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
     def _execute_slack_action(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing slack action")
         """Execute Slack action."""
         # Use spec-based parameter retrieval with fallback
         action = self.get_parameter_with_spec(context, "action") or context.get_parameter("action")
@@ -1470,14 +1478,14 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         trigger_channel = context.metadata.get("trigger_channel_id")
         if trigger_channel and (not channel or channel.startswith("example-value")):
             channel = trigger_channel
-            logs.append(f"Using trigger channel: {channel} (parameter was placeholder/empty)")
+            self.logger.info(f"Using trigger channel: {channel} (parameter was placeholder/empty)")
         elif not channel:
-            logs.append("Warning: No channel specified and no trigger channel available")
+            self.logger.info("Warning: No channel specified and no trigger channel available")
         user_id = getattr(context, "user_id", None) or context.metadata.get(
             "user_id", "00000000-0000-0000-0000-000000000123"
         )
 
-        logs.append(f"Slack action: {action} in channel: {channel}")
+        self.logger.info(f"Slack action: {action} in channel: {channel}")
 
         # Prepare parameters for Slack API
         api_parameters = {"channel": channel}
@@ -1492,14 +1500,14 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
             # First check for input data from connected nodes (standard format)
             if context.input_data and "content" in context.input_data:
                 message_text = context.input_data["content"]
-                logs.append(f"✅ Found standard format content: {message_text}")
+                self.logger.info(f"✅ Found standard format content: {message_text}")
 
                 # Log metadata if available for debugging
                 if "metadata" in context.input_data:
                     metadata = context.input_data["metadata"]
                     provider = metadata.get("provider", "unknown")
                     model = metadata.get("model", "unknown")
-                    logs.append(f"📊 AI provider: {provider}, model: {model}")
+                    self.logger.info(f"📊 AI provider: {provider}, model: {model}")
 
             # Fallback to parameter-based message
             if not message_text:
@@ -1507,7 +1515,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
             # Check if parameter value is placeholder and clear it
             if message_text and message_text.startswith("example-value"):
-                logs.append(
+                self.logger.info(
                     f"⚠️ Detected placeholder message value: {message_text}, clearing to use default"
                 )
                 message_text = ""
@@ -1517,7 +1525,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 trigger_data = context.metadata.get("trigger_data", {})
                 trigger_type = trigger_data.get("trigger_type", "unknown")
                 message_text = f"🤖 Workflow triggered by {trigger_type} event"
-                logs.append(f"Using default message: {message_text}")
+                self.logger.info(f"Using default message: {message_text}")
 
             api_parameters.update(
                 {
@@ -1612,7 +1620,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
             # Check if this is an N8N-style error response (missing credentials)
             if not output_data.get("success", True) and output_data.get("requires_auth"):
-                logs.append(f"Missing credentials for slack - authorization required")
+                self.logger.info(f"Missing credentials for slack - authorization required")
                 return self._create_error_result(
                     f"Missing credentials for slack. Please authorize this provider first.",
                     error_details={
@@ -1627,7 +1635,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 )
 
         except Exception as e:
-            logs.append(f"Failed to call Slack API: {str(e)}")
+            self.logger.info(f"Failed to call Slack API: {str(e)}")
             # Fallback to mock data with error info
             output_data = {
                 "provider": "slack",
@@ -1646,6 +1654,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
     async def _execute_api_call_action(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing api call action")
         """Execute generic API call action using the APICallAdapter."""
         # Use spec-based parameter retrieval
         method = self.get_parameter_with_spec(context, "method")
@@ -1662,7 +1671,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         if method:
             method = method.upper()
 
-        logs.append(f"Generic API call: {method} {url}")
+        self.logger.info(f"Generic API call: {method} {url}")
 
         # Prepare parameters for API call adapter
         api_parameters = {
@@ -1710,7 +1719,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
             # Check if this is an N8N-style error response (missing credentials)
             if not output_data.get("success", True) and output_data.get("requires_auth"):
-                logs.append(f"Missing credentials for api_call - authorization required")
+                self.logger.info(f"Missing credentials for api_call - authorization required")
                 return self._create_error_result(
                     f"Missing credentials for api_call. Please authorize this provider first.",
                     error_details={
@@ -1725,7 +1734,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 )
 
         except Exception as e:
-            logs.append(f"Failed to call generic API: {str(e)}")
+            self.logger.info(f"Failed to call generic API: {str(e)}")
             # Fallback to mock data with error info
             output_data = {
                 "method": method,
@@ -1747,12 +1756,13 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
     def _execute_webhook_action(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing webhook action")
         """Execute webhook action."""
         # Use spec-based parameter retrieval
         url = self.get_parameter_with_spec(context, "url")
         payload = self.get_parameter_with_spec(context, "payload")
 
-        logs.append(f"Webhook: POST to {url}")
+        self.logger.info(f"Webhook: POST to {url}")
 
         # Mock implementation - replace with actual webhook sending
         output_data = {
@@ -1770,13 +1780,14 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
     def _execute_notification_action(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing notification action")
         """Execute notification action."""
         # Use spec-based parameter retrieval
         notification_type = self.get_parameter_with_spec(context, "type")
         message = self.get_parameter_with_spec(context, "message")
         target = self.get_parameter_with_spec(context, "target")
 
-        logs.append(f"Notification: {notification_type} to {target}")
+        self.logger.info(f"Notification: {notification_type} to {target}")
 
         # Mock implementation - replace with actual notification service
         output_data = {

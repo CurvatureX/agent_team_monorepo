@@ -11,6 +11,7 @@ This SDK provides comprehensive GitHub OAuth2 integration capabilities including
 # Import OAuth2 client (no JWT dependency)
 try:
     from .oauth2_client import GitHubOAuth2SDK
+
     GitHubSDK = GitHubOAuth2SDK
     _oauth2_available = True
 except ImportError as e:
@@ -21,6 +22,7 @@ except ImportError as e:
 # Import GitHub App client (requires JWT dependency)
 try:
     from .client import GitHubAppSDK
+
     _github_app_available = True
 except ImportError as e:
     GitHubAppSDK = None
@@ -39,7 +41,7 @@ __version__ = "1.0.0"
 __all__ = [
     "GitHubSDK",
     "GitHubOAuth2SDK",
-    "GitHubAppSDK", 
+    "GitHubAppSDK",
     "GitHubError",
     "GitHubAuthError",
     "GitHubRateLimitError",

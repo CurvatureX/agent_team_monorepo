@@ -123,7 +123,9 @@ class TestMCPErrorHandling:
             assert result[2]["node_type"] == "MISSING_NODE"
             assert "error" in result[2]
             # Accept either "not found" or "incorrect format" - both indicate the node is invalid
-            assert any(phrase in result[2]["error"].lower() for phrase in ["not found", "incorrect"])
+            assert any(
+                phrase in result[2]["error"].lower() for phrase in ["not found", "incorrect"]
+            )
 
     def test_get_node_details_malformed_request(self):
         """Test get_node_details with malformed node requests"""
