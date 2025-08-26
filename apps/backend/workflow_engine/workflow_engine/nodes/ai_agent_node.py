@@ -14,7 +14,12 @@ from typing import Any, Dict, List, Optional
 from shared.models import NodeType
 from shared.models.node_enums import AIAgentSubtype
 from shared.node_specs import node_spec_registry
-from shared.node_specs.base import NodeSpec
+from shared.node_specs.base import ConnectionType, NodeSpec
+from workflow_engine.memory_implementations import (
+    MemoryContext,
+    MemoryContextMerger,
+    MemoryPriority,
+)
 
 from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
 
@@ -26,6 +31,11 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         super().__init__(subtype=subtype)
         self.ai_clients = {}
         self._init_ai_clients()
+
+        # Initialize memory context merger
+        self.memory_merger = MemoryContextMerger(
+            {"max_total_tokens": 4000, "merge_strategy": "priority", "token_buffer": 0.1}
+        )
 
     def _get_node_spec(self) -> Optional[NodeSpec]:
         """Get the node specification for AI agent nodes."""
@@ -110,7 +120,7 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         return errors
 
     def execute(self, context: NodeExecutionContext) -> NodeExecutionResult:
-        """Execute AI agent node with provider-based architecture."""
+        """Execute AI agent node with provider-based architecture and memory integration."""
         start_time = time.time()
         logs = []
 
@@ -118,12 +128,24 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             subtype = context.node.subtype
             logs.append(f"Executing AI agent node with provider: {subtype}")
 
+            # Process memory contexts if present
+            memory_contexts = self._extract_memory_contexts(context)
+            if memory_contexts:
+                logs.append(f"Found {len(memory_contexts)} memory contexts")
+                for memory_context in memory_contexts:
+                    logs.append(
+                        f"  - {memory_context.memory_type}: {memory_context.estimated_tokens} tokens (priority: {memory_context.priority})"
+                    )
+
+            # Enhanced context with memory integration
+            enhanced_context = self._enhance_context_with_memory(context, memory_contexts, logs)
+
             if subtype == AIAgentSubtype.GOOGLE_GEMINI.value:
-                return self._execute_gemini_agent(context, logs, start_time)
+                return self._execute_gemini_agent(enhanced_context, logs, start_time)
             elif subtype == AIAgentSubtype.OPENAI_CHATGPT.value:
-                return self._execute_openai_agent(context, logs, start_time)
+                return self._execute_openai_agent(enhanced_context, logs, start_time)
             elif subtype == AIAgentSubtype.ANTHROPIC_CLAUDE.value:
-                return self._execute_claude_agent(context, logs, start_time)
+                return self._execute_claude_agent(enhanced_context, logs, start_time)
             else:
                 return self._create_error_result(
                     f"Unsupported AI agent provider: {subtype}",
@@ -138,6 +160,102 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                 execution_time=time.time() - start_time,
                 logs=logs,
             )
+
+    def _extract_memory_contexts(self, context: NodeExecutionContext) -> List[MemoryContext]:
+        """Extract memory contexts from input connections."""
+        memory_contexts = []
+
+        try:
+            # Check if there are memory input connections
+            if hasattr(context, "input_connections") and context.input_connections:
+                for connection in context.input_connections:
+                    # Look for MEMORY connection type
+                    if (
+                        hasattr(connection, "connection_type")
+                        and connection.connection_type == ConnectionType.MEMORY
+                    ):
+                        # Extract memory context data
+                        connection_data = getattr(connection, "data", {})
+
+                        if isinstance(connection_data, dict):
+                            memory_type = connection_data.get("memory_type", "unknown")
+                            context_data = connection_data.get("context", {})
+                            priority = connection_data.get("priority", 0.5)
+                            estimated_tokens = connection_data.get("estimated_tokens", 0)
+                            source_node_id = connection_data.get("source_node_id")
+
+                            memory_context = MemoryContext(
+                                memory_type=memory_type,
+                                context=context_data,
+                                priority=priority,
+                                estimated_tokens=estimated_tokens,
+                                source_node_id=source_node_id,
+                            )
+                            memory_contexts.append(memory_context)
+
+            # Also check context.input_data for memory contexts (fallback)
+            elif hasattr(context, "input_data") and isinstance(context.input_data, dict):
+                memory_data = context.input_data.get("memory_contexts", [])
+                if isinstance(memory_data, list):
+                    for mem_data in memory_data:
+                        if isinstance(mem_data, dict):
+                            memory_context = self.memory_merger.create_memory_context(
+                                memory_type=mem_data.get("memory_type", "unknown"),
+                                context_data=mem_data.get("context", {}),
+                                priority=mem_data.get("priority"),
+                                source_node_id=mem_data.get("source_node_id"),
+                            )
+                            memory_contexts.append(memory_context)
+
+        except Exception as e:
+            self.logger.warning(f"Error extracting memory contexts: {e}")
+
+        return memory_contexts
+
+    def _enhance_context_with_memory(
+        self, context: NodeExecutionContext, memory_contexts: List[MemoryContext], logs: List[str]
+    ) -> NodeExecutionContext:
+        """Enhance the execution context with merged memory contexts."""
+        try:
+            # Extract the user message from input data
+            user_message = self._prepare_input_for_ai(context.input_data)
+
+            # Merge memory contexts if available
+            if memory_contexts:
+                merge_result = self.memory_merger.merge_contexts(memory_contexts, user_message)
+
+                logs.append(
+                    f"Memory merge: {merge_result['contexts_included']} included, "
+                    f"{merge_result['contexts_dropped']} dropped"
+                )
+                logs.append(f"Total tokens: {merge_result['total_estimated_tokens']}")
+
+                # Create enhanced input data
+                enhanced_input_data = context.input_data.copy() if context.input_data else {}
+
+                # Add merged memory context to input data
+                enhanced_input_data["memory_context"] = merge_result["merged_context"]
+                enhanced_input_data["memory_summary"] = merge_result["memory_summary"]
+                enhanced_input_data["original_message"] = user_message
+
+                # Create new context with enhanced input
+                enhanced_context = NodeExecutionContext(
+                    node=context.node,
+                    input_data=enhanced_input_data,
+                    workflow_id=getattr(context, "workflow_id", None),
+                    execution_id=getattr(context, "execution_id", None),
+                    credentials=getattr(context, "credentials", None),
+                    input_connections=getattr(context, "input_connections", None),
+                )
+
+                return enhanced_context
+
+        except Exception as e:
+            logs.append(f"Warning: Memory enhancement failed: {e}")
+            self.logger.warning(f"Memory enhancement error: {e}")
+
+        # Return original context if memory enhancement fails or no memory contexts
+        return context
 
     def _execute_gemini_agent(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
@@ -383,11 +501,28 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         return errors
 
     def _prepare_input_for_ai(self, input_data: Dict[str, Any]) -> str:
-        """Prepare input data for AI processing."""
+        """Prepare input data for AI processing, including memory context integration."""
         if isinstance(input_data, str):
             return input_data
 
         if isinstance(input_data, dict):
+            # Check if memory context is present (from memory integration)
+            if "memory_context" in input_data and "original_message" in input_data:
+                memory_context = input_data["memory_context"]
+                original_message = input_data["original_message"]
+
+                # Combine memory context with user message
+                enhanced_input = f"""Context from memory:
+{memory_context}
+
+Current user message:
+{original_message}"""
+
+                self.logger.info(
+                    f"🧠 Enhanced input with memory context (memory: {len(memory_context)} chars)"
+                )
+                return enhanced_input
+
             # First check for standard communication format (from trigger or other nodes)
             if "content" in input_data:
                 content = input_data["content"]
