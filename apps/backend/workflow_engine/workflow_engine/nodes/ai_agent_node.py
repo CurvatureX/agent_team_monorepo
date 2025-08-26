@@ -16,10 +16,13 @@ from shared.models.node_enums import AIAgentSubtype
 from shared.node_specs import node_spec_registry
 from shared.node_specs.base import ConnectionType, NodeSpec
 
-# Memory implementations will be integrated later
-# For now, use stubs to prevent import errors
+# Memory implementations
 try:
-    from ...memory_implementations import MemoryContext, MemoryContextMerger, MemoryPriority
+    from workflow_engine.memory_implementations import (
+        MemoryContext,
+        MemoryContextMerger,
+        MemoryPriority,
+    )
 except ImportError:
     # Create stub classes to prevent import errors
     class MemoryContext:
