@@ -183,7 +183,9 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                     "executed_at": datetime.now().isoformat(),
                 },
                 "format_type": "text",
-                "source_node": context.node.get("id") if hasattr(context, "node") else None,
+                "source_node": context.node.id
+                if hasattr(context, "node") and context.node
+                else None,
                 "timestamp": datetime.now().isoformat(),
             }
 
@@ -248,7 +250,9 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                     "executed_at": datetime.now().isoformat(),
                 },
                 "format_type": "text",
-                "source_node": context.node.get("id") if hasattr(context, "node") else None,
+                "source_node": context.node.id
+                if hasattr(context, "node") and context.node
+                else None,
                 "timestamp": datetime.now().isoformat(),
             }
 
@@ -310,7 +314,9 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                     "executed_at": datetime.now().isoformat(),
                 },
                 "format_type": "text",
-                "source_node": context.node.get("id") if hasattr(context, "node") else None,
+                "source_node": context.node.id
+                if hasattr(context, "node") and context.node
+                else None,
                 "timestamp": datetime.now().isoformat(),
             }
 
