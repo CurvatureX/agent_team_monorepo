@@ -210,6 +210,35 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         api_logger = get_api_call_logger()
         start_time = time.time()
 
+        # Check if operation is valid
+        if not operation:
+            error_message = f"No operation specified for provider {provider}"
+            self.logger.error(error_message)
+
+            if api_logger:
+                await api_logger.log_api_call(
+                    user_id=user_id,
+                    provider=provider,
+                    operation=operation or "unknown",
+                    api_endpoint="N/A",
+                    http_method="N/A",
+                    success=False,
+                    status_code=400,
+                    response_time_ms=int((time.time() - start_time) * 1000),
+                    workflow_execution_id=workflow_execution_id,
+                    node_id=node_id,
+                    request_data=parameters,
+                    error_type="InvalidOperation",
+                    error_message=error_message,
+                )
+
+            return {
+                "success": False,
+                "error": error_message,
+                "provider": provider,
+                "operation": operation,
+            }
+
         # Check if we have the SDK
         if provider not in self._sdks:
             error_message = f"Provider {provider} not available in shared SDKs"
@@ -625,27 +654,53 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         self.logger.info(f"💬 Slack action: {action}")
         self.logger.info(f"📢 Slack channel: {channel}")
 
+        # Provide default action if none specified
         if not action:
-            self.logger.error(f"❌ No Slack action specified")
+            action = "send_message"  # Default to send_message
+            self.logger.warning(f"❌ No Slack action specified, defaulting to: {action}")
+
+        # Handle channel validation and fallbacks
         if not channel:
             self.logger.error(f"❌ No Slack channel specified")
+        elif channel.startswith("example-value-"):
+            # Replace example/placeholder values with a test channel or better error
+            self.logger.warning(
+                f"⚠️ Placeholder channel '{channel}' detected. This needs to be replaced with a real Slack channel ID."
+            )
+            # For demo purposes, we can either:
+            # 1. Use a test channel (if available): channel = "C1234567890"
+            # 2. Or provide a clear error message
+            channel = None  # This will cause a clear error message
 
         parameters = {"channel": channel}
 
         # Add action-specific parameters
         if action == "send_message":
             message_data = context.get_parameter("message_data", {})
+
+            # Get text and blocks
+            text = message_data.get("text", context.get_parameter("text", ""))
+            blocks = message_data.get("blocks", context.get_parameter("blocks", []))
+
+            # Provide default text if both text and blocks are empty
+            if not text and not blocks:
+                # Use contextual message based on trigger data or generic message
+                trigger_data = context.metadata.get("trigger_data", {})
+                trigger_type = trigger_data.get("trigger_type", "workflow")
+                text = f"🤖 Workflow executed via {trigger_type} trigger"
+                self.logger.info(f"✅ Using default Slack message: {text}")
+
             parameters.update(
                 {
-                    "text": message_data.get("text", context.get_parameter("text", "")),
-                    "blocks": message_data.get("blocks", context.get_parameter("blocks", [])),
+                    "text": text,
+                    "blocks": blocks,
                     "attachments": message_data.get(
                         "attachments", context.get_parameter("attachments", [])
                     ),
                     "username": context.get_parameter("username"),
                     "icon_emoji": context.get_parameter("icon_emoji"),
                     "icon_url": context.get_parameter("icon_url"),
-                    "thread_ts": context.get_parameter("thread_ts"),
+                    "thread_ts": self._clean_thread_ts(context.get_parameter("thread_ts")),
                     "reply_broadcast": context.get_parameter("reply_broadcast", False),
                 }
             )
@@ -670,6 +725,18 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
         self.logger.info(f"✅ Returning Slack operation: action='{action}', parameters={parameters}")
         return action, parameters
+
+    def _clean_thread_ts(self, thread_ts: str) -> str:
+        """Clean thread_ts parameter, removing placeholder values."""
+        if not thread_ts:
+            return None
+
+        # Remove placeholder values
+        if thread_ts.startswith("example-value-"):
+            self.logger.info(f"🧹 Removing placeholder thread_ts: {thread_ts}")
+            return None
+
+        return thread_ts
 
     def _prepare_email_operation(self, context: NodeExecutionContext) -> tuple[str, Dict[str, Any]]:
         """Prepare Email operation and parameters."""
