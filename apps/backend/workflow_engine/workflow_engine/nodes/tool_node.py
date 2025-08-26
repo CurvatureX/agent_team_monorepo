@@ -59,10 +59,10 @@ class ToolNodeExecutor(BaseNodeExecutor):
 
         subtype = node.subtype
 
-        if subtype in ["TOOL_GOOGLE_CALENDAR_MCP", "TOOL_NOTION_MCP"]:
+        if subtype in [ToolSubtype.MCP_TOOL.value]:  # MCP tools use generic MCP_TOOL subtype
             errors.extend(self._validate_required_parameters(node, ["tool_name", "operation"]))
 
-        elif subtype == "TOOL_CALENDAR":
+        elif subtype == ToolSubtype.CALENDAR_GENERIC.value:
             errors.extend(self._validate_required_parameters(node, ["calendar_id", "operation"]))
             if hasattr(node, "parameters"):
                 operation = node.parameters.get("operation", "")
@@ -74,21 +74,21 @@ class ToolNodeExecutor(BaseNodeExecutor):
                 ]:
                     errors.append(f"Invalid calendar operation: {operation}")
 
-        elif subtype == "TOOL_EMAIL":
+        elif subtype == ToolSubtype.EMAIL_TOOL.value:
             errors.extend(self._validate_required_parameters(node, ["operation"]))
             if hasattr(node, "parameters"):
                 operation = node.parameters.get("operation", "")
                 if operation and operation not in ["send", "read", "search", "delete"]:
                     errors.append(f"Invalid email operation: {operation}")
 
-        elif subtype == "TOOL_HTTP":
+        elif subtype == ToolSubtype.HTTP_CLIENT.value:
             errors.extend(self._validate_required_parameters(node, ["method", "url"]))
             if hasattr(node, "parameters"):
                 method = node.parameters.get("method", "").upper()
                 if method and method not in ["GET", "POST", "PUT", "DELETE", "PATCH"]:
                     errors.append(f"Invalid HTTP method: {method}")
 
-        elif subtype == "TOOL_CODE_EXECUTION":
+        elif subtype == ToolSubtype.CODE_TOOL.value:
             errors.extend(self._validate_required_parameters(node, ["code"]))
             if hasattr(node, "parameters"):
                 language = node.parameters.get("language", "python")
