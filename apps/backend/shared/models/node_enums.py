@@ -191,32 +191,27 @@ class ToolSubtype(str, Enum):
 
 
 class MemorySubtype(str, Enum):
-    """Memory Node Subtypes - Data storage and retrieval"""
+    """Memory Node Subtypes - Memory storage types for LLM context"""
 
-    # Vector Databases
+    # Conversation Memory Types
+    CONVERSATION_BUFFER = "CONVERSATION_BUFFER"
+    CONVERSATION_SUMMARY = "CONVERSATION_SUMMARY"
+
+    # Vector Database Memory
     VECTOR_DATABASE = "VECTOR_DATABASE"
-    PINECONE = "PINECONE"
-    WEAVIATE = "WEAVIATE"
-    QDRANT = "QDRANT"
 
-    # Key-Value Stores
+    # Key-Value Memory
     KEY_VALUE_STORE = "KEY_VALUE_STORE"
-    REDIS_CACHE = "REDIS_CACHE"
 
-    # Document Stores
+    # Document Memory
     DOCUMENT_STORE = "DOCUMENT_STORE"
-    ELASTICSEARCH = "ELASTICSEARCH"
 
-    # Traditional Databases
-    SQL_DATABASE = "SQL_DATABASE"
-    NOSQL_DATABASE = "NOSQL_DATABASE"
-
-    SIMPLE_MEMORY = "SIMPLE_MEMORY"
-
-    # Legacy (for backward compatibility)
-    VECTOR_DB = "VECTOR_DB"
-    KEY_VALUE = "KEY_VALUE"
-    DOCUMENT = "DOCUMENT"
+    # Advanced Memory Types
+    ENTITY_MEMORY = "ENTITY_MEMORY"
+    EPISODIC_MEMORY = "EPISODIC_MEMORY"
+    KNOWLEDGE_BASE = "KNOWLEDGE_BASE"
+    GRAPH_MEMORY = "GRAPH_MEMORY"
+    WORKING_MEMORY = "WORKING_MEMORY"
 
 
 # Validation mapping - defines which subtypes are valid for each node type

@@ -99,7 +99,24 @@ def _create_ai_agent_spec(
                     ],
                 ),
                 validation_schema='{"type": "object", "properties": {"message": {"type": "string"}, "context": {"type": "object"}, "variables": {"type": "object"}}, "required": ["message"]}',
-            )
+            ),
+            InputPortSpec(
+                name="memory",
+                type=ConnectionType.MEMORY,
+                required=False,
+                max_connections=-1,  # Allow multiple memory connections
+                description="Memory context from various memory nodes (conversation, entity, vector, etc.)",
+                data_format=DataFormat(
+                    mime_type="application/json",
+                    schema='{"memory_type": "string", "context": "object", "priority": "number", "estimated_tokens": "number"}',
+                    examples=[
+                        '{"memory_type": "conversation_summary", "context": {"messages": [...], "summary": "..."}, "priority": 0.8, "estimated_tokens": 150}',
+                        '{"memory_type": "vector_search", "context": {"results": [...], "context_text": "..."}, "priority": 0.6, "estimated_tokens": 200}',
+                        '{"memory_type": "entity_memory", "context": {"entities": [...], "relationships": [...]}, "priority": 0.4, "estimated_tokens": 100}',
+                    ],
+                ),
+                validation_schema='{"type": "object", "properties": {"memory_type": {"type": "string"}, "context": {"type": "object"}, "priority": {"type": "number"}, "estimated_tokens": {"type": "number"}}, "required": ["memory_type", "context"]}',
+            ),
         ],
         output_ports=[
             OutputPortSpec(
