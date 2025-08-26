@@ -693,46 +693,30 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                     )
                     text = ""  # Clear placeholder so we check input data
 
-            # Check for input data from connected nodes (AI agent response)
+            # Check for input data from connected nodes (standard communication format)
             if not text and context.input_data:
-                # Try to extract AI response from input data
-                if "ai_response" in context.input_data:
-                    ai_response = context.input_data["ai_response"]
-                    self.logger.info(f"🤖 Found AI response in input data: {ai_response}")
+                # Check for new standard communication format
+                if "content" in context.input_data:
+                    text = context.input_data["content"]
+                    self.logger.info(f"✅ Found standard format content: {text}")
 
-                    # Parse AI response if it's JSON
-                    try:
-                        if isinstance(ai_response, str):
-                            import json
-
-                            ai_data = json.loads(ai_response)
-                            # Extract the actual response content, not the wrapper
-                            if "response" in ai_data:
-                                text = ai_data["response"]
-                                # If response is still JSON-like, extract further
-                                if isinstance(text, str) and text.startswith('{"'):
-                                    try:
-                                        inner_data = json.loads(text)
-                                        if "response" in inner_data:
-                                            text = inner_data["response"]
-                                    except:
-                                        pass  # Use outer response if inner parsing fails
-                            else:
-                                text = str(ai_data)
-                        else:
-                            text = str(ai_response)
-                        self.logger.info(f"✅ Extracted AI response content: {text}")
-                    except (json.JSONDecodeError, Exception) as e:
-                        self.logger.warning(f"⚠️ Failed to parse AI response, using raw: {e}")
-                        text = str(ai_response)
-
-                # Also check for general response or output from upstream nodes
-                elif "response" in context.input_data:
-                    text = str(context.input_data["response"])
-                    self.logger.info(f"✅ Using upstream response as message: {text}")
-                elif "output" in context.input_data:
-                    text = str(context.input_data["output"])
-                    self.logger.info(f"✅ Using upstream output as message: {text}")
+                    # Log metadata if available for debugging
+                    if "metadata" in context.input_data:
+                        metadata = context.input_data["metadata"]
+                        provider = metadata.get("provider", "unknown")
+                        model = metadata.get("model", "unknown")
+                        self.logger.info(f"📊 AI provider: {provider}, model: {model}")
+                else:
+                    self.logger.warning(
+                        f"⚠️ Input data available but no 'content' field found. Keys: {list(context.input_data.keys())}"
+                    )
+                    self.logger.info(f"🔍 Full input data: {context.input_data}")
+                    # Try to extract any string content from input data as fallback
+                    for key, value in context.input_data.items():
+                        if isinstance(value, str) and value.strip():
+                            text = value
+                            self.logger.info(f"✅ Using fallback content from key '{key}': {text}")
+                            break
 
             blocks = message_data.get("blocks", context.get_parameter("blocks", []))
 
@@ -799,11 +783,22 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         parameters = {}
 
         if action == "send":
+            # Get email body from standard communication format first
+            body = ""
+
+            # First check for input data from connected nodes (standard format)
+            if context.input_data and "content" in context.input_data:
+                body = context.input_data["content"]
+                self.logger.info(f"✅ Using standard format content for email body: {body}")
+            else:
+                # Fallback to parameter-based body
+                body = context.get_parameter("body", context.get_parameter("message", ""))
+
             parameters.update(
                 {
                     "recipients": self.get_parameter_with_spec(context, "recipients"),
                     "subject": self.get_parameter_with_spec(context, "subject"),
-                    "body": context.get_parameter("body", context.get_parameter("message", "")),
+                    "body": body,
                     "from_email": context.get_parameter("from_email"),
                 }
             )
@@ -1391,11 +1386,22 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         api_parameters = {}
 
         if action == "send":
+            # Get email body from standard communication format first
+            body = ""
+
+            # First check for input data from connected nodes (standard format)
+            if context.input_data and "content" in context.input_data:
+                body = context.input_data["content"]
+                logs.append(f"✅ Using standard format content for email body: {body}")
+            else:
+                # Fallback to parameter-based body
+                body = context.get_parameter("body", context.get_parameter("message", ""))
+
             api_parameters.update(
                 {
                     "recipients": self.get_parameter_with_spec(context, "recipients"),
                     "subject": self.get_parameter_with_spec(context, "subject"),
-                    "body": context.get_parameter("body", context.get_parameter("message", "")),
+                    "body": body,
                     "from_email": context.get_parameter("from_email"),
                 }
             )
@@ -1480,14 +1486,38 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         if action == "send_message":
             message_data = context.get_parameter("message_data", {})
 
-            # Get message text with fallback for placeholder values
-            message_text = message_data.get("text", context.get_parameter("text", ""))
-            if not message_text or message_text.startswith("example-value"):
-                # Use a contextual message based on trigger data
+            # Get message text from standard communication format first
+            message_text = ""
+
+            # First check for input data from connected nodes (standard format)
+            if context.input_data and "content" in context.input_data:
+                message_text = context.input_data["content"]
+                logs.append(f"✅ Found standard format content: {message_text}")
+
+                # Log metadata if available for debugging
+                if "metadata" in context.input_data:
+                    metadata = context.input_data["metadata"]
+                    provider = metadata.get("provider", "unknown")
+                    model = metadata.get("model", "unknown")
+                    logs.append(f"📊 AI provider: {provider}, model: {model}")
+
+            # Fallback to parameter-based message
+            if not message_text:
+                message_text = message_data.get("text", context.get_parameter("text", ""))
+
+            # Check if parameter value is placeholder and clear it
+            if message_text and message_text.startswith("example-value"):
+                logs.append(
+                    f"⚠️ Detected placeholder message value: {message_text}, clearing to use default"
+                )
+                message_text = ""
+
+            # Final fallback to contextual message
+            if not message_text:
                 trigger_data = context.metadata.get("trigger_data", {})
                 trigger_type = trigger_data.get("trigger_type", "unknown")
                 message_text = f"🤖 Workflow triggered by {trigger_type} event"
-                logs.append(f"Using default message (parameter was placeholder): {message_text}")
+                logs.append(f"Using default message: {message_text}")
 
             api_parameters.update(
                 {
