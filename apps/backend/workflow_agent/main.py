@@ -151,7 +151,7 @@ class FastAPIServer:
                 port=port,
                 reload=reload_mode,
                 access_log=True,
-                log_level=log_level.lower(),
+                log_level=os.getenv("LOG_LEVEL", "INFO").lower(),
             )
             self.server = uvicorn.Server(config)
 
