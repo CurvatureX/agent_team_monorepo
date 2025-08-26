@@ -6,6 +6,7 @@ Handles memory operations like vector database, key-value storage, document stor
 
 import hashlib
 import json
+import os
 import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -17,16 +18,24 @@ from shared.node_specs.base import NodeSpec
 
 from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
 
+try:
+    from supabase import Client, create_client
+except ImportError:
+    Client = None
+
 
 class MemoryNodeExecutor(BaseNodeExecutor):
     """Executor for MEMORY_NODE type."""
 
     def __init__(self, subtype: Optional[str] = None):
         super().__init__(subtype=subtype)
-        # Mock memory storage
+        # Mock memory storage (for backwards compatibility)
         self._vector_db = {}
         self._key_value_store = {}
         self._document_store = {}
+
+        # Supabase client for persistent memory storage
+        self._supabase_client: Optional[Client] = None
 
     def _get_node_spec(self) -> Optional[NodeSpec]:
         """Get the node specification for memory nodes."""
@@ -1241,6 +1250,164 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             output_data=result, execution_time=time.time() - start_time, logs=logs
         )
 
+    def _get_supabase_client(self) -> Optional[Client]:
+        """Get Supabase client for persistent storage."""
+        if not self._supabase_client and Client:
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_SECRET_KEY")
+
+            if supabase_url and supabase_key:
+                try:
+                    self._supabase_client = create_client(supabase_url, supabase_key)
+                except Exception:
+                    self._supabase_client = None
+
+        return self._supabase_client
+
+    def _save_to_database(
+        self,
+        workflow_id: str,
+        execution_id: str,
+        memory_key: str,
+        memory_value: dict,
+        node_id: str,
+        logs: List[str],
+    ) -> None:
+        """Save memory data to workflow_memory table using Supabase."""
+        try:
+            supabase = self._get_supabase_client()
+            if not supabase:
+                logs.append(
+                    "🧠 DATABASE: ⚠️ Supabase client not available, using in-memory storage only"
+                )
+                return
+
+            # Check if record already exists
+            existing = (
+                supabase.table("workflow_memory")
+                .select("id")
+                .eq("workflow_id", workflow_id)
+                .eq("execution_id", execution_id)
+                .eq("memory_key", memory_key)
+                .execute()
+            )
+
+            memory_record = {
+                "workflow_id": workflow_id,
+                "execution_id": execution_id,
+                "memory_key": memory_key,
+                "memory_value": memory_value,
+                "memory_type": "conversation_buffer",
+                "node_id": node_id,
+            }
+
+            if existing.data:
+                # Update existing record
+                result = (
+                    supabase.table("workflow_memory")
+                    .update(
+                        {
+                            "memory_value": memory_value,
+                            "node_id": node_id,
+                            "updated_at": datetime.now().isoformat(),
+                        }
+                    )
+                    .eq("workflow_id", workflow_id)
+                    .eq("execution_id", execution_id)
+                    .eq("memory_key", memory_key)
+                    .execute()
+                )
+
+                logs.append(f"🧠 DATABASE: Updated existing memory record for key '{memory_key}'")
+            else:
+                # Insert new record
+                result = supabase.table("workflow_memory").insert(memory_record).execute()
+                logs.append(f"🧠 DATABASE: Saved new memory record for key '{memory_key}'")
+
+            logs.append(f"🧠 DATABASE: Memory data persisted to Supabase successfully")
+
+        except Exception as e:
+            logs.append(f"🧠 DATABASE: ❌ Error saving memory data: {str(e)}")
+
+    def _load_from_database(
+        self, workflow_id: str, execution_id: str, memory_key: str, logs: List[str]
+    ) -> Optional[dict]:
+        """Load memory data from workflow_memory table using Supabase."""
+        try:
+            supabase = self._get_supabase_client()
+            if not supabase:
+                logs.append(
+                    "🧠 DATABASE: ⚠️ Supabase client not available, using in-memory storage only"
+                )
+                return None
+
+            result = (
+                supabase.table("workflow_memory")
+                .select("memory_value")
+                .eq("workflow_id", workflow_id)
+                .eq("execution_id", execution_id)
+                .eq("memory_key", memory_key)
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+
+            if result.data:
+                memory_data = result.data[0]["memory_value"]
+                logs.append(f"🧠 DATABASE: Loaded existing memory data for key '{memory_key}'")
+                logs.append(
+                    f"🧠 DATABASE: Found {len(memory_data.get('messages', []))} stored messages"
+                )
+                return memory_data
+            else:
+                logs.append(f"🧠 DATABASE: No existing memory data found for key '{memory_key}'")
+                return None
+
+        except Exception as e:
+            logs.append(f"🧠 DATABASE: ❌ Error loading memory data: {str(e)}")
+            return None
+
+    def _load_conversation_history_from_workflow(
+        self, workflow_id: str, logs: List[str]
+    ) -> List[dict]:
+        """Load conversation history across all executions for this workflow using Supabase."""
+        try:
+            supabase = self._get_supabase_client()
+            if not supabase:
+                logs.append(
+                    "🧠 DATABASE: ⚠️ Supabase client not available, using in-memory storage only"
+                )
+                return []
+
+            result = (
+                supabase.table("workflow_memory")
+                .select("memory_value, created_at")
+                .eq("workflow_id", workflow_id)
+                .eq("memory_type", "conversation_buffer")
+                .order("created_at", desc=True)
+                .limit(100)
+                .execute()
+            )
+
+            all_messages = []
+            for record in result.data:
+                memory_data = record["memory_value"]
+                messages = memory_data.get("messages", [])
+                all_messages.extend(messages)
+
+            # Sort by timestamp and limit to recent messages
+            all_messages.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+            recent_messages = all_messages[:20]  # Last 20 messages across all executions
+
+            logs.append(
+                f"🧠 DATABASE: Loaded {len(recent_messages)} messages from conversation history"
+            )
+            return recent_messages
+
+        except Exception as e:
+            logs.append(f"🧠 DATABASE: ❌ Error loading conversation history: {str(e)}")
+            return []
+
     def _execute_conversation_buffer(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
@@ -1278,16 +1445,37 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             f"🧠 MEMORY NODE: Configuration - window_size: {window_size}, window_type: {window_type}, backend: {storage_backend}"
         )
 
-        # Initialize conversation buffer if not exists
-        buffer_key = f"conversation_buffer_{context.execution_id or 'default'}"
-        if buffer_key not in self._key_value_store:
-            self._key_value_store[buffer_key] = {
-                "messages": [],
+        # Get workflow and node information for database operations
+        workflow_id = context.workflow_id or "unknown"
+        execution_id = context.execution_id or "default"
+        node_id = (
+            getattr(context.node, "id", "memory_node")
+            if hasattr(context, "node")
+            else "memory_node"
+        )
+
+        # Initialize conversation buffer - try to load from database first
+        buffer_key = f"conversation_buffer_{execution_id}"
+
+        # Try to load existing conversation history from database
+        existing_buffer = self._load_from_database(workflow_id, execution_id, buffer_key, logs)
+        if existing_buffer:
+            buffer = existing_buffer
+            logs.append(
+                f"🧠 MEMORY NODE: Loaded existing buffer from database with key: {buffer_key}"
+            )
+        else:
+            # Also try to load conversation history from other executions of this workflow
+            workflow_history = self._load_conversation_history_from_workflow(workflow_id, logs)
+            buffer = {
+                "messages": workflow_history,  # Start with historical messages
                 "created_at": datetime.now().isoformat(),
             }
             logs.append(f"🧠 MEMORY NODE: Created new buffer with key: {buffer_key}")
-        else:
-            logs.append(f"🧠 MEMORY NODE: Using existing buffer with key: {buffer_key}")
+            if workflow_history:
+                logs.append(
+                    f"🧠 MEMORY NODE: Initialized with {len(workflow_history)} historical messages"
+                )
 
         # Log input data analysis
         if hasattr(context, "input_data") and context.input_data:
@@ -1302,8 +1490,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                         logs.append(f"🧠 MEMORY NODE: Input '{key}': {value}")
         else:
             logs.append("🧠 MEMORY NODE: No input data provided")
-
-        buffer = self._key_value_store[buffer_key]
 
         try:
             # Handle incoming message data
@@ -1390,6 +1576,12 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 f"🧠 MEMORY NODE:   📝 Formatted context length: {len(memory_context_for_llm)} characters"
             )
             logs.append(f"🧠 MEMORY NODE:   🔗 Ready for LLM integration")
+
+            # Save updated buffer to database for persistence across executions
+            if context.input_data:  # Only save if we actually processed new data
+                self._save_to_database(workflow_id, execution_id, buffer_key, buffer, node_id, logs)
+                # Also update in-memory store for backwards compatibility
+                self._key_value_store[buffer_key] = buffer
 
             return self._create_success_result(
                 output_data=context_data, execution_time=time.time() - start_time, logs=logs
