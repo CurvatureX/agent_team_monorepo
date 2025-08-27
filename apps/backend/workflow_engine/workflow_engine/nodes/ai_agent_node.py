@@ -628,7 +628,9 @@ Please use this context appropriately when responding. Reference relevant inform
                     # Find the target node definition
                     for node in workflow_nodes:
                         if node.get("id") == target_node_id:
-                            if node.get("type") == "MEMORY_NODE":
+                            if (
+                                node.get("type") == NodeType.MEMORY.value
+                            ):  # Use proper enum from shared models
                                 connected_memory_nodes.append(
                                     {
                                         "node_id": target_node_id,
