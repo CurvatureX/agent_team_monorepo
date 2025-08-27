@@ -183,20 +183,40 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
 
         return errors
 
-    def execute(self, context: NodeExecutionContext) -> NodeExecutionResult:
+    async def execute(self, context: NodeExecutionContext) -> NodeExecutionResult:
         """Execute AI agent node with provider-based architecture and memory integration."""
         start_time = time.time()
         logs = []
 
         try:
             subtype = context.node.subtype
+            node_id = getattr(context.node, "id", "unknown")
             self.logger.info(f"🤖 AI AGENT: Starting {subtype} execution")
-            self.logger.info(
-                f"🤖 AI AGENT: Node ID: {getattr(context.node, 'id', 'unknown') if hasattr(context, 'node') else 'unknown'}"
-            )
+            self.logger.info(f"🤖 AI AGENT: Node ID: {node_id}")
             self.logger.info(
                 f"🤖 AI AGENT: Execution ID: {getattr(context, 'execution_id', 'unknown')}"
             )
+
+            # Detect connected memory nodes and load conversation history
+            connected_memory_nodes = self._detect_connected_memory_nodes(context)
+            if connected_memory_nodes:
+                self.logger.info(
+                    f"🤖 AI AGENT: 🧠 Found {len(connected_memory_nodes)} connected memory nodes"
+                )
+                # Load conversation history from connected memory nodes
+                conversation_history = await self._load_conversation_history_from_memory_nodes(
+                    context, connected_memory_nodes
+                )
+                if conversation_history:
+                    # Add conversation history to input data for memory enhancement
+                    if not isinstance(context.input_data, dict):
+                        context.input_data = {}
+                    context.input_data["memory_context"] = conversation_history
+                    self.logger.info(
+                        f"🤖 AI AGENT: 🧠 Loaded conversation history ({len(conversation_history)} chars)"
+                    )
+            else:
+                self.logger.info("🤖 AI AGENT: 🧠 No connected memory nodes detected")
 
             # Log input data analysis
             if hasattr(context, "input_data") and context.input_data:
@@ -243,18 +263,44 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             # Enhanced context with memory integration
             enhanced_context = self._enhance_context_with_memory(context, memory_contexts, logs)
 
+            # Execute the AI provider
+            result = None
             if subtype == AIAgentSubtype.GOOGLE_GEMINI.value:
-                return self._execute_gemini_agent(enhanced_context, logs, start_time)
+                result = self._execute_gemini_agent(enhanced_context, logs, start_time)
             elif subtype == AIAgentSubtype.OPENAI_CHATGPT.value:
-                return self._execute_openai_agent(enhanced_context, logs, start_time)
+                result = self._execute_openai_agent(enhanced_context, logs, start_time)
             elif subtype == AIAgentSubtype.ANTHROPIC_CLAUDE.value:
-                return self._execute_claude_agent(enhanced_context, logs, start_time)
+                result = self._execute_claude_agent(enhanced_context, logs, start_time)
             else:
-                return self._create_error_result(
+                result = self._create_error_result(
                     f"Unsupported AI agent provider: {subtype}",
                     execution_time=time.time() - start_time,
                     logs=logs,
                 )
+
+            # Store conversation exchange in connected memory nodes after successful AI execution
+            if (
+                result
+                and hasattr(result, "status")
+                and result.status.value == "success"
+                and connected_memory_nodes
+            ):
+                try:
+                    # Extract user message and AI response for storage
+                    user_message = self._prepare_input_for_ai(context.input_data)
+                    ai_response = ""
+
+                    if hasattr(result, "output_data") and result.output_data:
+                        ai_response = result.output_data.get("content", "")
+
+                    if user_message and ai_response:
+                        await self._store_conversation_exchange(
+                            context, connected_memory_nodes, user_message, ai_response
+                        )
+                except Exception as e:
+                    self.logger.warning(f"🤖 AI AGENT: 🧠 Failed to store conversation exchange: {e}")
+
+            return result
 
         except Exception as e:
             return self._create_error_result(
@@ -550,6 +596,172 @@ You have access to relevant memory context that should inform your responses:
 {memory_context}
 
 Please use this context appropriately when responding. Reference relevant information from your memory when it's helpful, but don't force it into every response."""
+
+    def _detect_connected_memory_nodes(self, context: NodeExecutionContext) -> List[Dict[str, Any]]:
+        """Detect memory nodes connected to this AI agent."""
+        connected_memory_nodes = []
+
+        # Get workflow connections and nodes from metadata
+        workflow_connections = context.metadata.get("workflow_connections", {})
+        workflow_nodes = context.metadata.get("workflow_nodes", [])
+        current_node_id = context.metadata.get("node_id")
+
+        if not current_node_id or not workflow_connections or not workflow_nodes:
+            self.logger.info(
+                "🤖 AI AGENT: 🧠 Missing workflow connection data for memory node detection"
+            )
+            return connected_memory_nodes
+
+        self.logger.info(f"🤖 AI AGENT: 🧠 Detecting memory nodes connected to {current_node_id}")
+
+        # Look for outgoing connections from this AI agent node to memory nodes
+        if current_node_id in workflow_connections:
+            node_connections = workflow_connections[current_node_id]
+            connection_types = node_connections.get("connection_types", {})
+
+            for connection_type, connection_array in connection_types.items():
+                connections_list = connection_array.get("connections", [])
+
+                for connection in connections_list:
+                    target_node_id = connection.get("node")
+
+                    # Find the target node definition
+                    for node in workflow_nodes:
+                        if node.get("id") == target_node_id:
+                            if node.get("type") == "MEMORY_NODE":
+                                connected_memory_nodes.append(
+                                    {
+                                        "node_id": target_node_id,
+                                        "node": node,
+                                        "connection_type": connection_type,
+                                        "connection": connection,
+                                    }
+                                )
+                                self.logger.info(
+                                    f"🤖 AI AGENT: 🧠 Found connected memory node: {target_node_id} (subtype: {node.get('subtype', 'unknown')})"
+                                )
+                            break
+
+        self.logger.info(
+            f"🤖 AI AGENT: 🧠 Total connected memory nodes: {len(connected_memory_nodes)}"
+        )
+        return connected_memory_nodes
+
+    async def _load_conversation_history_from_memory_nodes(
+        self, context: NodeExecutionContext, memory_nodes: List[Dict[str, Any]]
+    ) -> str:
+        """Load conversation history from connected memory nodes."""
+        self.logger.info("🤖 AI AGENT: 🧠 Loading conversation history from memory nodes")
+
+        # For now, we'll use the first memory node (could be enhanced to merge multiple)
+        if not memory_nodes:
+            return ""
+
+        memory_node_info = memory_nodes[0]
+        memory_node_def = memory_node_info["node"]
+        memory_node_id = memory_node_info["node_id"]
+
+        self.logger.info(f"🤖 AI AGENT: 🧠 Loading from memory node: {memory_node_id}")
+
+        try:
+            # Import and create memory node executor
+            from .memory_node import MemoryNodeExecutor
+
+            memory_executor = MemoryNodeExecutor(subtype=memory_node_def.get("subtype"))
+
+            # Create context for memory node to load conversation history
+            memory_context = NodeExecutionContext(
+                node=self._dict_to_node_object(memory_node_def),
+                workflow_id=context.workflow_id,
+                execution_id=context.execution_id,
+                input_data={
+                    "action": "load_conversation_history"
+                },  # Special action to load history
+                static_data=context.static_data,
+                credentials=context.credentials,
+                metadata=context.metadata,
+            )
+
+            # Execute memory node to get conversation history
+            memory_result = memory_executor.execute(memory_context)
+
+            if memory_result.status.value == "success" and memory_result.output_data:
+                conversation_history = memory_result.output_data.get("conversation_history", "")
+                self.logger.info(
+                    f"🤖 AI AGENT: 🧠 Loaded conversation history ({len(conversation_history)} chars)"
+                )
+                return conversation_history
+            else:
+                self.logger.warning(
+                    f"🤖 AI AGENT: 🧠 Failed to load conversation history: {memory_result.error_message}"
+                )
+                return ""
+
+        except Exception as e:
+            self.logger.error(f"🤖 AI AGENT: 🧠 Error loading conversation history: {e}")
+            return ""
+
+    async def _store_conversation_exchange(
+        self,
+        context: NodeExecutionContext,
+        memory_nodes: List[Dict[str, Any]],
+        user_message: str,
+        ai_response: str,
+    ):
+        """Store conversation exchange in connected memory nodes after AI execution."""
+        if not memory_nodes:
+            return
+
+        self.logger.info("🤖 AI AGENT: 🧠 Storing conversation exchange in memory nodes")
+
+        for memory_node_info in memory_nodes:
+            memory_node_def = memory_node_info["node"]
+            memory_node_id = memory_node_info["node_id"]
+
+            try:
+                # Import and create memory node executor
+                from .memory_node import MemoryNodeExecutor
+
+                memory_executor = MemoryNodeExecutor(subtype=memory_node_def.get("subtype"))
+
+                # Create context for memory node to store conversation
+                memory_context = NodeExecutionContext(
+                    node=self._dict_to_node_object(memory_node_def),
+                    workflow_id=context.workflow_id,
+                    execution_id=context.execution_id,
+                    input_data={
+                        "user_message": user_message,
+                        "ai_response": ai_response,
+                        "source_node": getattr(context.node, "id", "ai_agent"),
+                        "timestamp": datetime.now().isoformat(),
+                    },
+                    static_data=context.static_data,
+                    credentials=context.credentials,
+                    metadata=context.metadata,
+                )
+
+                # Execute memory node to store conversation
+                memory_result = memory_executor.execute(memory_context)
+
+                if memory_result.status.value == "success":
+                    self.logger.info(
+                        f"🤖 AI AGENT: 🧠 Successfully stored conversation in memory node: {memory_node_id}"
+                    )
+                else:
+                    self.logger.warning(
+                        f"🤖 AI AGENT: 🧠 Failed to store conversation in memory node {memory_node_id}: {memory_result.error_message}"
+                    )
+
+            except Exception as e:
+                self.logger.error(
+                    f"🤖 AI AGENT: 🧠 Error storing conversation in memory node {memory_node_id}: {e}"
+                )
+
+    def _dict_to_node_object(self, node_def: Dict[str, Any]):
+        """Convert node definition dict to node object."""
+        from types import SimpleNamespace
+
+        return SimpleNamespace(**node_def)
 
     def _execute_gemini_agent(
         self, context: NodeExecutionContext, logs: List[str], start_time: float

@@ -305,6 +305,12 @@ class WorkflowExecutionEngine:
                 "trigger_channel_id": trigger_data.get("channel_id"),
                 "trigger_user_id": trigger_data.get("user_id"),
                 "user_id": user_id,  # Add the actual executing user ID
+                "workflow_connections": workflow_definition.get(
+                    "connections", {}
+                ),  # Add workflow connections
+                "workflow_nodes": workflow_definition.get(
+                    "nodes", []
+                ),  # Add all nodes for memory node detection
             },
         )
 

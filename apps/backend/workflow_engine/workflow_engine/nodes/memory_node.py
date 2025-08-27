@@ -1456,6 +1456,29 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             else:
                 logs.append("Initialized empty conversation buffer")
 
+        # Check if this is a special action to load conversation history for AI agent
+        if (
+            hasattr(context, "input_data")
+            and context.input_data
+            and context.input_data.get("action") == "load_conversation_history"
+        ):
+            self.logger.info("🧠 MEMORY NODE: Loading conversation history for AI agent")
+
+            # Return existing conversation history as formatted context
+            messages = buffer.get("messages", [])
+            conversation_history = self._format_conversation_history_for_ai(messages, logs)
+
+            output_data = {
+                "conversation_history": conversation_history,
+                "message_count": len(messages),
+                "memory_type": MemorySubtype.CONVERSATION_BUFFER.value,
+                "executed_at": datetime.now().isoformat(),
+            }
+
+            return self._create_success_result(
+                output_data=output_data, execution_time=time.time() - start_time, logs=logs
+            )
+
         # Log input data analysis
         if hasattr(context, "input_data") and context.input_data:
             if isinstance(context.input_data, dict):
@@ -1517,9 +1540,25 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                             break
 
                 # Extract other message fields with intelligent role detection
-                message_role = self._detect_message_role(context.input_data)
-                message_timestamp = context.input_data.get("timestamp", datetime.now().isoformat())
-                message_metadata = context.input_data.get("metadata", {})
+                # Need to extract from nested structure like content extraction
+                role_data = context.input_data
+                # Check if data is nested under a key (like 'memory')
+                if isinstance(context.input_data, dict):
+                    for key, value in context.input_data.items():
+                        if isinstance(value, dict) and any(
+                            field in value for field in ["source_node", "metadata", "provider"]
+                        ):
+                            role_data = value
+                            break
+
+                message_role = self._detect_message_role(role_data)
+
+                # Log role detection for debugging
+                self.logger.info(
+                    f"🧠 MEMORY NODE: Role detection - source_node: '{role_data.get('source_node', 'none')}', detected role: '{message_role}'"
+                )
+                message_timestamp = role_data.get("timestamp", datetime.now().isoformat())
+                message_metadata = role_data.get("metadata", {})
 
                 # Log extraction details for debugging
                 self.logger.info(
@@ -1734,6 +1773,40 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
         # Default fallback - prefer user for ambiguous cases
         return "user"
+
+    def _format_conversation_history_for_ai(
+        self, messages: List[Dict[str, Any]], logs: List[str]
+    ) -> str:
+        """Format conversation history for AI agent consumption."""
+        if not messages:
+            return ""
+
+        self.logger.info(f"🧠 MEMORY NODE: Formatting {len(messages)} messages for AI consumption")
+
+        formatted_conversations = []
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            timestamp = msg.get("timestamp", "")
+
+            # Skip empty messages
+            if not content or len(content.strip()) == 0:
+                continue
+
+            # Format with clear role indicators
+            if role == "user":
+                formatted_conversations.append(f"User: {content}")
+            elif role == "assistant":
+                formatted_conversations.append(f"Assistant: {content}")
+            else:
+                formatted_conversations.append(f"{role.title()}: {content}")
+
+        conversation_text = "\n\n".join(formatted_conversations)
+        self.logger.info(
+            f"🧠 MEMORY NODE: Formatted conversation history ({len(conversation_text)} chars)"
+        )
+
+        return conversation_text
 
     # Supporting methods for advanced memory types
     def _generate_conversation_summary(
