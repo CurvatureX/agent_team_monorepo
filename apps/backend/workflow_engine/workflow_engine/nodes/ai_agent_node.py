@@ -243,22 +243,10 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             # Process memory contexts if present
             memory_contexts = self._extract_memory_contexts(context)
             if memory_contexts:
+                total_chars = sum(len(str(ctx)) for ctx in memory_contexts)
                 self.logger.info(
-                    f"🤖 AI AGENT: 🧠 Memory integration detected - {len(memory_contexts)} contexts found"
+                    f"🧠 AIAgent: Found {len(memory_contexts)} contexts, {total_chars} chars total"
                 )
-                for i, memory_context in enumerate(memory_contexts):
-                    self.logger.info(
-                        f"🤖 AI AGENT:   🧠 Context {i+1}: {len(str(memory_context))} characters"
-                    )
-                    if len(str(memory_context)) > 0:
-                        preview = (
-                            str(memory_context)[:150] + "..."
-                            if len(str(memory_context)) > 150
-                            else str(memory_context)
-                        )
-                        self.logger.info(f"🤖 AI AGENT:   🧠 Preview: {preview}")
-            else:
-                self.logger.info("🤖 AI AGENT: 🧠 No memory contexts detected")
 
             # Enhanced context with memory integration
             enhanced_context = self._enhance_context_with_memory(context, memory_contexts, logs)
@@ -298,7 +286,7 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                             context, connected_memory_nodes, user_message, ai_response
                         )
                 except Exception as e:
-                    self.logger.warning(f"🤖 AI AGENT: 🧠 Failed to store conversation exchange: {e}")
+                    self.logger.warning(f"🧠 AIAgent: Failed to store conversation: {e}")
 
             return result
 
@@ -346,33 +334,20 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         """Enhance the execution context with memory contexts."""
         try:
             if not memory_contexts:
-                self.logger.info(
-                    "🤖 AI AGENT: 🧠 No memory contexts to merge, using original context"
-                )
                 return context
-
-            self.logger.info(f"🤖 AI AGENT: 🧠 Starting memory context enhancement...")
 
             # Merge all memory contexts into a single context string
             merged_memory_context = "\n\n".join(memory_contexts)
             self.logger.info(
-                f"🤖 AI AGENT: 🧠 Merged {len(memory_contexts)} contexts into {len(merged_memory_context)} characters"
+                f"🧠 AIAgent: Memory merged -> {len(memory_contexts)} contexts, {len(merged_memory_context)} chars"
             )
 
             # Create enhanced input data
             enhanced_input_data = context.input_data.copy() if context.input_data else {}
-            original_keys = list(enhanced_input_data.keys()) if enhanced_input_data else []
 
             # Add merged memory context to input data
             enhanced_input_data["memory_context"] = merged_memory_context
             enhanced_input_data["has_memory_context"] = True
-
-            self.logger.info(f"🤖 AI AGENT: 🧠 Enhanced input data:")
-            self.logger.info(f"🤖 AI AGENT: 🧠   Original keys: {original_keys}")
-            self.logger.info(
-                f"🤖 AI AGENT: 🧠   Added 'memory_context' ({len(merged_memory_context)} chars)"
-            )
-            self.logger.info(f"🤖 AI AGENT: 🧠   Added 'has_memory_context': True")
 
             # Create new context with enhanced input
             enhanced_context = NodeExecutionContext(
@@ -382,13 +357,10 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                 execution_id=getattr(context, "execution_id", None),
                 credentials=getattr(context, "credentials", None),
             )
-
-            self.logger.info("🤖 AI AGENT: 🧠 ✅ Context enhanced with memory data")
             return enhanced_context
 
         except Exception as e:
-            self.logger.info(f"🤖 AI AGENT: 🧠 ❌ Memory enhancement failed: {e}")
-            self.logger.warning(f"Memory enhancement error: {e}")
+            self.logger.warning(f"🧠 AIAgent: Memory enhancement failed: {e}")
 
         # Return original context if memory enhancement fails or no memory contexts
         return context
@@ -398,68 +370,37 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
     ) -> str:
         """Enhance the system prompt with memory context using memory-type-specific injection logic."""
         try:
-            self.logger.info(
-                "🤖 AI AGENT: 💭 Checking for memory context to inject into system prompt"
-            )
-
+            # Check for memory context to inject
             if not input_data or not isinstance(input_data, dict):
-                self.logger.info(
-                    "🤖 AI AGENT: 💭 No input data available, using original system prompt"
-                )
                 return base_prompt
 
             # Check if memory context is available
             if "memory_context" not in input_data:
-                self.logger.info(
-                    "🤖 AI AGENT: 💭 No 'memory_context' key found, using original system prompt"
-                )
                 return base_prompt
 
             memory_context = input_data["memory_context"]
-            memory_type = input_data.get(
-                "memory_type", "UNKNOWN"
-            )  # Keep "UNKNOWN" as fallback for missing types
+            memory_type = input_data.get("memory_type", "UNKNOWN")
 
             if not memory_context:
-                self.logger.info(
-                    "🤖 AI AGENT: 💭 Memory context is empty, using original system prompt"
-                )
                 return base_prompt
-
-            self.logger.info(f"🤖 AI AGENT: 💭 ✅ Memory context found! Type: {memory_type}")
-            self.logger.info(
-                f"🤖 AI AGENT: 💭   Original prompt length: {len(base_prompt)} characters"
-            )
-            self.logger.info(
-                f"🤖 AI AGENT: 💭   Memory context length: {len(memory_context)} characters"
-            )
 
             # Show preview of memory context being injected
             memory_preview = (
-                memory_context[:200] + "..." if len(memory_context) > 200 else memory_context
+                memory_context[:100] + "..." if len(memory_context) > 100 else memory_context
             )
-            self.logger.info(f"🤖 AI AGENT: 💭   Memory context preview: {memory_preview}")
+            self.logger.info(
+                f"💭 AIAgent: SystemPrompt enhanced -> type:{memory_type}, context:{len(memory_context)} chars, preview: {memory_preview}"
+            )
 
             # Memory-type-specific context injection
             enhanced_prompt = self._inject_memory_by_type(
                 base_prompt, memory_context, memory_type, logs
             )
 
-            self.logger.info(
-                f"🤖 AI AGENT: 💭   Enhanced prompt length: {len(enhanced_prompt)} characters"
-            )
-            self.logger.info(
-                f"🤖 AI AGENT: 💭   Added {len(enhanced_prompt) - len(base_prompt)} characters from memory"
-            )
-            self.logger.info(
-                "🤖 AI AGENT: 💭 🎯 System prompt successfully enhanced with memory context!"
-            )
-
             return enhanced_prompt
 
         except Exception as e:
-            self.logger.info(f"🤖 AI AGENT: 💭 ❌ System prompt enhancement failed: {e}")
-            self.logger.warning(f"System prompt enhancement error: {e}")
+            self.logger.warning(f"💭 AIAgent: SystemPrompt enhancement failed: {e}")
             return base_prompt
 
     def _inject_memory_by_type(
@@ -467,8 +408,6 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
     ) -> str:
         """Inject memory context using type-specific formatting and instructions."""
         from shared.models.node_enums import MemorySubtype
-
-        self.logger.info(f"🤖 AI AGENT: 💭 🎯 Using {memory_type}-specific context injection")
 
         if memory_type == MemorySubtype.CONVERSATION_BUFFER.value:
             return f"""{base_prompt}
@@ -714,8 +653,6 @@ Please use this context appropriately when responding. Reference relevant inform
         if not memory_nodes:
             return
 
-        self.logger.info("🤖 AI AGENT: 🧠 Storing conversation exchange in memory nodes")
-
         for memory_node_info in memory_nodes:
             memory_node_def = memory_node_info["node"]
             memory_node_id = memory_node_info["node_id"]
@@ -746,18 +683,14 @@ Please use this context appropriately when responding. Reference relevant inform
                 memory_result = memory_executor.execute(memory_context)
 
                 if memory_result.status.value == "success":
-                    self.logger.info(
-                        f"🤖 AI AGENT: 🧠 Successfully stored conversation in memory node: {memory_node_id}"
-                    )
+                    self.logger.info(f"🧠 AIAgent: Stored conversation -> node:{memory_node_id}")
                 else:
                     self.logger.warning(
-                        f"🤖 AI AGENT: 🧠 Failed to store conversation in memory node {memory_node_id}: {memory_result.error_message}"
+                        f"🧠 AIAgent: Store failed -> node:{memory_node_id}, error:{memory_result.error_message}"
                     )
 
             except Exception as e:
-                self.logger.error(
-                    f"🤖 AI AGENT: 🧠 Error storing conversation in memory node {memory_node_id}: {e}"
-                )
+                self.logger.error(f"🧠 AIAgent: Store error -> node:{memory_node_id}, {e}")
 
     def _dict_to_node_object(self, node_def: Dict[str, Any]):
         """Convert node definition dict to node object."""

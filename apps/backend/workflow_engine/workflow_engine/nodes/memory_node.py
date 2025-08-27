@@ -1878,6 +1878,49 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         context = f"Conversation Summary ({message_count} messages):\n{summary}"
         return context
 
+    def _format_conversation_summary_context_with_buffer(
+        self, conv_data: Dict[str, Any], buffer_window_size: int, logs: List[str]
+    ) -> str:
+        """Format conversation summary AND recent messages buffer for LLM consumption."""
+        parts = []
+
+        # Include summary if available
+        summary = conv_data.get("summary", "")
+        if summary:
+            message_count = conv_data.get("message_count", 0)
+            parts.append(f"## Conversation Summary ({message_count} total messages)")
+            parts.append(summary)
+            parts.append("")  # Empty line separator
+
+        # Always include recent messages from buffer
+        buffer = conv_data.get("buffer", [])
+        if buffer:
+            parts.append(f"## Recent Messages (Last {len(buffer)} messages)")
+            for msg in buffer[-buffer_window_size:]:  # Ensure we don't exceed window size
+                role = msg.get("role", "unknown").title()
+                content = msg.get("content", "")
+                if content:
+                    parts.append(f"{role}: {content}")
+
+            if not summary:
+                parts.insert(
+                    -len(buffer) - 1,
+                    "No conversation summary available yet, showing recent messages:",
+                )
+
+        # If we have neither summary nor buffer, return empty state message
+        if not parts:
+            return "No conversation history available yet."
+
+        formatted_context = "\n".join(parts)
+
+        # Log what we're providing for debugging
+        self.logger.info(
+            f"🧠 ConvSummary: 🔄 Formatted context -> {len(formatted_context)} chars total"
+        )
+
+        return formatted_context
+
     def _extract_entities_simple(self, text: str, logs: List[str]) -> List[Dict[str, Any]]:
         """Simple entity extraction using patterns."""
         import re
@@ -1991,103 +2034,157 @@ class MemoryNodeExecutor(BaseNodeExecutor):
     def _execute_conversation_summary(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
-        """Execute conversation summary memory operations."""
+        """Execute conversation summary memory operations with proper buffer + summary support."""
 
-        # Get parameters with fallbacks
+        # Get parameters from node specification
         try:
-            max_length = self.get_parameter_with_spec(context, "max_length")
+            trigger_threshold = self.get_parameter_with_spec(context, "trigger_threshold")
         except (KeyError, AttributeError):
-            max_length = 500
-
-        try:
-            summary_strategy = self.get_parameter_with_spec(context, "summary_strategy")
-        except (KeyError, AttributeError):
-            summary_strategy = "extractive"  # extractive, abstractive
+            trigger_threshold = 8
 
         try:
-            storage_backend = self.get_parameter_with_spec(context, "storage_backend")
+            buffer_window_size = self.get_parameter_with_spec(context, "buffer_window_size")
         except (KeyError, AttributeError):
-            storage_backend = "memory"
+            buffer_window_size = 6
 
-            self.logger.info(
-                f"🧠 MEMORY NODE: Summary config - max_length: {max_length}, strategy: {summary_strategy}, backend: {storage_backend}"
-            )
+        try:
+            max_total_tokens = self.get_parameter_with_spec(context, "max_total_tokens")
+        except (KeyError, AttributeError):
+            max_total_tokens = 3000
 
-        # Initialize conversation summary storage
-        summary_key = f"conversation_summary_{context.execution_id or 'default'}"
-        if summary_key not in self._key_value_store:
-            self._key_value_store[summary_key] = {
+        try:
+            summary_style = self.get_parameter_with_spec(context, "summary_style")
+        except (KeyError, AttributeError):
+            summary_style = "progressive"
+
+        try:
+            summarization_model = self.get_parameter_with_spec(context, "summarization_model")
+        except (KeyError, AttributeError):
+            summarization_model = "gpt-4o-mini"
+
+        # Get workflow-specific storage key (using workflow_id for persistence across executions)
+        storage_key = (
+            f"conversation_summary_{context.workflow_id or context.execution_id or 'default'}"
+        )
+
+        # Initialize conversation summary storage with buffer
+        if storage_key not in self._key_value_store:
+            self._key_value_store[storage_key] = {
                 "summary": "",
+                "buffer": [],  # Recent messages buffer
                 "message_count": 0,
                 "last_updated": datetime.now().isoformat(),
                 "total_chars": 0,
             }
+            self.logger.info(
+                f"🧠 ConvSummary: Init - threshold:{trigger_threshold}, buffer:{buffer_window_size}, model:{summarization_model}"
+            )
 
-        summary_data = self._key_value_store[summary_key]
+        conv_data = self._key_value_store[storage_key]
 
         try:
-            # Handle new conversation data
+            # Handle new conversation data (storing to conversation)
             if context.input_data:
-                new_messages = context.input_data.get("messages", [])
-                new_text = context.input_data.get("text", "") or context.input_data.get(
-                    "content", ""
-                )
+                # Extract user message and AI response from input data
+                if "user_message" in context.input_data and "ai_response" in context.input_data:
+                    user_msg = context.input_data["user_message"]
+                    ai_response = context.input_data["ai_response"]
 
-                if new_messages:
+                    # Add both user message and AI response to buffer
+                    conv_data["buffer"].append(
+                        {
+                            "role": "user",
+                            "content": user_msg,
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                    )
+                    conv_data["buffer"].append(
+                        {
+                            "role": "assistant",
+                            "content": ai_response,
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                    )
+                    conv_data["message_count"] += 2
+
                     self.logger.info(
-                        f"🧠 MEMORY NODE: Processing {len(new_messages)} new messages for summary"
+                        f"🧠 ConvSummary: Added exchange -> buffer:{len(conv_data['buffer'])}, total:{conv_data['message_count']}"
                     )
-                    text_to_summarize = "\n".join(
-                        [
-                            f"{msg.get('role', 'user')}: {msg.get('content', '')}"
-                            for msg in new_messages
-                        ]
-                    )
-                elif new_text:
-                    self.logger.info(
-                        f"🧠 MEMORY NODE: Processing new text content ({len(new_text)} chars) for summary"
-                    )
-                    text_to_summarize = new_text
-                else:
-                    text_to_summarize = ""
 
-                if text_to_summarize:
-                    # Combine with existing summary
-                    combined_text = f"{summary_data['summary']}\n\n{text_to_summarize}".strip()
-
-                    if len(combined_text) > max_length * 2:  # Need to compress
-                        self.logger.info(
-                            f"🧠 MEMORY NODE: Content exceeds threshold, generating new summary..."
+                elif context.input_data.get("messages"):
+                    # Handle messages array format
+                    new_messages = context.input_data["messages"]
+                    for msg in new_messages:
+                        conv_data["buffer"].append(
+                            {
+                                "role": msg.get("role", "user"),
+                                "content": msg.get("content", ""),
+                                "timestamp": msg.get("timestamp", datetime.now().isoformat()),
+                            }
                         )
+                    conv_data["message_count"] += len(new_messages)
+
+                    self.logger.info(
+                        f"🧠 ConvSummary: Added {len(new_messages)} msgs -> buffer:{len(conv_data['buffer'])}, total:{conv_data['message_count']}"
+                    )
+
+                # Maintain buffer window size
+                if len(conv_data["buffer"]) > buffer_window_size:
+                    # Remove older messages beyond buffer size
+                    removed_count = len(conv_data["buffer"]) - buffer_window_size
+                    conv_data["buffer"] = conv_data["buffer"][-buffer_window_size:]
+                    self.logger.info(
+                        f"🧠 ConvSummary: Trimmed {removed_count} old msgs -> buffer:{len(conv_data['buffer'])}"
+                    )
+
+                # Check if we should generate a summary
+                if conv_data["message_count"] >= trigger_threshold:
+                    self.logger.info(
+                        f"🧠 ConvSummary: ⚡ SUMMARIZING at {datetime.now().strftime('%H:%M:%S')} - {conv_data['message_count']} msgs >= {trigger_threshold}"
+                    )
+
+                    # Generate summary from all conversation history
+                    all_messages = conv_data["buffer"]
+                    if all_messages:
+                        conversation_text = "\n".join(
+                            [f"{msg['role']}: {msg['content']}" for msg in all_messages]
+                        )
+
+                        # Generate new summary using the improved summary function
                         new_summary = self._generate_conversation_summary(
-                            combined_text, max_length, summary_strategy, logs
+                            conversation_text, max_total_tokens // 2, summary_style, logs
                         )
-                        summary_data["summary"] = new_summary
-                        summary_data["message_count"] += len(new_messages) if new_messages else 1
-                        summary_data["last_updated"] = datetime.now().isoformat()
-                        summary_data["total_chars"] = len(new_summary)
-                    else:
-                        # Just append to existing summary
-                        summary_data["summary"] = combined_text
-                        summary_data["message_count"] += len(new_messages) if new_messages else 1
-                        summary_data["last_updated"] = datetime.now().isoformat()
-                        summary_data["total_chars"] = len(combined_text)
+                        conv_data["summary"] = new_summary
+                        conv_data["total_chars"] = len(new_summary)
 
-            # Format context for LLM
-            memory_context = self._format_conversation_summary_context(summary_data, logs)
+                        # Log summary preview for debugging
+                        summary_preview = (
+                            new_summary[:100] + "..." if len(new_summary) > 100 else new_summary
+                        )
+                        self.logger.info(
+                            f"🧠 ConvSummary: ✅ Summary generated ({len(new_summary)} chars): {summary_preview}"
+                        )
+
+                conv_data["last_updated"] = datetime.now().isoformat()
+
+            # Format context for LLM (include both summary AND buffer)
+            memory_context = self._format_conversation_summary_context_with_buffer(
+                conv_data, buffer_window_size, logs
+            )
 
             context_data = {
-                "summary": summary_data["summary"],
-                "message_count": summary_data["message_count"],
-                "total_chars": summary_data["total_chars"],
-                "last_updated": summary_data["last_updated"],
+                "summary": conv_data["summary"],
+                "buffer": conv_data["buffer"][-buffer_window_size:],  # Recent messages
+                "message_count": conv_data["message_count"],
+                "total_chars": conv_data["total_chars"],
+                "last_updated": conv_data["last_updated"],
                 "memory_type": MemorySubtype.CONVERSATION_SUMMARY.value,
                 "memory_context": memory_context,
                 "formatted_context": memory_context,
             }
 
             self.logger.info(
-                f"🧠 MEMORY NODE:   📝 Summary length: {summary_data['total_chars']} characters"
+                f"🧠 ConvSummary: 📤 Returning summary:{len(conv_data['summary'])} chars + buffer:{len(conv_data['buffer'])} msgs"
             )
 
             return self._create_success_result(
