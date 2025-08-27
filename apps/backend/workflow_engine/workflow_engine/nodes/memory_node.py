@@ -1353,7 +1353,15 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             for record in result.data:
                 memory_data = record["memory_value"]
                 messages = memory_data.get("messages", [])
-                all_messages.extend(messages)
+                # Filter out empty messages when loading from database
+                valid_messages = [
+                    msg
+                    for msg in messages
+                    if isinstance(msg, dict)
+                    and msg.get("content", "")
+                    and len(msg.get("content", "").strip()) > 0
+                ]
+                all_messages.extend(valid_messages)
 
             # Sort by timestamp and limit to recent messages
             all_messages.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
@@ -1508,8 +1516,8 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                             message_content = value
                             break
 
-                # Extract other message fields
-                message_role = context.input_data.get("role", "user")
+                # Extract other message fields with intelligent role detection
+                message_role = self._detect_message_role(context.input_data)
                 message_timestamp = context.input_data.get("timestamp", datetime.now().isoformat())
                 message_metadata = context.input_data.get("metadata", {})
 
@@ -1526,33 +1534,40 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     self.logger.warning(f"🧠 MEMORY NODE: Input data sample: {input_data_str}...")
 
             if context.input_data:
-                # Store new message
-                message = {
-                    "role": message_role,
-                    "content": message_content,
-                    "timestamp": message_timestamp,
-                    "metadata": message_metadata,
-                }
+                # Only store messages with meaningful content
+                if message_content and len(message_content.strip()) > 0:
+                    # Store new message
+                    message = {
+                        "role": message_role,
+                        "content": message_content,
+                        "timestamp": message_timestamp,
+                        "metadata": message_metadata,
+                    }
 
-                # Add message to buffer
-                buffer["messages"].append(message)
-                logs.append(f"Added new {message['role']} message to conversation buffer")
-                self.logger.info(
-                    f"🧠 MEMORY NODE: Added message to buffer - role: {message['role']}, content: '{message['content'][:100]}{'...' if len(message['content']) > 100 else ''}'"
-                )
-
-                # Apply windowing policy
-                if window_type == "turns" and len(buffer["messages"]) > window_size:
-                    old_count = len(buffer["messages"])
-                    # Remove oldest messages beyond window size
-                    buffer["messages"] = buffer["messages"][-window_size:]
-
-                    logs.append(
-                        f"Applied windowing: trimmed conversation from {old_count} to {len(buffer['messages'])} messages"
-                    )
+                    # Add message to buffer
+                    buffer["messages"].append(message)
+                    logs.append(f"Added new {message['role']} message to conversation buffer")
                     self.logger.info(
-                        f"🧠 MEMORY NODE: Trimmed buffer from {old_count} to {len(buffer['messages'])} messages (window_size: {window_size})"
+                        f"🧠 MEMORY NODE: Added message to buffer - role: {message['role']}, content: '{message['content'][:100]}{'...' if len(message['content']) > 100 else ''}'"
                     )
+
+                    # Apply windowing policy after adding message
+                    if window_type == "turns" and len(buffer["messages"]) > window_size:
+                        old_count = len(buffer["messages"])
+                        # Remove oldest messages beyond window size
+                        buffer["messages"] = buffer["messages"][-window_size:]
+
+                        logs.append(
+                            f"Applied windowing: trimmed conversation from {old_count} to {len(buffer['messages'])} messages"
+                        )
+                        self.logger.info(
+                            f"🧠 MEMORY NODE: Trimmed buffer from {old_count} to {len(buffer['messages'])} messages (window_size: {window_size})"
+                        )
+                else:
+                    self.logger.warning(
+                        f"🧠 MEMORY NODE: ⚠️ Skipping empty message - no meaningful content found"
+                    )
+                    logs.append("Skipped storing empty message - no meaningful content")
 
             # Filter messages if needed
             messages_to_return = buffer["messages"]
@@ -1607,7 +1622,8 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             )
 
             # Save updated buffer to database for persistence across executions
-            if context.input_data:  # Only save if we actually processed new data
+            # Only save if we actually processed new data AND have meaningful content
+            if context.input_data and message_content and len(message_content.strip()) > 0:
                 self._save_to_database(workflow_id, execution_id, buffer_key, buffer, node_id, logs)
                 # Also update in-memory store for backwards compatibility
                 self._key_value_store[buffer_key] = buffer
@@ -1669,6 +1685,55 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             f"🧠 MEMORY NODE: Formatted {len(messages)} messages into {len(formatted_context)} character context"
         )
         return formatted_context
+
+    def _detect_message_role(self, input_data: Dict[str, Any]) -> str:
+        """Intelligently detect the message role based on input data context."""
+
+        # Strategy 1: Check if explicitly provided
+        if "role" in input_data and input_data["role"] in ["user", "assistant", "system"]:
+            return input_data["role"]
+
+        # Strategy 2: Check source node type to determine role
+        source_node = input_data.get("source_node", "")
+        if source_node:
+            # AI agent responses should be marked as assistant
+            if any(
+                ai_indicator in source_node.lower()
+                for ai_indicator in [
+                    "ai_agent",
+                    "openai",
+                    "anthropic",
+                    "claude",
+                    "gpt",
+                    "llm",
+                    "assistant",
+                ]
+            ):
+                return "assistant"
+
+            # Trigger nodes usually represent user input
+            if "trigger" in source_node.lower():
+                return "user"
+
+        # Strategy 3: Check metadata for AI provider information
+        metadata = input_data.get("metadata", {})
+        if isinstance(metadata, dict):
+            # Check for AI provider indicators
+            if any(
+                key in metadata for key in ["provider", "model", "model_version", "system_prompt"]
+            ):
+                provider = metadata.get("provider", "").lower()
+                model = metadata.get("model", "").lower()
+                if any(
+                    ai_provider in f"{provider} {model}"
+                    for ai_provider in ["openai", "anthropic", "gpt", "claude", "llama", "gemini"]
+                ):
+                    return "assistant"
+
+        # No content analysis - use only reliable metadata-based detection
+
+        # Default fallback - prefer user for ambiguous cases
+        return "user"
 
     # Supporting methods for advanced memory types
     def _generate_conversation_summary(
