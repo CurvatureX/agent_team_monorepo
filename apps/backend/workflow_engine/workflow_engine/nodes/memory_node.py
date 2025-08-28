@@ -116,18 +116,20 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             subtype = context.node.subtype
 
             # Log detailed context information
-            self.logger.info(f"🧠🔥 MEMORY NODE EXECUTE: Starting with subtype: {subtype}")
             self.logger.info(
-                f"🧠🔥 MEMORY NODE EXECUTE: Workflow ID: {getattr(context, 'workflow_id', 'NONE')}"
+                f"[Memory Node]: 🧠🔥 MEMORY NODE EXECUTE: Starting with subtype: {subtype}"
             )
             self.logger.info(
-                f"🧠🔥 MEMORY NODE EXECUTE: Execution ID: {getattr(context, 'execution_id', 'NONE')}"
+                f"[Memory Node]: 🧠🔥 MEMORY NODE EXECUTE: Workflow ID: {getattr(context, 'workflow_id', 'NONE')}"
             )
             self.logger.info(
-                f"🧠🔥 MEMORY NODE EXECUTE: Node ID: {getattr(context.node, 'id', 'NONE') if hasattr(context, 'node') else 'NO_NODE'}"
+                f"[Memory Node]: 🧠🔥 MEMORY NODE EXECUTE: Execution ID: {getattr(context, 'execution_id', 'NONE')}"
             )
             self.logger.info(
-                f"🧠🔥 MEMORY NODE EXECUTE: Input data keys: {list(context.input_data.keys()) if hasattr(context, 'input_data') and context.input_data else 'NO_INPUT'}"
+                f"[Memory Node]: 🧠🔥 MEMORY NODE EXECUTE: Node ID: {getattr(context.node, 'id', 'NONE') if hasattr(context, 'node') else 'NO_NODE'}"
+            )
+            self.logger.info(
+                f"[Memory Node]: 🧠🔥 MEMORY NODE EXECUTE: Input data keys: {list(context.input_data.keys()) if hasattr(context, 'input_data') and context.input_data else 'NO_INPUT'}"
             )
 
             if subtype == MemorySubtype.CONVERSATION_BUFFER.value:
@@ -184,7 +186,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
         logs.append(f"Vector DB operation: {operation} on collection '{collection_name}'")
         self.logger.info(
-            f"🧠 MEMORY NODE: Vector DB operation '{operation}' on collection '{collection_name}'"
+            f"[Memory Node]: 🧠 MEMORY NODE: Vector DB operation '{operation}' on collection '{collection_name}'"
         )
 
         try:
@@ -205,7 +207,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
                 logs.append(f"Storing vector: {len(text_content)} characters")
                 self.logger.info(
-                    f"🧠 MEMORY NODE: Embedding text content: '{text_content[:100]}...' ({len(text_content)} chars)"
+                    f"[Memory Node]: 🧠 MEMORY NODE: Embedding text content: '{text_content[:100]}...' ({len(text_content)} chars)"
                 )
                 result = self._store_vector_with_embedding(
                     collection_name, text_content, metadata, logs
@@ -225,7 +227,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     raise ValueError("No query text provided for vector search")
 
                 self.logger.info(
-                    f"🧠 MEMORY NODE: Searching for: '{query_text[:100]}...' (top_k={top_k}, threshold={similarity_threshold})"
+                    f"[Memory Node]: 🧠 MEMORY NODE: Searching for: '{query_text[:100]}...' (top_k={top_k}, threshold={similarity_threshold})"
                 )
                 result = self._search_vectors_with_embedding(
                     collection_name, query_text, top_k, similarity_threshold, logs
@@ -261,7 +263,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 output_data["formatted_context"] = memory_context
 
                 self.logger.info(
-                    f"🧠 MEMORY NODE:   📝 Formatted context length: {len(memory_context)} characters"
+                    f"[Memory Node]: 🧠 MEMORY NODE:   📝 Formatted context length: {len(memory_context)} characters"
                 )
 
             return self._create_success_result(
@@ -349,7 +351,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     document_id = f"doc_{len(self._document_store) + 1}"
                 logs.append(f"Storing document '{document_id}' ({len(content)} chars)")
                 self.logger.info(
-                    f"🧠 MEMORY NODE: Storing document '{document_id}' with content length: {len(content)} chars"
+                    f"[Memory Node]: 🧠 MEMORY NODE: Storing document '{document_id}' with content length: {len(content)} chars"
                 )
                 result = self._store_document_with_indexing(
                     document_id, title, content, metadata, logs
@@ -390,7 +392,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     raise ValueError("No query provided for document search")
 
                 self.logger.info(
-                    f"🧠 MEMORY NODE: Searching documents for: '{query[:100]}...' (type: {search_type}, max: {max_results})"
+                    f"[Memory Node]: 🧠 MEMORY NODE: Searching documents for: '{query[:100]}...' (type: {search_type}, max: {max_results})"
                 )
                 result = self._search_documents_enhanced(query, max_results, search_type, logs)
 
@@ -418,7 +420,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 output_data["formatted_context"] = memory_context
 
                 self.logger.info(
-                    f"🧠 MEMORY NODE:   📊 {len(result['documents'])} relevant documents found"
+                    f"[Memory Node]: 🧠 MEMORY NODE:   📊 {len(result['documents'])} relevant documents found"
                 )
 
             return self._create_success_result(
@@ -619,7 +621,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         results = similarities[:top_k]
 
         self.logger.info(
-            f"🧠 MEMORY NODE: 📊 Found {len(similarities)} results above threshold {similarity_threshold}"
+            f"[Memory Node]: 🧠 MEMORY NODE: 📊 Found {len(similarities)} results above threshold {similarity_threshold}"
         )
 
         if results:
@@ -665,7 +667,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 }
             )
         self.logger.info(
-            f"🧠 MEMORY NODE: 📋 Listed {len(vectors)} vectors from collection '{collection_name}'"
+            f"[Memory Node]: 🧠 MEMORY NODE: 📋 Listed {len(vectors)} vectors from collection '{collection_name}'"
         )
         return {"vectors": vectors, "count": len(vectors)}
 
@@ -870,7 +872,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         )
 
         self.logger.info(
-            f"🧠 MEMORY NODE: ✅ Updated document '{document_id}' with {len(word_index)} unique words indexed"
+            f"[Memory Node]: 🧠 MEMORY NODE: ✅ Updated document '{document_id}' with {len(word_index)} unique words indexed"
         )
 
         return {
@@ -900,7 +902,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         results = []
 
         self.logger.info(
-            f"🧠 MEMORY NODE: Searching {len(self._document_store)} documents with query words: {list(query_words)}"
+            f"[Memory Node]: 🧠 MEMORY NODE: Searching {len(self._document_store)} documents with query words: {list(query_words)}"
         )
 
         for doc_id, doc in self._document_store.items():
@@ -1379,12 +1381,12 @@ class MemoryNodeExecutor(BaseNodeExecutor):
     ) -> NodeExecutionResult:
         """Execute conversation buffer memory operations."""
         logs.append("Starting conversation buffer memory operation")
-        self.logger.info("🧠🔥 MEMORY NODE: Starting CONVERSATION_BUFFER execution")
+        self.logger.info("[Memory Node]: 🧠🔥 MEMORY NODE: Starting CONVERSATION_BUFFER execution")
         self.logger.info(
-            f"🧠🔥 MEMORY NODE: Execution ID: {getattr(context, 'execution_id', 'unknown')}"
+            f"[Memory Node]: 🧠🔥 MEMORY NODE: Execution ID: {getattr(context, 'execution_id', 'unknown')}"
         )
         self.logger.info(
-            f"🧠🔥 MEMORY NODE: Node ID: {getattr(context.node, 'id', 'unknown') if hasattr(context, 'node') else 'unknown'}"
+            f"[Memory Node]: 🧠🔥 MEMORY NODE: Node ID: {getattr(context.node, 'id', 'unknown') if hasattr(context, 'node') else 'unknown'}"
         )
 
         # Get parameters from the node specification
@@ -1414,7 +1416,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             f"Memory configuration: window_size={window_size}, window_type={window_type}, backend={storage_backend}"
         )
         self.logger.info(
-            f"🧠 MEMORY NODE: Configuration - window_size: {window_size}, window_type: {window_type}, backend: {storage_backend}"
+            f"[Memory Node]: 🧠 MEMORY NODE: Configuration - window_size: {window_size}, window_type: {window_type}, backend: {storage_backend}"
         )
 
         # Get workflow and node information for database operations
@@ -1437,7 +1439,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 f"Loaded existing conversation history ({len(existing_buffer.get('messages', []))} messages)"
             )
             self.logger.info(
-                f"🧠 MEMORY NODE: Loaded existing buffer from database with key: {buffer_key}"
+                f"[Memory Node]: 🧠 MEMORY NODE: Loaded existing buffer from database with key: {buffer_key}"
             )
         else:
             # Also try to load conversation history from other executions of this workflow
@@ -1451,7 +1453,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     f"Initialized conversation buffer with {len(workflow_history)} historical messages"
                 )
                 self.logger.info(
-                    f"🧠 MEMORY NODE: Initialized with {len(workflow_history)} historical messages"
+                    f"[Memory Node]: 🧠 MEMORY NODE: Initialized with {len(workflow_history)} historical messages"
                 )
             else:
                 logs.append("Initialized empty conversation buffer")
@@ -1462,7 +1464,9 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             and context.input_data
             and context.input_data.get("action") == "load_conversation_history"
         ):
-            self.logger.info("🧠 MEMORY NODE: Loading conversation history for AI agent")
+            self.logger.info(
+                "[Memory Node]: 🧠 MEMORY NODE: Loading conversation history for AI agent"
+            )
 
             # Return existing conversation history as formatted context
             messages = buffer.get("messages", [])
@@ -1485,12 +1489,12 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 for key, value in context.input_data.items():
                     if isinstance(value, str) and len(value) > 100:
                         self.logger.info(
-                            f"🧠 MEMORY NODE: Input '{key}': {value[:100]}... ({len(value)} chars)"
+                            f"[Memory Node]: 🧠 MEMORY NODE: Input '{key}': {value[:100]}... ({len(value)} chars)"
                         )
                     else:
-                        self.logger.info(f"🧠 MEMORY NODE: Input '{key}': {value}")
+                        self.logger.info(f"[Memory Node]: 🧠 MEMORY NODE: Input '{key}': {value}")
         else:
-            self.logger.info("🧠 MEMORY NODE: No input data provided")
+            self.logger.info("[Memory Node]: 🧠 MEMORY NODE: No input data provided")
 
         try:
             # Handle incoming message data with robust extraction
@@ -1555,22 +1559,24 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
                 # Log role detection for debugging
                 self.logger.info(
-                    f"🧠 MEMORY NODE: Role detection - source_node: '{role_data.get('source_node', 'none')}', detected role: '{message_role}'"
+                    f"[Memory Node]: 🧠 MEMORY NODE: Role detection - source_node: '{role_data.get('source_node', 'none')}', detected role: '{message_role}'"
                 )
                 message_timestamp = role_data.get("timestamp", datetime.now().isoformat())
                 message_metadata = role_data.get("metadata", {})
 
                 # Log extraction details for debugging
                 self.logger.info(
-                    f"🧠 MEMORY NODE: Content extraction - Found content: '{message_content[:100]}{'...' if len(message_content) > 100 else ''}' ({len(message_content)} chars)"
+                    f"[Memory Node]: 🧠 MEMORY NODE: Content extraction - Found content: '{message_content[:100]}{'...' if len(message_content) > 100 else ''}' ({len(message_content)} chars)"
                 )
                 if not message_content:
                     self.logger.warning(
-                        f"🧠 MEMORY NODE: ⚠️ No content found in input_data keys: {list(context.input_data.keys())}"
+                        f"[Memory Node]: 🧠 MEMORY NODE: ⚠️ No content found in input_data keys: {list(context.input_data.keys())}"
                     )
                     # Log the full input data for debugging (truncated)
                     input_data_str = str(context.input_data)[:500]
-                    self.logger.warning(f"🧠 MEMORY NODE: Input data sample: {input_data_str}...")
+                    self.logger.warning(
+                        f"[Memory Node]: 🧠 MEMORY NODE: Input data sample: {input_data_str}..."
+                    )
 
             if context.input_data:
                 # Only store messages with meaningful content
@@ -1587,7 +1593,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     buffer["messages"].append(message)
                     logs.append(f"Added new {message['role']} message to conversation buffer")
                     self.logger.info(
-                        f"🧠 MEMORY NODE: Added message to buffer - role: {message['role']}, content: '{message['content'][:100]}{'...' if len(message['content']) > 100 else ''}'"
+                        f"[Memory Node]: 🧠 MEMORY NODE: Added message to buffer - role: {message['role']}, content: '{message['content'][:100]}{'...' if len(message['content']) > 100 else ''}'"
                     )
 
                     # Apply windowing policy after adding message
@@ -1600,11 +1606,11 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                             f"Applied windowing: trimmed conversation from {old_count} to {len(buffer['messages'])} messages"
                         )
                         self.logger.info(
-                            f"🧠 MEMORY NODE: Trimmed buffer from {old_count} to {len(buffer['messages'])} messages (window_size: {window_size})"
+                            f"[Memory Node]: 🧠 MEMORY NODE: Trimmed buffer from {old_count} to {len(buffer['messages'])} messages (window_size: {window_size})"
                         )
                 else:
                     self.logger.warning(
-                        f"🧠 MEMORY NODE: ⚠️ Skipping empty message - no meaningful content found"
+                        f"[Memory Node]: 🧠 MEMORY NODE: ⚠️ Skipping empty message - no meaningful content found"
                     )
                     logs.append("Skipped storing empty message - no meaningful content")
 
@@ -1619,7 +1625,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 if original_count != filtered_count:
                     logs.append(f"Filtered out {original_count - filtered_count} system messages")
                     self.logger.info(
-                        f"🧠 MEMORY NODE: Filtered out {original_count - filtered_count} system messages"
+                        f"[Memory Node]: 🧠 MEMORY NODE: Filtered out {original_count - filtered_count} system messages"
                     )
 
             # Calculate total tokens (mock calculation)
@@ -1633,7 +1639,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     else msg.get("content", "")
                 )
                 self.logger.info(
-                    f"🧠 MEMORY NODE:   Message {i+1}: {msg.get('role', 'unknown')} - '{content_preview}'"
+                    f"[Memory Node]: 🧠 MEMORY NODE:   Message {i+1}: {msg.get('role', 'unknown')} - '{content_preview}'"
                 )
 
             # Prepare context output
@@ -1657,7 +1663,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             ] = memory_context_for_llm  # Also provide as memory_context for AI agent
 
             self.logger.info(
-                f"🧠 MEMORY NODE:   📝 Formatted context length: {len(memory_context_for_llm)} characters"
+                f"[Memory Node]: 🧠 MEMORY NODE:   📝 Formatted context length: {len(memory_context_for_llm)} characters"
             )
 
             # Save updated buffer to database for persistence across executions
@@ -1672,9 +1678,11 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 f"Conversation buffer complete: {len(messages_to_return)} messages, ~{total_tokens} tokens"
             )
             self.logger.info(
-                f"🧠🔥 MEMORY NODE: ✅ CONVERSATION_BUFFER SUCCESS - Generated {len(messages_to_return)} messages, ~{total_tokens} tokens"
+                f"[Memory Node]: 🧠🔥 MEMORY NODE: ✅ CONVERSATION_BUFFER SUCCESS - Generated {len(messages_to_return)} messages, ~{total_tokens} tokens"
             )
-            self.logger.info(f"🧠🔥 MEMORY NODE: ✅ Output data keys: {list(context_data.keys())}")
+            self.logger.info(
+                f"[Memory Node]: 🧠🔥 MEMORY NODE: ✅ Output data keys: {list(context_data.keys())}"
+            )
 
             return self._create_success_result(
                 output_data=context_data, execution_time=time.time() - start_time, logs=logs
@@ -1721,7 +1729,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         formatted_context = "\n".join(formatted_lines)
 
         self.logger.info(
-            f"🧠 MEMORY NODE: Formatted {len(messages)} messages into {len(formatted_context)} character context"
+            f"[Memory Node]: 🧠 MEMORY NODE: Formatted {len(messages)} messages into {len(formatted_context)} character context"
         )
         return formatted_context
 
@@ -1781,7 +1789,9 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         if not messages:
             return ""
 
-        self.logger.info(f"🧠 MEMORY NODE: Formatting {len(messages)} messages for AI consumption")
+        self.logger.info(
+            f"[Memory Node]: 🧠 MEMORY NODE: Formatting {len(messages)} messages for AI consumption"
+        )
 
         formatted_conversations = []
         for msg in messages:
@@ -1803,7 +1813,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
         conversation_text = "\n\n".join(formatted_conversations)
         self.logger.info(
-            f"🧠 MEMORY NODE: Formatted conversation history ({len(conversation_text)} chars)"
+            f"[Memory Node]: 🧠 MEMORY NODE: Formatted conversation history ({len(conversation_text)} chars)"
         )
 
         return conversation_text
@@ -1914,10 +1924,28 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
         formatted_context = "\n".join(parts)
 
-        # Log what we're providing for debugging
+        # Log detailed context being formatted for LLM
         self.logger.info(
-            f"🧠 ConvSummary: 🔄 Formatted context -> {len(formatted_context)} chars total"
+            f"[Memory Node]: 🧠 ConvSummary: 🔄 Formatted context -> {len(formatted_context)} chars total"
         )
+
+        # Show breakdown of what's included
+        if summary:
+            self.logger.info(
+                f"[Memory Node]: 🧠 ConvSummary: 💡 Including summary: {len(summary)} chars"
+            )
+
+        if buffer:
+            recent_messages = buffer[-buffer_window_size:]
+            self.logger.info(
+                f"[Memory Node]: 🧠 ConvSummary: 💬 Including {len(recent_messages)} recent messages"
+            )
+
+        # Show a preview of what's going to the LLM
+        context_preview = (
+            formatted_context[:200] + "..." if len(formatted_context) > 200 else formatted_context
+        )
+        self.logger.info(f"[Memory Node]: 🧠 ConvSummary: 🎯 LLM context preview: {context_preview}")
 
         return formatted_context
 
@@ -2027,7 +2055,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
         formatted_context = "\n".join(context_parts)
         self.logger.info(
-            f"🧠 MEMORY NODE: Formatted knowledge base context ({len(formatted_context)} chars)"
+            f"[Memory Node]: 🧠 MEMORY NODE: Formatted knowledge base context ({len(formatted_context)} chars)"
         )
         return formatted_context
 
@@ -2077,7 +2105,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 "total_chars": 0,
             }
             self.logger.info(
-                f"🧠 ConvSummary: Init - threshold:{trigger_threshold}, buffer:{buffer_window_size}, model:{summarization_model}"
+                f"[Memory Node]: 🧠 ConvSummary: Init - threshold:{trigger_threshold}, buffer:{buffer_window_size}, model:{summarization_model}"
             )
 
         conv_data = self._key_value_store[storage_key]
@@ -2107,9 +2135,15 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     )
                     conv_data["message_count"] += 2
 
+                    # Log detailed content being stored
+                    user_preview = user_msg[:80] + "..." if len(user_msg) > 80 else user_msg
+                    ai_preview = ai_response[:80] + "..." if len(ai_response) > 80 else ai_response
+
                     self.logger.info(
-                        f"🧠 ConvSummary: Added exchange -> buffer:{len(conv_data['buffer'])}, total:{conv_data['message_count']}"
+                        f"[Memory Node]: 🧠 ConvSummary: Added exchange -> buffer:{len(conv_data['buffer'])}, total:{conv_data['message_count']}"
                     )
+                    self.logger.info(f"[Memory Node]: 🧠 ConvSummary: 📥 User: {user_preview}")
+                    self.logger.info(f"[Memory Node]: 🧠 ConvSummary: 🤖 AI: {ai_preview}")
 
                 elif context.input_data.get("messages"):
                     # Handle messages array format
@@ -2125,7 +2159,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     conv_data["message_count"] += len(new_messages)
 
                     self.logger.info(
-                        f"🧠 ConvSummary: Added {len(new_messages)} msgs -> buffer:{len(conv_data['buffer'])}, total:{conv_data['message_count']}"
+                        f"[Memory Node]: 🧠 ConvSummary: Added {len(new_messages)} msgs -> buffer:{len(conv_data['buffer'])}, total:{conv_data['message_count']}"
                     )
 
                 # Maintain buffer window size
@@ -2134,13 +2168,13 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     removed_count = len(conv_data["buffer"]) - buffer_window_size
                     conv_data["buffer"] = conv_data["buffer"][-buffer_window_size:]
                     self.logger.info(
-                        f"🧠 ConvSummary: Trimmed {removed_count} old msgs -> buffer:{len(conv_data['buffer'])}"
+                        f"[Memory Node]: 🧠 ConvSummary: Trimmed {removed_count} old msgs -> buffer:{len(conv_data['buffer'])}"
                     )
 
                 # Check if we should generate a summary
                 if conv_data["message_count"] >= trigger_threshold:
                     self.logger.info(
-                        f"🧠 ConvSummary: ⚡ SUMMARIZING at {datetime.now().strftime('%H:%M:%S')} - {conv_data['message_count']} msgs >= {trigger_threshold}"
+                        f"[Memory Node]: 🧠 ConvSummary: ⚡ SUMMARIZING at {datetime.now().strftime('%H:%M:%S')} - {conv_data['message_count']} msgs >= {trigger_threshold}"
                     )
 
                     # Generate summary from all conversation history
@@ -2162,7 +2196,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                             new_summary[:100] + "..." if len(new_summary) > 100 else new_summary
                         )
                         self.logger.info(
-                            f"🧠 ConvSummary: ✅ Summary generated ({len(new_summary)} chars): {summary_preview}"
+                            f"[Memory Node]: 🧠 ConvSummary: ✅ Summary generated ({len(new_summary)} chars): {summary_preview}"
                         )
 
                 conv_data["last_updated"] = datetime.now().isoformat()
@@ -2183,9 +2217,35 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 "formatted_context": memory_context,
             }
 
+            # Log detailed content being returned
+            buffer_recent = conv_data["buffer"][-buffer_window_size:] if conv_data["buffer"] else []
+
             self.logger.info(
-                f"🧠 ConvSummary: 📤 Returning summary:{len(conv_data['summary'])} chars + buffer:{len(conv_data['buffer'])} msgs"
+                f"[Memory Node]: 🧠 ConvSummary: 📤 Returning summary:{len(conv_data['summary'])} chars + buffer:{len(buffer_recent)} msgs"
             )
+
+            # Show what content is being returned
+            if conv_data["summary"]:
+                summary_preview = (
+                    conv_data["summary"][:120] + "..."
+                    if len(conv_data["summary"]) > 120
+                    else conv_data["summary"]
+                )
+                self.logger.info(
+                    f"[Memory Node]: 🧠 ConvSummary: 📋 Summary content: {summary_preview}"
+                )
+
+            if buffer_recent:
+                self.logger.info(f"[Memory Node]: 🧠 ConvSummary: 📜 Recent buffer messages:")
+                for i, msg in enumerate(buffer_recent[-3:]):  # Show last 3 messages
+                    content_preview = (
+                        msg["content"][:60] + "..." if len(msg["content"]) > 60 else msg["content"]
+                    )
+                    self.logger.info(
+                        f"[Memory Node]: 🧠 ConvSummary:   {i+1}. {msg['role']}: {content_preview}"
+                    )
+            else:
+                self.logger.info(f"[Memory Node]: 🧠 ConvSummary: 📜 No recent messages in buffer")
 
             return self._create_success_result(
                 output_data=context_data, execution_time=time.time() - start_time, logs=logs
@@ -2216,7 +2276,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             storage_backend = "memory"
 
         self.logger.info(
-            f"🧠 MEMORY NODE: Entity operation '{operation}' with backend: {storage_backend}"
+            f"[Memory Node]: 🧠 MEMORY NODE: Entity operation '{operation}' with backend: {storage_backend}"
         )
 
         # Initialize entity storage
@@ -2240,7 +2300,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     raise ValueError("No text provided for entity extraction")
 
                 self.logger.info(
-                    f"🧠 MEMORY NODE: Extracting entities from text ({len(text_input)} chars)"
+                    f"[Memory Node]: 🧠 MEMORY NODE: Extracting entities from text ({len(text_input)} chars)"
                 )
                 extracted_entities = self._extract_entities_simple(text_input, logs)
 
@@ -2250,7 +2310,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     if entity_id not in entity_data["entities"]:
                         entity_data["entities"][entity_id] = entity
                         self.logger.info(
-                            f"🧠 MEMORY NODE: Added new entity: {entity['name']} ({entity['type']})"
+                            f"[Memory Node]: 🧠 MEMORY NODE: Added new entity: {entity['name']} ({entity['type']})"
                         )
                     else:
                         # Update existing entity
@@ -2260,7 +2320,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                         )
                         existing["last_seen"] = datetime.now().isoformat()
                         self.logger.info(
-                            f"🧠 MEMORY NODE: Updated entity: {entity['name']} (mentions: {existing['mentions']})"
+                            f"[Memory Node]: 🧠 MEMORY NODE: Updated entity: {entity['name']} (mentions: {existing['mentions']})"
                         )
 
                 entity_data["last_updated"] = datetime.now().isoformat()
@@ -2282,7 +2342,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                         matching_entities.append(entity)
 
                 self.logger.info(
-                    f"🧠 MEMORY NODE: Found {len(matching_entities)} entities matching query"
+                    f"[Memory Node]: 🧠 MEMORY NODE: Found {len(matching_entities)} entities matching query"
                 )
                 result = {
                     "matching_entities": matching_entities,
@@ -2308,7 +2368,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
                 entity_data["relationships"].append(relationship)
                 self.logger.info(
-                    f"🧠 MEMORY NODE: Added relationship: {entity1} --{relation_type}--> {entity2}"
+                    f"[Memory Node]: 🧠 MEMORY NODE: Added relationship: {entity1} --{relation_type}--> {entity2}"
                 )
                 result = {
                     "relationship_added": True,
@@ -2378,7 +2438,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             storage_backend = "memory"
 
             self.logger.info(
-                f"🧠 MEMORY NODE: Knowledge operation '{operation}' with backend: {storage_backend}"
+                f"[Memory Node]: 🧠 MEMORY NODE: Knowledge operation '{operation}' with backend: {storage_backend}"
             )
 
         # Initialize knowledge base storage
@@ -2423,7 +2483,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 kb_data["categories"][category] += 1
 
                 self.logger.info(
-                    f"🧠 MEMORY NODE: Added fact '{fact_text[:50]}...' to category '{category}'"
+                    f"[Memory Node]: 🧠 MEMORY NODE: Added fact '{fact_text[:50]}...' to category '{category}'"
                 )
                 result = {
                     "fact_added": True,

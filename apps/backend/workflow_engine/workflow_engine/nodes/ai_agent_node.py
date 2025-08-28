@@ -48,43 +48,51 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
     def __init__(self, subtype: Optional[str] = None):
         super().__init__(subtype=subtype)
         self.ai_clients = {}
-        self.logger.info(f"🤖 AI AGENT: Initializing AIAgentNodeExecutor with subtype: {subtype}")
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: Initializing AIAgentNodeExecutor with subtype: {subtype}"
+        )
         self._init_ai_clients()
 
         # Initialize memory context merger
         self.memory_merger = MemoryContextMerger(
             {"max_total_tokens": 4000, "merge_strategy": "priority", "token_buffer": 0.1}
         )
-        self.logger.info("🤖 AI AGENT: Memory context merger initialized")
+        self.logger.info("[AIAgent Node]: 🤖 AI AGENT: Memory context merger initialized")
 
     def _get_node_spec(self) -> Optional[NodeSpec]:
         """Get the node specification for AI agent nodes."""
-        self.logger.info(f"🤖 AI AGENT: Getting node spec for subtype: {self._subtype}")
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: Getting node spec for subtype: {self._subtype}"
+        )
 
         if node_spec_registry and self._subtype:
             # Return the specific spec for current subtype
             spec = node_spec_registry.get_spec(NodeType.AI_AGENT.value, self._subtype)
             if spec:
-                self.logger.info(f"🤖 AI AGENT: ✅ Found node spec for {self._subtype}")
+                self.logger.info(
+                    f"[AIAgent Node]: 🤖 AI AGENT: ✅ Found node spec for {self._subtype}"
+                )
             else:
-                self.logger.info(f"🤖 AI AGENT: ⚠️ No node spec found for {self._subtype}")
+                self.logger.info(
+                    f"[AIAgent Node]: 🤖 AI AGENT: ⚠️ No node spec found for {self._subtype}"
+                )
             return spec
 
-        self.logger.info("🤖 AI AGENT: No registry or subtype available")
+        self.logger.info("[AIAgent Node]: 🤖 AI AGENT: No registry or subtype available")
         return None
 
     def _init_ai_clients(self):
         """Initialize AI provider clients."""
-        self.logger.info("🤖 AI AGENT: Initializing AI provider clients...")
+        self.logger.info("[AIAgent Node]: 🤖 AI AGENT: Initializing AI provider clients...")
 
         try:
             # Initialize OpenAI client
             openai_key = os.getenv("OPENAI_API_KEY")
             if openai_key:
                 self.ai_clients["openai"] = {"api_key": openai_key, "client": None}
-                self.logger.info("🤖 AI AGENT: ✅ OpenAI client configured")
+                self.logger.info("[AIAgent Node]: 🤖 AI AGENT: ✅ OpenAI client configured")
             else:
-                self.logger.info("🤖 AI AGENT: ⚠️ OpenAI API key not found")
+                self.logger.info("[AIAgent Node]: 🤖 AI AGENT: ⚠️ OpenAI API key not found")
 
             # Initialize Anthropic client
             anthropic_key = os.getenv("ANTHROPIC_API_KEY")
@@ -93,22 +101,24 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                     "api_key": anthropic_key,
                     "client": None,
                 }
-                self.logger.info("🤖 AI AGENT: ✅ Anthropic client configured")
+                self.logger.info("[AIAgent Node]: 🤖 AI AGENT: ✅ Anthropic client configured")
             else:
-                self.logger.info("🤖 AI AGENT: ⚠️ Anthropic API key not found")
+                self.logger.info("[AIAgent Node]: 🤖 AI AGENT: ⚠️ Anthropic API key not found")
 
             # Initialize Google client
             google_key = os.getenv("GOOGLE_API_KEY")
             if google_key:
                 self.ai_clients["google"] = {"api_key": google_key, "client": None}
-                self.logger.info("🤖 AI AGENT: ✅ Google/Gemini client configured")
+                self.logger.info("[AIAgent Node]: 🤖 AI AGENT: ✅ Google/Gemini client configured")
             else:
-                self.logger.info("🤖 AI AGENT: ⚠️ Google API key not found")
+                self.logger.info("[AIAgent Node]: 🤖 AI AGENT: ⚠️ Google API key not found")
 
-            self.logger.info(f"🤖 AI AGENT: Total configured clients: {len(self.ai_clients)}")
+            self.logger.info(
+                f"[AIAgent Node]: 🤖 AI AGENT: Total configured clients: {len(self.ai_clients)}"
+            )
 
         except Exception as e:
-            self.logger.error(f"🤖 AI AGENT: ❌ Failed to initialize AI clients: {e}")
+            self.logger.error(f"[AIAgent Node]: 🤖 AI AGENT: ❌ Failed to initialize AI clients: {e}")
             self.logger.warning(f"Failed to initialize AI clients: {e}")
 
     def get_supported_subtypes(self) -> List[str]:
@@ -118,45 +128,49 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
     def validate(self, node: Any) -> List[str]:
         """Validate AI agent node configuration using spec-based validation."""
         self.logger.info(
-            f"🤖 AI AGENT: Starting validation for node: {getattr(node, 'id', 'unknown')}"
+            f"[AIAgent Node]: 🤖 AI AGENT: Starting validation for node: {getattr(node, 'id', 'unknown')}"
         )
-        self.logger.info(f"🤖 AI AGENT: Node subtype: {getattr(node, 'subtype', 'none')}")
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: Node subtype: {getattr(node, 'subtype', 'none')}"
+        )
 
         # First use the base class validation which includes spec validation
         errors = super().validate(node)
 
         if errors:
-            self.logger.info(f"🤖 AI AGENT: ⚠️ Base validation found {len(errors)} errors")
+            self.logger.info(
+                f"[AIAgent Node]: 🤖 AI AGENT: ⚠️ Base validation found {len(errors)} errors"
+            )
             for error in errors:
-                self.logger.info(f"🤖 AI AGENT:   - {error}")
+                self.logger.info(f"[AIAgent Node]: 🤖 AI AGENT:   - {error}")
 
         # If spec validation passed, we can skip manual validation
         if not errors and self.spec:
-            self.logger.info("🤖 AI AGENT: ✅ Spec-based validation passed")
+            self.logger.info("[AIAgent Node]: 🤖 AI AGENT: ✅ Spec-based validation passed")
             return errors
 
         # Fallback to legacy validation if spec not available
-        self.logger.info("🤖 AI AGENT: Using legacy validation")
+        self.logger.info("[AIAgent Node]: 🤖 AI AGENT: Using legacy validation")
 
         if not node.subtype:
             error_msg = "AI Agent subtype is required"
             errors.append(error_msg)
-            self.logger.error(f"🤖 AI AGENT: ❌ {error_msg}")
+            self.logger.error(f"[AIAgent Node]: 🤖 AI AGENT: ❌ {error_msg}")
             return errors
 
         subtype = node.subtype
         supported_subtypes = self.get_supported_subtypes()
 
         self.logger.info(
-            f"🤖 AI AGENT: Checking if {subtype} is in supported types: {supported_subtypes}"
+            f"[AIAgent Node]: 🤖 AI AGENT: Checking if {subtype} is in supported types: {supported_subtypes}"
         )
 
         if subtype not in supported_subtypes:
             error_msg = f"Unsupported AI agent subtype: {subtype}. Supported types: {', '.join(supported_subtypes)}"
             errors.append(error_msg)
-            self.logger.error(f"🤖 AI AGENT: ❌ {error_msg}")
+            self.logger.error(f"[AIAgent Node]: 🤖 AI AGENT: ❌ {error_msg}")
         else:
-            self.logger.info(f"🤖 AI AGENT: ✅ Subtype {subtype} is supported")
+            self.logger.info(f"[AIAgent Node]: 🤖 AI AGENT: ✅ Subtype {subtype} is supported")
 
         return errors
 
@@ -191,17 +205,17 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         try:
             subtype = context.node.subtype
             node_id = getattr(context.node, "id", "unknown")
-            self.logger.info(f"🤖 AI AGENT: Starting {subtype} execution")
-            self.logger.info(f"🤖 AI AGENT: Node ID: {node_id}")
+            self.logger.info(f"[AIAgent Node]: 🤖 AI AGENT: Starting {subtype} execution")
+            self.logger.info(f"[AIAgent Node]: 🤖 AI AGENT: Node ID: {node_id}")
             self.logger.info(
-                f"🤖 AI AGENT: Execution ID: {getattr(context, 'execution_id', 'unknown')}"
+                f"[AIAgent Node]: 🤖 AI AGENT: Execution ID: {getattr(context, 'execution_id', 'unknown')}"
             )
 
             # Detect connected memory nodes and load conversation history
             connected_memory_nodes = self._detect_connected_memory_nodes(context)
             if connected_memory_nodes:
                 self.logger.info(
-                    f"🤖 AI AGENT: 🧠 Found {len(connected_memory_nodes)} connected memory nodes"
+                    f"[AIAgent Node]: 🤖 AI AGENT: 🧠 Found {len(connected_memory_nodes)} connected memory nodes"
                 )
                 # Load conversation history from connected memory nodes
                 conversation_history = await self._load_conversation_history_from_memory_nodes(
@@ -213,39 +227,41 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                         context.input_data = {}
                     context.input_data["memory_context"] = conversation_history
                     self.logger.info(
-                        f"🤖 AI AGENT: 🧠 Loaded conversation history ({len(conversation_history)} chars)"
+                        f"[AIAgent Node]: 🤖 AI AGENT: 🧠 Loaded conversation history ({len(conversation_history)} chars)"
                     )
             else:
-                self.logger.info("🤖 AI AGENT: 🧠 No connected memory nodes detected")
+                self.logger.info("[AIAgent Node]: 🤖 AI AGENT: 🧠 No connected memory nodes detected")
 
             # Log input data analysis
             if hasattr(context, "input_data") and context.input_data:
-                self.logger.info(f"🤖 AI AGENT: Input data analysis:")
+                self.logger.info(f"[AIAgent Node]: 🤖 AI AGENT: Input data analysis:")
                 if isinstance(context.input_data, dict):
                     for key, value in context.input_data.items():
                         if key == "memory_context":
                             self.logger.info(
-                                f"🤖 AI AGENT:   📥 Found '{key}': {len(str(value))} characters"
+                                f"[AIAgent Node]: 🤖 AI AGENT:   📥 Found '{key}': {len(str(value))} characters"
                             )
                         elif isinstance(value, str) and len(value) > 100:
                             self.logger.info(
-                                f"🤖 AI AGENT:   📥 Input '{key}': {value[:100]}... ({len(value)} chars)"
+                                f"[AIAgent Node]: 🤖 AI AGENT:   📥 Input '{key}': {value[:100]}... ({len(value)} chars)"
                             )
                         else:
-                            self.logger.info(f"🤖 AI AGENT:   📥 Input '{key}': {value}")
+                            self.logger.info(
+                                f"[AIAgent Node]: 🤖 AI AGENT:   📥 Input '{key}': {value}"
+                            )
                 else:
                     self.logger.info(
-                        f"🤖 AI AGENT:   📥 Input data (non-dict): {str(context.input_data)[:200]}..."
+                        f"[AIAgent Node]: 🤖 AI AGENT:   📥 Input data (non-dict): {str(context.input_data)[:200]}..."
                     )
             else:
-                self.logger.info("🤖 AI AGENT: No input data provided")
+                self.logger.info("[AIAgent Node]: 🤖 AI AGENT: No input data provided")
 
             # Process memory contexts if present
             memory_contexts = self._extract_memory_contexts(context)
             if memory_contexts:
                 total_chars = sum(len(str(ctx)) for ctx in memory_contexts)
                 self.logger.info(
-                    f"🧠 AIAgent: Found {len(memory_contexts)} contexts, {total_chars} chars total"
+                    f"[AIAgent Node]: 🧠 AIAgent: Found {len(memory_contexts)} contexts, {total_chars} chars total"
                 )
 
             # Enhanced context with memory integration
@@ -286,7 +302,9 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                             context, connected_memory_nodes, user_message, ai_response
                         )
                 except Exception as e:
-                    self.logger.warning(f"🧠 AIAgent: Failed to store conversation: {e}")
+                    self.logger.warning(
+                        f"[AIAgent Node]: 🧠 AIAgent: Failed to store conversation: {e}"
+                    )
 
             return result
 
@@ -339,7 +357,7 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             # Merge all memory contexts into a single context string
             merged_memory_context = "\n\n".join(memory_contexts)
             self.logger.info(
-                f"🧠 AIAgent: Memory merged -> {len(memory_contexts)} contexts, {len(merged_memory_context)} chars"
+                f"[AIAgent Node]: 🧠 AIAgent: Memory merged -> {len(memory_contexts)} contexts, {len(merged_memory_context)} chars"
             )
 
             # Create enhanced input data
@@ -360,7 +378,7 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             return enhanced_context
 
         except Exception as e:
-            self.logger.warning(f"🧠 AIAgent: Memory enhancement failed: {e}")
+            self.logger.warning(f"[AIAgent Node]: 🧠 AIAgent: Memory enhancement failed: {e}")
 
         # Return original context if memory enhancement fails or no memory contexts
         return context
@@ -384,13 +402,28 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             if not memory_context:
                 return base_prompt
 
-            # Show preview of memory context being injected
-            memory_preview = (
-                memory_context[:100] + "..." if len(memory_context) > 100 else memory_context
-            )
+            # Show detailed breakdown of memory content being injected
             self.logger.info(
-                f"💭 AIAgent: SystemPrompt enhanced -> type:{memory_type}, context:{len(memory_context)} chars, preview: {memory_preview}"
+                f"[AIAgent Node]: 💭 AIAgent: SystemPrompt enhanced -> type:{memory_type}, context:{len(memory_context)} chars"
             )
+
+            # Show more detailed preview of memory content
+            lines = memory_context.split("\n")
+            self.logger.info(
+                f"[AIAgent Node]: 💭 AIAgent: 📝 Memory sections: {len([l for l in lines if l.startswith('##')])} sections"
+            )
+
+            # Show first few lines of memory context
+            preview_lines = lines[:3] if len(lines) >= 3 else lines
+            for i, line in enumerate(preview_lines):
+                if line.strip():
+                    line_preview = line[:80] + "..." if len(line) > 80 else line
+                    self.logger.info(f"[AIAgent Node]: 💭 AIAgent: 📋 Line {i+1}: {line_preview}")
+
+            if len(lines) > 3:
+                self.logger.info(
+                    f"[AIAgent Node]: 💭 AIAgent: 📋 ... and {len(lines) - 3} more lines"
+                )
 
             # Memory-type-specific context injection
             enhanced_prompt = self._inject_memory_by_type(
@@ -400,7 +433,7 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             return enhanced_prompt
 
         except Exception as e:
-            self.logger.warning(f"💭 AIAgent: SystemPrompt enhancement failed: {e}")
+            self.logger.warning(f"[AIAgent Node]: 💭 AIAgent: SystemPrompt enhancement failed: {e}")
             return base_prompt
 
     def _inject_memory_by_type(
@@ -524,7 +557,7 @@ Use these documents to:
         else:
             # Fallback for unknown memory types or legacy support
             self.logger.info(
-                f"🤖 AI AGENT: 💭 ⚠️ Unknown memory type '{memory_type}', using generic injection"
+                f"[AIAgent Node]: 🤖 AI AGENT: 💭 ⚠️ Unknown memory type '{memory_type}', using generic injection"
             )
             return f"""{base_prompt}
 
@@ -547,11 +580,13 @@ Please use this context appropriately when responding. Reference relevant inform
 
         if not current_node_id or not workflow_connections or not workflow_nodes:
             self.logger.info(
-                "🤖 AI AGENT: 🧠 Missing workflow connection data for memory node detection"
+                "[AIAgent Node]: 🤖 AI AGENT: 🧠 Missing workflow connection data for memory node detection"
             )
             return connected_memory_nodes
 
-        self.logger.info(f"🤖 AI AGENT: 🧠 Detecting memory nodes connected to {current_node_id}")
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: 🧠 Detecting memory nodes connected to {current_node_id}"
+        )
 
         # Look for outgoing connections from this AI agent node to memory nodes
         if current_node_id in workflow_connections:
@@ -579,12 +614,12 @@ Please use this context appropriately when responding. Reference relevant inform
                                     }
                                 )
                                 self.logger.info(
-                                    f"🤖 AI AGENT: 🧠 Found connected memory node: {target_node_id} (subtype: {node.get('subtype', 'unknown')})"
+                                    f"[AIAgent Node]: 🤖 AI AGENT: 🧠 Found connected memory node: {target_node_id} (subtype: {node.get('subtype', 'unknown')})"
                                 )
                             break
 
         self.logger.info(
-            f"🤖 AI AGENT: 🧠 Total connected memory nodes: {len(connected_memory_nodes)}"
+            f"[AIAgent Node]: 🤖 AI AGENT: 🧠 Total connected memory nodes: {len(connected_memory_nodes)}"
         )
         return connected_memory_nodes
 
@@ -592,7 +627,9 @@ Please use this context appropriately when responding. Reference relevant inform
         self, context: NodeExecutionContext, memory_nodes: List[Dict[str, Any]]
     ) -> str:
         """Load conversation history from connected memory nodes."""
-        self.logger.info("🤖 AI AGENT: 🧠 Loading conversation history from memory nodes")
+        self.logger.info(
+            "[AIAgent Node]: 🤖 AI AGENT: 🧠 Loading conversation history from memory nodes"
+        )
 
         # For now, we'll use the first memory node (could be enhanced to merge multiple)
         if not memory_nodes:
@@ -602,7 +639,9 @@ Please use this context appropriately when responding. Reference relevant inform
         memory_node_def = memory_node_info["node"]
         memory_node_id = memory_node_info["node_id"]
 
-        self.logger.info(f"🤖 AI AGENT: 🧠 Loading from memory node: {memory_node_id}")
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: 🧠 Loading from memory node: {memory_node_id}"
+        )
 
         try:
             # Import and create memory node executor
@@ -629,17 +668,19 @@ Please use this context appropriately when responding. Reference relevant inform
             if memory_result.status.value == "success" and memory_result.output_data:
                 conversation_history = memory_result.output_data.get("conversation_history", "")
                 self.logger.info(
-                    f"🤖 AI AGENT: 🧠 Loaded conversation history ({len(conversation_history)} chars)"
+                    f"[AIAgent Node]: 🤖 AI AGENT: 🧠 Loaded conversation history ({len(conversation_history)} chars)"
                 )
                 return conversation_history
             else:
                 self.logger.warning(
-                    f"🤖 AI AGENT: 🧠 Failed to load conversation history: {memory_result.error_message}"
+                    f"[AIAgent Node]: 🤖 AI AGENT: 🧠 Failed to load conversation history: {memory_result.error_message}"
                 )
                 return ""
 
         except Exception as e:
-            self.logger.error(f"🤖 AI AGENT: 🧠 Error loading conversation history: {e}")
+            self.logger.error(
+                f"[AIAgent Node]: 🤖 AI AGENT: 🧠 Error loading conversation history: {e}"
+            )
             return ""
 
     async def _store_conversation_exchange(
@@ -683,14 +724,18 @@ Please use this context appropriately when responding. Reference relevant inform
                 memory_result = memory_executor.execute(memory_context)
 
                 if memory_result.status.value == "success":
-                    self.logger.info(f"🧠 AIAgent: Stored conversation -> node:{memory_node_id}")
+                    self.logger.info(
+                        f"[AIAgent Node]: 🧠 AIAgent: Stored conversation -> node:{memory_node_id}"
+                    )
                 else:
                     self.logger.warning(
-                        f"🧠 AIAgent: Store failed -> node:{memory_node_id}, error:{memory_result.error_message}"
+                        f"[AIAgent Node]: 🧠 AIAgent: Store failed -> node:{memory_node_id}, error:{memory_result.error_message}"
                     )
 
             except Exception as e:
-                self.logger.error(f"🧠 AIAgent: Store error -> node:{memory_node_id}, {e}")
+                self.logger.error(
+                    f"[AIAgent Node]: 🧠 AIAgent: Store error -> node:{memory_node_id}, {e}"
+                )
 
     def _dict_to_node_object(self, node_def: Dict[str, Any]):
         """Convert node definition dict to node object."""
@@ -710,12 +755,28 @@ Please use this context appropriately when responding. Reference relevant inform
         max_tokens = self.get_parameter_with_spec(context, "max_tokens")
         safety_settings = self.get_parameter_with_spec(context, "safety_settings")
 
+        # Log original system prompt before memory enhancement
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: Original system prompt ({len(base_system_prompt)} chars): {base_system_prompt}"
+        )
+
         # Enhance system prompt with memory context if available
         system_prompt = self._enhance_system_prompt_with_memory(
             base_system_prompt, context.input_data, logs
         )
 
+        # Log if system prompt was enhanced with memory
+        if len(system_prompt) > len(base_system_prompt):
+            self.logger.info(
+                f"[AIAgent Node]: 🤖 AI AGENT: ✅ System prompt enhanced with memory (+{len(system_prompt) - len(base_system_prompt)} chars)"
+            )
+
         self.logger.info(f"Gemini agent: {model_version}, temp: {temperature}")
+
+        # Always show the complete system prompt for debugging
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: ===== COMPLETE SYSTEM PROMPT =====\n{system_prompt}\n===== END SYSTEM PROMPT ====="
+        )
 
         # Prepare input for AI processing
         input_text = self._prepare_input_for_ai(context.input_data)
@@ -782,31 +843,38 @@ Please use this context appropriately when responding. Reference relevant inform
         presence_penalty = self.get_parameter_with_spec(context, "presence_penalty")
         frequency_penalty = self.get_parameter_with_spec(context, "frequency_penalty")
 
+        # Log original system prompt before memory enhancement
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: Original system prompt ({len(base_system_prompt)} chars): {base_system_prompt}"
+        )
+
         # Enhance system prompt with memory context if available
         system_prompt = self._enhance_system_prompt_with_memory(
             base_system_prompt, context.input_data, logs
         )
 
-        self.logger.info(
-            f"🤖 AI AGENT: OpenAI configuration - model: {model_version}, temp: {temperature}"
-        )
-        self.logger.info(f"🤖 AI AGENT: Final system prompt length: {len(system_prompt)} characters")
+        # Log if system prompt was enhanced with memory
+        if len(system_prompt) > len(base_system_prompt):
+            self.logger.info(
+                f"[AIAgent Node]: 🤖 AI AGENT: ✅ System prompt enhanced with memory (+{len(system_prompt) - len(base_system_prompt)} chars)"
+            )
 
-        # Show system prompt preview (first and last parts)
-        if len(system_prompt) > 300:
-            self.logger.info(
-                f"🤖 AI AGENT: System prompt preview (first 150 chars): {system_prompt[:150]}..."
-            )
-            self.logger.info(
-                f"🤖 AI AGENT: System prompt preview (last 150 chars): ...{system_prompt[-150:]}"
-            )
-        else:
-            self.logger.info(f"🤖 AI AGENT: Full system prompt: {system_prompt}")
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: OpenAI configuration - model: {model_version}, temp: {temperature}"
+        )
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: Final system prompt length: {len(system_prompt)} characters"
+        )
+
+        # Always show the complete system prompt for debugging
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: ===== COMPLETE SYSTEM PROMPT =====\n{system_prompt}\n===== END SYSTEM PROMPT ====="
+        )
 
         # Prepare input for AI processing
         input_text = self._prepare_input_for_ai(context.input_data)
         self.logger.info(
-            f"🤖 AI AGENT: User input prepared: '{input_text[:100]}{'...' if len(input_text) > 100 else ''}' ({len(input_text)} chars)"
+            f"[AIAgent Node]: 🤖 AI AGENT: User input prepared: '{input_text[:100]}{'...' if len(input_text) > 100 else ''}' ({len(input_text)} chars)"
         )
 
         try:
@@ -872,12 +940,28 @@ Please use this context appropriately when responding. Reference relevant inform
         max_tokens = self.get_parameter_with_spec(context, "max_tokens")
         stop_sequences = self.get_parameter_with_spec(context, "stop_sequences")
 
+        # Log original system prompt before memory enhancement
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: Original system prompt ({len(base_system_prompt)} chars): {base_system_prompt}"
+        )
+
         # Enhance system prompt with memory context if available
         system_prompt = self._enhance_system_prompt_with_memory(
             base_system_prompt, context.input_data, logs
         )
 
+        # Log if system prompt was enhanced with memory
+        if len(system_prompt) > len(base_system_prompt):
+            self.logger.info(
+                f"[AIAgent Node]: 🤖 AI AGENT: ✅ System prompt enhanced with memory (+{len(system_prompt) - len(base_system_prompt)} chars)"
+            )
+
         self.logger.info(f"Claude agent: {model_version}, temp: {temperature}")
+
+        # Always show the complete system prompt for debugging
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: ===== COMPLETE SYSTEM PROMPT =====\n{system_prompt}\n===== END SYSTEM PROMPT ====="
+        )
 
         # Prepare input for AI processing
         input_text = self._prepare_input_for_ai(context.input_data)
@@ -995,18 +1079,20 @@ Please use this context appropriately when responding. Reference relevant inform
             # First check for standard communication format (from trigger or other nodes)
             if "content" in input_data:
                 content = input_data["content"]
-                self.logger.info(f"🎯 Extracted standard format content: {content}")
+                self.logger.info(f"[AIAgent Node]: 🎯 Extracted standard format content: {content}")
                 return str(content)
 
             # Legacy support: Check for direct message/text fields
             if "message" in input_data:
                 message_content = input_data["message"]
-                self.logger.info(f"🎯 Extracted legacy message field: {message_content}")
+                self.logger.info(
+                    f"[AIAgent Node]: 🎯 Extracted legacy message field: {message_content}"
+                )
                 return str(message_content)
 
             if "text" in input_data:
                 text_content = input_data["text"]
-                self.logger.info(f"🎯 Extracted legacy text field: {text_content}")
+                self.logger.info(f"[AIAgent Node]: 🎯 Extracted legacy text field: {text_content}")
                 return str(text_content)
 
             # Legacy support: Check for trigger payload structures
@@ -1016,13 +1102,17 @@ Please use this context appropriately when responding. Reference relevant inform
                     # Slack message event
                     if "event" in payload and "text" in payload["event"]:
                         slack_text = payload["event"]["text"]
-                        self.logger.info(f"🎯 Extracted legacy Slack message: {slack_text}")
+                        self.logger.info(
+                            f"[AIAgent Node]: 🎯 Extracted legacy Slack message: {slack_text}"
+                        )
                         return slack_text
 
                     # Direct text field in payload
                     elif "text" in payload:
                         text_content = payload["text"]
-                        self.logger.info(f"🎯 Extracted legacy payload text: {text_content}")
+                        self.logger.info(
+                            f"[AIAgent Node]: 🎯 Extracted legacy payload text: {text_content}"
+                        )
                         return text_content
 
             # Log what we received for debugging
@@ -1038,25 +1128,31 @@ Please use this context appropriately when responding. Reference relevant inform
 
     def _parse_ai_response(self, ai_response: str) -> str:
         """Parse AI response to extract just the content, removing JSON wrapper."""
-        self.logger.info(f"🤖 AI AGENT: Parsing AI response ({len(str(ai_response))} characters)")
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: Parsing AI response ({len(str(ai_response))} characters)"
+        )
 
         if not ai_response:
-            self.logger.info("🤖 AI AGENT: Empty response received")
+            self.logger.info("[AIAgent Node]: 🤖 AI AGENT: Empty response received")
             return ""
 
         try:
             # Try to parse as JSON
             if isinstance(ai_response, str) and ai_response.strip().startswith("{"):
-                self.logger.info("🤖 AI AGENT: Response appears to be JSON, attempting to parse")
+                self.logger.info(
+                    "[AIAgent Node]: 🤖 AI AGENT: Response appears to be JSON, attempting to parse"
+                )
                 import json
 
                 data = json.loads(ai_response)
-                self.logger.info(f"🤖 AI AGENT: JSON parsed successfully, keys: {list(data.keys())}")
+                self.logger.info(
+                    f"[AIAgent Node]: 🤖 AI AGENT: JSON parsed successfully, keys: {list(data.keys())}"
+                )
 
                 # Extract response content from common JSON structures
                 if "response" in data:
                     response_content = data["response"]
-                    self.logger.info("🤖 AI AGENT: Found 'response' key in JSON")
+                    self.logger.info("[AIAgent Node]: 🤖 AI AGENT: Found 'response' key in JSON")
                     # If the response is still JSON, try to extract further
                     if isinstance(response_content, str) and response_content.strip().startswith(
                         "{"
@@ -1064,35 +1160,41 @@ Please use this context appropriately when responding. Reference relevant inform
                         try:
                             inner_data = json.loads(response_content)
                             if "response" in inner_data:
-                                self.logger.info("🤖 AI AGENT: Found nested 'response' key")
+                                self.logger.info(
+                                    "[AIAgent Node]: 🤖 AI AGENT: Found nested 'response' key"
+                                )
                                 return inner_data["response"]
                         except:
                             pass
                     return response_content
                 elif "content" in data:
-                    self.logger.info("🤖 AI AGENT: Found 'content' key in JSON")
+                    self.logger.info("[AIAgent Node]: 🤖 AI AGENT: Found 'content' key in JSON")
                     return data["content"]
                 elif "text" in data:
-                    self.logger.info("🤖 AI AGENT: Found 'text' key in JSON")
+                    self.logger.info("[AIAgent Node]: 🤖 AI AGENT: Found 'text' key in JSON")
                     return data["text"]
                 elif "message" in data:
-                    self.logger.info("🤖 AI AGENT: Found 'message' key in JSON")
+                    self.logger.info("[AIAgent Node]: 🤖 AI AGENT: Found 'message' key in JSON")
                     return data["message"]
                 else:
                     # If no known key, return the first string value found
-                    self.logger.info("🤖 AI AGENT: No known keys found, using first string value")
+                    self.logger.info(
+                        "[AIAgent Node]: 🤖 AI AGENT: No known keys found, using first string value"
+                    )
                     for value in data.values():
                         if isinstance(value, str):
                             return value
         except json.JSONDecodeError:
-            self.logger.info("🤖 AI AGENT: Response is not valid JSON, using as-is")
+            self.logger.info("[AIAgent Node]: 🤖 AI AGENT: Response is not valid JSON, using as-is")
             pass
         except Exception as e:
-            self.logger.warning(f"🤖 AI AGENT: Error parsing response: {e}")
+            self.logger.warning(f"[AIAgent Node]: 🤖 AI AGENT: Error parsing response: {e}")
             pass
 
         # If not JSON or no extractable content, return as-is
-        self.logger.info("🤖 AI AGENT: Using response as-is (no JSON parsing needed)")
+        self.logger.info(
+            "[AIAgent Node]: 🤖 AI AGENT: Using response as-is (no JSON parsing needed)"
+        )
         return str(ai_response)
 
     def _call_gemini_api(
@@ -1105,8 +1207,12 @@ Please use this context appropriately when responding. Reference relevant inform
         safety_settings: Dict,
     ) -> str:
         """Call actual Gemini API."""
-        self.logger.info(f"🤖 AI AGENT: Starting Gemini API call with model: {model}")
-        self.logger.info(f"🤖 AI AGENT: Temperature: {temperature}, Max tokens: {max_tokens}")
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: Starting Gemini API call with model: {model}"
+        )
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: Temperature: {temperature}, Max tokens: {max_tokens}"
+        )
 
         try:
             import google.generativeai as genai
@@ -1115,22 +1221,24 @@ Please use this context appropriately when responding. Reference relevant inform
             gemini_key = os.getenv("GEMINI_API_KEY")
             if not gemini_key:
                 error_msg = "GEMINI_API_KEY not found in environment - Gemini integration not configured in AWS infrastructure"
-                self.logger.error(f"🤖 AI AGENT: ❌ {error_msg}")
+                self.logger.error(f"[AIAgent Node]: 🤖 AI AGENT: ❌ {error_msg}")
                 raise ValueError(error_msg)
 
-            self.logger.info("🤖 AI AGENT: Configuring Gemini API client")
+            self.logger.info("[AIAgent Node]: 🤖 AI AGENT: Configuring Gemini API client")
             genai.configure(api_key=gemini_key)
 
             # Create model instance
-            self.logger.info(f"🤖 AI AGENT: Creating Gemini model instance: {model}")
+            self.logger.info(f"[AIAgent Node]: 🤖 AI AGENT: Creating Gemini model instance: {model}")
             model_instance = genai.GenerativeModel(model)
 
             # Combine system prompt and input
             full_prompt = f"{system_prompt}\n\nInput: {input_text}"
-            self.logger.info(f"🤖 AI AGENT: Full prompt prepared ({len(full_prompt)} characters)")
+            self.logger.info(
+                f"[AIAgent Node]: 🤖 AI AGENT: Full prompt prepared ({len(full_prompt)} characters)"
+            )
 
             # Make API call
-            self.logger.info("🤖 AI AGENT: Making Gemini API call...")
+            self.logger.info("[AIAgent Node]: 🤖 AI AGENT: Making Gemini API call...")
             response = model_instance.generate_content(
                 full_prompt,
                 generation_config=genai.types.GenerationConfig(
@@ -1140,12 +1248,12 @@ Please use this context appropriately when responding. Reference relevant inform
 
             response_text = response.text
             self.logger.info(
-                f"🤖 AI AGENT: ✅ Gemini API call successful, response length: {len(response_text)}"
+                f"[AIAgent Node]: 🤖 AI AGENT: ✅ Gemini API call successful, response length: {len(response_text)}"
             )
             return response_text
 
         except Exception as e:
-            self.logger.error(f"🤖 AI AGENT: ❌ Gemini API call failed: {e}")
+            self.logger.error(f"[AIAgent Node]: 🤖 AI AGENT: ❌ Gemini API call failed: {e}")
             self.logger.error(f"Gemini API call failed: {e}")
             # Return error message that will be handled by external action nodes
             return f"⚠️ Gemini API unavailable: {str(e)}"
@@ -1161,10 +1269,14 @@ Please use this context appropriately when responding. Reference relevant inform
         frequency_penalty: float,
     ) -> str:
         """Call actual OpenAI API."""
-        self.logger.info(f"🤖 AI AGENT: Starting OpenAI API call with model: {model}")
-        self.logger.info(f"🤖 AI AGENT: Temperature: {temperature}, Max tokens: {max_tokens}")
         self.logger.info(
-            f"🤖 AI AGENT: Presence penalty: {presence_penalty}, Frequency penalty: {frequency_penalty}"
+            f"[AIAgent Node]: 🤖 AI AGENT: Starting OpenAI API call with model: {model}"
+        )
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: Temperature: {temperature}, Max tokens: {max_tokens}"
+        )
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: Presence penalty: {presence_penalty}, Frequency penalty: {frequency_penalty}"
         )
 
         try:
@@ -1174,15 +1286,15 @@ Please use this context appropriately when responding. Reference relevant inform
             openai_key = os.getenv("OPENAI_API_KEY")
             if not openai_key:
                 error_msg = "OPENAI_API_KEY not found in environment"
-                self.logger.error(f"🤖 AI AGENT: ❌ {error_msg}")
+                self.logger.error(f"[AIAgent Node]: 🤖 AI AGENT: ❌ {error_msg}")
                 raise ValueError(error_msg)
 
             # Create client
-            self.logger.info("🤖 AI AGENT: Creating OpenAI client")
+            self.logger.info("[AIAgent Node]: 🤖 AI AGENT: Creating OpenAI client")
             client = OpenAI(api_key=openai_key)
 
             # Make API call
-            self.logger.info("🤖 AI AGENT: Making OpenAI API call...")
+            self.logger.info("[AIAgent Node]: 🤖 AI AGENT: Making OpenAI API call...")
             response = client.chat.completions.create(
                 model=model,
                 messages=[
@@ -1197,12 +1309,12 @@ Please use this context appropriately when responding. Reference relevant inform
 
             response_content = response.choices[0].message.content
             self.logger.info(
-                f"🤖 AI AGENT: ✅ OpenAI API call successful, response length: {len(response_content)}"
+                f"[AIAgent Node]: 🤖 AI AGENT: ✅ OpenAI API call successful, response length: {len(response_content)}"
             )
             return response_content
 
         except Exception as e:
-            self.logger.error(f"🤖 AI AGENT: ❌ OpenAI API call failed: {e}")
+            self.logger.error(f"[AIAgent Node]: 🤖 AI AGENT: ❌ OpenAI API call failed: {e}")
             self.logger.error(f"OpenAI API call failed: {e}")
 
             # Return user-friendly error message
@@ -1223,9 +1335,13 @@ Please use this context appropriately when responding. Reference relevant inform
         stop_sequences: List[str],
     ) -> str:
         """Call actual Claude API."""
-        self.logger.info(f"🤖 AI AGENT: Starting Anthropic Claude API call with model: {model}")
-        self.logger.info(f"🤖 AI AGENT: Temperature: {temperature}, Max tokens: {max_tokens}")
-        self.logger.info(f"🤖 AI AGENT: Stop sequences: {stop_sequences}")
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: Starting Anthropic Claude API call with model: {model}"
+        )
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: Temperature: {temperature}, Max tokens: {max_tokens}"
+        )
+        self.logger.info(f"[AIAgent Node]: 🤖 AI AGENT: Stop sequences: {stop_sequences}")
 
         try:
             import anthropic
@@ -1234,15 +1350,15 @@ Please use this context appropriately when responding. Reference relevant inform
             anthropic_key = os.getenv("ANTHROPIC_API_KEY")
             if not anthropic_key:
                 error_msg = "ANTHROPIC_API_KEY not found in environment"
-                self.logger.error(f"🤖 AI AGENT: ❌ {error_msg}")
+                self.logger.error(f"[AIAgent Node]: 🤖 AI AGENT: ❌ {error_msg}")
                 raise ValueError(error_msg)
 
             # Create client
-            self.logger.info("🤖 AI AGENT: Creating Anthropic client")
+            self.logger.info("[AIAgent Node]: 🤖 AI AGENT: Creating Anthropic client")
             client = anthropic.Anthropic(api_key=anthropic_key)
 
             # Make API call
-            self.logger.info("🤖 AI AGENT: Making Claude API call...")
+            self.logger.info("[AIAgent Node]: 🤖 AI AGENT: Making Claude API call...")
             response = client.messages.create(
                 model=model,
                 max_tokens=max_tokens,
@@ -1254,12 +1370,12 @@ Please use this context appropriately when responding. Reference relevant inform
 
             response_text = response.content[0].text
             self.logger.info(
-                f"🤖 AI AGENT: ✅ Claude API call successful, response length: {len(response_text)}"
+                f"[AIAgent Node]: 🤖 AI AGENT: ✅ Claude API call successful, response length: {len(response_text)}"
             )
             return response_text
 
         except Exception as e:
-            self.logger.error(f"🤖 AI AGENT: ❌ Claude API call failed: {e}")
+            self.logger.error(f"[AIAgent Node]: 🤖 AI AGENT: ❌ Claude API call failed: {e}")
             self.logger.error(f"Claude API call failed: {e}")
 
             # Return user-friendly error message
