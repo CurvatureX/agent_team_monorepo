@@ -738,24 +738,19 @@ class WorkflowAgentNodes:
                     # Use fallback workflow on parse error
                     workflow = self._create_fallback_workflow(intent_summary)
 
-            # NEW: Create or update workflow in workflow_engine immediately after generation
+            # NEW: Create workflow in workflow_engine immediately after generation
+            logger.info("Creating workflow in workflow_engine")
             engine_client = WorkflowEngineClient()
             user_id = state.get("user_id", "test_user")
             session_id = state.get("session_id")
             
-            # Check if we're in edit mode
+            # Always create a new workflow, even in edit mode
+            # This allows users to test edits without overwriting the original
             workflow_context = state.get("workflow_context", {})
             workflow_mode = workflow_context.get("origin", "create")
-            source_workflow_id = workflow_context.get("source_workflow_id")
             
-            if workflow_mode == "edit" and source_workflow_id:
-                # Update existing workflow
-                logger.info(f"Updating existing workflow in workflow_engine: {source_workflow_id}")
-                creation_result = await engine_client.update_workflow(source_workflow_id, workflow, user_id)
-            else:
-                # Create new workflow (for create and copy modes)
-                logger.info(f"Creating new workflow in workflow_engine (mode: {workflow_mode})")
-                creation_result = await engine_client.create_workflow(workflow, user_id, session_id)
+            logger.info(f"Creating new workflow in workflow_engine (mode: {workflow_mode})")
+            creation_result = await engine_client.create_workflow(workflow, user_id, session_id)
 
             if creation_result.get("success", True) and creation_result.get("workflow", {}).get(
                 "id"
