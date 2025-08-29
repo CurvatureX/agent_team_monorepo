@@ -516,6 +516,16 @@ class WorkflowAgentNodes:
                 "existing_intent": existing_intent,
                 "conversation_history": conversation_history,
             }
+            
+            # Add source workflow if in edit/copy mode
+            if "source_workflow" in state and state["source_workflow"]:
+                template_context["source_workflow"] = json.dumps(state["source_workflow"], indent=2)
+                logger.info(f"Including source workflow in clarification context for edit/copy mode")
+            
+            # Add workflow context if present
+            if "workflow_context" in state and state["workflow_context"]:
+                template_context["workflow_mode"] = state["workflow_context"].get("origin", "create")
+                logger.info(f"Workflow mode: {template_context['workflow_mode']}")
 
             # Use the f2 template system - both system and user prompts
             system_prompt = await self.prompt_engine.render_prompt(
@@ -663,6 +673,15 @@ class WorkflowAgentNodes:
                 "current_workflow": state.get("current_workflow"),
                 "creation_error": error_context,
             }
+            
+            # Add source workflow and mode for edit/copy operations
+            if "source_workflow" in state and state["source_workflow"]:
+                template_context["source_workflow"] = json.dumps(state["source_workflow"], indent=2)
+                logger.info(f"Including source workflow in generation context for edit/copy mode")
+            
+            if "workflow_context" in state and state["workflow_context"]:
+                template_context["workflow_mode"] = state["workflow_context"].get("origin", "create")
+                logger.info(f"Workflow generation mode: {template_context['workflow_mode']}")
 
             # Use the original f1 template system - the working approach
             system_prompt = await self.prompt_engine.render_prompt(
@@ -719,14 +738,24 @@ class WorkflowAgentNodes:
                     # Use fallback workflow on parse error
                     workflow = self._create_fallback_workflow(intent_summary)
 
-            # NEW: Create workflow in workflow_engine immediately after generation
-            logger.info("Creating workflow in workflow_engine")
+            # NEW: Create or update workflow in workflow_engine immediately after generation
             engine_client = WorkflowEngineClient()
             user_id = state.get("user_id", "test_user")
             session_id = state.get("session_id")
-
-            # Pass session_id to the workflow creation
-            creation_result = await engine_client.create_workflow(workflow, user_id, session_id)
+            
+            # Check if we're in edit mode
+            workflow_context = state.get("workflow_context", {})
+            workflow_mode = workflow_context.get("origin", "create")
+            source_workflow_id = workflow_context.get("source_workflow_id")
+            
+            if workflow_mode == "edit" and source_workflow_id:
+                # Update existing workflow
+                logger.info(f"Updating existing workflow in workflow_engine: {source_workflow_id}")
+                creation_result = await engine_client.update_workflow(source_workflow_id, workflow, user_id)
+            else:
+                # Create new workflow (for create and copy modes)
+                logger.info(f"Creating new workflow in workflow_engine (mode: {workflow_mode})")
+                creation_result = await engine_client.create_workflow(workflow, user_id, session_id)
 
             if creation_result.get("success", True) and creation_result.get("workflow", {}).get(
                 "id"
