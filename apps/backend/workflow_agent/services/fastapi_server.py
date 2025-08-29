@@ -145,6 +145,27 @@ class WorkflowAgentServicer:
                     "Retrieved existing workflow_agent_state", extra={"session_id": session_id}
                 )
 
+            # Fetch source workflow if in edit or copy mode
+            if request.workflow_context and request.workflow_context.origin in ["edit", "copy"]:
+                source_workflow_id = request.workflow_context.source_workflow_id
+                if source_workflow_id and not current_state.get("source_workflow"):
+                    logger.info(f"Fetching source workflow: {source_workflow_id} for {request.workflow_context.origin} mode")
+                    from workflow_agent.services.workflow_engine_client import WorkflowEngineClient
+                    engine_client = WorkflowEngineClient()
+                    
+                    try:
+                        workflow_result = await engine_client.get_workflow(
+                            source_workflow_id,
+                            request.user_id or "test_user"
+                        )
+                        if workflow_result.get("success") and workflow_result.get("workflow"):
+                            current_state["source_workflow"] = workflow_result["workflow"]
+                            logger.info(f"Successfully fetched source workflow: {source_workflow_id}")
+                        else:
+                            logger.warning(f"Failed to fetch source workflow: {workflow_result.get('error', 'Unknown error')}")
+                    except Exception as e:
+                        logger.error(f"Error fetching source workflow: {str(e)}")
+
             # 添加用户消息到对话历史
             # Handle case where current_state is None due to database access issues
             if current_state is None:
@@ -406,6 +427,14 @@ class WorkflowAgentServicer:
             workflow_state["current_workflow"] = current_workflow
         else:
             workflow_state["current_workflow"] = {}
+
+        # Add source_workflow if present (for edit/copy mode)
+        if "source_workflow" in db_state:
+            workflow_state["source_workflow"] = db_state["source_workflow"]
+
+        # Add workflow_context if present
+        if "workflow_context" in db_state:
+            workflow_state["workflow_context"] = db_state["workflow_context"]
 
         return workflow_state
 
