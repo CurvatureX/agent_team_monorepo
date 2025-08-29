@@ -795,6 +795,9 @@ Please use this context appropriately when responding. Reference relevant inform
             # Parse AI response to extract just the content
             content = self._parse_ai_response(ai_response)
 
+            # Store AI response in memory if user message was provided
+            self._store_conversation_in_memory(context, input_text, content, logs)
+
             # Use standard communication format
             output_data = {
                 "content": content,
@@ -892,6 +895,9 @@ Please use this context appropriately when responding. Reference relevant inform
             # Parse AI response to extract just the content
             content = self._parse_ai_response(ai_response)
 
+            # Store AI response in memory if user message was provided
+            self._store_conversation_in_memory(context, input_text, content, logs)
+
             # Use standard communication format
             output_data = {
                 "content": content,
@@ -979,6 +985,9 @@ Please use this context appropriately when responding. Reference relevant inform
 
             # Parse AI response to extract just the content
             content = self._parse_ai_response(ai_response)
+
+            # Store AI response in memory if user message was provided
+            self._store_conversation_in_memory(context, input_text, content, logs)
 
             # Use standard communication format
             output_data = {
@@ -1385,3 +1394,102 @@ Please use this context appropriately when responding. Reference relevant inform
                 return f"⚠️ Anthropic API rate limit exceeded. Please try again later."
             else:
                 return f"⚠️ Anthropic Claude API error: {str(e)}"
+
+    def _store_conversation_in_memory(
+        self, context: NodeExecutionContext, user_input: str, ai_response: str, logs: List[str]
+    ) -> None:
+        """Store the conversation (user input + AI response) in connected memory nodes."""
+        try:
+            # Only store if we have both user input and AI response
+            if not user_input or not ai_response:
+                self.logger.info(
+                    f"[AIAgent Node]: 🧠 AIAgent: Skipping memory storage - missing input or response"
+                )
+                return
+
+            # Find connected memory nodes
+            memory_nodes = self._get_connected_memory_nodes(context)
+            if not memory_nodes:
+                self.logger.info(
+                    f"[AIAgent Node]: 🧠 AIAgent: No connected memory nodes found, skipping storage"
+                )
+                return
+
+            # Extract clean user message from input (remove JSON wrapper if present)
+            user_message = user_input
+            if user_input.startswith("{") and "content" in user_input:
+                try:
+                    import json
+
+                    input_data = json.loads(user_input)
+                    if isinstance(input_data, dict) and "content" in input_data:
+                        user_message = input_data["content"]
+                except:
+                    pass  # Use original input if JSON parsing fails
+
+            # Store in each connected memory node
+            for memory_node_info in memory_nodes:
+                memory_node_def = memory_node_info["node"]
+                memory_node_id = memory_node_info["node_id"]
+
+                # Create memory storage data
+                memory_data = {
+                    "user_message": user_message,
+                    "ai_response": ai_response,
+                    "source_node": context.node.id
+                    if hasattr(context, "node") and context.node
+                    else "ai_agent",
+                    "timestamp": datetime.now().isoformat(),
+                }
+
+                try:
+                    # Import memory node executor
+                    from .memory_node import MemoryNodeExecutor
+
+                    # Create memory node instance with correct subtype
+                    memory_node = MemoryNodeExecutor(subtype=memory_node_def.get("subtype"))
+
+                    # Create memory context for storage
+                    memory_context = NodeExecutionContext(
+                        node=self._dict_to_node_object(memory_node_def),
+                        workflow_id=context.workflow_id,
+                        execution_id=context.execution_id,
+                        input_data=memory_data,
+                        static_data=context.static_data if hasattr(context, "static_data") else {},
+                        credentials=context.credentials if hasattr(context, "credentials") else {},
+                        metadata=context.metadata if hasattr(context, "metadata") else {},
+                    )
+
+                    # Execute memory storage
+                    self.logger.info(
+                        f"[AIAgent Node]: 🧠 AIAgent: Storing conversation in memory node {memory_node_id}..."
+                    )
+                    result = memory_node.execute(memory_context)
+
+                    if (
+                        hasattr(result, "status")
+                        and str(result.status) == "ExecutionStatus.SUCCESS"
+                    ):
+                        self.logger.info(
+                            f"[AIAgent Node]: 🧠 AIAgent: ✅ Conversation stored in memory node {memory_node_id}"
+                        )
+                        logs.append(f"Conversation stored in memory node {memory_node_id}")
+                    else:
+                        self.logger.warning(
+                            f"[AIAgent Node]: 🧠 AIAgent: ⚠️ Failed to store in memory node {memory_node_id}: {getattr(result, 'error_message', 'Unknown error')}"
+                        )
+                        logs.append(
+                            f"Failed to store in memory node {memory_node_id}: {getattr(result, 'error_message', 'Unknown error')}"
+                        )
+
+                except Exception as e:
+                    self.logger.error(
+                        f"[AIAgent Node]: 🧠 AIAgent: ❌ Error storing in memory node {memory_node_id}: {e}"
+                    )
+                    logs.append(f"Error storing in memory node {memory_node_id}: {e}")
+
+        except Exception as e:
+            self.logger.error(
+                f"[AIAgent Node]: 🧠 AIAgent: ❌ Error storing conversation in memory: {e}"
+            )
+            logs.append(f"Error storing conversation in memory: {e}")

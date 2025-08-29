@@ -227,7 +227,6 @@ async def health_check():
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
         details["database"] = "connected"
-        logger.info("Database health check passed")
     except Exception as e:
         details["database"] = f"failed: {str(e)}"
         overall_status = HealthStatus.UNHEALTHY

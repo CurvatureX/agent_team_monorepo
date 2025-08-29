@@ -2365,7 +2365,46 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                         f"[Memory Node]: 🧠 ConvSummary: Added {len(new_messages)} msgs -> buffer:{len(conv_data['buffer'])}, total:{conv_data['message_count']}"
                     )
 
-                # Pattern 3: Action-based call (e.g., memory loading) - no conversation data
+                # Pattern 3: Trigger/content data (extract user message from content)
+                elif "content" in context.input_data and "trigger_type" in context.input_data.get(
+                    "metadata", {}
+                ):
+                    conversation_data_provided = True
+                    content = context.input_data["content"]
+                    trigger_type = context.input_data["metadata"].get("trigger_type", "unknown")
+
+                    # Clean user message based on trigger type
+                    user_msg = content
+                    if trigger_type == "slack" and "<@" in content:
+                        # Remove Slack mention formatting to get clean user message
+                        import re
+
+                        user_msg = re.sub(r"<@[^>]+>", "", content).strip()
+
+                    # Store as a user message (no AI response yet)
+                    new_messages = [
+                        {
+                            "role": "user",
+                            "content": user_msg,
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                    ]
+
+                    # Save new messages to Supabase immediately
+                    self._save_new_messages_to_supabase(session_id, user_id, new_messages)
+
+                    # Add to buffer and update counts
+                    conv_data["buffer"].extend(new_messages)
+                    conv_data["message_count"] += 1
+
+                    self.logger.info(
+                        f"[Memory Node]: 🧠 ConvSummary: Added {trigger_type} trigger msg -> buffer:{len(conv_data['buffer'])}, total:{conv_data['message_count']}"
+                    )
+                    self.logger.info(
+                        f"[Memory Node]: 🧠 ConvSummary: 📥 User (from {trigger_type}): {user_msg}"
+                    )
+
+                # Pattern 4: Action-based call (e.g., memory loading) - no conversation data
                 elif context.input_data.get("action") or context.input_data.get("memory"):
                     self.logger.info(
                         f"[Memory Node]: 🧠 ConvSummary: Action/memory call - retrieving existing memory"
