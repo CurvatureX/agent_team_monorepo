@@ -771,8 +771,32 @@ class WorkflowAgentNodes:
                 workflow_name = workflow.get("name", "Workflow")
                 workflow_description = workflow.get("description", "")
                 node_count = len(workflow.get("nodes", []))
+                
+                # Check if we're in edit mode
+                workflow_context = state.get("workflow_context", {})
+                workflow_mode = workflow_context.get("origin", "create")
+                source_workflow_id = workflow_context.get("source_workflow_id")
+                
+                if workflow_mode == "edit":
+                    completion_message = f"""✅ **New Workflow Created from Edit!**
 
-                completion_message = f"""✅ **Workflow Created Successfully!**
+I've successfully created a new workflow based on your modifications:
+- **Name**: {workflow_name}
+- **New ID**: {workflow_id}
+- **Original ID**: {source_workflow_id}
+- **Nodes**: {node_count} nodes configured
+{f'- **Description**: {workflow_description}' if workflow_description else ''}
+
+The new workflow has been saved with your requested changes. The original workflow remains unchanged.
+
+You can now:
+1. Test the new workflow with sample data
+2. Schedule it to run automatically
+3. Make further modifications if needed
+
+Would you like to test this updated workflow or make additional changes?"""
+                else:
+                    completion_message = f"""✅ **Workflow Created Successfully!**
 
 I've successfully created your workflow:
 - **Name**: {workflow_name}
