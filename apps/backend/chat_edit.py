@@ -171,7 +171,12 @@ class EditWorkflowChatTester:
                                 workflow_data = workflow_info
                                 returned_workflow_id = workflow_info.get("workflow_id")
                                 
-                                # Show workflow details
+                                # Show full workflow JSON
+                                print(f"\n{Fore.CYAN}Full Workflow JSON:{Style.RESET_ALL}")
+                                print(json.dumps(workflow_info, indent=2, ensure_ascii=False))
+                                
+                                # Show workflow summary
+                                print(f"\n{Fore.YELLOW}Workflow Summary:{Style.RESET_ALL}")
                                 print(f"  ID: {returned_workflow_id}")
                                 print(f"  Name: {workflow_info.get('name', 'Unknown')}")
                                 print(f"  Nodes: {len(workflow_info.get('nodes', []))}")
