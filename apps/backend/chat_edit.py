@@ -80,76 +80,6 @@ class EditWorkflowChatTester:
             print(f"{Fore.RED}✗ Session creation failed: {response.status_code}{Style.RESET_ALL}")
             return False
 
-    def create_sample_workflow(self):
-        """Create a sample workflow to edit"""
-        print(f"\n{Fore.CYAN}🔧 Creating sample workflow...{Style.RESET_ALL}")
-        
-        workflow_data = {
-            "name": "Daily Email Report",
-            "description": "Send daily report email at 9am",
-            "nodes": [
-                {
-                    "id": "trigger_1",
-                    "name": "Daily Schedule",
-                    "type": "TRIGGER_NODE",
-                    "subtype": "TRIGGER_SCHEDULE",
-                    "position": {"x": 100, "y": 100},
-                    "parameters": {
-                        "cron": "0 9 * * *",
-                        "timezone": "America/New_York"
-                    },
-                    "credentials": {},
-                    "disabled": False,
-                    "on_error": "continue"
-                },
-                {
-                    "id": "email_1",
-                    "name": "Send Report Email",
-                    "type": "ACTION_NODE",
-                    "subtype": "EMAIL",
-                    "position": {"x": 300, "y": 100},
-                    "parameters": {
-                        "to": "manager@company.com",
-                        "subject": "Daily Report",
-                        "body": "Here is your daily report with key metrics."
-                    },
-                    "credentials": {},
-                    "disabled": False,
-                    "on_error": "continue"
-                }
-            ],
-            "connections": {
-                "trigger_1": {
-                    "main": [[{"node": "email_1", "type": "main", "index": 0}]]
-                }
-            },
-            "settings": {
-                "timezone": {"name": "America/New_York"},
-                "save_execution_progress": True,
-                "timeout": 3600
-            },
-            "tags": ["email", "daily", "report"],
-            "user_id": "test_user"
-        }
-
-        # Create workflow using workflow engine API
-        response = self.session.post(
-            f"{WORKFLOW_ENGINE_URL}/v1/workflows",
-            headers={"Content-Type": "application/json"},
-            json=workflow_data
-        )
-
-        if response.status_code == 200:
-            result = response.json()
-            self.workflow_id = result.get("workflow", {}).get("id")
-            print(f"{Fore.GREEN}✓ Sample workflow created: {self.workflow_id}{Style.RESET_ALL}")
-            print(f"  Name: {workflow_data['name']}")
-            print(f"  Trigger: Daily at 9am")
-            print(f"  Action: Send email to manager@company.com")
-            return True
-        else:
-            print(f"{Fore.RED}✗ Failed to create sample workflow: {response.status_code}{Style.RESET_ALL}")
-            return False
 
     def chat(self, message, action=None, workflow_id=None):
         """Send message and process stream with optional edit parameters"""
@@ -257,10 +187,10 @@ class EditWorkflowChatTester:
                                 if action == "edit" and workflow_data.get("nodes"):
                                     print(f"\n  {Fore.CYAN}Modified nodes:{Style.RESET_ALL}")
                                     for node in workflow_data["nodes"]:
-                                        if node.get("type") == "TRIGGER_NODE":
+                                        if node.get("type") == "TRIGGER":
                                             cron = node.get("parameters", {}).get("cron", "")
                                             print(f"    - Trigger: {cron}")
-                                        elif node.get("type") == "ACTION_NODE" and node.get("subtype") == "EMAIL":
+                                        elif node.get("type") == "ACTION" and node.get("subtype") == "EMAIL":
                                             params = node.get("parameters", {})
                                             print(f"    - Email to: {params.get('to', 'N/A')}")
                                             print(f"    - Subject: {params.get('subject', 'N/A')}")
@@ -283,49 +213,6 @@ class EditWorkflowChatTester:
             
             return returned_workflow_id
 
-    def run_edit_workflow_demo(self):
-        """Run a demo of editing an existing workflow"""
-        print(f"\n{Fore.YELLOW}{'='*80}")
-        print("EDIT WORKFLOW DEMO")
-        print(f"{'='*80}{Style.RESET_ALL}")
-
-        # Step 1: Create a sample workflow
-        if not self.create_sample_workflow():
-            print(f"{Fore.RED}Failed to create sample workflow{Style.RESET_ALL}")
-            return
-
-        print(f"\n{Fore.GREEN}Sample workflow ready for editing!{Style.RESET_ALL}")
-        print(f"Workflow ID: {self.workflow_id}")
-
-        # Step 2: Create a session for editing
-        if not self.create_session(action="edit", workflow_id=self.workflow_id):
-            return
-
-        # Step 3: Send edit requests
-        print(f"\n{Fore.YELLOW}Now let's edit the workflow...{Style.RESET_ALL}\n")
-
-        # Edit 1: Change the trigger time
-        returned_id = self.chat(
-            "Change the trigger time to 10am instead of 9am",
-            action="edit",
-            workflow_id=self.workflow_id
-        )
-
-        if returned_id == self.workflow_id:
-            print(f"\n{Fore.GREEN}✓ Edit successful - workflow updated!{Style.RESET_ALL}")
-        
-        # Edit 2: Change email recipient
-        print(f"\n{Fore.YELLOW}Let's make another edit...{Style.RESET_ALL}\n")
-        
-        returned_id = self.chat(
-            "Change the email recipient to team@company.com and update the subject to 'Team Daily Report'",
-            action="edit",
-            workflow_id=self.workflow_id
-        )
-
-        if returned_id == self.workflow_id:
-            print(f"\n{Fore.GREEN}✓ Second edit successful!{Style.RESET_ALL}")
-
     def run_interactive_mode(self):
         """Run interactive chat mode with edit support"""
         print(f"\n{Fore.YELLOW}{'='*80}")
@@ -335,7 +222,6 @@ class EditWorkflowChatTester:
         print(f"\n{Fore.YELLOW}Commands:{Style.RESET_ALL}")
         print("  create              - Start creating a new workflow")
         print("  edit <workflow_id>  - Edit an existing workflow")
-        print("  sample              - Create and edit a sample workflow")
         print("  exit/quit           - Exit the program")
         print(f"\n{Fore.YELLOW}Example: edit wf-123-456{Style.RESET_ALL}")
         
@@ -374,14 +260,6 @@ class EditWorkflowChatTester:
                         print(f"{Fore.RED}Usage: edit <workflow_id>{Style.RESET_ALL}")
                     continue
                     
-                elif user_input.lower() == "sample":
-                    # Run the demo
-                    self.run_edit_workflow_demo()
-                    # Return to create mode after demo
-                    current_mode = "create"
-                    current_workflow_id = None
-                    self.create_session(action="create")
-                    continue
 
                 # Regular chat message
                 if user_input.strip():
@@ -409,19 +287,8 @@ class EditWorkflowChatTester:
         if not self.authenticate():
             return
 
-        # Ask user for mode
-        print(f"\n{Fore.YELLOW}Select mode:{Style.RESET_ALL}")
-        print("1. Run edit workflow demo (automatic)")
-        print("2. Interactive mode (manual commands)")
-        
-        choice = input(f"\n{Fore.CYAN}Enter choice (1 or 2): {Style.RESET_ALL}")
-        
-        if choice == "1":
-            self.run_edit_workflow_demo()
-        elif choice == "2":
-            self.run_interactive_mode()
-        else:
-            print(f"{Fore.RED}Invalid choice{Style.RESET_ALL}")
+        # Go directly to interactive mode
+        self.run_interactive_mode()
 
 
 if __name__ == "__main__":
