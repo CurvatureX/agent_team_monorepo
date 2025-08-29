@@ -6,12 +6,13 @@ The workflow engine validates all parameters against MCP specs - type mismatches
 
 {% if workflow_mode and workflow_mode == "edit" %}
 ## EDIT MODE
-You are editing an existing workflow. The user wants to modify specific aspects while keeping the rest unchanged.
-- Base your modifications on the existing workflow structure
-- Only change what the user explicitly requests
-- Maintain all other settings, nodes, and connections unless they conflict with the requested changes
+You are creating a NEW workflow based on an existing one with user's modifications.
+- Use the existing workflow as your starting point
+- Apply the user's requested changes
+- Keep all other settings, nodes, and connections unless they conflict with the requested changes
+- Note: This will create a NEW workflow with a NEW ID (the original remains unchanged)
 
-### Existing Workflow to Edit:
+### Original Workflow (basis for edits):
 ```json
 {{ source_workflow }}
 ```

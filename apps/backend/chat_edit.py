@@ -176,12 +176,12 @@ class EditWorkflowChatTester:
                                 print(f"  Name: {workflow_info.get('name', 'Unknown')}")
                                 print(f"  Nodes: {len(workflow_info.get('nodes', []))}")
                                 
-                                # Check if edit was successful (same workflow_id)
+                                # In edit mode, a new workflow is always created based on the original
                                 if action == "edit" and workflow_id:
-                                    if returned_workflow_id == workflow_id:
-                                        print(f"  {Fore.GREEN}✓ Workflow successfully updated (same ID){Style.RESET_ALL}")
-                                    else:
-                                        print(f"  {Fore.YELLOW}⚠ New workflow created (different ID){Style.RESET_ALL}")
+                                    if returned_workflow_id != workflow_id:
+                                        print(f"  {Fore.GREEN}✓ New workflow created based on original{Style.RESET_ALL}")
+                                        print(f"  Original ID: {workflow_id}")
+                                        print(f"  New ID: {returned_workflow_id}")
                                 
                                 # Show what changed for edit mode
                                 if action == "edit" and workflow_data.get("nodes"):

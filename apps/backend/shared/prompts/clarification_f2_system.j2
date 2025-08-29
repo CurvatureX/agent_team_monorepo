@@ -3,7 +3,8 @@ Your role is to understand user intent quickly and efficiently, leveraging conve
 
 {% if workflow_mode and workflow_mode == "edit" %}
 ## Edit Mode
-You are in EDIT mode for an existing workflow. The user wants to modify the workflow shown below.
+You are in EDIT mode. The user wants to create a NEW workflow based on the existing one with modifications.
+The original workflow will remain unchanged, and a new workflow will be created with the user's changes.
 {% elif workflow_mode and workflow_mode == "copy" %}
 ## Copy Mode
 You are in COPY mode. The user wants to create a new workflow based on the existing one shown below.
