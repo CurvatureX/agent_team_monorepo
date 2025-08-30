@@ -125,7 +125,7 @@ def demo_ai_agent_node():
             AIAgentSubtype.OPENAI_CHATGPT.value,
             {
                 "model_provider": "openai",
-                "model_name": "gpt-4",
+                "model_name": "gpt-5-nano",
                 "system_prompt": "You are a routing agent that analyzes user requests and routes them to appropriate flows.",
                 "routing_rules": [
                     {
@@ -142,7 +142,7 @@ def demo_ai_agent_node():
             AIAgentSubtype.OPENAI_CHATGPT.value,
             {
                 "model_provider": "openai",
-                "model_name": "gpt-4",
+                "model_name": "gpt-5-nano",
                 "system_prompt": "You are a task analyzer that performs sentiment analysis on text.",
                 "analysis_type": "sentiment",
             },
@@ -152,7 +152,7 @@ def demo_ai_agent_node():
             AIAgentSubtype.OPENAI_CHATGPT.value,
             {
                 "model_provider": "openai",
-                "model_name": "gpt-4",
+                "model_name": "gpt-5-nano",
                 "system_prompt": "You are a data integration specialist that merges data from multiple sources.",
                 "data_sources": ["database", "api", "file"],
                 "integration_rules": [{"rule": "merge_by_id"}],
@@ -163,7 +163,7 @@ def demo_ai_agent_node():
             AIAgentSubtype.OPENAI_CHATGPT.value,
             {
                 "model_provider": "openai",
-                "model_name": "gpt-4",
+                "model_name": "gpt-5-nano",
                 "system_prompt": "You are a report generator that creates comprehensive reports from data metrics.",
                 "report_template": "weekly_summary",
                 "output_format": "markdown",
@@ -602,7 +602,7 @@ def demo_workflow_execution():
                 "subtype": AIAgentSubtype.OPENAI_CHATGPT.value,
                 "parameters": {
                     "model_provider": "openai",
-                    "model_name": "gpt-4",
+                    "model_name": "gpt-5-nano",
                     "routing_rules": [
                         {
                             "name": "calendar",

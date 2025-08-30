@@ -6,7 +6,13 @@ Each node represents a different AI model provider (Gemini, OpenAI, Claude) wher
 the specific functionality is determined by the system prompt rather than predefined roles.
 """
 
-from ...models.node_enums import AIAgentSubtype, NodeType
+from ...models.node_enums import (
+    AIAgentSubtype,
+    AnthropicModel,
+    GoogleGeminiModel,
+    NodeType,
+    OpenAIModel,
+)
 from ..base import (
     ConnectionType,
     DataFormat,
@@ -179,8 +185,8 @@ GEMINI_NODE_SPEC.parameters.extend(
             name="model_version",
             type=ParameterType.ENUM,
             required=False,
-            default_value="gemini-pro",
-            enum_values=["gemini-pro", "gemini-pro-vision", "gemini-ultra"],
+            default_value=GoogleGeminiModel.GEMINI_2_5_FLASH_LITE.value,
+            enum_values=[model.value for model in GoogleGeminiModel],
             description="Specific Gemini model version to use",
         ),
         ParameterDef(
@@ -205,8 +211,8 @@ OPENAI_NODE_SPEC.parameters.extend(
             name="model_version",
             type=ParameterType.ENUM,
             required=False,
-            default_value="gpt-4",
-            enum_values=["gpt-3.5-turbo", "gpt-4", "gpt-4-turbo", "gpt-4o"],
+            default_value=OpenAIModel.GPT_5_NANO.value,
+            enum_values=[model.value for model in OpenAIModel],
             description="Specific OpenAI model version to use",
         ),
         ParameterDef(
@@ -244,8 +250,8 @@ CLAUDE_NODE_SPEC.parameters.extend(
             name="model_version",
             type=ParameterType.ENUM,
             required=False,
-            default_value="claude-3-sonnet",
-            enum_values=["claude-3-haiku", "claude-3-sonnet", "claude-3-opus", "claude-3.5-sonnet"],
+            default_value=AnthropicModel.CLAUDE_HAIKU_3_5.value,
+            enum_values=[model.value for model in AnthropicModel],
             description="Specific Claude model version to use",
         ),
         ParameterDef(

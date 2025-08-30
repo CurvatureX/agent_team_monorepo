@@ -16,6 +16,8 @@ from typing import Any, Dict, List, Optional, Union
 
 from supabase import Client, create_client
 
+from shared.models.node_enums import GoogleGeminiModel, MemorySubtype
+
 from .base import MemoryBase
 from .conversation_buffer import ConversationBufferMemory
 
@@ -63,7 +65,9 @@ class ConversationSummaryMemory(MemoryBase):
 
         # Summarization configuration
         self.google_api_key = config.get("google_api_key")
-        self.summarization_model = config.get("summarization_model", "gemini-2.0-flash-exp")
+        self.summarization_model = config.get(
+            "summarization_model", GoogleGeminiModel.GEMINI_2_5_FLASH.value
+        )
         self.summary_trigger = config.get("summary_trigger", "message_count")
         self.trigger_threshold = config.get("trigger_threshold", 10)
 
@@ -534,6 +538,7 @@ Provide response in JSON format:
                 "entities": [],
                 "topics": [],
                 "total_tokens": self._estimate_tokens_for_messages(buffer_messages),
+                "memory_type": MemorySubtype.CONVERSATION_SUMMARY.value,
                 "_composition_method": "buffer_only",
             }
 
@@ -548,6 +553,7 @@ Provide response in JSON format:
                 "entities": summary_data.get("entities", []),
                 "topics": summary_data.get("topics", []),
                 "total_tokens": total_tokens,
+                "memory_type": MemorySubtype.CONVERSATION_SUMMARY.value,
                 "_composition_method": "full_context",
             }
 
@@ -576,6 +582,7 @@ Provide response in JSON format:
             "topics": summary_data.get("topics", []),
             "total_tokens": self._estimate_tokens_for_messages(recent_messages)
             + self._estimate_tokens(summary_data.get("summary", "")),
+            "memory_type": "CONVERSATION_SUMMARY",
             "_composition_method": "summary_heavy",
         }
 
@@ -596,6 +603,7 @@ Provide response in JSON format:
             "topics": summary_data.get("topics", [])[:3],
             "total_tokens": self._estimate_tokens_for_messages(buffer_messages)
             + self._estimate_tokens(condensed_summary),
+            "memory_type": "CONVERSATION_SUMMARY",
             "_composition_method": "buffer_heavy",
         }
 
@@ -639,6 +647,7 @@ Provide response in JSON format:
             "topics": summary_data.get("topics", [])[:5],
             "total_tokens": self._estimate_tokens_for_messages(adjusted_messages)
             + self._estimate_tokens(summary_text),
+            "memory_type": "CONVERSATION_SUMMARY",
             "_composition_method": "balanced",
         }
 

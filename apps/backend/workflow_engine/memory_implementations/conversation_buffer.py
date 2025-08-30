@@ -209,7 +209,7 @@ class ConversationBufferMemory(MemoryBase):
             query: Query dict with session_id and optional parameters
 
         Returns:
-            Dict with formatted context for LLM consumption
+            Dict with conversation messages in proper API format
         """
         await self.initialize()
 
@@ -223,12 +223,20 @@ class ConversationBufferMemory(MemoryBase):
 
             messages = messages_data["messages"]
 
-            # Format for LLM context
+            # Format messages for API consumption (OpenAI/Claude format)
             formatted_messages = []
             total_tokens = 0
 
             for msg in messages:
-                formatted_msg = {"role": msg["role"], "content": msg["content"]}
+                # Ensure proper role mapping and content format
+                role = msg["role"]
+                content = msg["content"]
+
+                # Skip system messages unless specifically configured to include them
+                if role == "system" and not self.include_system_messages:
+                    continue
+
+                formatted_msg = {"role": role, "content": content}
                 formatted_messages.append(formatted_msg)
                 total_tokens += msg.get("tokens_count", 0)
 
@@ -242,11 +250,15 @@ class ConversationBufferMemory(MemoryBase):
                 "newest_message_time": messages[-1]["timestamp"] if messages else None,
             }
 
+            # Import the enum
+            from shared.models.node_enums import MemorySubtype
+
             return {
-                "messages": formatted_messages,
+                "messages": formatted_messages,  # This is the key field for API consumption
                 "total_tokens": total_tokens,
                 "window_info": window_info,
                 "session_id": session_id,
+                "memory_type": MemorySubtype.CONVERSATION_BUFFER.value,
                 "context_generated_at": datetime.utcnow().isoformat(),
             }
 

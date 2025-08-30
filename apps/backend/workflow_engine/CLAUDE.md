@@ -215,7 +215,7 @@ REDIS_URL="redis://localhost:6379/0"
 def test_node_with_spec():
     node = OpenAINode(subtype="OPENAI_NODE")
     context = NodeExecutionContext(
-        parameters={"system_prompt": "test", "model_version": "gpt-4"}
+        parameters={"system_prompt": "test", "model_version": "gpt-5-nano"}
     )
     result = node.execute(context)
     assert result.status == "success"

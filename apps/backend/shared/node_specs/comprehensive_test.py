@@ -13,6 +13,8 @@ import sys
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, parent_dir)
 
+from shared.models.node_enums import AnthropicModel, GoogleGeminiModel, OpenAIModel
+
 
 def test_revamped_system():
     """Test the revamped node specification system with provider-based AI agents."""
@@ -78,7 +80,7 @@ def test_revamped_system():
             "GEMINI_NODE",
             {
                 "system_prompt": "You are a data analysis expert. Analyze the provided data for trends and insights.",
-                "model_version": "gemini-pro",
+                "model_version": GoogleGeminiModel.GEMINI_2_5_FLASH_LITE.value,
                 "temperature": "0.7",
                 "safety_settings": '{"harassment": "BLOCK_MEDIUM_AND_ABOVE"}',
             },
@@ -96,7 +98,7 @@ def test_revamped_system():
             "OPENAI_NODE",
             {
                 "system_prompt": "You are a helpful customer service assistant.",
-                "model_version": "gpt-4",
+                "model_version": OpenAIModel.GPT_5_NANO.value,
                 "temperature": "0.5",
                 "presence_penalty": "0.1",
                 "frequency_penalty": "0.2",
@@ -115,7 +117,7 @@ def test_revamped_system():
             "CLAUDE_NODE",
             {
                 "system_prompt": "You are a code review assistant. Analyze code for security and performance issues.",
-                "model_version": "claude-3-sonnet",
+                "model_version": AnthropicModel.CLAUDE_HAIKU_3_5.value,
                 "temperature": "0.3",
                 "stop_sequences": '["STOP", "END"]',
             },
@@ -136,7 +138,7 @@ def test_revamped_system():
             "AI_AGENT_NODE",
             "CLAUDE_NODE",
             {
-                "model_version": "claude-3-sonnet",
+                "model_version": AnthropicModel.CLAUDE_HAIKU_3_5.value,
                 "temperature": "0.5"
                 # Missing system_prompt
             },
@@ -165,7 +167,10 @@ def test_revamped_system():
         invalid_node3 = MockNode(
             "AI_AGENT_NODE",
             "GEMINI_NODE",
-            {"system_prompt": "Test prompt", "model_version": "gpt-4"},  # Wrong provider model
+            {
+                "system_prompt": "Test prompt",
+                "model_version": OpenAIModel.GPT_5_NANO.value,
+            },  # Wrong provider model
         )
 
         errors = node_spec_registry.validate_node(invalid_node3)

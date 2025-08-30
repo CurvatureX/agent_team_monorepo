@@ -26,6 +26,8 @@ import requests
 from jinja2 import Template
 from openai import OpenAI
 
+from shared.models.node_enums import OpenAIModel
+
 # MCP Server Configuration
 MCP_SERVER_URL = "http://localhost:8000/api/v1/mcp"
 MCP_API_KEY = "dev_default"  # Your API key for the MCP server
@@ -236,7 +238,10 @@ def test_openai_mcp_integration():
 
         # Make the OpenAI API call with function calling - using GPT-4.1 for complex reasoning
         response = openai_client.chat.completions.create(
-            model="gpt-4.1", messages=messages, tools=openai_functions, tool_choice="auto"
+            model=OpenAIModel.GPT_4_1.value,
+            messages=messages,
+            tools=openai_functions,
+            tool_choice="auto",
         )
 
         # Process the response
@@ -275,7 +280,7 @@ def test_openai_mcp_integration():
 
             # Get the final response after all tool calls are processed
             final_response = openai_client.chat.completions.create(
-                model="gpt-3.5-turbo", messages=messages
+                model=OpenAIModel.GPT_5_NANO.value, messages=messages
             )
 
             print(f"\n   Final OpenAI Response:")
@@ -298,7 +303,10 @@ def test_openai_mcp_integration():
 
             # Continue the conversation to get the full workflow - using GPT-4.1 for complex workflow generation
             continuation_response = openai_client.chat.completions.create(
-                model="gpt-4.1", messages=messages, tools=openai_functions, tool_choice="auto"
+                model=OpenAIModel.GPT_4_1.value,
+                messages=messages,
+                tools=openai_functions,
+                tool_choice="auto",
             )
 
             continuation_message = continuation_response.choices[0].message
@@ -335,7 +343,7 @@ def test_openai_mcp_integration():
 
                 # Get final workflow generation response - using GPT-4.1 for comprehensive output
                 final_workflow_response = openai_client.chat.completions.create(
-                    model="gpt-4.1", messages=messages
+                    model=OpenAIModel.GPT_4_1.value, messages=messages
                 )
 
                 print(f"\n   Final Workflow Configuration:")
@@ -384,7 +392,10 @@ def interactive_chat():
         try:
             # Get OpenAI response
             response = openai_client.chat.completions.create(
-                model="gpt-4.1", messages=messages, tools=openai_functions, tool_choice="auto"
+                model=OpenAIModel.GPT_4_1.value,
+                messages=messages,
+                tools=openai_functions,
+                tool_choice="auto",
             )
 
             message = response.choices[0].message
@@ -417,7 +428,7 @@ def interactive_chat():
 
                 # Get final response with all function results
                 final_response = openai_client.chat.completions.create(
-                    model="gpt-3.5-turbo", messages=messages
+                    model=OpenAIModel.GPT_5_NANO.value, messages=messages
                 )
 
                 assistant_message = final_response.choices[0].message.content

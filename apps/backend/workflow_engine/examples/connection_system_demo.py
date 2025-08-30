@@ -49,7 +49,7 @@ def create_connections_map_workflow():
                 "subtype": AIAgentSubtype.ROUTER_AGENT.value,
                 "parameters": {
                     "model_provider": "openai",
-                    "model_name": "gpt-4",
+                    "model_name": "gpt-5-nano",
                     "system_prompt": "You are a personal secretary AI agent.",
                 },
                 "credentials": {},

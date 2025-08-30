@@ -346,6 +346,61 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
 
         return memory_contexts
 
+    def _extract_memory_context_for_api(
+        self, context: NodeExecutionContext
+    ) -> Optional[Dict[str, Any]]:
+        """Extract memory context specifically formatted for API calls with conversation history."""
+        try:
+            if not hasattr(context, "input_data") or not isinstance(context.input_data, dict):
+                return None
+
+            # Check for memory context that contains conversation messages
+            if "memory_context" in context.input_data:
+                memory_data = context.input_data["memory_context"]
+
+                # If memory_data is a string, try to parse it as JSON
+                if isinstance(memory_data, str):
+                    try:
+                        import json
+
+                        parsed_data = json.loads(memory_data)
+                        if isinstance(parsed_data, dict) and "messages" in parsed_data:
+                            self.logger.info(
+                                f"[AIAgent Node]: 🧠 AI AGENT: Found {len(parsed_data['messages'])} conversation messages in memory"
+                            )
+                            return parsed_data
+                    except json.JSONDecodeError:
+                        pass
+
+                # If memory_data is already a dict with messages
+                elif isinstance(memory_data, dict) and "messages" in memory_data:
+                    self.logger.info(
+                        f"[AIAgent Node]: 🧠 AI AGENT: Found {len(memory_data['messages'])} conversation messages in memory"
+                    )
+                    return memory_data
+
+            # Check for direct messages format (from memory node output)
+            if "messages" in context.input_data:
+                messages = context.input_data["messages"]
+                if isinstance(messages, list) and len(messages) > 0:
+                    # Validate message format
+                    valid_messages = []
+                    for msg in messages:
+                        if isinstance(msg, dict) and "role" in msg and "content" in msg:
+                            valid_messages.append({"role": msg["role"], "content": msg["content"]})
+
+                    if valid_messages:
+                        self.logger.info(
+                            f"[AIAgent Node]: 🧠 AI AGENT: Found {len(valid_messages)} valid conversation messages"
+                        )
+                        return {"messages": valid_messages}
+
+            return None
+
+        except Exception as e:
+            self.logger.warning(f"[AIAgent Node]: ⚠️ Error extracting memory context for API: {e}")
+            return None
+
     def _enhance_context_with_memory(
         self, context: NodeExecutionContext, memory_contexts: List[str], logs: List[str]
     ) -> NodeExecutionContext:
@@ -382,6 +437,62 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
 
         # Return original context if memory enhancement fails or no memory contexts
         return context
+
+    def _enhance_system_prompt_with_summary(
+        self, base_prompt: str, memory_context: Optional[Dict[str, Any]]
+    ) -> str:
+        """Enhance system prompt with memory summary (but not conversation messages)."""
+        try:
+            if not memory_context:
+                return base_prompt
+
+            # Check for conversation summary data
+            memory_type = memory_context.get("memory_type", "")
+
+            # Only enhance with summary for CONVERSATION_SUMMARY memory type
+            from shared.models.node_enums import MemorySubtype
+
+            if memory_type == MemorySubtype.CONVERSATION_SUMMARY.value:
+                summary = memory_context.get("summary", "")
+                key_points = memory_context.get("key_points", [])
+                entities = memory_context.get("entities", [])
+                topics = memory_context.get("topics", [])
+
+                if summary or key_points or entities or topics:
+                    self.logger.info(
+                        f"[AIAgent Node]: 💭 AI AGENT: Enhancing system prompt with conversation summary"
+                    )
+
+                    enhanced_parts = [base_prompt]
+
+                    if summary:
+                        enhanced_parts.append(f"\n## Conversation Summary\n\n{summary}")
+
+                    if key_points:
+                        enhanced_parts.append(
+                            f"\n## Key Points from Previous Conversations\n\n"
+                            + "\n".join(f"• {point}" for point in key_points)
+                        )
+
+                    if entities:
+                        enhanced_parts.append(f"\n## Relevant Entities\n\n" + ", ".join(entities))
+
+                    if topics:
+                        enhanced_parts.append(f"\n## Discussion Topics\n\n" + ", ".join(topics))
+
+                    enhanced_prompt = "".join(enhanced_parts)
+                    self.logger.info(
+                        f"[AIAgent Node]: 💭 AI AGENT: Enhanced system prompt (+{len(enhanced_prompt) - len(base_prompt)} chars)"
+                    )
+                    return enhanced_prompt
+
+            return base_prompt
+
+        except Exception as e:
+            self.logger.warning(
+                f"[AIAgent Node]: ⚠️ Error enhancing system prompt with summary: {e}"
+            )
+            return base_prompt
 
     def _enhance_system_prompt_with_memory(
         self, base_prompt: str, input_data: Dict[str, Any], logs: List[str]
@@ -755,34 +866,25 @@ Please use this context appropriately when responding. Reference relevant inform
         max_tokens = self.get_parameter_with_spec(context, "max_tokens")
         safety_settings = self.get_parameter_with_spec(context, "safety_settings")
 
-        # Log original system prompt before memory enhancement
+        # Extract memory context for conversation history and summary
+        memory_context = self._extract_memory_context_for_api(context)
+
+        # Enhance system prompt with summary if available (but not conversation messages)
+        system_prompt = self._enhance_system_prompt_with_summary(base_system_prompt, memory_context)
+
         self.logger.info(
-            f"[AIAgent Node]: 🤖 AI AGENT: Original system prompt ({len(base_system_prompt)} chars): {base_system_prompt}"
+            f"[AIAgent Node]: 🤖 AI AGENT: Gemini agent: {model_version}, temp: {temperature}"
         )
-
-        # Enhance system prompt with memory context if available
-        system_prompt = self._enhance_system_prompt_with_memory(
-            base_system_prompt, context.input_data, logs
-        )
-
-        # Log if system prompt was enhanced with memory
-        if len(system_prompt) > len(base_system_prompt):
-            self.logger.info(
-                f"[AIAgent Node]: 🤖 AI AGENT: ✅ System prompt enhanced with memory (+{len(system_prompt) - len(base_system_prompt)} chars)"
-            )
-
-        self.logger.info(f"Gemini agent: {model_version}, temp: {temperature}")
-
-        # Always show the complete system prompt for debugging
         self.logger.info(
-            f"[AIAgent Node]: 🤖 AI AGENT: ===== COMPLETE SYSTEM PROMPT =====\n{system_prompt}\n===== END SYSTEM PROMPT ====="
+            f"[AIAgent Node]: 🤖 AI AGENT: System prompt length: {len(system_prompt)} characters"
         )
 
         # Prepare input for AI processing
         input_text = self._prepare_input_for_ai(context.input_data)
 
         try:
-            # For now, use mock response (replace with actual Gemini API call)
+            # Call Gemini API (Note: Gemini doesn't support conversation history in the same way,
+            # but we keep the parameter for consistency)
             ai_response = self._call_gemini_api(
                 system_prompt=system_prompt,
                 input_text=input_text,
@@ -790,6 +892,7 @@ Please use this context appropriately when responding. Reference relevant inform
                 temperature=temperature,
                 max_tokens=max_tokens,
                 safety_settings=safety_settings,
+                memory_context=memory_context,
             )
 
             # Parse AI response to extract just the content
@@ -846,32 +949,17 @@ Please use this context appropriately when responding. Reference relevant inform
         presence_penalty = self.get_parameter_with_spec(context, "presence_penalty")
         frequency_penalty = self.get_parameter_with_spec(context, "frequency_penalty")
 
-        # Log original system prompt before memory enhancement
-        self.logger.info(
-            f"[AIAgent Node]: 🤖 AI AGENT: Original system prompt ({len(base_system_prompt)} chars): {base_system_prompt}"
-        )
+        # Extract memory context for conversation history and summary
+        memory_context = self._extract_memory_context_for_api(context)
 
-        # Enhance system prompt with memory context if available
-        system_prompt = self._enhance_system_prompt_with_memory(
-            base_system_prompt, context.input_data, logs
-        )
-
-        # Log if system prompt was enhanced with memory
-        if len(system_prompt) > len(base_system_prompt):
-            self.logger.info(
-                f"[AIAgent Node]: 🤖 AI AGENT: ✅ System prompt enhanced with memory (+{len(system_prompt) - len(base_system_prompt)} chars)"
-            )
+        # Enhance system prompt with summary if available (but not conversation messages)
+        system_prompt = self._enhance_system_prompt_with_summary(base_system_prompt, memory_context)
 
         self.logger.info(
             f"[AIAgent Node]: 🤖 AI AGENT: OpenAI configuration - model: {model_version}, temp: {temperature}"
         )
         self.logger.info(
-            f"[AIAgent Node]: 🤖 AI AGENT: Final system prompt length: {len(system_prompt)} characters"
-        )
-
-        # Always show the complete system prompt for debugging
-        self.logger.info(
-            f"[AIAgent Node]: 🤖 AI AGENT: ===== COMPLETE SYSTEM PROMPT =====\n{system_prompt}\n===== END SYSTEM PROMPT ====="
+            f"[AIAgent Node]: 🤖 AI AGENT: System prompt length: {len(system_prompt)} characters"
         )
 
         # Prepare input for AI processing
@@ -881,7 +969,7 @@ Please use this context appropriately when responding. Reference relevant inform
         )
 
         try:
-            # For now, use mock response (replace with actual OpenAI API call)
+            # Call OpenAI API with conversation history
             ai_response = self._call_openai_api(
                 system_prompt=system_prompt,
                 input_text=input_text,
@@ -890,6 +978,7 @@ Please use this context appropriately when responding. Reference relevant inform
                 max_tokens=max_tokens,
                 presence_penalty=presence_penalty,
                 frequency_penalty=frequency_penalty,
+                memory_context=memory_context,
             )
 
             # Parse AI response to extract just the content
@@ -911,6 +1000,9 @@ Please use this context appropriately when responding. Reference relevant inform
                     "presence_penalty": presence_penalty,
                     "frequency_penalty": frequency_penalty,
                     "executed_at": datetime.now().isoformat(),
+                    "conversation_messages_count": len(memory_context.get("messages", []))
+                    if memory_context
+                    else 0,
                 },
                 "format_type": "text",
                 "source_node": context.node.id
@@ -946,34 +1038,24 @@ Please use this context appropriately when responding. Reference relevant inform
         max_tokens = self.get_parameter_with_spec(context, "max_tokens")
         stop_sequences = self.get_parameter_with_spec(context, "stop_sequences")
 
-        # Log original system prompt before memory enhancement
+        # Extract memory context for conversation history and summary
+        memory_context = self._extract_memory_context_for_api(context)
+
+        # Enhance system prompt with summary if available (but not conversation messages)
+        system_prompt = self._enhance_system_prompt_with_summary(base_system_prompt, memory_context)
+
         self.logger.info(
-            f"[AIAgent Node]: 🤖 AI AGENT: Original system prompt ({len(base_system_prompt)} chars): {base_system_prompt}"
+            f"[AIAgent Node]: 🤖 AI AGENT: Claude agent: {model_version}, temp: {temperature}"
         )
-
-        # Enhance system prompt with memory context if available
-        system_prompt = self._enhance_system_prompt_with_memory(
-            base_system_prompt, context.input_data, logs
-        )
-
-        # Log if system prompt was enhanced with memory
-        if len(system_prompt) > len(base_system_prompt):
-            self.logger.info(
-                f"[AIAgent Node]: 🤖 AI AGENT: ✅ System prompt enhanced with memory (+{len(system_prompt) - len(base_system_prompt)} chars)"
-            )
-
-        self.logger.info(f"Claude agent: {model_version}, temp: {temperature}")
-
-        # Always show the complete system prompt for debugging
         self.logger.info(
-            f"[AIAgent Node]: 🤖 AI AGENT: ===== COMPLETE SYSTEM PROMPT =====\n{system_prompt}\n===== END SYSTEM PROMPT ====="
+            f"[AIAgent Node]: 🤖 AI AGENT: System prompt length: {len(system_prompt)} characters"
         )
 
         # Prepare input for AI processing
         input_text = self._prepare_input_for_ai(context.input_data)
 
         try:
-            # For now, use mock response (replace with actual Claude API call)
+            # Call Claude API with conversation history
             ai_response = self._call_claude_api(
                 system_prompt=system_prompt,
                 input_text=input_text,
@@ -981,6 +1063,7 @@ Please use this context appropriately when responding. Reference relevant inform
                 temperature=temperature,
                 max_tokens=max_tokens,
                 stop_sequences=stop_sequences,
+                memory_context=memory_context,
             )
 
             # Parse AI response to extract just the content
@@ -1001,6 +1084,9 @@ Please use this context appropriately when responding. Reference relevant inform
                     "max_tokens": max_tokens,
                     "stop_sequences": stop_sequences,
                     "executed_at": datetime.now().isoformat(),
+                    "conversation_messages_count": len(memory_context.get("messages", []))
+                    if memory_context
+                    else 0,
                 },
                 "format_type": "text",
                 "source_node": context.node.id
@@ -1025,27 +1111,10 @@ Please use this context appropriately when responding. Reference relevant inform
             )
 
     def _get_valid_models_for_provider(self, provider: str) -> List[str]:
-        """Get valid model versions for a provider."""
-        models = {
-            AIAgentSubtype.GOOGLE_GEMINI.value: [
-                "gemini-pro",
-                "gemini-pro-vision",
-                "gemini-ultra",
-            ],
-            AIAgentSubtype.OPENAI_CHATGPT.value: [
-                "gpt-4",
-                "gpt-4-turbo",
-                "gpt-3.5-turbo",
-                "gpt-4-vision-preview",
-            ],
-            AIAgentSubtype.ANTHROPIC_CLAUDE.value: [
-                "claude-3-opus",
-                "claude-3-sonnet",
-                "claude-3-haiku",
-                "claude-2.1",
-            ],
-        }
-        return models.get(provider, [])
+        """Get valid model versions for a provider using enum definitions."""
+        from shared.models.node_enums import VALID_AI_MODELS
+
+        return list(VALID_AI_MODELS.get(provider, set()))
 
     def _validate_provider_specific_parameters(self, node: Any, provider: str) -> List[str]:
         """Validate provider-specific parameters."""
@@ -1249,6 +1318,7 @@ Please use this context appropriately when responding. Reference relevant inform
         temperature: float,
         max_tokens: int,
         safety_settings: Dict,
+        memory_context: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Call actual Gemini API."""
         self.logger.info(
@@ -1311,8 +1381,9 @@ Please use this context appropriately when responding. Reference relevant inform
         max_tokens: int,
         presence_penalty: float,
         frequency_penalty: float,
+        memory_context: Optional[Dict[str, Any]] = None,
     ) -> str:
-        """Call actual OpenAI API."""
+        """Call actual OpenAI API with conversation history support."""
         self.logger.info(
             f"[AIAgent Node]: 🤖 AI AGENT: Starting OpenAI API call with model: {model}"
         )
@@ -1337,14 +1408,30 @@ Please use this context appropriately when responding. Reference relevant inform
             self.logger.info("[AIAgent Node]: 🤖 AI AGENT: Creating OpenAI client")
             client = OpenAI(api_key=openai_key)
 
+            # Build conversation messages
+            messages = [{"role": "system", "content": system_prompt}]
+
+            # Add conversation history if available
+            if memory_context and memory_context.get("messages"):
+                history_messages = memory_context["messages"]
+                self.logger.info(
+                    f"[AIAgent Node]: 🧠 AI AGENT: Adding {len(history_messages)} messages from conversation history"
+                )
+                messages.extend(history_messages)
+
+            # Add current user message
+            messages.append({"role": "user", "content": input_text})
+
+            # Log message count
+            self.logger.info(
+                f"[AIAgent Node]: 🤖 AI AGENT: Total messages in conversation: {len(messages)}"
+            )
+
             # Make API call
             self.logger.info("[AIAgent Node]: 🤖 AI AGENT: Making OpenAI API call...")
             response = client.chat.completions.create(
                 model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": input_text},
-                ],
+                messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 presence_penalty=presence_penalty,
@@ -1377,8 +1464,9 @@ Please use this context appropriately when responding. Reference relevant inform
         temperature: float,
         max_tokens: int,
         stop_sequences: List[str],
+        memory_context: Optional[Dict[str, Any]] = None,
     ) -> str:
-        """Call actual Claude API."""
+        """Call actual Claude API with conversation history support."""
         self.logger.info(
             f"[AIAgent Node]: 🤖 AI AGENT: Starting Anthropic Claude API call with model: {model}"
         )
@@ -1401,6 +1489,25 @@ Please use this context appropriately when responding. Reference relevant inform
             self.logger.info("[AIAgent Node]: 🤖 AI AGENT: Creating Anthropic client")
             client = anthropic.Anthropic(api_key=anthropic_key)
 
+            # Build conversation messages
+            messages = []
+
+            # Add conversation history if available
+            if memory_context and memory_context.get("messages"):
+                history_messages = memory_context["messages"]
+                self.logger.info(
+                    f"[AIAgent Node]: 🧠 AI AGENT: Adding {len(history_messages)} messages from conversation history"
+                )
+                messages.extend(history_messages)
+
+            # Add current user message
+            messages.append({"role": "user", "content": input_text})
+
+            # Log message count
+            self.logger.info(
+                f"[AIAgent Node]: 🤖 AI AGENT: Total messages in conversation: {len(messages)}"
+            )
+
             # Make API call
             self.logger.info("[AIAgent Node]: 🤖 AI AGENT: Making Claude API call...")
             response = client.messages.create(
@@ -1408,7 +1515,7 @@ Please use this context appropriately when responding. Reference relevant inform
                 max_tokens=max_tokens,
                 temperature=temperature,
                 system=system_prompt,
-                messages=[{"role": "user", "content": input_text}],
+                messages=messages,
                 stop_sequences=stop_sequences if stop_sequences else None,
             )
 
