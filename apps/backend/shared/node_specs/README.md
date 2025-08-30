@@ -40,11 +40,11 @@ Instead of hardcoded AI roles like "REPORT_GENERATOR" or "TASK_ANALYZER", we now
 
 ### AI Node Types
 
-| Provider | Description | Key Features |
-|----------|-------------|--------------|
-| **GEMINI_NODE** | Google Gemini AI | Vision support, safety filters, multi-modal |
+| Provider        | Description       | Key Features                                            |
+| --------------- | ----------------- | ------------------------------------------------------- |
+| **GEMINI_NODE** | Google Gemini AI  | Vision support, safety filters, multi-modal             |
 | **OPENAI_NODE** | OpenAI GPT models | Advanced reasoning, function calling, structured output |
-| **CLAUDE_NODE** | Anthropic Claude | Long context, helpful and harmless, precise control |
+| **CLAUDE_NODE** | Anthropic Claude  | Long context, helpful and harmless, precise control     |
 
 ### System Prompt Examples
 
@@ -86,43 +86,47 @@ Provide specific feedback with line numbers and improvement suggestions.
 ## 📊 Complete Node Types
 
 ### TRIGGER_NODE (Event Sources)
-| Subtype | Description | Use Cases |
-|---------|-------------|-----------|
-| **MANUAL** | User-initiated triggers | Manual workflow execution, testing |
-| **CRON** | Scheduled execution | Daily reports, cleanup tasks, backups |
-| **WEBHOOK** | HTTP endpoint triggers | API integrations, external events |
-| **CHAT** | Messaging platform events | Slack bots, Discord commands |
-| **EMAIL** | Email-based triggers | Support tickets, form submissions |
-| **FORM** | Web form submissions | Lead capture, feedback collection |
-| **CALENDAR** | Calendar event triggers | Meeting reminders, event automation |
+
+| Subtype      | Description               | Use Cases                             |
+| ------------ | ------------------------- | ------------------------------------- |
+| **MANUAL**   | User-initiated triggers   | Manual workflow execution, testing    |
+| **CRON**     | Scheduled execution       | Daily reports, cleanup tasks, backups |
+| **WEBHOOK**  | HTTP endpoint triggers    | API integrations, external events     |
+| **CHAT**     | Messaging platform events | Slack bots, Discord commands          |
+| **EMAIL**    | Email-based triggers      | Support tickets, form submissions     |
+| **FORM**     | Web form submissions      | Lead capture, feedback collection     |
+| **CALENDAR** | Calendar event triggers   | Meeting reminders, event automation   |
 
 ### AI_AGENT_NODE (AI Providers) 🆕
-| Provider | Models | Specialties |
-|----------|--------|-------------|
-| **GEMINI_NODE** | gemini-pro, gemini-pro-vision, gemini-ultra | Multi-modal, vision, safety |
-| **OPENAI_NODE** | gpt-3.5-turbo, gpt-4, gpt-4-turbo, gpt-4o | Reasoning, structured output |
-| **CLAUDE_NODE** | claude-3-haiku, claude-3-sonnet, claude-3-opus | Long context, helpfulness |
+
+| Provider        | Models                                                             | Specialties                               |
+| --------------- | ------------------------------------------------------------------ | ----------------------------------------- |
+| **GEMINI_NODE** | gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite            | Multi-modal, cost-effective, scale        |
+| **OPENAI_NODE** | gpt-5, gpt-5-mini, gpt-5-nano, gpt-4.1, gpt-4.1-mini, gpt-4.1-nano | Advanced reasoning, cost-efficient        |
+| **CLAUDE_NODE** | claude-sonnet-4-20250514, claude-3-5-haiku-20241022                | Optimal balance, fastest & cost-effective |
 
 ### ACTION_NODE (Operations)
-| Subtype | Description | Capabilities |
-|---------|-------------|--------------|
-| **RUN_CODE** | Multi-language code execution | Python, JavaScript, SQL, R, Julia |
-| **HTTP_REQUEST** | API calls and web requests | REST APIs, GraphQL, webhooks |
-| **PARSE_IMAGE** | OCR and image analysis | Text extraction, object detection |
-| **WEB_SEARCH** | Search engine queries | Google, Bing, DuckDuckGo |
-| **DATABASE_OPERATION** | Database interactions | PostgreSQL, MySQL, MongoDB |
-| **FILE_OPERATION** | File system operations | Read, write, copy, transform |
-| **DATA_TRANSFORMATION** | Data processing | Filter, map, reduce, aggregate |
+
+| Subtype                 | Description                   | Capabilities                      |
+| ----------------------- | ----------------------------- | --------------------------------- |
+| **RUN_CODE**            | Multi-language code execution | Python, JavaScript, SQL, R, Julia |
+| **HTTP_REQUEST**        | API calls and web requests    | REST APIs, GraphQL, webhooks      |
+| **PARSE_IMAGE**         | OCR and image analysis        | Text extraction, object detection |
+| **WEB_SEARCH**          | Search engine queries         | Google, Bing, DuckDuckGo          |
+| **DATABASE_OPERATION**  | Database interactions         | PostgreSQL, MySQL, MongoDB        |
+| **FILE_OPERATION**      | File system operations        | Read, write, copy, transform      |
+| **DATA_TRANSFORMATION** | Data processing               | Filter, map, reduce, aggregate    |
 
 ### FLOW_NODE (Control Flow)
-| Subtype | Description | Logic Type |
-|---------|-------------|------------|
-| **IF** | Conditional branching | Boolean conditions, routing |
-| **FILTER** | Data filtering | Include/exclude based on criteria |
-| **LOOP** | Iteration and repetition | ForEach, While, Until loops |
-| **MERGE** | Data stream combination | Union, intersection, join |
-| **SWITCH** | Multi-way routing | Case-based routing |
-| **WAIT** | Delays and pausing | Time delays, condition waiting |
+
+| Subtype    | Description              | Logic Type                        |
+| ---------- | ------------------------ | --------------------------------- |
+| **IF**     | Conditional branching    | Boolean conditions, routing       |
+| **FILTER** | Data filtering           | Include/exclude based on criteria |
+| **LOOP**   | Iteration and repetition | ForEach, While, Until loops       |
+| **MERGE**  | Data stream combination  | Union, intersection, join         |
+| **SWITCH** | Multi-way routing        | Case-based routing                |
+| **WAIT**   | Delays and pausing       | Time delays, condition waiting    |
 
 ## 🚀 Quick Start
 
@@ -144,7 +148,7 @@ class DataAnalysisNode:
                                dataset and identify key trends, outliers, and
                                actionable insights. Format your response as a
                                structured JSON report.""",
-            "model_version": "gemini-pro",
+            "model_version": "gemini-2.5-flash-lite",
             "temperature": "0.3",
             "max_tokens": "2048",
             "response_format": "json"
@@ -172,7 +176,7 @@ analyzer = {
     "subtype": "CLAUDE_NODE",
     "parameters": {
         "system_prompt": "Analyze sales data for trends and recommendations",
-        "model_version": "claude-3-sonnet",
+        "model_version": "claude-3-5-haiku-20241022",
         "temperature": "0.2"
     }
 }
@@ -197,8 +201,8 @@ file_writer = {
 # Automatic validation with detailed error messages
 node = MockNode("AI_AGENT_NODE", "OPENAI_NODE", {
     "system_prompt": "Analyze data",
-    "temperature": "1.5",  # Invalid: > 1.0
-    "model_version": "gpt-5"  # Invalid: not in enum
+    "temperature": "1",  # Invalid: > 1.0
+    "model_version": "gpt-5"
 })
 
 errors = node_spec_registry.validate_node(node)
@@ -233,7 +237,7 @@ openai_node = {
     "subtype": "OPENAI_NODE",
     "parameters": {
         "system_prompt": "You are a helpful assistant",
-        "model_version": "gpt-4",
+        "model_version": "gpt-5-nano",
         "temperature": "0.7",
         "presence_penalty": "0.1",     # OpenAI-specific
         "frequency_penalty": "0.2"     # OpenAI-specific
@@ -269,15 +273,17 @@ python simple_test.py
 ## 📈 Benefits of New Approach
 
 ### 🎯 For AI Agents
-| Old Approach | New Approach |
-|--------------|--------------|
-| ❌ Hardcoded roles (REPORT_GENERATOR) | ✅ Flexible system prompts |
-| ❌ Limited to predefined functions | ✅ Unlimited functionality via prompts |
-| ❌ Difficult to customize behavior | ✅ Easy prompt customization |
-| ❌ Need new code for new roles | ✅ Just change the prompt |
-| ❌ Provider capabilities ignored | ✅ Provider-specific optimizations |
+
+| Old Approach                          | New Approach                           |
+| ------------------------------------- | -------------------------------------- |
+| ❌ Hardcoded roles (REPORT_GENERATOR) | ✅ Flexible system prompts             |
+| ❌ Limited to predefined functions    | ✅ Unlimited functionality via prompts |
+| ❌ Difficult to customize behavior    | ✅ Easy prompt customization           |
+| ❌ Need new code for new roles        | ✅ Just change the prompt              |
+| ❌ Provider capabilities ignored      | ✅ Provider-specific optimizations     |
 
 ### 🚀 For Developers
+
 - **Flexibility**: Any AI task possible through prompts
 - **Simplicity**: Three providers instead of dozens of subtypes
 - **Maintainability**: No hardcoded business logic in specs
@@ -285,6 +291,7 @@ python simple_test.py
 - **Optimization**: Leverage provider-specific features
 
 ### 👥 For Users
+
 - **Clarity**: Know exactly which AI provider they're using
 - **Control**: Full control over AI behavior via prompts
 - **Choice**: Pick the best provider for their use case
@@ -293,6 +300,7 @@ python simple_test.py
 ## 🔄 Migration Guide
 
 ### From Old AI Agents
+
 ```python
 # OLD: Hardcoded role
 {
@@ -312,7 +320,7 @@ python simple_test.py
         "system_prompt": """You are an executive report generator.
                            Create concise summaries for stakeholders focusing on
                            key metrics, decisions needed, and business impact.""",
-        "model_version": "claude-3-sonnet",
+        "model_version": "claude-3-5-haiku-20241022",
         "temperature": "0.3"
     }
 }

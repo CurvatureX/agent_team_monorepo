@@ -17,6 +17,8 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import openai
 from supabase import Client, create_client
 
+from shared.models.node_enums import OpenAIModel
+
 from .base import MemoryBase
 
 logger = logging.getLogger(__name__)
@@ -56,7 +58,7 @@ class EntityMemory(MemoryBase):
         self.entity_types = config.get(
             "entity_types", ["person", "organization", "location", "product", "concept"]
         )
-        self.extraction_model = config.get("extraction_model", "gpt-4o-mini")
+        self.extraction_model = config.get("extraction_model", OpenAIModel.GPT_5_NANO.value)
         self.relationship_tracking = config.get("relationship_tracking", True)
         self.importance_scoring = config.get("importance_scoring", True)
         self.min_confidence = config.get("min_confidence", 0.7)

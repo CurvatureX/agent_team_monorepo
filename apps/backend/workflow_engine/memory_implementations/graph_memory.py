@@ -22,6 +22,8 @@ except ImportError as e:
     create_client = None
     openai = None
 
+from shared.models.node_enums import OpenAIModel
+
 from .base import MemoryBase
 
 logger = logging.getLogger(__name__)
@@ -441,7 +443,7 @@ class GraphMemory(MemoryBase):
             """
 
             response = await client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=OpenAIModel.GPT_5_NANO.value,
                 messages=[{"role": "user", "content": extraction_prompt}],
                 temperature=0.1,
             )

@@ -348,7 +348,7 @@ if __name__ == "__main__":
             "system_prompt": "Analyze data",
             "temperature": "0.7",  # 字符串会被转换为浮点数
             "max_tokens": "2048",  # 字符串会被转换为整数
-            "model_version": "gpt-4",
+            "model_version": "gpt-5-nano",
         }
         validated = ParameterValidator.validate_and_convert_parameters(
             NodeType.AI_AGENT.value, AIAgentSubtype.OPENAI_NODE.value, params

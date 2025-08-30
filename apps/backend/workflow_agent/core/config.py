@@ -6,6 +6,8 @@ import os
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from shared.models.node_enums import OpenAIModel
+
 
 class Settings(BaseSettings):
     """Application settings"""
@@ -27,7 +29,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
     DEFAULT_MODEL_PROVIDER: str = os.getenv("DEFAULT_MODEL_PROVIDER", "openai")
-    DEFAULT_MODEL_NAME: str = os.getenv("DEFAULT_MODEL_NAME", "gpt-4.1-mini-2025-04-14")
+    DEFAULT_MODEL_NAME: str = os.getenv("DEFAULT_MODEL_NAME", OpenAIModel.GPT_5_NANO.value)
 
     # LangGraph settings
 

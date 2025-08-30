@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from shared.models import NodeType
-from shared.models.node_enums import MemorySubtype
+from shared.models.node_enums import MemorySubtype, OpenAIModel
 from shared.node_specs import node_spec_registry
 from shared.node_specs.base import NodeSpec
 
@@ -2047,7 +2047,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         session_id: str,
         user_id: str,
         conv_data: Dict[str, Any],
-        summarization_model: str = "gpt-4o-mini",
+        summarization_model: str = OpenAIModel.GPT_5_NANO.value,
     ) -> None:
         """Save conversation summary to Supabase tables (messages are saved separately)."""
         try:
@@ -2281,7 +2281,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         try:
             summarization_model = self.get_parameter_with_spec(context, "summarization_model")
         except (KeyError, AttributeError):
-            summarization_model = "gpt-4o-mini"
+            summarization_model = OpenAIModel.GPT_5_NANO.value
 
         # Use workflow_id and user_id as session_id for persistent storage
         session_id = (

@@ -37,7 +37,7 @@ STANDARD_TEXT_OUTPUT = DataFormat(
         "required": ["content"]
     }""",
     examples=[
-        '{"content": "Hello, this is a response from the AI.", "metadata": {"model": "gpt-4", "temperature": 0.7}, "format_type": "text", "source_node": "ai_agent_1", "timestamp": "2025-01-26T10:30:00Z"}',
+        '{"content": "Hello, this is a response from the AI.", "metadata": {"model": "gpt-5-nano", "temperature": 0.7}, "format_type": "text", "source_node": "ai_agent_1", "timestamp": "2025-01-26T10:30:00Z"}',
         '{"content": "# Analysis Results\\nThe data shows significant improvement.", "format_type": "markdown"}',
     ],
 )
