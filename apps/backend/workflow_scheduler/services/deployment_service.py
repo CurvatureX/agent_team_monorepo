@@ -604,10 +604,16 @@ class DeploymentService:
 
             for node in nodes:
                 if node.get("type") == NodeType.TRIGGER.value:
+                    parameters = node.get("parameters", {}).copy()
+
+                    # For GitHub triggers, resolve installation_id from oauth_tokens
+                    if node.get("subtype") == "GITHUB":
+                        self._resolve_github_installation_id(parameters, workflow_spec)
+
                     trigger_spec = TriggerSpec(
                         node_type=node.get("type"),
                         subtype=TriggerType(node["subtype"]),
-                        parameters=node.get("parameters", {}),
+                        parameters=parameters,
                         enabled=node.get("enabled", True),
                     )
                     trigger_specs.append(trigger_spec)
@@ -618,6 +624,62 @@ class DeploymentService:
         except Exception as e:
             logger.error(f"Failed to extract trigger specs: {e}", exc_info=True)
             return []
+
+    def _resolve_github_installation_id(self, parameters: Dict, workflow_spec: Dict):
+        """
+        Resolve GitHub installation_id from oauth_tokens table for the workflow owner
+
+        Args:
+            parameters: Trigger parameters to modify
+            workflow_spec: Complete workflow specification
+        """
+        try:
+            # Get workflow owner (user_id) from workflow_spec
+            user_id = workflow_spec.get("user_id")
+            if not user_id:
+                logger.warning(
+                    "No user_id found in workflow_spec, cannot resolve GitHub installation_id"
+                )
+                return
+
+            # Query oauth_tokens for GitHub integration using direct_db_service
+            # Use Supabase client directly for synchronous operation
+            from workflow_scheduler.core.supabase_client import get_supabase_client
+
+            supabase = get_supabase_client()
+            if not supabase:
+                logger.error("Supabase client not available for GitHub installation_id lookup")
+                return
+
+            # Look for GitHub OAuth token for this user
+            github_token_result = (
+                supabase.table("oauth_tokens")
+                .select("credential_data")
+                .eq("user_id", user_id)
+                .eq("integration_id", "github")
+                .eq("is_active", True)
+                .execute()
+            )
+
+            if github_token_result.data and len(github_token_result.data) > 0:
+                # Extract installation_id from credential_data
+                credential_data = github_token_result.data[0].get("credential_data", {})
+                installation_id = credential_data.get("installation_id")
+
+                if installation_id:
+                    parameters["github_app_installation_id"] = installation_id
+                    logger.info(
+                        f"Resolved GitHub installation_id to {installation_id} for user {user_id}"
+                    )
+                else:
+                    logger.warning(
+                        f"No installation_id found in GitHub credential_data for user {user_id}"
+                    )
+            else:
+                logger.warning(f"No active GitHub integration found for user {user_id}")
+
+        except Exception as e:
+            logger.error(f"Error resolving GitHub installation_id: {e}", exc_info=True)
 
     async def _handle_deployment_failure(
         self, workflow_id: str, deployment_id: str, error_msg: str
