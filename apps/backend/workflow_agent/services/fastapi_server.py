@@ -145,6 +145,14 @@ class WorkflowAgentServicer:
                     "Retrieved existing workflow_agent_state", extra={"session_id": session_id}
                 )
 
+            # Add workflow_context to existing state if provided
+            if request.workflow_context and current_state:
+                current_state["workflow_context"] = {
+                    "origin": request.workflow_context.origin,
+                    "source_workflow_id": request.workflow_context.source_workflow_id,
+                }
+                logger.info(f"Added workflow_context to state: {current_state['workflow_context']}")
+            
             # Fetch source workflow if in edit or copy mode
             if request.workflow_context and request.workflow_context.origin in ["edit", "copy"]:
                 source_workflow_id = request.workflow_context.source_workflow_id

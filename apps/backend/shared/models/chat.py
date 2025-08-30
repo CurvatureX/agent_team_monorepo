@@ -25,6 +25,8 @@ class ChatRequest(BaseModel):
 
     session_id: str = Field(description="会话ID")
     user_message: str = Field(description="用户消息内容")
+    action: Optional[str] = Field(default=None, description="操作类型: create, edit, copy")
+    workflow_id: Optional[str] = Field(default=None, description="要编辑或复制的工作流ID")
 
     @field_validator("user_message")
     @classmethod
@@ -33,6 +35,15 @@ class ChatRequest(BaseModel):
         if not v or not v.strip():
             raise ValueError("User message cannot be empty")
         return v.strip()
+    
+    @field_validator("workflow_id")
+    @classmethod
+    def validate_workflow_id(cls, v, values):
+        """验证workflow_id在edit或copy模式下必须提供"""
+        action = values.data.get("action")
+        if action in ["edit", "copy"] and not v:
+            raise ValueError(f"workflow_id is required when action is '{action}'")
+        return v
 
 
 class ChatMessage(BaseModel):

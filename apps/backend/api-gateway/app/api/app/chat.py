@@ -159,13 +159,18 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                 )
                 yield format_sse_event(initial_event.model_dump())
 
-                # 构建 workflow_context - 根据 session 的 action 字段
+                # 构建 workflow_context - 优先使用 ChatRequest 参数，其次使用 session
                 workflow_context = None
-                if session.get("action") and session["action"] != "create":
+                # Priority: ChatRequest parameters > session data
+                action = chat_request.action or session.get("action", "create")
+                workflow_id = chat_request.workflow_id or session.get("workflow_id", "")
+                
+                if action and action != "create":
                     workflow_context = {
-                        "origin": session["action"],  # edit 或 copy
-                        "source_workflow_id": session.get("workflow_id", ""),
+                        "origin": action,  # edit 或 copy
+                        "source_workflow_id": workflow_id,
                     }
+                    logger.info(f"📝 Workflow context created: action={action}, workflow_id={workflow_id}")
 
                 # Process conversation stream with workflow agent
                 async for response in workflow_client.process_conversation_stream(
