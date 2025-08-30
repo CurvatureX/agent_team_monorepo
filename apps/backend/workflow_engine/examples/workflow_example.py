@@ -99,7 +99,7 @@ def create_sample_workflow():
     ai_router.parameters["agent_type"] = "router"
     ai_router.parameters["prompt"] = "分析用户意图并路由到相应模块：日程管理、查询请求、总结生成"
     ai_router.parameters["model_provider"] = "openai"
-    ai_router.parameters["model_name"] = "gpt-4"
+    ai_router.parameters["model_name"] = "gpt-5-nano"
 
     ai_router.on_error = workflow_pb2.ErrorHandling.CONTINUE_REGULAR_OUTPUT_ON_ERROR
 

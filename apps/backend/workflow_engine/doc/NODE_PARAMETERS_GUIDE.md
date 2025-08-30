@@ -78,7 +78,7 @@ AI代理节点用于调用各种大语言模型。
 **额外参数：**
 | 参数名 | 类型 | 必需 | 默认值 | 说明 |
 |--------|------|------|--------|------|
-| model_version | enum | 否 | "gpt-4" | 模型版本：gpt-3.5-turbo, gpt-4, gpt-4-turbo, gpt-4o |
+| model_version | enum | 否 | "gpt-5-nano" | 模型版本：gpt-5, gpt-5-mini, gpt-5-nano, gpt-5-chat-latest, gpt-4.1, gpt-4.1-mini, gpt-4.1-nano |
 | presence_penalty | float | 否 | 0.0 | 存在惩罚（-2.0到2.0） |
 | frequency_penalty | float | 否 | 0.0 | 频率惩罚（-2.0到2.0） |
 
@@ -87,7 +87,7 @@ AI代理节点用于调用各种大语言模型。
 **额外参数：**
 | 参数名 | 类型 | 必需 | 默认值 | 说明 |
 |--------|------|------|--------|------|
-| model_version | enum | 否 | "claude-3-sonnet" | 模型版本：claude-3-haiku, claude-3-sonnet, claude-3-opus, claude-3.5-sonnet |
+| model_version | enum | 否 | "claude-3-5-haiku-20241022" | 模型版本：claude-sonnet-4-20250514, claude-3-5-haiku-20241022 |
 | stop_sequences | json | 否 | - | 停止序列数组 |
 
 ### GEMINI_NODE - Google Gemini模型
@@ -95,7 +95,7 @@ AI代理节点用于调用各种大语言模型。
 **额外参数：**
 | 参数名 | 类型 | 必需 | 默认值 | 说明 |
 |--------|------|------|--------|------|
-| model_version | enum | 否 | "gemini-pro" | 模型版本：gemini-pro, gemini-pro-vision, gemini-ultra |
+| model_version | enum | 否 | "gemini-2.5-flash-lite" | 模型版本：gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite |
 | safety_settings | json | 否 | - | 安全过滤设置 |
 
 ---

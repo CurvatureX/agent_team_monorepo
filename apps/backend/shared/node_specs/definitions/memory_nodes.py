@@ -6,7 +6,7 @@ various memory and storage operations for LLM context enhancement.
 All memory nodes are designed to be attached to LLM nodes to provide context.
 """
 
-from ...models.node_enums import MemorySubtype, NodeType
+from ...models.node_enums import MemorySubtype, NodeType, OpenAIModel
 from ..base import (
     ConnectionType,
     DataFormat,
@@ -137,7 +137,7 @@ CONVERSATION_SUMMARY_SPEC = NodeSpec(
             name="summarization_model",
             type=ParameterType.STRING,
             required=False,
-            default_value="gpt-4o-mini",
+            default_value=OpenAIModel.GPT_5_NANO.value,
             description="Model to use for summarization",
         ),
         ParameterDef(
@@ -241,7 +241,7 @@ ENTITY_MEMORY_SPEC = NodeSpec(
             name="extraction_model",
             type=ParameterType.STRING,
             required=False,
-            default_value="gpt-4o-mini",
+            default_value=OpenAIModel.GPT_5_NANO.value,
             description="Model to use for entity extraction",
         ),
         ParameterDef(
@@ -420,7 +420,7 @@ KNOWLEDGE_BASE_SPEC = NodeSpec(
             name="fact_extraction_model",
             type=ParameterType.STRING,
             required=False,
-            default_value="gpt-4o",
+            default_value=OpenAIModel.GPT_5.value,
             description="Model for extracting structured facts",
         ),
         ParameterDef(

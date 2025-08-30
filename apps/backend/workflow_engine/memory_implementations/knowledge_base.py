@@ -14,6 +14,8 @@ from typing import Any, Dict, List, Optional, Union
 
 from supabase import Client, create_client
 
+from shared.models.node_enums import OpenAIModel
+
 from .base import MemoryBase
 
 logger = logging.getLogger(__name__)
@@ -176,7 +178,7 @@ Return ONLY the JSON array, no other text:
 """
 
             response = await client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=OpenAIModel.GPT_5_NANO.value,
                 messages=[
                     {
                         "role": "system",
