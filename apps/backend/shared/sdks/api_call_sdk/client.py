@@ -69,7 +69,7 @@ class ApiCallSDK(BaseSDK):
                 revoke_url="https://oauth2.googleapis.com/revoke",
                 scopes=["openid", "email", "profile"],
                 redirect_uri=os.getenv(
-                    "GOOGLE_REDIRECT_URI", "http://localhost:8002/api/v1/oauth2/google/callback"
+                    "GOOGLE_REDIRECT_URI", "http://localhost:8000/api/v1/public/webhooks/google/auth"
                 ),
             ),
             "microsoft": OAuth2Config(

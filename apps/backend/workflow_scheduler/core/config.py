@@ -141,6 +141,11 @@ class Settings(BaseSettings):
         description="Google OAuth Client Secret",
         validation_alias=AliasChoices("GOOGLE_CLIENT_SECRET", "google_client_secret"),
     )
+    google_redirect_uri: str = Field(
+        default="",
+        description="Google OAuth Redirect URI",
+        validation_alias=AliasChoices("GOOGLE_REDIRECT_URI", "google_redirect_uri"),
+    )
 
     # APScheduler Configuration
     scheduler_timezone: str = Field(default="UTC", description="Scheduler timezone")

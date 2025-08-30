@@ -56,7 +56,7 @@ class GoogleCalendarSDK(BaseSDK):
                 "https://www.googleapis.com/auth/calendar.events",
             ],
             redirect_uri=os.getenv(
-                "GOOGLE_REDIRECT_URI", "http://localhost:8002/api/v1/oauth2/google/callback"
+                "GOOGLE_REDIRECT_URI", "http://localhost:8000/api/v1/public/webhooks/google/auth"
             ),
         )
 
