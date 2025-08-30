@@ -1078,6 +1078,21 @@ Please use this context appropriately when responding. Reference relevant inform
             return input_data
 
         if isinstance(input_data, dict):
+            # Check if this is memory node output (has memory-specific structure)
+            if self._is_memory_node_output(input_data):
+                self.logger.info(
+                    f"[AIAgent Node]: 🧠 Memory node output detected, extracting original user message"
+                )
+                # Extract the original user message from memory context
+                original_message = self._extract_original_message_from_memory_output(input_data)
+                if original_message:
+                    return original_message
+                else:
+                    self.logger.warning(
+                        f"[AIAgent Node]: ⚠️ Could not extract original message from memory output"
+                    )
+                    return "Please provide your message."
+
             # Check if memory context is present (from memory integration)
             if "memory_context" in input_data:
                 # Memory context is now handled in system prompt, just return the basic message
@@ -1088,7 +1103,27 @@ Please use this context appropriately when responding. Reference relevant inform
             # First check for standard communication format (from trigger or other nodes)
             if "content" in input_data:
                 content = input_data["content"]
-                self.logger.info(f"[AIAgent Node]: 🎯 Extracted standard format content: {content}")
+                # Skip if content looks like memory node JSON output
+                if isinstance(content, str) and content.strip().startswith("{"):
+                    try:
+                        import json
+
+                        parsed_content = json.loads(content)
+                        if self._is_memory_node_output(parsed_content):
+                            self.logger.info(
+                                f"[AIAgent Node]: 🧠 Content is memory JSON, extracting original message"
+                            )
+                            original_message = self._extract_original_message_from_memory_output(
+                                parsed_content
+                            )
+                            if original_message:
+                                return original_message
+                    except:
+                        pass  # Not JSON, treat as regular content
+
+                self.logger.info(
+                    f"[AIAgent Node]: 🎯 Extracted standard format content: {content[:100]}..."
+                )
                 return str(content)
 
             # Legacy support: Check for direct message/text fields
@@ -1415,17 +1450,36 @@ Please use this context appropriately when responding. Reference relevant inform
                 )
                 return
 
-            # Extract clean user message from input (remove JSON wrapper if present)
+            # Extract clean user message from input - prevent storing JSON structures
             user_message = user_input
-            if user_input.startswith("{") and "content" in user_input:
+
+            # Skip storing if user input looks like memory node output (prevent recursion)
+            if user_input.strip().startswith("{") and len(user_input) > 200:
                 try:
                     import json
 
-                    input_data = json.loads(user_input)
-                    if isinstance(input_data, dict) and "content" in input_data:
-                        user_message = input_data["content"]
+                    parsed_input = json.loads(user_input)
+                    if self._is_memory_node_output(parsed_input):
+                        self.logger.warning(
+                            f"[AIAgent Node]: 🧠 AIAgent: Skipping storage - user input is memory JSON structure"
+                        )
+                        return
+                    # If it's JSON but not memory output, try to extract content
+                    if isinstance(parsed_input, dict) and "content" in parsed_input:
+                        content = str(parsed_input["content"])
+                        if not content.strip().startswith(
+                            "{"
+                        ):  # Make sure content isn't nested JSON
+                            user_message = content
                 except:
                     pass  # Use original input if JSON parsing fails
+
+            # Final check: don't store if message is too long (likely corrupted/recursive)
+            if len(user_message) > 1000:
+                self.logger.warning(
+                    f"[AIAgent Node]: 🧠 AIAgent: Skipping storage - user message too long ({len(user_message)} chars)"
+                )
+                return
 
             # Store in each connected memory node
             for memory_node_info in memory_nodes:
@@ -1493,3 +1547,60 @@ Please use this context appropriately when responding. Reference relevant inform
                 f"[AIAgent Node]: 🧠 AIAgent: ❌ Error storing conversation in memory: {e}"
             )
             logs.append(f"Error storing conversation in memory: {e}")
+
+    def _is_memory_node_output(self, data: Dict[str, Any]) -> bool:
+        """Check if data looks like memory node output."""
+        try:
+            # Memory node output has specific structure
+            memory_indicators = [
+                "memory_type",
+                "buffer",
+                "summary",
+                "message_count",
+                "memory_context",
+                "formatted_context",
+                "last_updated",
+            ]
+            # If it has several memory-specific fields, it's likely memory output
+            indicator_count = sum(1 for key in memory_indicators if key in data)
+            return indicator_count >= 3
+        except:
+            return False
+
+    def _extract_original_message_from_memory_output(self, memory_output: Dict[str, Any]) -> str:
+        """Extract the original user message from memory node output."""
+        try:
+            # Look in formatted_context or memory_context for recent messages
+            context = memory_output.get("formatted_context") or memory_output.get(
+                "memory_context", ""
+            )
+            if isinstance(context, str) and context:
+                # Parse the context to find the most recent user message
+                lines = context.split("\n")
+                for line in reversed(lines):
+                    if line.strip().startswith("User: "):
+                        user_message = line.strip()[6:]  # Remove "User: " prefix
+                        # Skip if it looks like JSON/structured data
+                        if not user_message.strip().startswith("{"):
+                            self.logger.info(
+                                f"[AIAgent Node]: 🎯 Extracted user message from memory: {user_message[:50]}..."
+                            )
+                            return user_message
+
+            # Fallback: look in buffer for the most recent user message
+            buffer = memory_output.get("buffer", [])
+            if isinstance(buffer, list) and buffer:
+                for message in reversed(buffer):
+                    if isinstance(message, dict) and message.get("role") == "user":
+                        content = message.get("content", "")
+                        # Skip if it looks like JSON/structured data
+                        if not str(content).strip().startswith("{"):
+                            self.logger.info(
+                                f"[AIAgent Node]: 🎯 Extracted user message from buffer: {content[:50]}..."
+                            )
+                            return str(content)
+
+            return ""
+        except Exception as e:
+            self.logger.warning(f"[AIAgent Node]: ⚠️ Error extracting original message: {e}")
+            return ""
