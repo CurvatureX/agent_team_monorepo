@@ -59,35 +59,40 @@ async def github_installation_callback(
             f"action={installation_data.setup_action}, state={installation_data.state}"
         )
 
-        # For now, we'll just acknowledge the installation
-        # In the future, this could:
-        # 1. Store installation credentials for the GitHub trigger
-        # 2. Update existing GitHub triggers with new installation ID
-        # 3. Validate installation permissions
-        # 4. Sync repository information
+        # Store the GitHub installation data if user_id provided in state
+        db_store_success = False
+        if installation_data.state and installation_data.setup_action in ["install", "update"]:
+            logger.info(
+                f"🔄 Attempting to store GitHub installation for user_id: {installation_data.state}"
+            )
+            try:
+                db_store_success = await _store_github_installation(
+                    installation_data.state,
+                    installation_data.installation_id,
+                    installation_data.setup_action,
+                )
+                if not db_store_success:
+                    logger.warning(
+                        f"⚠️ Failed to store GitHub installation data for user {installation_data.state}"
+                    )
+                else:
+                    logger.info(
+                        f"✅ Successfully stored GitHub installation for user {installation_data.state}"
+                    )
+            except Exception as e:
+                logger.error(f"❌ Error storing GitHub installation: {e}", exc_info=True)
+        else:
+            logger.warning(
+                "⚠️ No state (user_id) provided in GitHub installation callback - cannot store integration"
+            )
 
         result = {
             "installation_id": installation_data.installation_id,
             "setup_action": installation_data.setup_action,
             "status": "processed",
             "message": "GitHub App installation processed successfully",
+            "stored_in_database": db_store_success,
         }
-
-        # If we have installation details, we could fetch more info
-        if installation_data.setup_action in ["install", "update"]:
-            # TODO: In the future, we could:
-            # 1. Use the GitHub API to get installation details
-            # 2. Get list of repositories this installation has access to
-            # 3. Update our internal trigger configurations
-            # 4. Validate webhook endpoints are set up correctly
-
-            result.update(
-                {
-                    "account_login": f"installation_{installation_data.installation_id}",
-                    "account_type": "organization",  # or "user" - we'd need to fetch this
-                    "repositories": [],  # We'd fetch this from GitHub API
-                }
-            )
 
         logger.info(
             f"GitHub installation processed successfully: installation_id={installation_data.installation_id}"
@@ -363,6 +368,127 @@ async def _store_slack_integration(
         return False
 
 
+async def _store_github_installation(
+    user_id: str,
+    installation_id: int,
+    setup_action: str,
+) -> bool:
+    """
+    Store GitHub App installation data in oauth_tokens table
+
+    Args:
+        user_id: User ID who authorized the installation
+        installation_id: GitHub App installation ID
+        setup_action: Installation action (install, update, etc.)
+
+    Returns:
+        bool: True if stored successfully, False otherwise
+    """
+    try:
+        supabase = get_supabase_client()
+        if not supabase:
+            logger.error("❌ Supabase client not available for GitHub installation storage")
+            return False
+
+        # First, ensure the GitHub integration exists
+        github_integration_result = (
+            supabase.table("integrations").select("*").eq("integration_id", "github").execute()
+        )
+
+        if not github_integration_result.data:
+            # Create the GitHub integration if it doesn't exist
+            logger.info("📝 Creating GitHub integration entry")
+            integration_data = {
+                "integration_id": "github",
+                "integration_type": "github",
+                "name": "GitHub Integration",
+                "description": "GitHub App integration for repository management and webhooks",
+                "version": "1.0",
+                "configuration": {
+                    "api_version": "v3",
+                    "callback_url": "/api/v1/public/webhooks/github/auth",
+                },
+                "supported_operations": [
+                    "repositories:read",
+                    "pull_requests:read",
+                    "issues:read",
+                    "webhooks:write",
+                ],
+                "required_scopes": ["repo"],
+                "active": True,
+                "verified": True,
+            }
+
+            integration_result = supabase.table("integrations").insert(integration_data).execute()
+
+            if not integration_result.data:
+                logger.error("❌ Failed to create GitHub integration")
+                return False
+
+        # Check if this user already has a GitHub integration token
+        existing_token_result = (
+            supabase.table("oauth_tokens")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("integration_id", "github")
+            .execute()
+        )
+
+        # Prepare the token data
+        oauth_token_data = {
+            "user_id": user_id,
+            "integration_id": "github",
+            "provider": "github",
+            "access_token": f"gha_installation_{installation_id}",  # Placeholder token
+            "token_type": "installation",
+            "credential_data": {
+                "installation_id": installation_id,
+                "setup_action": setup_action,
+                "callback_timestamp": "now()",
+            },
+            "is_active": True,
+        }
+
+        if existing_token_result.data:
+            # Update existing record
+            logger.info(f"🔄 Updating existing GitHub installation for user {user_id}")
+
+            update_result = (
+                supabase.table("oauth_tokens")
+                .update(oauth_token_data)
+                .eq("user_id", user_id)
+                .eq("integration_id", "github")
+                .execute()
+            )
+
+            if not update_result.data:
+                logger.error("❌ Failed to update GitHub installation record")
+                return False
+
+            logger.info(
+                f"✅ GitHub installation updated successfully - installation_id: {installation_id}, user_id: {user_id}"
+            )
+        else:
+            # Insert new record
+            logger.info(f"➕ Creating new GitHub installation record for user {user_id}")
+
+            insert_result = supabase.table("oauth_tokens").insert(oauth_token_data).execute()
+
+            if not insert_result.data:
+                logger.error("❌ Failed to store GitHub installation record")
+                return False
+
+            logger.info(
+                f"✅ GitHub installation stored successfully - installation_id: {installation_id}, user_id: {user_id}"
+            )
+
+        return True
+
+    except Exception as e:
+        logger.error(f"❌ Error storing GitHub installation data: {str(e)}", exc_info=True)
+        return False
+
+
 @router.post("/google/callback", response_model=Dict[str, Any])
 async def google_oauth_callback(
     oauth_data: GoogleOAuthData,
@@ -405,9 +531,7 @@ async def google_oauth_callback(
             except Exception as e:
                 logger.error(f"❌ Error storing Google integration: {e}", exc_info=True)
         else:
-            logger.warning(
-                "⚠️ No user_id provided in OAuth callback - cannot store integration"
-            )
+            logger.warning("⚠️ No user_id provided in OAuth callback - cannot store integration")
 
         result = {
             "email": oauth_data.user_info.get("email"),
@@ -521,6 +645,7 @@ async def _store_google_integration(
 
         # Calculate token expiration time
         import datetime
+
         expires_at = datetime.datetime.utcnow() + datetime.timedelta(seconds=expires_in)
 
         # Prepare the token data
