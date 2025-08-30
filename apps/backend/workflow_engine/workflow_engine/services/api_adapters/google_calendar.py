@@ -62,9 +62,10 @@ class GoogleCalendarAdapter(APIAdapter):
 
     def get_oauth2_config(self) -> OAuth2Config:
         """获取Google Calendar OAuth2配置"""
+        import os
         return OAuth2Config(
-            client_id="",  # 将从环境变量或配置中加载
-            client_secret="",  # 将从环境变量或配置中加载
+            client_id=os.getenv("GOOGLE_CLIENT_ID", ""),  # 从环境变量加载
+            client_secret=os.getenv("GOOGLE_CLIENT_SECRET", ""),  # 从环境变量加载
             auth_url="https://accounts.google.com/o/oauth2/auth",
             token_url="https://oauth2.googleapis.com/token",
             revoke_url="https://oauth2.googleapis.com/revoke",
@@ -72,7 +73,7 @@ class GoogleCalendarAdapter(APIAdapter):
                 "https://www.googleapis.com/auth/calendar",
                 "https://www.googleapis.com/auth/calendar.events",
             ],
-            redirect_uri="http://localhost:8000/auth/google/callback",
+            redirect_uri=os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/v1/public/webhooks/google/auth"),
         )
 
     def validate_credentials(self, credentials: Dict[str, str]) -> bool:
