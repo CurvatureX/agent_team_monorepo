@@ -8,7 +8,7 @@ import json
 import logging
 import time
 import uuid
-from typing import List
+from typing import List, Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
@@ -357,12 +357,13 @@ class WorkflowAgentNodes:
                     else:
                         continue
 
+                    # Create the proper nested structure with connection_types
                     if from_node not in connections_dict:
-                        connections_dict[from_node] = {}
-                    if from_port not in connections_dict[from_node]:
-                        connections_dict[from_node][from_port] = []
+                        connections_dict[from_node] = {"connection_types": {}}
+                    if from_port not in connections_dict[from_node]["connection_types"]:
+                        connections_dict[from_node]["connection_types"][from_port] = {"connections": []}
 
-                    connections_dict[from_node][from_port].append(
+                    connections_dict[from_node]["connection_types"][from_port]["connections"].append(
                         {"node": to_node, "type": to_port, "index": 0}
                     )
 
@@ -698,8 +699,8 @@ class WorkflowAgentNodes:
                 HumanMessage(content=user_prompt_content),
             ]
 
-            # Generate workflow using natural MCP tool calling
-            workflow_json = await self._generate_with_natural_tools(messages)
+            # Generate workflow using natural MCP tool calling (with state for progress tracking)
+            workflow_json = await self._generate_with_natural_tools(messages, state)
 
             # Check if we got an empty response
             if not workflow_json or workflow_json.strip() == "":
@@ -883,16 +884,29 @@ Would you like to make any adjustments or shall we proceed with testing?"""
                 "stage": WorkflowStage.WORKFLOW_GENERATION,
             }
 
-    async def _generate_with_natural_tools(self, messages: List) -> str:
+    async def _generate_with_natural_tools(self, messages: List, state: Optional[dict] = None) -> str:
         """
         Natural workflow generation - let LLM decide when and how to use MCP tools.
         Still emphasizes following MCP type specifications but doesn't force specific calling patterns.
+        Includes progress tracking for long-running operations.
         """
         try:
             logger.info("Starting natural workflow generation with MCP tools")
+            
+            # Track timing for diagnostics
+            start_time = time.time()
+            
+            # Update state to indicate we're generating
+            if state:
+                state["generation_status"] = "Starting LLM workflow generation..."
+                state["generation_progress"] = 0
 
             # Let LLM use tools naturally - no forced multi-turn pattern
+            logger.info("Invoking LLM for initial workflow generation")
             response = await self.llm_with_tools.ainvoke(messages)
+            
+            elapsed = time.time() - start_time
+            logger.info(f"Initial LLM response received after {elapsed:.2f} seconds")
 
             # Process any tool calls the LLM decided to make
             current_messages = list(messages)
@@ -909,6 +923,12 @@ Would you like to make any adjustments or shall we proceed with testing?"""
                 logger.info(
                     f"LLM made {len(response.tool_calls)} tool calls (iteration {iteration})"
                 )
+                
+                # Update progress
+                if state:
+                    progress = min(20 + (iteration * 15), 80)  # Progress from 20% to 80%
+                    state["generation_status"] = f"Processing MCP tools (iteration {iteration}/{max_iterations})..."
+                    state["generation_progress"] = progress
 
                 # Add assistant response to conversation
                 if hasattr(response, "content") and response.content:
@@ -967,10 +987,25 @@ Generate the complete JSON workflow now, strictly following these MCP types."""
                     )
 
                 # Continue the conversation
+                if state:
+                    state["generation_status"] = "Generating final workflow JSON..."
+                    state["generation_progress"] = 85
+                    
+                tool_start = time.time()
                 response = await self.llm_with_tools.ainvoke(current_messages)
+                tool_elapsed = time.time() - tool_start
+                logger.info(f"Tool iteration {iteration} completed in {tool_elapsed:.2f} seconds")
 
             if iteration >= max_iterations:
                 logger.warning(f"Reached max iterations ({max_iterations}) in tool calling")
+            
+            # Final progress update
+            if state:
+                state["generation_status"] = "Workflow generation complete"
+                state["generation_progress"] = 100
+                
+            total_elapsed = time.time() - start_time
+            logger.info(f"Total workflow generation time: {total_elapsed:.2f} seconds")
 
             # Return the final response content
             return str(response.content) if hasattr(response, "content") else ""
