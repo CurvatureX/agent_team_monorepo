@@ -214,10 +214,52 @@ class WorkflowAgentServicer:
                 )
                 stream_iterator = self.workflow_agent.graph.astream(workflow_state)
 
+                # Create heartbeat task for keeping connection alive
+                heartbeat_task = None
+                heartbeat_queue = asyncio.Queue()
+                
+                async def send_heartbeat():
+                    """Send periodic heartbeat messages to keep connection alive"""
+                    try:
+                        while True:
+                            await asyncio.sleep(30)  # Send heartbeat every 30 seconds
+                            heartbeat_msg = {
+                                "session_id": session_id,
+                                "response_type": "RESPONSE_TYPE_HEARTBEAT",
+                                "is_final": False,
+                                "message": "Processing workflow generation, please wait...",
+                                "timestamp": int(time.time() * 1000)
+                            }
+                            await heartbeat_queue.put(heartbeat_msg)
+                            logger.debug(f"Heartbeat queued for session {session_id}")
+                    except asyncio.CancelledError:
+                        logger.debug(f"Heartbeat task cancelled for session {session_id}")
+                        raise
+
                 # Shield the entire stream iteration from cancellation
                 try:
-                    async for step_state in stream_iterator:
-                        for node_name, updated_state in step_state.items():
+                    # Start heartbeat task
+                    heartbeat_task = asyncio.create_task(send_heartbeat())
+                    
+                    async def process_with_heartbeat():
+                        """Process LangGraph stream with heartbeat support"""
+                        async for step_state in stream_iterator:
+                            # Check for pending heartbeats
+                            while not heartbeat_queue.empty():
+                                heartbeat = await heartbeat_queue.get()
+                                yield f"data: {json.dumps(heartbeat)}\n\n"
+                                logger.debug(f"Sent heartbeat for session {session_id}")
+                            
+                            # Process actual step state
+                            for node_name, updated_state in step_state.items():
+                                yield (node_name, updated_state)
+                    
+                    async for result in process_with_heartbeat():
+                        # Handle heartbeat strings vs actual results
+                        if isinstance(result, str):
+                            yield result  # This is a heartbeat message
+                        else:
+                            node_name, updated_state = result
                             logger.info(
                                 "LangGraph node execution completed",
                                 extra={
@@ -281,6 +323,15 @@ class WorkflowAgentServicer:
                         "LangGraph stream was cancelled", extra={"session_id": session_id}
                     )
                     raise
+                finally:
+                    # Cancel heartbeat task when stream completes or is cancelled
+                    if heartbeat_task and not heartbeat_task.done():
+                        heartbeat_task.cancel()
+                        try:
+                            await heartbeat_task
+                        except asyncio.CancelledError:
+                            pass
+                        logger.debug(f"Heartbeat task cleaned up for session {session_id}")
 
                 logger.info(
                     "LangGraph streaming completed - async for loop exited",

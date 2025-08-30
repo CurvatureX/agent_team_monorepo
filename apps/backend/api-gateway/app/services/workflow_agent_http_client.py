@@ -24,10 +24,11 @@ class WorkflowAgentHTTPClient:
     def __init__(self):
         self.base_url = settings.WORKFLOW_AGENT_URL or f"http://{settings.WORKFLOW_AGENT_HOST}:8001"
         # Increased timeout for streaming operations and RAG embedding generation
+        # Further increased read timeout for complex workflow generation
         self.timeout = httpx.Timeout(
-            timeout=300.0,  # 5 minutes total timeout
+            timeout=600.0,  # 10 minutes total timeout (increased for complex workflows)
             connect=10.0,  # 10 seconds connection timeout
-            read=60.0,  # 60 seconds read timeout per chunk
+            read=120.0,  # 120 seconds read timeout per chunk (doubled for LLM generation)
             write=30.0,  # 30 seconds write timeout
         )
         self.connected = False
