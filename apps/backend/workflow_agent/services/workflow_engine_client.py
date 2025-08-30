@@ -265,6 +265,60 @@ class WorkflowEngineClient:
                 logger.error(error_msg)
                 return {"success": False, "error": error_msg}
 
+    async def get_workflow(self, workflow_id: str, user_id: str = "test_user") -> Dict[str, Any]:
+        """
+        Get an existing workflow from the workflow engine
+
+        Args:
+            workflow_id: ID of the workflow to retrieve
+            user_id: User ID for authorization
+
+        Returns:
+            Workflow data or error response
+        """
+        async with AsyncClient(timeout=self.timeout) as client:
+            try:
+                logger.info(f"Fetching workflow: {workflow_id} for user: {user_id}")
+                
+                response = await client.get(
+                    f"{self.base_url}/v1/workflows/{workflow_id}",
+                    params={"user_id": user_id},
+                    headers={"Content-Type": "application/json"},
+                )
+
+                if response.status_code == 200:
+                    result = response.json()
+                    if result.get("found"):
+                        logger.info(f"Workflow {workflow_id} retrieved successfully")
+                        return {
+                            "success": True,
+                            "workflow": result.get("workflow"),
+                        }
+                    else:
+                        logger.warning(f"Workflow {workflow_id} not found")
+                        return {
+                            "success": False,
+                            "error": "Workflow not found",
+                            "status_code": 404,
+                        }
+                else:
+                    error_msg = f"Failed to get workflow: {response.status_code} - {response.text}"
+                    logger.error(error_msg)
+                    return {
+                        "success": False,
+                        "error": error_msg,
+                        "status_code": response.status_code,
+                    }
+
+            except httpx.TimeoutException:
+                error_msg = f"Timeout getting workflow after {self.timeout}s"
+                logger.error(error_msg)
+                return {"success": False, "error": error_msg}
+            except Exception as e:
+                error_msg = f"Error getting workflow: {str(e)}"
+                logger.error(error_msg)
+                return {"success": False, "error": error_msg}
+
     async def get_execution_status(self, execution_id: str) -> Dict[str, Any]:
         """
         Get the status of a workflow execution
