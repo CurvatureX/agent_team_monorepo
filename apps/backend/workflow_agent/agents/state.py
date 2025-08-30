@@ -75,6 +75,7 @@ class WorkflowState(TypedDict):
     current_workflow: NotRequired[Any]  # workflow JSON object
     template_workflow: NotRequired[Any]  # template workflow if editing
     workflow_context: NotRequired[Dict[str, Any]]  # workflow metadata
+    source_workflow: NotRequired[Any]  # source workflow for edit/copy mode
 
     # Workflow creation tracking (new fields for moved workflow creation)
     workflow_id: NotRequired[str]  # ID of created workflow in workflow_engine

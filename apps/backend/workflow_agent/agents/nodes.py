@@ -516,6 +516,16 @@ class WorkflowAgentNodes:
                 "existing_intent": existing_intent,
                 "conversation_history": conversation_history,
             }
+            
+            # Add source workflow if in edit/copy mode
+            if "source_workflow" in state and state["source_workflow"]:
+                template_context["source_workflow"] = json.dumps(state["source_workflow"], indent=2)
+                logger.info(f"Including source workflow in clarification context for edit/copy mode")
+            
+            # Add workflow context if present
+            if "workflow_context" in state and state["workflow_context"]:
+                template_context["workflow_mode"] = state["workflow_context"].get("origin", "create")
+                logger.info(f"Workflow mode: {template_context['workflow_mode']}")
 
             # Use the f2 template system - both system and user prompts
             system_prompt = await self.prompt_engine.render_prompt(
@@ -663,6 +673,15 @@ class WorkflowAgentNodes:
                 "current_workflow": state.get("current_workflow"),
                 "creation_error": error_context,
             }
+            
+            # Add source workflow and mode for edit/copy operations
+            if "source_workflow" in state and state["source_workflow"]:
+                template_context["source_workflow"] = json.dumps(state["source_workflow"], indent=2)
+                logger.info(f"Including source workflow in generation context for edit/copy mode")
+            
+            if "workflow_context" in state and state["workflow_context"]:
+                template_context["workflow_mode"] = state["workflow_context"].get("origin", "create")
+                logger.info(f"Workflow generation mode: {template_context['workflow_mode']}")
 
             # Use the original f1 template system - the working approach
             system_prompt = await self.prompt_engine.render_prompt(
@@ -724,8 +743,13 @@ class WorkflowAgentNodes:
             engine_client = WorkflowEngineClient()
             user_id = state.get("user_id", "test_user")
             session_id = state.get("session_id")
-
-            # Pass session_id to the workflow creation
+            
+            # Always create a new workflow, even in edit mode
+            # This allows users to test edits without overwriting the original
+            workflow_context = state.get("workflow_context", {})
+            workflow_mode = workflow_context.get("origin", "create")
+            
+            logger.info(f"Creating new workflow in workflow_engine (mode: {workflow_mode})")
             creation_result = await engine_client.create_workflow(workflow, user_id, session_id)
 
             if creation_result.get("success", True) and creation_result.get("workflow", {}).get(
@@ -747,8 +771,32 @@ class WorkflowAgentNodes:
                 workflow_name = workflow.get("name", "Workflow")
                 workflow_description = workflow.get("description", "")
                 node_count = len(workflow.get("nodes", []))
+                
+                # Check if we're in edit mode
+                workflow_context = state.get("workflow_context", {})
+                workflow_mode = workflow_context.get("origin", "create")
+                source_workflow_id = workflow_context.get("source_workflow_id")
+                
+                if workflow_mode == "edit":
+                    completion_message = f"""✅ **New Workflow Created from Edit!**
 
-                completion_message = f"""✅ **Workflow Created Successfully!**
+I've successfully created a new workflow based on your modifications:
+- **Name**: {workflow_name}
+- **New ID**: {workflow_id}
+- **Original ID**: {source_workflow_id}
+- **Nodes**: {node_count} nodes configured
+{f'- **Description**: {workflow_description}' if workflow_description else ''}
+
+The new workflow has been saved with your requested changes. The original workflow remains unchanged.
+
+You can now:
+1. Test the new workflow with sample data
+2. Schedule it to run automatically
+3. Make further modifications if needed
+
+Would you like to test this updated workflow or make additional changes?"""
+                else:
+                    completion_message = f"""✅ **Workflow Created Successfully!**
 
 I've successfully created your workflow:
 - **Name**: {workflow_name}

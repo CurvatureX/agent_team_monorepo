@@ -86,6 +86,7 @@ def setup_logging():
 
                 # Add extra fields if present
                 extras = []
+                # Known extra fields
                 if hasattr(record, "session_id"):
                     extras.append(f"session_id={record.session_id}")
                 if hasattr(record, "error"):
@@ -94,6 +95,17 @@ def setup_logging():
                     extras.append(f"error_type={record.error_type}")
                 if hasattr(record, "tracking_id"):
                     extras.append(f"tracking_id={record.tracking_id}")
+                if hasattr(record, "user_message"):
+                    extras.append(f"user_message={record.user_message}")
+                
+                # Also check for any other extra fields that were added
+                # Skip standard LogRecord attributes
+                standard_attrs = set(dir(logging.LogRecord('', 0, '', 0, '', (), None)))
+                for key in dir(record):
+                    if not key.startswith('_') and key not in standard_attrs:
+                        value = getattr(record, key, None)
+                        if key not in ['session_id', 'error', 'error_type', 'tracking_id', 'user_message'] and value is not None:
+                            extras.append(f"{key}={value}")
 
                 if extras:
                     s += " | " + " | ".join(extras)
