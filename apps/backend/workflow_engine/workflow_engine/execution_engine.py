@@ -214,8 +214,6 @@ class WorkflowExecutionEngine:
 
         self.logger.info(f"🔧 Executing node with enhanced tracking: {node_id}")
 
-        # Get node definition
-        self.logger.info(f"📋 Looking up node definition for: {node_id}")
         node_def = self._get_node_by_id(workflow_definition, node_id)
         if not node_def:
             self.logger.error(f"❌ Node {node_id} not found in workflow definition")
@@ -240,7 +238,6 @@ class WorkflowExecutionEngine:
         # Get executor
         node_type = node_def["type"]
         node_subtype = node_def.get("subtype", "")
-        self.logger.info(f"🏭 Creating executor for type: {node_type}, subtype: {node_subtype}")
 
         try:
             executor = self.factory.create_executor(node_type, node_subtype)
@@ -305,6 +302,12 @@ class WorkflowExecutionEngine:
                 "trigger_channel_id": trigger_data.get("channel_id"),
                 "trigger_user_id": trigger_data.get("user_id"),
                 "user_id": user_id,  # Add the actual executing user ID
+                "workflow_connections": workflow_definition.get(
+                    "connections", {}
+                ),  # Add workflow connections
+                "workflow_nodes": workflow_definition.get(
+                    "nodes", []
+                ),  # Add all nodes for memory node detection
             },
         )
 
@@ -957,6 +960,11 @@ class WorkflowExecutionEngine:
 
             connection_types = node_connections.get("connection_types", {})
             for connection_type, connection_array in connection_types.items():
+                # Only consider "main" connections for execution order
+                # Memory connections are for data flow, not execution sequence
+                if connection_type != "main":
+                    continue
+
                 connections_list = connection_array.get("connections", [])
 
                 for connection in connections_list:

@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import requests
-
 from shared.models import NodeType
 from shared.models.node_enums import ActionSubtype
 from shared.node_specs import node_spec_registry
@@ -40,20 +39,39 @@ class ActionNodeExecutor(BaseNodeExecutor):
 
     def validate(self, node: Any) -> List[str]:
         """Validate action node configuration using spec-based validation."""
+        self.logger.info(
+            f"🎨 ACTION: Starting validation for node: {getattr(node, 'id', 'unknown')}"
+        )
+        self.logger.info(f"🎨 ACTION: Node subtype: {getattr(node, 'subtype', 'none')}")
+
         # First use the base class validation which includes spec validation
         errors = super().validate(node)
 
+        if errors:
+            self.logger.warning(f"🎨 ACTION: ⚠️ Base validation found {len(errors)} errors")
+            for error in errors:
+                self.logger.warning(f"🎨 ACTION:   - {error}")
+
         # If spec validation passed, we're done
         if not errors and self.spec:
+            self.logger.info("🎨 ACTION: ✅ Spec-based validation passed")
             return errors
 
         # Fallback to basic validation if spec not available
+        self.logger.info("🎨 ACTION: Using legacy validation")
+
         if not node.subtype:
-            errors.append("Action subtype is required")
+            error_msg = "Action subtype is required"
+            errors.append(error_msg)
+            self.logger.error(f"🎨 ACTION: ❌ {error_msg}")
             return errors
 
         if node.subtype not in self.get_supported_subtypes():
-            errors.append(f"Unsupported action subtype: {node.subtype}")
+            error_msg = f"Unsupported action subtype: {node.subtype}"
+            errors.append(error_msg)
+            self.logger.error(f"🎨 ACTION: ❌ {error_msg}")
+        else:
+            self.logger.info(f"🎨 ACTION: ✅ Subtype {node.subtype} is supported")
 
         return errors
 

@@ -116,18 +116,20 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             subtype = context.node.subtype
 
             # Log detailed context information
-            self.logger.info(f"🧠🔥 MEMORY NODE EXECUTE: Starting with subtype: {subtype}")
             self.logger.info(
-                f"🧠🔥 MEMORY NODE EXECUTE: Workflow ID: {getattr(context, 'workflow_id', 'NONE')}"
+                f"[Memory Node]: 🧠🔥 MEMORY NODE EXECUTE: Starting with subtype: {subtype}"
             )
             self.logger.info(
-                f"🧠🔥 MEMORY NODE EXECUTE: Execution ID: {getattr(context, 'execution_id', 'NONE')}"
+                f"[Memory Node]: 🧠🔥 MEMORY NODE EXECUTE: Workflow ID: {getattr(context, 'workflow_id', 'NONE')}"
             )
             self.logger.info(
-                f"🧠🔥 MEMORY NODE EXECUTE: Node ID: {getattr(context.node, 'id', 'NONE') if hasattr(context, 'node') else 'NO_NODE'}"
+                f"[Memory Node]: 🧠🔥 MEMORY NODE EXECUTE: Execution ID: {getattr(context, 'execution_id', 'NONE')}"
             )
             self.logger.info(
-                f"🧠🔥 MEMORY NODE EXECUTE: Input data keys: {list(context.input_data.keys()) if hasattr(context, 'input_data') and context.input_data else 'NO_INPUT'}"
+                f"[Memory Node]: 🧠🔥 MEMORY NODE EXECUTE: Node ID: {getattr(context.node, 'id', 'NONE') if hasattr(context, 'node') else 'NO_NODE'}"
+            )
+            self.logger.info(
+                f"[Memory Node]: 🧠🔥 MEMORY NODE EXECUTE: Input data keys: {list(context.input_data.keys()) if hasattr(context, 'input_data') and context.input_data else 'NO_INPUT'}"
             )
 
             if subtype == MemorySubtype.CONVERSATION_BUFFER.value:
@@ -184,7 +186,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
         logs.append(f"Vector DB operation: {operation} on collection '{collection_name}'")
         self.logger.info(
-            f"🧠 MEMORY NODE: Vector DB operation '{operation}' on collection '{collection_name}'"
+            f"[Memory Node]: 🧠 MEMORY NODE: Vector DB operation '{operation}' on collection '{collection_name}'"
         )
 
         try:
@@ -205,7 +207,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
                 logs.append(f"Storing vector: {len(text_content)} characters")
                 self.logger.info(
-                    f"🧠 MEMORY NODE: Embedding text content: '{text_content[:100]}...' ({len(text_content)} chars)"
+                    f"[Memory Node]: 🧠 MEMORY NODE: Embedding text content: '{text_content[:100]}...' ({len(text_content)} chars)"
                 )
                 result = self._store_vector_with_embedding(
                     collection_name, text_content, metadata, logs
@@ -225,7 +227,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     raise ValueError("No query text provided for vector search")
 
                 self.logger.info(
-                    f"🧠 MEMORY NODE: Searching for: '{query_text[:100]}...' (top_k={top_k}, threshold={similarity_threshold})"
+                    f"[Memory Node]: 🧠 MEMORY NODE: Searching for: '{query_text[:100]}...' (top_k={top_k}, threshold={similarity_threshold})"
                 )
                 result = self._search_vectors_with_embedding(
                     collection_name, query_text, top_k, similarity_threshold, logs
@@ -261,7 +263,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 output_data["formatted_context"] = memory_context
 
                 self.logger.info(
-                    f"🧠 MEMORY NODE:   📝 Formatted context length: {len(memory_context)} characters"
+                    f"[Memory Node]: 🧠 MEMORY NODE:   📝 Formatted context length: {len(memory_context)} characters"
                 )
 
             return self._create_success_result(
@@ -349,7 +351,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     document_id = f"doc_{len(self._document_store) + 1}"
                 logs.append(f"Storing document '{document_id}' ({len(content)} chars)")
                 self.logger.info(
-                    f"🧠 MEMORY NODE: Storing document '{document_id}' with content length: {len(content)} chars"
+                    f"[Memory Node]: 🧠 MEMORY NODE: Storing document '{document_id}' with content length: {len(content)} chars"
                 )
                 result = self._store_document_with_indexing(
                     document_id, title, content, metadata, logs
@@ -390,7 +392,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     raise ValueError("No query provided for document search")
 
                 self.logger.info(
-                    f"🧠 MEMORY NODE: Searching documents for: '{query[:100]}...' (type: {search_type}, max: {max_results})"
+                    f"[Memory Node]: 🧠 MEMORY NODE: Searching documents for: '{query[:100]}...' (type: {search_type}, max: {max_results})"
                 )
                 result = self._search_documents_enhanced(query, max_results, search_type, logs)
 
@@ -418,7 +420,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 output_data["formatted_context"] = memory_context
 
                 self.logger.info(
-                    f"🧠 MEMORY NODE:   📊 {len(result['documents'])} relevant documents found"
+                    f"[Memory Node]: 🧠 MEMORY NODE:   📊 {len(result['documents'])} relevant documents found"
                 )
 
             return self._create_success_result(
@@ -619,7 +621,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         results = similarities[:top_k]
 
         self.logger.info(
-            f"🧠 MEMORY NODE: 📊 Found {len(similarities)} results above threshold {similarity_threshold}"
+            f"[Memory Node]: 🧠 MEMORY NODE: 📊 Found {len(similarities)} results above threshold {similarity_threshold}"
         )
 
         if results:
@@ -665,7 +667,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 }
             )
         self.logger.info(
-            f"🧠 MEMORY NODE: 📋 Listed {len(vectors)} vectors from collection '{collection_name}'"
+            f"[Memory Node]: 🧠 MEMORY NODE: 📋 Listed {len(vectors)} vectors from collection '{collection_name}'"
         )
         return {"vectors": vectors, "count": len(vectors)}
 
@@ -870,7 +872,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         )
 
         self.logger.info(
-            f"🧠 MEMORY NODE: ✅ Updated document '{document_id}' with {len(word_index)} unique words indexed"
+            f"[Memory Node]: 🧠 MEMORY NODE: ✅ Updated document '{document_id}' with {len(word_index)} unique words indexed"
         )
 
         return {
@@ -900,7 +902,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         results = []
 
         self.logger.info(
-            f"🧠 MEMORY NODE: Searching {len(self._document_store)} documents with query words: {list(query_words)}"
+            f"[Memory Node]: 🧠 MEMORY NODE: Searching {len(self._document_store)} documents with query words: {list(query_words)}"
         )
 
         for doc_id, doc in self._document_store.items():
@@ -1353,7 +1355,15 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             for record in result.data:
                 memory_data = record["memory_value"]
                 messages = memory_data.get("messages", [])
-                all_messages.extend(messages)
+                # Filter out empty messages when loading from database
+                valid_messages = [
+                    msg
+                    for msg in messages
+                    if isinstance(msg, dict)
+                    and msg.get("content", "")
+                    and len(msg.get("content", "").strip()) > 0
+                ]
+                all_messages.extend(valid_messages)
 
             # Sort by timestamp and limit to recent messages
             all_messages.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
@@ -1371,12 +1381,12 @@ class MemoryNodeExecutor(BaseNodeExecutor):
     ) -> NodeExecutionResult:
         """Execute conversation buffer memory operations."""
         logs.append("Starting conversation buffer memory operation")
-        self.logger.info("🧠🔥 MEMORY NODE: Starting CONVERSATION_BUFFER execution")
+        self.logger.info("[Memory Node]: 🧠🔥 MEMORY NODE: Starting CONVERSATION_BUFFER execution")
         self.logger.info(
-            f"🧠🔥 MEMORY NODE: Execution ID: {getattr(context, 'execution_id', 'unknown')}"
+            f"[Memory Node]: 🧠🔥 MEMORY NODE: Execution ID: {getattr(context, 'execution_id', 'unknown')}"
         )
         self.logger.info(
-            f"🧠🔥 MEMORY NODE: Node ID: {getattr(context.node, 'id', 'unknown') if hasattr(context, 'node') else 'unknown'}"
+            f"[Memory Node]: 🧠🔥 MEMORY NODE: Node ID: {getattr(context.node, 'id', 'unknown') if hasattr(context, 'node') else 'unknown'}"
         )
 
         # Get parameters from the node specification
@@ -1406,7 +1416,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             f"Memory configuration: window_size={window_size}, window_type={window_type}, backend={storage_backend}"
         )
         self.logger.info(
-            f"🧠 MEMORY NODE: Configuration - window_size: {window_size}, window_type: {window_type}, backend: {storage_backend}"
+            f"[Memory Node]: 🧠 MEMORY NODE: Configuration - window_size: {window_size}, window_type: {window_type}, backend: {storage_backend}"
         )
 
         # Get workflow and node information for database operations
@@ -1429,7 +1439,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 f"Loaded existing conversation history ({len(existing_buffer.get('messages', []))} messages)"
             )
             self.logger.info(
-                f"🧠 MEMORY NODE: Loaded existing buffer from database with key: {buffer_key}"
+                f"[Memory Node]: 🧠 MEMORY NODE: Loaded existing buffer from database with key: {buffer_key}"
             )
         else:
             # Also try to load conversation history from other executions of this workflow
@@ -1443,10 +1453,35 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     f"Initialized conversation buffer with {len(workflow_history)} historical messages"
                 )
                 self.logger.info(
-                    f"🧠 MEMORY NODE: Initialized with {len(workflow_history)} historical messages"
+                    f"[Memory Node]: 🧠 MEMORY NODE: Initialized with {len(workflow_history)} historical messages"
                 )
             else:
                 logs.append("Initialized empty conversation buffer")
+
+        # Check if this is a special action to load conversation history for AI agent
+        if (
+            hasattr(context, "input_data")
+            and context.input_data
+            and context.input_data.get("action") == "load_conversation_history"
+        ):
+            self.logger.info(
+                "[Memory Node]: 🧠 MEMORY NODE: Loading conversation history for AI agent"
+            )
+
+            # Return existing conversation history as formatted context
+            messages = buffer.get("messages", [])
+            conversation_history = self._format_conversation_history_for_ai(messages, logs)
+
+            output_data = {
+                "conversation_history": conversation_history,
+                "message_count": len(messages),
+                "memory_type": MemorySubtype.CONVERSATION_BUFFER.value,
+                "executed_at": datetime.now().isoformat(),
+            }
+
+            return self._create_success_result(
+                output_data=output_data, execution_time=time.time() - start_time, logs=logs
+            )
 
         # Log input data analysis
         if hasattr(context, "input_data") and context.input_data:
@@ -1454,43 +1489,130 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 for key, value in context.input_data.items():
                     if isinstance(value, str) and len(value) > 100:
                         self.logger.info(
-                            f"🧠 MEMORY NODE: Input '{key}': {value[:100]}... ({len(value)} chars)"
+                            f"[Memory Node]: 🧠 MEMORY NODE: Input '{key}': {value[:100]}... ({len(value)} chars)"
                         )
                     else:
-                        self.logger.info(f"🧠 MEMORY NODE: Input '{key}': {value}")
+                        self.logger.info(f"[Memory Node]: 🧠 MEMORY NODE: Input '{key}': {value}")
         else:
-            self.logger.info("🧠 MEMORY NODE: No input data provided")
+            self.logger.info("[Memory Node]: 🧠 MEMORY NODE: No input data provided")
 
         try:
-            # Handle incoming message data
+            # Handle incoming message data with robust extraction
+            message_content = ""
+            message_role = "user"
+            message_metadata = {}
+            message_timestamp = datetime.now().isoformat()
+
             if context.input_data:
-                # Store new message
-                message = {
-                    "role": context.input_data.get("role", "user"),
-                    "content": context.input_data.get("content", ""),
-                    "timestamp": context.input_data.get("timestamp", datetime.now().isoformat()),
-                    "metadata": context.input_data.get("metadata", {}),
-                }
+                # Try multiple extraction strategies to get the actual message content
 
-                # Add message to buffer
-                buffer["messages"].append(message)
-                logs.append(f"Added new {message['role']} message to conversation buffer")
+                # Strategy 1: Direct content field
+                message_content = context.input_data.get("content", "")
+
+                # Strategy 2: Look in text field (common for text-based nodes)
+                if not message_content:
+                    message_content = context.input_data.get("text", "")
+
+                # Strategy 3: Look in response field (common for AI agent outputs)
+                if not message_content:
+                    message_content = context.input_data.get("response", "")
+
+                # Strategy 4: Look in message field
+                if not message_content:
+                    message_content = context.input_data.get("message", "")
+
+                # Strategy 5: If input_data has nested content structures, try to extract from them
+                if not message_content and isinstance(context.input_data, dict):
+                    for key, value in context.input_data.items():
+                        if isinstance(value, dict):
+                            nested_content = (
+                                value.get("content", "")
+                                or value.get("text", "")
+                                or value.get("response", "")
+                            )
+                            if nested_content:
+                                message_content = nested_content
+                                break
+                        elif (
+                            isinstance(value, str)
+                            and len(value.strip()) > 0
+                            and key
+                            not in ["timestamp", "format_type", "source_node", "role", "metadata"]
+                        ):
+                            # Use any non-empty string value that isn't obviously metadata
+                            message_content = value
+                            break
+
+                # Extract other message fields with intelligent role detection
+                # Need to extract from nested structure like content extraction
+                role_data = context.input_data
+                # Check if data is nested under a key (like 'memory')
+                if isinstance(context.input_data, dict):
+                    for key, value in context.input_data.items():
+                        if isinstance(value, dict) and any(
+                            field in value for field in ["source_node", "metadata", "provider"]
+                        ):
+                            role_data = value
+                            break
+
+                message_role = self._detect_message_role(role_data)
+
+                # Log role detection for debugging
                 self.logger.info(
-                    f"🧠 MEMORY NODE: Added message to buffer - role: {message['role']}, content: '{message['content'][:100]}{'...' if len(message['content']) > 100 else ''}'"
+                    f"[Memory Node]: 🧠 MEMORY NODE: Role detection - source_node: '{role_data.get('source_node', 'none')}', detected role: '{message_role}'"
                 )
+                message_timestamp = role_data.get("timestamp", datetime.now().isoformat())
+                message_metadata = role_data.get("metadata", {})
 
-                # Apply windowing policy
-                if window_type == "turns" and len(buffer["messages"]) > window_size:
-                    old_count = len(buffer["messages"])
-                    # Remove oldest messages beyond window size
-                    buffer["messages"] = buffer["messages"][-window_size:]
-
-                    logs.append(
-                        f"Applied windowing: trimmed conversation from {old_count} to {len(buffer['messages'])} messages"
+                # Log extraction details for debugging
+                self.logger.info(
+                    f"[Memory Node]: 🧠 MEMORY NODE: Content extraction - Found content: '{message_content[:100]}{'...' if len(message_content) > 100 else ''}' ({len(message_content)} chars)"
+                )
+                if not message_content:
+                    self.logger.warning(
+                        f"[Memory Node]: 🧠 MEMORY NODE: ⚠️ No content found in input_data keys: {list(context.input_data.keys())}"
                     )
+                    # Log the full input data for debugging (truncated)
+                    input_data_str = str(context.input_data)[:500]
+                    self.logger.warning(
+                        f"[Memory Node]: 🧠 MEMORY NODE: Input data sample: {input_data_str}..."
+                    )
+
+            if context.input_data:
+                # Only store messages with meaningful content
+                if message_content and len(message_content.strip()) > 0:
+                    # Store new message
+                    message = {
+                        "role": message_role,
+                        "content": message_content,
+                        "timestamp": message_timestamp,
+                        "metadata": message_metadata,
+                    }
+
+                    # Add message to buffer
+                    buffer["messages"].append(message)
+                    logs.append(f"Added new {message['role']} message to conversation buffer")
                     self.logger.info(
-                        f"🧠 MEMORY NODE: Trimmed buffer from {old_count} to {len(buffer['messages'])} messages (window_size: {window_size})"
+                        f"[Memory Node]: 🧠 MEMORY NODE: Added message to buffer - role: {message['role']}, content: '{message['content'][:100]}{'...' if len(message['content']) > 100 else ''}'"
                     )
+
+                    # Apply windowing policy after adding message
+                    if window_type == "turns" and len(buffer["messages"]) > window_size:
+                        old_count = len(buffer["messages"])
+                        # Remove oldest messages beyond window size
+                        buffer["messages"] = buffer["messages"][-window_size:]
+
+                        logs.append(
+                            f"Applied windowing: trimmed conversation from {old_count} to {len(buffer['messages'])} messages"
+                        )
+                        self.logger.info(
+                            f"[Memory Node]: 🧠 MEMORY NODE: Trimmed buffer from {old_count} to {len(buffer['messages'])} messages (window_size: {window_size})"
+                        )
+                else:
+                    self.logger.warning(
+                        f"[Memory Node]: 🧠 MEMORY NODE: ⚠️ Skipping empty message - no meaningful content found"
+                    )
+                    logs.append("Skipped storing empty message - no meaningful content")
 
             # Filter messages if needed
             messages_to_return = buffer["messages"]
@@ -1503,7 +1625,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 if original_count != filtered_count:
                     logs.append(f"Filtered out {original_count - filtered_count} system messages")
                     self.logger.info(
-                        f"🧠 MEMORY NODE: Filtered out {original_count - filtered_count} system messages"
+                        f"[Memory Node]: 🧠 MEMORY NODE: Filtered out {original_count - filtered_count} system messages"
                     )
 
             # Calculate total tokens (mock calculation)
@@ -1517,7 +1639,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     else msg.get("content", "")
                 )
                 self.logger.info(
-                    f"🧠 MEMORY NODE:   Message {i+1}: {msg.get('role', 'unknown')} - '{content_preview}'"
+                    f"[Memory Node]: 🧠 MEMORY NODE:   Message {i+1}: {msg.get('role', 'unknown')} - '{content_preview}'"
                 )
 
             # Prepare context output
@@ -1541,11 +1663,12 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             ] = memory_context_for_llm  # Also provide as memory_context for AI agent
 
             self.logger.info(
-                f"🧠 MEMORY NODE:   📝 Formatted context length: {len(memory_context_for_llm)} characters"
+                f"[Memory Node]: 🧠 MEMORY NODE:   📝 Formatted context length: {len(memory_context_for_llm)} characters"
             )
 
             # Save updated buffer to database for persistence across executions
-            if context.input_data:  # Only save if we actually processed new data
+            # Only save if we actually processed new data AND have meaningful content
+            if context.input_data and message_content and len(message_content.strip()) > 0:
                 self._save_to_database(workflow_id, execution_id, buffer_key, buffer, node_id, logs)
                 # Also update in-memory store for backwards compatibility
                 self._key_value_store[buffer_key] = buffer
@@ -1555,9 +1678,11 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 f"Conversation buffer complete: {len(messages_to_return)} messages, ~{total_tokens} tokens"
             )
             self.logger.info(
-                f"🧠🔥 MEMORY NODE: ✅ CONVERSATION_BUFFER SUCCESS - Generated {len(messages_to_return)} messages, ~{total_tokens} tokens"
+                f"[Memory Node]: 🧠🔥 MEMORY NODE: ✅ CONVERSATION_BUFFER SUCCESS - Generated {len(messages_to_return)} messages, ~{total_tokens} tokens"
             )
-            self.logger.info(f"🧠🔥 MEMORY NODE: ✅ Output data keys: {list(context_data.keys())}")
+            self.logger.info(
+                f"[Memory Node]: 🧠🔥 MEMORY NODE: ✅ Output data keys: {list(context_data.keys())}"
+            )
 
             return self._create_success_result(
                 output_data=context_data, execution_time=time.time() - start_time, logs=logs
@@ -1604,9 +1729,94 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         formatted_context = "\n".join(formatted_lines)
 
         self.logger.info(
-            f"🧠 MEMORY NODE: Formatted {len(messages)} messages into {len(formatted_context)} character context"
+            f"[Memory Node]: 🧠 MEMORY NODE: Formatted {len(messages)} messages into {len(formatted_context)} character context"
         )
         return formatted_context
+
+    def _detect_message_role(self, input_data: Dict[str, Any]) -> str:
+        """Intelligently detect the message role based on input data context."""
+
+        # Strategy 1: Check if explicitly provided
+        if "role" in input_data and input_data["role"] in ["user", "assistant", "system"]:
+            return input_data["role"]
+
+        # Strategy 2: Check source node type to determine role
+        source_node = input_data.get("source_node", "")
+        if source_node:
+            # AI agent responses should be marked as assistant
+            if any(
+                ai_indicator in source_node.lower()
+                for ai_indicator in [
+                    "ai_agent",
+                    "openai",
+                    "anthropic",
+                    "claude",
+                    "gpt",
+                    "llm",
+                    "assistant",
+                ]
+            ):
+                return "assistant"
+
+            # Trigger nodes usually represent user input
+            if "trigger" in source_node.lower():
+                return "user"
+
+        # Strategy 3: Check metadata for AI provider information
+        metadata = input_data.get("metadata", {})
+        if isinstance(metadata, dict):
+            # Check for AI provider indicators
+            if any(
+                key in metadata for key in ["provider", "model", "model_version", "system_prompt"]
+            ):
+                provider = metadata.get("provider", "").lower()
+                model = metadata.get("model", "").lower()
+                if any(
+                    ai_provider in f"{provider} {model}"
+                    for ai_provider in ["openai", "anthropic", "gpt", "claude", "llama", "gemini"]
+                ):
+                    return "assistant"
+
+        # No content analysis - use only reliable metadata-based detection
+
+        # Default fallback - prefer user for ambiguous cases
+        return "user"
+
+    def _format_conversation_history_for_ai(
+        self, messages: List[Dict[str, Any]], logs: List[str]
+    ) -> str:
+        """Format conversation history for AI agent consumption."""
+        if not messages:
+            return ""
+
+        self.logger.info(
+            f"[Memory Node]: 🧠 MEMORY NODE: Formatting {len(messages)} messages for AI consumption"
+        )
+
+        formatted_conversations = []
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            timestamp = msg.get("timestamp", "")
+
+            # Skip empty messages
+            if not content or len(content.strip()) == 0:
+                continue
+
+            # Format with clear role indicators
+            if role == "user":
+                formatted_conversations.append(f"User: {content}")
+            elif role == "assistant":
+                formatted_conversations.append(f"Assistant: {content}")
+            else:
+                formatted_conversations.append(f"{role.title()}: {content}")
+
+        conversation_text = "\n\n".join(formatted_conversations)
+        self.logger.info(
+            f"[Memory Node]: 🧠 MEMORY NODE: Formatted conversation history ({len(conversation_text)} chars)"
+        )
+
+        return conversation_text
 
     # Supporting methods for advanced memory types
     def _generate_conversation_summary(
@@ -1677,6 +1887,260 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
         context = f"Conversation Summary ({message_count} messages):\n{summary}"
         return context
+
+    def _load_conversation_from_supabase(self, session_id: str, user_id: str) -> Dict[str, Any]:
+        """Load conversation data from Supabase tables."""
+        try:
+            supabase = self._get_supabase_client()
+            if not supabase:
+                self.logger.warning(
+                    "[Memory Node]: 🧠 ConvSummary: No Supabase client, using empty data"
+                )
+                return self._get_empty_conversation_data()
+
+            # Load conversation summary
+            summary_response = (
+                supabase.table("conversation_summaries")
+                .select("*")
+                .eq("session_id", session_id)
+                .eq("user_id", user_id)
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+
+            # Load conversation buffer (recent messages)
+            buffer_response = (
+                supabase.table("conversation_buffers")
+                .select("*")
+                .eq("session_id", session_id)
+                .eq("user_id", user_id)
+                .order("timestamp", desc=True)
+                .limit(20)
+                .execute()
+            )
+
+            # Get total message count for the session
+            count_response = (
+                supabase.table("conversation_buffers")
+                .select("id", count="exact")
+                .eq("session_id", session_id)
+                .eq("user_id", user_id)
+                .execute()
+            )
+            total_message_count = count_response.count or 0
+
+            # Process summary
+            summary = ""
+            message_count = total_message_count  # Use actual total count from database
+            total_chars = 0
+            last_updated = datetime.now().isoformat()
+
+            if summary_response.data:
+                latest_summary = summary_response.data[0]
+                summary = latest_summary.get("summary", "")
+                # Use database count, but update if summary has a higher count
+                message_count = max(total_message_count, latest_summary.get("message_count", 0))
+                total_chars = len(summary)
+                last_updated = latest_summary.get("updated_at", last_updated)
+                self.logger.info(
+                    f"[Memory Node]: 🧠 ConvSummary: Loaded summary ({len(summary)} chars)"
+                )
+
+            self.logger.info(
+                f"[Memory Node]: 🧠 ConvSummary: Total messages in session: {message_count}"
+            )
+
+            # Process buffer (reverse order for chronological)
+            buffer = []
+            if buffer_response.data:
+                for msg in reversed(buffer_response.data):  # Reverse to get chronological order
+                    buffer.append(
+                        {
+                            "role": msg["role"],
+                            "content": msg["content"],
+                            "timestamp": msg["timestamp"],
+                        }
+                    )
+                self.logger.info(
+                    f"[Memory Node]: 🧠 ConvSummary: Loaded {len(buffer)} buffer messages"
+                )
+
+            return {
+                "summary": summary,
+                "buffer": buffer,
+                "message_count": message_count,
+                "last_updated": last_updated,
+                "total_chars": total_chars,
+            }
+
+        except Exception as e:
+            self.logger.error(f"[Memory Node]: 🧠 ConvSummary: Error loading from Supabase: {e}")
+            return self._get_empty_conversation_data()
+
+    def _get_empty_conversation_data(self) -> Dict[str, Any]:
+        """Return empty conversation data structure."""
+        return {
+            "summary": "",
+            "buffer": [],
+            "message_count": 0,
+            "last_updated": datetime.now().isoformat(),
+            "total_chars": 0,
+        }
+
+    def _save_new_messages_to_supabase(
+        self, session_id: str, user_id: str, new_messages: List[Dict[str, Any]]
+    ) -> None:
+        """Save only new messages to Supabase conversation_buffers table."""
+        try:
+            supabase = self._get_supabase_client()
+            if not supabase:
+                self.logger.warning("[Memory Node]: 🧠 ConvSummary: No Supabase client, cannot save")
+                return
+
+            if not new_messages:
+                return
+
+            # Get current max message_index for this session to append new messages
+            max_index_response = (
+                supabase.table("conversation_buffers")
+                .select("message_index")
+                .eq("session_id", session_id)
+                .eq("user_id", user_id)
+                .order("message_index", desc=True)
+                .limit(1)
+                .execute()
+            )
+
+            next_index = 0
+            if max_index_response.data:
+                next_index = max_index_response.data[0]["message_index"] + 1
+
+            # Insert only new messages
+            buffer_records = []
+            for i, msg in enumerate(new_messages):
+                buffer_records.append(
+                    {
+                        "session_id": session_id,
+                        "user_id": user_id,
+                        "message_index": next_index + i,
+                        "role": msg["role"],
+                        "content": msg["content"],
+                        "timestamp": msg.get("timestamp", datetime.now().isoformat()),
+                        "tokens_count": len(msg["content"].split()),  # Rough token estimate
+                    }
+                )
+
+            if buffer_records:
+                supabase.table("conversation_buffers").insert(buffer_records).execute()
+                self.logger.info(
+                    f"[Memory Node]: 🧠 ConvSummary: Saved {len(buffer_records)} new messages to Supabase"
+                )
+
+        except Exception as e:
+            self.logger.error(
+                f"[Memory Node]: 🧠 ConvSummary: Error saving new messages to Supabase: {e}"
+            )
+
+    def _save_conversation_to_supabase(
+        self,
+        session_id: str,
+        user_id: str,
+        conv_data: Dict[str, Any],
+        summarization_model: str = "gpt-4o-mini",
+    ) -> None:
+        """Save conversation summary to Supabase tables (messages are saved separately)."""
+        try:
+            supabase = self._get_supabase_client()
+            if not supabase:
+                self.logger.warning("[Memory Node]: 🧠 ConvSummary: No Supabase client, cannot save")
+                return
+
+            # Save conversation summary if it exists
+            summary = conv_data.get("summary", "")
+            if summary:
+                summary_record = {
+                    "session_id": session_id,
+                    "user_id": user_id,
+                    "summary": summary,
+                    "summary_type": "progressive",
+                    "message_count": conv_data.get("message_count", 0),
+                    "token_count": len(summary.split()),  # Rough token estimate
+                    "model_used": summarization_model,
+                    "confidence_score": 0.8,  # Default confidence
+                }
+
+                # Use upsert to handle updates
+                supabase.table("conversation_summaries").upsert(
+                    summary_record, on_conflict="session_id,created_at"
+                ).execute()
+                self.logger.info(
+                    f"[Memory Node]: 🧠 ConvSummary: Saved summary ({len(summary)} chars) to Supabase"
+                )
+
+        except Exception as e:
+            self.logger.error(f"[Memory Node]: 🧠 ConvSummary: Error saving to Supabase: {e}")
+
+    def _format_conversation_summary_context_with_buffer(
+        self, conv_data: Dict[str, Any], buffer_window_size: int, logs: List[str]
+    ) -> str:
+        """Format conversation summary AND recent messages buffer for LLM consumption."""
+        parts = []
+
+        # Include summary if available
+        summary = conv_data.get("summary", "")
+        if summary:
+            message_count = conv_data.get("message_count", 0)
+            parts.append(f"## Conversation Summary ({message_count} total messages)")
+            parts.append(summary)
+            parts.append("")  # Empty line separator
+
+        # Always include recent messages from buffer
+        buffer = conv_data.get("buffer", [])
+        if buffer:
+            parts.append(f"## Recent Messages (Last {len(buffer)} messages)")
+            for msg in buffer[-buffer_window_size:]:  # Ensure we don't exceed window size
+                role = msg.get("role", "unknown").title()
+                content = msg.get("content", "")
+                if content:
+                    parts.append(f"{role}: {content}")
+
+            if not summary:
+                parts.insert(
+                    -len(buffer) - 1,
+                    "No conversation summary available yet, showing recent messages:",
+                )
+
+        # If we have neither summary nor buffer, return empty state message
+        if not parts:
+            return "No conversation history available yet."
+
+        formatted_context = "\n".join(parts)
+
+        # Log detailed context being formatted for LLM
+        self.logger.info(
+            f"[Memory Node]: 🧠 ConvSummary: 🔄 Formatted context -> {len(formatted_context)} chars total"
+        )
+
+        # Show breakdown of what's included
+        if summary:
+            self.logger.info(
+                f"[Memory Node]: 🧠 ConvSummary: 💡 Including summary: {len(summary)} chars"
+            )
+
+        if buffer:
+            recent_messages = buffer[-buffer_window_size:]
+            self.logger.info(
+                f"[Memory Node]: 🧠 ConvSummary: 💬 Including {len(recent_messages)} recent messages"
+            )
+
+        # Show a preview of what's going to the LLM
+        context_preview = (
+            formatted_context[:200] + "..." if len(formatted_context) > 200 else formatted_context
+        )
+        self.logger.info(f"[Memory Node]: 🧠 ConvSummary: 🎯 LLM context preview: {context_preview}")
+
+        return formatted_context
 
     def _extract_entities_simple(self, text: str, logs: List[str]) -> List[Dict[str, Any]]:
         """Simple entity extraction using patterns."""
@@ -1784,111 +2248,268 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
         formatted_context = "\n".join(context_parts)
         self.logger.info(
-            f"🧠 MEMORY NODE: Formatted knowledge base context ({len(formatted_context)} chars)"
+            f"[Memory Node]: 🧠 MEMORY NODE: Formatted knowledge base context ({len(formatted_context)} chars)"
         )
         return formatted_context
 
     def _execute_conversation_summary(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
-        """Execute conversation summary memory operations."""
+        """Execute conversation summary memory operations with proper buffer + summary support."""
 
-        # Get parameters with fallbacks
+        # Get parameters from node specification
         try:
-            max_length = self.get_parameter_with_spec(context, "max_length")
+            trigger_threshold = self.get_parameter_with_spec(context, "trigger_threshold")
         except (KeyError, AttributeError):
-            max_length = 500
-
-        try:
-            summary_strategy = self.get_parameter_with_spec(context, "summary_strategy")
-        except (KeyError, AttributeError):
-            summary_strategy = "extractive"  # extractive, abstractive
+            trigger_threshold = 8
 
         try:
-            storage_backend = self.get_parameter_with_spec(context, "storage_backend")
+            buffer_window_size = self.get_parameter_with_spec(context, "buffer_window_size")
         except (KeyError, AttributeError):
-            storage_backend = "memory"
+            buffer_window_size = 6
 
-            self.logger.info(
-                f"🧠 MEMORY NODE: Summary config - max_length: {max_length}, strategy: {summary_strategy}, backend: {storage_backend}"
+        try:
+            max_total_tokens = self.get_parameter_with_spec(context, "max_total_tokens")
+        except (KeyError, AttributeError):
+            max_total_tokens = 3000
+
+        try:
+            summary_style = self.get_parameter_with_spec(context, "summary_style")
+        except (KeyError, AttributeError):
+            summary_style = "progressive"
+
+        try:
+            summarization_model = self.get_parameter_with_spec(context, "summarization_model")
+        except (KeyError, AttributeError):
+            summarization_model = "gpt-4o-mini"
+
+        # Use workflow_id and user_id as session_id for persistent storage
+        session_id = (
+            f"workflow_{context.workflow_id}"
+            if context.workflow_id
+            else f"execution_{context.execution_id}"
+        )
+        user_id = context.metadata.get("user_id", "system")
+
+        self.logger.info(
+            f"[Memory Node]: 🧠 ConvSummary: Using session_id: {session_id}, user_id: {user_id}"
+        )
+        self.logger.info(
+            f"[Memory Node]: 🧠 ConvSummary: Config - threshold:{trigger_threshold}, buffer:{buffer_window_size}, model:{summarization_model}"
+        )
+
+        # Load conversation data from Supabase instead of in-memory storage
+        conv_data = self._load_conversation_from_supabase(session_id, user_id)
+
+        # Log what input data we received to debug different call patterns
+        input_keys = list(context.input_data.keys()) if context.input_data else []
+        self.logger.info(f"[Memory Node]: 🧠 ConvSummary: Input keys: {input_keys}")
+
+        try:
+            # Handle new conversation data (storing to conversation)
+            conversation_data_provided = False
+            if context.input_data:
+                # Pattern 1: Direct user_message + ai_response (from AI Agent execution)
+                if "user_message" in context.input_data and "ai_response" in context.input_data:
+                    conversation_data_provided = True
+                    user_msg = context.input_data["user_message"]
+                    ai_response = context.input_data["ai_response"]
+
+                    # Create new message objects
+                    new_messages = [
+                        {
+                            "role": "user",
+                            "content": user_msg,
+                            "timestamp": datetime.now().isoformat(),
+                        },
+                        {
+                            "role": "assistant",
+                            "content": ai_response,
+                            "timestamp": datetime.now().isoformat(),
+                        },
+                    ]
+
+                    # Save new messages to Supabase immediately
+                    self._save_new_messages_to_supabase(session_id, user_id, new_messages)
+
+                    # Add to buffer and update counts
+                    conv_data["buffer"].extend(new_messages)
+                    conv_data["message_count"] += 2
+
+                    # Log detailed content being stored
+                    user_preview = user_msg[:80] + "..." if len(user_msg) > 80 else user_msg
+                    ai_preview = ai_response[:80] + "..." if len(ai_response) > 80 else ai_response
+
+                    self.logger.info(
+                        f"[Memory Node]: 🧠 ConvSummary: Added exchange -> buffer:{len(conv_data['buffer'])}, total:{conv_data['message_count']}"
+                    )
+                    self.logger.info(f"[Memory Node]: 🧠 ConvSummary: 📥 User: {user_preview}")
+                    self.logger.info(f"[Memory Node]: 🧠 ConvSummary: 🤖 AI: {ai_preview}")
+
+                # Pattern 2: Messages array format
+                elif context.input_data.get("messages"):
+                    conversation_data_provided = True
+                    # Handle messages array format
+                    new_messages = context.input_data["messages"]
+                    for msg in new_messages:
+                        conv_data["buffer"].append(
+                            {
+                                "role": msg.get("role", "user"),
+                                "content": msg.get("content", ""),
+                                "timestamp": msg.get("timestamp", datetime.now().isoformat()),
+                            }
+                        )
+                    conv_data["message_count"] += len(new_messages)
+
+                    self.logger.info(
+                        f"[Memory Node]: 🧠 ConvSummary: Added {len(new_messages)} msgs -> buffer:{len(conv_data['buffer'])}, total:{conv_data['message_count']}"
+                    )
+
+                # Pattern 3: Trigger/content data (extract user message from content)
+                elif "content" in context.input_data and "trigger_type" in context.input_data.get(
+                    "metadata", {}
+                ):
+                    conversation_data_provided = True
+                    content = context.input_data["content"]
+                    trigger_type = context.input_data["metadata"].get("trigger_type", "unknown")
+
+                    # Clean user message based on trigger type
+                    user_msg = content
+                    if trigger_type == "slack" and "<@" in content:
+                        # Remove Slack mention formatting to get clean user message
+                        import re
+
+                        user_msg = re.sub(r"<@[^>]+>", "", content).strip()
+
+                    # Store as a user message (no AI response yet)
+                    new_messages = [
+                        {
+                            "role": "user",
+                            "content": user_msg,
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                    ]
+
+                    # Save new messages to Supabase immediately
+                    self._save_new_messages_to_supabase(session_id, user_id, new_messages)
+
+                    # Add to buffer and update counts
+                    conv_data["buffer"].extend(new_messages)
+                    conv_data["message_count"] += 1
+
+                    self.logger.info(
+                        f"[Memory Node]: 🧠 ConvSummary: Added {trigger_type} trigger msg -> buffer:{len(conv_data['buffer'])}, total:{conv_data['message_count']}"
+                    )
+                    self.logger.info(
+                        f"[Memory Node]: 🧠 ConvSummary: 📥 User (from {trigger_type}): {user_msg}"
+                    )
+
+                # Pattern 4: Action-based call (e.g., memory loading) - no conversation data
+                elif context.input_data.get("action") or context.input_data.get("memory"):
+                    self.logger.info(
+                        f"[Memory Node]: 🧠 ConvSummary: Action/memory call - retrieving existing memory"
+                    )
+                    # No new conversation data to store, just return existing memory
+
+                # Pattern 4: Any other input patterns - log for debugging but don't fail
+                else:
+                    self.logger.info(
+                        f"[Memory Node]: 🧠 ConvSummary: No recognized conversation pattern in input - returning current memory state"
+                    )
+
+                # Only do buffer maintenance and summarization if we added new conversation data
+                if conversation_data_provided:
+                    # Maintain buffer window size
+                    if len(conv_data["buffer"]) > buffer_window_size:
+                        # Remove older messages beyond buffer size
+                        removed_count = len(conv_data["buffer"]) - buffer_window_size
+                        conv_data["buffer"] = conv_data["buffer"][-buffer_window_size:]
+                        self.logger.info(
+                            f"[Memory Node]: 🧠 ConvSummary: Trimmed {removed_count} old msgs -> buffer:{len(conv_data['buffer'])}"
+                        )
+
+                    # Check if we should generate a summary
+                    if conv_data["message_count"] >= trigger_threshold:
+                        self.logger.info(
+                            f"[Memory Node]: 🧠 ConvSummary: ⚡ SUMMARIZING at {datetime.now().strftime('%H:%M:%S')} - {conv_data['message_count']} msgs >= {trigger_threshold}"
+                        )
+
+                        # Generate summary from all conversation history
+                        all_messages = conv_data["buffer"]
+                        if all_messages:
+                            conversation_text = "\n".join(
+                                [f"{msg['role']}: {msg['content']}" for msg in all_messages]
+                            )
+
+                            # Generate new summary using the improved summary function
+                            new_summary = self._generate_conversation_summary(
+                                conversation_text, max_total_tokens // 2, summary_style, logs
+                            )
+                            conv_data["summary"] = new_summary
+                            conv_data["total_chars"] = len(new_summary)
+
+                            # Log summary preview for debugging
+                            summary_preview = (
+                                new_summary[:100] + "..." if len(new_summary) > 100 else new_summary
+                            )
+                            self.logger.info(
+                                f"[Memory Node]: 🧠 ConvSummary: ✅ Summary generated ({len(new_summary)} chars): {summary_preview}"
+                            )
+
+                    conv_data["last_updated"] = datetime.now().isoformat()
+
+                    # Save to Supabase after adding new conversation data
+                    self._save_conversation_to_supabase(
+                        session_id, user_id, conv_data, summarization_model
+                    )
+
+            # Format context for LLM (include both summary AND buffer)
+            memory_context = self._format_conversation_summary_context_with_buffer(
+                conv_data, buffer_window_size, logs
             )
 
-        # Initialize conversation summary storage
-        summary_key = f"conversation_summary_{context.execution_id or 'default'}"
-        if summary_key not in self._key_value_store:
-            self._key_value_store[summary_key] = {
-                "summary": "",
-                "message_count": 0,
-                "last_updated": datetime.now().isoformat(),
-                "total_chars": 0,
-            }
-
-        summary_data = self._key_value_store[summary_key]
-
-        try:
-            # Handle new conversation data
-            if context.input_data:
-                new_messages = context.input_data.get("messages", [])
-                new_text = context.input_data.get("text", "") or context.input_data.get(
-                    "content", ""
-                )
-
-                if new_messages:
-                    self.logger.info(
-                        f"🧠 MEMORY NODE: Processing {len(new_messages)} new messages for summary"
-                    )
-                    text_to_summarize = "\n".join(
-                        [
-                            f"{msg.get('role', 'user')}: {msg.get('content', '')}"
-                            for msg in new_messages
-                        ]
-                    )
-                elif new_text:
-                    self.logger.info(
-                        f"🧠 MEMORY NODE: Processing new text content ({len(new_text)} chars) for summary"
-                    )
-                    text_to_summarize = new_text
-                else:
-                    text_to_summarize = ""
-
-                if text_to_summarize:
-                    # Combine with existing summary
-                    combined_text = f"{summary_data['summary']}\n\n{text_to_summarize}".strip()
-
-                    if len(combined_text) > max_length * 2:  # Need to compress
-                        self.logger.info(
-                            f"🧠 MEMORY NODE: Content exceeds threshold, generating new summary..."
-                        )
-                        new_summary = self._generate_conversation_summary(
-                            combined_text, max_length, summary_strategy, logs
-                        )
-                        summary_data["summary"] = new_summary
-                        summary_data["message_count"] += len(new_messages) if new_messages else 1
-                        summary_data["last_updated"] = datetime.now().isoformat()
-                        summary_data["total_chars"] = len(new_summary)
-                    else:
-                        # Just append to existing summary
-                        summary_data["summary"] = combined_text
-                        summary_data["message_count"] += len(new_messages) if new_messages else 1
-                        summary_data["last_updated"] = datetime.now().isoformat()
-                        summary_data["total_chars"] = len(combined_text)
-
-            # Format context for LLM
-            memory_context = self._format_conversation_summary_context(summary_data, logs)
-
             context_data = {
-                "summary": summary_data["summary"],
-                "message_count": summary_data["message_count"],
-                "total_chars": summary_data["total_chars"],
-                "last_updated": summary_data["last_updated"],
+                "summary": conv_data["summary"],
+                "buffer": conv_data["buffer"][-buffer_window_size:],  # Recent messages
+                "message_count": conv_data["message_count"],
+                "total_chars": conv_data["total_chars"],
+                "last_updated": conv_data["last_updated"],
                 "memory_type": MemorySubtype.CONVERSATION_SUMMARY.value,
                 "memory_context": memory_context,
                 "formatted_context": memory_context,
             }
 
+            # Log detailed content being returned
+            buffer_recent = conv_data["buffer"][-buffer_window_size:] if conv_data["buffer"] else []
+
+            # Log what type of operation this was
+            operation_type = "STORAGE" if conversation_data_provided else "RETRIEVAL"
             self.logger.info(
-                f"🧠 MEMORY NODE:   📝 Summary length: {summary_data['total_chars']} characters"
+                f"[Memory Node]: 🧠 ConvSummary: 📤 {operation_type} - Returning summary:{len(conv_data['summary'])} chars + buffer:{len(buffer_recent)} msgs"
             )
+
+            # Show what content is being returned
+            if conv_data["summary"]:
+                summary_preview = (
+                    conv_data["summary"][:120] + "..."
+                    if len(conv_data["summary"]) > 120
+                    else conv_data["summary"]
+                )
+                self.logger.info(
+                    f"[Memory Node]: 🧠 ConvSummary: 📋 Summary content: {summary_preview}"
+                )
+
+            if buffer_recent:
+                self.logger.info(f"[Memory Node]: 🧠 ConvSummary: 📜 Recent buffer messages:")
+                for i, msg in enumerate(buffer_recent[-3:]):  # Show last 3 messages
+                    content_preview = (
+                        msg["content"][:60] + "..." if len(msg["content"]) > 60 else msg["content"]
+                    )
+                    self.logger.info(
+                        f"[Memory Node]: 🧠 ConvSummary:   {i+1}. {msg['role']}: {content_preview}"
+                    )
+            else:
+                self.logger.info(f"[Memory Node]: 🧠 ConvSummary: 📜 No recent messages in buffer")
 
             return self._create_success_result(
                 output_data=context_data, execution_time=time.time() - start_time, logs=logs
@@ -1919,7 +2540,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             storage_backend = "memory"
 
         self.logger.info(
-            f"🧠 MEMORY NODE: Entity operation '{operation}' with backend: {storage_backend}"
+            f"[Memory Node]: 🧠 MEMORY NODE: Entity operation '{operation}' with backend: {storage_backend}"
         )
 
         # Initialize entity storage
@@ -1943,7 +2564,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     raise ValueError("No text provided for entity extraction")
 
                 self.logger.info(
-                    f"🧠 MEMORY NODE: Extracting entities from text ({len(text_input)} chars)"
+                    f"[Memory Node]: 🧠 MEMORY NODE: Extracting entities from text ({len(text_input)} chars)"
                 )
                 extracted_entities = self._extract_entities_simple(text_input, logs)
 
@@ -1953,7 +2574,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     if entity_id not in entity_data["entities"]:
                         entity_data["entities"][entity_id] = entity
                         self.logger.info(
-                            f"🧠 MEMORY NODE: Added new entity: {entity['name']} ({entity['type']})"
+                            f"[Memory Node]: 🧠 MEMORY NODE: Added new entity: {entity['name']} ({entity['type']})"
                         )
                     else:
                         # Update existing entity
@@ -1963,7 +2584,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                         )
                         existing["last_seen"] = datetime.now().isoformat()
                         self.logger.info(
-                            f"🧠 MEMORY NODE: Updated entity: {entity['name']} (mentions: {existing['mentions']})"
+                            f"[Memory Node]: 🧠 MEMORY NODE: Updated entity: {entity['name']} (mentions: {existing['mentions']})"
                         )
 
                 entity_data["last_updated"] = datetime.now().isoformat()
@@ -1985,7 +2606,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                         matching_entities.append(entity)
 
                 self.logger.info(
-                    f"🧠 MEMORY NODE: Found {len(matching_entities)} entities matching query"
+                    f"[Memory Node]: 🧠 MEMORY NODE: Found {len(matching_entities)} entities matching query"
                 )
                 result = {
                     "matching_entities": matching_entities,
@@ -2011,7 +2632,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
                 entity_data["relationships"].append(relationship)
                 self.logger.info(
-                    f"🧠 MEMORY NODE: Added relationship: {entity1} --{relation_type}--> {entity2}"
+                    f"[Memory Node]: 🧠 MEMORY NODE: Added relationship: {entity1} --{relation_type}--> {entity2}"
                 )
                 result = {
                     "relationship_added": True,
@@ -2081,7 +2702,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             storage_backend = "memory"
 
             self.logger.info(
-                f"🧠 MEMORY NODE: Knowledge operation '{operation}' with backend: {storage_backend}"
+                f"[Memory Node]: 🧠 MEMORY NODE: Knowledge operation '{operation}' with backend: {storage_backend}"
             )
 
         # Initialize knowledge base storage
@@ -2126,7 +2747,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 kb_data["categories"][category] += 1
 
                 self.logger.info(
-                    f"🧠 MEMORY NODE: Added fact '{fact_text[:50]}...' to category '{category}'"
+                    f"[Memory Node]: 🧠 MEMORY NODE: Added fact '{fact_text[:50]}...' to category '{category}'"
                 )
                 result = {
                     "fact_added": True,
