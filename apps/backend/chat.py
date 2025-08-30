@@ -3,8 +3,10 @@
 Clean Chat Test - Focus on SSE messages, status changes, and assistant responses
 """
 
+import argparse
 import json
 import os
+import sys
 from datetime import datetime
 
 import requests
@@ -88,7 +90,7 @@ class CleanChatTester:
             },
             json={"session_id": self.session_id, "user_message": message},
             stream=True,
-            timeout=120,  # 2 minute timeout for workflow generation
+            timeout=(10, 300),  # (connection timeout, read timeout) - 10s to connect, 5 minutes to read
         ) as response:
             if response.status_code != 200:
                 print(f"{Fore.RED}Request failed: {response.status_code}{Style.RESET_ALL}")
@@ -107,7 +109,8 @@ class CleanChatTester:
             event_count = 0
             assistant_messages = []
 
-            for line in response.iter_lines():
+            # Use iter_lines with a chunk size and handle timeouts more gracefully
+            for line in response.iter_lines(chunk_size=1024, decode_unicode=False):
                 if line and line.startswith(b"data: "):
                     try:
                         data_str = line[6:].decode("utf-8")
@@ -151,6 +154,12 @@ class CleanChatTester:
                             print(
                                 f"\n{Fore.RED}>>> Error: {event_data.get('error', 'Unknown')}{Style.RESET_ALL}"
                             )
+                        
+                        # Handle heartbeat messages to show progress
+                        elif event.get("response_type") == "RESPONSE_TYPE_HEARTBEAT":
+                            print(
+                                f"{Fore.YELLOW}💓 Heartbeat: {event.get('message', 'Processing...')}{Style.RESET_ALL}"
+                            )
 
                     except json.JSONDecodeError as e:
                         print(f"{Fore.RED}JSON parse error: {e}{Style.RESET_ALL}")
@@ -165,7 +174,7 @@ class CleanChatTester:
 
             print(f"\n{Fore.CYAN}Total events: {event_count}{Style.RESET_ALL}")
 
-    def run(self):
+    def run(self, initial_message=None):
         """Run the test"""
         print(f"\n{Fore.CYAN}{'='*80}")
         print("Workflow Chat Test - Clean Output")
@@ -181,19 +190,53 @@ class CleanChatTester:
         if not self.create_session():
             return
 
+        # If initial message provided via command line, send it directly
+        if initial_message:
+            print(f"\n{Fore.YELLOW}Sending message from command line/file...{Style.RESET_ALL}")
+            self.chat(initial_message)
+            return
+
         print(f"\n{Fore.YELLOW}Ready to chat. Type 'exit' to quit.{Style.RESET_ALL}")
+        print(f"{Fore.YELLOW}For multi-line input: End your message with '###' on a new line{Style.RESET_ALL}")
         print(
             f"{Fore.YELLOW}Example: Send a HTTP request to https://google.com every 5 minutes{Style.RESET_ALL}\n"
         )
 
         while True:
             try:
-                user_input = input(f"\n{Fore.CYAN}> {Style.RESET_ALL}")
+                print(f"\n{Fore.CYAN}> {Style.RESET_ALL}", end="")
+                
+                # Check if input is being piped
+                if not sys.stdin.isatty():
+                    # Read all piped input
+                    user_input = sys.stdin.read().strip()
+                else:
+                    # Interactive mode - support multi-line with ### terminator
+                    lines = []
+                    first_line = True
+                    while True:
+                        if not first_line:
+                            print(f"{Fore.CYAN}  {Style.RESET_ALL}", end="")
+                        line = input()
+                        first_line = False
+                        
+                        if line.strip() == "###":
+                            break
+                        lines.append(line)
+                        
+                        # Single line mode - if no ### needed
+                        if len(lines) == 1 and not line.endswith("\\"):
+                            # Check if this looks like a complete single-line message
+                            if "###" not in line:
+                                break
+                    
+                    user_input = "\n".join(lines).strip()
+                
                 if user_input.lower() in ["exit", "quit"]:
                     break
-                if user_input.strip():
+                if user_input:
                     self.chat(user_input)
-            except KeyboardInterrupt:
+            except (KeyboardInterrupt, EOFError):
                 print(f"\n{Fore.YELLOW}Interrupted{Style.RESET_ALL}")
                 break
 
@@ -201,5 +244,42 @@ class CleanChatTester:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Workflow Chat Test Client")
+    parser.add_argument(
+        "-m", "--message",
+        help="Send a message directly without interactive mode"
+    )
+    parser.add_argument(
+        "-f", "--file",
+        help="Read message from a file"
+    )
+    parser.add_argument(
+        "--stdin",
+        action="store_true",
+        help="Read message from stdin (for piping)"
+    )
+    
+    args = parser.parse_args()
+    
     tester = CleanChatTester()
-    tester.run()
+    
+    # Determine input source
+    initial_message = None
+    
+    if args.message:
+        initial_message = args.message
+    elif args.file:
+        try:
+            with open(args.file, 'r', encoding='utf-8') as f:
+                initial_message = f.read().strip()
+        except FileNotFoundError:
+            print(f"{Fore.RED}File not found: {args.file}{Style.RESET_ALL}")
+            sys.exit(1)
+        except Exception as e:
+            print(f"{Fore.RED}Error reading file: {e}{Style.RESET_ALL}")
+            sys.exit(1)
+    elif args.stdin or not sys.stdin.isatty():
+        # Read from stdin if --stdin flag or input is piped
+        initial_message = sys.stdin.read().strip()
+    
+    tester.run(initial_message)
