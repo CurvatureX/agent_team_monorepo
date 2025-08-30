@@ -93,7 +93,11 @@ You are creating a new workflow based on an existing one.
   ],
   "connections": {
     "source_node_id": {
-      "main": [{"node": "target_node_id", "type": "main", "index": 0}]
+      "connection_types": {
+        "main": {
+          "connections": [{"node": "target_node_id", "type": "main", "index": 0}]
+        }
+      }
     }
   },
   "settings": {
@@ -152,7 +156,30 @@ Example MCP response:
 4. Generate workflow JSON with example values matching exact ParameterTypes
 5. Output the complete JSON (no markdown, no explanations)
 
+## CRITICAL: Connection Format
+The connections MUST use the nested structure with "connection_types":
+```json
+"connections": {
+  "node_id": {
+    "connection_types": {
+      "main": {
+        "connections": [{"node": "target", "type": "main", "index": 0}]
+      }
+    }
+  }
+}
+```
+❌ WRONG format (will be rejected):
+```json
+"connections": {
+  "node_id": {
+    "main": [{"node": "target", "type": "main", "index": 0}]
+  }
+}
+```
+
 Remember:
 1. Keep it SIMPLE - use minimum nodes needed to accomplish the task
 2. MCP COMPLIANCE - Every parameter value MUST match its MCP-specified type
 3. NO "mock-" PREFIX - Generate actual example values, not placeholder strings
+4. CONNECTIONS - Must use "connection_types" wrapper structure
