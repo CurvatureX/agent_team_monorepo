@@ -13,6 +13,8 @@ from pathlib import Path
 backend_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(backend_dir))
 
+from shared.models.node_enums import NodeType
+
 from workflow_engine.nodes.base import ExecutionStatus, NodeExecutionContext
 from workflow_engine.nodes.factory import get_node_executor_factory, register_default_executors
 
@@ -24,8 +26,8 @@ async def main():
     register_default_executors()
     factory = get_node_executor_factory()
 
-    # 创建EXTERNAL_ACTION_NODE执行器
-    executor = factory.create_executor("EXTERNAL_ACTION_NODE", "GOOGLE_CALENDAR")
+    # 创建EXTERNAL_ACTION执行器
+    executor = factory.create_executor(NodeType.EXTERNAL_ACTION.value, "GOOGLE_CALENDAR")
     print(f"✅ 执行器创建成功: {executor}")
 
     # 创建测试参数
@@ -36,7 +38,7 @@ async def main():
         def __init__(self, parameters):
             self.parameters = parameters
             self.id = "test-google-calendar-node"
-            self.type = "EXTERNAL_ACTION_NODE"
+            self.type = NodeType.EXTERNAL_ACTION.value
             self.subtype = "GOOGLE_CALENDAR"
 
     # 创建执行上下文

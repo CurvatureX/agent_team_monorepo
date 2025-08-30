@@ -77,6 +77,9 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         super().__init__(subtype=subtype)
         self.oauth2_service = oauth2_service
         self.logger = logging.getLogger(__name__)
+        self.logger.info(
+            f"🌍 EXT_ACTION: Initializing ExternalActionNodeExecutor with subtype: {subtype}"
+        )
 
         # Initialize new shared SDKs
         self._sdks = {}
@@ -128,20 +131,39 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
     def validate(self, node: Any) -> List[str]:
         """Validate external action node configuration using spec-based validation."""
+        self.logger.info(
+            f"🌍 EXT_ACTION: Starting validation for node: {getattr(node, 'id', 'unknown')}"
+        )
+        self.logger.info(f"🌍 EXT_ACTION: Node subtype: {getattr(node, 'subtype', 'none')}")
+
         # First use the base class validation which includes spec validation
         errors = super().validate(node)
 
+        if errors:
+            self.logger.warning(f"🌍 EXT_ACTION: ⚠️ Base validation found {len(errors)} errors")
+            for error in errors:
+                self.logger.warning(f"🌍 EXT_ACTION:   - {error}")
+
         # If spec validation passed, we're done
         if not errors and self.spec:
+            self.logger.info("🌍 EXT_ACTION: ✅ Spec-based validation passed")
             return errors
 
         # Fallback if spec not available
+        self.logger.info("🌍 EXT_ACTION: Using legacy validation")
+
         if not node.subtype:
-            errors.append("External action subtype is required")
+            error_msg = "External action subtype is required"
+            errors.append(error_msg)
+            self.logger.error(f"🌍 EXT_ACTION: ❌ {error_msg}")
             return errors
 
         if node.subtype not in self.get_supported_subtypes():
-            errors.append(f"Unsupported external action subtype: {node.subtype}")
+            error_msg = f"Unsupported external action subtype: {node.subtype}"
+            errors.append(error_msg)
+            self.logger.error(f"🌍 EXT_ACTION: ❌ {error_msg}")
+        else:
+            self.logger.info(f"🌍 EXT_ACTION: ✅ Subtype {node.subtype} is supported")
 
         return errors
 

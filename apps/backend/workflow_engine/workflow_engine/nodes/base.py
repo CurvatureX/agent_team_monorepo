@@ -172,36 +172,54 @@ class BaseNodeExecutor(ABC):
         """Validate node configuration using node specifications."""
         errors = []
 
-        print(f"🐛 DEBUG: BaseNodeExecutor.validate() called")
-        print(f"🐛 DEBUG: Executor self._subtype BEFORE: {getattr(self, '_subtype', 'NOT_SET')}")
-        print(f"🐛 DEBUG: Node.subtype: {getattr(node, 'subtype', 'NO_SUBTYPE')}")
+        self.logger.info(
+            f"🔍 BASE: Starting validation for node type: {getattr(node, 'type', 'unknown')}"
+        )
+        self.logger.info(
+            f"🔍 BASE: Current executor subtype: {getattr(self, '_subtype', 'NOT_SET')}"
+        )
+        self.logger.info(f"🔍 BASE: Node subtype: {getattr(node, 'subtype', 'NO_SUBTYPE')}")
 
         # Store subtype for dynamic spec retrieval
         if hasattr(node, "subtype"):
             self._subtype = node.subtype
-            print(f"🐛 DEBUG: Set self._subtype TO: {self._subtype}")
+            self.logger.info(f"🔍 BASE: Updated executor subtype to: {self._subtype}")
             # Get the specific spec for this subtype
             if node_spec_registry and hasattr(node, "type"):
                 self.spec = node_spec_registry.get_spec(node.type, node.subtype)
+                if self.spec:
+                    self.logger.info(f"🔍 BASE: ✅ Found node spec for {node.type}.{node.subtype}")
+                else:
+                    self.logger.info(f"🔍 BASE: ⚠️ No spec found for {node.type}.{node.subtype}")
 
         # Use node spec validation if available
         if node_spec_registry:
             try:
-                print(
-                    f"🐛 DEBUG: About to call validate_node with node.subtype = {getattr(node, 'subtype', 'NO_SUBTYPE')}"
+                self.logger.info(
+                    f"🔍 BASE: Running spec validation for {getattr(node, 'subtype', 'NO_SUBTYPE')}"
                 )
                 spec_errors = node_spec_registry.validate_node(node)
+                if spec_errors:
+                    self.logger.warning(
+                        f"🔍 BASE: ⚠️ Spec validation found {len(spec_errors)} errors"
+                    )
+                    for error in spec_errors:
+                        self.logger.warning(f"🔍 BASE:   - {error}")
+                else:
+                    self.logger.info(f"🔍 BASE: ✅ Spec validation passed")
                 errors.extend(spec_errors)
             except Exception as e:
-                self.logger.warning(f"Node spec validation failed: {e}")
+                self.logger.warning(f"🔍 BASE: ❌ Node spec validation failed: {e}")
                 # Fall back to legacy validation
                 legacy_errors = self._validate_legacy(node)
                 errors.extend(legacy_errors)
         else:
+            self.logger.info(f"🔍 BASE: Using legacy validation (no spec registry)")
             # If spec registry not available, use legacy validation
             legacy_errors = self._validate_legacy(node)
             errors.extend(legacy_errors)
 
+        self.logger.info(f"🔍 BASE: Validation complete - {len(errors)} total errors")
         return errors
 
     def _validate_legacy(self, node: Any) -> List[str]:
@@ -338,31 +356,67 @@ class BaseNodeExecutor(ABC):
         """Get parameter value with type conversion based on spec."""
         raw_value = context.get_parameter(param_name)
 
+        self.logger.info(
+            f"🔧 BASE: Getting parameter '{param_name}' with spec, raw value: {raw_value}"
+        )
+
         if self.spec:
             param_def = self.spec.get_parameter(param_name)
             if param_def:
+                self.logger.info(
+                    f"🔧 BASE: Found spec for parameter '{param_name}', type: {getattr(param_def, 'type', 'unknown')}"
+                )
+
                 # Use default value if not provided
                 if raw_value is None and param_def.default_value is not None:
                     raw_value = param_def.default_value
+                    self.logger.info(f"🔧 BASE: Using default value for '{param_name}': {raw_value}")
 
                 # Type conversion based on spec
                 if raw_value is not None and hasattr(param_def, "type"):
                     try:
                         if param_def.type == ParameterType.INTEGER:
-                            return int(raw_value)
+                            converted_value = int(raw_value)
+                            self.logger.info(
+                                f"🔧 BASE: Converted '{param_name}' to integer: {converted_value}"
+                            )
+                            return converted_value
                         elif param_def.type == ParameterType.FLOAT:
-                            return float(raw_value)
+                            converted_value = float(raw_value)
+                            self.logger.info(
+                                f"🔧 BASE: Converted '{param_name}' to float: {converted_value}"
+                            )
+                            return converted_value
                         elif param_def.type == ParameterType.BOOLEAN:
                             if isinstance(raw_value, str):
-                                return raw_value.lower() in ("true", "1", "yes")
-                            return bool(raw_value)
+                                converted_value = raw_value.lower() in ("true", "1", "yes")
+                            else:
+                                converted_value = bool(raw_value)
+                            self.logger.info(
+                                f"🔧 BASE: Converted '{param_name}' to boolean: {converted_value}"
+                            )
+                            return converted_value
                         elif param_def.type == ParameterType.JSON:
                             if isinstance(raw_value, str):
-                                return json.loads(raw_value)
-                            return raw_value
+                                converted_value = json.loads(raw_value)
+                                self.logger.info(f"🔧 BASE: Parsed '{param_name}' as JSON")
+                                return converted_value
+                            else:
+                                self.logger.info(
+                                    f"🔧 BASE: Using raw value for JSON parameter '{param_name}'"
+                                )
+                                return raw_value
                     except (ValueError, json.JSONDecodeError) as e:
-                        self.logger.warning(f"Failed to convert parameter {param_name}: {e}")
+                        self.logger.warning(
+                            f"🔧 BASE: ❌ Failed to convert parameter {param_name}: {e}"
+                        )
                         return raw_value
+            else:
+                self.logger.info(f"🔧 BASE: No spec definition found for parameter '{param_name}'")
+        else:
+            self.logger.info(
+                f"🔧 BASE: No spec available, using raw parameter value for '{param_name}'"
+            )
 
         return raw_value
 

@@ -33,20 +33,37 @@ class ToolNodeExecutor(BaseNodeExecutor):
 
     def validate(self, node: Any) -> List[str]:
         """Validate tool node configuration using spec-based validation."""
+        self.logger.info(f"🔧 TOOL: Starting validation for node: {getattr(node, 'id', 'unknown')}")
+        self.logger.info(f"🔧 TOOL: Node subtype: {getattr(node, 'subtype', 'none')}")
+
         # First use the base class validation which includes spec validation
         errors = super().validate(node)
 
+        if errors:
+            self.logger.warning(f"🔧 TOOL: ⚠️ Base validation found {len(errors)} errors")
+            for error in errors:
+                self.logger.warning(f"🔧 TOOL:   - {error}")
+
         # If spec validation passed, we're done
         if not errors and self.spec:
+            self.logger.info("🔧 TOOL: ✅ Spec-based validation passed")
             return errors
 
         # Fallback if spec not available
+        self.logger.info("🔧 TOOL: Using legacy validation")
+
         if not node.subtype:
-            errors.append("Tool subtype is required")
+            error_msg = "Tool subtype is required"
+            errors.append(error_msg)
+            self.logger.error(f"🔧 TOOL: ❌ {error_msg}")
             return errors
 
         if node.subtype not in self.get_supported_subtypes():
-            errors.append(f"Unsupported tool subtype: {node.subtype}")
+            error_msg = f"Unsupported tool subtype: {node.subtype}"
+            errors.append(error_msg)
+            self.logger.error(f"🔧 TOOL: ❌ {error_msg}")
+        else:
+            self.logger.info(f"🔧 TOOL: ✅ Subtype {node.subtype} is supported")
 
         return errors
 
@@ -104,7 +121,11 @@ class ToolNodeExecutor(BaseNodeExecutor):
 
         try:
             subtype = context.node.subtype
-            self.logger.info(f"Executing tool node with subtype: {subtype}")
+            self.logger.info(f"🔧 TOOL: Starting execution with subtype: {subtype}")
+            self.logger.info(
+                f"🔧 TOOL: Node ID: {getattr(context.node, 'id', 'unknown') if hasattr(context, 'node') else 'unknown'}"
+            )
+            self.logger.info(f"🔧 TOOL: Execution ID: {getattr(context, 'execution_id', 'unknown')}")
 
             if subtype == ToolSubtype.MCP_TOOL.value:
                 return self._execute_mcp_tool(context, logs, start_time)
@@ -121,13 +142,16 @@ class ToolNodeExecutor(BaseNodeExecutor):
             elif subtype == ToolSubtype.IMAGE_PROCESSOR.value:
                 return self._execute_image_processor(context, logs, start_time)
             else:
+                error_msg = f"Unsupported tool subtype: {subtype}"
+                self.logger.error(f"🔧 TOOL: ❌ {error_msg}")
                 return self._create_error_result(
-                    f"Unsupported tool subtype: {subtype}",
+                    error_msg,
                     execution_time=time.time() - start_time,
                     logs=logs,
                 )
 
         except Exception as e:
+            self.logger.error(f"🔧 TOOL: ❌ Error executing tool: {str(e)}")
             return self._create_error_result(
                 f"Error executing tool: {str(e)}",
                 error_details={"exception": str(e)},
@@ -138,14 +162,18 @@ class ToolNodeExecutor(BaseNodeExecutor):
     def _execute_mcp_tool(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
-        logs.append("Executing mcp tool")
         """Execute MCP tool."""
+        logs.append("Executing mcp tool")
+        self.logger.info("🔧 TOOL: Starting MCP tool execution")
+
         # Use spec-based parameter retrieval
         tool_name = self.get_parameter_with_spec(context, "tool_name")
         operation = self.get_parameter_with_spec(context, "operation")
         parameters = self.get_parameter_with_spec(context, "parameters")
 
-        self.logger.info(f"MCP tool: {tool_name}, operation: {operation}")
+        self.logger.info(f"🔧 TOOL: MCP tool name: {tool_name}")
+        self.logger.info(f"🔧 TOOL: Operation: {operation}")
+        self.logger.info(f"🔧 TOOL: Parameters: {parameters}")
 
         # Mock MCP tool execution
         tool_result = {
@@ -181,7 +209,7 @@ class ToolNodeExecutor(BaseNodeExecutor):
         start_date = self.get_parameter_with_spec(context, "start_date")
         end_date = self.get_parameter_with_spec(context, "end_date")
 
-        self.logger.info(f"Calendar tool: {operation} on {calendar_id}")
+        self.logger.info(f"🔧 TOOL: Calendar operation: {operation} on calendar {calendar_id}")
 
         # Mock calendar operations
         if operation == "list_events":
@@ -222,7 +250,7 @@ class ToolNodeExecutor(BaseNodeExecutor):
         operation = self.get_parameter_with_spec(context, "operation")
         email_provider = self.get_parameter_with_spec(context, "email_provider")
 
-        self.logger.info(f"Email tool: {operation} via {email_provider}")
+        self.logger.info(f"🔧 TOOL: Email operation: {operation} via {email_provider}")
 
         # Mock email operations
         if operation == "send":
@@ -271,7 +299,7 @@ class ToolNodeExecutor(BaseNodeExecutor):
         if method:
             method = method.upper()
 
-        self.logger.info(f"HTTP tool: {method} {url}")
+        self.logger.info(f"🔧 TOOL: HTTP request: {method} {url}")
 
         # Mock HTTP request
         mock_response = {
@@ -384,7 +412,7 @@ class ToolNodeExecutor(BaseNodeExecutor):
         code = self.get_parameter_with_spec(context, "code")
         language = self.get_parameter_with_spec(context, "language")
 
-        self.logger.info(f"Code Execution Tool: {language} - {len(code)} characters")
+        self.logger.info(f"🔧 TOOL: Code execution: {language} - {len(code)} characters")
 
         # Mock code execution (in real implementation, would use sandbox)
         output_data = {
@@ -410,7 +438,7 @@ class ToolNodeExecutor(BaseNodeExecutor):
         operation = self.get_parameter_with_spec(context, "operation")
         file_path = self.get_parameter_with_spec(context, "file_path")
 
-        self.logger.info(f"File Processor Tool: {operation} on {file_path}")
+        self.logger.info(f"🔧 TOOL: File processor: {operation} on {file_path}")
 
         # Mock file processing
         output_data = {
@@ -435,7 +463,7 @@ class ToolNodeExecutor(BaseNodeExecutor):
         operation = self.get_parameter_with_spec(context, "operation")
         image_path = self.get_parameter_with_spec(context, "image_path")
 
-        self.logger.info(f"Image Processor Tool: {operation} on {image_path}")
+        self.logger.info(f"🔧 TOOL: Image processor: {operation} on {image_path}")
 
         # Mock image processing
         output_data = {
