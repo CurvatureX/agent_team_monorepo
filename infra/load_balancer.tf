@@ -8,6 +8,9 @@ resource "aws_lb" "main" {
 
   enable_deletion_protection = false
 
+  # Increase timeout for streaming connections (default is 60s)
+  idle_timeout = 900  # 15 minutes for long streaming responses
+
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-alb"
   })
@@ -22,6 +25,9 @@ resource "aws_lb" "internal" {
   subnets            = aws_subnet.private[*].id
 
   enable_deletion_protection = false
+
+  # Increase timeout for streaming connections (default is 60s)
+  idle_timeout = 900  # 15 minutes for long streaming responses
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-internal-alb"
@@ -44,7 +50,7 @@ resource "aws_lb_target_group" "api_gateway" {
     path                = "/health"
     port                = "traffic-port"
     protocol            = "HTTP"
-    timeout             = 5
+    timeout             = 15  # Increased for better reliability
     unhealthy_threshold = 2
   }
 
@@ -69,7 +75,7 @@ resource "aws_lb_target_group" "workflow_agent_http" {
     path                = "/health"
     port                = "traffic-port"
     protocol            = "HTTP"
-    timeout             = 5
+    timeout             = 15  # Increased for better reliability
     unhealthy_threshold = 2
   }
 
@@ -98,7 +104,7 @@ resource "aws_lb_target_group" "workflow_engine_http" {
     path                = "/health"
     port                = "traffic-port"
     protocol            = "HTTP"
-    timeout             = 5
+    timeout             = 15  # Increased for better reliability
     unhealthy_threshold = 2
   }
 
