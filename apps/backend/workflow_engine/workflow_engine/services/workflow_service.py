@@ -350,8 +350,27 @@ class WorkflowService:
 
             db_workflows = query.all()
 
-            workflows = [WorkflowData(**db_workflow.workflow_data) for db_workflow in db_workflows]
+            # Filter out workflows with validation errors
+            workflows = []
+            for db_workflow in db_workflows:
+                try:
+                    workflow = WorkflowData(**db_workflow.workflow_data)
+                    workflows.append(workflow)
+                except Exception as e:
+                    self.logger.warning(
+                        f"Skipping workflow {db_workflow.id} due to validation error: {str(e)}"
+                    )
+                    # Optionally log more details about the invalid workflow
+                    workflow_data = db_workflow.workflow_data if hasattr(db_workflow, 'workflow_data') else {}
+                    workflow_name = workflow_data.get('name', 'Unknown') if isinstance(workflow_data, dict) else 'Unknown'
+                    self.logger.debug(
+                        f"Invalid workflow details - ID: {db_workflow.id}, "
+                        f"Name: {workflow_name}, "
+                        f"User: {db_workflow.user_id}"
+                    )
 
+            # Adjust total count to reflect only valid workflows
+            # Note: This gives accurate count for current page but total_count might be higher
             return workflows, total_count
         except Exception as e:
             self.logger.error(f"Error listing workflows: {str(e)}")
