@@ -233,6 +233,40 @@ class ActionNodeExecutor(BaseNodeExecutor):
         api_key_header = self.get_parameter_with_spec(context, "api_key_header")
         retry_attempts = self.get_parameter_with_spec(context, "retry_attempts")
 
+        # Validate and replace fake example API URLs
+        if url and ("example.com" in url):
+            self.logger.warning(f"Detected fake example API URL: {url}")
+
+            # Provide specific guidance for calendar APIs
+            if "calendar" in url.lower():
+                return self._create_error_result(
+                    f"Invalid calendar API URL detected: {url}. Use EXTERNAL_ACTION_NODE with GOOGLE_CALENDAR subtype for calendar operations instead of HTTP_REQUEST with fake URLs.",
+                    error_details={
+                        "error_type": "INVALID_CALENDAR_URL",
+                        "fake_url": url,
+                        "suggestion": "Replace this HTTP_REQUEST node with an EXTERNAL_ACTION_NODE using subtype 'GOOGLE_CALENDAR' and proper Google Calendar API integration",
+                    },
+                    execution_time=time.time() - start_time,
+                    logs=logs
+                    + [
+                        f"Blocked fake calendar URL: {url}",
+                        "Use proper GOOGLE_CALENDAR external action node instead",
+                    ],
+                )
+            else:
+                # Generic fake example.com URL error
+                return self._create_error_result(
+                    f"Invalid example API URL detected: {url}. Replace with a real API endpoint or use appropriate EXTERNAL_ACTION_NODE for supported services.",
+                    error_details={
+                        "error_type": "INVALID_EXAMPLE_URL",
+                        "fake_url": url,
+                        "suggestion": "Replace with real API endpoint or use EXTERNAL_ACTION_NODE for supported integrations like GOOGLE_CALENDAR, SLACK, GITHUB, etc.",
+                    },
+                    execution_time=time.time() - start_time,
+                    logs=logs
+                    + [f"Blocked fake example URL: {url}", "Replace with real API endpoint"],
+                )
+
         # Convert method to uppercase
         if method:
             method = method.upper()

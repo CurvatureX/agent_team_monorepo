@@ -144,7 +144,7 @@
       "subtype": "HTTP_REQUEST",
       "parameters": {
         "method": "POST",
-        "url": "https://api.example.com/notifications",
+        "url": "https://hooks.slack.com/workflows/YOUR_SLACK_WORKFLOW_WEBHOOK_URL",
         "headers": {
           "Content-Type": "application/json",
           "Authorization": "Bearer ${NOTIFICATION_API_KEY}"

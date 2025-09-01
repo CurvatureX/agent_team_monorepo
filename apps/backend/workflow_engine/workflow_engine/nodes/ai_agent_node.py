@@ -414,7 +414,9 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                 input_data=enhanced_input_data,
                 workflow_id=getattr(context, "workflow_id", None),
                 execution_id=getattr(context, "execution_id", None),
-                credentials=getattr(context, "credentials", None),
+                static_data=getattr(context, "static_data", {}),
+                credentials=getattr(context, "credentials", {}),
+                metadata=getattr(context, "metadata", {}),
             )
             return enhanced_context
 
