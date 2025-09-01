@@ -2024,7 +2024,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
     def _save_new_messages_to_supabase(
         self, session_id: str, user_id: str, new_messages: List[Dict[str, Any]]
     ) -> None:
-        """Save only new messages to Supabase conversation_buffers table."""
+        """Save only new messages to Supabase conversation_buffers table, avoiding duplicates."""
         try:
             supabase = self._get_supabase_client()
             if not supabase:
@@ -2034,33 +2034,57 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             if not new_messages:
                 return
 
-            # Get current max message_index for this session to append new messages
-            max_index_response = (
+            # Get existing messages for duplicate detection
+            existing_messages_response = (
                 supabase.table("conversation_buffers")
-                .select("message_index")
+                .select("content, role, message_index")
                 .eq("session_id", session_id)
                 .eq("user_id", user_id)
                 .order("message_index", desc=True)
-                .limit(1)
+                .limit(50)  # Check last 50 messages for duplicates
                 .execute()
             )
 
-            next_index = 0
-            if max_index_response.data:
-                next_index = max_index_response.data[0]["message_index"] + 1
+            existing_messages = (
+                existing_messages_response.data if existing_messages_response.data else []
+            )
+            existing_content_set = set()
 
-            # Insert only new messages
+            # Create a set of existing message content + role combinations for fast lookup
+            for msg in existing_messages:
+                existing_content_set.add((msg["content"].strip(), msg["role"]))
+
+            # Get current max message_index for this session to append new messages
+            next_index = 0
+            if existing_messages:
+                next_index = max(msg["message_index"] for msg in existing_messages) + 1
+
+            # Filter out messages that already exist (same content + role)
             buffer_records = []
-            for i, msg in enumerate(new_messages):
+            messages_skipped = 0
+
+            for msg in new_messages:
+                content = msg["content"].strip()
+                role = msg["role"]
+
+                # Check if this exact message (content + role) already exists
+                if (content, role) in existing_content_set:
+                    messages_skipped += 1
+                    self.logger.info(
+                        f"[Memory Node]: 🧠 ConvSummary: Skipping duplicate message: {role} - {content[:50]}..."
+                    )
+                    continue
+
                 buffer_records.append(
                     {
                         "session_id": session_id,
                         "user_id": user_id,
-                        "message_index": next_index + i,
-                        "role": msg["role"],
-                        "content": msg["content"],
+                        "message_index": next_index
+                        + len(buffer_records),  # Use buffer_records length for sequential indexing
+                        "role": role,
+                        "content": content,
                         "timestamp": msg.get("timestamp", datetime.now().isoformat()),
-                        "tokens_count": len(msg["content"].split()),  # Rough token estimate
+                        "tokens_count": len(content.split()),  # Rough token estimate
                     }
                 )
 
@@ -2068,6 +2092,11 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 supabase.table("conversation_buffers").insert(buffer_records).execute()
                 self.logger.info(
                     f"[Memory Node]: 🧠 ConvSummary: Saved {len(buffer_records)} new messages to Supabase"
+                )
+
+            if messages_skipped > 0:
+                self.logger.info(
+                    f"[Memory Node]: 🧠 ConvSummary: Skipped {messages_skipped} duplicate messages"
                 )
 
         except Exception as e:
