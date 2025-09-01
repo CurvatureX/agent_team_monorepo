@@ -5,7 +5,6 @@ Handles memory operations like vector database, key-value storage, document stor
 """
 
 import hashlib
-import json
 import os
 import time
 from datetime import datetime
@@ -16,7 +15,7 @@ from shared.models.node_enums import MemorySubtype, OpenAIModel
 from shared.node_specs import node_spec_registry
 from shared.node_specs.base import NodeSpec
 
-from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
+from .base import BaseNodeExecutor, NodeExecutionContext, NodeExecutionResult
 
 try:
     from supabase import Client, create_client
@@ -35,7 +34,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         self._document_store = {}
 
         # Supabase client for persistent memory storage
-        self._supabase_client: Optional[Client] = None
+        self._supabase_client: Optional["Client"] = None
 
     def _get_node_spec(self) -> Optional[NodeSpec]:
         """Get the node specification for memory nodes."""
@@ -479,18 +478,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
         return {"results": results, "count": len(results), "query_vector": query_vector}
 
-    def _delete_vector(self, collection_name: str, vector_id: str) -> Dict[str, Any]:
-        """Delete vector from collection."""
-        if collection_name not in self._vector_db:
-            return {"error": "Collection not found"}
-
-        for i, vector_entry in enumerate(self._vector_db[collection_name]):
-            if vector_entry["id"] == vector_id:
-                del self._vector_db[collection_name][i]
-                return {"deleted": True, "vector_id": vector_id}
-
-        return {"error": "Vector not found"}
-
     def _update_vector(
         self,
         collection_name: str,
@@ -517,7 +504,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         try:
             import os
 
-            import openai
             from openai import OpenAI
 
             api_key = os.getenv("OPENAI_API_KEY")
@@ -532,7 +518,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             embedding = response.data[0].embedding
             return embedding
 
-        except Exception as e:
+        except Exception:
             return [0.1] * 1536  # Fallback mock embedding
 
     def _calculate_cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
@@ -551,7 +537,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                 return 0.0
 
             return dot_product / (magnitude1 * magnitude2)
-        except:
+        except (ZeroDivisionError, ValueError, TypeError):
             return 0.0
 
     def _store_vector_with_embedding(
@@ -624,6 +610,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             f"[Memory Node]: 🧠 MEMORY NODE: 📊 Found {len(similarities)} results above threshold {similarity_threshold}"
         )
 
+        avg_similarity = 0.0
         if results:
             avg_similarity = sum(r["similarity"] for r in results) / len(results)
 
@@ -633,24 +620,30 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             "query": query_text,
             "similarity_threshold": similarity_threshold,
             "total_candidates": len(self._vector_db[collection_name]),
+            "avg_similarity": avg_similarity,
         }
 
     def _delete_vector(
         self, collection_name: str, vector_id: str, logs: List[str]
     ) -> Dict[str, Any]:
         """Delete vector from collection with logging."""
+        logs.append(f"Deleting vector '{vector_id}' from collection '{collection_name}'")
+
         if collection_name not in self._vector_db:
             return {"error": "Collection not found"}
 
         for i, vector_entry in enumerate(self._vector_db[collection_name]):
             if vector_entry["id"] == vector_id:
                 del self._vector_db[collection_name][i]
+                logs.append(f"Successfully deleted vector '{vector_id}'")
                 return {"deleted": True, "vector_id": vector_id}
 
         return {"error": "Vector not found"}
 
     def _list_vectors(self, collection_name: str, logs: List[str]) -> Dict[str, Any]:
         """List all vectors in collection."""
+        logs.append(f"Listing vectors in collection '{collection_name}'")
+
         if collection_name not in self._vector_db:
             return {"vectors": [], "count": 0}
 
@@ -956,6 +949,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         # Limit results
         results = results[:max_results]
 
+        avg_score = 0.0
         if results:
             avg_score = sum(r["score"] for r in results) / len(results)
 
@@ -965,6 +959,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             "query": query,
             "search_type": search_type,
             "total_documents": len(self._document_store),
+            "avg_score": avg_score,
         }
 
     def _extract_context_snippet(self, text: str, query: str, max_length: int = 150) -> str:
@@ -1196,8 +1191,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             }
 
         elif operation == "find_similar":
-            query_embeddings = context.input_data.get("embeddings", [])
-            # Mock similarity search
+            # Mock similarity search (embeddings not used in mock implementation)
             similar_items = [
                 {"item_id": f"item_{i}", "similarity": 0.9 - i * 0.1} for i in range(5)
             ]
@@ -1218,7 +1212,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             output_data=result, execution_time=time.time() - start_time, logs=logs
         )
 
-    def _get_supabase_client(self) -> Optional[Client]:
+    def _get_supabase_client(self) -> Optional["Client"]:
         """Get Supabase client for persistent storage."""
         if not self._supabase_client and Client:
             supabase_url = os.getenv("SUPABASE_URL")
@@ -1271,7 +1265,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
             if existing.data:
                 # Update existing record
-                result = (
+                (
                     supabase.table("workflow_memory")
                     .update(
                         {
@@ -1288,7 +1282,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
             else:
                 # Insert new record
-                result = supabase.table("workflow_memory").insert(memory_record).execute()
+                supabase.table("workflow_memory").insert(memory_record).execute()
 
         except Exception as e:
             self.logger.warning(f"🧠 DATABASE: ⚠️ Failed to save memory to database: {str(e)}")
@@ -1326,7 +1320,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             else:
                 return None
 
-        except Exception as e:
+        except Exception:
             return None
 
     def _load_conversation_history_from_workflow(
@@ -1373,7 +1367,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             )
             return recent_messages
 
-        except Exception as e:
+        except Exception:
             return []
 
     def _execute_conversation_buffer(
@@ -1797,7 +1791,6 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         for msg in messages:
             role = msg.get("role", "user")
             content = msg.get("content", "")
-            timestamp = msg.get("timestamp", "")
 
             # Skip empty messages
             if not content or len(content.strip()) == 0:
@@ -1823,13 +1816,34 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         self, text: str, max_length: int, strategy: str, logs: List[str]
     ) -> str:
         """Generate conversation summary using specified strategy."""
+        # Enforce reasonable summary length limits (max 1500 characters for summaries)
+        MAX_SUMMARY_LENGTH = 1500
+        effective_max_length = min(max_length, MAX_SUMMARY_LENGTH)
+
+        # Log warning if the provided max_length was too large
+        if max_length > MAX_SUMMARY_LENGTH:
+            logs.append(
+                f"[Memory Node]: Warning - Requested max_length ({max_length}) exceeded limit, using {MAX_SUMMARY_LENGTH}"
+            )
+
         if strategy == "extractive":
             # Simple extractive summarization - take key sentences
             sentences = text.split(".")
             important_sentences = []
 
             # Simple scoring based on length and keywords
-            keywords = ["important", "key", "main", "summary", "result", "decision", "action"]
+            keywords = [
+                "important",
+                "key",
+                "main",
+                "summary",
+                "result",
+                "decision",
+                "action",
+                "concluded",
+                "agreed",
+                "decided",
+            ]
 
             for sentence in sentences:
                 sentence = sentence.strip()
@@ -1846,33 +1860,35 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             summary_parts = []
             current_length = 0
             for sentence, score in important_sentences:
-                if current_length + len(sentence) <= max_length:
+                if current_length + len(sentence) + 2 <= effective_max_length:  # +2 for ". "
                     summary_parts.append(sentence)
-                    current_length += len(sentence)
+                    current_length += len(sentence) + 2
                 else:
                     break
 
             summary = ". ".join(summary_parts)
+            if len(summary) > effective_max_length:
+                summary = self._truncate_summary_intelligently(summary, effective_max_length)
             return summary
 
         elif strategy == "abstractive":
-            # Simple abstractive - just truncate with smart boundaries
-            if len(text) <= max_length:
+            # For abstractive strategy, we should ideally use AI summarization
+            # But as a fallback, use intelligent truncation instead of naive truncation
+            if len(text) <= effective_max_length:
                 return text
 
-            # Try to cut at sentence boundaries
-            truncated = text[:max_length]
-            last_period = truncated.rfind(".")
-            if last_period > max_length * 0.7:  # If we can find a good sentence boundary
-                summary = truncated[: last_period + 1]
-            else:
-                summary = truncated + "..."
-
+            # Use intelligent truncation instead of naive truncation
+            summary = self._truncate_summary_intelligently(text, effective_max_length)
+            logs.append(
+                f"[Memory Node]: Note - Using intelligent truncation for 'abstractive' strategy. Consider using AI summarization."
+            )
             return summary
 
         else:
-            # Default - just truncate
-            summary = text[:max_length] + "..." if len(text) > max_length else text
+            # Default - use intelligent truncation instead of naive truncation
+            if len(text) <= effective_max_length:
+                return text
+            summary = self._truncate_summary_intelligently(text, effective_max_length)
             return summary
 
     def _format_conversation_summary_context(
@@ -1988,6 +2004,23 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             "total_chars": 0,
         }
 
+    def _format_summary_only_context(self, conv_data: Dict[str, Any], logs: List[str]) -> str:
+        """Format conversation summary context WITHOUT recent messages (for system prompt only)."""
+        summary = conv_data.get("summary", "")
+        message_count = conv_data.get("message_count", 0)
+
+        if not summary:
+            return "No conversation summary available yet."
+
+        # Only return the summary context, not recent messages
+        context = f"## Conversation Summary ({message_count} total messages)\n\n{summary}"
+
+        self.logger.info(
+            f"[Memory Node]: 🧠 ConvSummary: 📝 Summary-only context formatted ({len(context)} chars)"
+        )
+
+        return context
+
     def _save_new_messages_to_supabase(
         self, session_id: str, user_id: str, new_messages: List[Dict[str, Any]]
     ) -> None:
@@ -2059,6 +2092,16 @@ class MemoryNodeExecutor(BaseNodeExecutor):
             # Save conversation summary if it exists
             summary = conv_data.get("summary", "")
             if summary:
+                # Define maximum summary length (1500 characters for reasonable summaries)
+                MAX_SUMMARY_LENGTH = 1500
+
+                # If summary exceeds limit, truncate intelligently
+                if len(summary) > MAX_SUMMARY_LENGTH:
+                    self.logger.warning(
+                        f"[Memory Node]: 🧠 ConvSummary: Summary too long ({len(summary)} chars), truncating to {MAX_SUMMARY_LENGTH}"
+                    )
+                    summary = self._truncate_summary_intelligently(summary, MAX_SUMMARY_LENGTH)
+
                 summary_record = {
                     "session_id": session_id,
                     "user_id": user_id,
@@ -2080,6 +2123,34 @@ class MemoryNodeExecutor(BaseNodeExecutor):
 
         except Exception as e:
             self.logger.error(f"[Memory Node]: 🧠 ConvSummary: Error saving to Supabase: {e}")
+
+    def _truncate_summary_intelligently(self, summary: str, max_length: int) -> str:
+        """Intelligently truncate summary while preserving meaning."""
+        if len(summary) <= max_length:
+            return summary
+
+        # Try to cut at sentence boundaries
+        truncated = summary[:max_length]
+
+        # Look for the last sentence boundary (period, exclamation, question mark)
+        sentence_endings = [".", "!", "?"]
+        last_sentence_end = -1
+
+        for ending in sentence_endings:
+            pos = truncated.rfind(ending)
+            if pos > max_length * 0.7:  # Only if we can keep at least 70% of desired length
+                last_sentence_end = max(last_sentence_end, pos)
+
+        if last_sentence_end > 0:
+            return truncated[: last_sentence_end + 1].strip()
+
+        # If no good sentence boundary, look for last complete word
+        last_space = truncated.rfind(" ")
+        if last_space > max_length * 0.8:  # Only if we can keep at least 80% of desired length
+            return truncated[:last_space].strip() + "..."
+
+        # Fallback: hard truncate with ellipsis
+        return truncated.rstrip() + "..."
 
     def _format_conversation_summary_context_with_buffer(
         self, conv_data: Dict[str, Any], buffer_window_size: int, logs: List[str]
@@ -2437,6 +2508,8 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                         # Generate summary from all conversation history
                         all_messages = conv_data["buffer"]
                         if all_messages:
+                            # For now, use the improved non-AI summarization method
+                            # TODO: Add async support for AI summarization in the future
                             conversation_text = "\n".join(
                                 [f"{msg['role']}: {msg['content']}" for msg in all_messages]
                             )
@@ -2445,6 +2518,10 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                             new_summary = self._generate_conversation_summary(
                                 conversation_text, max_total_tokens // 2, summary_style, logs
                             )
+                            logs.append(
+                                f"[Memory Node]: 🧠 ConvSummary: Generated summary with length limits enforced"
+                            )
+
                             conv_data["summary"] = new_summary
                             conv_data["total_chars"] = len(new_summary)
 
@@ -2463,29 +2540,40 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                         session_id, user_id, conv_data, summarization_model
                     )
 
-            # Format context for LLM (include both summary AND buffer)
-            memory_context = self._format_conversation_summary_context_with_buffer(
-                conv_data, buffer_window_size, logs
+            # Prepare structured data for AI agent consumption
+            # 1. Summary context for system prompt enhancement (NO recent messages)
+            summary_context = self._format_summary_only_context(conv_data, logs)
+
+            # 2. Recent messages for chat history injection
+            recent_messages = (
+                conv_data["buffer"][-buffer_window_size:] if conv_data["buffer"] else []
             )
+
+            # Format messages for AI API consumption (role/content structure)
+            formatted_messages = []
+            for msg in recent_messages:
+                if msg.get("role") and msg.get("content"):
+                    formatted_messages.append({"role": msg["role"], "content": msg["content"]})
 
             context_data = {
                 "summary": conv_data["summary"],
-                "buffer": conv_data["buffer"][-buffer_window_size:],  # Recent messages
+                "key_points": [],  # TODO: Extract from summary data when AI summarization is implemented
+                "entities": [],  # TODO: Extract from summary data when AI summarization is implemented
+                "topics": [],  # TODO: Extract from summary data when AI summarization is implemented
+                "buffer": recent_messages,  # Raw buffer data
+                "messages": formatted_messages,  # Structured messages for chat history
                 "message_count": conv_data["message_count"],
                 "total_chars": conv_data["total_chars"],
                 "last_updated": conv_data["last_updated"],
                 "memory_type": MemorySubtype.CONVERSATION_SUMMARY.value,
-                "memory_context": memory_context,
-                "formatted_context": memory_context,
+                "memory_context": summary_context,  # ONLY summary, not recent messages
+                "formatted_context": summary_context,  # ONLY summary, not recent messages
             }
-
-            # Log detailed content being returned
-            buffer_recent = conv_data["buffer"][-buffer_window_size:] if conv_data["buffer"] else []
 
             # Log what type of operation this was
             operation_type = "STORAGE" if conversation_data_provided else "RETRIEVAL"
             self.logger.info(
-                f"[Memory Node]: 🧠 ConvSummary: 📤 {operation_type} - Returning summary:{len(conv_data['summary'])} chars + buffer:{len(buffer_recent)} msgs"
+                f"[Memory Node]: 🧠 ConvSummary: 📤 {operation_type} - Summary for system prompt:{len(conv_data['summary'])} chars, Messages for chat history:{len(formatted_messages)} msgs"
             )
 
             # Show what content is being returned
@@ -2499,9 +2587,9 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                     f"[Memory Node]: 🧠 ConvSummary: 📋 Summary content: {summary_preview}"
                 )
 
-            if buffer_recent:
-                self.logger.info(f"[Memory Node]: 🧠 ConvSummary: 📜 Recent buffer messages:")
-                for i, msg in enumerate(buffer_recent[-3:]):  # Show last 3 messages
+            if formatted_messages:
+                self.logger.info(f"[Memory Node]: 🧠 ConvSummary: 💬 Chat history messages for AI:")
+                for i, msg in enumerate(formatted_messages[-3:]):  # Show last 3 messages
                     content_preview = (
                         msg["content"][:60] + "..." if len(msg["content"]) > 60 else msg["content"]
                     )
@@ -2509,7 +2597,7 @@ class MemoryNodeExecutor(BaseNodeExecutor):
                         f"[Memory Node]: 🧠 ConvSummary:   {i+1}. {msg['role']}: {content_preview}"
                     )
             else:
-                self.logger.info(f"[Memory Node]: 🧠 ConvSummary: 📜 No recent messages in buffer")
+                self.logger.info(f"[Memory Node]: 🧠 ConvSummary: 💬 No messages for chat history")
 
             return self._create_success_result(
                 output_data=context_data, execution_time=time.time() - start_time, logs=logs

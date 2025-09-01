@@ -5,7 +5,6 @@ Handles AI agent operations using provider-based nodes (Gemini, OpenAI, Claude)
 where functionality is determined by system prompts rather than hardcoded roles.
 """
 
-import json
 import os
 import time
 from datetime import datetime
@@ -14,26 +13,13 @@ from typing import Any, Dict, List, Optional
 from shared.models import NodeType
 from shared.models.node_enums import AIAgentSubtype
 from shared.node_specs import node_spec_registry
-from shared.node_specs.base import ConnectionType, NodeSpec
+from shared.node_specs.base import NodeSpec
 
 # Memory implementations
 try:
-    from workflow_engine.memory_implementations import (
-        MemoryContext,
-        MemoryContextMerger,
-        MemoryPriority,
-    )
+    from workflow_engine.memory_implementations import MemoryContextMerger
 except ImportError:
-    # Create stub classes to prevent import errors
-    class MemoryContext:
-        def __init__(self, **kwargs):
-            pass
-
-    class MemoryPriority:
-        HIGH = "high"
-        MEDIUM = "medium"
-        LOW = "low"
-
+    # Create stub class to prevent import errors
     class MemoryContextMerger:
         def __init__(self, config):
             self.config = config
@@ -119,7 +105,6 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
 
         except Exception as e:
             self.logger.error(f"[AIAgent Node]: 🤖 AI AGENT: ❌ Failed to initialize AI clients: {e}")
-            self.logger.warning(f"Failed to initialize AI clients: {e}")
 
     def get_supported_subtypes(self) -> List[str]:
         """Get supported AI agent subtypes (provider-based)."""
@@ -414,6 +399,7 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             self.logger.info(
                 f"[AIAgent Node]: 🧠 AIAgent: Memory merged -> {len(memory_contexts)} contexts, {len(merged_memory_context)} chars"
             )
+            logs.append(f"Enhanced context with {len(memory_contexts)} memory contexts")
 
             # Create enhanced input data
             enhanced_input_data = context.input_data.copy() if context.input_data else {}
@@ -493,192 +479,6 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                 f"[AIAgent Node]: ⚠️ Error enhancing system prompt with summary: {e}"
             )
             return base_prompt
-
-    def _enhance_system_prompt_with_memory(
-        self, base_prompt: str, input_data: Dict[str, Any], logs: List[str]
-    ) -> str:
-        """Enhance the system prompt with memory context using memory-type-specific injection logic."""
-        try:
-            # Check for memory context to inject
-            if not input_data or not isinstance(input_data, dict):
-                return base_prompt
-
-            # Check if memory context is available
-            if "memory_context" not in input_data:
-                return base_prompt
-
-            memory_context = input_data["memory_context"]
-            memory_type = input_data.get("memory_type", "UNKNOWN")
-
-            if not memory_context:
-                return base_prompt
-
-            # Show detailed breakdown of memory content being injected
-            self.logger.info(
-                f"[AIAgent Node]: 💭 AIAgent: SystemPrompt enhanced -> type:{memory_type}, context:{len(memory_context)} chars"
-            )
-
-            # Show more detailed preview of memory content
-            lines = memory_context.split("\n")
-            self.logger.info(
-                f"[AIAgent Node]: 💭 AIAgent: 📝 Memory sections: {len([l for l in lines if l.startswith('##')])} sections"
-            )
-
-            # Show first few lines of memory context
-            preview_lines = lines[:3] if len(lines) >= 3 else lines
-            for i, line in enumerate(preview_lines):
-                if line.strip():
-                    line_preview = line[:80] + "..." if len(line) > 80 else line
-                    self.logger.info(f"[AIAgent Node]: 💭 AIAgent: 📋 Line {i+1}: {line_preview}")
-
-            if len(lines) > 3:
-                self.logger.info(
-                    f"[AIAgent Node]: 💭 AIAgent: 📋 ... and {len(lines) - 3} more lines"
-                )
-
-            # Memory-type-specific context injection
-            enhanced_prompt = self._inject_memory_by_type(
-                base_prompt, memory_context, memory_type, logs
-            )
-
-            return enhanced_prompt
-
-        except Exception as e:
-            self.logger.warning(f"[AIAgent Node]: 💭 AIAgent: SystemPrompt enhancement failed: {e}")
-            return base_prompt
-
-    def _inject_memory_by_type(
-        self, base_prompt: str, memory_context: str, memory_type: str, logs: List[str]
-    ) -> str:
-        """Inject memory context using type-specific formatting and instructions."""
-        from shared.models.node_enums import MemorySubtype
-
-        if memory_type == MemorySubtype.CONVERSATION_BUFFER.value:
-            return f"""{base_prompt}
-
-## Recent Conversation History
-
-You have access to recent conversation history to maintain context and continuity:
-
-{memory_context}
-
-Use this conversation history to:
-- Maintain context across the conversation
-- Reference previous topics and decisions
-- Provide consistent responses based on earlier interactions"""
-
-        elif memory_type == MemorySubtype.CONVERSATION_SUMMARY.value:
-            return f"""{base_prompt}
-
-## Conversation Summary
-
-You have access to a summary of past conversations:
-
-{memory_context}
-
-Use this summary to:
-- Understand the broader context and relationship
-- Avoid repeating previously covered topics unnecessarily
-- Build upon previous discussions and agreements"""
-
-        elif memory_type == MemorySubtype.VECTOR_DATABASE.value:
-            return f"""{base_prompt}
-
-## Relevant Knowledge Retrieved
-
-Based on the current conversation, these relevant pieces of information have been retrieved:
-
-{memory_context}
-
-Use this retrieved knowledge to:
-- Provide accurate, fact-based responses
-- Reference specific information when relevant
-- Supplement your knowledge with retrieved context"""
-
-        elif memory_type == MemorySubtype.ENTITY_MEMORY.value:
-            return f"""{base_prompt}
-
-## Known Entities and Relationships
-
-You have access to information about known entities and their relationships:
-
-{memory_context}
-
-Use this entity information to:
-- Recognize and properly reference people, places, and things
-- Understand relationships and connections
-- Provide personalized and contextually aware responses"""
-
-        elif memory_type == MemorySubtype.EPISODIC_MEMORY.value:
-            return f"""{base_prompt}
-
-## Past Events and Episodes
-
-You have access to relevant past events and episodes:
-
-{memory_context}
-
-Use this episodic memory to:
-- Reference past events and their outcomes
-- Learn from previous interactions and experiences
-- Provide responses informed by historical context"""
-
-        elif memory_type == MemorySubtype.KNOWLEDGE_BASE.value:
-            return f"""{base_prompt}
-
-## Structured Knowledge Base
-
-You have access to structured facts and knowledge:
-
-{memory_context}
-
-Use this knowledge base to:
-- Provide accurate factual information
-- Apply relevant rules and guidelines
-- Make informed decisions based on structured knowledge"""
-
-        elif memory_type == MemorySubtype.GRAPH_MEMORY.value:
-            return f"""{base_prompt}
-
-## Entity Relationship Graph
-
-You have access to an entity relationship network:
-
-{memory_context}
-
-Use this graph information to:
-- Understand complex relationships and connections
-- Navigate through related concepts and entities
-- Provide responses that consider network effects and indirect relationships"""
-
-        elif memory_type == MemorySubtype.DOCUMENT_STORE.value:
-            return f"""{base_prompt}
-
-## Relevant Documents
-
-You have access to relevant documents and content:
-
-{memory_context}
-
-Use these documents to:
-- Reference specific information and details
-- Provide comprehensive, document-based responses
-- Cite or summarize relevant content when appropriate"""
-
-        else:
-            # Fallback for unknown memory types or legacy support
-            self.logger.info(
-                f"[AIAgent Node]: 🤖 AI AGENT: 💭 ⚠️ Unknown memory type '{memory_type}', using generic injection"
-            )
-            return f"""{base_prompt}
-
-## Memory Context
-
-You have access to relevant memory context that should inform your responses:
-
-{memory_context}
-
-Please use this context appropriately when responding. Reference relevant information from your memory when it's helpful, but don't force it into every response."""
 
     def _detect_connected_memory_nodes(self, context: NodeExecutionContext) -> List[Dict[str, Any]]:
         """Detect memory nodes connected to this AI agent."""
@@ -891,8 +691,6 @@ Please use this context appropriately when responding. Reference relevant inform
                 model=model_version,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                safety_settings=safety_settings,
-                memory_context=memory_context,
             )
 
             # Parse AI response to extract just the content
@@ -1187,7 +985,7 @@ Please use this context appropriately when responding. Reference relevant inform
                             )
                             if original_message:
                                 return original_message
-                    except:
+                    except (json.JSONDecodeError, ValueError, TypeError):
                         pass  # Not JSON, treat as regular content
 
                 self.logger.info(
@@ -1235,9 +1033,9 @@ Please use this context appropriately when responding. Reference relevant inform
             self.logger.info(f"🔍 Full input_data: {input_data}")
 
             # Convert entire dict to structured text as fallback
-            return json.dumps(input_data, indent=2, ensure_ascii=False)
+            import json
 
-        return str(input_data)
+            return json.dumps(input_data, indent=2, ensure_ascii=False)
 
     def _parse_ai_response(self, ai_response: str) -> str:
         """Parse AI response to extract just the content, removing JSON wrapper."""
@@ -1277,7 +1075,7 @@ Please use this context appropriately when responding. Reference relevant inform
                                     "[AIAgent Node]: 🤖 AI AGENT: Found nested 'response' key"
                                 )
                                 return inner_data["response"]
-                        except:
+                        except (json.JSONDecodeError, KeyError, TypeError):
                             pass
                     return response_content
                 elif "content" in data:
@@ -1317,8 +1115,6 @@ Please use this context appropriately when responding. Reference relevant inform
         model: str,
         temperature: float,
         max_tokens: int,
-        safety_settings: Dict,
-        memory_context: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Call actual Gemini API."""
         self.logger.info(
@@ -1368,7 +1164,6 @@ Please use this context appropriately when responding. Reference relevant inform
 
         except Exception as e:
             self.logger.error(f"[AIAgent Node]: 🤖 AI AGENT: ❌ Gemini API call failed: {e}")
-            self.logger.error(f"Gemini API call failed: {e}")
             # Return error message that will be handled by external action nodes
             return f"⚠️ Gemini API unavailable: {str(e)}"
 
@@ -1439,6 +1234,8 @@ Please use this context appropriately when responding. Reference relevant inform
             )
 
             response_content = response.choices[0].message.content
+            if response_content is None:
+                response_content = ""
             self.logger.info(
                 f"[AIAgent Node]: 🤖 AI AGENT: ✅ OpenAI API call successful, response length: {len(response_content)}"
             )
@@ -1446,7 +1243,6 @@ Please use this context appropriately when responding. Reference relevant inform
 
         except Exception as e:
             self.logger.error(f"[AIAgent Node]: 🤖 AI AGENT: ❌ OpenAI API call failed: {e}")
-            self.logger.error(f"OpenAI API call failed: {e}")
 
             # Return user-friendly error message
             if "api key" in str(e).lower():
@@ -1527,7 +1323,6 @@ Please use this context appropriately when responding. Reference relevant inform
 
         except Exception as e:
             self.logger.error(f"[AIAgent Node]: 🤖 AI AGENT: ❌ Claude API call failed: {e}")
-            self.logger.error(f"Claude API call failed: {e}")
 
             # Return user-friendly error message
             if "api key" in str(e).lower():
@@ -1578,7 +1373,7 @@ Please use this context appropriately when responding. Reference relevant inform
                             "{"
                         ):  # Make sure content isn't nested JSON
                             user_message = content
-                except:
+                except (json.JSONDecodeError, ValueError, TypeError):
                     pass  # Use original input if JSON parsing fails
 
             # Final check: don't store if message is too long (likely corrupted/recursive)
@@ -1627,10 +1422,7 @@ Please use this context appropriately when responding. Reference relevant inform
                     )
                     result = memory_node.execute(memory_context)
 
-                    if (
-                        hasattr(result, "status")
-                        and str(result.status) == "ExecutionStatus.SUCCESS"
-                    ):
+                    if hasattr(result, "status") and result.status == ExecutionStatus.SUCCESS:
                         self.logger.info(
                             f"[AIAgent Node]: 🧠 AIAgent: ✅ Conversation stored in memory node {memory_node_id}"
                         )
@@ -1671,7 +1463,7 @@ Please use this context appropriately when responding. Reference relevant inform
             # If it has several memory-specific fields, it's likely memory output
             indicator_count = sum(1 for key in memory_indicators if key in data)
             return indicator_count >= 3
-        except:
+        except (AttributeError, TypeError):
             return False
 
     def _extract_original_message_from_memory_output(self, memory_output: Dict[str, Any]) -> str:
