@@ -668,6 +668,25 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         max_tokens = self.get_parameter_with_spec(context, "max_tokens")
         safety_settings = self.get_parameter_with_spec(context, "safety_settings")
 
+        # Validate model against allowed Gemini models from spec
+        from shared.models.node_enums import GoogleGeminiModel
+
+        allowed_models = [model.value for model in GoogleGeminiModel]
+        if model_version not in allowed_models:
+            error_msg = f"Invalid Gemini model '{model_version}'. Allowed models: {', '.join(allowed_models)}. Default: {GoogleGeminiModel.GEMINI_2_5_FLASH_LITE.value}"
+            self.logger.error(f"[AIAgent Node]: 🤖 AI AGENT: ❌ {error_msg}")
+            return self._create_error_result(
+                error_msg,
+                error_details={
+                    "error_type": "INVALID_MODEL",
+                    "provided_model": model_version,
+                    "allowed_models": allowed_models,
+                    "default_model": GoogleGeminiModel.GEMINI_2_5_FLASH_LITE.value,
+                },
+                execution_time=time.time() - start_time,
+                logs=logs + [f"Model validation failed: {model_version} not in allowed models"],
+            )
+
         # Extract memory context for conversation history and summary
         memory_context = self._extract_memory_context_for_api(context)
 
@@ -748,6 +767,25 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         max_tokens = self.get_parameter_with_spec(context, "max_tokens")
         presence_penalty = self.get_parameter_with_spec(context, "presence_penalty")
         frequency_penalty = self.get_parameter_with_spec(context, "frequency_penalty")
+
+        # Validate model against allowed OpenAI models from spec
+        from shared.models.node_enums import OpenAIModel
+
+        allowed_models = [model.value for model in OpenAIModel]
+        if model_version not in allowed_models:
+            error_msg = f"Invalid OpenAI model '{model_version}'. Allowed models: {', '.join(allowed_models)}. Default: {OpenAIModel.GPT_5_NANO.value}"
+            self.logger.error(f"[AIAgent Node]: 🤖 AI AGENT: ❌ {error_msg}")
+            return self._create_error_result(
+                error_msg,
+                error_details={
+                    "error_type": "INVALID_MODEL",
+                    "provided_model": model_version,
+                    "allowed_models": allowed_models,
+                    "default_model": OpenAIModel.GPT_5_NANO.value,
+                },
+                execution_time=time.time() - start_time,
+                logs=logs + [f"Model validation failed: {model_version} not in allowed models"],
+            )
 
         # Extract memory context for conversation history and summary
         memory_context = self._extract_memory_context_for_api(context)
@@ -837,6 +875,25 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         temperature = self.get_parameter_with_spec(context, "temperature")
         max_tokens = self.get_parameter_with_spec(context, "max_tokens")
         stop_sequences = self.get_parameter_with_spec(context, "stop_sequences")
+
+        # Validate model against allowed Claude models from spec
+        from shared.models.node_enums import AnthropicModel
+
+        allowed_models = [model.value for model in AnthropicModel]
+        if model_version not in allowed_models:
+            error_msg = f"Invalid Claude model '{model_version}'. Allowed models: {', '.join(allowed_models)}. Default: {AnthropicModel.CLAUDE_HAIKU_3_5.value}"
+            self.logger.error(f"[AIAgent Node]: 🤖 AI AGENT: ❌ {error_msg}")
+            return self._create_error_result(
+                error_msg,
+                error_details={
+                    "error_type": "INVALID_MODEL",
+                    "provided_model": model_version,
+                    "allowed_models": allowed_models,
+                    "default_model": AnthropicModel.CLAUDE_HAIKU_3_5.value,
+                },
+                execution_time=time.time() - start_time,
+                logs=logs + [f"Model validation failed: {model_version} not in allowed models"],
+            )
 
         # Extract memory context for conversation history and summary
         memory_context = self._extract_memory_context_for_api(context)

@@ -1834,149 +1834,46 @@ class MemoryNodeExecutor(BaseNodeExecutor):
         return conversation_text
 
     # Supporting methods for advanced memory types
-    def _generate_conversation_summary_with_metadata(
-        self, text: str, max_length: int, strategy: str, logs: List[str]
-    ) -> Dict[str, Any]:
-        """Generate conversation summary with metadata using AI or fallback strategies."""
-        # Enforce reasonable summary length limits (max 1500 characters for summaries)
-        MAX_SUMMARY_LENGTH = 1500
-        effective_max_length = min(max_length, MAX_SUMMARY_LENGTH)
-
-        # Log warning if the provided max_length was too large
-        if max_length > MAX_SUMMARY_LENGTH:
-            logs.append(
-                f"[Memory Node]: Warning - Requested max_length ({max_length}) exceeded limit, using {MAX_SUMMARY_LENGTH}"
-            )
-
-        # Try AI summarization first if available
-        if self._gemini_model and len(text) > 100:  # Only use AI for substantial content
-            try:
-                ai_result = self._call_gemini_for_summary(
-                    text, effective_max_length, strategy, logs
-                )
-                if ai_result and ai_result.get("summary"):
-                    logs.append(
-                        f"[Memory Node]: AI summary generated ({len(ai_result['summary'])} chars)"
-                    )
-                    return ai_result
-            except Exception as e:
-                logs.append(f"[Memory Node]: AI summarization failed, using fallback: {str(e)}")
-
-        # Fallback to rule-based strategies
-        summary = self._get_fallback_summary(text, effective_max_length, strategy, logs)
-        return {"summary": summary, "key_points": [], "topics": []}
-
-    def _call_gemini_for_summary(
-        self, text: str, max_length: int, strategy: str, logs: List[str]
-    ) -> Dict[str, Any]:
-        """Generate AI summary with metadata using Gemini."""
+    def _generate_simple_summary(self, text: str) -> str:
+        """Generate a comprehensive conversation summary for LLM context using Gemini."""
         try:
-            # Create AI summarization prompt
-            prompt = self._create_ai_summarization_prompt(text, max_length, strategy)
+            if self._gemini_model and len(text) > 100:
+                # Create comprehensive prompt for LLM context
+                prompt = f"""You are creating a conversation summary that will be used as context for a Large Language Model (LLM). The LLM needs to understand the full conversation history to provide relevant responses.
 
-            # Call Gemini synchronously (simpler approach)
-            response = self._gemini_model.generate_content(prompt)
-            response_text = response.text
+TASK: Create a comprehensive conversation summary (up to 1500 words) that captures all important information, context, and nuances from the conversation.
 
-            # Parse and validate response
-            summary_data = self._parse_ai_summary_response(response_text)
-            summary = summary_data.get("summary", "").strip()
+REQUIREMENTS:
+1. Write a detailed summary that an LLM can use to understand the full conversation context
+2. Include key topics, user requests, decisions made, and important details
+3. Maintain chronological flow and logical connections between topics
+4. Preserve important context that would help an LLM provide better responses
+5. Use clear, structured language that an LLM can easily parse and understand
+6. Include specific details, not just high-level summaries
 
-            if not summary:
-                logs.append("[Memory Node]: AI returned empty summary")
-                return {"summary": "", "key_points": [], "topics": []}
+FORMAT: Write the summary as a coherent narrative that clearly explains what happened in the conversation, what was discussed, what decisions were made, and any important context an LLM would need to continue the conversation effectively.
 
-            # Truncate if still too long
-            if len(summary) > max_length:
-                summary = self._truncate_summary_intelligently(summary, max_length)
-
-            return {
-                "summary": summary,
-                "key_points": summary_data.get("key_points", []),
-                "topics": summary_data.get("main_topics", []),
-            }
-
-        except Exception as e:
-            self.logger.error(f"AI summarization failed: {e}")
-            return {"summary": "", "key_points": [], "topics": []}
-
-    def _get_fallback_summary(
-        self, text: str, max_length: int, strategy: str, logs: List[str]
-    ) -> str:
-        """Get fallback summary using rule-based strategies."""
-        if strategy == "extractive":
-            return self._extractive_summarization(text, max_length, logs)
-        elif strategy == "progressive":
-            return self._progressive_summarization(text, max_length, logs)
-        elif strategy == "abstractive":
-            # Abstractive without AI falls back to extractive
-            logs.append("[Memory Node]: Abstractive strategy using extractive fallback")
-            return self._extractive_summarization(text, max_length, logs)
-        else:
-            # Default - extractive summarization
-            return self._extractive_summarization(text, max_length, logs)
-
-    def _create_ai_summarization_prompt(self, text: str, max_length: int, strategy: str) -> str:
-        """Create prompt for AI summarization."""
-        max_words = max_length // 5  # Rough words to chars ratio
-
-        strategy_instructions = {
-            "progressive": "Focus on key developments, decisions, and progression of ideas. Capture the main themes and outcomes.",
-            "extractive": "Extract and combine the most important sentences and key points from the conversation.",
-            "abstractive": "Create a comprehensive summary that captures the essence and main points in your own words.",
-        }
-
-        instruction = strategy_instructions.get(strategy, strategy_instructions["progressive"])
-
-        prompt = f"""
-Summarize this conversation in approximately {max_words} words or less ({max_length} characters maximum).
-
-{instruction}
-
-Focus on:
-- Key decisions made or discussed
-- Important actions planned or taken
-- Main problems or questions raised
-- Solutions or answers provided
-- User requests and system responses
-- Important outcomes or conclusions
-
-Conversation to summarize:
+CONVERSATION TO SUMMARIZE:
 {text}
 
-Provide your response as JSON in this format:
-{{
-    "summary": "Your concise summary here",
-    "key_points": ["Point 1", "Point 2", "Point 3"],
-    "main_topics": ["Topic 1", "Topic 2"]
-}}
+COMPREHENSIVE SUMMARY FOR LLM CONTEXT:"""
 
-Summary:
-"""
-        return prompt
-
-    def _parse_ai_summary_response(self, response: str) -> Dict[str, Any]:
-        """Parse Gemini AI response."""
-        try:
-            # Look for JSON in response
-            if "{" in response and "}" in response:
-                json_start = response.find("{")
-                json_end = response.rfind("}") + 1
-                json_str = response[json_start:json_end]
-                parsed = json.loads(json_str)
-                return parsed
+                # Call Gemini
+                response = self._gemini_model.generate_content(prompt)
+                return response.text.strip()
             else:
-                # If no JSON, treat entire response as summary
-                return {"summary": response.strip(), "key_points": [], "main_topics": []}
-        except Exception as e:
-            self.logger.warning(f"Failed to parse AI summary response: {e}")
-            return {
-                "summary": response.strip() if response else "",
-                "key_points": [],
-                "main_topics": [],
-            }
+                # Simple fallback
+                lines = text.split("\n")
+                if len(lines) > 5:
+                    return f"Conversation with {len(lines)} exchanges covering various topics."
+                else:
+                    return "Brief conversation exchange."
 
-    def _extractive_summarization(self, text: str, max_length: int, logs: List[str]) -> str:
+        except Exception as e:
+            self.logger.error(f"Simple summary failed: {e}")
+            return "Conversation summary unavailable."
+
+        # Complex methods removed - using simple summary only
         """Extractive summarization using keyword scoring."""
         sentences = text.split(".")
         important_sentences = []
@@ -2024,20 +1921,59 @@ Summary:
         # Sort by score and select top sentences
         important_sentences.sort(key=lambda x: x[1], reverse=True)
 
-        summary_parts = []
-        current_length = 0
-        for sentence, score in important_sentences:
-            if current_length + len(sentence) + 2 <= max_length:  # +2 for ". "
-                summary_parts.append(sentence)
-                current_length += len(sentence) + 2
+        # Instead of just joining sentences, create an actual summary
+        if important_sentences:
+            # Analyze the top sentences to create a coherent summary
+            top_sentences = [sentence for sentence, score in important_sentences[:5]]
+
+            # Extract key information to build a proper summary
+            user_actions = []
+            assistant_actions = []
+            topics = []
+
+            for sentence in top_sentences:
+                sentence_lower = sentence.lower()
+                if any(
+                    word in sentence_lower
+                    for word in ["user", "asked", "requested", "need", "want"]
+                ):
+                    user_actions.append(sentence[:80] + ("..." if len(sentence) > 80 else ""))
+                elif any(
+                    word in sentence_lower
+                    for word in ["assistant", "provided", "explained", "suggested", "recommended"]
+                ):
+                    assistant_actions.append(
+                        sentence[:100] + ("..." if len(sentence) > 100 else "")
+                    )
+                elif any(
+                    word in sentence_lower
+                    for word in ["about", "regarding", "concerning", "topic", "issue"]
+                ):
+                    topics.append(sentence[:70] + ("..." if len(sentence) > 70 else ""))
+
+            # Build coherent summary
+            summary_parts = []
+            if user_actions:
+                summary_parts.append(f"User engagement: {user_actions[0]}")
+            if assistant_actions:
+                summary_parts.append(f"Assistant response: {assistant_actions[0]}")
+            if topics and not user_actions and not assistant_actions:
+                summary_parts.append(f"Discussion topics: {topics[0]}")
+
+            if summary_parts:
+                summary = ". ".join(summary_parts)
             else:
-                break
+                summary = f"Conversation covering {len(important_sentences)} key points"
+        else:
+            summary = "Conversation with various exchanges"
 
-        summary = ". ".join(summary_parts)
+        # Ensure length constraint
         if len(summary) > max_length:
-            summary = self._truncate_summary_intelligently(summary, max_length)
+            summary = summary[: max_length - 3] + "..."
 
-        logs.append(f"[Memory Node]: Extractive summary selected {len(summary_parts)} sentences")
+        logs.append(
+            f"[Memory Node]: Generated extractive summary from {len(important_sentences)} key sentences"
+        )
         return summary
 
     def _progressive_summarization(self, text: str, max_length: int, logs: List[str]) -> str:
@@ -2124,16 +2060,44 @@ Summary:
                 break
 
         if key_content:
-            summary = "\n".join(key_content)
-            logs.append(
-                f"[Memory Node]: Progressive summary extracted {len(key_content)} key lines"
-            )
+            # Actually create a summary instead of just joining lines
+            summary_points = []
+            user_requests = []
+            ai_responses = []
+
+            for line in key_content[:10]:  # Limit to top 10 lines
+                if "User:" in line or "user:" in line:
+                    content = line.split(":", 1)[1].strip() if ":" in line else line
+                    if len(content) > 20:
+                        user_requests.append(content[:100] + ("..." if len(content) > 100 else ""))
+                elif "Assistant:" in line or "AI:" in line or "assistant:" in line:
+                    content = line.split(":", 1)[1].strip() if ":" in line else line
+                    if len(content) > 20:
+                        ai_responses.append(content[:120] + ("..." if len(content) > 120 else ""))
+
+            # Build a proper summary
+            if user_requests:
+                summary_points.append(f"User discussed: {'; '.join(user_requests[:2])}")
+            if ai_responses:
+                summary_points.append(f"Assistant provided: {'; '.join(ai_responses[:2])}")
+
+            if summary_points:
+                summary = ". ".join(summary_points)
+                # Ensure it fits within max_length
+                if len(summary) > max_length:
+                    summary = summary[: max_length - 3] + "..."
+                logs.append(
+                    f"[Memory Node]: Generated actual summary from {len(key_content)} key points"
+                )
+            else:
+                summary = (
+                    f"Conversation with {len(key_content)} key exchanges covering various topics"
+                )
+                logs.append("[Memory Node]: Generated basic summary from key content")
         else:
-            # Fallback to intelligent truncation
-            summary = self._truncate_summary_intelligently(text, max_length)
-            logs.append(
-                "[Memory Node]: Progressive summary fallback - using intelligent truncation"
-            )
+            # Better fallback - try to create a minimal summary
+            summary = f"Conversation of {len(lines)} lines discussing various topics"
+            logs.append("[Memory Node]: Generated fallback summary")
 
         return summary
 
@@ -2396,10 +2360,31 @@ Summary:
                     "confidence_score": 0.8,  # Default confidence
                 }
 
-                # Use upsert to handle updates
-                supabase.table("conversation_summaries").upsert(
-                    summary_record, on_conflict="session_id,created_at"
-                ).execute()
+                # Check if a summary already exists for this session_id and user_id
+                existing_result = (
+                    supabase.table("conversation_summaries")
+                    .select("id")
+                    .eq("session_id", session_id)
+                    .eq("user_id", user_id)
+                    .limit(1)
+                    .execute()
+                )
+
+                if existing_result.data:
+                    # Update existing summary record
+                    summary_record["updated_at"] = datetime.now().isoformat()
+                    supabase.table("conversation_summaries").update(summary_record).eq(
+                        "id", existing_result.data[0]["id"]
+                    ).execute()
+                    self.logger.info(
+                        f"[Memory Node]: 🧠 ConvSummary: Updated existing summary for session {session_id}"
+                    )
+                else:
+                    # Create new summary record
+                    supabase.table("conversation_summaries").insert(summary_record).execute()
+                    self.logger.info(
+                        f"[Memory Node]: 🧠 ConvSummary: Created new summary for session {session_id}"
+                    )
                 self.logger.info(
                     f"[Memory Node]: 🧠 ConvSummary: Saved summary ({len(summary)} chars) to Supabase"
                 )
@@ -2611,31 +2596,12 @@ Summary:
     ) -> NodeExecutionResult:
         """Execute conversation summary memory operations with proper buffer + summary support."""
 
-        # Get parameters from node specification
-        try:
-            trigger_threshold = self.get_parameter_with_spec(context, "trigger_threshold")
-        except (KeyError, AttributeError):
-            trigger_threshold = 8
+        # Simple configuration - no complex parameters
+        trigger_threshold = 5  # Fixed: only after 5 conversation rounds
+        buffer_window_size = 10  # Simple buffer size
+        from shared.models.node_enums import GoogleGeminiModel
 
-        try:
-            buffer_window_size = self.get_parameter_with_spec(context, "buffer_window_size")
-        except (KeyError, AttributeError):
-            buffer_window_size = 6
-
-        try:
-            max_total_tokens = self.get_parameter_with_spec(context, "max_total_tokens")
-        except (KeyError, AttributeError):
-            max_total_tokens = 3000
-
-        try:
-            summary_style = self.get_parameter_with_spec(context, "summary_style")
-        except (KeyError, AttributeError):
-            summary_style = "progressive"
-
-        try:
-            summarization_model = self.get_parameter_with_spec(context, "summarization_model")
-        except (KeyError, AttributeError):
-            summarization_model = OpenAIModel.GPT_5_NANO.value
+        summarization_model = GoogleGeminiModel.GEMINI_2_5_FLASH.value  # Use Gemini for consistency
 
         # Use workflow_id and user_id as session_id for persistent storage
         session_id = (
@@ -2649,7 +2615,7 @@ Summary:
             f"[Memory Node]: 🧠 ConvSummary: Using session_id: {session_id}, user_id: {user_id}"
         )
         self.logger.info(
-            f"[Memory Node]: 🧠 ConvSummary: Config - threshold:{trigger_threshold}, buffer:{buffer_window_size}, model:{summarization_model}"
+            f"[Memory Node]: 🧠 ConvSummary: Config - threshold:{trigger_threshold}, model:{summarization_model}"
         )
 
         # Load conversation data from Supabase instead of in-memory storage
@@ -2796,27 +2762,23 @@ Summary:
                                 [f"{msg['role']}: {msg['content']}" for msg in all_messages]
                             )
 
-                            # Generate new summary using AI-powered method
-                            summary_result = self._generate_conversation_summary_with_metadata(
-                                conversation_text, max_total_tokens // 2, summary_style, logs
-                            )
-                            logs.append(
-                                f"[Memory Node]: 🧠 ConvSummary: Generated summary with AI metadata"
-                            )
+                            # Generate simple summary
+                            summary_result = self._generate_simple_summary(conversation_text)
+                            logs.append(f"[Memory Node]: 🧠 ConvSummary: Generated simple summary")
 
-                            conv_data["summary"] = summary_result["summary"]
-                            conv_data["key_points"] = summary_result.get("key_points", [])
-                            conv_data["topics"] = summary_result.get("topics", [])
-                            conv_data["total_chars"] = len(summary_result["summary"])
+                            conv_data["summary"] = summary_result
+                            conv_data["key_points"] = []
+                            conv_data["topics"] = []
+                            conv_data["total_chars"] = len(summary_result)
 
                             # Log summary preview for debugging
                             summary_preview = (
-                                summary_result["summary"][:100] + "..."
-                                if len(summary_result["summary"]) > 100
-                                else summary_result["summary"]
+                                summary_result[:100] + "..."
+                                if len(summary_result) > 100
+                                else summary_result
                             )
                             self.logger.info(
-                                f"[Memory Node]: 🧠 ConvSummary: ✅ Summary generated ({len(summary_result['summary'])} chars): {summary_preview}"
+                                f"[Memory Node]: 🧠 ConvSummary: ✅ Simple summary generated ({len(summary_result)} chars): {summary_preview}"
                             )
 
                     conv_data["last_updated"] = datetime.now().isoformat()
