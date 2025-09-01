@@ -43,6 +43,7 @@ class ExecutionStatus(Enum):
     ERROR = "error"
     SKIPPED = "skipped"
     CANCELLED = "cancelled"
+    PAUSED = "paused"  # Added for HIL node workflow pause functionality
 
 
 @dataclass

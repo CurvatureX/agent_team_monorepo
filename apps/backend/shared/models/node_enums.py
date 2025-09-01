@@ -203,13 +203,6 @@ class HumanLoopSubtype(str, Enum):
     FORM_SUBMISSION = "FORM_SUBMISSION"
     MANUAL_REVIEW = "MANUAL_REVIEW"
 
-    # Legacy (for backward compatibility)
-    GMAIL = "GMAIL"
-    SLACK = "SLACK"
-    DISCORD = "DISCORD"
-    TELEGRAM = "TELEGRAM"
-    APP = "APP"
-
 
 class ToolSubtype(str, Enum):
     """Tool Node Subtypes - External tools and utilities"""
