@@ -254,6 +254,18 @@ resource "aws_ecs_task_definition" "api_gateway" {
         {
           name      = "SLACK_REDIRECT_URI"
           valueFrom = aws_ssm_parameter.slack_redirect_uri.arn
+        },
+        {
+          name      = "GOOGLE_CLIENT_ID"
+          valueFrom = aws_ssm_parameter.google_client_id.arn
+        },
+        {
+          name      = "GOOGLE_CLIENT_SECRET"
+          valueFrom = aws_ssm_parameter.google_client_secret.arn
+        },
+        {
+          name      = "GOOGLE_REDIRECT_URI"
+          valueFrom = aws_ssm_parameter.google_redirect_uri.arn
         }
       ]
 
@@ -730,6 +742,18 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
         {
           name      = "SLACK_SIGNING_SECRET"
           valueFrom = aws_ssm_parameter.slack_signing_secret.arn
+        },
+        {
+          name      = "GOOGLE_CLIENT_ID"
+          valueFrom = aws_ssm_parameter.google_client_id.arn
+        },
+        {
+          name      = "GOOGLE_CLIENT_SECRET"
+          valueFrom = aws_ssm_parameter.google_client_secret.arn
+        },
+        {
+          name      = "GOOGLE_REDIRECT_URI"
+          valueFrom = aws_ssm_parameter.google_redirect_uri.arn
         }
       ]
 
