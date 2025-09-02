@@ -1,10 +1,11 @@
 """
-Simple Conversation Summary Memory Implementation.
+Incremental Conversation Summary Memory Implementation.
 
 This provides conversation summarization that:
-- Only triggers after exactly 5 rounds of conversation
-- Uses ONE simple summarization method
-- Updates existing summary records instead of creating new ones
+- Creates/updates summary every time a new message is added
+- Uses previous summary + recent 5 rounds of conversation to create updated summary
+- Maintains comprehensive context for LLM while keeping summaries manageable
+- Updates existing summary records with each new conversation activity
 """
 
 import asyncio
@@ -24,17 +25,18 @@ logger = logging.getLogger(__name__)
 
 class ConversationSummaryMemory(MemoryBase):
     """
-    Simple Conversation Summary Memory.
+    Incremental Conversation Summary Memory.
 
     Features:
-    - Summarizes after exactly 5 rounds of conversation
-    - Uses ONE simple summarization method
-    - Updates existing summary records
+    - Creates/updates summary every time new messages are added
+    - Combines previous summary with recent 5 rounds of conversation
+    - Maintains comprehensive LLM context while keeping summaries manageable
+    - Updates existing summary records with incremental changes
     """
 
     def __init__(self, config: Dict[str, Any]):
         """
-        Initialize simple conversation summary memory.
+        Initialize incremental conversation summary memory.
 
         Args:
             config: Configuration dict with keys:
@@ -191,7 +193,7 @@ class ConversationSummaryMemory(MemoryBase):
     async def _check_and_generate_summary(
         self, session_id: str, user_id: Optional[str]
     ) -> Dict[str, Any]:
-        """Check if summary should be generated and create it if needed."""
+        """Generate/update summary every time using previous summary + recent 5 rounds."""
         try:
             # Get all messages for this session
             buffer_data = await self.buffer_memory.retrieve({"session_id": session_id})
@@ -203,27 +205,24 @@ class ConversationSummaryMemory(MemoryBase):
             # Count conversation rounds (user + assistant pairs)
             conversation_rounds = self._count_conversation_rounds(messages)
 
-            # Only summarize after exactly 5 rounds
-            if conversation_rounds < 5:
+            # Need at least 1 round to create a summary
+            if conversation_rounds < 1:
                 return {
                     "summary_generated": False,
-                    "reason": f"Only {conversation_rounds} rounds, need 5",
+                    "reason": "Need at least 1 conversation round",
                 }
 
-            # Check if we already have a summary for this session
+            # Get previous summary if it exists
             existing_summary = await self._get_latest_summary(session_id)
+            previous_summary_text = existing_summary.get("summary", "") if existing_summary else ""
 
-            # If we already have a summary, check if we need to update it
-            if existing_summary:
-                existing_message_count = existing_summary.get("message_count", 0)
-                if len(messages) <= existing_message_count:
-                    return {
-                        "summary_generated": False,
-                        "reason": "No new messages since last summary",
-                    }
+            # Get recent 5 rounds of conversation (10 messages max: 5 user + 5 assistant)
+            recent_messages = self._get_recent_conversation_rounds(messages, 5)
 
-            # Generate simple summary
-            summary_text = await self._generate_simple_summary(messages)
+            # Generate updated summary using previous summary + recent messages
+            summary_text = await self._generate_incremental_summary(
+                previous_summary_text, recent_messages
+            )
 
             # Store or update summary
             summary_id = await self._store_or_update_summary(
@@ -235,13 +234,16 @@ class ConversationSummaryMemory(MemoryBase):
                 }
             )
 
-            logger.info(f"Generated summary for session {session_id} with {len(messages)} messages")
+            logger.info(
+                f"Generated incremental summary for session {session_id} with {len(recent_messages)} recent messages"
+            )
 
             return {
                 "summary_generated": True,
                 "summary_id": summary_id,
                 "session_id": session_id,
                 "message_count": len(messages),
+                "recent_messages_processed": len(recent_messages),
             }
 
         except Exception as e:
@@ -254,31 +256,77 @@ class ConversationSummaryMemory(MemoryBase):
         user_messages = [msg for msg in messages if msg.get("role") == "user"]
         return len(user_messages)
 
-    async def _generate_simple_summary(self, messages: List[Dict[str, Any]]) -> str:
-        """Generate a comprehensive summary for LLM context using Gemini."""
+    def _get_recent_conversation_rounds(
+        self, messages: List[Dict[str, Any]], num_rounds: int = 5
+    ) -> List[Dict[str, Any]]:
+        """Get the most recent N conversation rounds (user + assistant pairs)."""
+        if not messages:
+            return []
+
+        # Find the last N user messages and their corresponding assistant responses
+        user_messages = [(i, msg) for i, msg in enumerate(messages) if msg.get("role") == "user"]
+
+        if not user_messages:
+            return []
+
+        # Get the last num_rounds user messages
+        recent_user_msgs = (
+            user_messages[-num_rounds:] if len(user_messages) >= num_rounds else user_messages
+        )
+
+        # Collect messages from the first recent user message onwards
+        if recent_user_msgs:
+            start_index = recent_user_msgs[0][0]  # Index of first recent user message
+            return messages[start_index:]
+
+        return messages
+
+    async def _generate_incremental_summary(
+        self, previous_summary: str, recent_messages: List[Dict[str, Any]]
+    ) -> str:
+        """Generate updated summary by combining previous summary with recent messages."""
         try:
-            # Format messages for summarization
-            conversation_text = "\n".join(
-                [f"{msg['role'].upper()}: {msg['content']}" for msg in messages]
+            # Format recent messages for summarization
+            recent_conversation_text = "\n".join(
+                [f"{msg['role'].upper()}: {msg['content']}" for msg in recent_messages]
             )
 
-            # Comprehensive prompt for LLM context
-            prompt = f"""You are creating a conversation summary that will be used as context for a Large Language Model (LLM). The LLM needs to understand the full conversation history to provide relevant responses.
+            # Create incremental summary prompt
+            if previous_summary:
+                prompt = f"""You are updating a conversation summary by incorporating new messages. The summary will be used as context for a Large Language Model (LLM).
 
-TASK: Create a comprehensive conversation summary (up to 2000 words) that captures all important information, context, and nuances from the conversation.
+TASK: Update the existing summary by incorporating the new conversation messages while maintaining all important context.
 
 REQUIREMENTS:
-1. Write a detailed summary that an LLM can use to understand the full conversation context
+1. Merge the previous summary with the new messages seamlessly
+2. Maintain chronological flow and context continuity
+3. Preserve all important information from both the previous summary and new messages
+4. Keep the updated summary comprehensive but concise (up to 2000 words)
+5. Ensure an LLM can understand the full conversation context from this summary
+6. Include specific details and decisions from both old and new content
+
+EXISTING SUMMARY:
+{previous_summary}
+
+NEW MESSAGES TO INCORPORATE:
+{recent_conversation_text}
+
+UPDATED COMPREHENSIVE SUMMARY FOR LLM CONTEXT:"""
+            else:
+                # No previous summary, create initial summary
+                prompt = f"""You are creating the first conversation summary that will be used as context for a Large Language Model (LLM).
+
+TASK: Create a comprehensive conversation summary (up to 2000 words) that captures all important information from these initial messages.
+
+REQUIREMENTS:
+1. Write a detailed summary that an LLM can use to understand the conversation context
 2. Include key topics, user requests, decisions made, and important details
-3. Maintain chronological flow and logical connections between topics
-4. Preserve important context that would help an LLM provide better responses
-5. Use clear, structured language that an LLM can easily parse and understand
-6. Include specific details, not just high-level summaries
+3. Maintain chronological flow and logical connections
+4. Use clear, structured language that an LLM can easily parse
+5. Include specific details, not just high-level summaries
 
-FORMAT: Write the summary as a coherent narrative that clearly explains what happened in the conversation, what was discussed, what decisions were made, and any important context an LLM would need to continue the conversation effectively.
-
-CONVERSATION TO SUMMARIZE:
-{conversation_text}
+CONVERSATION MESSAGES:
+{recent_conversation_text}
 
 COMPREHENSIVE SUMMARY FOR LLM CONTEXT:"""
 
@@ -288,11 +336,13 @@ COMPREHENSIVE SUMMARY FOR LLM CONTEXT:"""
             return response.strip()
 
         except Exception as e:
-            logger.error(f"Failed to generate simple summary: {str(e)}")
-            # Fallback: create basic summary from first/last messages
-            if messages:
-                return f"Conversation with {len(messages)} messages. Started with: {messages[0].get('content', '')[:100]}..."
-            return "Empty conversation"
+            logger.error(f"Failed to generate incremental summary: {str(e)}")
+            # Fallback: combine previous summary with basic recent message info
+            if previous_summary and recent_messages:
+                return f"{previous_summary}\n\nRecent activity: {len(recent_messages)} new messages added to the conversation."
+            elif recent_messages:
+                return f"Conversation with {len(recent_messages)} messages. Latest: {recent_messages[-1].get('content', '')[:100]}..."
+            return previous_summary or "Empty conversation"
 
     async def _call_gemini_async(self, prompt: str) -> str:
         """Call Gemini API asynchronously."""
