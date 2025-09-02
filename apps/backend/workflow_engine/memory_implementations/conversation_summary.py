@@ -171,10 +171,10 @@ class ConversationSummaryMemory(MemoryBase):
             # Get both buffer and summary data
             data = await self.retrieve({"session_id": session_id})
 
-            # Format for LLM context
-            messages = [
-                {"role": msg["role"], "content": msg["content"]} for msg in data.get("messages", [])
-            ]
+            # Format for LLM context - limit to last 10 messages for better performance
+            all_messages = data.get("messages", [])
+            recent_messages = all_messages[-10:] if len(all_messages) > 10 else all_messages
+            messages = [{"role": msg["role"], "content": msg["content"]} for msg in recent_messages]
             summary = data.get("summary", "")
 
             return {
@@ -265,7 +265,7 @@ class ConversationSummaryMemory(MemoryBase):
             # Comprehensive prompt for LLM context
             prompt = f"""You are creating a conversation summary that will be used as context for a Large Language Model (LLM). The LLM needs to understand the full conversation history to provide relevant responses.
 
-TASK: Create a comprehensive conversation summary (up to 1500 words) that captures all important information, context, and nuances from the conversation.
+TASK: Create a comprehensive conversation summary (up to 2000 words) that captures all important information, context, and nuances from the conversation.
 
 REQUIREMENTS:
 1. Write a detailed summary that an LLM can use to understand the full conversation context

@@ -44,15 +44,15 @@ class MemoryNodeExecutor(BaseNodeExecutor):
     def _setup_gemini_client(self) -> None:
         """Setup Gemini client for AI summarization."""
         try:
-            google_api_key = os.getenv("GOOGLE_API_KEY")
-            if google_api_key:
+            gemini_api_key = os.getenv("GEMINI_API_KEY")
+            if gemini_api_key:
                 import google.generativeai as genai
 
-                genai.configure(api_key=google_api_key)
+                genai.configure(api_key=gemini_api_key)
                 self._gemini_model = genai.GenerativeModel("gemini-2.0-flash-exp")
                 self.logger.info("Gemini client initialized for AI summarization")
             else:
-                self.logger.warning("No GOOGLE_API_KEY found - AI summarization unavailable")
+                self.logger.warning("No GEMINI_API_KEY found - AI summarization unavailable")
         except ImportError:
             self.logger.warning("google-generativeai not installed - AI summarization unavailable")
         except Exception as e:
@@ -1837,11 +1837,15 @@ class MemoryNodeExecutor(BaseNodeExecutor):
     def _generate_simple_summary(self, text: str) -> str:
         """Generate a comprehensive conversation summary for LLM context using Gemini."""
         try:
+            self.logger.info(f"_generate_simple_summary called with text length: {len(text)}")
+            self.logger.info(f"_gemini_model available: {self._gemini_model is not None}")
+
             if self._gemini_model and len(text) > 100:
+                self.logger.info("Using Gemini for summary generation")
                 # Create comprehensive prompt for LLM context
                 prompt = f"""You are creating a conversation summary that will be used as context for a Large Language Model (LLM). The LLM needs to understand the full conversation history to provide relevant responses.
 
-TASK: Create a comprehensive conversation summary (up to 1500 words) that captures all important information, context, and nuances from the conversation.
+TASK: Create a comprehensive conversation summary (up to 2000 words) that captures all important information, context, and nuances from the conversation.
 
 REQUIREMENTS:
 1. Write a detailed summary that an LLM can use to understand the full conversation context
@@ -1859,21 +1863,71 @@ CONVERSATION TO SUMMARIZE:
 COMPREHENSIVE SUMMARY FOR LLM CONTEXT:"""
 
                 # Call Gemini
+                self.logger.info("Calling Gemini API for summary generation")
                 response = self._gemini_model.generate_content(prompt)
-                return response.text.strip()
+                summary_text = response.text.strip()
+                self.logger.info(f"Gemini returned summary of length: {len(summary_text)}")
+                return summary_text
             else:
-                # Simple fallback
-                lines = text.split("\n")
-                if len(lines) > 5:
-                    return f"Conversation with {len(lines)} exchanges covering various topics."
-                else:
-                    return "Brief conversation exchange."
+                # Better fallback when Gemini is not available
+                self.logger.warning("Gemini model not available, using improved fallback summary")
+                return self._create_better_fallback_summary(text)
 
         except Exception as e:
-            self.logger.error(f"Simple summary failed: {e}")
-            return "Conversation summary unavailable."
+            self.logger.error(f"Gemini summary failed: {e}")
+            # Use better fallback when Gemini fails
+            return self._create_better_fallback_summary(text)
 
-        # Complex methods removed - using simple summary only
+    def _create_better_fallback_summary(self, text: str) -> str:
+        """Create a meaningful fallback summary when Gemini is unavailable."""
+        try:
+            lines = [line.strip() for line in text.split("\n") if line.strip()]
+
+            # Count actual conversation exchanges (user/assistant pairs)
+            user_lines = [line for line in lines if line.upper().startswith(("USER:", "HUMAN:"))]
+            assistant_lines = [
+                line for line in lines if line.upper().startswith(("ASSISTANT:", "AI:", "BOT:"))
+            ]
+
+            # Extract key topics and themes
+            topics = set()
+            key_phrases = []
+
+            for line in lines[:20]:  # Check first 20 lines for topics
+                line_lower = line.lower()
+                # Look for common question patterns
+                if "?" in line:
+                    key_phrases.append(line[:100] + ("..." if len(line) > 100 else ""))
+                # Look for topic indicators
+                if any(
+                    word in line_lower
+                    for word in ["about", "regarding", "help with", "need to", "want to"]
+                ):
+                    topics.add(line[:80] + ("..." if len(line) > 80 else ""))
+
+            # Create meaningful summary
+            summary_parts = []
+
+            if user_lines and assistant_lines:
+                conversation_rounds = min(len(user_lines), len(assistant_lines))
+                summary_parts.append(
+                    f"Conversation with {conversation_rounds} rounds of user-assistant exchanges"
+                )
+            else:
+                summary_parts.append(f"Conversation with {len(lines)} total exchanges")
+
+            if key_phrases:
+                summary_parts.append(f"Key questions include: {key_phrases[0]}")
+
+            if topics:
+                topic_list = list(topics)[:2]  # Max 2 topics
+                summary_parts.append(f"Topics discussed: {'; '.join(topic_list)}")
+
+            return ". ".join(summary_parts) + "."
+
+        except Exception as e:
+            self.logger.error(f"Fallback summary creation failed: {e}")
+            return "Conversation summary generation failed. Manual review needed."
         """Extractive summarization using keyword scoring."""
         sentences = text.split(".")
         important_sentences = []
@@ -2598,7 +2652,9 @@ COMPREHENSIVE SUMMARY FOR LLM CONTEXT:"""
 
         # Simple configuration - no complex parameters
         trigger_threshold = 5  # Fixed: only after 5 conversation rounds
-        buffer_window_size = 10  # Simple buffer size
+        buffer_window_size = (
+            10  # Simple buffer size - limit to last 10 messages for better performance
+        )
         from shared.models.node_enums import GoogleGeminiModel
 
         summarization_model = GoogleGeminiModel.GEMINI_2_5_FLASH.value  # Use Gemini for consistency
