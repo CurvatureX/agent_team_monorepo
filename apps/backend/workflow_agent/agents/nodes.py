@@ -56,6 +56,99 @@ class WorkflowAgentNodes:
         # Bind MCP tools to the LLM
         return llm.bind_tools(self.mcp_tools)
 
+    async def load_prompt_template(self, template_name: str, **context) -> str:
+        """Load and render a prompt template using the prompt engine"""
+        return await self.prompt_engine.render_prompt(template_name, **context)
+
+    async def _repair_json(self, json_str: str) -> str:
+        """Use GEMINI to repair malformed JSON from gpt-5-mini"""
+        import json
+        import os
+
+        logger.info(f"Attempting to repair JSON using GEMINI, original length: {len(json_str)}")
+
+        # First try to parse the JSON as-is
+        try:
+            parsed = json.loads(json_str)
+            logger.info("JSON is already valid, no repair needed")
+            return json.dumps(parsed, indent=2)
+        except json.JSONDecodeError as e:
+            logger.info(f"JSON needs repair: {e}")
+
+        try:
+            # Initialize GEMINI model for JSON repair using enum
+            import google.generativeai as genai
+
+            from shared.models.node_enums import GoogleGeminiModel
+
+            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+            model = genai.GenerativeModel(GoogleGeminiModel.GEMINI_2_5_FLASH_LITE.value)
+
+            # Create repair prompt with explicit JSON formatting request
+            repair_prompt = f"""You are a JSON repair expert. Fix the malformed JSON below and return ONLY the valid JSON object.
+
+Common issues to fix:
+- Trailing backslashes in string values (e.g., "value\\" should be "value")
+- Invalid escape sequences
+- Control characters
+- Missing quotes around property names
+- Trailing commas
+- Unclosed brackets or braces
+
+CRITICAL: Return ONLY the valid JSON object with no markdown, no explanations, no code blocks:
+
+{json_str}"""
+
+            # Get GEMINI to repair the JSON
+            response = model.generate_content(
+                repair_prompt,
+                generation_config={
+                    "temperature": 0,
+                    "max_output_tokens": 8192,
+                },
+            )
+
+            repaired_json = response.text.strip() if response.text else ""
+
+            # Test the repaired JSON
+            parsed = json.loads(repaired_json)
+            logger.info("GEMINI JSON repair successful")
+            return json.dumps(parsed, indent=2)
+
+        except Exception as e:
+            logger.error(f"GEMINI JSON repair failed: {e}")
+
+            # Fallback to basic structure extraction
+            logger.info("Attempting basic structure extraction as fallback")
+            try:
+                import re
+
+                name_match = re.search(r'"name":\s*"([^"]*)"', json_str)
+                desc_match = re.search(r'"description":\s*"([^"]*)"', json_str)
+
+                if name_match and desc_match:
+                    fallback_json = {
+                        "name": name_match.group(1),
+                        "description": desc_match.group(1),
+                        "nodes": [],
+                        "connections": [],
+                    }
+                    json_str = json.dumps(fallback_json, indent=2)
+                    logger.info("Applied fallback JSON structure")
+                    return json_str
+
+            except Exception as fallback_error:
+                logger.error(f"Even fallback repair failed: {fallback_error}")
+
+            # Return a minimal valid workflow as last resort
+            minimal_workflow = {
+                "name": "Generated Workflow",
+                "description": "Workflow could not be parsed",
+                "nodes": [],
+                "connections": {},
+            }
+            return json.dumps(minimal_workflow, indent=2)
+
     def _add_conversation(self, state: WorkflowState, role: str, text: str) -> None:
         """Add a new message to conversations"""
         state["conversations"].append(
@@ -361,11 +454,13 @@ class WorkflowAgentNodes:
                     if from_node not in connections_dict:
                         connections_dict[from_node] = {"connection_types": {}}
                     if from_port not in connections_dict[from_node]["connection_types"]:
-                        connections_dict[from_node]["connection_types"][from_port] = {"connections": []}
+                        connections_dict[from_node]["connection_types"][from_port] = {
+                            "connections": []
+                        }
 
-                    connections_dict[from_node]["connection_types"][from_port]["connections"].append(
-                        {"node": to_node, "type": to_port, "index": 0}
-                    )
+                    connections_dict[from_node]["connection_types"][from_port][
+                        "connections"
+                    ].append({"node": to_node, "type": to_port, "index": 0})
 
             workflow["connections"] = connections_dict
         elif "connections" not in workflow:
@@ -517,15 +612,19 @@ class WorkflowAgentNodes:
                 "existing_intent": existing_intent,
                 "conversation_history": conversation_history,
             }
-            
+
             # Add source workflow if in edit/copy mode
             if "source_workflow" in state and state["source_workflow"]:
                 template_context["source_workflow"] = json.dumps(state["source_workflow"], indent=2)
-                logger.info(f"Including source workflow in clarification context for edit/copy mode")
-            
+                logger.info(
+                    f"Including source workflow in clarification context for edit/copy mode"
+                )
+
             # Add workflow context if present
             if "workflow_context" in state and state["workflow_context"]:
-                template_context["workflow_mode"] = state["workflow_context"].get("origin", "create")
+                template_context["workflow_mode"] = state["workflow_context"].get(
+                    "origin", "create"
+                )
                 logger.info(f"Workflow mode: {template_context['workflow_mode']}")
 
             # Use the f2 template system - both system and user prompts
@@ -674,14 +773,16 @@ class WorkflowAgentNodes:
                 "current_workflow": state.get("current_workflow"),
                 "creation_error": error_context,
             }
-            
+
             # Add source workflow and mode for edit/copy operations
             if "source_workflow" in state and state["source_workflow"]:
                 template_context["source_workflow"] = json.dumps(state["source_workflow"], indent=2)
                 logger.info(f"Including source workflow in generation context for edit/copy mode")
-            
+
             if "workflow_context" in state and state["workflow_context"]:
-                template_context["workflow_mode"] = state["workflow_context"].get("origin", "create")
+                template_context["workflow_mode"] = state["workflow_context"].get(
+                    "origin", "create"
+                )
                 logger.info(f"Workflow generation mode: {template_context['workflow_mode']}")
 
             # Use the original f1 template system - the working approach
@@ -720,13 +821,20 @@ class WorkflowAgentNodes:
                         if workflow_json.endswith("```"):
                             workflow_json = workflow_json[:-3]
 
-                    workflow = json.loads(workflow_json.strip())
+                    # Attempt to repair common JSON issues
+                    workflow_json = await self._repair_json(workflow_json.strip())
+                    workflow = json.loads(workflow_json)
 
                     # Post-process the workflow to add missing required fields
                     workflow = self._normalize_workflow_structure(workflow)
 
                     # Fix parameters using MCP-provided types (only as fallback)
                     workflow = self._fix_workflow_parameters(workflow)
+
+                    # Iteratively validate and improve workflow
+                    workflow = await self._iterative_workflow_validation(
+                        workflow, intent_summary, state, messages
+                    )
 
                     logger.info(
                         "Successfully generated workflow using MCP tools, workflow: %s", workflow
@@ -744,12 +852,12 @@ class WorkflowAgentNodes:
             engine_client = WorkflowEngineClient()
             user_id = state.get("user_id", "test_user")
             session_id = state.get("session_id")
-            
+
             # Always create a new workflow, even in edit mode
             # This allows users to test edits without overwriting the original
             workflow_context = state.get("workflow_context", {})
             workflow_mode = workflow_context.get("origin", "create")
-            
+
             logger.info(f"Creating new workflow in workflow_engine (mode: {workflow_mode})")
             creation_result = await engine_client.create_workflow(workflow, user_id, session_id)
 
@@ -772,12 +880,12 @@ class WorkflowAgentNodes:
                 workflow_name = workflow.get("name", "Workflow")
                 workflow_description = workflow.get("description", "")
                 node_count = len(workflow.get("nodes", []))
-                
+
                 # Check if we're in edit mode
                 workflow_context = state.get("workflow_context", {})
                 workflow_mode = workflow_context.get("origin", "create")
                 source_workflow_id = workflow_context.get("source_workflow_id")
-                
+
                 if workflow_mode == "edit":
                     completion_message = f"""✅ **New Workflow Created from Edit!**
 
@@ -884,7 +992,9 @@ Would you like to make any adjustments or shall we proceed with testing?"""
                 "stage": WorkflowStage.WORKFLOW_GENERATION,
             }
 
-    async def _generate_with_natural_tools(self, messages: List, state: Optional[dict] = None) -> str:
+    async def _generate_with_natural_tools(
+        self, messages: List, state: Optional[dict] = None
+    ) -> str:
         """
         Natural workflow generation - let LLM decide when and how to use MCP tools.
         Still emphasizes following MCP type specifications but doesn't force specific calling patterns.
@@ -892,10 +1002,10 @@ Would you like to make any adjustments or shall we proceed with testing?"""
         """
         try:
             logger.info("Starting natural workflow generation with MCP tools")
-            
+
             # Track timing for diagnostics
             start_time = time.time()
-            
+
             # Update state to indicate we're generating
             if state:
                 state["generation_status"] = "Starting LLM workflow generation..."
@@ -904,7 +1014,7 @@ Would you like to make any adjustments or shall we proceed with testing?"""
             # Let LLM use tools naturally - no forced multi-turn pattern
             logger.info("Invoking LLM for initial workflow generation")
             response = await self.llm_with_tools.ainvoke(messages)
-            
+
             elapsed = time.time() - start_time
             logger.info(f"Initial LLM response received after {elapsed:.2f} seconds")
 
@@ -923,11 +1033,13 @@ Would you like to make any adjustments or shall we proceed with testing?"""
                 logger.info(
                     f"LLM made {len(response.tool_calls)} tool calls (iteration {iteration})"
                 )
-                
+
                 # Update progress
                 if state:
                     progress = min(20 + (iteration * 15), 80)  # Progress from 20% to 80%
-                    state["generation_status"] = f"Processing MCP tools (iteration {iteration}/{max_iterations})..."
+                    state[
+                        "generation_status"
+                    ] = f"Processing MCP tools (iteration {iteration}/{max_iterations})..."
                     state["generation_progress"] = progress
 
                 # Add assistant response to conversation
@@ -975,14 +1087,23 @@ Would you like to make any adjustments or shall we proceed with testing?"""
                 if has_node_details:
                     current_messages.append(
                         HumanMessage(
-                            content="""FINAL REMINDER - MCP Type Compliance:
-You now have the node specifications with exact type requirements.
-For EVERY parameter, you MUST use the type specified in the MCP response:
-- If MCP says type="integer" → Use numbers WITHOUT quotes (123, not "123")
-- If MCP says type="string" → Use strings WITH quotes ("example", not example)
-- If MCP says type="boolean" → Use true/false WITHOUT quotes
+                            content="""FINAL REMINDER - Complete Workflow Generation:
+You now have the node specifications. You MUST generate a COMPLETE workflow that includes ALL steps to fulfill the user's request.
 
-Generate the complete JSON workflow now, strictly following these MCP types."""
+🚨 CRITICAL REQUIREMENTS:
+1. **COMPLETE WORKFLOW**: Include ALL nodes needed for the ENTIRE user workflow, not just the first few steps
+2. **MCP Type Compliance**: For EVERY parameter, use the exact type from MCP response:
+   - type="integer" → numbers (123, not "123")
+   - type="string" → strings ("example", not example)
+   - type="boolean" → true/false (not "true"/"false")
+
+3. **For approval/confirmation workflows**: You MUST include:
+   - Initial processing nodes
+   - Confirmation/notification step
+   - HUMAN_IN_THE_LOOP node to wait for response
+   - Final action node that executes after approval
+
+Generate the COMPLETE JSON workflow now with ALL required nodes."""
                         )
                     )
 
@@ -990,7 +1111,7 @@ Generate the complete JSON workflow now, strictly following these MCP types."""
                 if state:
                     state["generation_status"] = "Generating final workflow JSON..."
                     state["generation_progress"] = 85
-                    
+
                 tool_start = time.time()
                 response = await self.llm_with_tools.ainvoke(current_messages)
                 tool_elapsed = time.time() - tool_start
@@ -998,18 +1119,373 @@ Generate the complete JSON workflow now, strictly following these MCP types."""
 
             if iteration >= max_iterations:
                 logger.warning(f"Reached max iterations ({max_iterations}) in tool calling")
-            
+
             # Final progress update
             if state:
                 state["generation_status"] = "Workflow generation complete"
                 state["generation_progress"] = 100
-                
+
             total_elapsed = time.time() - start_time
             logger.info(f"Total workflow generation time: {total_elapsed:.2f} seconds")
 
-            # Return the final response content
-            return str(response.content) if hasattr(response, "content") else ""
+            # Check if we have a final response with content
+            final_content = ""
+            if hasattr(response, "content") and response.content:
+                final_content = str(response.content)
+                logger.info(f"LLM final response length: {len(final_content)} characters")
+            else:
+                logger.warning("No final content from LLM, attempting one more generation request")
+                # Force final generation if we don't have content
+                current_messages.append(
+                    HumanMessage(
+                        content="Generate the complete workflow JSON now. Output only the JSON starting with { and ending with }."
+                    )
+                )
+                try:
+                    final_response = await self.llm_with_tools.ainvoke(current_messages)
+                    if hasattr(final_response, "content") and final_response.content:
+                        final_content = str(final_response.content)
+                        logger.info(f"Forced generation produced {len(final_content)} characters")
+                    else:
+                        logger.error("Even forced generation produced no content")
+                except Exception as e:
+                    logger.error(f"Forced generation failed: {e}")
+
+            return final_content
 
         except Exception as e:
             logger.error(f"Natural tool generation failed: {e}", exc_info=True)
             return ""
+
+    async def _validate_and_complete_workflow(
+        self, workflow: dict, intent_summary: str, state: dict
+    ) -> dict:
+        """
+        Use LLM with MCP tools to validate workflow completeness and add missing nodes.
+
+        This approach is fully LLM-driven and uses the same MCP tools that the original
+        workflow generation uses, ensuring consistency and flexibility.
+        """
+        try:
+            logger.info("Using LLM to validate workflow completeness")
+
+            # Use LLM to determine if workflow is complete and needs enhancement
+            validation_result = await self._llm_validate_workflow_completeness(
+                workflow, intent_summary, state
+            )
+
+            if validation_result.get("needs_completion", False):
+                logger.info("LLM determined workflow needs completion")
+                # Use LLM with MCP tools to analyze and complete the workflow
+                completed_workflow = await self._llm_complete_workflow(
+                    workflow, intent_summary, state
+                )
+
+                if completed_workflow and len(completed_workflow.get("nodes", [])) > len(
+                    workflow.get("nodes", [])
+                ):
+                    logger.info(
+                        f"LLM completed workflow: {len(workflow.get('nodes', []))} → {len(completed_workflow.get('nodes', []))} nodes"
+                    )
+                    return completed_workflow
+                else:
+                    logger.info("LLM did not improve workflow, keeping original")
+                    return workflow
+            else:
+                logger.info("LLM determined workflow is complete")
+                return workflow
+
+        except Exception as e:
+            logger.error(f"Workflow validation failed: {e}", exc_info=True)
+            return workflow
+
+    async def _iterative_workflow_validation(
+        self, workflow: dict, intent_summary: str, state: dict, current_messages: list
+    ) -> dict:
+        """
+        Iteratively validate and improve workflow using LLM feedback loop.
+
+        This method validates the workflow and if issues are found, dynamically creates
+        feedback messages to guide the LLM to regenerate with missing nodes/connections.
+        Runs up to 3 iterations to achieve completeness.
+        """
+        max_iterations = 2
+        iteration = 0
+
+        while iteration < max_iterations:
+            iteration += 1
+            logger.info(f"Workflow validation iteration {iteration}/{max_iterations}")
+
+            # Validate current workflow
+            validation_result = await self._llm_validate_workflow_completeness(
+                workflow, intent_summary, state
+            )
+
+            if not validation_result.get("needs_completion", False):
+                logger.info(f"Workflow validation passed on iteration {iteration}")
+                return workflow
+
+            # Workflow needs improvement - create dynamic feedback message
+            logger.info(
+                f"Workflow needs improvement: {validation_result.get('reasoning', 'Unknown')}"
+            )
+
+            if iteration >= max_iterations:
+                logger.warning(
+                    f"Reached max validation iterations ({max_iterations}), using current workflow"
+                )
+                break
+
+            # Generate improvement feedback message
+            improvement_message = f"""The workflow validation failed with this feedback:
+{validation_result.get('reasoning', 'Workflow needs improvement')}
+
+Please regenerate the workflow JSON to address these issues. The workflow must:
+1. Include ALL required nodes to implement the complete user request
+2. Have proper connections between nodes
+3. Use valid JSON formatting without trailing backslashes
+4. Follow the exact MCP parameter types
+
+Generate the complete workflow JSON now:"""
+
+            # Add feedback to conversation
+            current_messages.append(HumanMessage(content=improvement_message))
+
+            # Regenerate workflow with feedback
+            try:
+                response = await self.llm_with_tools.ainvoke(current_messages)
+                logger.info(f"Improvement iteration {iteration} response received")
+
+                # Extract improved workflow JSON
+                if hasattr(response, "content") and response.content:
+                    try:
+                        # Use the same JSON repair logic as the main workflow generation
+                        clean_content = response.content.strip()
+                        if clean_content.startswith("```json"):
+                            clean_content = clean_content[7:]
+                            if clean_content.endswith("```"):
+                                clean_content = clean_content[:-3]
+                        elif clean_content.startswith("```"):
+                            clean_content = clean_content[3:]
+                            if clean_content.endswith("```"):
+                                clean_content = clean_content[:-3]
+
+                        # Apply JSON repair
+                        repaired_json = await self._repair_json(clean_content.strip())
+                        improved_workflow = json.loads(repaired_json)
+                        improved_workflow = self._normalize_workflow_structure(improved_workflow)
+                        improved_workflow = self._fix_workflow_parameters(improved_workflow)
+
+                        # Update workflow for next iteration
+                        workflow = improved_workflow
+                        logger.info(
+                            f"Workflow improved in iteration {iteration}: {len(workflow.get('nodes', []))} nodes"
+                        )
+
+                        # Add assistant response to conversation for next iteration
+                        current_messages.append(
+                            SystemMessage(content=f"Assistant: {response.content}")
+                        )
+
+                    except json.JSONDecodeError as e:
+                        logger.warning(
+                            f"Failed to parse improved workflow JSON in iteration {iteration}: {e}"
+                        )
+                        logger.warning(f"Raw response: {response.content[:500]}...")
+                        break
+                else:
+                    logger.warning(f"No content in improvement response for iteration {iteration}")
+                    break
+
+            except Exception as e:
+                logger.error(f"Workflow improvement iteration {iteration} failed: {e}")
+                break
+
+        return workflow
+
+    async def _generate_improvement_feedback(
+        self, workflow: dict, intent_summary: str, validation_result: dict
+    ) -> str:
+        """Generate dynamic feedback message to guide workflow improvement."""
+        workflow_json = json.dumps(workflow, indent=2)
+        node_count = len(workflow.get("nodes", []))
+        reasoning = validation_result.get("reasoning", "Workflow may be incomplete")
+
+        feedback_message = f"""🔄 WORKFLOW IMPROVEMENT NEEDED
+
+**Current Status:** Your workflow has {node_count} nodes but may not fully implement the user's requirements.
+
+**Issue Identified:** {reasoning}
+
+**User Requirements:** {intent_summary}
+
+**Current Workflow:**
+```json
+{workflow_json}
+```
+
+**Required Actions:**
+1. **Analyze gaps**: Compare current workflow against user requirements
+2. **Add missing nodes**: Include any missing steps, approvals, or final actions
+3. **Fix connections**: Ensure proper flow between all nodes
+4. **Use correct subtypes**: Use enum values from MCP specifications
+
+**For approval workflows specifically:**
+- Include HUMAN_IN_THE_LOOP node with correct subtype (e.g., SLACK_INTERACTION)
+- Include final action nodes that execute after approval
+- Ensure proper connection flow: trigger → process → confirm → approve → final_action
+
+**Generate the COMPLETE improved workflow JSON now:**"""
+
+        return feedback_message
+
+    async def _llm_validate_workflow_completeness(
+        self, workflow: dict, intent_summary: str, state: dict
+    ) -> dict:
+        """
+        Use LLM to determine if the workflow is complete or needs additional nodes.
+
+        Returns a dict with 'needs_completion' boolean and optional 'reasoning' string.
+        """
+        try:
+            workflow_json = json.dumps(workflow, indent=2)
+
+            # Load validation prompt template
+            validation_prompt = await self.load_prompt_template(
+                "workflow_validation", intent_summary=intent_summary, workflow_json=workflow_json
+            )
+
+            messages = [HumanMessage(content=validation_prompt)]
+
+            # Use basic LLM without tools for this validation step
+            response = await self.llm.ainvoke(messages)
+
+            if hasattr(response, "content") and response.content:
+                try:
+                    # Parse the JSON response
+                    validation_result = json.loads(response.content.strip())
+                    logger.info(f"LLM validation result: {validation_result}")
+                    return validation_result
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to parse LLM validation response: {e}")
+                    logger.warning(f"Raw response: {response.content}")
+                    # Default to not needing completion if we can't parse
+                    return {
+                        "needs_completion": False,
+                        "reasoning": "Failed to parse validation response",
+                    }
+
+            # Default to not needing completion if no response
+            return {"needs_completion": False, "reasoning": "No validation response received"}
+
+        except Exception as e:
+            logger.error(f"Workflow validation failed: {e}", exc_info=True)
+            # Default to not needing completion if validation fails
+            return {"needs_completion": False, "reasoning": f"Validation error: {str(e)}"}
+
+    async def _llm_complete_workflow(
+        self, incomplete_workflow: dict, intent_summary: str, state: dict
+    ) -> dict:
+        """
+        Use LLM with MCP tools to analyze an incomplete workflow and add missing nodes.
+
+        This reuses the existing workflow generation prompt in "edit mode" to modify
+        the incomplete workflow in place, ensuring consistency with the main generation system.
+        """
+        try:
+            workflow_json = json.dumps(incomplete_workflow, indent=2)
+
+            # Use the existing workflow generation prompt in edit mode
+            completion_prompt = await self.load_prompt_template(
+                "workflow_gen_simplified",
+                workflow_mode="edit",
+                source_workflow=workflow_json,
+                intent_summary=intent_summary,
+            )
+
+            # Use the same natural tool generation approach
+            messages = [HumanMessage(content=completion_prompt)]
+
+            # Generate with a shorter timeout since this is completion, not full generation
+            start_time = time.time()
+            response = await self.llm_with_tools.ainvoke(messages)
+            elapsed = time.time() - start_time
+            logger.info(f"Initial completion response received after {elapsed:.2f} seconds")
+
+            # Process tool calls (similar to main generation but with max 3 iterations)
+            current_messages = list(messages)
+            max_iterations = 3
+            iteration = 0
+
+            while (
+                hasattr(response, "tool_calls")
+                and response.tool_calls
+                and iteration < max_iterations
+            ):
+                iteration += 1
+                logger.info(f"Completion tool calls (iteration {iteration})")
+
+                # Add assistant response to conversation
+                if hasattr(response, "content") and response.content:
+                    current_messages.append(SystemMessage(content=f"Assistant: {response.content}"))
+
+                # Process each tool call
+                for tool_call in response.tool_calls:
+                    tool_name = getattr(tool_call, "name", tool_call.get("name", ""))
+                    tool_args = getattr(tool_call, "args", tool_call.get("args", {}))
+
+                    logger.info(f"Completion processing tool call: {tool_name}")
+                    result = await self.mcp_client.call_tool(tool_name, tool_args)
+
+                    # Add tool result to conversation
+                    result_str = (
+                        json.dumps(result, indent=2) if isinstance(result, dict) else str(result)
+                    )
+                    current_messages.append(
+                        HumanMessage(content=f"Tool result for {tool_name}:\n{result_str}")
+                    )
+
+                # Add completion reminder
+                if iteration >= 2:  # After getting node details
+                    current_messages.append(
+                        HumanMessage(
+                            content="Generate the complete workflow JSON now. Include all existing nodes plus any missing nodes for full functionality. Use exact MCP parameter types."
+                        )
+                    )
+
+                # Continue the conversation
+                response = await self.llm_with_tools.ainvoke(current_messages)
+
+            # Extract and return the completed workflow
+            final_content = str(response.content) if hasattr(response, "content") else ""
+
+            if final_content:
+                # Parse the JSON response
+                try:
+                    # Clean up the response (similar to main generation)
+                    clean_content = final_content.strip()
+                    if clean_content.startswith("```json"):
+                        clean_content = clean_content[7:]
+                        if clean_content.endswith("```"):
+                            clean_content = clean_content[:-3]
+                    elif clean_content.startswith("```"):
+                        clean_content = clean_content[3:]
+                        if clean_content.endswith("```"):
+                            clean_content = clean_content[:-3]
+
+                    completed_workflow = json.loads(clean_content.strip())
+                    logger.info(
+                        f"LLM workflow completion successful: {len(completed_workflow.get('nodes', []))} nodes"
+                    )
+                    return completed_workflow
+
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse completed workflow JSON: {e}")
+                    return incomplete_workflow
+            else:
+                logger.warning("No completion content from LLM")
+                return incomplete_workflow
+
+        except Exception as e:
+            logger.error(f"LLM workflow completion failed: {e}", exc_info=True)
+            return incomplete_workflow

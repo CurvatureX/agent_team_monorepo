@@ -31,8 +31,17 @@ You are creating a new workflow based on an existing one.
 
 ## Core Rules
 1. **USE MCP TOOLS FIRST**: Always call get_node_types(), then get_node_details() for needed nodes
-2. **OUTPUT ONLY JSON**: Your final response must be ONLY the workflow JSON (no explanations)
-3. **GENERATE EXAMPLE VALUES BASED ON MCP ParameterType**:
+2. **COMPLETE WORKFLOW REQUIRED**: You MUST generate a workflow that fully implements ALL steps of the user's request from start to finish
+3. **OUTPUT ONLY JSON**: Your final response must be ONLY the workflow JSON (no explanations)
+4. **VALID JSON FORMATTING**:
+   - ALL string values MUST be properly quoted with double quotes (")
+   - NO trailing backslashes in strings (e.g., "value\" is INVALID, use "value" instead)
+   - NO unescaped quotes inside string values (escape as \")
+   - NO invalid escape sequences (only use: \", \\, \/, \b, \f, \n, \r, \t, \uXXXX)
+   - ALL property names MUST be quoted with double quotes
+   - NO control characters (ASCII 0-31) except \n, \r, \t
+   - ALWAYS validate your JSON is parseable before outputting
+5. **GENERATE EXAMPLE VALUES BASED ON MCP ParameterType**:
    When get_node_details returns parameter definitions, each has a "type" field (ParameterType).
    You MUST generate concrete example values (NOT strings with "mock-" prefix!) that match the exact type specified:
 
@@ -146,15 +155,17 @@ Example MCP response:
 
 ## Workflow Process
 1. Call get_node_types() to see available nodes
-2. Call get_node_details() for EVERY node you'll use
-3. **CRITICAL MCP COMPLIANCE**:
+2. **ANALYZE USER REQUIREMENTS**: Break down the user's request into ALL required workflow steps
+3. Call get_node_details() for EVERY node you'll use (make sure you include ALL needed node types)
+4. **CRITICAL MCP COMPLIANCE**:
    - The MCP response is the AUTHORITY for parameter types
    - Each parameter has a "type" field that MUST be respected
    - You MUST generate values that match the EXACT type specified by MCP
    - If MCP says "integer", you MUST output a number (123), NOT a string ("mock-123")
    - The workflow engine will VALIDATE types against MCP specs and REJECT mismatches
-4. Generate workflow JSON with example values matching exact ParameterTypes
-5. Output the complete JSON (no markdown, no explanations)
+5. **VERIFY COMPLETENESS**: Ensure your workflow implements the ENTIRE user request, not just part of it
+6. Generate workflow JSON with example values matching exact ParameterTypes
+7. Output the complete JSON (no markdown, no explanations)
 
 ## CRITICAL: Connection Format
 The connections MUST use the nested structure with "connection_types":
@@ -178,8 +189,48 @@ The connections MUST use the nested structure with "connection_types":
 }
 ```
 
+## Common Complete Workflow Patterns
+
+**Pattern: Approval Workflows (e.g., "analyze request, get confirmation, then take action")**
+Required nodes:
+1. TRIGGER (listen for events)
+2. AI_AGENT or ACTION (analyze/process the request)
+3. EXTERNAL_ACTION (send confirmation message)
+4. HUMAN_IN_THE_LOOP (wait for user response)
+5. EXTERNAL_ACTION (perform the final action after approval)
+
+**Pattern: Simple Automation (e.g., "when X happens, do Y")**
+Required nodes:
+1. TRIGGER (listen for events)
+2. AI_AGENT or ACTION (process the data)
+3. EXTERNAL_ACTION (perform the action)
+
 Remember:
-1. Keep it SIMPLE - use minimum nodes needed to accomplish the task
-2. MCP COMPLIANCE - Every parameter value MUST match its MCP-specified type
-3. NO "mock-" PREFIX - Generate actual example values, not placeholder strings
-4. CONNECTIONS - Must use "connection_types" wrapper structure
+1. **COMPLETENESS FIRST** - Generate ALL nodes needed for the full workflow, don't stop partway through
+2. Keep it SIMPLE - use minimum nodes needed to accomplish the task (but include ALL necessary steps)
+3. MCP COMPLIANCE - Every parameter value MUST match its MCP-specified type
+4. NO "mock-" PREFIX - Generate actual example values, not placeholder strings
+5. CONNECTIONS - Must use "connection_types" wrapper structure
+
+**⚠️ FINAL CHECK**: Before outputting, verify:
+1. Your workflow includes ALL steps from the user's request
+2. Your JSON is VALID and parseable (no trailing backslashes, proper quotes, no control chars)
+3. All string values are properly escaped (use \" for quotes inside strings)
+
+**CRITICAL JSON FORMATTING EXAMPLES:**
+✅ CORRECT: `"name": "Slack Calendar Assistant"`
+❌ WRONG: `"name": "Slack Calendar Assistant\"`
+❌ WRONG: `"name": "HIL Slack Calendar Approver\"`
+
+✅ CORRECT: `"description": "Monitor channel \"hil\" for messages"`
+❌ WRONG: `"description": "Monitor channel "hil" for messages"`
+
+✅ CORRECT: `"id": "trigger_slack"`
+❌ WRONG: `"id": "trigger_slack\"`
+
+✅ CORRECT: `"subtype": "SLACK"`
+❌ WRONG: `"subtype": "SLACK\"`
+
+**NEVER END STRING VALUES WITH BACKSLASH!**
+- If you need quotes inside strings, use \" (backslash then quote)
+- NEVER put a backslash at the very end of a string value before the closing quote

@@ -26,9 +26,9 @@ class WorkflowAgentHTTPClient:
         # Increased timeout for streaming operations and RAG embedding generation
         # Further increased read timeout for complex workflow generation
         self.timeout = httpx.Timeout(
-            timeout=600.0,  # 10 minutes total timeout (increased for complex workflows)
+            timeout=900.0,  # 15 minutes total timeout (increased for iterative validation)
             connect=10.0,  # 10 seconds connection timeout
-            read=120.0,  # 120 seconds read timeout per chunk (doubled for LLM generation)
+            read=300.0,  # 300 seconds (5 minutes) read timeout per chunk for iterative LLM generation
             write=30.0,  # 30 seconds write timeout
         )
         self.connected = False
@@ -138,8 +138,24 @@ class WorkflowAgentHTTPClient:
                     "is_recoverable": True,
                 },
             }
+        except asyncio.TimeoutError as e:
+            log_error(f"❌ Timeout in process_conversation_stream: {e}")
+            yield {
+                "session_id": session_id,
+                "response_type": "RESPONSE_TYPE_ERROR",
+                "is_final": True,
+                "error": {
+                    "error_code": "TIMEOUT_ERROR",
+                    "message": "Workflow generation timed out - the request took too long to complete",
+                    "details": f"Timeout: {str(e)}",
+                    "is_recoverable": True,
+                },
+            }
         except Exception as e:
-            log_error(f"❌ Error in process_conversation_stream: {e}")
+            log_error(f"❌ Error in process_conversation_stream: {type(e).__name__}: {e}")
+            import traceback
+
+            log_error(f"Traceback: {traceback.format_exc()}")
             # Yield error response - 符合 ConversationResponse 格式
             yield {
                 "session_id": session_id,
@@ -147,8 +163,8 @@ class WorkflowAgentHTTPClient:
                 "is_final": True,
                 "error": {
                     "error_code": "INTERNAL_ERROR",
-                    "message": f"Failed to process conversation: {str(e)}",
-                    "details": str(e),
+                    "message": f"Failed to process conversation: {type(e).__name__}: {str(e)}",
+                    "details": f"{type(e).__name__}: {str(e)}",
                     "is_recoverable": True,
                 },
             }
