@@ -47,8 +47,8 @@ class SlackTrigger(BaseTrigger):
         self.ignore_bots = trigger_config.get("ignore_bots", True)
         self.require_thread = trigger_config.get("require_thread", False)
 
-        # Cache for channel name lookups to avoid repeated API calls
-        self._channel_name_cache = {}
+        # Note: Channel filtering now uses channel IDs resolved during deployment
+        # No need for channel name cache since we don't make API calls during triggers
 
         logger.info(f"Initialized SlackTrigger for workflow {workflow_id}")
         logger.info(f"  Workspace: {self.workspace_id}")
@@ -382,7 +382,10 @@ class SlackTrigger(BaseTrigger):
 
     async def _matches_channel_filter_async(self, channel_id: str) -> bool:
         """
-        Async version of channel filter matching that supports channel name resolution
+        Match channel filter using channel ID comparison (no API calls needed)
+
+        Channel filters should be resolved to channel IDs during deployment time,
+        so we only need to do simple string comparison here.
 
         Args:
             channel_id: The Slack channel ID
@@ -394,44 +397,25 @@ class SlackTrigger(BaseTrigger):
             return True
 
         try:
-            if self.channel_filter.startswith("C"):  # Channel ID format
-                return channel_id == self.channel_filter
+            # The channel_filter should now always be a channel ID (resolved during deployment)
+            # Support both single channel ID and comma-separated list of channel IDs
+            if "," in self.channel_filter:
+                # Multiple channel IDs
+                allowed_channels = [ch.strip() for ch in self.channel_filter.split(",")]
+                matches = channel_id in allowed_channels
             else:
-                # Try to resolve channel name and compare
-                channel_name = await self._get_channel_name(channel_id)
-                if channel_name:
-                    # Support both exact match and regex
-                    if self.channel_filter == channel_name:
-                        logger.debug(
-                            f"Channel name '{channel_name}' matches filter '{self.channel_filter}'"
-                        )
-                        return True
-                    else:
-                        # Try regex match against channel name
-                        try:
-                            if re.match(self.channel_filter, channel_name):
-                                logger.debug(
-                                    f"Channel name '{channel_name}' matches regex filter '{self.channel_filter}'"
-                                )
-                                return True
-                        except re.error:
-                            pass
+                # Single channel ID
+                matches = channel_id == self.channel_filter
 
-                        logger.debug(
-                            f"Channel name '{channel_name}' doesn't match filter '{self.channel_filter}'"
-                        )
-                        return False
-                else:
-                    # Fallback: if we can't resolve channel name (due to missing scopes or other issues),
-                    # we'll skip channel filtering entirely and allow all channels to match
-                    # This prevents workflows from being blocked due to OAuth scope issues
-                    logger.warning(
-                        f"Cannot resolve channel name for {channel_id} - allowing channel filter to pass "
-                        f"(consider re-authorizing Slack integration with 'channels:read' scope)"
-                    )
-                    return True
-        except re.error as e:
-            logger.warning(f"Invalid channel filter regex '{self.channel_filter}': {e}")
+            if matches:
+                logger.debug(f"Channel {channel_id} matches filter '{self.channel_filter}'")
+            else:
+                logger.debug(f"Channel {channel_id} doesn't match filter '{self.channel_filter}'")
+
+            return matches
+
+        except Exception as e:
+            logger.warning(f"Error matching channel filter '{self.channel_filter}': {e}")
             return False
 
     def _matches_user_filter(self, user_id: str) -> bool:

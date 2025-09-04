@@ -24,7 +24,7 @@ class BaseTrigger(ABC):
         self.config = trigger_config
         self.enabled = trigger_config.get("enabled", True)
         self.status = TriggerStatus.PENDING
-        self._client = httpx.AsyncClient(timeout=30.0)
+        self._client = httpx.AsyncClient(timeout=7200.0)  # 2 hours for human-in-the-loop nodes
 
     @property
     @abstractmethod
@@ -148,48 +148,25 @@ class BaseTrigger(ABC):
             # Call workflow_engine execute endpoint
             engine_url = f"{settings.workflow_engine_url}/v1/workflows/{self.workflow_id}/execute"
 
-            logger.info(f"🚀 Triggering workflow {self.workflow_id} via {engine_url}")
-
-            response = await self._client.post(
-                engine_url, json=payload, headers={"Content-Type": "application/json"}
+            logger.info(
+                f"🚀 Triggering workflow {self.workflow_id} via {engine_url} (async execution)"
             )
 
-            if response.status_code == 200:  # OK (FastAPI default for successful POST)
-                result_data = response.json()
-                actual_execution_id = result_data.get("execution_id", execution_id)
-                logger.info(
-                    f"✅ Workflow {self.workflow_id} execution started: {actual_execution_id}"
-                )
+            # Fire-and-forget execution - don't wait for completion, especially for human-in-the-loop workflows
+            asyncio.create_task(
+                self._execute_workflow_async(engine_url, payload, execution_id, trigger_data)
+            )
 
-                return ExecutionResult(
-                    execution_id=actual_execution_id,
-                    status="started",
-                    message=result_data.get("message", "Workflow execution started successfully"),
-                    trigger_data=trigger_data or {},
-                )
-            elif response.status_code == 202:  # Also accept 202 Accepted
-                result_data = response.json()
-                actual_execution_id = result_data.get("execution_id", execution_id)
-                logger.info(
-                    f"✅ Workflow {self.workflow_id} execution accepted: {actual_execution_id}"
-                )
+            logger.info(
+                f"✅ Workflow {self.workflow_id} execution started asynchronously: {execution_id}"
+            )
 
-                return ExecutionResult(
-                    execution_id=actual_execution_id,
-                    status="started",
-                    message=result_data.get("message", "Workflow execution accepted"),
-                    trigger_data=trigger_data or {},
-                )
-            else:
-                error_msg = f"Failed to trigger workflow: HTTP {response.status_code}"
-                logger.error(f"{error_msg}: {response.text}")
-
-                return ExecutionResult(
-                    execution_id=execution_id,
-                    status="failed",
-                    message=error_msg,
-                    trigger_data=trigger_data or {},
-                )
+            return ExecutionResult(
+                execution_id=execution_id,
+                status="started",
+                message="Workflow execution started asynchronously",
+                trigger_data=trigger_data or {},
+            )
 
         except Exception as e:
             error_msg = f"Error calling workflow engine: {str(e)}"
@@ -201,6 +178,36 @@ class BaseTrigger(ABC):
                 message=error_msg,
                 trigger_data=trigger_data or {},
             )
+
+    async def _execute_workflow_async(
+        self, engine_url: str, payload: dict, execution_id: str, trigger_data: dict
+    ):
+        """
+        Execute workflow asynchronously in the background (fire-and-forget)
+        This method handles the actual HTTP call to the workflow engine without blocking the trigger
+        """
+        try:
+            logger.info(
+                f"🔄 Starting async workflow execution for {self.workflow_id}: {execution_id}"
+            )
+
+            response = await self._client.post(
+                engine_url, json=payload, headers={"Content-Type": "application/json"}
+            )
+
+            if response.status_code in [200, 202]:  # OK or Accepted
+                result_data = response.json()
+                actual_execution_id = result_data.get("execution_id", execution_id)
+                logger.info(
+                    f"✅ Async workflow {self.workflow_id} execution successful: {actual_execution_id}"
+                )
+            else:
+                error_msg = f"Async workflow execution failed: HTTP {response.status_code}"
+                logger.error(f"{error_msg}: {response.text}")
+
+        except Exception as e:
+            error_msg = f"Error in async workflow execution: {str(e)}"
+            logger.error(f"❌ Async workflow {self.workflow_id} failed: {error_msg}", exc_info=True)
 
     def _calculate_jitter(self, workflow_id: str) -> float:
         """
