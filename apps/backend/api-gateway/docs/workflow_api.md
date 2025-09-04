@@ -324,7 +324,7 @@ A `Connection` object has the following structure:
 ### 1. Execute a workflow
 
 -   **Endpoint**: `POST /{workflow_id}/execute`
--   **Description**: Triggers an execution of a specific workflow.
+-   **Description**: Triggers an execution of a specific workflow. Supports executing from a specific node instead of starting from trigger nodes.
 -   **Path Parameters**:
     -   `workflow_id` (string, required): The ID of the workflow to execute.
 -   **Request Body**: `application/json`
@@ -332,8 +332,12 @@ A `Connection` object has the following structure:
 | Field | Type | Description | Required |
 | :--- | :--- | :--- | :--- |
 | `inputs` | object | Key-value pairs representing the initial inputs for the workflow. | Yes |
+| `start_from_node` | string | **NEW**: Specify which node to start execution from. If omitted, execution starts from trigger nodes. | No |
+| `skip_trigger_validation` | boolean | **NEW**: Whether to skip trigger validation when starting from a specific node. Default: false | No |
+| `settings` | object | Optional execution settings for the workflow. | No |
+| `metadata` | object | Optional metadata for the execution. | No |
 
--   **Example Request**:
+-   **Example Request (Standard Execution)**:
     ```bash
     curl -X POST "http://localhost:8000/api/v1/workflow/123e4567-e89b-12d3-a456-426614174000/execute" \
          -H "Content-Type: application/json" \
@@ -342,6 +346,20 @@ A `Connection` object has the following structure:
                 "initial_data": "some value",
                 "user_parameter": 123
               }
+            }'
+    ```
+
+-   **Example Request (Start from Specific Node)**:
+    ```bash
+    curl -X POST "http://localhost:8000/api/v1/workflow/123e4567-e89b-12d3-a456-426614174000/execute" \
+         -H "Content-Type: application/json" \
+         -d '{
+              "inputs": {
+                "message": "Test input for AI node",
+                "priority": "high"
+              },
+              "start_from_node": "ai_message_classification",
+              "skip_trigger_validation": true
             }'
     ```
 -   **Success Response**: `200 OK`
