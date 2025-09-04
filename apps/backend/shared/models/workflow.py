@@ -23,7 +23,14 @@ class RetryPolicyData(BaseModel):
 
 
 class NodeData(BaseModel):
-    """工作流节点数据"""
+    """
+    工作流节点数据
+
+    🎯 WORKFLOW GENERATION TIP:
+    When using HUMAN_IN_THE_LOOP nodes, they have built-in AI response analysis capabilities.
+    Use their confirmed/rejected/unrelated/timeout output ports instead of creating
+    separate AI_AGENT or FLOW (IF) nodes for response classification.
+    """
 
     id: Optional[str] = None  # 可选，系统会自动生成
     name: str

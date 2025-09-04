@@ -149,6 +149,72 @@ CRITICAL: Return ONLY the valid JSON object with no markdown, no explanations, n
             }
             return json.dumps(minimal_workflow, indent=2)
 
+    def _filter_mcp_response_for_prompt(self, result: dict, tool_name: str) -> str:
+        """
+        Filter MCP tool responses to include only essential information for workflow generation.
+        This prevents the system prompt from becoming too large while preserving critical data.
+        """
+        if not isinstance(result, dict):
+            return str(result)
+
+        if tool_name == "get_node_types":
+            # For node types, include essential structure but limit verbosity
+            if "node_types" in result:
+                filtered_types = {}
+                for node_type, subtypes in result["node_types"].items():
+                    # Keep only subtype names, not full descriptions
+                    filtered_types[node_type] = (
+                        list(subtypes.keys()) if isinstance(subtypes, dict) else subtypes
+                    )
+                return json.dumps({"node_types": filtered_types}, indent=2)
+
+        elif tool_name == "get_node_details":
+            # For node details, include only critical workflow generation data
+            if "nodes" in result:
+                filtered_nodes = []
+                for node in result["nodes"]:
+                    if isinstance(node, dict):
+                        # Keep only essential fields for workflow generation
+                        filtered_node = {
+                            "node_type": node.get("node_type"),
+                            "subtype": node.get("subtype"),
+                            "name": node.get("name"),
+                            "parameters": [],
+                        }
+
+                        # For parameters, keep only type, name, required status - remove descriptions and examples
+                        parameters = node.get("parameters", [])
+                        for param in parameters:
+                            if isinstance(param, dict):
+                                filtered_param = {
+                                    "name": param.get("name"),
+                                    "type": param.get("type"),
+                                    "required": param.get("required", False),
+                                }
+                                # Include enum values if present (essential for correct generation)
+                                if "enum_values" in param:
+                                    filtered_param["enum_values"] = param["enum_values"]
+                                filtered_node["parameters"].append(filtered_param)
+
+                        filtered_nodes.append(filtered_node)
+
+                # Add essential reminder about type compliance
+                response_data = {
+                    "nodes": filtered_nodes,
+                    "_instructions": {
+                        "critical": "Use EXACT types from 'type' field",
+                        "types": {
+                            "integer": 'numbers (123, not "123")',
+                            "string": 'quoted strings ("example")',
+                            "boolean": 'true/false (not "true")',
+                        },
+                    },
+                }
+                return json.dumps(response_data, indent=2)
+
+        # For other tools or if filtering fails, return compact JSON
+        return json.dumps(result, separators=(",", ":"))
+
     def _add_conversation(self, state: WorkflowState, role: str, text: str) -> None:
         """Add a new message to conversations"""
         state["conversations"].append(
@@ -831,9 +897,9 @@ CRITICAL: Return ONLY the valid JSON object with no markdown, no explanations, n
                     # Fix parameters using MCP-provided types (only as fallback)
                     workflow = self._fix_workflow_parameters(workflow)
 
-                    # Iteratively validate and improve workflow
-                    workflow = await self._iterative_workflow_validation(
-                        workflow, intent_summary, state, messages
+                    # Skip iterative validation - single pass generation for better performance
+                    logger.info(
+                        "Single-pass workflow generation completed - skipping validation rounds"
                     )
 
                     logger.info(
@@ -1074,9 +1140,15 @@ Would you like to make any adjustments or shall we proceed with testing?"""
                                 self.node_specs_cache[node_key] = node_spec
                                 logger.debug(f"Cached node spec for {node_key}")
 
-                    # Add tool result to conversation
-                    result_str = (
-                        json.dumps(result, indent=2) if isinstance(result, dict) else str(result)
+                    # Add tool result to conversation with optimized filtering
+                    original_size = (
+                        len(json.dumps(result, indent=2))
+                        if isinstance(result, dict)
+                        else len(str(result))
+                    )
+                    result_str = self._filter_mcp_response_for_prompt(result, tool_name)
+                    logger.debug(
+                        f"💡 MCP response filtered: reduced from {original_size} to {len(result_str)} characters"
                     )
                     current_messages.append(
                         HumanMessage(content=f"Tool result for {tool_name}:\n{result_str}")
@@ -1437,9 +1509,15 @@ Generate the complete workflow JSON now:"""
                     logger.info(f"Completion processing tool call: {tool_name}")
                     result = await self.mcp_client.call_tool(tool_name, tool_args)
 
-                    # Add tool result to conversation
-                    result_str = (
-                        json.dumps(result, indent=2) if isinstance(result, dict) else str(result)
+                    # Add tool result to conversation with optimized filtering
+                    original_size = (
+                        len(json.dumps(result, indent=2))
+                        if isinstance(result, dict)
+                        else len(str(result))
+                    )
+                    result_str = self._filter_mcp_response_for_prompt(result, tool_name)
+                    logger.debug(
+                        f"💡 MCP response filtered: reduced from {original_size} to {len(result_str)} characters"
                     )
                     current_messages.append(
                         HumanMessage(content=f"Tool result for {tool_name}:\n{result_str}")
