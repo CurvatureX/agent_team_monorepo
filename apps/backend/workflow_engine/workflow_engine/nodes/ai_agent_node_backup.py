@@ -27,32 +27,6 @@ except ImportError:
 
 from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
 
-# Import new provider architecture
-try:
-    from workflow_engine.nodes.ai_providers import (
-        AIProviderFactory,
-        ErrorType,
-        AIResponse,
-        OpenAIProvider,
-        ClaudeProvider,
-        GeminiProvider
-    )
-    PROVIDERS_AVAILABLE = True
-except ImportError as e:
-    print(f"Failed to import AI providers: {e}")
-    PROVIDERS_AVAILABLE = False
-    # Define placeholder classes if providers not available
-    class ErrorType:
-        NONE = "none"
-        UNKNOWN = "unknown"
-    class AIResponse:
-        def __init__(self, success=False, content="", error_type=ErrorType.NONE, error_message="", metadata=None):
-            self.success = success
-            self.content = content
-            self.error_type = error_type
-            self.error_message = error_message
-            self.metadata = metadata or {}
-
 
 class AIAgentNodeExecutor(BaseNodeExecutor):
     """Executor for AI_AGENT_NODE type with provider-based architecture."""
@@ -70,12 +44,6 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             {"max_total_tokens": 4000, "merge_strategy": "priority", "token_buffer": 0.1}
         )
         self.logger.info("[AIAgent Node]: 🤖 AI AGENT: Memory context merger initialized")
-        
-        # Log provider availability
-        if PROVIDERS_AVAILABLE:
-            self.logger.info("[AIAgent Node]: 🤖 AI AGENT: AI providers initialized successfully")
-        else:
-            self.logger.warning("[AIAgent Node]: 🤖 AI AGENT: AI providers not available, will use legacy API calls")
 
     def _get_node_spec(self) -> Optional[NodeSpec]:
         """Get the node specification for AI agent nodes."""
@@ -691,9 +659,8 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
     def _execute_gemini_agent(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
-        """Execute Gemini AI agent using provider architecture."""
+        """Execute Gemini AI agent."""
         logs.append("Executing Google Gemini agent")
-        
         # Use spec-based parameter retrieval
         base_system_prompt = self.get_parameter_with_spec(context, "system_prompt")
         model_version = self.get_parameter_with_spec(context, "model_version")
@@ -701,115 +668,9 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         max_tokens = self.get_parameter_with_spec(context, "max_tokens")
         safety_settings = self.get_parameter_with_spec(context, "safety_settings")
 
-        try:
-            # Create provider instance
-            if not PROVIDERS_AVAILABLE:
-                raise ImportError("AI providers not available, falling back to legacy")
-                
-            provider = GeminiProvider()
-            
-            # Extract memory context for conversation history
-            memory_context = self._extract_memory_context_for_api(context)
-            conversation_messages = memory_context.get("messages", []) if memory_context else []
-            
-            # Enhance system prompt with summary
-            system_prompt = self._enhance_system_prompt_with_summary(base_system_prompt, memory_context)
-            
-            self.logger.info(
-                f"[AIAgent Node]: 🤖 AI AGENT: Gemini agent: {model_version}, temp: {temperature}"
-            )
-            self.logger.info(
-                f"[AIAgent Node]: 🤖 AI AGENT: System prompt length: {len(system_prompt)} characters"
-            )
-            
-            # Prepare input for AI processing
-            input_text = self._prepare_input_for_ai(context.input_data)
-            
-            # Call provider API
-            # Note: Gemini provider handles conversation history differently internally
-            response = provider.call_api(
-                system_prompt=system_prompt,
-                user_prompt=input_text,
-                model=model_version,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                safety_settings=safety_settings,
-                messages=conversation_messages
-            )
-            
-            # Handle response based on success/failure
-            if not response.success:
-                logs.append(f"AI agent failed: {response.error_message}")
-                return self._create_error_result(
-                    error_message=response.error_message,
-                    error_details={
-                        "error_type": response.error_type.value if hasattr(response.error_type, 'value') else str(response.error_type),
-                        "provider": "google",
-                        "model": model_version,
-                        "api_response": response.error_message
-                    },
-                    execution_time=time.time() - start_time,
-                    logs=logs,
-                )
-            
-            # Extract content
-            content = response.content
-            
-            # Store AI response in memory
-            self._store_conversation_in_memory(context, input_text, content, logs)
-            
-            # Build output data (maintaining original format)
-            output_data = {
-                "content": content,
-                "metadata": {
-                    "provider": "gemini",
-                    "model": model_version,
-                    "system_prompt": system_prompt,
-                    "input_text": input_text,
-                    "temperature": temperature,
-                    "max_tokens": max_tokens,
-                    "safety_settings": safety_settings,
-                    "executed_at": datetime.now().isoformat(),
-                    **response.metadata
-                },
-                "format_type": "text",
-                "source_node": context.node.id if hasattr(context, "node") and context.node else None,
-                "timestamp": datetime.now().isoformat(),
-            }
-            
-            logs.append(f"AI agent completed: {context.node.subtype}")
-            return self._create_success_result(
-                output_data=output_data,
-                execution_time=time.time() - start_time,
-                logs=logs,
-            )
-            
-        except ImportError:
-            # Fallback to legacy API call
-            self.logger.warning("AI providers not available, using legacy API call")
-            return self._execute_gemini_agent_legacy(context, logs, start_time)
-            
-        except Exception as e:
-            self.logger.exception("Error in Gemini agent")
-            return self._create_error_result(
-                f"Error in Gemini agent: {str(e)}",
-                error_details={"exception": str(e)},
-                execution_time=time.time() - start_time,
-                logs=logs,
-            )
-    
-    def _execute_gemini_agent_legacy(
-        self, context: NodeExecutionContext, logs: List[str], start_time: float
-    ) -> NodeExecutionResult:
-        """Legacy Gemini execution (fallback when providers not available)."""
-        base_system_prompt = self.get_parameter_with_spec(context, "system_prompt")
-        model_version = self.get_parameter_with_spec(context, "model_version")
-        temperature = self.get_parameter_with_spec(context, "temperature")
-        max_tokens = self.get_parameter_with_spec(context, "max_tokens")
-        safety_settings = self.get_parameter_with_spec(context, "safety_settings")
-        
-        # Validate model
+        # Validate model against allowed Gemini models from spec
         from shared.models.node_enums import GoogleGeminiModel
+
         allowed_models = [model.value for model in GoogleGeminiModel]
         if model_version not in allowed_models:
             error_msg = f"Invalid Gemini model '{model_version}'. Allowed models: {', '.join(allowed_models)}. Default: {GoogleGeminiModel.GEMINI_2_5_FLASH_LITE.value}"
@@ -825,12 +686,26 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                 execution_time=time.time() - start_time,
                 logs=logs + [f"Model validation failed: {model_version} not in allowed models"],
             )
-            
+
+        # Extract memory context for conversation history and summary
         memory_context = self._extract_memory_context_for_api(context)
+
+        # Enhance system prompt with summary if available (but not conversation messages)
         system_prompt = self._enhance_system_prompt_with_summary(base_system_prompt, memory_context)
+
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: Gemini agent: {model_version}, temp: {temperature}"
+        )
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: System prompt length: {len(system_prompt)} characters"
+        )
+
+        # Prepare input for AI processing
         input_text = self._prepare_input_for_ai(context.input_data)
-        
+
         try:
+            # Call Gemini API (Note: Gemini doesn't support conversation history in the same way,
+            # but we keep the parameter for consistency)
             ai_response = self._call_gemini_api(
                 system_prompt=system_prompt,
                 input_text=input_text,
@@ -838,8 +713,10 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
-            
+
+            # Check if the response is an error message
             if ai_response.startswith("⚠️"):
+                # This is an error response from the API
                 error_msg = ai_response
                 logs.append(f"AI agent failed: {error_msg}")
                 return self._create_error_result(
@@ -852,10 +729,14 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                     execution_time=time.time() - start_time,
                     logs=logs,
                 )
-            
+
+            # Parse AI response to extract just the content
             content = self._parse_ai_response(ai_response)
+
+            # Store AI response in memory if user message was provided
             self._store_conversation_in_memory(context, input_text, content, logs)
-            
+
+            # Use standard communication format
             output_data = {
                 "content": content,
                 "metadata": {
@@ -869,17 +750,19 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                     "executed_at": datetime.now().isoformat(),
                 },
                 "format_type": "text",
-                "source_node": context.node.id if hasattr(context, "node") and context.node else None,
+                "source_node": context.node.id
+                if hasattr(context, "node") and context.node
+                else None,
                 "timestamp": datetime.now().isoformat(),
             }
-            
+
             logs.append(f"AI agent completed: {context.node.subtype}")
             return self._create_success_result(
                 output_data=output_data,
                 execution_time=time.time() - start_time,
                 logs=logs,
             )
-            
+
         except Exception as e:
             return self._create_error_result(
                 f"Error in Gemini agent: {str(e)}",
@@ -891,9 +774,8 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
     def _execute_openai_agent(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
-        """Execute OpenAI AI agent using provider architecture."""
+        """Execute OpenAI AI agent."""
         logs.append("Executing OpenAI GPT agent")
-        
         # Use spec-based parameter retrieval
         base_system_prompt = self.get_parameter_with_spec(context, "system_prompt")
         model_version = self.get_parameter_with_spec(context, "model_version")
@@ -902,123 +784,9 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         presence_penalty = self.get_parameter_with_spec(context, "presence_penalty")
         frequency_penalty = self.get_parameter_with_spec(context, "frequency_penalty")
 
-        try:
-            # Create provider instance
-            if not PROVIDERS_AVAILABLE:
-                # Fallback to legacy implementation if providers not available
-                raise ImportError("AI providers not available, falling back to legacy")
-                
-            provider = OpenAIProvider()
-            
-            # Extract memory context for conversation history
-            memory_context = self._extract_memory_context_for_api(context)
-            conversation_messages = memory_context.get("messages", []) if memory_context else []
-            
-            # Enhance system prompt with summary
-            system_prompt = self._enhance_system_prompt_with_summary(base_system_prompt, memory_context)
-            
-            self.logger.info(
-                f"[AIAgent Node]: 🤖 AI AGENT: OpenAI configuration - model: {model_version}, temp: {temperature}"
-            )
-            self.logger.info(
-                f"[AIAgent Node]: 🤖 AI AGENT: System prompt length: {len(system_prompt)} characters"
-            )
-            
-            # Prepare input for AI processing
-            input_text = self._prepare_input_for_ai(context.input_data)
-            self.logger.info(
-                f"[AIAgent Node]: 🤖 AI AGENT: User input prepared: '{input_text[:100]}{'...' if len(input_text) > 100 else ''}' ({len(input_text)} chars)"
-            )
-            
-            # Call provider API
-            response = provider.call_api(
-                system_prompt=system_prompt,
-                user_prompt=input_text,
-                model=model_version,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                presence_penalty=presence_penalty,
-                frequency_penalty=frequency_penalty,
-                messages=conversation_messages
-            )
-            
-            # Handle response based on success/failure
-            if not response.success:
-                logs.append(f"AI agent failed: {response.error_message}")
-                return self._create_error_result(
-                    error_message=response.error_message,
-                    error_details={
-                        "error_type": response.error_type.value if hasattr(response.error_type, 'value') else str(response.error_type),
-                        "provider": "openai",
-                        "model": model_version,
-                        "api_response": response.error_message
-                    },
-                    execution_time=time.time() - start_time,
-                    logs=logs,
-                )
-            
-            # Extract content
-            content = response.content
-            
-            # Store AI response in memory if user message was provided
-            self._store_conversation_in_memory(context, input_text, content, logs)
-            
-            # Build output data (maintaining original format)
-            output_data = {
-                "content": content,
-                "metadata": {
-                    "provider": "openai",
-                    "model": model_version,
-                    "system_prompt": system_prompt,
-                    "input_text": input_text,
-                    "temperature": temperature,
-                    "max_tokens": max_tokens,
-                    "presence_penalty": presence_penalty,
-                    "frequency_penalty": frequency_penalty,
-                    "executed_at": datetime.now().isoformat(),
-                    "conversation_messages_count": len(conversation_messages),
-                    **response.metadata  # Include any additional metadata from provider
-                },
-                "format_type": "text",
-                "source_node": context.node.id if hasattr(context, "node") and context.node else None,
-                "timestamp": datetime.now().isoformat(),
-            }
-            
-            logs.append(f"AI agent completed: {context.node.subtype}")
-            return self._create_success_result(
-                output_data=output_data,
-                execution_time=time.time() - start_time,
-                logs=logs,
-            )
-            
-        except ImportError:
-            # Fallback to legacy API call if providers not available
-            self.logger.warning("AI providers not available, using legacy API call")
-            return self._execute_openai_agent_legacy(context, logs, start_time)
-            
-        except Exception as e:
-            self.logger.exception("Error in OpenAI agent")
-            return self._create_error_result(
-                f"Error in OpenAI agent: {str(e)}",
-                error_details={"exception": str(e)},
-                execution_time=time.time() - start_time,
-                logs=logs,
-            )
-    
-    def _execute_openai_agent_legacy(
-        self, context: NodeExecutionContext, logs: List[str], start_time: float
-    ) -> NodeExecutionResult:
-        """Legacy OpenAI execution (fallback when providers not available)."""
-        # This contains the original implementation
-        base_system_prompt = self.get_parameter_with_spec(context, "system_prompt")
-        model_version = self.get_parameter_with_spec(context, "model_version")
-        temperature = self.get_parameter_with_spec(context, "temperature")
-        max_tokens = self.get_parameter_with_spec(context, "max_tokens")
-        presence_penalty = self.get_parameter_with_spec(context, "presence_penalty")
-        frequency_penalty = self.get_parameter_with_spec(context, "frequency_penalty")
-        
-        # Validate model
+        # Validate model against allowed OpenAI models from spec
         from shared.models.node_enums import OpenAIModel
+
         allowed_models = [model.value for model in OpenAIModel]
         if model_version not in allowed_models:
             error_msg = f"Invalid OpenAI model '{model_version}'. Allowed models: {', '.join(allowed_models)}. Default: {OpenAIModel.GPT_5_NANO.value}"
@@ -1034,12 +802,28 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                 execution_time=time.time() - start_time,
                 logs=logs + [f"Model validation failed: {model_version} not in allowed models"],
             )
-            
+
+        # Extract memory context for conversation history and summary
         memory_context = self._extract_memory_context_for_api(context)
+
+        # Enhance system prompt with summary if available (but not conversation messages)
         system_prompt = self._enhance_system_prompt_with_summary(base_system_prompt, memory_context)
+
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: OpenAI configuration - model: {model_version}, temp: {temperature}"
+        )
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: System prompt length: {len(system_prompt)} characters"
+        )
+
+        # Prepare input for AI processing
         input_text = self._prepare_input_for_ai(context.input_data)
-        
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: User input prepared: '{input_text[:100]}{'...' if len(input_text) > 100 else ''}' ({len(input_text)} chars)"
+        )
+
         try:
+            # Call OpenAI API with conversation history
             ai_response = self._call_openai_api(
                 system_prompt=system_prompt,
                 input_text=input_text,
@@ -1050,8 +834,10 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                 frequency_penalty=frequency_penalty,
                 memory_context=memory_context,
             )
-            
+
+            # Check if the response is an error message
             if ai_response.startswith("⚠️"):
+                # This is an error response from the API
                 error_msg = ai_response
                 logs.append(f"AI agent failed: {error_msg}")
                 return self._create_error_result(
@@ -1064,10 +850,14 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                     execution_time=time.time() - start_time,
                     logs=logs,
                 )
-            
+
+            # Parse AI response to extract just the content
             content = self._parse_ai_response(ai_response)
+
+            # Store AI response in memory if user message was provided
             self._store_conversation_in_memory(context, input_text, content, logs)
-            
+
+            # Use standard communication format
             output_data = {
                 "content": content,
                 "metadata": {
@@ -1080,20 +870,24 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                     "presence_penalty": presence_penalty,
                     "frequency_penalty": frequency_penalty,
                     "executed_at": datetime.now().isoformat(),
-                    "conversation_messages_count": len(memory_context.get("messages", [])) if memory_context else 0,
+                    "conversation_messages_count": len(memory_context.get("messages", []))
+                    if memory_context
+                    else 0,
                 },
                 "format_type": "text",
-                "source_node": context.node.id if hasattr(context, "node") and context.node else None,
+                "source_node": context.node.id
+                if hasattr(context, "node") and context.node
+                else None,
                 "timestamp": datetime.now().isoformat(),
             }
-            
+
             logs.append(f"AI agent completed: {context.node.subtype}")
             return self._create_success_result(
                 output_data=output_data,
                 execution_time=time.time() - start_time,
                 logs=logs,
             )
-            
+
         except Exception as e:
             return self._create_error_result(
                 f"Error in OpenAI agent: {str(e)}",
@@ -1105,9 +899,8 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
     def _execute_claude_agent(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
-        """Execute Claude AI agent using provider architecture."""
+        """Execute Claude AI agent."""
         logs.append("Executing Anthropic Claude agent")
-        
         # Use spec-based parameter retrieval
         base_system_prompt = self.get_parameter_with_spec(context, "system_prompt")
         model_version = self.get_parameter_with_spec(context, "model_version")
@@ -1115,115 +908,9 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         max_tokens = self.get_parameter_with_spec(context, "max_tokens")
         stop_sequences = self.get_parameter_with_spec(context, "stop_sequences")
 
-        try:
-            # Create provider instance
-            if not PROVIDERS_AVAILABLE:
-                raise ImportError("AI providers not available, falling back to legacy")
-                
-            provider = ClaudeProvider()
-            
-            # Extract memory context for conversation history
-            memory_context = self._extract_memory_context_for_api(context)
-            conversation_messages = memory_context.get("messages", []) if memory_context else []
-            
-            # Enhance system prompt with summary
-            system_prompt = self._enhance_system_prompt_with_summary(base_system_prompt, memory_context)
-            
-            self.logger.info(
-                f"[AIAgent Node]: 🤖 AI AGENT: Claude agent: {model_version}, temp: {temperature}"
-            )
-            self.logger.info(
-                f"[AIAgent Node]: 🤖 AI AGENT: System prompt length: {len(system_prompt)} characters"
-            )
-            
-            # Prepare input for AI processing
-            input_text = self._prepare_input_for_ai(context.input_data)
-            
-            # Call provider API
-            response = provider.call_api(
-                system_prompt=system_prompt,
-                user_prompt=input_text,
-                model=model_version,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                stop_sequences=stop_sequences,
-                messages=conversation_messages
-            )
-            
-            # Handle response based on success/failure
-            if not response.success:
-                logs.append(f"AI agent failed: {response.error_message}")
-                return self._create_error_result(
-                    error_message=response.error_message,
-                    error_details={
-                        "error_type": response.error_type.value if hasattr(response.error_type, 'value') else str(response.error_type),
-                        "provider": "anthropic",
-                        "model": model_version,
-                        "api_response": response.error_message
-                    },
-                    execution_time=time.time() - start_time,
-                    logs=logs,
-                )
-            
-            # Extract content
-            content = response.content
-            
-            # Store AI response in memory
-            self._store_conversation_in_memory(context, input_text, content, logs)
-            
-            # Build output data (maintaining original format)
-            output_data = {
-                "content": content,
-                "metadata": {
-                    "provider": "claude",
-                    "model": model_version,
-                    "system_prompt": system_prompt,
-                    "input_text": input_text,
-                    "temperature": temperature,
-                    "max_tokens": max_tokens,
-                    "stop_sequences": stop_sequences,
-                    "executed_at": datetime.now().isoformat(),
-                    "conversation_messages_count": len(conversation_messages),
-                    **response.metadata
-                },
-                "format_type": "text",
-                "source_node": context.node.id if hasattr(context, "node") and context.node else None,
-                "timestamp": datetime.now().isoformat(),
-            }
-            
-            logs.append(f"AI agent completed: {context.node.subtype}")
-            return self._create_success_result(
-                output_data=output_data,
-                execution_time=time.time() - start_time,
-                logs=logs,
-            )
-            
-        except ImportError:
-            # Fallback to legacy API call
-            self.logger.warning("AI providers not available, using legacy API call")
-            return self._execute_claude_agent_legacy(context, logs, start_time)
-            
-        except Exception as e:
-            self.logger.exception("Error in Claude agent")
-            return self._create_error_result(
-                f"Error in Claude agent: {str(e)}",
-                error_details={"exception": str(e)},
-                execution_time=time.time() - start_time,
-                logs=logs,
-            )
-    
-    def _execute_claude_agent_legacy(
-        self, context: NodeExecutionContext, logs: List[str], start_time: float
-    ) -> NodeExecutionResult:
-        """Legacy Claude execution (fallback when providers not available)."""
-        base_system_prompt = self.get_parameter_with_spec(context, "system_prompt")
-        model_version = self.get_parameter_with_spec(context, "model_version")
-        temperature = self.get_parameter_with_spec(context, "temperature")
-        max_tokens = self.get_parameter_with_spec(context, "max_tokens")
-        stop_sequences = self.get_parameter_with_spec(context, "stop_sequences")
-        
-        # Validate model
+        # Validate model against allowed Claude models from spec
         from shared.models.node_enums import AnthropicModel
+
         allowed_models = [model.value for model in AnthropicModel]
         if model_version not in allowed_models:
             error_msg = f"Invalid Claude model '{model_version}'. Allowed models: {', '.join(allowed_models)}. Default: {AnthropicModel.CLAUDE_HAIKU_3_5.value}"
@@ -1239,12 +926,25 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                 execution_time=time.time() - start_time,
                 logs=logs + [f"Model validation failed: {model_version} not in allowed models"],
             )
-            
+
+        # Extract memory context for conversation history and summary
         memory_context = self._extract_memory_context_for_api(context)
+
+        # Enhance system prompt with summary if available (but not conversation messages)
         system_prompt = self._enhance_system_prompt_with_summary(base_system_prompt, memory_context)
+
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: Claude agent: {model_version}, temp: {temperature}"
+        )
+        self.logger.info(
+            f"[AIAgent Node]: 🤖 AI AGENT: System prompt length: {len(system_prompt)} characters"
+        )
+
+        # Prepare input for AI processing
         input_text = self._prepare_input_for_ai(context.input_data)
-        
+
         try:
+            # Call Claude API with conversation history
             ai_response = self._call_claude_api(
                 system_prompt=system_prompt,
                 input_text=input_text,
@@ -1254,8 +954,10 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                 stop_sequences=stop_sequences,
                 memory_context=memory_context,
             )
-            
+
+            # Check if the response is an error message
             if ai_response.startswith("⚠️"):
+                # This is an error response from the API
                 error_msg = ai_response
                 logs.append(f"AI agent failed: {error_msg}")
                 return self._create_error_result(
@@ -1268,10 +970,14 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                     execution_time=time.time() - start_time,
                     logs=logs,
                 )
-            
+
+            # Parse AI response to extract just the content
             content = self._parse_ai_response(ai_response)
+
+            # Store AI response in memory if user message was provided
             self._store_conversation_in_memory(context, input_text, content, logs)
-            
+
+            # Use standard communication format
             output_data = {
                 "content": content,
                 "metadata": {
@@ -1283,20 +989,24 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                     "max_tokens": max_tokens,
                     "stop_sequences": stop_sequences,
                     "executed_at": datetime.now().isoformat(),
-                    "conversation_messages_count": len(memory_context.get("messages", [])) if memory_context else 0,
+                    "conversation_messages_count": len(memory_context.get("messages", []))
+                    if memory_context
+                    else 0,
                 },
                 "format_type": "text",
-                "source_node": context.node.id if hasattr(context, "node") and context.node else None,
+                "source_node": context.node.id
+                if hasattr(context, "node") and context.node
+                else None,
                 "timestamp": datetime.now().isoformat(),
             }
-            
+
             logs.append(f"AI agent completed: {context.node.subtype}")
             return self._create_success_result(
                 output_data=output_data,
                 execution_time=time.time() - start_time,
                 logs=logs,
             )
-            
+
         except Exception as e:
             return self._create_error_result(
                 f"Error in Claude agent: {str(e)}",
