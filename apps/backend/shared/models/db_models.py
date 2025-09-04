@@ -112,7 +112,7 @@ class WorkflowStatusEnum(str, enum.Enum):
     SUCCESS = "SUCCESS"
     ERROR = "ERROR"
     CANCELED = "CANCELED"
-    WAITING = "WAITING"
+    WAITING_FOR_HUMAN = "WAITING_FOR_HUMAN"  # Specific state for HIL pauses
 
 
 class WorkflowModeEnum(str, enum.Enum):

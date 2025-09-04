@@ -16,6 +16,11 @@ class NodeType(str, Enum):
     Core Node Types - Based on database schema constraints
 
     These are the 8 fundamental node categories in the workflow engine.
+
+    🎯 WORKFLOW GENERATION GUIDANCE:
+    - HUMAN_IN_THE_LOOP: Has built-in AI response analysis - DO NOT add separate IF/AI_AGENT nodes
+    - AI_AGENT: For general AI processing - NOT needed for HIL response analysis
+    - FLOW (IF): For business logic conditions - NOT needed for HIL response classification
     """
 
     TRIGGER = "TRIGGER"
@@ -23,7 +28,7 @@ class NodeType(str, Enum):
     EXTERNAL_ACTION = "EXTERNAL_ACTION"
     ACTION = "ACTION"
     FLOW = "FLOW"
-    HUMAN_IN_THE_LOOP = "HUMAN_IN_THE_LOOP"
+    HUMAN_IN_THE_LOOP = "HUMAN_IN_THE_LOOP"  # 🤖 Built-in AI response analysis capabilities
     TOOL = "TOOL"
     MEMORY = "MEMORY"
 
@@ -186,19 +191,31 @@ class FlowSubtype(str, Enum):
 
 
 class HumanLoopSubtype(str, Enum):
-    """Human-in-the-Loop Node Subtypes - Human interaction points"""
+    """
+    Human-in-the-Loop Node Subtypes - Human interaction points with built-in AI response analysis
 
-    # Email Interactions
+    🎯 IMPORTANT FOR WORKFLOW GENERATION:
+    All HIL nodes have integrated AI-powered response analysis capabilities that:
+    - Automatically classify user responses as confirmed/rejected/unrelated
+    - Eliminate the need for separate IF nodes or AI_AGENT nodes for response analysis
+    - Provide multiple output ports based on AI classification (confirmed, rejected, unrelated, timeout)
+    - Handle response messaging automatically based on classification results
+
+    ❌ DO NOT CREATE: Separate IF nodes, AI_AGENT nodes, or EXTERNAL_ACTION nodes for HIL response handling
+    ✅ USE INSTEAD: Single HIL node with built-in response analysis and integrated messaging
+    """
+
+    # Email Interactions - with AI response analysis for email replies
     GMAIL_INTERACTION = "GMAIL_INTERACTION"
     OUTLOOK_INTERACTION = "OUTLOOK_INTERACTION"
 
-    # Chat Interactions
+    # Chat Interactions - with AI response analysis for chat messages
     SLACK_INTERACTION = "SLACK_INTERACTION"
     DISCORD_INTERACTION = "DISCORD_INTERACTION"
     TELEGRAM_INTERACTION = "TELEGRAM_INTERACTION"
     TEAMS_INTERACTION = "TEAMS_INTERACTION"
 
-    # App Interactions
+    # App Interactions - with AI response analysis for in-app interactions
     IN_APP_APPROVAL = "IN_APP_APPROVAL"
     FORM_SUBMISSION = "FORM_SUBMISSION"
     MANUAL_REVIEW = "MANUAL_REVIEW"

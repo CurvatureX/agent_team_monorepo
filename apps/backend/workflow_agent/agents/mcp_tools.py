@@ -11,6 +11,8 @@ import aiohttp
 from langchain_core.tools import Tool
 from pydantic import BaseModel, Field
 
+from workflow_agent.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -82,7 +84,9 @@ class MCPToolCaller:
                 ttl_dns_cache=300,  # DNS cache timeout
                 keepalive_timeout=30,  # Keep connections alive for reuse
             )
-            timeout = aiohttp.ClientTimeout(total=10, connect=2)  # 10s total, 2s connect
+            timeout = aiohttp.ClientTimeout(
+                total=settings.MCP_TOTAL_TIMEOUT, connect=settings.MCP_CONNECT_TIMEOUT
+            )  # Configurable timeouts for MCP operations
             self._session = aiohttp.ClientSession(connector=connector, timeout=timeout)
         return self._session
 

@@ -60,7 +60,7 @@ class NodeKnowledgeMCPService:
         tools = [
             MCPTool(
                 name="get_node_types",
-                description="Get all available workflow node types and their subtypes",
+                description="Get all available workflow node types and their subtypes. 🎯 IMPORTANT: HUMAN_IN_THE_LOOP nodes have built-in AI response analysis - DO NOT create separate IF or AI_AGENT nodes for HIL response classification.",
                 parameters={
                     "type": "object",
                     "properties": {
@@ -76,7 +76,7 @@ class NodeKnowledgeMCPService:
             ),
             MCPTool(
                 name="get_node_details",
-                description="Get detailed specifications for workflow nodes including parameters, ports, and examples",
+                description="Get detailed specifications for workflow nodes including parameters, ports, and examples. 🤖 KEY FEATURE: HUMAN_IN_THE_LOOP nodes include integrated AI response analysis with confirmed/rejected/unrelated/timeout output ports - eliminating need for separate IF/AI_AGENT nodes.",
                 parameters={
                     "type": "object",
                     "properties": {
@@ -187,26 +187,28 @@ class NodeKnowledgeMCPService:
         tools_map = {
             "get_node_types": {
                 "name": "get_node_types",
-                "description": "Get all available workflow node types and their subtypes",
+                "description": "Get all available workflow node types and their subtypes. 🎯 CRITICAL: HUMAN_IN_THE_LOOP nodes have built-in AI response analysis capabilities. DO NOT create separate IF or AI_AGENT nodes for HIL response processing.",
                 "version": "1.0.0",
                 "available": True,
                 "category": "workflow",
+                "workflow_guidance": "❌ ANTI-PATTERN: HIL → AI_AGENT → IF. ✅ CORRECT: Single HIL node with built-in AI analysis and multiple output ports.",
                 "usage_examples": [
                     {"type_filter": NodeType.ACTION.value},  # Filter by specific type
                 ],
             },
             "get_node_details": {
                 "name": "get_node_details",
-                "description": "Get detailed specifications for workflow nodes",
+                "description": "Get detailed specifications for workflow nodes including parameters, ports, and examples. 🤖 HIL nodes include integrated AI response analysis with multiple output ports (confirmed/rejected/unrelated/timeout).",
                 "version": "1.0.0",
                 "available": True,
                 "category": "workflow",
+                "workflow_guidance": "🎯 HIL NODE OPTIMIZATION: Use confirmed/rejected/unrelated output ports instead of creating separate AI_AGENT + IF nodes for response analysis. This reduces workflows from 6+ nodes to 2 nodes.",
                 "usage_examples": [
                     {
                         "nodes": [
                             {
-                                "node_type": NodeType.ACTION.value,
-                                "subtype": ActionSubtype.HTTP_REQUEST.value,
+                                "node_type": NodeType.HUMAN_IN_THE_LOOP.value,
+                                "subtype": "SLACK_INTERACTION",
                             }
                         ],
                         "include_examples": True,

@@ -40,10 +40,26 @@ class WorkflowStatusManager:
         """Initialize workflow status manager.
 
         Args:
-            database_client: Database client for persistence (TODO: inject actual client)
+            database_client: Database client for persistence
         """
         self.logger = logging.getLogger(__name__)
-        self.db_client = database_client  # TODO: Use actual database client
+        self.db_client = database_client
+
+        # In-memory storage when database not available
+        self._pause_records = {}
+        self._workflow_statuses = {}
+
+        # Try to initialize database connection if not provided
+        if not self.db_client:
+            try:
+                # Attempt to get database connection from workflow engine
+                from ..core.database import get_db_session
+
+                self.get_db_session = get_db_session
+                self.logger.info("Database session factory available")
+            except ImportError:
+                self.logger.warning("Database not available - using in-memory storage")
+                self.get_db_session = None
 
         self.logger.info("Initialized WorkflowStatusManager")
 
