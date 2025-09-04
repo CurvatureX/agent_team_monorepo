@@ -646,7 +646,7 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
         },
         {
           name  = "LOG_LEVEL"
-          value = "DEBUG"
+          value = "INFO"
         },
         {
           name  = "PYTHONUNBUFFERED"
