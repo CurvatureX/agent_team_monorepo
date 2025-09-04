@@ -135,7 +135,9 @@ class SlackTrigger(BaseTrigger):
 
             # Event type filter
             if event_type not in self.event_types:
-                logger.info(f"❌ Event type '{event_type}' not in expected types {self.event_types}")
+                logger.info(
+                    f"❌ WORKFLOW {self.workflow_id}: Event type '{event_type}' not in expected types {self.event_types} - SKIPPING"
+                )
                 return False
 
             logger.info(f"✅ Event type '{event_type}' matches expected types")
@@ -143,44 +145,54 @@ class SlackTrigger(BaseTrigger):
             # Channel filter - extract from the nested event
             channel_id = actual_event.get("channel", "")
             if not await self._matches_channel_filter_async(channel_id):
-                logger.debug(f"Channel {channel_id} doesn't match filter {self.channel_filter}")
+                logger.info(
+                    f"❌ WORKFLOW {self.workflow_id}: Channel {channel_id} doesn't match filter '{self.channel_filter}' - SKIPPING"
+                )
                 return False
 
             # User filter - extract from the nested event
             user_id = actual_event.get("user", "")
             if not self._matches_user_filter(user_id):
-                logger.debug(f"User {user_id} doesn't match filter {self.user_filter}")
+                logger.info(
+                    f"❌ WORKFLOW {self.workflow_id}: User {user_id} doesn't match filter '{self.user_filter}' - SKIPPING"
+                )
                 return False
 
             # Bot filter - extract from the nested event
             bot_id = actual_event.get("bot_id")
             if self.ignore_bots and bot_id:
-                logger.info(f"🤖 Ignoring bot message from bot_id: {bot_id}")
+                logger.info(
+                    f"❌ WORKFLOW {self.workflow_id}: Ignoring bot message from bot_id: {bot_id} - SKIPPING"
+                )
                 return False
 
             # Mention filter - pass the nested event
             if self.mention_required and not self._has_bot_mention(actual_event):
-                logger.debug("Required mention not found")
+                logger.info(f"❌ WORKFLOW {self.workflow_id}: Required mention not found - SKIPPING")
                 return False
 
             # Thread filter - extract from the nested event
             if self.require_thread and not actual_event.get("thread_ts"):
-                logger.debug("Required thread not found")
+                logger.info(f"❌ WORKFLOW {self.workflow_id}: Required thread not found - SKIPPING")
                 return False
 
             # Command prefix filter (for message events)
             if event_type == "message" and self.command_prefix:
                 message_text = actual_event.get("text", "")
                 if not message_text.strip().startswith(self.command_prefix):
-                    logger.debug(f"Message doesn't start with command prefix {self.command_prefix}")
+                    logger.info(
+                        f"❌ WORKFLOW {self.workflow_id}: Message doesn't start with command prefix '{self.command_prefix}' - SKIPPING"
+                    )
                     return False
 
-            logger.info(f"✅ Slack event matches filters for workflow {self.workflow_id}")
+            logger.info(
+                f"✅ WORKFLOW {self.workflow_id}: ALL FILTERS PASSED - WORKFLOW WILL BE TRIGGERED"
+            )
             return True
 
         except Exception as e:
             logger.error(
-                f"Error processing Slack event for workflow {self.workflow_id}: {e}",
+                f"❌ WORKFLOW {self.workflow_id}: Error processing Slack event: {e}",
                 exc_info=True,
             )
             return False
@@ -226,7 +238,7 @@ class SlackTrigger(BaseTrigger):
 
     async def _get_channel_name(self, channel_id: str) -> Optional[str]:
         """
-        Get channel name from channel ID using Slack API
+        Get channel name from channel ID using Slack API with user's OAuth token
 
         Args:
             channel_id: The Slack channel ID
@@ -242,10 +254,12 @@ class SlackTrigger(BaseTrigger):
             return self._channel_name_cache[channel_id]
 
         try:
-            # Get Slack bot token from environment
-            slack_token = os.getenv("SLACK_BOT_TOKEN") or os.getenv("SLACK_ACCESS_TOKEN")
+            # Get user's Slack OAuth token from database
+            slack_token = await self._get_user_slack_token()
             if not slack_token:
-                logger.warning("No Slack token available for channel name lookup")
+                logger.warning(
+                    f"No Slack OAuth token available for workflow {self.workflow_id} owner - channel name lookup failed"
+                )
                 return None
 
             async with httpx.AsyncClient() as client:
@@ -275,6 +289,67 @@ class SlackTrigger(BaseTrigger):
             logger.warning(f"Failed to get channel name for {channel_id}: {e}")
 
         return None
+
+    async def _get_user_slack_token(self) -> Optional[str]:
+        """
+        Get the workflow owner's Slack OAuth token from the database
+
+        Returns:
+            str: Slack access token, or None if not found
+        """
+        try:
+            # First get the workflow owner's user_id
+            from workflow_scheduler.core.supabase_client import get_supabase_client
+
+            supabase = get_supabase_client()
+            if not supabase:
+                logger.error("Supabase client not available")
+                return None
+
+            # Get workflow owner
+            workflow_result = (
+                supabase.table("workflows").select("user_id").eq("id", self.workflow_id).execute()
+            )
+
+            if not workflow_result.data:
+                logger.warning(f"Workflow {self.workflow_id} not found in database")
+                return None
+
+            user_id = workflow_result.data[0].get("user_id")
+            if not user_id:
+                logger.warning(f"No user_id found for workflow {self.workflow_id}")
+                return None
+
+            # Get user's Slack OAuth token
+            oauth_result = (
+                supabase.table("oauth_tokens")
+                .select("access_token")
+                .eq("user_id", user_id)
+                .eq("integration_id", "slack")
+                .eq("is_active", True)
+                .execute()
+            )
+
+            if not oauth_result.data:
+                logger.warning(f"No active Slack OAuth token found for user {user_id}")
+                return None
+
+            access_token = oauth_result.data[0].get("access_token")
+            if access_token:
+                logger.debug(
+                    f"Retrieved Slack token for user {user_id} (workflow {self.workflow_id})"
+                )
+                return access_token
+            else:
+                logger.warning(f"Empty access_token for user {user_id}")
+                return None
+
+        except Exception as e:
+            logger.error(
+                f"Error getting user Slack token for workflow {self.workflow_id}: {e}",
+                exc_info=True,
+            )
+            return None
 
     def _matches_channel_filter(self, channel_id: str) -> bool:
         """
