@@ -68,6 +68,12 @@ logging.basicConfig(
     else "%(message)s",
     stream=sys.stdout,
 )
+
+# Silence noisy loggers
+logging.getLogger("hpack.hpack").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("h2").setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 # Global service instances will be managed through dependencies.py

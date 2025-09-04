@@ -6,8 +6,11 @@ supporting various Slack events like messages, mentions, reactions, etc.
 """
 
 import logging
+import os
 import re
 from typing import Any, Dict, List, Optional
+
+import httpx
 
 from shared.models.node_enums import TriggerSubtype
 from shared.models.trigger import ExecutionResult, TriggerStatus
@@ -43,6 +46,9 @@ class SlackTrigger(BaseTrigger):
         self.user_filter = trigger_config.get("user_filter")
         self.ignore_bots = trigger_config.get("ignore_bots", True)
         self.require_thread = trigger_config.get("require_thread", False)
+
+        # Cache for channel name lookups to avoid repeated API calls
+        self._channel_name_cache = {}
 
         logger.info(f"Initialized SlackTrigger for workflow {workflow_id}")
         logger.info(f"  Workspace: {self.workspace_id}")
@@ -136,7 +142,7 @@ class SlackTrigger(BaseTrigger):
 
             # Channel filter - extract from the nested event
             channel_id = actual_event.get("channel", "")
-            if not self._matches_channel_filter(channel_id):
+            if not await self._matches_channel_filter_async(channel_id):
                 logger.debug(f"Channel {channel_id} doesn't match filter {self.channel_filter}")
                 return False
 
@@ -218,6 +224,58 @@ class SlackTrigger(BaseTrigger):
                 trigger_data={"error": str(e)},
             )
 
+    async def _get_channel_name(self, channel_id: str) -> Optional[str]:
+        """
+        Get channel name from channel ID using Slack API
+
+        Args:
+            channel_id: The Slack channel ID
+
+        Returns:
+            str: Channel name without # prefix, or None if not found
+        """
+        if not channel_id:
+            return None
+
+        # Check cache first
+        if channel_id in self._channel_name_cache:
+            return self._channel_name_cache[channel_id]
+
+        try:
+            # Get Slack bot token from environment
+            slack_token = os.getenv("SLACK_BOT_TOKEN") or os.getenv("SLACK_ACCESS_TOKEN")
+            if not slack_token:
+                logger.warning("No Slack token available for channel name lookup")
+                return None
+
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    "https://slack.com/api/conversations.info",
+                    headers={"Authorization": f"Bearer {slack_token}"},
+                    params={"channel": channel_id},
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get("ok"):
+                        channel_name = data.get("channel", {}).get("name")
+                        if channel_name:
+                            # Cache the result
+                            self._channel_name_cache[channel_id] = channel_name
+                            logger.debug(f"Resolved channel {channel_id} to name: {channel_name}")
+                            return channel_name
+                    else:
+                        logger.warning(
+                            f"Slack API error for channel {channel_id}: {data.get('error')}"
+                        )
+                else:
+                    logger.warning(f"HTTP error getting channel info: {response.status_code}")
+
+        except Exception as e:
+            logger.warning(f"Failed to get channel name for {channel_id}: {e}")
+
+        return None
+
     def _matches_channel_filter(self, channel_id: str) -> bool:
         """
         Check if channel matches the filter
@@ -234,8 +292,58 @@ class SlackTrigger(BaseTrigger):
         try:
             if self.channel_filter.startswith("C"):  # Channel ID format
                 return channel_id == self.channel_filter
-            else:  # Treat as regex pattern
-                return bool(re.match(self.channel_filter, channel_id))
+            else:
+                # Try to resolve channel name and compare
+                # Note: This needs to be async, so we'll handle it in the calling method
+                return False  # Will be handled asynchronously
+        except re.error as e:
+            logger.warning(f"Invalid channel filter regex '{self.channel_filter}': {e}")
+            return False
+
+    async def _matches_channel_filter_async(self, channel_id: str) -> bool:
+        """
+        Async version of channel filter matching that supports channel name resolution
+
+        Args:
+            channel_id: The Slack channel ID
+
+        Returns:
+            bool: True if channel matches filter
+        """
+        if not self.channel_filter:
+            return True
+
+        try:
+            if self.channel_filter.startswith("C"):  # Channel ID format
+                return channel_id == self.channel_filter
+            else:
+                # Try to resolve channel name and compare
+                channel_name = await self._get_channel_name(channel_id)
+                if channel_name:
+                    # Support both exact match and regex
+                    if self.channel_filter == channel_name:
+                        logger.debug(
+                            f"Channel name '{channel_name}' matches filter '{self.channel_filter}'"
+                        )
+                        return True
+                    else:
+                        # Try regex match against channel name
+                        try:
+                            if re.match(self.channel_filter, channel_name):
+                                logger.debug(
+                                    f"Channel name '{channel_name}' matches regex filter '{self.channel_filter}'"
+                                )
+                                return True
+                        except re.error:
+                            pass
+
+                        logger.debug(
+                            f"Channel name '{channel_name}' doesn't match filter '{self.channel_filter}'"
+                        )
+                        return False
+                else:
+                    # Fallback to treating filter as regex against channel ID
+                    return bool(re.match(self.channel_filter, channel_id))
         except re.error as e:
             logger.warning(f"Invalid channel filter regex '{self.channel_filter}': {e}")
             return False

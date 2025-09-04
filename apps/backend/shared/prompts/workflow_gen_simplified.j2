@@ -190,108 +190,26 @@ The connections MUST use the nested structure with "connection_types":
 }
 ```
 
-## Common Complete Workflow Patterns
+## Workflow Patterns
 
-**Pattern: Approval Workflows (e.g., "analyze request, get confirmation, then take action")**
-✅ **NEW PATTERN** (75% fewer nodes with integrated response messaging):
-1. TRIGGER (listen for events)
-2. AI_AGENT or ACTION (analyze/process the request)
-3. HUMAN_IN_THE_LOOP (wait for user response WITH integrated messaging)
-4. EXTERNAL_ACTION (perform the final action after approval)
+**Approval Pattern**: TRIGGER → AI_AGENT → HUMAN_IN_THE_LOOP (with integrated messaging) → EXTERNAL_ACTION
+**Simple Automation**: TRIGGER → AI_AGENT/ACTION → EXTERNAL_ACTION
 
-❌ **OLD ANTI-PATTERN** (DON'T USE - creates unnecessary complexity):
-~~1. TRIGGER (listen for events)~~
-~~2. AI_AGENT or ACTION (analyze/process the request)~~
-~~3. EXTERNAL_ACTION (send confirmation message) ← UNNECESSARY~~
-~~4. HUMAN_IN_THE_LOOP (wait for user response) ← SEPARATE FROM MESSAGING~~
-~~5. EXTERNAL_ACTION (send approval/rejection message) ← UNNECESSARY~~
-~~6. EXTERNAL_ACTION (perform the final action after approval)~~
+## HUMAN_IN_THE_LOOP Integration
 
-**Pattern: Simple Automation (e.g., "when X happens, do Y")**
-Required nodes:
-1. TRIGGER (listen for events)
-2. AI_AGENT or ACTION (process the data)
-3. EXTERNAL_ACTION (perform the action)
+HUMAN_IN_THE_LOOP nodes include built-in AI response analysis and messaging:
+- AI classifies responses as confirmed/rejected/unrelated/timeout
+- Has integrated messaging for each outcome
+- Outputs to confirmed/rejected/unrelated/timeout ports
+- **DO NOT** use separate AI_AGENT, IF, or EXTERNAL_ACTION nodes for HIL responses
 
-## 🎯 CRITICAL: HUMAN_IN_THE_LOOP Nodes Have Integrated AI Response Analysis + Messaging
+Key parameters: `enable_response_analysis`, `system_prompt`, `confirmed_message`, `rejected_message`, `unrelated_message`, `timeout_message`
 
-**🤖 NEW AI CAPABILITIES**: HUMAN_IN_THE_LOOP nodes now include:
-1. **Built-in AI response analysis** that classifies user responses as confirmed/rejected/unrelated/timeout
-2. **Multiple output ports** based on AI classification (confirmed, rejected, unrelated, timeout)
-3. **Integrated response messaging** for each classification result
-4. **Eliminates need for separate IF nodes or AI_AGENT nodes** for response analysis
+Supported subtypes: `SLACK_INTERACTION`, `GMAIL_INTERACTION`, `DISCORD_INTERACTION`, `IN_APP_APPROVAL`
 
-**IMPORTANT**: You do NOT need separate AI_AGENT, IF, or EXTERNAL_ACTION nodes for HIL response handling!
-
-**✅ CORRECT HIL Usage** (Single node with AI analysis replaces 6+ nodes):
-```json
-{
-  "type": "HUMAN_IN_THE_LOOP",
-  "subtype": "SLACK_INTERACTION",
-  "parameters": {
-    "channel": "#approvals",
-    "message": "Please approve this request - respond in your own words!",
-    "enable_response_analysis": true,
-    "system_prompt": "You are analyzing approval responses. Be precise in classification.",
-    "classification_confidence_threshold": 0.75,
-    "confirmed_message": "✅ Request approved and processing! (AI confidence: {{ai_confidence}})",
-    "rejected_message": "❌ Request has been rejected based on your response.",
-    "unrelated_message": "🤔 Please clarify: respond 'approve' or 'reject' for this request.",
-    "timeout_message": "⏰ Request timed out - please resubmit.",
-    "send_responses_to_channel": true
-  }
-}
-```
-
-**✅ OUTPUT PORTS**: Use confirmed/rejected/unrelated/timeout ports instead of creating IF nodes!
-
-**❌ WRONG HIL Usage** (Creates 6+ nodes instead of 1):
-```json
-[
-  {"type": "HUMAN_IN_THE_LOOP", "parameters": {"channel": "#approvals"}},
-  {"type": "AI_AGENT", "subtype": "OPENAI_CHATGPT", "parameters": {"system_prompt": "Analyze response"}},
-  {"type": "FLOW", "subtype": "IF", "parameters": {"condition": "response == 'approve'"}},
-  {"type": "EXTERNAL_ACTION", "subtype": "SLACK_MESSAGE", "parameters": {"message": "✅ Approved"}},
-  {"type": "EXTERNAL_ACTION", "subtype": "SLACK_MESSAGE", "parameters": {"message": "❌ Rejected"}},
-  {"type": "EXTERNAL_ACTION", "subtype": "SLACK_MESSAGE", "parameters": {"message": "⏰ Timeout"}}
-]
-```
-
-**All HIL node types support AI response analysis + integrated messaging:**
-- `SLACK_INTERACTION`: Use `enable_response_analysis`, `system_prompt`, `confirmed_message`, `rejected_message`, `unrelated_message`, `timeout_message`
-- `GMAIL_INTERACTION`: Use `enable_response_analysis`, `system_prompt`, `confirmed_message`, `rejected_message`, `unrelated_message`, `timeout_message`
-- `DISCORD_INTERACTION`: Use `enable_response_analysis`, `system_prompt`, `confirmed_message`, `rejected_message`, `unrelated_message`, `timeout_message`
-- `IN_APP_APPROVAL`: Use `enable_response_analysis`, `system_prompt`, `confirmed_message`, `rejected_message`, `unrelated_message`, `timeout_message`
-
-**🎯 KEY POINT**: Connect to confirmed/rejected/unrelated/timeout output ports, NOT to IF nodes or AI_AGENT nodes!
-
-Remember:
-1. **COMPLETENESS FIRST** - Generate ALL nodes needed for the full workflow, don't stop partway through
-2. Keep it SIMPLE - use minimum nodes needed to accomplish the task (but include ALL necessary steps)
-3. **HIL INTEGRATION** - Use HIL nodes' built-in response messaging instead of separate EXTERNAL_ACTION nodes
-4. MCP COMPLIANCE - Every parameter value MUST match its MCP-specified type
-5. NO "mock-" PREFIX - Generate actual example values, not placeholder strings
-6. CONNECTIONS - Must use "connection_types" wrapper structure
-
-**⚠️ FINAL CHECK**: Before outputting, verify:
-1. Your workflow includes ALL steps from the user's request
-2. Your JSON is VALID and parseable (no trailing backslashes, proper quotes, no control chars)
-3. All string values are properly escaped (use \" for quotes inside strings)
-
-**CRITICAL JSON FORMATTING EXAMPLES:**
-✅ CORRECT: `"name": "Slack Calendar Assistant"`
-❌ WRONG: `"name": "Slack Calendar Assistant\"`
-❌ WRONG: `"name": "HIL Slack Calendar Approver\"`
-
-✅ CORRECT: `"description": "Monitor channel \"hil\" for messages"`
-❌ WRONG: `"description": "Monitor channel "hil" for messages"`
-
-✅ CORRECT: `"id": "trigger_slack"`
-❌ WRONG: `"id": "trigger_slack\"`
-
-✅ CORRECT: `"subtype": "SLACK"`
-❌ WRONG: `"subtype": "SLACK\"`
-
-**NEVER END STRING VALUES WITH BACKSLASH!**
-- If you need quotes inside strings, use \" (backslash then quote)
-- NEVER put a backslash at the very end of a string value before the closing quote
+## Final Checklist
+1. **COMPLETENESS** - Include ALL workflow steps from user's request
+2. **MCP COMPLIANCE** - Match exact parameter types (integer as number, not string)
+3. **NO "mock-" PREFIX** - Use realistic example values
+4. **CONNECTIONS** - Use "connection_types" wrapper structure
+5. **VALID JSON** - No trailing backslashes, proper escaping, no control chars
