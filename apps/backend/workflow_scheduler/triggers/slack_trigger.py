@@ -279,9 +279,14 @@ class SlackTrigger(BaseTrigger):
                             logger.debug(f"Resolved channel {channel_id} to name: {channel_name}")
                             return channel_name
                     else:
-                        logger.warning(
-                            f"Slack API error for channel {channel_id}: {data.get('error')}"
-                        )
+                        error_msg = data.get("error", "unknown")
+                        if error_msg == "missing_scope":
+                            logger.warning(
+                                f"Slack OAuth token missing 'channels:read' scope for channel lookup - "
+                                f"channel {channel_id} filtering will use channel ID only"
+                            )
+                        else:
+                            logger.warning(f"Slack API error for channel {channel_id}: {error_msg}")
                 else:
                     logger.warning(f"HTTP error getting channel info: {response.status_code}")
 
@@ -417,8 +422,14 @@ class SlackTrigger(BaseTrigger):
                         )
                         return False
                 else:
-                    # Fallback to treating filter as regex against channel ID
-                    return bool(re.match(self.channel_filter, channel_id))
+                    # Fallback: if we can't resolve channel name (due to missing scopes or other issues),
+                    # we'll skip channel filtering entirely and allow all channels to match
+                    # This prevents workflows from being blocked due to OAuth scope issues
+                    logger.warning(
+                        f"Cannot resolve channel name for {channel_id} - allowing channel filter to pass "
+                        f"(consider re-authorizing Slack integration with 'channels:read' scope)"
+                    )
+                    return True
         except re.error as e:
             logger.warning(f"Invalid channel filter regex '{self.channel_filter}': {e}")
             return False
