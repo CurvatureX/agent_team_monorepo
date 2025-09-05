@@ -221,8 +221,46 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Simple health check endpoint for load balancer"""
-    return {"service": "workflow_scheduler", "status": "healthy", "version": "0.1.0"}
+    """Enhanced health check endpoint for load balancer that validates core services"""
+    try:
+        # Check if core services are initialized
+        try:
+            trigger_manager = get_trigger_manager()
+            if not trigger_manager:
+                return {
+                    "service": "workflow_scheduler",
+                    "status": "unhealthy",
+                    "version": "0.1.0",
+                    "error": "TriggerManager not initialized",
+                }
+        except Exception as e:
+            return {
+                "service": "workflow_scheduler",
+                "status": "unhealthy",
+                "version": "0.1.0",
+                "error": f"TriggerManager unavailable: {str(e)}",
+            }
+
+        # Quick Redis connectivity test (non-blocking)
+        try:
+            lock_manager = get_lock_manager()
+            if lock_manager and lock_manager._redis:
+                # Quick ping with short timeout
+                await asyncio.wait_for(lock_manager._redis.ping(), timeout=2.0)
+        except (asyncio.TimeoutError, Exception):
+            # Redis issues shouldn't fail health check, but we log it
+            logger.warning("Redis connectivity issue during health check")
+
+        return {"service": "workflow_scheduler", "status": "healthy", "version": "0.1.0"}
+
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return {
+            "service": "workflow_scheduler",
+            "status": "unhealthy",
+            "version": "0.1.0",
+            "error": str(e),
+        }
 
 
 @app.get("/health/detailed")

@@ -770,9 +770,9 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
       healthCheck = {
         command     = ["CMD-SHELL", "curl -f http://localhost:8003/health || exit 1"]
         interval    = 30
-        timeout     = 15
-        retries     = 3
-        startPeriod = 180
+        timeout     = 20
+        retries     = 5
+        startPeriod = 300  # Increased to 5 minutes for complex initialization
       }
     }
   ])
