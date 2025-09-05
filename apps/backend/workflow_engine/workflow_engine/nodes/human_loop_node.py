@@ -6,6 +6,7 @@ and multi-channel communication support according to the HIL system technical de
 """
 
 import json
+import os
 import time
 import uuid
 from datetime import datetime, timedelta
@@ -29,6 +30,37 @@ from shared.node_specs.base import NodeSpec
 
 from ..services.hil_service import HILWorkflowService
 from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
+
+try:
+    from slack_sdk import WebClient as SlackWebClient
+    from slack_sdk.errors import SlackApiError as SlackAPIError
+except ImportError:
+    # Fallback for when Slack SDK is not available
+    SlackWebClient = None
+    SlackAPIError = Exception
+
+
+# Placeholder for SlackBlockBuilder - would need proper implementation
+class SlackBlockBuilder:
+    @staticmethod
+    def header(text: str) -> Dict:
+        return {"type": "header", "text": {"type": "plain_text", "text": text}}
+
+    @staticmethod
+    def section(text: str) -> Dict:
+        return {"type": "section", "text": {"type": "mrkdwn", "text": text}}
+
+    @staticmethod
+    def divider() -> Dict:
+        return {"type": "divider"}
+
+    @staticmethod
+    def context(elements: List[Dict]) -> Dict:
+        return {"type": "context", "elements": elements}
+
+    @staticmethod
+    def text_element(text: str) -> Dict:
+        return {"type": "mrkdwn", "text": text}
 
 
 class HumanLoopNodeExecutor(BaseNodeExecutor):
@@ -485,7 +517,10 @@ class HumanLoopNodeExecutor(BaseNodeExecutor):
                 "status": "waiting_for_human",
                 "timeout_at": interaction["timeout_at"].isoformat(),
                 "channel_type": interaction["channel_type"],
+                "pause_reason": "human_interaction",
                 "paused": True,
+                "workflow_id": interaction.get("workflow_id"),
+                "execution_id": interaction.get("execution_id"),
             },
             execution_time_ms=int(execution_time * 1000),
             logs=logs,

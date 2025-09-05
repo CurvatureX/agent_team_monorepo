@@ -63,6 +63,19 @@ class BaseTrigger(ABC):
                 trigger_data=trigger_data or {},
             )
 
+        # Check if workflow has paused executions before triggering new one
+        paused_check = await self._check_for_paused_executions()
+        if paused_check["has_paused"]:
+            logger.warning(
+                f"🚫 Workflow {self.workflow_id} has paused execution(s) - skipping trigger"
+            )
+            logger.info(f"⏸️ Paused execution(s): {paused_check['paused_executions']}")
+            return ExecutionResult(
+                status="skipped",
+                message=f"Workflow has {paused_check['count']} paused execution(s) - new triggers blocked",
+                trigger_data=trigger_data or {},
+            )
+
         execution_id = f"exec_{uuid.uuid4()}"
 
         try:
@@ -80,6 +93,53 @@ class BaseTrigger(ABC):
                 message=error_msg,
                 trigger_data=trigger_data or {},
             )
+
+    async def _check_for_paused_executions(self) -> Dict[str, Any]:
+        """
+        Check if this workflow has any paused executions that would block new triggers.
+
+        Returns:
+            Dict with 'has_paused' boolean, 'count' int, and 'paused_executions' list
+        """
+        try:
+            # Query workflow engine for paused executions of this workflow
+            engine_url = (
+                f"{settings.workflow_engine_url}/v1/workflows/{self.workflow_id}/executions"
+            )
+
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(engine_url)
+
+                if response.status_code == 200:
+                    executions = response.json()
+
+                    # Filter for paused executions
+                    paused_executions = [
+                        exec_data for exec_data in executions if exec_data.get("status") == "PAUSED"
+                    ]
+
+                    if paused_executions:
+                        paused_ids = [ex.get("execution_id") for ex in paused_executions]
+                        logger.info(
+                            f"⏸️ Found {len(paused_executions)} paused executions for workflow {self.workflow_id}: {paused_ids}"
+                        )
+
+                    return {
+                        "has_paused": len(paused_executions) > 0,
+                        "count": len(paused_executions),
+                        "paused_executions": paused_ids if paused_executions else [],
+                    }
+                else:
+                    logger.warning(
+                        f"Failed to check paused executions: HTTP {response.status_code}"
+                    )
+                    # If we can't check, allow the trigger to proceed (fail-open)
+                    return {"has_paused": False, "count": 0, "paused_executions": []}
+
+        except Exception as e:
+            logger.warning(f"Error checking paused executions for workflow {self.workflow_id}: {e}")
+            # If we can't check, allow the trigger to proceed (fail-open)
+            return {"has_paused": False, "count": 0, "paused_executions": []}
 
     async def _get_workflow_owner_id(self, workflow_id: str) -> Optional[str]:
         """
