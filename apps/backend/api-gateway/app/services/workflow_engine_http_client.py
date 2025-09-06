@@ -25,7 +25,7 @@ class WorkflowEngineHTTPClient:
         )
         # Separate timeouts for different operations
         self.connect_timeout = httpx.Timeout(5.0, connect=5.0)
-        self.execute_timeout = httpx.Timeout(10.0, connect=5.0)  # Short timeout for execute - should return immediately
+        self.execute_timeout = httpx.Timeout(60.0, connect=5.0)  # Increased timeout for safety
         self.query_timeout = httpx.Timeout(30.0, connect=5.0)   # Longer timeout for queries
         self.connected = False
         # Connection pool for better performance
