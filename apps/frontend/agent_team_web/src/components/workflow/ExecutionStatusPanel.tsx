@@ -35,6 +35,14 @@ export const ExecutionStatusPanel: React.FC<ExecutionStatusPanelProps> = ({
 
   if (!status && !isPolling) return null;
 
+  // Extract error message safely
+  const errorMessage = React.useMemo(() => {
+    if (!status) return null;
+    if (typeof status.error === 'string') return status.error;
+    if (typeof status.error_message === 'string') return status.error_message;
+    return null;
+  }, [status]);
+
   const getStatusIcon = (execStatus?: string) => {
     switch (execStatus) {
       case 'COMPLETED':
@@ -179,14 +187,13 @@ export const ExecutionStatusPanel: React.FC<ExecutionStatusPanelProps> = ({
                 </div>
 
                 {/* Error Message */}
-                {((status.error && typeof status.error === 'string') || 
-                  (status.error_message && typeof status.error_message === 'string')) && (
+                {errorMessage && (
                   <>
                     <Separator />
                     <div className="space-y-1">
                       <p className="text-xs font-medium text-destructive">Error:</p>
                       <p className="text-xs text-muted-foreground bg-destructive/10 p-2 rounded">
-                        {(typeof status.error === 'string' ? status.error : status.error_message) as string}
+                        {errorMessage}
                       </p>
                     </div>
                   </>
