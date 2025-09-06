@@ -23,11 +23,11 @@ export const fetcher = async ([url, token]: FetcherArgs) => {
   return res.json();
 };
 
-// POST/PUT/DELETE 等操作的通用函数
+// HTTP 操作的通用函数
 export const apiRequest = async (
   url: string,
   token: string,
-  method: 'POST' | 'PUT' | 'DELETE' | 'PATCH',
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
   data?: any
 ) => {
   const res = await fetch(url, {
@@ -36,7 +36,7 @@ export const apiRequest = async (
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: data ? JSON.stringify(data) : undefined,
+    body: method !== 'GET' && data ? JSON.stringify(data) : undefined,
   });
   
   if (!res.ok) {

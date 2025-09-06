@@ -35,14 +35,6 @@ export const ExecutionStatusPanel: React.FC<ExecutionStatusPanelProps> = ({
 
   if (!status && !isPolling) return null;
 
-  // Extract error message safely
-  const errorMessage = React.useMemo(() => {
-    if (!status) return null;
-    if (typeof status.error === 'string') return status.error;
-    if (typeof status.error_message === 'string') return status.error_message;
-    return null;
-  }, [status]);
-
   const getStatusIcon = (execStatus?: string) => {
     switch (execStatus) {
       case 'COMPLETED':
@@ -162,7 +154,6 @@ export const ExecutionStatusPanel: React.FC<ExecutionStatusPanelProps> = ({
           {isExpanded && status && (
             <CardContent className="pt-0">
               <div className="space-y-3">
-                {/* Execution Info */}
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Execution ID:</span>
@@ -186,21 +177,8 @@ export const ExecutionStatusPanel: React.FC<ExecutionStatusPanelProps> = ({
                   </div>
                 </div>
 
-                {/* Error Message */}
-                {errorMessage && (
-                  <>
-                    <Separator />
-                    <div className="space-y-1">
-                      <p className="text-xs font-medium text-destructive">Error:</p>
-                      <p className="text-xs text-muted-foreground bg-destructive/10 p-2 rounded">
-                        {errorMessage}
-                      </p>
-                    </div>
-                  </>
-                )}
 
-                {/* Node Executions */}
-                {status.node_executions && status.node_executions.length > 0 && (
+                {status.node_executions && status.node_executions.length > 0 ? (
                   <>
                     <Separator />
                     <div className="space-y-2">
@@ -227,10 +205,9 @@ export const ExecutionStatusPanel: React.FC<ExecutionStatusPanelProps> = ({
                       </ScrollArea>
                     </div>
                   </>
-                )}
+                ) : null}
 
-                {/* Result Preview */}
-                {status.result && (
+                {status.result ? (
                   <>
                     <Separator />
                     <div className="space-y-1">
@@ -242,7 +219,7 @@ export const ExecutionStatusPanel: React.FC<ExecutionStatusPanelProps> = ({
                       </ScrollArea>
                     </div>
                   </>
-                )}
+                ) : null}
               </div>
             </CardContent>
           )}
