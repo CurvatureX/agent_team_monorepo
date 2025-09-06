@@ -2879,6 +2879,30 @@
                         "type": "string",
                         "title": "User Message",
                         "description": "用户消息内容"
+                    },
+                    "action": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Action",
+                        "description": "操作类型: create, edit, copy"
+                    },
+                    "workflow_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Workflow Id",
+                        "description": "要编辑或复制的工作流ID"
                     }
                 },
                 "type": "object",
@@ -3791,7 +3815,7 @@
                     "position"
                 ],
                 "title": "NodeData",
-                "description": "工作流节点数据"
+                "description": "工作流节点数据\n\n🎯 WORKFLOW GENERATION TIP:\nWhen using HUMAN_IN_THE_LOOP nodes, they have built-in AI response analysis capabilities.\nUse their confirmed/rejected/unrelated/timeout output ports instead of creating\nseparate AI_AGENT or FLOW (IF) nodes for response classification."
             },
             "NodeTemplate": {
                 "properties": {
@@ -4505,6 +4529,25 @@
                         ],
                         "title": "Metadata",
                         "description": "执行元数据"
+                    },
+                    "start_from_node": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Start From Node",
+                        "description": "指定从哪个节点开始执行，为空时从触发器节点开始",
+                        "example": "ai_message_classification"
+                    },
+                    "skip_trigger_validation": {
+                        "type": "boolean",
+                        "title": "Skip Trigger Validation",
+                        "description": "是否跳过触发器验证，用于从中间节点开始执行时使用",
+                        "default": false
                     }
                 },
                 "type": "object",
