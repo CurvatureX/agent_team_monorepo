@@ -51,6 +51,16 @@ resource "aws_ssm_parameter" "anthropic_api_key" {
   })
 }
 
+resource "aws_ssm_parameter" "gemini_api_key" {
+  name  = "/${local.name_prefix}/gemini/api-key"
+  type  = "SecureString"
+  value = var.gemini_api_key
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-gemini-api-key"
+  })
+}
+
 resource "aws_ssm_parameter" "database_url" {
   name  = "/${local.name_prefix}/database/url"
   type  = "SecureString"

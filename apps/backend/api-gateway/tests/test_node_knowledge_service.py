@@ -130,7 +130,9 @@ class TestNodeKnowledgeService:
         assert len(result) == 1
         assert "error" in result[0]
         # The exact error message doesn't matter as long as it indicates the node wasn't found
-        assert "not found" in result[0]["error"].lower() or "incorrect" in result[0]["error"].lower()
+        assert (
+            "not found" in result[0]["error"].lower() or "incorrect" in result[0]["error"].lower()
+        )
 
     def test_get_node_details_no_registry(self, service_without_registry):
         """Test node details without registry"""

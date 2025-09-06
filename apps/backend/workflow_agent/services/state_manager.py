@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 # Import Supabase client
 try:
     from supabase import create_client
+
     SUPABASE_AVAILABLE = True
 except ImportError:
     SUPABASE_AVAILABLE = False
@@ -108,9 +109,7 @@ class WorkflowAgentStateManager:
             logger.error(f"Failed to create workflow_agent_state: {e}")
             return None
 
-    def get_state_by_session(
-        self, session_id: str, access_token: str
-    ) -> Optional[Dict[str, Any]]:
+    def get_state_by_session(self, session_id: str, access_token: str) -> Optional[Dict[str, Any]]:
         """
         根据 session_id 获取最新的 workflow_agent_state
 
@@ -118,9 +117,7 @@ class WorkflowAgentStateManager:
             Workflow state dict if found, None if not found
         """
         if not self.supabase_client:
-            logger.warning(
-                "Supabase client not available, using mock get_state_by_session"
-            )
+            logger.warning("Supabase client not available, using mock get_state_by_session")
             # 返回基本的 mock 状态，让流程继续
             return {
                 "session_id": session_id,
@@ -198,7 +195,9 @@ class WorkflowAgentStateManager:
                     "previous_stage": workflow_state.get("previous_stage"),
                     "intent_summary": workflow_state.get("intent_summary", ""),
                     "conversations": workflow_state.get("conversations", []),
-                    "debug_result": self._convert_debug_result_to_text(workflow_state.get("debug_result")),
+                    "debug_result": self._convert_debug_result_to_text(
+                        workflow_state.get("debug_result")
+                    ),
                     "debug_loop_count": workflow_state.get("debug_loop_count", 0),
                     "template_workflow": workflow_state.get("template_workflow"),
                     "workflow_id": workflow_state.get("workflow_id"),
@@ -291,7 +290,9 @@ class WorkflowAgentStateManager:
             session_id=db_state.get("session_id", ""),
             user_id=db_state.get("user_id", "anonymous"),
             stage=WorkflowStageEnum(db_state.get("stage", "clarification")),
-            previous_stage=WorkflowStageEnum(db_state["previous_stage"]) if db_state.get("previous_stage") else None,
+            previous_stage=WorkflowStageEnum(db_state["previous_stage"])
+            if db_state.get("previous_stage")
+            else None,
             intent_summary=db_state.get("intent_summary", ""),
             conversations=db_state.get("conversations", []),
             debug_result=db_state.get("debug_result"),  # Text from DB
@@ -311,7 +312,7 @@ class WorkflowAgentStateManager:
 
         # Return as WorkflowState format with derived fields
         return mock_model.to_workflow_state()
-    
+
     def _convert_debug_result_to_text(self, debug_result) -> Optional[str]:
         """Convert debug_result dict to text for DB storage"""
         if debug_result is None:
@@ -320,6 +321,7 @@ class WorkflowAgentStateManager:
             return debug_result
         if isinstance(debug_result, dict):
             import json
+
             return json.dumps(debug_result)
         return str(debug_result)
 

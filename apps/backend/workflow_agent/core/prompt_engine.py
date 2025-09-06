@@ -3,11 +3,11 @@ Jinja2-based Prompt Engine for loading and rendering prompts.
 """
 import asyncio
 import json
+import logging
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
 from jinja2 import Environment, FileSystemLoader
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,9 @@ class PromptEngine:
         # Register custom filters
         self.env.filters["tojsonpretty"] = tojsonpretty
 
-        logger.info("Jinja2 prompt engine initialized", extra={"template_path": str(self.template_path)})
+        logger.info(
+            "Jinja2 prompt engine initialized", extra={"template_path": str(self.template_path)}
+        )
 
     async def render_prompt(self, template_name: str, **context: Any) -> str:
         """
@@ -61,10 +63,7 @@ class PromptEngine:
         except Exception as e:
             logger.error(
                 "Failed to render prompt template",
-                extra={
-                    "template_name": template_name,
-                    "error": str(e)
-                }
+                extra={"template_name": template_name, "error": str(e)},
             )
             return f"Error rendering template {template_name}: {e}"
 
@@ -93,10 +92,7 @@ class PromptEngine:
         except Exception as e:
             logger.error(
                 "Failed to render system and user prompts",
-                extra={
-                    "template_name": template_name,
-                    "error": str(e)
-                }
+                extra={"template_name": template_name, "error": str(e)},
             )
             return (
                 f"Error rendering system prompt for {template_name}",

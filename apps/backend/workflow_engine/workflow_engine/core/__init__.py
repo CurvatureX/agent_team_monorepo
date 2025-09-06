@@ -1,1 +1,1 @@
-"""Core module for workflow engine configuration and setup.""" 
+"""Core module for workflow engine configuration and setup."""

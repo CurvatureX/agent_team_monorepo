@@ -10,14 +10,25 @@ The Workflow Engine is a **FastAPI-based microservice** that executes AI-powered
 
 ### Node-Based Execution System
 The engine uses a **factory pattern** with 8 core node types:
-- **TRIGGER_NODE**: Manual, webhook, cron triggers  
-- **AI_AGENT_NODE**: OpenAI, Anthropic, and custom AI nodes
+- **TRIGGER_NODE**: Manual, webhook, cron triggers
+- **AI_AGENT_NODE**: OpenAI, Anthropic, and custom AI nodes with memory integration
 - **ACTION_NODE**: HTTP requests, code execution, data transformation
 - **EXTERNAL_ACTION_NODE**: Third-party API integrations (GitHub, Slack, etc.)
 - **FLOW_NODE**: Conditional logic (IF, SWITCH, MERGE, FILTER)
 - **HUMAN_IN_THE_LOOP_NODE**: Human interaction points
 - **TOOL_NODE**: MCP tools and utilities
 - **MEMORY_NODE**: Vector stores and data persistence
+
+### Memory Integration System
+The engine includes a comprehensive **memory implementation system** in `memory_implementations/`:
+- **ConversationBufferMemory**: Chat history with Redis + Supabase backend
+- **EntityMemory**: Entity extraction and relationship tracking
+- **KnowledgeBaseMemory**: Structured fact storage with rule inference
+- **GraphMemory**: Entity relationship modeling with path finding
+- **EpisodicMemory**: Time-series event storage
+- **DocumentStoreMemory**: Full-text document storage
+- **VectorDatabaseMemory**: Semantic vector search with embeddings
+- **MemoryContextMerger**: Intelligent context merging for LLM enhancement
 
 ### Key Components
 - **BaseNodeExecutor**: Abstract base class with spec-aware validation
@@ -35,6 +46,10 @@ uv sync
 # Alternative: pip install
 pip install -e .
 pip install -e ".[dev]"  # For development dependencies
+
+# Memory implementations also require:
+pip install supabase openai redis
+# Or ensure these are in requirements.txt
 ```
 
 ### Server Management
@@ -73,6 +88,11 @@ pytest tests/test_node_executor.py
 # With coverage
 pytest --cov=workflow_engine tests/
 
+# Memory integration tests
+cd memory_implementations/tests
+python demo_test.py                    # Quick integration demo
+python simple_test_runner.py          # Comprehensive tests
+
 # Code quality
 make lint     # flake8 + mypy
 make format   # black + isort
@@ -95,7 +115,7 @@ def execute(self, context: NodeExecutionContext) -> NodeExecutionResult:
     # Get parameter with automatic type conversion
     temperature = self.get_parameter_with_spec(context, "temperature")  # Returns float
     model = self.get_parameter_with_spec(context, "model_version")      # Returns string
-    
+
     # Validation happens automatically during workflow creation
 ```
 
@@ -113,7 +133,7 @@ PUT    /v1/workflows/{id}                   # Update workflow
 DELETE /v1/workflows/{id}                   # Delete workflow
 GET    /v1/workflows                        # List workflows
 
-# Execution Management  
+# Execution Management
 POST   /v1/workflows/{id}/execute           # Execute complete workflow
 GET    /v1/executions/{id}                  # Get execution status
 POST   /v1/executions/{id}/cancel           # Cancel running execution
@@ -172,11 +192,13 @@ PORT="8002"
 HOST="0.0.0.0"
 DEBUG="false"
 
-# AI Providers
+# AI Providers (required for memory implementations)
 OPENAI_API_KEY="sk-..."
 ANTHROPIC_API_KEY="sk-ant-..."
 
-# Cache
+# Memory System Dependencies
+SUPABASE_URL="https://your-project.supabase.co"
+SUPABASE_SECRET_KEY="your-service-role-key"
 REDIS_URL="redis://localhost:6379/0"
 ```
 
@@ -193,7 +215,7 @@ REDIS_URL="redis://localhost:6379/0"
 def test_node_with_spec():
     node = OpenAINode(subtype="OPENAI_NODE")
     context = NodeExecutionContext(
-        parameters={"system_prompt": "test", "model_version": "gpt-4"}
+        parameters={"system_prompt": "test", "model_version": "gpt-5-nano"}
     )
     result = node.execute(context)
     assert result.status == "success"

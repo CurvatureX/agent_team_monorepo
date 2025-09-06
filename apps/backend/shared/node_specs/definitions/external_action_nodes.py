@@ -15,6 +15,7 @@ from ..base import (
     ParameterDef,
     ParameterType,
 )
+from ..communication_protocol import EMAIL_INPUT_FORMAT, SLACK_INPUT_FORMAT
 
 # GitHub - GitHub operations
 GITHUB_SPEC = NodeSpec(
@@ -330,14 +331,8 @@ SLACK_SPEC = NodeSpec(
             name="main",
             type=ConnectionType.MAIN,
             required=False,
-            description="Dynamic message content and formatting",
-            data_format=DataFormat(
-                mime_type="application/json",
-                schema='{"blocks": "array", "mentions": "array", "metadata": "object"}',
-                examples=[
-                    '{"blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "Hello!"}}], "mentions": ["@user123"], "metadata": {}}'
-                ],
-            ),
+            description="Message content from upstream nodes (AI agents, etc.)",
+            data_format=SLACK_INPUT_FORMAT,
         )
     ],
     output_ports=[

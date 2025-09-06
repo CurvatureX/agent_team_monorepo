@@ -138,6 +138,7 @@ class ConnectionType:
     MAIN = "MAIN"
     AI_TOOL = "AI_TOOL"
     AI_MEMORY = "AI_MEMORY"
+    MEMORY = "MEMORY"  # Dedicated memory context connection
     AI_LANGUAGE_MODEL = "AI_LANGUAGE_MODEL"
     ERROR = "ERROR"
     WEBHOOK = "WEBHOOK"

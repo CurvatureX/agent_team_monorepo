@@ -50,11 +50,8 @@ if TYPE_CHECKING:
     setup_telemetry = telemetry_setup
 else:
     try:
-        from shared.telemetry import (
-            MetricsMiddleware,
-            TrackingMiddleware,
-            setup_telemetry,
-        )
+        from shared.telemetry import MetricsMiddleware, TrackingMiddleware, setup_telemetry
+
         TELEMETRY_AVAILABLE = True
     except ImportError:
         # Fallback for deployment - create dummy implementations
@@ -76,6 +73,7 @@ else:
 
             async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
                 await self.app(scope, receive, send)
+
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +145,35 @@ class WorkflowAgentServicer:
                     "Retrieved existing workflow_agent_state", extra={"session_id": session_id}
                 )
 
+            # Add workflow_context to existing state if provided
+            if request.workflow_context and current_state:
+                current_state["workflow_context"] = {
+                    "origin": request.workflow_context.origin,
+                    "source_workflow_id": request.workflow_context.source_workflow_id,
+                }
+                logger.info(f"Added workflow_context to state: {current_state['workflow_context']}")
+            
+            # Fetch source workflow if in edit or copy mode
+            if request.workflow_context and request.workflow_context.origin in ["edit", "copy"]:
+                source_workflow_id = request.workflow_context.source_workflow_id
+                if source_workflow_id and not current_state.get("source_workflow"):
+                    logger.info(f"Fetching source workflow: {source_workflow_id} for {request.workflow_context.origin} mode")
+                    from workflow_agent.services.workflow_engine_client import WorkflowEngineClient
+                    engine_client = WorkflowEngineClient()
+                    
+                    try:
+                        workflow_result = await engine_client.get_workflow(
+                            source_workflow_id,
+                            request.user_id or "test_user"
+                        )
+                        if workflow_result.get("success") and workflow_result.get("workflow"):
+                            current_state["source_workflow"] = workflow_result["workflow"]
+                            logger.info(f"Successfully fetched source workflow: {source_workflow_id}")
+                        else:
+                            logger.warning(f"Failed to fetch source workflow: {workflow_result.get('error', 'Unknown error')}")
+                    except Exception as e:
+                        logger.error(f"Error fetching source workflow: {str(e)}")
+
             # 添加用户消息到对话历史
             # Handle case where current_state is None due to database access issues
             if current_state is None:
@@ -158,9 +185,11 @@ class WorkflowAgentServicer:
                     "conversations": [],
                     "current_workflow": {},
                 }
-                logger.warning("Using fallback state due to database access failure", 
-                             extra={"session_id": session_id})
-            
+                logger.warning(
+                    "Using fallback state due to database access failure",
+                    extra={"session_id": session_id},
+                )
+
             conversations = current_state.get("conversations", [])
             if request.user_message:
                 conversations.append(
@@ -185,10 +214,52 @@ class WorkflowAgentServicer:
                 )
                 stream_iterator = self.workflow_agent.graph.astream(workflow_state)
 
+                # Create heartbeat task for keeping connection alive
+                heartbeat_task = None
+                heartbeat_queue = asyncio.Queue()
+                
+                async def send_heartbeat():
+                    """Send periodic heartbeat messages to keep connection alive"""
+                    try:
+                        while True:
+                            await asyncio.sleep(30)  # Send heartbeat every 30 seconds
+                            heartbeat_msg = {
+                                "session_id": session_id,
+                                "response_type": "RESPONSE_TYPE_HEARTBEAT",
+                                "is_final": False,
+                                "message": "Processing workflow generation, please wait...",
+                                "timestamp": int(time.time() * 1000)
+                            }
+                            await heartbeat_queue.put(heartbeat_msg)
+                            logger.debug(f"Heartbeat queued for session {session_id}")
+                    except asyncio.CancelledError:
+                        logger.debug(f"Heartbeat task cancelled for session {session_id}")
+                        raise
+
                 # Shield the entire stream iteration from cancellation
                 try:
-                    async for step_state in stream_iterator:
-                        for node_name, updated_state in step_state.items():
+                    # Start heartbeat task
+                    heartbeat_task = asyncio.create_task(send_heartbeat())
+                    
+                    async def process_with_heartbeat():
+                        """Process LangGraph stream with heartbeat support"""
+                        async for step_state in stream_iterator:
+                            # Check for pending heartbeats
+                            while not heartbeat_queue.empty():
+                                heartbeat = await heartbeat_queue.get()
+                                yield f"data: {json.dumps(heartbeat)}\n\n"
+                                logger.debug(f"Sent heartbeat for session {session_id}")
+                            
+                            # Process actual step state
+                            for node_name, updated_state in step_state.items():
+                                yield (node_name, updated_state)
+                    
+                    async for result in process_with_heartbeat():
+                        # Handle heartbeat strings vs actual results
+                        if isinstance(result, str):
+                            yield result  # This is a heartbeat message
+                        else:
+                            node_name, updated_state = result
                             logger.info(
                                 "LangGraph node execution completed",
                                 extra={
@@ -227,15 +298,19 @@ class WorkflowAgentServicer:
                                     session_id, updated_state
                                 )
                                 if workflow_response:
-                                    logger.info("Sending workflow response after workflow_gen completed")
+                                    logger.info(
+                                        "Sending workflow response after workflow_gen completed"
+                                    )
                                     yield f"data: {workflow_response.model_dump_json()}\n\n"
-                                
+
                                 # 然后发送完成消息
                                 message_response = await self._create_message_response(
                                     session_id, updated_state
                                 )
                                 if message_response:
-                                    logger.info("Sending completion message after workflow_gen completed")
+                                    logger.info(
+                                        "Sending completion message after workflow_gen completed"
+                                    )
                                     yield f"data: {message_response.model_dump_json()}\n\n"
                             # Debug logic removed - no longer needed in 2-node architecture
 
@@ -248,6 +323,15 @@ class WorkflowAgentServicer:
                         "LangGraph stream was cancelled", extra={"session_id": session_id}
                     )
                     raise
+                finally:
+                    # Cancel heartbeat task when stream completes or is cancelled
+                    if heartbeat_task and not heartbeat_task.done():
+                        heartbeat_task.cancel()
+                        try:
+                            await heartbeat_task
+                        except asyncio.CancelledError:
+                            pass
+                        logger.debug(f"Heartbeat task cleaned up for session {session_id}")
 
                 logger.info(
                     "LangGraph streaming completed - async for loop exited",
@@ -403,6 +487,14 @@ class WorkflowAgentServicer:
         else:
             workflow_state["current_workflow"] = {}
 
+        # Add source_workflow if present (for edit/copy mode)
+        if "source_workflow" in db_state:
+            workflow_state["source_workflow"] = db_state["source_workflow"]
+
+        # Add workflow_context if present
+        if "workflow_context" in db_state:
+            workflow_state["workflow_context"] = db_state["workflow_context"]
+
         return workflow_state
 
     def _convert_from_workflow_state(self, workflow_state: WorkflowState) -> dict:
@@ -495,8 +587,10 @@ class WorkflowAgentServicer:
                 "has_workflow": bool(current_workflow),
                 "workflow_type": type(current_workflow).__name__,
                 "workflow_id": workflow_id,
-                "node_count": len(current_workflow.get("nodes", [])) if isinstance(current_workflow, dict) else 0
-            }
+                "node_count": len(current_workflow.get("nodes", []))
+                if isinstance(current_workflow, dict)
+                else 0,
+            },
         )
 
         if (
@@ -514,7 +608,7 @@ class WorkflowAgentServicer:
                         "session_id": session_id,
                         "node_count": len(current_workflow.get("nodes", [])),
                         "workflow_id": workflow_id,
-                        "workflow_name": current_workflow.get("name", "Unknown")
+                        "workflow_name": current_workflow.get("name", "Unknown"),
                     },
                 )
             else:
@@ -523,10 +617,10 @@ class WorkflowAgentServicer:
                     extra={
                         "session_id": session_id,
                         "node_count": len(current_workflow.get("nodes", [])),
-                        "workflow_name": current_workflow.get("name", "Unknown")
+                        "workflow_name": current_workflow.get("name", "Unknown"),
                     },
                 )
-            
+
             workflow_json = json.dumps(workflow_data)
             return ConversationResponse(
                 session_id=session_id,
@@ -539,8 +633,8 @@ class WorkflowAgentServicer:
                 "No workflow to send",
                 extra={
                     "session_id": session_id,
-                    "current_workflow": str(current_workflow)[:200] if current_workflow else None
-                }
+                    "current_workflow": str(current_workflow)[:200] if current_workflow else None,
+                },
             )
 
         return None

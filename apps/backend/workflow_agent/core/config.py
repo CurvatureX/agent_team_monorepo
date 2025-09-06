@@ -6,6 +6,8 @@ import os
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from shared.models.node_enums import OpenAIModel
+
 
 class Settings(BaseSettings):
     """Application settings"""
@@ -13,7 +15,6 @@ class Settings(BaseSettings):
     # Service settings
     APP_NAME: str = "Workflow Agent"
     DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
-
 
     # FastAPI settings
     FASTAPI_PORT: int = int(os.getenv("FASTAPI_PORT", "8001"))
@@ -28,7 +29,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
     DEFAULT_MODEL_PROVIDER: str = os.getenv("DEFAULT_MODEL_PROVIDER", "openai")
-    DEFAULT_MODEL_NAME: str = os.getenv("DEFAULT_MODEL_NAME", "gpt-4")
+    DEFAULT_MODEL_NAME: str = os.getenv("DEFAULT_MODEL_NAME", OpenAIModel.GPT_5_NANO.value)
 
     # LangGraph settings
 
@@ -48,13 +49,21 @@ class Settings(BaseSettings):
     # Workflow generation settings
     MAX_WORKFLOW_NODES: int = int(os.getenv("MAX_WORKFLOW_NODES", "50"))
     DEFAULT_TIMEOUT: int = int(os.getenv("DEFAULT_TIMEOUT", "300"))  # 5 minutes
-    WORKFLOW_GENERATION_MAX_RETRIES: int = int(os.getenv("WORKFLOW_GENERATION_MAX_RETRIES", "2"))  # Max workflow generation retry attempts
-    
+    WORKFLOW_GENERATION_MAX_RETRIES: int = int(
+        os.getenv("WORKFLOW_GENERATION_MAX_RETRIES", "2")
+    )  # Max workflow generation retry attempts
+
     # Gap Analysis settings
-    GAP_ANALYSIS_MAX_ROUNDS: int = int(os.getenv("GAP_ANALYSIS_MAX_ROUNDS", "1"))  # Max negotiation rounds
-    GAP_ANALYSIS_AUTO_SELECT: bool = os.getenv("GAP_ANALYSIS_AUTO_SELECT", "true").lower() == "true"  # Auto-select recommended
-    GAP_ANALYSIS_USE_MCP: bool = os.getenv("GAP_ANALYSIS_USE_MCP", "true").lower() == "true"  # Use MCP for real capabilities
-    
+    GAP_ANALYSIS_MAX_ROUNDS: int = int(
+        os.getenv("GAP_ANALYSIS_MAX_ROUNDS", "1")
+    )  # Max negotiation rounds
+    GAP_ANALYSIS_AUTO_SELECT: bool = (
+        os.getenv("GAP_ANALYSIS_AUTO_SELECT", "true").lower() == "true"
+    )  # Auto-select recommended
+    GAP_ANALYSIS_USE_MCP: bool = (
+        os.getenv("GAP_ANALYSIS_USE_MCP", "true").lower() == "true"
+    )  # Use MCP for real capabilities
+
     # Workflow Engine settings
     WORKFLOW_ENGINE_URL: str = os.getenv("WORKFLOW_ENGINE_URL", "http://localhost:8002")
     WORKFLOW_ENGINE_TIMEOUT: int = int(os.getenv("WORKFLOW_ENGINE_TIMEOUT", "60"))  # 60 seconds

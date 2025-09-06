@@ -3,12 +3,15 @@
 Clean Chat Test - Focus on SSE messages, status changes, and assistant responses
 """
 
-import os
+import argparse
 import json
-import requests
+import os
+import sys
 from datetime import datetime
+
+import requests
+from colorama import Fore, Style, init
 from dotenv import load_dotenv
-from colorama import init, Fore, Style
 
 # Initialize colorama
 init(autoreset=True)
@@ -29,20 +32,20 @@ class CleanChatTester:
         self.session = requests.Session()
         self.access_token = None
         self.session_id = None
-        
+
     def print_separator(self):
         print(f"{Fore.WHITE}{'─'*80}{Style.RESET_ALL}")
-        
+
     def authenticate(self):
         """Authenticate and get access token"""
         print(f"\n{Fore.CYAN}🔐 Authenticating...{Style.RESET_ALL}")
-        
+
         response = self.session.post(
             f"{SUPABASE_URL}/auth/v1/token?grant_type=password",
             headers={"apikey": SUPABASE_ANON_KEY, "Content-Type": "application/json"},
-            json={"email": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD}
+            json={"email": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD},
         )
-        
+
         if response.status_code == 200:
             self.access_token = response.json().get("access_token")
             print(f"{Fore.GREEN}✓ Authentication successful{Style.RESET_ALL}")
@@ -50,17 +53,20 @@ class CleanChatTester:
         else:
             print(f"{Fore.RED}✗ Authentication failed: {response.status_code}{Style.RESET_ALL}")
             return False
-            
+
     def create_session(self):
         """Create chat session"""
         print(f"\n{Fore.CYAN}📝 Creating session...{Style.RESET_ALL}")
-        
+
         response = self.session.post(
             f"{API_BASE_URL}/api/v1/app/sessions",
-            headers={"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"},
-            json={"action": "create"}
+            headers={
+                "Authorization": f"Bearer {self.access_token}",
+                "Content-Type": "application/json",
+            },
+            json={"action": "create"},
         )
-        
+
         if response.status_code == 200:
             self.session_id = response.json()["session"]["id"]
             print(f"{Fore.GREEN}✓ Session created: {self.session_id}{Style.RESET_ALL}")
@@ -68,129 +74,212 @@ class CleanChatTester:
         else:
             print(f"{Fore.RED}✗ Session creation failed: {response.status_code}{Style.RESET_ALL}")
             return False
-            
+
     def chat(self, message):
         """Send message and process stream"""
         self.print_separator()
         print(f"{Fore.CYAN}USER:{Style.RESET_ALL} {message}")
         self.print_separator()
-        
+
         with self.session.post(
             f"{API_BASE_URL}/api/v1/app/chat/stream",
             headers={
                 "Authorization": f"Bearer {self.access_token}",
                 "Content-Type": "application/json",
-                "Accept": "text/event-stream"
+                "Accept": "text/event-stream",
             },
             json={"session_id": self.session_id, "user_message": message},
             stream=True,
-            timeout=120  # 2 minute timeout for workflow generation
+            timeout=(10, 300),  # (connection timeout, read timeout) - 10s to connect, 5 minutes to read
         ) as response:
-            
             if response.status_code != 200:
                 print(f"{Fore.RED}Request failed: {response.status_code}{Style.RESET_ALL}")
                 return
-                
+
             # Print tracking ID from response headers
-            trace_id = response.headers.get('X-Trace-ID')
+            trace_id = response.headers.get("X-Trace-ID")
             if trace_id:
                 print(f"{Fore.MAGENTA}Trace ID: {trace_id}{Style.RESET_ALL}")
-            
+
             # Also check for x-tracking-id (lowercase)
-            tracking_id = response.headers.get('x-tracking-id')
+            tracking_id = response.headers.get("x-tracking-id")
             if tracking_id:
                 print(f"{Fore.MAGENTA}Tracking ID: {tracking_id}{Style.RESET_ALL}")
-                
+
             event_count = 0
             assistant_messages = []
-            
-            for line in response.iter_lines():
-                if line and line.startswith(b'data: '):
+
+            # Use iter_lines with a chunk size and handle timeouts more gracefully
+            for line in response.iter_lines(chunk_size=1024, decode_unicode=False):
+                if line and line.startswith(b"data: "):
                     try:
-                        data_str = line[6:].decode('utf-8')
-                        
-                        if data_str == '[DONE]':
+                        data_str = line[6:].decode("utf-8")
+
+                        if data_str == "[DONE]":
                             break
-                            
+
                         if not data_str.strip():
                             continue
-                            
+
                         # Parse SSE event
                         event = json.loads(data_str)
                         event_count += 1
-                        
+
                         # Print raw SSE message
                         print(f"\n{Fore.YELLOW}[SSE Event #{event_count}]{Style.RESET_ALL}")
                         print(json.dumps(event, indent=2, ensure_ascii=False))
-                        
+
                         # Handle specific event types
-                        event_type = event.get('type')
-                        event_data = event.get('data', {})
-                        
-                        if event_type == 'status_change':
+                        event_type = event.get("type")
+                        event_data = event.get("data", {})
+
+                        if event_type == "status_change":
                             # Highlight status transitions
-                            prev = event_data.get('previous_stage', 'unknown')
-                            curr = event_data.get('current_stage', 'unknown')
-                            print(f"\n{Fore.MAGENTA}>>> Status Change: {prev} → {curr}{Style.RESET_ALL}")
-                            
-                        elif event_type == 'message':
+                            prev = event_data.get("previous_stage", "unknown")
+                            curr = event_data.get("current_stage", "unknown")
+                            print(
+                                f"\n{Fore.MAGENTA}>>> Status Change: {prev} → {curr}{Style.RESET_ALL}"
+                            )
+
+                        elif event_type == "message":
                             # Collect assistant messages
-                            content = event_data.get('text', '')
+                            content = event_data.get("text", "")
                             if content:
                                 assistant_messages.append(content)
-                                
-                        elif event_type == 'workflow':
+
+                        elif event_type == "workflow":
                             print(f"\n{Fore.GREEN}>>> Workflow Generated!{Style.RESET_ALL}")
-                            
-                        elif event_type == 'error':
-                            print(f"\n{Fore.RED}>>> Error: {event_data.get('error', 'Unknown')}{Style.RESET_ALL}")
-                            
+
+                        elif event_type == "error":
+                            print(
+                                f"\n{Fore.RED}>>> Error: {event_data.get('error', 'Unknown')}{Style.RESET_ALL}"
+                            )
+                        
+                        # Handle heartbeat messages to show progress
+                        elif event.get("response_type") == "RESPONSE_TYPE_HEARTBEAT":
+                            print(
+                                f"{Fore.YELLOW}💓 Heartbeat: {event.get('message', 'Processing...')}{Style.RESET_ALL}"
+                            )
+
                     except json.JSONDecodeError as e:
                         print(f"{Fore.RED}JSON parse error: {e}{Style.RESET_ALL}")
-                        
+
             # Print complete assistant response
             if assistant_messages:
                 self.print_separator()
                 print(f"{Fore.GREEN}ASSISTANT:{Style.RESET_ALL}")
-                full_message = ''.join(assistant_messages)
+                full_message = "".join(assistant_messages)
                 print(full_message)
                 self.print_separator()
-                
+
             print(f"\n{Fore.CYAN}Total events: {event_count}{Style.RESET_ALL}")
-            
-    def run(self):
+
+    def run(self, initial_message=None):
         """Run the test"""
         print(f"\n{Fore.CYAN}{'='*80}")
         print("Workflow Chat Test - Clean Output")
         print(f"{'='*80}{Style.RESET_ALL}")
-        
+
         if not all([SUPABASE_URL, SUPABASE_ANON_KEY, TEST_USER_EMAIL, TEST_USER_PASSWORD]):
             print(f"{Fore.RED}Missing required environment variables!{Style.RESET_ALL}")
             return
-            
+
         if not self.authenticate():
             return
-            
+
         if not self.create_session():
             return
-            
+
+        # If initial message provided via command line, send it directly
+        if initial_message:
+            print(f"\n{Fore.YELLOW}Sending message from command line/file...{Style.RESET_ALL}")
+            self.chat(initial_message)
+            return
+
         print(f"\n{Fore.YELLOW}Ready to chat. Type 'exit' to quit.{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}Example: Send a HTTP request to https://google.com every 5 minutes{Style.RESET_ALL}\n")
-        
+        print(f"{Fore.YELLOW}For multi-line input: End your message with '###' on a new line{Style.RESET_ALL}")
+        print(
+            f"{Fore.YELLOW}Example: Send a HTTP request to https://google.com every 5 minutes{Style.RESET_ALL}\n"
+        )
+
         while True:
             try:
-                user_input = input(f"\n{Fore.CYAN}> {Style.RESET_ALL}")
-                if user_input.lower() in ['exit', 'quit']:
+                print(f"\n{Fore.CYAN}> {Style.RESET_ALL}", end="")
+                
+                # Check if input is being piped
+                if not sys.stdin.isatty():
+                    # Read all piped input
+                    user_input = sys.stdin.read().strip()
+                else:
+                    # Interactive mode - support multi-line with ### terminator
+                    lines = []
+                    first_line = True
+                    while True:
+                        if not first_line:
+                            print(f"{Fore.CYAN}  {Style.RESET_ALL}", end="")
+                        line = input()
+                        first_line = False
+                        
+                        if line.strip() == "###":
+                            break
+                        lines.append(line)
+                        
+                        # Single line mode - if no ### needed
+                        if len(lines) == 1 and not line.endswith("\\"):
+                            # Check if this looks like a complete single-line message
+                            if "###" not in line:
+                                break
+                    
+                    user_input = "\n".join(lines).strip()
+                
+                if user_input.lower() in ["exit", "quit"]:
                     break
-                if user_input.strip():
+                if user_input:
                     self.chat(user_input)
-            except KeyboardInterrupt:
+            except (KeyboardInterrupt, EOFError):
                 print(f"\n{Fore.YELLOW}Interrupted{Style.RESET_ALL}")
                 break
-                
+
         print(f"\n{Fore.GREEN}Test completed!{Style.RESET_ALL}")
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Workflow Chat Test Client")
+    parser.add_argument(
+        "-m", "--message",
+        help="Send a message directly without interactive mode"
+    )
+    parser.add_argument(
+        "-f", "--file",
+        help="Read message from a file"
+    )
+    parser.add_argument(
+        "--stdin",
+        action="store_true",
+        help="Read message from stdin (for piping)"
+    )
+    
+    args = parser.parse_args()
+    
     tester = CleanChatTester()
-    tester.run()
+    
+    # Determine input source
+    initial_message = None
+    
+    if args.message:
+        initial_message = args.message
+    elif args.file:
+        try:
+            with open(args.file, 'r', encoding='utf-8') as f:
+                initial_message = f.read().strip()
+        except FileNotFoundError:
+            print(f"{Fore.RED}File not found: {args.file}{Style.RESET_ALL}")
+            sys.exit(1)
+        except Exception as e:
+            print(f"{Fore.RED}Error reading file: {e}{Style.RESET_ALL}")
+            sys.exit(1)
+    elif args.stdin or not sys.stdin.isatty():
+        # Read from stdin if --stdin flag or input is piped
+        initial_message = sys.stdin.read().strip()
+    
+    tester.run(initial_message)

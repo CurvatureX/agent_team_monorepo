@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 from shared.node_specs.base import NodeSpec
 from shared.node_specs.registry import node_spec_registry
 
+
 class NodeKnowledgeService:
     """Service for accessing workflow node specifications and knowledge."""
 
@@ -74,26 +75,39 @@ class NodeKnowledgeService:
                 node_type = node_req["node_type"]
                 subtype = node_req["subtype"]
                 spec = self.registry.get_spec(node_type, subtype)
-                
+
                 if spec:
                     result = self._serialize_node_spec(spec, include_examples, include_schemas)
                     results.append(result)
                 else:
                     # 智能纠错：如果节点类型包含 _NODE 后缀，提示正确格式
                     # 但只对已知的有效节点类型进行纠错
-                    valid_types = ["TRIGGER", "EXTERNAL_ACTION", "AI_AGENT", "ACTION", "FLOW", "MEMORY", "TOOL", "HUMAN_IN_THE_LOOP"]
-                    
+                    valid_types = [
+                        "TRIGGER",
+                        "EXTERNAL_ACTION",
+                        "AI_AGENT",
+                        "ACTION",
+                        "FLOW",
+                        "MEMORY",
+                        "TOOL",
+                        "HUMAN_IN_THE_LOOP",
+                    ]
+
                     if node_type.endswith("_NODE"):
                         correct_type = node_type.replace("_NODE", "")
-                        
+
                         # 只有当纠正后的类型是有效类型时，才提供纠错建议
                         if correct_type in valid_types:
                             # 尝试用正确的类型获取规格
                             correct_spec = self.registry.get_spec(correct_type, subtype)
                             if correct_spec:
                                 # 返回正确的规格，并附带纠错信息
-                                result = self._serialize_node_spec(correct_spec, include_examples, include_schemas)
-                                result["warning"] = f"Auto-corrected: '{node_type}' → '{correct_type}'. Please use correct format without '_NODE' suffix."
+                                result = self._serialize_node_spec(
+                                    correct_spec, include_examples, include_schemas
+                                )
+                                result[
+                                    "warning"
+                                ] = f"Auto-corrected: '{node_type}' → '{correct_type}'. Please use correct format without '_NODE' suffix."
                                 result["node_type"] = correct_type  # 使用正确的类型
                                 results.append(result)
                             else:
@@ -103,10 +117,13 @@ class NodeKnowledgeService:
                                         "subtype": subtype,
                                         "error": f"Incorrect format: '{node_type}' should be '{correct_type}'",
                                         "suggestion": {
-                                            "correct_format": {"node_type": correct_type, "subtype": subtype},
+                                            "correct_format": {
+                                                "node_type": correct_type,
+                                                "subtype": subtype,
+                                            },
                                             "available_types": valid_types,
-                                            "hint": "Remove '_NODE' suffix. Use get_node_types() to see all valid types."
-                                        }
+                                            "hint": "Remove '_NODE' suffix. Use get_node_types() to see all valid types.",
+                                        },
                                     }
                                 )
                         else:
@@ -117,7 +134,7 @@ class NodeKnowledgeService:
                                     "subtype": subtype,
                                     "error": "Node specification not found",
                                     "available_types": valid_types,
-                                    "hint": "Check both node_type and subtype. Use get_node_types() for valid combinations."
+                                    "hint": "Check both node_type and subtype. Use get_node_types() for valid combinations.",
                                 }
                             )
                     else:
@@ -128,7 +145,7 @@ class NodeKnowledgeService:
                                 "subtype": subtype,
                                 "error": "Node specification not found",
                                 "available_types": valid_types,
-                                "hint": "Check both node_type and subtype. Use get_node_types() for valid combinations."
+                                "hint": "Check both node_type and subtype. Use get_node_types() for valid combinations.",
                             }
                         )
             except Exception as e:

@@ -1,6 +1,7 @@
-from pydantic import BaseModel, Field
-from typing import Dict, Any, Optional, List
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
 
 
 class ExecutionStatus(str, Enum):
@@ -35,4 +36,4 @@ class Execution(BaseModel):
     error_message: Optional[str] = None
     error_details: Optional[Dict[str, Any]] = None
     created_at: Optional[str] = None
-    updated_at: Optional[str] = None 
+    updated_at: Optional[str] = None

@@ -170,7 +170,7 @@ resource "aws_ecs_task_definition" "api_gateway" {
       environment = [
         {
           name  = "DEBUG"
-          value = "false"
+          value = "true"
         },
         {
           name  = "LOG_FORMAT"
@@ -178,7 +178,7 @@ resource "aws_ecs_task_definition" "api_gateway" {
         },
         {
           name  = "LOG_LEVEL"
-          value = "INFO"
+          value = "DEBUG"
         },
         {
           name  = "PYTHONUNBUFFERED"
@@ -305,7 +305,7 @@ resource "aws_ecs_task_definition" "workflow_engine" {
       environment = [
         {
           name  = "DEBUG"
-          value = "false"
+          value = "true"
         },
         {
           name  = "LOG_FORMAT"
@@ -313,7 +313,7 @@ resource "aws_ecs_task_definition" "workflow_engine" {
         },
         {
           name  = "LOG_LEVEL"
-          value = "INFO"
+          value = "DEBUG"
         },
         {
           name  = "PYTHONUNBUFFERED"
@@ -345,6 +345,10 @@ resource "aws_ecs_task_definition" "workflow_engine" {
         {
           name      = "ANTHROPIC_API_KEY"
           valueFrom = aws_ssm_parameter.anthropic_api_key.arn
+        },
+        {
+          name      = "GEMINI_API_KEY"
+          valueFrom = aws_ssm_parameter.gemini_api_key.arn
         },
         {
           name      = "SUPABASE_URL"
@@ -437,7 +441,7 @@ resource "aws_ecs_task_definition" "workflow_agent" {
       environment = [
         {
           name  = "DEBUG"
-          value = "false"
+          value = "true"
         },
         {
           name  = "LOG_FORMAT"
@@ -445,7 +449,7 @@ resource "aws_ecs_task_definition" "workflow_agent" {
         },
         {
           name  = "LOG_LEVEL"
-          value = "INFO"
+          value = "DEBUG"
         },
         {
           name  = "PYTHONUNBUFFERED"
@@ -501,6 +505,10 @@ resource "aws_ecs_task_definition" "workflow_agent" {
         {
           name      = "ANTHROPIC_API_KEY"
           valueFrom = aws_ssm_parameter.anthropic_api_key.arn
+        },
+        {
+          name      = "GEMINI_API_KEY"
+          valueFrom = aws_ssm_parameter.gemini_api_key.arn
         },
         {
           name      = "SUPABASE_URL"
@@ -618,7 +626,7 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
       environment = [
         {
           name  = "DEBUG"
-          value = "false"
+          value = "true"
         },
         {
           name  = "LOG_FORMAT"
@@ -626,7 +634,7 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
         },
         {
           name  = "LOG_LEVEL"
-          value = "INFO"
+          value = "DEBUG"
         },
         {
           name  = "PYTHONUNBUFFERED"

@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     PORT: int = int(os.getenv("PORT", "8002"))
 
     # Logging
-    log_level: str = "INFO"
+    log_level: str = os.getenv("LOG_LEVEL", "INFO")
 
     # Security
     secret_key: str = "your-secret-key-here"

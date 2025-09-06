@@ -16,6 +16,17 @@ from typing import Any, Dict, List, Optional, Set
 from .nodes.base import NodeExecutionContext, NodeExecutionResult
 from .nodes.factory import get_node_executor_factory, register_default_executors
 
+# Import shared workflow models for proper connection validation
+try:
+    from shared.models.workflow import ConnectionArrayData, ConnectionData, NodeConnectionsData
+    from shared.node_specs.communication_protocol import apply_transformation
+except ImportError:
+    # Fallback for deployment environments where shared models might not be available
+    ConnectionData = dict
+    NodeConnectionsData = dict
+    ConnectionArrayData = dict
+    apply_transformation = lambda data, src, tgt: data
+
 
 class WorkflowExecutionEngine:
     """Enhanced workflow execution engine with sophisticated tracking and debugging capabilities."""
@@ -203,8 +214,6 @@ class WorkflowExecutionEngine:
 
         self.logger.info(f"🔧 Executing node with enhanced tracking: {node_id}")
 
-        # Get node definition
-        self.logger.info(f"📋 Looking up node definition for: {node_id}")
         node_def = self._get_node_by_id(workflow_definition, node_id)
         if not node_def:
             self.logger.error(f"❌ Node {node_id} not found in workflow definition")
@@ -229,7 +238,6 @@ class WorkflowExecutionEngine:
         # Get executor
         node_type = node_def["type"]
         node_subtype = node_def.get("subtype", "")
-        self.logger.info(f"🏭 Creating executor for type: {node_type}, subtype: {node_subtype}")
 
         try:
             executor = self.factory.create_executor(node_type, node_subtype)
@@ -294,11 +302,26 @@ class WorkflowExecutionEngine:
                 "trigger_channel_id": trigger_data.get("channel_id"),
                 "trigger_user_id": trigger_data.get("user_id"),
                 "user_id": user_id,  # Add the actual executing user ID
+                "workflow_connections": workflow_definition.get(
+                    "connections", {}
+                ),  # Add workflow connections
+                "workflow_nodes": workflow_definition.get(
+                    "nodes", []
+                ),  # Add all nodes for memory node detection
             },
         )
 
         try:
             # Execute node - handle both sync and async executors
+            self.logger.info(
+                f"🔥🚀 EXECUTING NODE: {node_id} with executor {executor.__class__.__name__}"
+            )
+            self.logger.info(f"🔥🚀 NODE TYPE: {node_type}, SUBTYPE: {node_subtype}")
+            self.logger.info(
+                f"🔥🚀 INPUT DATA KEYS: {list(input_data.keys()) if input_data else 'NO_INPUT_DATA'}"
+            )
+            self.logger.info(f"🔥🚀 CREDENTIALS PROVIDED: {bool(credentials)}")
+
             self.logger.info(
                 f"🚀 Executing node {node_id} with executor {executor.__class__.__name__}"
             )
@@ -312,6 +335,29 @@ class WorkflowExecutionEngine:
             else:
                 self.logger.info("⏳ Running sync executor...")
                 result = executor.execute(context)
+
+            self.logger.info(f"🔥✅ NODE EXECUTION COMPLETED: {node_id}")
+            self.logger.info(f"🔥✅ RESULT TYPE: {type(result).__name__}")
+            if hasattr(result, "status"):
+                self.logger.info(f"🔥✅ RESULT STATUS: {result.status}")
+            if hasattr(result, "output_data"):
+                if isinstance(result.output_data, dict):
+                    self.logger.info(f"🔥✅ OUTPUT DATA KEYS: {list(result.output_data.keys())}")
+                    for key, value in result.output_data.items():
+                        if isinstance(value, str) and len(value) > 200:
+                            self.logger.info(
+                                f"🔥✅ OUTPUT '{key}': {value[:200]}... ({len(value)} chars)"
+                            )
+                        else:
+                            self.logger.info(f"🔥✅ OUTPUT '{key}': {value}")
+                else:
+                    self.logger.info(f"🔥✅ OUTPUT DATA (non-dict): {result.output_data}")
+            if hasattr(result, "error_message") and result.error_message:
+                self.logger.info(f"🔥❌ RESULT ERROR: {result.error_message}")
+            if hasattr(result, "logs") and result.logs:
+                self.logger.info(f"🔥📝 RESULT LOGS ({len(result.logs)} entries):")
+                for i, log_entry in enumerate(result.logs):
+                    self.logger.info(f"🔥📝 [{i+1}] {log_entry}")
 
             self.logger.info(f"✅ Node execution completed - result type: {type(result).__name__}")
             if hasattr(result, "status"):
@@ -495,7 +541,7 @@ class WorkflowExecutionEngine:
                     if connection.get("node") == node_id:
                         # Get source node name for tracking
                         source_node_name = None
-                        for node in workflow_definition.get("nodes", []):
+                        for node in execution_state.get("nodes", []):
                             if node.get("id") == source_node_id:
                                 source_node_name = node.get("name")
                                 break
@@ -543,9 +589,13 @@ class WorkflowExecutionEngine:
                             }
                         )
 
-                        # For MAIN connections, merge directly
+                        # For MAIN connections, apply transformation and merge
                         if connection_type == "main":
-                            combined_data.update(output_data)
+                            # Apply data transformation based on node types
+                            transformed_data = self._transform_node_data(
+                                output_data, source_node_id, node_id, execution_state
+                            )
+                            combined_data.update(transformed_data)
                         else:
                             # For specialized connections, group by type
                             if connection_type not in combined_data:
@@ -770,7 +820,116 @@ class WorkflowExecutionEngine:
             if not node_type:
                 errors.append(f"Node {node_id} missing type")
 
+        # Validate connections format
+        connection_errors = self._validate_connections_format(connections, node_ids)
+        errors.extend(connection_errors)
+
         return errors
+
+    def _validate_connections_format(
+        self, connections: Dict[str, Any], node_ids: Set[str]
+    ) -> List[str]:
+        """Validate connections format matches NodeConnectionsData structure."""
+        errors = []
+
+        if not isinstance(connections, dict):
+            return ["Connections must be a dictionary"]
+
+        for source_node_id, node_connections in connections.items():
+            # Check if source node exists
+            if source_node_id not in node_ids:
+                errors.append(
+                    f"Connection source node '{source_node_id}' does not exist in workflow"
+                )
+                continue
+
+            # Validate connection structure
+            if not isinstance(node_connections, dict):
+                errors.append(f"Connections for node '{source_node_id}' must be an object")
+                continue
+
+            if "connection_types" not in node_connections:
+                errors.append(
+                    f"Missing 'connection_types' in connections for node '{source_node_id}'"
+                )
+                continue
+
+            connection_types = node_connections.get("connection_types", {})
+            if not isinstance(connection_types, dict):
+                errors.append(f"'connection_types' must be an object for node '{source_node_id}'")
+                continue
+
+            for conn_type, conn_array in connection_types.items():
+                if not isinstance(conn_array, dict) or "connections" not in conn_array:
+                    errors.append(
+                        f"Invalid connection array format for '{source_node_id}.{conn_type}': must have 'connections' field"
+                    )
+                    continue
+
+                connections_list = conn_array.get("connections", [])
+                if not isinstance(connections_list, list):
+                    errors.append(
+                        f"'connections' must be a list for '{source_node_id}.{conn_type}'"
+                    )
+                    continue
+
+                # Validate each connection
+                for i, conn in enumerate(connections_list):
+                    if not isinstance(conn, dict):
+                        errors.append(
+                            f"Connection {i} in '{source_node_id}.{conn_type}' must be an object"
+                        )
+                        continue
+                    if "node" not in conn:
+                        errors.append(
+                            f"Connection {i} in '{source_node_id}.{conn_type}' missing required 'node' field"
+                        )
+                        continue
+
+                    target_node_id = conn.get("node")
+                    if target_node_id not in node_ids:
+                        errors.append(
+                            f"Connection target node '{target_node_id}' does not exist in workflow"
+                        )
+
+        return errors
+
+    def _transform_node_data(
+        self,
+        output_data: Dict[str, Any],
+        source_node_id: str,
+        target_node_id: str,
+        execution_state: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Transform data between nodes using communication protocol."""
+        try:
+            # Get source and target node information
+            nodes = execution_state.get("nodes", [])
+            source_node = next((n for n in nodes if n.get("id") == source_node_id), None)
+            target_node = next((n for n in nodes if n.get("id") == target_node_id), None)
+
+            if not source_node or not target_node:
+                self.logger.warning(f"Could not find node information for transformation")
+                return output_data
+
+            source_type = f"{source_node.get('type')}.{source_node.get('subtype')}"
+            target_type = f"{target_node.get('type')}.{target_node.get('subtype')}"
+
+            self.logger.info(f"🔄 Transforming data from {source_type} to {target_type}")
+
+            # Apply transformation
+            transformed_data = apply_transformation(output_data, source_type, target_type)
+
+            if transformed_data != output_data:
+                self.logger.info(f"✅ Data transformation applied: {source_type} -> {target_type}")
+            else:
+                self.logger.debug(f"🔄 No transformation needed for {source_type} -> {target_type}")
+
+            return transformed_data
+
+        except Exception as e:
+            self.logger.warning(f"⚠️ Data transformation failed: {e}, using original data")
+            return output_data
 
     def _calculate_execution_order(self, workflow_definition: Dict[str, Any]) -> List[str]:
         """Calculate execution order using topological sort with ConnectionsMap."""
@@ -801,6 +960,11 @@ class WorkflowExecutionEngine:
 
             connection_types = node_connections.get("connection_types", {})
             for connection_type, connection_array in connection_types.items():
+                # Only consider "main" connections for execution order
+                # Memory connections are for data flow, not execution sequence
+                if connection_type != "main":
+                    continue
+
                 connections_list = connection_array.get("connections", [])
 
                 for connection in connections_list:

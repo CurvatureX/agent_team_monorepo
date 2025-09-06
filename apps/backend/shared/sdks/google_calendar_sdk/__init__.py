@@ -11,8 +11,8 @@ This SDK provides comprehensive Google Calendar integration including:
 
 from .client import GoogleCalendarSDK
 from .exceptions import (
-    GoogleCalendarError,
     GoogleCalendarAuthError,
+    GoogleCalendarError,
     GoogleCalendarNotFoundError,
     GoogleCalendarPermissionError,
     GoogleCalendarRateLimitError,

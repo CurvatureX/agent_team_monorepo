@@ -198,7 +198,7 @@ class TestWorkflowAgentNodes:
                 {
                     "id": "processor",
                     "type": NodeType.AI_AGENT.value,
-                    "parameters": {"model": "gpt-4"},
+                    "parameters": {"model": "gpt-5-nano"},
                 },
             ],
             "connections": [{"from": "trigger", "to": "processor"}],
@@ -245,7 +245,7 @@ class TestWorkflowAgentNodes:
                 {
                     "id": "processor",
                     "type": NodeType.AI_AGENT.value,
-                    "parameters": {"model": "gpt-4"},
+                    "parameters": {"model": "gpt-5-nano"},
                 },
             ],
             "connections": [{"from": "trigger", "to": "processor"}],

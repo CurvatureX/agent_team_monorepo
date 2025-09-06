@@ -29,6 +29,7 @@ from .conversation import *
 from .db_models import *
 from .execution import *
 from .external_actions import *
+from .human_in_loop import *
 from .mcp import *
 from .node import *
 from .node_enums import *  # Import authoritative node enums
@@ -180,4 +181,29 @@ __all__ = [
     "EmailExternalActionParams",
     "ExternalActionInputData",
     "ExternalActionOutputData",
+    # human_in_loop.py - Human-in-the-Loop node models
+    "HILInteractionType",
+    "HILChannelType",
+    "HILPriority",
+    "HILStatus",
+    "HILApprovalRequest",
+    "HILInputField",
+    "HILInputRequest",
+    "HILSelectionOption",
+    "HILSelectionRequest",
+    "HILChannelConfig",
+    "HILInputData",
+    "HILResponder",
+    "HILApprovalResponse",
+    "HILInputResponse",
+    "HILSelectionResponse",
+    "HILResponseData",
+    "HILOutputData",
+    "HILTimeoutData",
+    "HILErrorData",
+    "HILFilteredData",
+    "HILIncomingResponseData",
+    "HILOutput",
+    "HILRequest",
+    "HILResponse",
 ]

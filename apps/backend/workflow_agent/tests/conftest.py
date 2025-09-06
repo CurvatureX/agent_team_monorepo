@@ -49,7 +49,7 @@ def mock_settings():
     """Mock settings for testing"""
     with patch("core.config.settings") as mock:
         mock.DEFAULT_MODEL_PROVIDER = "openai"
-        mock.DEFAULT_MODEL_NAME = "gpt-4"
+        mock.DEFAULT_MODEL_NAME = "gpt-5-nano"
         mock.OPENAI_API_KEY = "test-openai-key"
         mock.ANTHROPIC_API_KEY = "test-anthropic-key"
         yield mock
@@ -113,7 +113,7 @@ def sample_simple_workflow():
                 "id": "ai_analyze",
                 "type": NodeType.AI_AGENT.value,
                 "name": "AI Analyzer",
-                "parameters": {"model": "gpt-4"},
+                "parameters": {"model": "gpt-5-nano"},
             },
             {
                 "id": "send_response",

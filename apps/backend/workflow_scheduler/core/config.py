@@ -141,6 +141,11 @@ class Settings(BaseSettings):
         description="Google OAuth Client Secret",
         validation_alias=AliasChoices("GOOGLE_CLIENT_SECRET", "google_client_secret"),
     )
+    google_redirect_uri: str = Field(
+        default="",
+        description="Google OAuth Redirect URI",
+        validation_alias=AliasChoices("GOOGLE_REDIRECT_URI", "google_redirect_uri"),
+    )
 
     # APScheduler Configuration
     scheduler_timezone: str = Field(default="UTC", description="Scheduler timezone")
@@ -151,7 +156,7 @@ class Settings(BaseSettings):
     lock_retry_delay: float = Field(default=0.1, description="Lock retry delay in seconds")
 
     # Logging Configuration
-    log_level: str = Field(default="INFO", description="Log level")
+    log_level: str = Field(default="INFO", description="Log level", alias="LOG_LEVEL")
     log_format: str = Field(default="text", description="Log format (text/json)")
 
     def get_database_config(self) -> Dict[str, str]:

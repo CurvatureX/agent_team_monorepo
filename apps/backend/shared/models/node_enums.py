@@ -8,7 +8,7 @@ NO conversion functions - these ARE the standard.
 """
 
 from enum import Enum
-from typing import Dict, List, Set
+from typing import Any, Dict, List, Set
 
 
 class NodeType(str, Enum):
@@ -50,6 +50,52 @@ class AIAgentSubtype(str, Enum):
 
     # Google Models
     GOOGLE_GEMINI = "GOOGLE_GEMINI"
+
+
+class OpenAIModel(str, Enum):
+    """OpenAI Model Versions for OPENAI_CHATGPT subtype"""
+
+    # GPT-5 Models (2025 - Latest)
+    GPT_5 = "gpt-5"  # $1.25 input, $0.125 cached, $10.00 output
+    GPT_5_MINI = "gpt-5-mini"  # $0.25 input, $0.025 cached, $2.00 output
+    GPT_5_NANO = "gpt-5-nano"  # $0.05 input, $0.005 cached, $0.40 output
+    GPT_5_CHAT_LATEST = "gpt-5-chat-latest"  # $1.25 input, $0.125 cached, $10.00 output
+
+    # GPT-4.1 Models
+    GPT_4_1 = "gpt-4.1"  # $2.00 input, $0.50 cached, $8.00 output
+    GPT_4_1_MINI = "gpt-4.1-mini"  # $0.40 input, $0.10 cached, $1.60 output
+    GPT_4_1_NANO = "gpt-4.1-nano"  # $0.10 input, $0.025 cached, $0.40 output
+
+
+class AnthropicModel(str, Enum):
+    """Anthropic Claude Model Versions for ANTHROPIC_CLAUDE subtype"""
+
+    # Claude Sonnet 4 - Optimal balance of intelligence, cost, and speed
+    # Output: ≤200K $15/MTok, >200K $22.50/MTok
+    CLAUDE_SONNET_4 = "claude-sonnet-4-20250514"
+
+    # Claude Haiku 3.5 - Fastest, most cost-effective model
+    # Output: $4/MTok
+    CLAUDE_HAIKU_3_5 = "claude-3-5-haiku-20241022"
+
+
+class GoogleGeminiModel(str, Enum):
+    """Google Gemini Model Versions for GOOGLE_GEMINI subtype"""
+
+    # Gemini 2.5 Pro - State-of-the-art multipurpose model, excels at coding and complex reasoning
+    # Input: ≤200k $1.25/MTok, >200k $2.50/MTok | Output: ≤200k $10.00/MTok, >200k $15.00/MTok
+    # Caching: ≤200k $0.31/MTok, >200k $0.625/MTok | Storage: $4.50/MTok/hour
+    GEMINI_2_5_PRO = "gemini-2.5-pro"
+
+    # Gemini 2.5 Flash - First hybrid reasoning model, 1M context, thinking budgets
+    # Input: $0.30 text/image/video, $1.00 audio | Output: $2.50/MTok
+    # Caching: $0.075 text/image/video, $0.25 audio | Storage: $1.00/MTok/hour
+    GEMINI_2_5_FLASH = "gemini-2.5-flash"
+
+    # Gemini 2.5 Flash-Lite - Smallest, most cost-effective, built for scale
+    # Input: $0.10 text/image/video, $0.30 audio | Output: $0.40/MTok
+    # Caching: $0.025 text/image/video, $0.125 audio | Storage: $1.00/MTok/hour
+    GEMINI_2_5_FLASH_LITE = "gemini-2.5-flash-lite"
 
 
 class ExternalActionSubtype(str, Enum):
@@ -157,13 +203,6 @@ class HumanLoopSubtype(str, Enum):
     FORM_SUBMISSION = "FORM_SUBMISSION"
     MANUAL_REVIEW = "MANUAL_REVIEW"
 
-    # Legacy (for backward compatibility)
-    GMAIL = "GMAIL"
-    SLACK = "SLACK"
-    DISCORD = "DISCORD"
-    TELEGRAM = "TELEGRAM"
-    APP = "APP"
-
 
 class ToolSubtype(str, Enum):
     """Tool Node Subtypes - External tools and utilities"""
@@ -191,32 +230,27 @@ class ToolSubtype(str, Enum):
 
 
 class MemorySubtype(str, Enum):
-    """Memory Node Subtypes - Data storage and retrieval"""
+    """Memory Node Subtypes - Memory storage types for LLM context"""
 
-    # Vector Databases
+    # Conversation Memory Types
+    CONVERSATION_BUFFER = "CONVERSATION_BUFFER"
+    CONVERSATION_SUMMARY = "CONVERSATION_SUMMARY"
+
+    # Vector Database Memory
     VECTOR_DATABASE = "VECTOR_DATABASE"
-    PINECONE = "PINECONE"
-    WEAVIATE = "WEAVIATE"
-    QDRANT = "QDRANT"
 
-    # Key-Value Stores
+    # Key-Value Memory
     KEY_VALUE_STORE = "KEY_VALUE_STORE"
-    REDIS_CACHE = "REDIS_CACHE"
 
-    # Document Stores
+    # Document Memory
     DOCUMENT_STORE = "DOCUMENT_STORE"
-    ELASTICSEARCH = "ELASTICSEARCH"
 
-    # Traditional Databases
-    SQL_DATABASE = "SQL_DATABASE"
-    NOSQL_DATABASE = "NOSQL_DATABASE"
-
-    SIMPLE_MEMORY = "SIMPLE_MEMORY"
-
-    # Legacy (for backward compatibility)
-    VECTOR_DB = "VECTOR_DB"
-    KEY_VALUE = "KEY_VALUE"
-    DOCUMENT = "DOCUMENT"
+    # Advanced Memory Types
+    ENTITY_MEMORY = "ENTITY_MEMORY"
+    EPISODIC_MEMORY = "EPISODIC_MEMORY"
+    KNOWLEDGE_BASE = "KNOWLEDGE_BASE"
+    GRAPH_MEMORY = "GRAPH_MEMORY"
+    WORKING_MEMORY = "WORKING_MEMORY"
 
 
 # Validation mapping - defines which subtypes are valid for each node type
@@ -229,6 +263,13 @@ VALID_SUBTYPES: Dict[NodeType, Set[str]] = {
     NodeType.HUMAN_IN_THE_LOOP: {s.value for s in HumanLoopSubtype},
     NodeType.TOOL: {s.value for s in ToolSubtype},
     NodeType.MEMORY: {s.value for s in MemorySubtype},
+}
+
+# AI Agent Model Validation - defines which models are valid for each AI agent subtype
+VALID_AI_MODELS: Dict[str, Set[str]] = {
+    AIAgentSubtype.OPENAI_CHATGPT.value: {m.value for m in OpenAIModel},
+    AIAgentSubtype.ANTHROPIC_CLAUDE.value: {m.value for m in AnthropicModel},
+    AIAgentSubtype.GOOGLE_GEMINI.value: {m.value for m in GoogleGeminiModel},
 }
 
 
@@ -256,6 +297,44 @@ def get_all_subtypes() -> Dict[str, List[str]]:
     return {node_type.value: get_valid_subtypes(node_type) for node_type in NodeType}
 
 
+def get_valid_ai_models(ai_subtype: str) -> List[str]:
+    """Get list of valid models for a given AI agent subtype"""
+    return sorted(list(VALID_AI_MODELS.get(ai_subtype, set())))
+
+
+def is_valid_ai_model(ai_subtype: str, model_version: str) -> bool:
+    """Validate if an AI subtype/model combination is valid"""
+    return model_version in VALID_AI_MODELS.get(ai_subtype, set())
+
+
+def get_all_ai_models() -> Dict[str, List[str]]:
+    """Get all AI models organized by subtype"""
+    return {subtype: get_valid_ai_models(subtype) for subtype in VALID_AI_MODELS.keys()}
+
+
+def validate_ai_node_config(subtype: str, model_version: str) -> Dict[str, Any]:
+    """
+    Validate AI agent node configuration
+
+    Returns:
+        Dict with 'valid' boolean and 'message' with details
+    """
+    if subtype not in VALID_AI_MODELS:
+        return {
+            "valid": False,
+            "message": f"Invalid AI subtype: {subtype}. Valid options: {list(VALID_AI_MODELS.keys())}",
+        }
+
+    if not is_valid_ai_model(subtype, model_version):
+        valid_models = get_valid_ai_models(subtype)
+        return {
+            "valid": False,
+            "message": f"Invalid model {model_version} for {subtype}. Valid options: {valid_models}",
+        }
+
+    return {"valid": True, "message": f"Valid configuration: {subtype} with {model_version}"}
+
+
 # Legacy API Gateway compatibility mapping
 # This allows gradual migration from legacy API formats
 API_GATEWAY_COMPATIBILITY = {
@@ -280,6 +359,7 @@ def resolve_legacy_api_type(legacy_type: str) -> NodeType:
 
 # Export all enums for easy importing
 __all__ = [
+    # Core Node Enums
     "NodeType",
     "TriggerSubtype",
     "AIAgentSubtype",
@@ -289,10 +369,23 @@ __all__ = [
     "HumanLoopSubtype",
     "ToolSubtype",
     "MemorySubtype",
+    # AI Model Enums
+    "OpenAIModel",
+    "AnthropicModel",
+    "GoogleGeminiModel",
+    # Validation Maps
     "VALID_SUBTYPES",
+    "VALID_AI_MODELS",
+    # Node Type Validation Functions
     "get_valid_subtypes",
     "is_valid_node_subtype_combination",
     "get_all_node_types",
     "get_all_subtypes",
+    # AI Model Validation Functions
+    "get_valid_ai_models",
+    "is_valid_ai_model",
+    "get_all_ai_models",
+    "validate_ai_node_config",
+    # Legacy Support
     "resolve_legacy_api_type",
 ]

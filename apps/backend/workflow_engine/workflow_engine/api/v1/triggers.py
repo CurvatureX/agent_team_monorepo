@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException
+
 # from shared.models import (
 #     # Import relevant trigger models here, e.g.,
 #     # CreateTriggerRequest, CreateTriggerResponse
@@ -17,4 +18,4 @@ router = APIRouter()
 #         # return result
 #         raise NotImplementedError("Endpoint not fully implemented")
 #     except Exception as e:
-#         raise HTTPException(status_code=500, detail=str(e)) 
+#         raise HTTPException(status_code=500, detail=str(e))

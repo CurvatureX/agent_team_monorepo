@@ -85,7 +85,9 @@ class WorkflowData(BaseModel):
     name: str
     description: Optional[str] = None
     nodes: List[NodeData]
-    connections: Dict[str, Any] = Field(default_factory=dict)
+    connections: Dict[str, Any] = Field(
+        default_factory=dict
+    )  # Keep as Any for now to handle validation properly
     settings: WorkflowSettingsData
     static_data: Dict[str, str] = Field(default_factory=dict)
     pin_data: Dict[str, str] = Field(default_factory=dict)
@@ -110,6 +112,71 @@ class WorkflowData(BaseModel):
         node_ids = [node.id for node in v]
         if len(node_ids) != len(set(node_ids)):
             raise ValueError("Node IDs must be unique")
+        return v
+
+    @field_validator("connections", mode="before")
+    @classmethod
+    def validate_connections_format(cls, v):
+        """Validate connections format and node references."""
+        if not isinstance(v, dict):
+            return v
+
+        # Check each source node connection
+        for source_node_id, node_connections in v.items():
+            # Handle both dict and NodeConnectionsData objects
+            if isinstance(node_connections, NodeConnectionsData):
+                # Already a valid NodeConnectionsData object, skip validation
+                continue
+            elif not isinstance(node_connections, dict):
+                raise ValueError(
+                    f"Invalid connection format for node '{source_node_id}': must be an object"
+                )
+
+            # Detect old target-centric format and reject it
+            if "main" in node_connections and isinstance(node_connections["main"], list):
+                # This is the old format with nested arrays
+                if len(node_connections["main"]) > 0 and isinstance(
+                    node_connections["main"][0], list
+                ):
+                    raise ValueError(
+                        f"Detected legacy connection format for node '{source_node_id}'. Use connection_types structure instead."
+                    )
+
+            # Validate new format structure
+            if "connection_types" not in node_connections:
+                raise ValueError(
+                    f"Missing 'connection_types' in connections for node '{source_node_id}'. Required format: connection_types->main->connections"
+                )
+
+            connection_types = node_connections.get("connection_types", {})
+            if not isinstance(connection_types, dict):
+                raise ValueError(
+                    f"'connection_types' must be an object for node '{source_node_id}'"
+                )
+
+            for conn_type, conn_array in connection_types.items():
+                if not isinstance(conn_array, dict) or "connections" not in conn_array:
+                    raise ValueError(
+                        f"Invalid connection array format for '{source_node_id}.{conn_type}': must have 'connections' field"
+                    )
+
+                connections_list = conn_array.get("connections", [])
+                if not isinstance(connections_list, list):
+                    raise ValueError(
+                        f"'connections' must be a list for '{source_node_id}.{conn_type}'"
+                    )
+
+                # Validate each connection has required fields
+                for i, conn in enumerate(connections_list):
+                    if not isinstance(conn, dict):
+                        raise ValueError(
+                            f"Connection {i} in '{source_node_id}.{conn_type}' must be an object"
+                        )
+                    if "node" not in conn:
+                        raise ValueError(
+                            f"Connection {i} in '{source_node_id}.{conn_type}' missing required 'node' field"
+                        )
+
         return v
 
 
@@ -143,6 +210,71 @@ class CreateWorkflowRequest(BaseModel):
         node_ids = [node.id for node in v if node.id is not None]
         if len(node_ids) != len(set(node_ids)):
             raise ValueError("节点ID必须唯一")
+        return v
+
+    @field_validator("connections", mode="before")
+    @classmethod
+    def validate_connections_format(cls, v):
+        """Validate connections format and node references."""
+        if not isinstance(v, dict):
+            return v
+
+        # Check each source node connection
+        for source_node_id, node_connections in v.items():
+            # Handle both dict and NodeConnectionsData objects
+            if isinstance(node_connections, NodeConnectionsData):
+                # Already a valid NodeConnectionsData object, skip validation
+                continue
+            elif not isinstance(node_connections, dict):
+                raise ValueError(
+                    f"Invalid connection format for node '{source_node_id}': must be an object"
+                )
+
+            # Detect old target-centric format and reject it
+            if "main" in node_connections and isinstance(node_connections["main"], list):
+                # This is the old format with nested arrays
+                if len(node_connections["main"]) > 0 and isinstance(
+                    node_connections["main"][0], list
+                ):
+                    raise ValueError(
+                        f"Detected legacy connection format for node '{source_node_id}'. Use connection_types structure instead."
+                    )
+
+            # Validate new format structure
+            if "connection_types" not in node_connections:
+                raise ValueError(
+                    f"Missing 'connection_types' in connections for node '{source_node_id}'. Required format: connection_types->main->connections"
+                )
+
+            connection_types = node_connections.get("connection_types", {})
+            if not isinstance(connection_types, dict):
+                raise ValueError(
+                    f"'connection_types' must be an object for node '{source_node_id}'"
+                )
+
+            for conn_type, conn_array in connection_types.items():
+                if not isinstance(conn_array, dict) or "connections" not in conn_array:
+                    raise ValueError(
+                        f"Invalid connection array format for '{source_node_id}.{conn_type}': must have 'connections' field"
+                    )
+
+                connections_list = conn_array.get("connections", [])
+                if not isinstance(connections_list, list):
+                    raise ValueError(
+                        f"'connections' must be a list for '{source_node_id}.{conn_type}'"
+                    )
+
+                # Validate each connection has required fields
+                for i, conn in enumerate(connections_list):
+                    if not isinstance(conn, dict):
+                        raise ValueError(
+                            f"Connection {i} in '{source_node_id}.{conn_type}' must be an object"
+                        )
+                    if "node" not in conn:
+                        raise ValueError(
+                            f"Connection {i} in '{source_node_id}.{conn_type}' missing required 'node' field"
+                        )
+
         return v
 
 
@@ -180,6 +312,73 @@ class UpdateWorkflowRequest(BaseModel):
     active: Optional[bool] = None
     user_id: str = Field(..., min_length=1)
     session_id: Optional[str] = None
+
+    @field_validator("connections", mode="before")
+    @classmethod
+    def validate_connections_format(cls, v):
+        """Validate connections format when provided."""
+        if v is None:
+            return v
+        if not isinstance(v, dict):
+            return v
+
+        # Check each source node connection
+        for source_node_id, node_connections in v.items():
+            # Handle both dict and NodeConnectionsData objects
+            if isinstance(node_connections, NodeConnectionsData):
+                # Already a valid NodeConnectionsData object, skip validation
+                continue
+            elif not isinstance(node_connections, dict):
+                raise ValueError(
+                    f"Invalid connection format for node '{source_node_id}': must be an object"
+                )
+
+            # Detect old target-centric format and reject it
+            if "main" in node_connections and isinstance(node_connections["main"], list):
+                # This is the old format with nested arrays
+                if len(node_connections["main"]) > 0 and isinstance(
+                    node_connections["main"][0], list
+                ):
+                    raise ValueError(
+                        f"Detected legacy connection format for node '{source_node_id}'. Use connection_types structure instead."
+                    )
+
+            # Validate new format structure
+            if "connection_types" not in node_connections:
+                raise ValueError(
+                    f"Missing 'connection_types' in connections for node '{source_node_id}'. Required format: connection_types->main->connections"
+                )
+
+            connection_types = node_connections.get("connection_types", {})
+            if not isinstance(connection_types, dict):
+                raise ValueError(
+                    f"'connection_types' must be an object for node '{source_node_id}'"
+                )
+
+            for conn_type, conn_array in connection_types.items():
+                if not isinstance(conn_array, dict) or "connections" not in conn_array:
+                    raise ValueError(
+                        f"Invalid connection array format for '{source_node_id}.{conn_type}': must have 'connections' field"
+                    )
+
+                connections_list = conn_array.get("connections", [])
+                if not isinstance(connections_list, list):
+                    raise ValueError(
+                        f"'connections' must be a list for '{source_node_id}.{conn_type}'"
+                    )
+
+                # Validate each connection has required fields
+                for i, conn in enumerate(connections_list):
+                    if not isinstance(conn, dict):
+                        raise ValueError(
+                            f"Connection {i} in '{source_node_id}.{conn_type}' must be an object"
+                        )
+                    if "node" not in conn:
+                        raise ValueError(
+                            f"Connection {i} in '{source_node_id}.{conn_type}' missing required 'node' field"
+                        )
+
+        return v
 
 
 class UpdateWorkflowResponse(BaseModel):
@@ -221,6 +420,17 @@ class ExecuteWorkflowRequest(BaseModel):
     trigger_data: Dict[str, str] = Field(default_factory=dict)
     user_id: str = Field(..., min_length=1)
     session_id: Optional[str] = None
+    
+    # 新增参数：支持从指定节点开始执行
+    start_from_node: Optional[str] = Field(
+        default=None, 
+        description="指定从哪个节点开始执行，为空时从触发器节点开始",
+        example="ai_message_classification"
+    )
+    skip_trigger_validation: bool = Field(
+        default=False,
+        description="是否跳过触发器验证，用于从中间节点开始执行时使用"
+    )
 
 
 class ExecuteWorkflowResponse(BaseModel):
@@ -320,6 +530,17 @@ class WorkflowExecutionRequest(BaseModel):
     inputs: Dict[str, Any] = Field(default_factory=dict, description="执行时的输入参数")
     settings: Optional[Dict[str, Any]] = Field(default=None, description="执行时的特殊设置")
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="执行元数据")
+    
+    # 新增参数：支持从指定节点开始执行
+    start_from_node: Optional[str] = Field(
+        default=None, 
+        description="指定从哪个节点开始执行，为空时从触发器节点开始",
+        example="ai_message_classification"
+    )
+    skip_trigger_validation: bool = Field(
+        default=False,
+        description="是否跳过触发器验证，用于从中间节点开始执行时使用"
+    )
 
 
 class WorkflowExecutionResponse(BaseModel):

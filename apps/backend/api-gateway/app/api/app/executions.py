@@ -10,20 +10,24 @@ from app.dependencies import AuthenticatedDeps
 from app.exceptions import NotFoundError, ValidationError
 from app.models import ResponseModel
 from pydantic import BaseModel, Field
-from typing import Dict, Any, Optional
+
 try:
     from shared.models import Execution
 except ImportError:
     import sys
     from pathlib import Path
+
     backend_dir = Path(__file__).parent.parent.parent.parent.parent
     sys.path.insert(0, str(backend_dir))
     from shared.models import Execution
+
 
 class ExecutionCancelResponse(BaseModel):
     success: bool = Field(description="Whether cancellation was successful")
     message: str = Field(description="Result message")
     execution_id: str = Field(description="Execution ID")
+
+
 from app.services.workflow_engine_http_client import get_workflow_engine_client
 from app.utils.logger import get_logger
 from fastapi import APIRouter, Depends, HTTPException
@@ -52,7 +56,7 @@ async def get_execution_status(execution_id: str, deps: AuthenticatedDeps = Depe
             raise NotFoundError("Execution")
 
         logger.info(f"✅ Execution status retrieved: {execution_id}")
-        
+
         # The result from workflow-engine should already match the Execution model
         # since both use the same shared models
         return Execution(**result)

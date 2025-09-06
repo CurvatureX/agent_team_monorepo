@@ -25,6 +25,7 @@ def test_node_specs_loading():
     print("🧪 Testing node specifications loading...")
 
     try:
+        from shared.models.node_enums import OpenAIModel
         from shared.node_specs import node_spec_registry
 
         # Check that specs are loaded
@@ -74,7 +75,7 @@ def test_node_validation():
 
     try:
         # Create a mock node using proper enum values
-        from shared.models.node_enums import AIAgentSubtype, NodeType
+        from shared.models.node_enums import AIAgentSubtype, NodeType, OpenAIModel
         from shared.node_specs import node_spec_registry
 
         class MockNode:
@@ -84,7 +85,7 @@ def test_node_validation():
                 self.parameters = {
                     "system_prompt": "You are a helpful assistant",
                     "temperature": "0.7",
-                    "model_version": "gpt-4",
+                    "model_version": OpenAIModel.GPT_5_NANO.value,
                 }
                 # Add required input port
                 self.input_ports = [type("MockPort", (), {"name": "main"})()]

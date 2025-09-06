@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import requests
-
 from shared.models import NodeType
 from shared.models.node_enums import ActionSubtype
 from shared.node_specs import node_spec_registry
@@ -40,20 +39,39 @@ class ActionNodeExecutor(BaseNodeExecutor):
 
     def validate(self, node: Any) -> List[str]:
         """Validate action node configuration using spec-based validation."""
+        self.logger.info(
+            f"🎨 ACTION: Starting validation for node: {getattr(node, 'id', 'unknown')}"
+        )
+        self.logger.info(f"🎨 ACTION: Node subtype: {getattr(node, 'subtype', 'none')}")
+
         # First use the base class validation which includes spec validation
         errors = super().validate(node)
 
+        if errors:
+            self.logger.warning(f"🎨 ACTION: ⚠️ Base validation found {len(errors)} errors")
+            for error in errors:
+                self.logger.warning(f"🎨 ACTION:   - {error}")
+
         # If spec validation passed, we're done
         if not errors and self.spec:
+            self.logger.info("🎨 ACTION: ✅ Spec-based validation passed")
             return errors
 
         # Fallback to basic validation if spec not available
+        self.logger.info("🎨 ACTION: Using legacy validation")
+
         if not node.subtype:
-            errors.append("Action subtype is required")
+            error_msg = "Action subtype is required"
+            errors.append(error_msg)
+            self.logger.error(f"🎨 ACTION: ❌ {error_msg}")
             return errors
 
         if node.subtype not in self.get_supported_subtypes():
-            errors.append(f"Unsupported action subtype: {node.subtype}")
+            error_msg = f"Unsupported action subtype: {node.subtype}"
+            errors.append(error_msg)
+            self.logger.error(f"🎨 ACTION: ❌ {error_msg}")
+        else:
+            self.logger.info(f"🎨 ACTION: ✅ Subtype {node.subtype} is supported")
 
         return errors
 
@@ -111,12 +129,13 @@ class ActionNodeExecutor(BaseNodeExecutor):
 
     def execute(self, context: NodeExecutionContext) -> NodeExecutionResult:
         """Execute action node."""
-        start_time = time.time()
         logs = []
+        logs.append("Starting action node execution")
+        start_time = time.time()
 
         try:
             subtype = context.node.subtype
-            logs.append(f"Executing action node with subtype: {subtype}")
+            self.logger.info(f"Executing action node with subtype: {subtype}")
 
             if subtype == ActionSubtype.RUN_CODE.value:
                 return self._execute_run_code(context, logs, start_time)
@@ -156,7 +175,7 @@ class ActionNodeExecutor(BaseNodeExecutor):
         environment = self.get_parameter_with_spec(context, "environment")
         capture_output = self.get_parameter_with_spec(context, "capture_output")
 
-        logs.append(f"Running {language} code with timeout: {timeout}s")
+        self.logger.info(f"Running {language} code with timeout: {timeout}s")
 
         try:
             if language == "python":
@@ -201,6 +220,7 @@ class ActionNodeExecutor(BaseNodeExecutor):
     def _execute_http_request(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing HTTP request action")
         """Execute HTTP request with authentication support."""
         # Use spec-based parameter retrieval
         method = self.get_parameter_with_spec(context, "method")
@@ -213,18 +233,52 @@ class ActionNodeExecutor(BaseNodeExecutor):
         api_key_header = self.get_parameter_with_spec(context, "api_key_header")
         retry_attempts = self.get_parameter_with_spec(context, "retry_attempts")
 
+        # Validate and replace fake example API URLs
+        if url and ("example.com" in url):
+            self.logger.warning(f"Detected fake example API URL: {url}")
+
+            # Provide specific guidance for calendar APIs
+            if "calendar" in url.lower():
+                return self._create_error_result(
+                    f"Invalid calendar API URL detected: {url}. Use EXTERNAL_ACTION_NODE with GOOGLE_CALENDAR subtype for calendar operations instead of HTTP_REQUEST with fake URLs.",
+                    error_details={
+                        "error_type": "INVALID_CALENDAR_URL",
+                        "fake_url": url,
+                        "suggestion": "Replace this HTTP_REQUEST node with an EXTERNAL_ACTION_NODE using subtype 'GOOGLE_CALENDAR' and proper Google Calendar API integration",
+                    },
+                    execution_time=time.time() - start_time,
+                    logs=logs
+                    + [
+                        f"Blocked fake calendar URL: {url}",
+                        "Use proper GOOGLE_CALENDAR external action node instead",
+                    ],
+                )
+            else:
+                # Generic fake example.com URL error
+                return self._create_error_result(
+                    f"Invalid example API URL detected: {url}. Replace with a real API endpoint or use appropriate EXTERNAL_ACTION_NODE for supported services.",
+                    error_details={
+                        "error_type": "INVALID_EXAMPLE_URL",
+                        "fake_url": url,
+                        "suggestion": "Replace with real API endpoint or use EXTERNAL_ACTION_NODE for supported integrations like GOOGLE_CALENDAR, SLACK, GITHUB, etc.",
+                    },
+                    execution_time=time.time() - start_time,
+                    logs=logs
+                    + [f"Blocked fake example URL: {url}", "Replace with real API endpoint"],
+                )
+
         # Convert method to uppercase
         if method:
             method = method.upper()
 
         # Debug logging
-        logs.append(f"Making {method} request to {url} with auth: {authentication}")
+        self.logger.info(f"Making {method} request to {url} with auth: {authentication}")
 
         try:
             # Ensure headers is a dictionary
             if isinstance(headers, str):
                 headers = {}
-                logs.append("WARNING: headers was a string, using empty dict")
+                self.logger.info("WARNING: headers was a string, using empty dict")
             elif headers is None:
                 headers = {}
             else:
@@ -234,18 +288,18 @@ class ActionNodeExecutor(BaseNodeExecutor):
             # Also ensure data is a dictionary
             if isinstance(data, str):
                 data = {}
-                logs.append("WARNING: data was a string, using empty dict")
+                self.logger.info("WARNING: data was a string, using empty dict")
 
             # Handle authentication
             auth_obj = None
             if authentication and authentication != "none" and auth_token:
                 if authentication == "bearer":
                     headers["Authorization"] = f"Bearer {auth_token}"
-                    logs.append("Added Bearer token authentication")
+                    self.logger.info("Added Bearer token authentication")
                 elif authentication == "api_key":
                     key_header = api_key_header or "X-API-Key"
                     headers[key_header] = auth_token
-                    logs.append(f"Added API key authentication to {key_header} header")
+                    self.logger.info(f"Added API key authentication to {key_header} header")
                 elif authentication == "basic":
                     from requests.auth import HTTPBasicAuth
 
@@ -253,9 +307,9 @@ class ActionNodeExecutor(BaseNodeExecutor):
                     if ":" in auth_token:
                         username, password = auth_token.split(":", 1)
                         auth_obj = HTTPBasicAuth(username, password)
-                        logs.append("Added Basic authentication")
+                        self.logger.info("Added Basic authentication")
                     else:
-                        logs.append(
+                        self.logger.info(
                             "WARNING: Basic auth token should be in 'username:password' format"
                         )
 
@@ -296,11 +350,12 @@ class ActionNodeExecutor(BaseNodeExecutor):
     def _execute_data_transformation(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing data transformation action")
         """Execute data transformation."""
         transformation_type = context.get_parameter("transformation_type", "filter")
         transformation_config = context.get_parameter("transformation_config", {})
 
-        logs.append(f"Transforming data using {transformation_type}")
+        self.logger.info(f"Transforming data using {transformation_type}")
 
         try:
             input_data = context.input_data.get("data", [])
@@ -349,12 +404,13 @@ class ActionNodeExecutor(BaseNodeExecutor):
     def _execute_file_operation(
         self, context: NodeExecutionContext, logs: List[str], start_time: float
     ) -> NodeExecutionResult:
+        logs.append("Executing file operation action")
         """Execute file operation."""
         operation_type = context.get_parameter("operation_type", "read")
         file_path = context.get_parameter("file_path", "")
         content = context.get_parameter("content", "")
 
-        logs.append(f"Performing {operation_type} operation on {file_path}")
+        self.logger.info(f"Performing {operation_type} operation on {file_path}")
 
         try:
             if operation_type == "read":
@@ -612,7 +668,7 @@ class ActionNodeExecutor(BaseNodeExecutor):
         query = self.get_parameter_with_spec(context, "query")
         database_url = self.get_parameter_with_spec(context, "database_url")
 
-        logs.append(f"Executing database query: {query[:50]}...")
+        self.logger.info(f"Executing database query: {query[:50]}...")
 
         # Mock implementation - would connect to actual database in production
         output_data = {
@@ -624,6 +680,7 @@ class ActionNodeExecutor(BaseNodeExecutor):
             "executed_at": datetime.now().isoformat(),
         }
 
+        logs.append(f"Action completed successfully: {action_type}")
         return self._create_success_result(
             output_data=output_data, execution_time=time.time() - start_time, logs=logs
         )
@@ -635,7 +692,7 @@ class ActionNodeExecutor(BaseNodeExecutor):
         query = self.get_parameter_with_spec(context, "search_query")
         max_results = self.get_parameter_with_spec(context, "max_results")
 
-        logs.append(f"Searching web for: {query}")
+        self.logger.info(f"Searching web for: {query}")
 
         # Mock implementation - would use actual search API in production
         output_data = {
@@ -657,6 +714,7 @@ class ActionNodeExecutor(BaseNodeExecutor):
             "executed_at": datetime.now().isoformat(),
         }
 
+        logs.append(f"Action completed successfully: {action_type}")
         return self._create_success_result(
             output_data=output_data, execution_time=time.time() - start_time, logs=logs
         )

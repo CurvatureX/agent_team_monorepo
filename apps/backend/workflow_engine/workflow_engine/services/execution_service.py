@@ -51,6 +51,17 @@ class ExecutionService:
     async def execute_workflow(self, request: ExecuteWorkflowRequest) -> str:
         """Execute a workflow and return the execution ID."""
         try:
+            self.logger.info(f"🔥🔥🔥 EXECUTION SERVICE ENTRY: workflow_id={request.workflow_id}")
+            self.logger.info(f"🔥🔥🔥 EXECUTION SERVICE: user_id={request.user_id}")
+            self.logger.info(
+                f"🔥🔥🔥 EXECUTION SERVICE: trigger_data_keys={list(request.trigger_data.keys()) if request.trigger_data else 'NO_TRIGGER_DATA'}"
+            )
+            
+            # 新增：start_from_node支持日志
+            if hasattr(request, 'start_from_node') and request.start_from_node:
+                self.logger.info(f"🎯 EXECUTION SERVICE: start_from_node={request.start_from_node}")
+                self.logger.info(f"🎯 EXECUTION SERVICE: skip_trigger_validation={getattr(request, 'skip_trigger_validation', False)}")
+
             self.logger.info(
                 f"🚀 ExecutionService: Starting workflow execution for: {request.workflow_id}"
             )
@@ -84,6 +95,8 @@ class ExecutionService:
                     "trigger_data": request.trigger_data,
                     "user_id": request.user_id,  # Also store in metadata for reference
                     "session_id": request.session_id if hasattr(request, "session_id") else None,
+                    "start_from_node": getattr(request, 'start_from_node', None),  # 新增：记录起始节点
+                    "skip_trigger_validation": getattr(request, 'skip_trigger_validation', False),  # 新增：记录跳过触发器验证
                 }
                 # user_id=request.user_id,  # TODO: Add user_id field to WorkflowExecution model
                 # session_id=request.session_id,  # TODO: Add session_id field to WorkflowExecution model
@@ -127,56 +140,51 @@ class ExecutionService:
                     self.logger.info(
                         f"   Node {i+1}: {node.get('name', 'Unnamed')} (type: {node.get('type')}, subtype: {node.get('subtype')}, id: {node.get('id')})"
                     )
+                
+                # 新增：处理start_from_node逻辑
+                start_from_node = getattr(request, 'start_from_node', None)
+                skip_trigger_validation = getattr(request, 'skip_trigger_validation', False)
+                
+                if start_from_node:
+                    # 验证节点是否存在
+                    if not self._validate_node_exists(workflow_dict, start_from_node):
+                        raise ValueError(f"Start node '{start_from_node}' not found in workflow")
+                    
+                    self.logger.info(f"🎯 Executing from specific node: {start_from_node}")
+                    
+                    # 修改workflow_dict以支持从指定节点开始执行
+                    workflow_dict = self._modify_workflow_for_start_node(
+                        workflow_dict, 
+                        start_from_node, 
+                        skip_trigger_validation
+                    )
 
-                execution_result = await self.execution_engine.execute_workflow(
-                    workflow_id=request.workflow_id,
-                    execution_id=execution_id,
-                    workflow_definition=workflow_dict,
-                    initial_data=request.trigger_data,
-                    credentials={},  # TODO: Add credential handling
-                    user_id=request.user_id,
+                # 启动后台异步执行，不等待完成
+                import asyncio
+                
+                # 创建后台任务执行workflow
+                task = asyncio.create_task(
+                    self._execute_workflow_background(
+                        workflow_id=request.workflow_id,
+                        execution_id=execution_id,
+                        workflow_definition=workflow_dict,
+                        initial_data=request.trigger_data,
+                        credentials={},  # TODO: Add credential handling
+                        user_id=request.user_id,
+                    )
                 )
-
-                self.logger.info(
-                    f"🏁 Execution engine returned - status: {execution_result.get('status', 'UNKNOWN')}"
-                )
-                if execution_result.get("errors"):
-                    self.logger.error(f"⚠️ Execution errors: {execution_result['errors']}")
-
-                # Update execution record with results
-                if execution_result["status"] == "completed":
-                    db_execution.status = ExecutionStatus.SUCCESS.value
-                elif execution_result["status"] == "ERROR":
-                    db_execution.status = ExecutionStatus.ERROR.value
-                    db_execution.error_message = "; ".join(execution_result.get("errors", []))
-                else:
-                    db_execution.status = execution_result["status"].upper()
-
-                db_execution.end_time = int(datetime.now().timestamp())
-
-                # Store execution results
-                if "node_results" in execution_result:
-                    db_execution.run_data = {
-                        "node_results": execution_result["node_results"],
-                        "execution_order": execution_result.get("execution_order", []),
-                        "performance_metrics": execution_result.get("performance_metrics", {}),
-                    }
-
-                if execution_result.get("error"):
-                    db_execution.error_message = execution_result["error"]
-                    db_execution.error_details = execution_result.get("error_details", {})
-
-                self.db.commit()
-                self.logger.info(f"Workflow execution completed: {execution_id}")
+                
+                # 立即返回execution_id，不等待执行完成
+                self.logger.info(f"✅ Background task created for execution: {execution_id}")
 
             except Exception as exec_error:
-                # Update status to ERROR if execution fails
+                # Update status to ERROR if execution fails during setup
                 db_execution.status = ExecutionStatus.ERROR.value
                 db_execution.error_message = str(exec_error)
                 db_execution.end_time = int(datetime.now().timestamp())
                 self.db.commit()
-                self.logger.error(f"Workflow execution failed: {execution_id} - {exec_error}")
-                # Don't re-raise the exception, just log it and return the execution_id
+                self.logger.error(f"Workflow execution setup failed: {execution_id} - {exec_error}")
+                raise
 
             return execution_id
 
@@ -526,3 +534,163 @@ class ExecutionService:
                     pass
 
             raise
+
+    def _validate_node_exists(self, workflow_dict: dict, node_id: str) -> bool:
+        """验证指定的节点是否存在于workflow中"""
+        nodes = workflow_dict.get('nodes', [])
+        for node in nodes:
+            if node.get('id') == node_id:
+                return True
+        return False
+    
+    def _modify_workflow_for_start_node(
+        self, 
+        workflow_dict: dict, 
+        start_node_id: str, 
+        skip_trigger_validation: bool = False
+    ) -> dict:
+        """
+        修改workflow定义以支持从指定节点开始执行
+        
+        策略：
+        1. 创建一个临时的MANUAL触发器节点
+        2. 将该触发器连接到指定的起始节点
+        3. 保留原有的节点和连接关系
+        """
+        self.logger.info(f"🔧 Modifying workflow to start from node: {start_node_id}")
+        
+        # 创建新的workflow定义副本
+        modified_workflow = workflow_dict.copy()
+        
+        # 创建临时的MANUAL触发器节点
+        temp_trigger_id = f"temp_trigger_for_{start_node_id}"
+        temp_trigger = {
+            "id": temp_trigger_id,
+            "name": f"Temporary Trigger for {start_node_id}",
+            "type": "TRIGGER",
+            "subtype": "MANUAL",
+            "type_version": 1,
+            "position": {"x": 0.0, "y": 0.0},
+            "parameters": {
+                "description": f"Temporary trigger to start execution from {start_node_id}",
+                "trigger_name": f"Start from {start_node_id}"
+            },
+            "credentials": {},
+            "disabled": False,
+            "on_error": "continue",
+            "retry_policy": None,
+            "notes": {},
+            "webhooks": []
+        }
+        
+        # 添加临时触发器到节点列表的开头
+        if 'nodes' not in modified_workflow:
+            modified_workflow['nodes'] = []
+        modified_workflow['nodes'].insert(0, temp_trigger)
+        
+        # 修改连接：让临时触发器连接到指定的起始节点
+        if 'connections' not in modified_workflow:
+            modified_workflow['connections'] = {}
+            
+        # 添加临时触发器的连接
+        modified_workflow['connections'][temp_trigger_id] = {
+            "connection_types": {
+                "main": {
+                    "connections": [
+                        {
+                            "node": start_node_id,
+                            "type": "main",
+                            "index": 0
+                        }
+                    ]
+                }
+            }
+        }
+        
+        self.logger.info(f"✅ Successfully modified workflow to start from {start_node_id}")
+        self.logger.info(f"📊 Modified workflow now has {len(modified_workflow['nodes'])} nodes")
+        
+        return modified_workflow
+
+    async def _execute_workflow_background(
+        self,
+        workflow_id: str,
+        execution_id: str,
+        workflow_definition: dict,
+        initial_data: dict,
+        credentials: dict,
+        user_id: str,
+    ):
+        """在后台异步执行workflow，并更新数据库状态"""
+        try:
+            self.logger.info(f"🚀 Background execution started for: {execution_id}")
+            
+            # 执行workflow
+            execution_result = await self.execution_engine.execute_workflow(
+                workflow_id=workflow_id,
+                execution_id=execution_id,
+                workflow_definition=workflow_definition,
+                initial_data=initial_data,
+                credentials=credentials,
+                user_id=user_id,
+            )
+            
+            self.logger.info(
+                f"🏁 Background execution completed - status: {execution_result.get('status', 'UNKNOWN')}"
+            )
+            
+            # 更新数据库状态
+            db_execution = (
+                self.db.query(ExecutionModel)
+                .filter(ExecutionModel.execution_id == execution_id)
+                .first()
+            )
+            
+            if db_execution:
+                # Update execution record with results
+                if execution_result["status"] == "completed":
+                    db_execution.status = ExecutionStatus.SUCCESS.value
+                elif execution_result["status"] == "ERROR":
+                    db_execution.status = ExecutionStatus.ERROR.value
+                    db_execution.error_message = "; ".join(execution_result.get("errors", []))
+                else:
+                    db_execution.status = execution_result["status"].upper()
+
+                db_execution.end_time = int(datetime.now().timestamp())
+
+                # Store execution results
+                if "node_results" in execution_result:
+                    db_execution.run_data = {
+                        "node_results": execution_result["node_results"],
+                        "execution_order": execution_result.get("execution_order", []),
+                        "performance_metrics": execution_result.get("performance_metrics", {}),
+                    }
+
+                if execution_result.get("error"):
+                    db_execution.error_message = execution_result["error"]
+                    db_execution.error_details = execution_result.get("error_details", {})
+
+                self.db.commit()
+                self.logger.info(f"✅ Background execution database updated: {execution_id}")
+            else:
+                self.logger.error(f"❌ Execution record not found for background update: {execution_id}")
+                
+        except Exception as e:
+            self.logger.error(f"❌ Background execution failed: {execution_id} - {e}")
+            
+            # 更新数据库状态为错误
+            try:
+                db_execution = (
+                    self.db.query(ExecutionModel)
+                    .filter(ExecutionModel.execution_id == execution_id)
+                    .first()
+                )
+                
+                if db_execution:
+                    db_execution.status = ExecutionStatus.ERROR.value
+                    db_execution.error_message = str(e)
+                    db_execution.end_time = int(datetime.now().timestamp())
+                    self.db.commit()
+                    self.logger.info(f"✅ Background execution error status updated: {execution_id}")
+            except Exception as update_error:
+                self.logger.error(f"❌ Failed to update error status: {update_error}")

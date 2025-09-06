@@ -16,13 +16,14 @@ sys.path.insert(0, str(current_dir))
 
 # 手动加载环境变量
 from dotenv import load_dotenv
-env_path = backend_dir / '.env'
+
+env_path = backend_dir / ".env"
 print(f"🔍 加载环境变量从: {env_path}")
 print(f"📁 文件存在: {env_path.exists()}")
 load_dotenv(env_path)
 
 # 验证关键环境变量
-required_vars = ['DATABASE_URL']
+required_vars = ["DATABASE_URL"]
 missing_vars = []
 
 for var in required_vars:
@@ -40,16 +41,12 @@ print(f"🔧 PORT: {os.getenv('PORT', '8002')}")
 # 启动服务
 if __name__ == "__main__":
     import uvicorn
+
     from workflow_engine.main import app
-    
-    port = int(os.getenv('PORT', '8002'))
-    host = os.getenv('HOST', '0.0.0.0')
-    
+
+    port = int(os.getenv("PORT", "8002"))
+    host = os.getenv("HOST", "0.0.0.0")
+
     print(f"🚀 启动服务: http://{host}:{port}")
-    
-    uvicorn.run(
-        app,
-        host=host,
-        port=port,
-        reload=False  # 禁用reload避免多进程问题
-    )
+
+    uvicorn.run(app, host=host, port=port, reload=False)  # 禁用reload避免多进程问题

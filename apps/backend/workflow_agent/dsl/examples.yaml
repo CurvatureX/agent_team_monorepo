@@ -25,7 +25,7 @@ examples:
           subtype: AI_OPENAI_NODE
           role: "Analyze message content and priority"
           parameters:
-            model_version: "gpt-4"
+            model_version: "gpt-5-nano"
             system_prompt: "You are a message analyzer. Analyze incoming messages for urgency and category. Classify urgency as low/medium/high and categorize by topic."
 
         - name: "email_sender"
@@ -73,7 +73,7 @@ examples:
           subtype: AI_GEMINI_NODE
           role: "Collect data from multiple sources"
           parameters:
-            model_version: "gemini-pro"
+            model_version: "gemini-2.5-flash-lite"
             system_prompt: "You are a data integration specialist. Collect and consolidate data from multiple sources (GitHub, Slack, Calendar) into a unified format."
             sources: ["github", "slack", "calendar"]
             date_range: "7_days"
@@ -110,7 +110,7 @@ examples:
           subtype: AI_CLAUDE_NODE
           role: "Generate comprehensive weekly report"
           parameters:
-            model_version: "claude-3-sonnet"
+            model_version: "claude-3-5-haiku-20241022"
             system_prompt: "You are a professional report writer. Generate comprehensive weekly reports from consolidated data, focusing on key insights, trends, and actionable recommendations."
             template: "weekly_report_template"
             format: "markdown"
@@ -212,7 +212,7 @@ examples:
           subtype: AI_OPENAI_NODE
           role: "Analyze document content and compliance"
           parameters:
-            model_version: "gpt-4"
+            model_version: "gpt-5-nano"
             system_prompt: "You are a document compliance analyst. Review documents for content quality, regulatory compliance, and identify potential issues or recommendations."
             check_compliance: true
             extract_metadata: true

@@ -25,6 +25,8 @@ class ChatRequest(BaseModel):
 
     session_id: str = Field(description="会话ID")
     user_message: str = Field(description="用户消息内容")
+    action: Optional[str] = Field(default=None, description="操作类型: create, edit, copy")
+    workflow_id: Optional[str] = Field(default=None, description="要编辑或复制的工作流ID")
 
     @field_validator("user_message")
     @classmethod
@@ -33,6 +35,15 @@ class ChatRequest(BaseModel):
         if not v or not v.strip():
             raise ValueError("User message cannot be empty")
         return v.strip()
+    
+    @field_validator("workflow_id")
+    @classmethod
+    def validate_workflow_id(cls, v, values):
+        """验证workflow_id在edit或copy模式下必须提供"""
+        action = values.data.get("action")
+        if action in ["edit", "copy"] and not v:
+            raise ValueError(f"workflow_id is required when action is '{action}'")
+        return v
 
 
 class ChatMessage(BaseModel):
@@ -51,6 +62,7 @@ class ChatMessage(BaseModel):
 
 class SSEEventType(str, Enum):
     """SSE事件类型枚举"""
+
     MESSAGE = "message"
     STATUS_CHANGE = "status_change"
     WORKFLOW = "workflow"
@@ -60,6 +72,7 @@ class SSEEventType(str, Enum):
 
 class MessageEventData(BaseModel):
     """消息事件数据"""
+
     text: str = Field(description="消息文本内容")
     role: str = Field(default="assistant", description="消息角色")
     status: Optional[str] = Field(default=None, description="处理状态")
@@ -68,6 +81,7 @@ class MessageEventData(BaseModel):
 
 class StatusChangeEventData(BaseModel):
     """状态变更事件数据"""
+
     previous_stage: Optional[str] = Field(description="前一阶段")
     current_stage: str = Field(description="当前阶段")
     stage_state: Optional[Dict[str, Any]] = Field(default=None, description="阶段状态详情")
@@ -76,12 +90,14 @@ class StatusChangeEventData(BaseModel):
 
 class WorkflowEventData(BaseModel):
     """工作流事件数据"""
+
     text: str = Field(description="工作流生成消息")
     workflow: Dict[str, Any] = Field(description="工作流定义")
 
 
 class ErrorEventData(BaseModel):
     """错误事件数据"""
+
     error: Optional[str] = Field(default=None, description="错误消息")
     error_type: Optional[str] = Field(default=None, description="错误类型")
     error_code: Optional[str] = Field(default=None, description="错误代码")
@@ -92,6 +108,7 @@ class ErrorEventData(BaseModel):
 
 class DebugEventData(BaseModel):
     """调试事件数据"""
+
     message: str = Field(description="调试消息")
     raw_response: Optional[Dict[str, Any]] = Field(default=None, description="原始响应")
 
@@ -103,14 +120,14 @@ EventDataType = Union[
     WorkflowEventData,
     ErrorEventData,
     DebugEventData,
-    Dict[str, Any]
+    Dict[str, Any],
 ]
 
 
 class ChatSSEEvent(BaseModel):
     """
     聊天SSE事件模型 - 用于流式响应
-    
+
     不同类型的事件会有不同的data结构:
     - message: MessageEventData
     - status_change: StatusChangeEventData
@@ -132,11 +149,11 @@ class ChatSSEEvent(BaseModel):
                     "type": "message",
                     "data": {
                         "text": "What specific conditions should trigger the sync?",
-                        "role": "assistant"
+                        "role": "assistant",
                     },
                     "session_id": "2800ed2b-d902-4151-b68d-5c3381d06e46",
                     "timestamp": "2025-07-31T06:48:08.473674+00:00",
-                    "is_final": True
+                    "is_final": True,
                 },
                 {
                     "type": "status_change",
@@ -144,25 +161,22 @@ class ChatSSEEvent(BaseModel):
                         "previous_stage": "clarification",
                         "current_stage": "negotiation",
                         "stage_state": {},
-                        "node_name": "negotiation_node"
+                        "node_name": "negotiation_node",
                     },
                     "session_id": "2800ed2b-d902-4151-b68d-5c3381d06e46",
                     "timestamp": "2025-07-31T06:48:08.473674+00:00",
-                    "is_final": False
+                    "is_final": False,
                 },
                 {
                     "type": "workflow",
                     "data": {
                         "text": "Workflow generated successfully!",
-                        "workflow": {
-                            "name": "Gmail to Slack Sync",
-                            "nodes": []
-                        }
+                        "workflow": {"name": "Gmail to Slack Sync", "nodes": []},
                     },
                     "session_id": "2800ed2b-d902-4151-b68d-5c3381d06e46",
                     "timestamp": "2025-07-31T06:48:08.473674+00:00",
-                    "is_final": False
-                }
+                    "is_final": False,
+                },
             ]
         }
 
@@ -172,14 +186,11 @@ class ChatStreamResponse(BaseModel):
     聊天流式响应包装模型
     用于Swagger文档展示SSE响应格式
     """
-    event_stream: List[ChatSSEEvent] = Field(
-        description="SSE事件流，实际响应为text/event-stream格式"
-    )
-    
+
+    event_stream: List[ChatSSEEvent] = Field(description="SSE事件流，实际响应为text/event-stream格式")
+
     class Config:
-        json_schema_extra = {
-            "description": "注意：实际响应为SSE (Server-Sent Events) 流式格式，此模型仅用于文档展示"
-        }
+        json_schema_extra = {"description": "注意：实际响应为SSE (Server-Sent Events) 流式格式，此模型仅用于文档展示"}
 
 
 class ChatHistory(BaseModel):
