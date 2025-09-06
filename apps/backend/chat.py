@@ -30,6 +30,8 @@ TEST_USER_PASSWORD = os.getenv("TEST_USER_PASSWORD")
 class CleanChatTester:
     def __init__(self):
         self.session = requests.Session()
+        # Bypass proxy for localhost
+        self.session.trust_env = False
         self.access_token = None
         self.session_id = None
 
@@ -47,25 +49,44 @@ class CleanChatTester:
         )
 
         if response.status_code == 200:
-            self.access_token = response.json().get("access_token")
+            auth_data = response.json()
+            self.access_token = auth_data.get("access_token")
+            if not self.access_token:
+                print(f"{Fore.RED}✗ No access token in response{Style.RESET_ALL}")
+                print(f"{Fore.RED}Response keys: {auth_data.keys()}{Style.RESET_ALL}")
+                return False
             print(f"{Fore.GREEN}✓ Authentication successful{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}Token preview: {self.access_token[:20]}...{Style.RESET_ALL}")
             return True
         else:
             print(f"{Fore.RED}✗ Authentication failed: {response.status_code}{Style.RESET_ALL}")
+            print(f"{Fore.RED}Response: {response.text[:500]}{Style.RESET_ALL}")
             return False
 
     def create_session(self):
         """Create chat session"""
         print(f"\n{Fore.CYAN}📝 Creating session...{Style.RESET_ALL}")
-
-        response = self.session.post(
-            f"{API_BASE_URL}/api/v1/app/sessions",
-            headers={
-                "Authorization": f"Bearer {self.access_token}",
-                "Content-Type": "application/json",
-            },
-            json={"action": "create"},
-        )
+        
+        url = f"{API_BASE_URL}/api/v1/app/sessions"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
+        
+        print(f"{Fore.CYAN}Request URL: {url}{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}Auth header preview: Bearer {self.access_token[:30]}...{Style.RESET_ALL}")
+        
+        try:
+            # Use session (which now has proxy disabled)
+            response = self.session.post(
+                url,
+                headers=headers,
+                json={"action": "create"},
+                timeout=10,
+            )
+        except requests.exceptions.RequestException as e:
+            print(f"{Fore.RED}Request exception: {e}{Style.RESET_ALL}")
+            return False
 
         if response.status_code == 200:
             self.session_id = response.json()["session"]["id"]
@@ -73,6 +94,8 @@ class CleanChatTester:
             return True
         else:
             print(f"{Fore.RED}✗ Session creation failed: {response.status_code}{Style.RESET_ALL}")
+            print(f"{Fore.RED}Response text: {response.text[:500]}{Style.RESET_ALL}")
+            print(f"{Fore.RED}Request URL: {API_BASE_URL}/api/v1/app/sessions{Style.RESET_ALL}")
             return False
 
     def chat(self, message):

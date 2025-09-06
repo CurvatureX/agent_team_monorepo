@@ -28,7 +28,7 @@ class WorkflowAgentHTTPClient:
         self.timeout = httpx.Timeout(
             timeout=600.0,  # 10 minutes total timeout (increased for complex workflows)
             connect=10.0,  # 10 seconds connection timeout
-            read=120.0,  # 120 seconds read timeout per chunk (doubled for LLM generation)
+            read=300.0,  # 300 seconds (5 minutes) read timeout per chunk for very complex workflows
             write=30.0,  # 30 seconds write timeout
         )
         self.connected = False

@@ -178,8 +178,22 @@ The connections MUST use the nested structure with "connection_types":
 }
 ```
 
+## AI Agent Node System Prompts
+When creating AI_AGENT nodes that connect to other nodes:
+1. Use MCP's get_node_details() to understand the EXACT input format expected by the next node
+2. Include those format requirements in the AI_AGENT's system_prompt
+3. The system prompt MUST specify:
+   - That output should be JSON (if the next node expects JSON)
+   - The exact field names and types from MCP specification
+   - That no markdown or explanations should be included
+4. Example: If AI_AGENT connects to GOOGLE_CALENDAR:
+   - Call get_node_details(["EXTERNAL_ACTION:GOOGLE_CALENDAR"])
+   - Check the required parameters (summary, start, end, etc.)
+   - Add to system_prompt: "Output a JSON object with fields: summary (string), start (object with dateTime and timeZone), end (object with dateTime and timeZone), description (string), attendees (array of objects with email field)"
+
 Remember:
 1. Keep it SIMPLE - use minimum nodes needed to accomplish the task
 2. MCP COMPLIANCE - Every parameter value MUST match its MCP-specified type
 3. NO "mock-" PREFIX - Generate actual example values, not placeholder strings
 4. CONNECTIONS - Must use "connection_types" wrapper structure
+5. AI AGENT PROMPTS - Must specify output format when connecting to action nodes
