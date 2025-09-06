@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useRef, useEffect, useMemo, DragEvent } from 'react';
+import React, { useCallback, useRef, useEffect, useMemo, DragEvent, useState } from 'react';
 import ReactFlow, {
   ReactFlowProvider,
   MiniMap,
@@ -20,10 +20,13 @@ import { cn } from '@/lib/utils';
 import { useWorkflow, useEditorUI, useNodeTemplates } from '@/store/hooks';
 import { CustomNode } from './CustomNode';
 import { CanvasControls } from './CanvasControls';
+import { ExecutionStatusPanel } from '../ExecutionStatusPanel';
 import type { Workflow } from '@/types/workflow';
 import type { WorkflowNode, WorkflowEdge } from '@/types/workflow-editor';
 import type { NodeTemplate } from '@/types/node-template';
 import { isValidConnection } from '@/utils/nodeHelpers';
+import { useWorkflowExecution, useExecutionStatus, useExecutionCancel, type ExecutionStatus } from '@/lib/api/hooks/useExecutionApi';
+import { useToast } from '@/hooks/use-toast';
 
 interface EnhancedWorkflowCanvasProps {
   workflow?: Workflow;
@@ -32,6 +35,7 @@ interface EnhancedWorkflowCanvasProps {
   isSaving?: boolean;
   readOnly?: boolean;
   className?: string;
+  onExecute?: (workflowId: string) => void;
 }
 
 // Define node types
@@ -45,9 +49,16 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
   isSaving = false,
   readOnly = false,
   className,
+  onExecute,
 }) => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { project } = useReactFlow();
+  const { toast } = useToast();
+  
+  // Execution state
+  const { executeWorkflow, isExecuting, executionId } = useWorkflowExecution();
+  const { cancelExecution } = useExecutionCancel();
+  const [executionStatus, setExecutionStatus] = useState<'idle' | 'running' | 'completed' | 'failed'>('idle');
   
   const {
     nodes,
@@ -79,12 +90,215 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
     }
   }, [workflow, templates, importWorkflow]);
 
+  // Update node execution status based on execution results
+  const updateNodeExecutionStatus = useCallback((executionStatus: ExecutionStatus) => {
+    // Handle both node_executions array and run_data.node_results object
+    const nodeResults = executionStatus?.run_data?.node_results || {};
+    const nodeExecutions = executionStatus?.node_executions || [];
+    
+    // If we have run_data.node_results (backend format)
+    if (Object.keys(nodeResults).length > 0) {
+      setNodes((currentNodes) => {
+        return currentNodes.map((node) => {
+          // Check if this node has results
+          const nodeResult = nodeResults[node.id];
+          
+          if (nodeResult) {
+            console.log(`Updating node ${node.id} status to:`, nodeResult.status);
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                status: nodeResult.status === 'SUCCESS' ? 'success' :
+                        nodeResult.status === 'FAILED' || nodeResult.status === 'ERROR' ? 'error' :
+                        nodeResult.status === 'RUNNING' ? 'running' : 'idle'
+              }
+            };
+          }
+          
+          return node;
+        });
+      });
+    }
+    // Fallback to node_executions array format
+    else if (nodeExecutions.length > 0) {
+      setNodes((currentNodes) => {
+        return currentNodes.map((node) => {
+          const nodeExecution = nodeExecutions.find(
+            (ne) => ne.node_id === node.id
+          );
+          
+          if (nodeExecution) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                status: nodeExecution.status === 'COMPLETED' || nodeExecution.status === 'SUCCESS' ? 'success' :
+                        nodeExecution.status === 'FAILED' || nodeExecution.status === 'ERROR' ? 'error' :
+                        nodeExecution.status === 'RUNNING' ? 'running' : 'idle'
+              }
+            };
+          }
+          
+          return node;
+        });
+      });
+    }
+  }, [setNodes]);
+
+  // Clear node execution status
+  const clearNodeExecutionStatus = useCallback(() => {
+    setNodes((currentNodes) => {
+      return currentNodes.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          status: 'idle'
+        }
+      }));
+    });
+  }, [setNodes]);
+
+  // Calculate duration helper
+  const calculateDuration = (start?: string, end?: string) => {
+    if (!start || !end) return 'N/A';
+    const duration = new Date(end).getTime() - new Date(start).getTime();
+    const seconds = Math.floor(duration / 1000);
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}m ${remainingSeconds}s`;
+  };
+
+  // Use execution status polling
+  const { status, isPolling } = useExecutionStatus(executionId, {
+    interval: 2000,
+    maxDuration: 600000, // 10 minutes max
+    enabled: !!executionId && executionStatus === 'running',
+    onComplete: (status) => {
+      console.log('Execution completed with status:', status);
+      setExecutionStatus('completed');
+      updateNodeExecutionStatus(status);
+      
+      // Calculate duration for display
+      let duration = 'N/A';
+      if (status.start_time && status.end_time) {
+        // Handle both timestamp formats (unix timestamp or ISO string)
+        const start = typeof status.start_time === 'number' 
+          ? status.start_time * 1000 
+          : new Date(status.start_time).getTime();
+        const end = typeof status.end_time === 'number'
+          ? status.end_time * 1000
+          : new Date(status.end_time).getTime();
+        duration = calculateDuration(new Date(start).toISOString(), new Date(end).toISOString());
+      }
+      
+      toast({
+        title: "Workflow Execution Completed",
+        description: `Execution finished successfully in ${duration}`,
+      });
+    },
+    onError: (error) => {
+      console.error('Execution failed:', error);
+      setExecutionStatus('failed');
+      toast({
+        title: "Workflow Execution Failed",
+        description: error,
+        variant: "destructive",
+      });
+    },
+    onTimeout: () => {
+      console.warn('Execution timeout');
+      setExecutionStatus('failed');
+      toast({
+        title: "Execution Timeout",
+        description: "The workflow execution took too long and was stopped",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Update nodes whenever status changes during polling
+  useEffect(() => {
+    if (status) {
+      console.log('Received execution status update:', {
+        status: status.status,
+        isPolling,
+        hasNodeResults: !!(status.run_data?.node_results),
+        nodeResultsCount: Object.keys(status.run_data?.node_results || {}).length
+      });
+      
+      if (isPolling) {
+        updateNodeExecutionStatus(status);
+      }
+    }
+  }, [status, isPolling, updateNodeExecutionStatus]);
+
   // Handle save with current editor state
   const handleSaveWithCurrentState = useCallback(() => {
     if (onSave) {
       onSave();
     }
   }, [onSave]);
+
+  // Handle workflow execution
+  const handleExecute = useCallback(async () => {
+    if (!workflow?.id) {
+      toast({
+        title: "Cannot Execute",
+        description: "Please save the workflow before executing",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // Clear previous execution status from nodes
+      clearNodeExecutionStatus();
+      setExecutionStatus('running');
+      const execId = await executeWorkflow(workflow.id, {});
+      
+      toast({
+        title: "Workflow Execution Started",
+        description: `Execution ID: ${execId}`,
+      });
+
+      // Optional: Call parent callback
+      if (onExecute) {
+        onExecute(workflow.id);
+      }
+    } catch (error) {
+      const err = error as Error;
+      setExecutionStatus('failed');
+      toast({
+        title: "Failed to Execute",
+        description: err.message || "An error occurred while starting the execution",
+        variant: "destructive",
+      });
+    }
+  }, [workflow, executeWorkflow, toast, onExecute, clearNodeExecutionStatus]);
+
+  // Handle stop execution
+  const handleStopExecution = useCallback(async () => {
+    if (!executionId) return;
+
+    try {
+      await cancelExecution(executionId);
+      setExecutionStatus('idle');
+      clearNodeExecutionStatus(); // Clear node status when stopping
+      toast({
+        title: "Execution Cancelled",
+        description: "The workflow execution has been stopped",
+      });
+    } catch (error) {
+      const err = error as Error;
+      toast({
+        title: "Failed to Cancel",
+        description: err.message || "Could not cancel the execution",
+        variant: "destructive",
+      });
+    }
+  }, [executionId, cancelExecution, toast, clearNodeExecutionStatus]);
 
   // Handle node changes
   const onNodesChange = useCallback(
@@ -254,6 +468,10 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
           readOnly={readOnly} 
           onSave={handleSaveWithCurrentState}
           isSaving={isSaving}
+          onExecute={handleExecute}
+          onStopExecution={handleStopExecution}
+          isExecuting={isExecuting || isPolling}
+          executionStatus={executionStatus}
         />
         
         {showMinimap && (
@@ -290,6 +508,21 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
           />
         )}
       </ReactFlow>
+      
+      {/* Execution Status Panel */}
+      {(executionId || isPolling) && (
+        <ExecutionStatusPanel
+          status={status}
+          isPolling={isPolling}
+          onClose={() => {
+            // Only allow closing when not actively running
+            if (executionStatus !== 'running') {
+              setExecutionStatus('idle');
+              clearNodeExecutionStatus();
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

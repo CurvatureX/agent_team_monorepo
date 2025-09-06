@@ -15,6 +15,13 @@ export const CustomNode = memo<CustomNodeProps>(({ data, selected }) => {
   const Icon = getNodeIcon(data.template.node_type, data.template.node_subtype);
   const colorScheme = getCategoryColor(data.template.category);
   const parameterPreview = getParameterPreview(data.parameters);
+  
+  // Debug: Log status changes
+  React.useEffect(() => {
+    if (data.status && data.status !== 'idle') {
+      console.log(`Node ${data.label} status:`, data.status);
+    }
+  }, [data.status, data.label]);
 
   return (
     <TooltipProvider>
@@ -22,9 +29,9 @@ export const CustomNode = memo<CustomNodeProps>(({ data, selected }) => {
         className={cn(
           'min-w-[200px] max-w-[280px] border-2 transition-all duration-200 shadow-lg',
           selected ? 'border-primary shadow-xl' : colorScheme.border,
-          data.status === 'running' && 'animate-pulse',
-          data.status === 'error' && 'border-destructive bg-destructive/5',
-          data.status === 'success' && 'border-green-500 bg-green-500/5'
+          data.status === 'running' && 'animate-pulse border-blue-500 bg-blue-500/10',
+          data.status === 'error' && 'border-red-500 bg-red-500/10',
+          data.status === 'success' && 'border-green-500 bg-green-500/10'
         )}
       >
         <CardHeader className="p-3 pb-2">
@@ -38,26 +45,30 @@ export const CustomNode = memo<CustomNodeProps>(({ data, selected }) => {
                 {data.template.node_type.replace(/_/g, ' ')}
               </p>
             </div>
-            {/* Status badge */}
-            {data.status && data.status !== 'idle' && (
+            {/* Status badge - Always show for debugging */}
+            {data.status && (
               <Tooltip>
                 <TooltipTrigger>
                   <Badge
                     variant={data.status === 'error' ? 'destructive' : 
-                            data.status === 'success' ? 'default' : 'secondary'}
+                            data.status === 'success' ? 'default' : 
+                            data.status === 'idle' ? 'outline' : 'secondary'}
                     className={cn(
-                      'text-xs px-1.5 py-0.5 h-5',
-                      data.status === 'running' && 'animate-pulse',
-                      data.status === 'success' && 'bg-green-500 hover:bg-green-600'
+                      'text-sm px-2 py-1 h-6 min-w-[24px] font-bold',
+                      data.status === 'running' && 'animate-pulse bg-blue-500 hover:bg-blue-600 text-white',
+                      data.status === 'success' && 'bg-green-500 hover:bg-green-600 text-white',
+                      data.status === 'error' && 'bg-red-500 hover:bg-red-600 text-white',
+                      data.status === 'idle' && 'opacity-30'
                     )}
                   >
                     {data.status === 'running' && '●'}
                     {data.status === 'success' && '✓'}
                     {data.status === 'error' && '✕'}
+                    {data.status === 'idle' && '○'}
                   </Badge>
                 </TooltipTrigger>
                 <TooltipContent>
-                  Status: {data.status}
+                  Status: {data.status || 'unknown'}
                 </TooltipContent>
               </Tooltip>
             )}

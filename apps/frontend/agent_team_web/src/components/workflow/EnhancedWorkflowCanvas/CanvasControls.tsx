@@ -9,7 +9,10 @@ import {
   Grid3X3, 
   Map,
   Lock,
-  Save
+  Save,
+  Play,
+  Square,
+  RefreshCw
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useEditorUI } from '@/store/hooks';
@@ -20,12 +23,20 @@ interface CanvasControlsProps {
   readOnly?: boolean;
   onSave?: () => void;
   isSaving?: boolean;
+  onExecute?: () => void;
+  onStopExecution?: () => void;
+  isExecuting?: boolean;
+  executionStatus?: 'idle' | 'running' | 'completed' | 'failed';
 }
 
 export const CanvasControls: React.FC<CanvasControlsProps> = ({ 
   readOnly = false,
   onSave,
-  isSaving = false
+  isSaving = false,
+  onExecute,
+  onStopExecution,
+  isExecuting = false,
+  executionStatus = 'idle'
 }) => {
   const { fitView, zoomIn, zoomOut } = useReactFlow();
   const { showGrid, showMinimap, setShowGrid, setShowMinimap } = useEditorUI();
@@ -109,6 +120,66 @@ export const CanvasControls: React.FC<CanvasControlsProps> = ({
                   {isSaving ? 'Saving...' : 'Save'}
                 </Button>
               </motion.div>
+            </>
+          )}
+
+          {/* Execution controls */}
+          {!readOnly && onExecute && (
+            <>
+              <Separator orientation="vertical" className="h-6 mx-1" />
+              {isExecuting ? (
+                <motion.div
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={onStopExecution}
+                    title="Stop Execution"
+                    className="h-8 px-3"
+                  >
+                    <Square className="w-4 h-4 mr-1" />
+                    Stop
+                  </Button>
+                </motion.div>
+              ) : (
+                <motion.div
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <Button
+                    variant={executionStatus === 'failed' ? 'destructive' : 'default'}
+                    size="sm"
+                    onClick={onExecute}
+                    title="Execute Workflow"
+                    className="h-8 px-3"
+                  >
+                    {executionStatus === 'completed' ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-1" />
+                        Re-run
+                      </>
+                    ) : executionStatus === 'failed' ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-1" />
+                        Retry
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-4 h-4 mr-1" />
+                        Run
+                      </>
+                    )}
+                  </Button>
+                </motion.div>
+              )}
+              {isExecuting && (
+                <div className="px-2 py-1 text-xs text-muted-foreground flex items-center gap-1">
+                  <RefreshCw className="w-3 h-3 animate-spin" />
+                  Running...
+                </div>
+              )}
             </>
           )}
           
