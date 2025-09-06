@@ -49,32 +49,14 @@ class ExecutionService:
         self.workflow_service = WorkflowService(db_session)
 
     async def execute_workflow(self, request: ExecuteWorkflowRequest) -> str:
-        """Execute a workflow and return the execution ID."""
+        """Execute a workflow and return the execution ID immediately."""
+        execution_id = str(uuid.uuid4())
+        
         try:
-            self.logger.info(f"🔥🔥🔥 EXECUTION SERVICE ENTRY: workflow_id={request.workflow_id}")
-            self.logger.info(f"🔥🔥🔥 EXECUTION SERVICE: user_id={request.user_id}")
-            self.logger.info(
-                f"🔥🔥🔥 EXECUTION SERVICE: trigger_data_keys={list(request.trigger_data.keys()) if request.trigger_data else 'NO_TRIGGER_DATA'}"
-            )
-            
-            # 新增：start_from_node支持日志
-            if hasattr(request, 'start_from_node') and request.start_from_node:
-                self.logger.info(f"🎯 EXECUTION SERVICE: start_from_node={request.start_from_node}")
-                self.logger.info(f"🎯 EXECUTION SERVICE: skip_trigger_validation={getattr(request, 'skip_trigger_validation', False)}")
-
-            self.logger.info(
-                f"🚀 ExecutionService: Starting workflow execution for: {request.workflow_id}"
-            )
-            self.logger.info(
-                f"📋 Request details - User: {request.user_id}, Trigger data keys: {list(request.trigger_data.keys()) if request.trigger_data else 'None'}"
-            )
-
-            execution_id = str(uuid.uuid4())
-            now = int(datetime.now().timestamp())
-
             self.logger.info(f"🆔 Generated execution ID: {execution_id}")
-
-            # Determine execution mode based on trigger_source
+            
+            # Create minimal execution record - just enough to track it exists
+            now = int(datetime.now().timestamp())
             trigger_source = request.trigger_data.get("trigger_source", "manual").lower()
             mode_mapping = {
                 "manual": WorkflowModeEnum.MANUAL.value,
@@ -87,31 +69,84 @@ class ExecutionService:
             db_execution = ExecutionModel(
                 execution_id=execution_id,
                 workflow_id=request.workflow_id,
-                status=ExecutionStatus.NEW.value,  # Changed from PENDING to NEW
-                mode=execution_mode,  # Dynamic based on trigger_source
-                triggered_by=request.user_id,  # Store user_id in triggered_by field temporarily
+                status=ExecutionStatus.NEW.value,
+                mode=execution_mode,
+                triggered_by=request.user_id,
                 start_time=now,
                 execution_metadata={
                     "trigger_data": request.trigger_data,
-                    "user_id": request.user_id,  # Also store in metadata for reference
-                    "session_id": request.session_id if hasattr(request, "session_id") else None,
-                    "start_from_node": getattr(request, 'start_from_node', None),  # 新增：记录起始节点
-                    "skip_trigger_validation": getattr(request, 'skip_trigger_validation', False),  # 新增：记录跳过触发器验证
+                    "user_id": request.user_id,
+                    "session_id": getattr(request, "session_id", None),
+                    "start_from_node": getattr(request, 'start_from_node', None),
+                    "skip_trigger_validation": getattr(request, 'skip_trigger_validation', False),
                 }
-                # user_id=request.user_id,  # TODO: Add user_id field to WorkflowExecution model
-                # session_id=request.session_id,  # TODO: Add session_id field to WorkflowExecution model
             )
             self.db.add(db_execution)
             self.db.commit()
+            
+            self.logger.info(f"✅ Execution record created: {execution_id}")
+            
+            # Schedule background task without await
+            import asyncio
+            loop = asyncio.get_event_loop()
+            
+            # Use fire-and-forget pattern
+            task = loop.create_task(
+                self._handle_workflow_execution(
+                    execution_id=execution_id,
+                    request=request
+                )
+            )
+            
+            # Add error handler to prevent unhandled exceptions
+            def handle_task_error(task):
+                try:
+                    task.result()
+                except Exception as e:
+                    self.logger.error(f"Background task error for {execution_id}: {e}")
+            
+            task.add_done_callback(handle_task_error)
+            
+            self.logger.info(f"🚀 Returning execution ID immediately: {execution_id}")
+            return execution_id
 
+        except Exception as e:
+            self.logger.error(f"❌ Failed to create execution: {e}")
+            # If we fail to create the record, we should still have the execution_id
+            raise
+
+    async def _handle_workflow_execution(self, execution_id: str, request: ExecuteWorkflowRequest):
+        """Handle complete workflow execution in background."""
+        try:
+            # Log basic info
+            self.logger.info(f"🔥 Background execution started for: {execution_id}")
+            self.logger.info(f"📊 Workflow ID: {request.workflow_id}, User: {request.user_id}")
+            
+            # All heavy operations here - workflow fetch, validation, execution
+            await self._prepare_and_execute_workflow(
+                execution_id=execution_id,
+                workflow_id=request.workflow_id,
+                user_id=request.user_id,
+                request=request
+            )
+            
+        except Exception as e:
+            self.logger.error(f"❌ Background execution handler error: {e}")
+            self._update_execution_status(execution_id, ExecutionStatus.ERROR.value, str(e))
+    
+    async def _prepare_and_execute_workflow(self, execution_id: str, workflow_id: str, user_id: str, request: ExecuteWorkflowRequest):
+        """准备并执行workflow的后台任务"""
+        try:
             # Get workflow definition for execution
-            self.logger.info(f"📖 Fetching workflow definition for: {request.workflow_id}")
-            workflow = self.workflow_service.get_workflow(request.workflow_id, request.user_id)
+            self.logger.info(f"📖 Background task: Fetching workflow definition for: {workflow_id}")
+            workflow = self.workflow_service.get_workflow(workflow_id, user_id)
             if not workflow:
                 self.logger.error(
-                    f"❌ Workflow not found: {request.workflow_id} for user: {request.user_id}"
+                    f"❌ Workflow not found: {workflow_id} for user: {user_id}"
                 )
-                raise ValueError(f"Workflow not found: {request.workflow_id}")
+                # Update execution status to ERROR
+                self._update_execution_status(execution_id, ExecutionStatus.ERROR.value, "Workflow not found")
+                return
 
             self.logger.info(
                 f"✅ Found workflow: {workflow.name} (nodes: {len(workflow.nodes) if workflow.nodes else 0})"
@@ -120,78 +155,73 @@ class ExecutionService:
 
             self.logger.info(f"🏁 Starting workflow execution: {execution_id}")
 
-            # Start workflow execution in the background
-            try:
-                # Update status to RUNNING before starting execution
-                self.logger.info("📝 Updating execution status to RUNNING...")
-                db_execution.status = ExecutionStatus.RUNNING.value
-                self.db.commit()
-                self.logger.info("✅ Database status updated to RUNNING")
+            # Update status to RUNNING before starting execution
+            self.logger.info("📝 Updating execution status to RUNNING...")
+            self._update_execution_status(execution_id, ExecutionStatus.RUNNING.value)
+            self.logger.info("✅ Database status updated to RUNNING")
 
-                # Execute the workflow using the execution engine
-                self.logger.info("🚀 Calling WorkflowExecutionEngine.execute_workflow...")
+            # Execute the workflow using the execution engine
+            self.logger.info("🚀 Calling WorkflowExecutionEngine.execute_workflow...")
 
-                # Log the workflow definition before passing it to the engine
-                workflow_dict = workflow.dict()
+            # Log the workflow definition before passing it to the engine
+            workflow_dict = workflow.dict()
+            self.logger.info(
+                f"📋 Workflow definition nodes: {len(workflow_dict.get('nodes', []))}"
+            )
+            for i, node in enumerate(workflow_dict.get("nodes", [])):
                 self.logger.info(
-                    f"📋 Workflow definition nodes: {len(workflow_dict.get('nodes', []))}"
+                    f"   Node {i+1}: {node.get('name', 'Unnamed')} (type: {node.get('type')}, subtype: {node.get('subtype')}, id: {node.get('id')})"
                 )
-                for i, node in enumerate(workflow_dict.get("nodes", [])):
-                    self.logger.info(
-                        f"   Node {i+1}: {node.get('name', 'Unnamed')} (type: {node.get('type')}, subtype: {node.get('subtype')}, id: {node.get('id')})"
-                    )
+            
+            # 新增：处理start_from_node逻辑
+            start_from_node = getattr(request, 'start_from_node', None)
+            skip_trigger_validation = getattr(request, 'skip_trigger_validation', False)
+            
+            if start_from_node:
+                # 验证节点是否存在
+                if not self._validate_node_exists(workflow_dict, start_from_node):
+                    raise ValueError(f"Start node '{start_from_node}' not found in workflow")
                 
-                # 新增：处理start_from_node逻辑
-                start_from_node = getattr(request, 'start_from_node', None)
-                skip_trigger_validation = getattr(request, 'skip_trigger_validation', False)
+                self.logger.info(f"🎯 Executing from specific node: {start_from_node}")
                 
-                if start_from_node:
-                    # 验证节点是否存在
-                    if not self._validate_node_exists(workflow_dict, start_from_node):
-                        raise ValueError(f"Start node '{start_from_node}' not found in workflow")
-                    
-                    self.logger.info(f"🎯 Executing from specific node: {start_from_node}")
-                    
-                    # 修改workflow_dict以支持从指定节点开始执行
-                    workflow_dict = self._modify_workflow_for_start_node(
-                        workflow_dict, 
-                        start_from_node, 
-                        skip_trigger_validation
-                    )
-
-                # 启动后台异步执行，不等待完成
-                import asyncio
-                
-                # 创建后台任务执行workflow
-                task = asyncio.create_task(
-                    self._execute_workflow_background(
-                        workflow_id=request.workflow_id,
-                        execution_id=execution_id,
-                        workflow_definition=workflow_dict,
-                        initial_data=request.trigger_data,
-                        credentials={},  # TODO: Add credential handling
-                        user_id=request.user_id,
-                    )
+                # 修改workflow_dict以支持从指定节点开始执行
+                workflow_dict = self._modify_workflow_for_start_node(
+                    workflow_dict, 
+                    start_from_node, 
+                    skip_trigger_validation
                 )
-                
-                # 立即返回execution_id，不等待执行完成
-                self.logger.info(f"✅ Background task created for execution: {execution_id}")
 
-            except Exception as exec_error:
-                # Update status to ERROR if execution fails during setup
-                db_execution.status = ExecutionStatus.ERROR.value
-                db_execution.error_message = str(exec_error)
-                db_execution.end_time = int(datetime.now().timestamp())
+            # 启动后台异步执行workflow
+            await self._execute_workflow_background(
+                workflow_id=workflow_id,
+                execution_id=execution_id,
+                workflow_definition=workflow_dict,
+                initial_data=request.trigger_data,
+                credentials={},  # TODO: Add credential handling
+                user_id=user_id,
+            )
+            
+        except Exception as exec_error:
+            self.logger.error(f"Background workflow execution failed: {execution_id} - {exec_error}")
+            self._update_execution_status(execution_id, ExecutionStatus.ERROR.value, str(exec_error))
+
+    def _update_execution_status(self, execution_id: str, status: str, error_message: str = None):
+        """辅助方法：更新执行状态"""
+        try:
+            db_execution = self.db.query(ExecutionModel).filter(
+                ExecutionModel.execution_id == execution_id
+            ).first()
+            
+            if db_execution:
+                db_execution.status = status
+                if error_message:
+                    db_execution.error_message = error_message
+                if status == ExecutionStatus.ERROR.value:
+                    db_execution.end_time = int(datetime.now().timestamp())
                 self.db.commit()
-                self.logger.error(f"Workflow execution setup failed: {execution_id} - {exec_error}")
-                raise
-
-            return execution_id
-
         except Exception as e:
+            self.logger.error(f"Failed to update execution status: {e}")
             self.db.rollback()
-            self.logger.error(f"Error executing workflow: {str(e)}")
-            raise
 
     def get_execution_status(self, execution_id: str) -> Optional[Execution]:
         """Get execution status."""

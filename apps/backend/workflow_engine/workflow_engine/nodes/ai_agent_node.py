@@ -1738,6 +1738,65 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             else:
                 return f"⚠️ Anthropic Claude API error: {str(e)}"
 
+    def _get_connected_memory_nodes(self, context: NodeExecutionContext) -> List[Dict[str, Any]]:
+        """Find all memory nodes connected to this AI agent node."""
+        connected_memory_nodes = []
+        
+        try:
+            # Get workflow connections from metadata
+            workflow_connections = context.metadata.get("workflow_connections", {})
+            workflow_nodes = context.metadata.get("workflow_nodes", [])
+            current_node_id = context.node.id if hasattr(context, "node") and context.node else None
+            
+            if not current_node_id:
+                self.logger.warning("[AIAgent Node]: 🧠 AIAgent: No current node ID available")
+                return []
+            
+            # Find outgoing connections from this node
+            if current_node_id in workflow_connections:
+                node_connections = workflow_connections[current_node_id]
+                connection_types = node_connections.get("connection_types", {})
+                
+                # Look for memory connections
+                for connection_type, connection_array in connection_types.items():
+                    if connection_type == "memory":  # Memory connections
+                        connections_list = connection_array.get("connections", [])
+                        for connection in connections_list:
+                            target_node_id = connection.get("node")
+                            if target_node_id:
+                                # Find the target node definition
+                                for node in workflow_nodes:
+                                    if node.get("id") == target_node_id and node.get("type") == "MEMORY":
+                                        connected_memory_nodes.append({
+                                            "node_id": target_node_id,
+                                            "node": node,
+                                            "connection": connection
+                                        })
+                                        self.logger.info(
+                                            f"[AIAgent Node]: 🧠 Found connected memory node: {target_node_id} ({node.get('name')})"
+                                        )
+            
+            return connected_memory_nodes
+            
+        except Exception as e:
+            self.logger.error(f"[AIAgent Node]: ❌ Error finding connected memory nodes: {e}")
+            return []
+    
+    def _dict_to_node_object(self, node_dict: Dict[str, Any]) -> Any:
+        """Convert a dictionary node definition to a node object."""
+        class NodeObject:
+            def __init__(self, node_dict):
+                self.id = node_dict.get("id")
+                self.name = node_dict.get("name")
+                self.type = node_dict.get("type")
+                self.subtype = node_dict.get("subtype")
+                self.parameters = node_dict.get("parameters", {})
+                self.credentials = node_dict.get("credentials", {})
+                self.disabled = node_dict.get("disabled", False)
+                self.on_error = node_dict.get("on_error", "STOP_WORKFLOW_ON_ERROR")
+        
+        return NodeObject(node_dict)
+
     def _store_conversation_in_memory(
         self, context: NodeExecutionContext, user_input: str, ai_response: str, logs: List[str]
     ) -> None:
