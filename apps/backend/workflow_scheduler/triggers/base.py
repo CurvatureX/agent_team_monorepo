@@ -63,19 +63,12 @@ class BaseTrigger(ABC):
                 trigger_data=trigger_data or {},
             )
 
-        # Check if workflow has paused executions before triggering new one
-        paused_check = await self._check_for_paused_executions()
-        if paused_check["has_paused"]:
-            logger.warning(
-                f"🚫 Workflow {self.workflow_id} has paused execution(s) - skipping trigger"
-            )
-            logger.info(f"⏸️ Paused execution(s): {paused_check['paused_executions']}")
-            return ExecutionResult(
-                status="skipped",
-                message=f"Workflow has {paused_check['count']} paused execution(s) - new triggers blocked",
-                trigger_data=trigger_data or {},
-            )
+        # Smart trigger detection: Check if this should resume a paused workflow
+        resume_check = await self._check_for_resume_opportunity(trigger_data)
+        if resume_check["should_resume"]:
+            return await self._resume_paused_workflow(resume_check["execution_id"], trigger_data)
 
+        # Otherwise, start new execution
         execution_id = f"exec_{uuid.uuid4()}"
 
         try:
@@ -93,53 +86,6 @@ class BaseTrigger(ABC):
                 message=error_msg,
                 trigger_data=trigger_data or {},
             )
-
-    async def _check_for_paused_executions(self) -> Dict[str, Any]:
-        """
-        Check if this workflow has any paused executions that would block new triggers.
-
-        Returns:
-            Dict with 'has_paused' boolean, 'count' int, and 'paused_executions' list
-        """
-        try:
-            # Query workflow engine for paused executions of this workflow
-            engine_url = (
-                f"{settings.workflow_engine_url}/v1/workflows/{self.workflow_id}/executions"
-            )
-
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(engine_url)
-
-                if response.status_code == 200:
-                    executions = response.json()
-
-                    # Filter for paused executions
-                    paused_executions = [
-                        exec_data for exec_data in executions if exec_data.get("status") == "PAUSED"
-                    ]
-
-                    if paused_executions:
-                        paused_ids = [ex.get("execution_id") for ex in paused_executions]
-                        logger.info(
-                            f"⏸️ Found {len(paused_executions)} paused executions for workflow {self.workflow_id}: {paused_ids}"
-                        )
-
-                    return {
-                        "has_paused": len(paused_executions) > 0,
-                        "count": len(paused_executions),
-                        "paused_executions": paused_ids if paused_executions else [],
-                    }
-                else:
-                    logger.warning(
-                        f"Failed to check paused executions: HTTP {response.status_code}"
-                    )
-                    # If we can't check, allow the trigger to proceed (fail-open)
-                    return {"has_paused": False, "count": 0, "paused_executions": []}
-
-        except Exception as e:
-            logger.warning(f"Error checking paused executions for workflow {self.workflow_id}: {e}")
-            # If we can't check, allow the trigger to proceed (fail-open)
-            return {"has_paused": False, "count": 0, "paused_executions": []}
 
     async def _get_workflow_owner_id(self, workflow_id: str) -> Optional[str]:
         """
@@ -283,6 +229,118 @@ class BaseTrigger(ABC):
         jitter = (hash_value % 30000) / 1000.0
 
         return jitter
+
+    async def _check_for_resume_opportunity(
+        self, trigger_data: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Check if this trigger should resume a paused workflow instead of starting new one.
+
+        Returns:
+            Dict with 'should_resume' boolean and 'execution_id' if applicable
+        """
+        try:
+            # Query workflow engine for paused executions of this workflow
+            engine_url = (
+                f"{settings.workflow_engine_url}/v1/workflows/{self.workflow_id}/executions"
+            )
+
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(engine_url)
+
+                if response.status_code == 200:
+                    executions = response.json()
+
+                    # Filter for paused executions
+                    paused_executions = [
+                        exec_data for exec_data in executions if exec_data.get("status") == "PAUSED"
+                    ]
+
+                    if paused_executions:
+                        # Try to find the most relevant paused execution
+                        # For HIL scenarios, prefer executions paused recently
+                        most_recent = max(paused_executions, key=lambda x: x.get("started_at", 0))
+
+                        # TODO: Enhanced matching logic could consider:
+                        # - Channel/thread context for Slack HIL
+                        # - User context for user-specific HIL
+                        # - Interaction type for specialized HIL flows
+
+                        execution_id = most_recent.get("execution_id")
+                        logger.info(
+                            f"🔄 Found paused execution {execution_id} for workflow {self.workflow_id} - will resume instead of starting new"
+                        )
+
+                        return {
+                            "should_resume": True,
+                            "execution_id": execution_id,
+                            "paused_execution": most_recent,
+                        }
+
+                    return {"should_resume": False, "execution_id": None}
+                else:
+                    logger.warning(
+                        f"Failed to check paused executions: HTTP {response.status_code}"
+                    )
+                    # If we can't check, start new execution (fail-open)
+                    return {"should_resume": False, "execution_id": None}
+
+        except Exception as e:
+            logger.warning(f"Error checking for resume opportunity: {e}")
+            # If we can't check, start new execution (fail-open)
+            return {"should_resume": False, "execution_id": None}
+
+    async def _resume_paused_workflow(
+        self, execution_id: str, trigger_data: Optional[Dict[str, Any]] = None
+    ) -> ExecutionResult:
+        """
+        Resume a paused workflow with trigger data as resume data.
+        """
+        try:
+            logger.info(f"🔄 Resuming paused workflow execution {execution_id} with trigger data")
+
+            # Call workflow_engine resume endpoint
+            engine_url = f"{settings.workflow_engine_url}/v1/executions/{execution_id}/resume"
+
+            # Format trigger data as resume data
+            resume_payload = {
+                "resume_data": trigger_data or {},
+                "interaction_id": trigger_data.get("interaction_id") if trigger_data else None,
+            }
+
+            response = await self._client.post(
+                engine_url, json=resume_payload, headers={"Content-Type": "application/json"}
+            )
+
+            if response.status_code in [200, 202]:  # OK or Accepted
+                result_data = response.json()
+                logger.info(f"✅ Successfully resumed workflow execution {execution_id}")
+
+                return ExecutionResult(
+                    execution_id=execution_id,
+                    status="resumed",
+                    message=f"Resumed paused workflow: {result_data.get('message', 'Success')}",
+                    trigger_data=trigger_data or {},
+                )
+            else:
+                error_msg = f"Resume failed: HTTP {response.status_code} - {response.text}"
+                logger.error(error_msg)
+                return ExecutionResult(
+                    execution_id=execution_id,
+                    status="error",
+                    message=error_msg,
+                    trigger_data=trigger_data or {},
+                )
+
+        except Exception as e:
+            error_msg = f"Error resuming workflow: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return ExecutionResult(
+                execution_id=execution_id,
+                status="error",
+                message=error_msg,
+                trigger_data=trigger_data or {},
+            )
 
     async def health_check(self) -> Dict[str, Any]:
         """Return health status of the trigger"""
