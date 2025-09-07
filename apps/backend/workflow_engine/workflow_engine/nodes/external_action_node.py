@@ -699,6 +699,14 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
         # Add action-specific parameters
         if action == "send_message":
+            self.logger.info(f"🔍 Processing send_message action")
+            self.logger.info(f"📥 Context input_data available: {bool(context.input_data)}")
+            if context.input_data:
+                self.logger.info(f"📥 Input data keys: {list(context.input_data.keys())}")
+                if "content" in context.input_data:
+                    content_preview = str(context.input_data["content"])[:200]
+                    self.logger.info(f"📥 Content preview: {content_preview}...")
+                    
             message_data = context.get_parameter("message_data", {})
 
             # Get text and blocks with proper parameter resolution
@@ -716,12 +724,44 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                     )
                     text = ""  # Clear placeholder so we check input data
 
-            # Check for input data from connected nodes (standard communication format)
-            if not text and context.input_data:
+            # ALWAYS check for input data from connected nodes (priority over parameters)
+            # This ensures AI-generated content takes precedence over static parameters
+            if context.input_data:
+                self.logger.info(f"🔍 Found input_data, current text: {text[:100]}...")
+                # Store the original text for debugging
+                original_text = text
                 # Check for new standard communication format
                 if "content" in context.input_data:
-                    text = context.input_data["content"]
-                    self.logger.info(f"✅ Found standard format content: {text}")
+                    content_value = context.input_data["content"]
+                    
+                    # Check if content is a JSON string containing Slack parameters
+                    if isinstance(content_value, str) and content_value.strip().startswith("{"):
+                        try:
+                            import json
+                            parsed_content = json.loads(content_value)
+                            
+                            # If the parsed content contains Slack-specific fields, extract them
+                            if isinstance(parsed_content, dict) and any(key in parsed_content for key in ["message", "channel", "bot_token"]):
+                                # Extract message text from the parsed JSON
+                                text = parsed_content.get("message", "")
+                                self.logger.info(f"✅ Extracted message from JSON content: {text}")
+                                
+                                # Note: We intentionally DO NOT update channel from AI output
+                                # to preserve the configured channel value
+                                if "channel" in parsed_content:
+                                    self.logger.info(f"📢 AI suggested channel: {parsed_content['channel']}, but keeping configured channel: {channel}")
+                            else:
+                                # Not Slack-specific JSON, use as text
+                                text = content_value
+                                self.logger.info(f"✅ Using content as text: {text}")
+                        except json.JSONDecodeError:
+                            # Not valid JSON, use as plain text
+                            text = content_value
+                            self.logger.info(f"✅ Using content as plain text: {text}")
+                    else:
+                        # Not JSON, use directly as text
+                        text = content_value
+                        self.logger.info(f"✅ Found standard format content: {text}")
 
                     # Log metadata if available for debugging
                     if "metadata" in context.input_data:
@@ -741,6 +781,12 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                             self.logger.info(f"✅ Using fallback content from key '{key}': {text}")
                             break
 
+            # Log the final text value after processing input_data
+            if context.input_data and text != original_text:
+                self.logger.info(f"✨ Text updated from input_data: {text[:200]}...")
+            elif context.input_data:
+                self.logger.warning(f"⚠️ Input data found but text unchanged: {text[:100]}...")
+                
             blocks = message_data.get("blocks", context.get_parameter("blocks", []))
 
             # Provide default text if both text and blocks are empty
@@ -784,7 +830,9 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 }
             )
 
-        self.logger.info(f"✅ Returning Slack operation: action='{action}', parameters={parameters}")
+        # Log final text value being used
+        self.logger.info(f"📤 Final text value for Slack: {parameters.get('text', 'NO TEXT')[:200]}")
+        self.logger.info(f"✅ Returning Slack operation: action='{action}', parameters keys={list(parameters.keys())}")
         return action, parameters
 
     def _clean_thread_ts(self, thread_ts: str) -> str:
@@ -1519,8 +1567,36 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
             # First check for input data from connected nodes (standard format)
             if context.input_data and "content" in context.input_data:
-                message_text = context.input_data["content"]
-                self.logger.info(f"✅ Found standard format content: {message_text}")
+                content_value = context.input_data["content"]
+                
+                # Check if content is a JSON string containing Slack parameters
+                if isinstance(content_value, str) and content_value.strip().startswith("{"):
+                    try:
+                        import json
+                        parsed_content = json.loads(content_value)
+                        
+                        # If the parsed content contains Slack-specific fields, extract them
+                        if isinstance(parsed_content, dict) and any(key in parsed_content for key in ["message", "channel", "bot_token"]):
+                            # Extract message text from the parsed JSON
+                            message_text = parsed_content.get("message", "")
+                            self.logger.info(f"✅ Extracted message from JSON content: {message_text}")
+                            
+                            # Note: We intentionally DO NOT update channel from AI output
+                            # to preserve the configured channel value
+                            if "channel" in parsed_content:
+                                self.logger.info(f"📢 AI suggested channel: {parsed_content['channel']}, but keeping configured channel: {channel}")
+                        else:
+                            # Not Slack-specific JSON, use as text
+                            message_text = content_value
+                            self.logger.info(f"✅ Using content as text: {message_text}")
+                    except json.JSONDecodeError:
+                        # Not valid JSON, use as plain text
+                        message_text = content_value
+                        self.logger.info(f"✅ Using content as plain text: {message_text}")
+                else:
+                    # Not JSON, use directly as text
+                    message_text = content_value
+                    self.logger.info(f"✅ Found standard format content: {message_text}")
 
                 # Log metadata if available for debugging
                 if "metadata" in context.input_data:

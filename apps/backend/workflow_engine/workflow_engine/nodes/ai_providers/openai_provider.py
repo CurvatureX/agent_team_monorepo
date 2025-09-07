@@ -112,6 +112,14 @@ class OpenAIProvider(AIProviderInterface):
             self.logger.info(f"Calling OpenAI API with model: {model}")
             response = client.chat.completions.create(**completion_params)
 
+            # Log raw response for debugging
+            if hasattr(response, 'model_dump_json'):
+                self.logger.info(f"OpenAI raw response: {response.model_dump_json()}")
+            else:
+                self.logger.info(f"OpenAI raw response type: {type(response)}, choices: {len(response.choices) if response.choices else 0}")
+                if response.choices and len(response.choices) > 0:
+                    self.logger.info(f"First choice: message={response.choices[0].message}, finish_reason={response.choices[0].finish_reason}")
+
             # Extract content
             if not response.choices or not response.choices[0].message:
                 return self.create_error_response(
