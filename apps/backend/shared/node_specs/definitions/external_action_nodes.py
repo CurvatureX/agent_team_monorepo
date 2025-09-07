@@ -5,6 +5,11 @@ This module defines specifications for all EXTERNAL_ACTION_NODE subtypes includi
 GitHub, Email, Slack, and API call integrations.
 """
 
+from ...models.external_actions import (
+    EmailExternalActionParams,
+    GitHubExternalActionParams,
+    SlackExternalActionParams,
+)
 from ...models.node_enums import ExternalActionSubtype, NodeType
 from ..base import (
     ConnectionType,
@@ -15,7 +20,6 @@ from ..base import (
     ParameterDef,
     ParameterType,
 )
-from ..communication_protocol import EMAIL_INPUT_FORMAT, SLACK_INPUT_FORMAT
 
 # GitHub - GitHub operations
 GITHUB_SPEC = NodeSpec(
@@ -107,9 +111,9 @@ GITHUB_SPEC = NodeSpec(
             description="GitHub operation parameters",
             data_format=DataFormat(
                 mime_type="application/json",
-                schema='{"action_params": "object", "metadata": "object"}',
+                schema=GitHubExternalActionParams.model_json_schema(),
                 examples=[
-                    '{"action_params": {"labels": ["bug", "urgent"]}, "metadata": {"assignees": ["user1"]}}'
+                    '{"action": "create_issue", "repository": "owner/repo", "auth_token": "ghp_token", "title": "Bug report", "body": "Issue description", "labels": ["bug"]}'
                 ],
             ),
         )
@@ -232,9 +236,9 @@ EMAIL_SPEC = NodeSpec(
             description="Email data and template variables",
             data_format=DataFormat(
                 mime_type="application/json",
-                schema='{"template_vars": "object", "attachments": "array"}',
+                schema=EmailExternalActionParams.model_json_schema(),
                 examples=[
-                    '{"template_vars": {"name": "John", "order_id": "12345"}, "attachments": []}'
+                    '{"to": ["user@example.com"], "subject": "Notification", "body": "Hello from workflow!", "smtp_server": "smtp.gmail.com", "username": "sender@gmail.com", "password": "password"}'
                 ],
             ),
         )
@@ -332,7 +336,13 @@ SLACK_SPEC = NodeSpec(
             type=ConnectionType.MAIN,
             required=False,
             description="Message content from upstream nodes (AI agents, etc.)",
-            data_format=SLACK_INPUT_FORMAT,
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema=SlackExternalActionParams.model_json_schema(),
+                examples=[
+                    '{"channel": "C123456", "message": "Hello from workflow!", "bot_token": "xoxb-token"}'
+                ],
+            ),
         )
     ],
     output_ports=[
