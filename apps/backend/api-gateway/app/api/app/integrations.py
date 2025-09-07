@@ -210,7 +210,7 @@ async def get_install_links(deps: AuthenticatedDeps = Depends()):
         slack_oauth_url = (
             f"https://slack.com/oauth/v2/authorize"
             f"?client_id={settings.SLACK_CLIENT_ID}"
-            f"&scope=app_mentions:read,assistant:write,calls:read,calls:write,chat:write,channels:read,groups:read,reminders:read,reminders:write,im:read,chat:write.public"
+            f"&scope=app_mentions:read,assistant:write,calls:read,calls:write,chat:write,channels:read,groups:read,conversations:read,reminders:read,reminders:write,im:read,chat:write.public"
             f"&user_scope=email,identity.basic"
             f"&redirect_uri={settings.SLACK_REDIRECT_URI}"
             f"&response_type=code"
