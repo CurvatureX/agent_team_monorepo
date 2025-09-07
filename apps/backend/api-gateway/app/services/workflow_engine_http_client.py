@@ -23,9 +23,10 @@ class WorkflowEngineHTTPClient:
         self.base_url = (
             settings.WORKFLOW_ENGINE_URL or f"http://{settings.WORKFLOW_ENGINE_HOST}:8002"
         )
-        # Increased timeout to 300 seconds (5 minutes) for long-running workflows
-        # Connect timeout remains at 5 seconds for quick connection establishment
-        self.timeout = httpx.Timeout(300.0, connect=5.0)
+        # Separate timeouts for different operations
+        self.connect_timeout = httpx.Timeout(5.0, connect=5.0)
+        self.execute_timeout = httpx.Timeout(300.0, connect=5.0)  # 5 minutes for long-running workflows
+        self.query_timeout = httpx.Timeout(30.0, connect=5.0)   # Longer timeout for queries
         self.connected = False
         # Connection pool for better performance
         self._client = None
@@ -35,7 +36,7 @@ class WorkflowEngineHTTPClient:
         """Get or create HTTP client with connection pooling"""
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(
-                timeout=self.timeout,
+                timeout=self.connect_timeout,
                 limits=self._limits,
                 http2=True,  # Enable HTTP/2 for multiplexing
             )
@@ -199,6 +200,8 @@ class WorkflowEngineHTTPClient:
         user_id: str,
         input_data: Optional[Dict[str, Any]] = None,
         trace_id: Optional[str] = None,
+        start_from_node: Optional[str] = None,
+        skip_trigger_validation: bool = False,
     ) -> Dict[str, Any]:
         """Execute workflow via HTTP"""
         if not self.connected:
@@ -208,8 +211,13 @@ class WorkflowEngineHTTPClient:
             request_data = {
                 "workflow_id": workflow_id,
                 "user_id": user_id,
-                "input_data": input_data or {},
+                "trigger_data": input_data or {},  # 修正字段名从input_data到trigger_data
             }
+            
+            # 添加新的start_from_node参数
+            if start_from_node:
+                request_data["start_from_node"] = start_from_node
+                request_data["skip_trigger_validation"] = skip_trigger_validation
 
             log_info(f"📨 HTTP request to execute workflow: {workflow_id}")
 
@@ -217,7 +225,7 @@ class WorkflowEngineHTTPClient:
             if trace_id:
                 headers["X-Trace-ID"] = trace_id
 
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with httpx.AsyncClient(timeout=self.execute_timeout) as client:
                 response = await client.post(
                     f"{self.base_url}/v1/workflows/{workflow_id}/execute",
                     json=request_data,
@@ -244,7 +252,7 @@ class WorkflowEngineHTTPClient:
         try:
             log_info(f"📨 HTTP request to get execution status: {execution_id}")
 
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with httpx.AsyncClient(timeout=self.query_timeout) as client:
                 response = await client.get(f"{self.base_url}/v1/executions/{execution_id}")
                 response.raise_for_status()
 
@@ -267,7 +275,7 @@ class WorkflowEngineHTTPClient:
         try:
             log_info(f"📨 HTTP request to cancel execution: {execution_id}")
 
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with httpx.AsyncClient(timeout=self.query_timeout) as client:
                 response = await client.post(f"{self.base_url}/v1/executions/{execution_id}/cancel")
                 response.raise_for_status()
 
@@ -292,7 +300,7 @@ class WorkflowEngineHTTPClient:
         try:
             log_info(f"📨 HTTP request to get execution history: {workflow_id}")
 
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with httpx.AsyncClient(timeout=self.query_timeout) as client:
                 response = await client.get(
                     f"{self.base_url}/v1/workflows/{workflow_id}/executions",
                     params={"limit": limit},
@@ -396,7 +404,7 @@ class WorkflowEngineHTTPClient:
         try:
             log_info(f"📨 HTTP request to delete workflow: {workflow_id}")
 
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with httpx.AsyncClient(timeout=self.query_timeout) as client:
                 response = await client.delete(
                     f"{self.base_url}/v1/workflows/{workflow_id}", params={"user_id": user_id}
                 )
@@ -438,7 +446,7 @@ class WorkflowEngineHTTPClient:
 
             log_info(f"📨 HTTP request to list workflows for user: {user_id}")
 
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with httpx.AsyncClient(timeout=self.query_timeout) as client:
                 response = await client.get(f"{self.base_url}/v1/workflows", params=params)
                 response.raise_for_status()
 

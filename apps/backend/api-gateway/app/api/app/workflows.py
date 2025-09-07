@@ -559,6 +559,8 @@ async def execute_workflow(
             deps.current_user.sub,
             execution_request.inputs,
             trace_id=getattr(deps.request.state, "trace_id", None),
+            start_from_node=execution_request.start_from_node,
+            skip_trigger_validation=execution_request.skip_trigger_validation,
         )
 
         if not result.get("success", False) or not result.get("execution_id"):

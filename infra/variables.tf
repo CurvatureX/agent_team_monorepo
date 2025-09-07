@@ -250,6 +250,27 @@ variable "notion_redirect_uri" {
   default     = ""
 }
 
+variable "google_client_id" {
+  description = "Google OAuth client ID for calendar integration"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "google_client_secret" {
+  description = "Google OAuth client secret for calendar integration"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "google_redirect_uri" {
+  description = "Google OAuth redirect URI for calendar integration"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 # Monitoring Configuration
 variable "alert_email" {
   description = "Email address for CloudWatch alerts"
