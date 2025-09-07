@@ -189,13 +189,7 @@ class TriggerIndexManager:
                         "deployment_status": trigger_record["deployment_status"],
                         "created_at": trigger_record["created_at"],
                         "updated_at": trigger_record["updated_at"],
-                        # Type-specific fields
-                        "cron_expression": trigger_record.get("cron_expression"),
-                        "webhook_path": trigger_record.get("webhook_path"),
-                        "email_filter": trigger_record.get("email_filter"),
-                        "github_repository": trigger_record.get("github_repository"),
-                        "github_events": trigger_record.get("github_events"),
-                        "github_installation_id": trigger_record.get("github_installation_id"),
+                        "index_key": trigger_record.get("index_key"),
                     }
                 )
 
@@ -511,23 +505,8 @@ class TriggerIndexManager:
                     "index_key": index_key,
                 }
 
-                # Add trigger-specific fields for Supabase update
-                if spec.subtype == TriggerType.CRON:
-                    update_data["cron_expression"] = spec.parameters.get("cron_expression")
-                elif spec.subtype == TriggerType.WEBHOOK:
-                    update_data["webhook_path"] = spec.parameters.get(
-                        "webhook_path", f"/webhook/{workflow_id}"
-                    )
-                elif spec.subtype == TriggerType.EMAIL:
-                    update_data["email_filter"] = spec.parameters.get("email_filter", "")
-                elif spec.subtype == TriggerType.GITHUB:
-                    update_data["github_repository"] = spec.parameters.get("repository")
-                    update_data["github_events"] = spec.parameters.get(
-                        "github_events", ["push", "pull_request"]
-                    )
-                    update_data["github_installation_id"] = spec.parameters.get(
-                        "github_app_installation_id"
-                    )
+                # Note: trigger-specific data is stored in trigger_config JSONB field
+                # No additional fields needed - all data is in trigger_config and index_key
 
                 update_response = (
                     client.table("trigger_index")
@@ -589,23 +568,9 @@ class TriggerIndexManager:
                 "index_key": index_key,
             }
 
-            # Add trigger-specific fields
-            if spec.subtype == TriggerType.CRON:
-                trigger_data["cron_expression"] = spec.parameters.get("cron_expression")
-            elif spec.subtype == TriggerType.WEBHOOK:
-                trigger_data["webhook_path"] = spec.parameters.get(
-                    "webhook_path", f"/webhook/{workflow_id}"
-                )
-            elif spec.subtype == TriggerType.EMAIL:
-                trigger_data["email_filter"] = spec.parameters.get("email_filter", "")
-            elif spec.subtype == TriggerType.GITHUB:
-                trigger_data["github_repository"] = spec.parameters.get("repository")
-                trigger_data["github_events"] = spec.parameters.get(
-                    "github_events", ["push", "pull_request"]
-                )
-                trigger_data["github_installation_id"] = spec.parameters.get(
-                    "github_app_installation_id"
-                )
+            # Note: trigger-specific data is stored in trigger_config JSONB field
+            # index_key is calculated above for fast lookup
+            # No additional fields needed - all data is in trigger_config
 
             # Insert new trigger using Supabase
             insert_response = client.table("trigger_index").insert(trigger_data).execute()
