@@ -130,7 +130,7 @@ async def get_authorization_status(request: CredentialStatusRequest):
         logger.info(f"Getting authorization status for user {request.user_id}")
 
         # Supported providers list
-        supported_providers = ["google_calendar", "github", "slack", "email", "api_call"]
+        supported_providers = ["google", "github", "slack", "email", "api_call"]
 
         providers_status = {}
 
@@ -444,7 +444,7 @@ async def delete_credentials(user_id: str, provider: str):
 
     Args:
         user_id: User ID
-        provider: Provider name (e.g., 'google_calendar')
+        provider: Provider name (e.g., 'google')
 
     Returns:
         Success message
