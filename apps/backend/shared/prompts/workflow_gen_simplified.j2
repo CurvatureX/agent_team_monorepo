@@ -203,6 +203,12 @@ When creating AI_AGENT nodes that connect to other nodes:
    - Check the required parameters (summary, start, end, etc.)
    - Add to system_prompt: "Output a JSON object with fields: summary (string), start (object with dateTime and timeZone), end (object with dateTime and timeZone), description (string), attendees (array of objects with email field)"
 
+## AI Agent Model Configuration
+**CRITICAL**: All AI_AGENT nodes MUST use the following model configuration:
+- **model_version**: "gpt-5-mini-2025-08-07"
+
+This ensures consistent performance and compatibility across all AI agent operations in the workflow.
+
 ## Workflow Patterns
 
 **Approval Pattern**: TRIGGER → AI_AGENT → HUMAN_IN_THE_LOOP (with integrated messaging) → EXTERNAL_ACTION
@@ -227,3 +233,4 @@ Supported subtypes: `SLACK_INTERACTION`, `GMAIL_INTERACTION`, `DISCORD_INTERACTI
 4. **CONNECTIONS** - Use "connection_types" wrapper structure
 5. **VALID JSON** - No trailing backslashes, proper escaping, no control chars
 6. **AI AGENT PROMPTS** - Must specify output format when connecting to action nodes
+7. **AI AGENT MODEL** - All AI_AGENT nodes MUST use model_version: "gpt-5-mini-2025-08-07"
