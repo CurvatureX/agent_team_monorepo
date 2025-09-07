@@ -1469,6 +1469,27 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                 self.logger.info(f"[AIAgent Node]: 🎯 Extracted legacy text field: {text_content}")
                 return str(text_content)
 
+            # Check for Flow node output (e.g., FILTER node)
+            if "filtered_data" in input_data and isinstance(input_data["filtered_data"], dict):
+                # Extract content from filtered_data
+                filtered_data = input_data["filtered_data"]
+                if "content" in filtered_data:
+                    content = filtered_data["content"]
+                    self.logger.info(
+                        f"[AIAgent Node]: 🎯 Extracted content from filtered_data: {content[:100]}..."
+                    )
+                    return str(content)
+            
+            # Also check original_data from Flow nodes
+            if "original_data" in input_data and isinstance(input_data["original_data"], dict):
+                original_data = input_data["original_data"]
+                if "content" in original_data:
+                    content = original_data["content"]
+                    self.logger.info(
+                        f"[AIAgent Node]: 🎯 Extracted content from original_data: {content[:100]}..."
+                    )
+                    return str(content)
+            
             # Legacy support: Check for trigger payload structures
             if "payload" in input_data:
                 payload = input_data["payload"]
