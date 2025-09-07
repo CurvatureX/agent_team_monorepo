@@ -191,38 +191,6 @@ class ExecutionService:
                     skip_trigger_validation
                 )
 
-                if execution_result.get("errors"):
-                    self.logger.error(f"⚠️ Execution errors: {execution_result['errors']}")
-
-                # Update execution record with results - handle PAUSED status specially
-                if execution_result["status"] == "completed":
-                    db_execution.status = ExecutionStatus.SUCCESS.value
-                    db_execution.end_time = int(datetime.now().timestamp())
-                elif execution_result["status"] == "ERROR":
-                    db_execution.status = ExecutionStatus.ERROR.value
-                    db_execution.error_message = "; ".join(execution_result.get("errors", []))
-                    db_execution.end_time = int(datetime.now().timestamp())
-                elif execution_result["status"] == "PAUSED":
-                    db_execution.status = ExecutionStatus.PAUSED.value
-                    # DON'T set end_time for paused workflows - they can still be resumed
-                    self.logger.info(
-                        f"⏸️ Workflow {execution_id} marked as PAUSED in database - no end_time set"
-                    )
-                    self.logger.info(
-                        f"🚫 This workflow will not be retriggered while in PAUSED state"
-                    )
-                else:
-                    db_execution.status = execution_result["status"].upper()
-                    db_execution.end_time = int(datetime.now().timestamp())
-
-                # Store execution results
-                if "node_results" in execution_result:
-                    db_execution.run_data = {
-                        "node_results": execution_result["node_results"],
-                        "execution_order": execution_result.get("execution_order", []),
-                        "performance_metrics": execution_result.get("performance_metrics", {}),
-                    }
-
             # Determine initial data based on execution mode
             # When using start_from_node with inputs, use inputs instead of trigger_data
             if start_from_node and hasattr(request, 'inputs') and request.inputs:
