@@ -223,12 +223,21 @@ class ExecutionService:
                         "performance_metrics": execution_result.get("performance_metrics", {}),
                     }
 
+            # Determine initial data based on execution mode
+            # When using start_from_node with inputs, use inputs instead of trigger_data
+            if start_from_node and hasattr(request, 'inputs') and request.inputs:
+                initial_data = request.inputs
+                self.logger.info(f"🎯 Using custom inputs for start_from_node: {list(initial_data.keys())}")
+            else:
+                initial_data = request.trigger_data
+                self.logger.info(f"📋 Using trigger_data as initial data")
+            
             # 启动后台异步执行workflow
             await self._execute_workflow_background(
                 workflow_id=workflow_id,
                 execution_id=execution_id,
                 workflow_definition=workflow_dict,
-                initial_data=request.trigger_data,
+                initial_data=initial_data,
                 credentials={},  # TODO: Add credential handling
                 user_id=user_id,
             )
