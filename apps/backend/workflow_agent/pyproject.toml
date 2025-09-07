@@ -39,7 +39,6 @@ dependencies = [
     "opentelemetry-exporter-prometheus",
     "aiohttp>=3.9.0",
     "openai>=1.0.0",
-    "google-generativeai>=0.3.0",
 ]
 
 [project.optional-dependencies]

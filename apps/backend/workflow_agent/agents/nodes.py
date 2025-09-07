@@ -82,8 +82,8 @@ class WorkflowAgentNodes:
 
             from shared.models.node_enums import GoogleGeminiModel
 
-            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))  # type: ignore
-            model = genai.GenerativeModel(GoogleGeminiModel.GEMINI_2_5_FLASH_LITE.value)  # type: ignore
+            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+            model = genai.GenerativeModel(GoogleGeminiModel.GEMINI_2_5_FLASH_LITE.value)
 
             # Create repair prompt with explicit JSON formatting request
             repair_prompt = f"""You are a JSON repair expert. Fix the malformed JSON below and return ONLY the valid JSON object.
@@ -101,7 +101,7 @@ CRITICAL: Return ONLY the valid JSON object with no markdown, no explanations, n
 {json_str}"""
 
             # Get GEMINI to repair the JSON
-            response = model.generate_content(  # type: ignore
+            response = model.generate_content(
                 repair_prompt,
                 generation_config={
                     "temperature": 0,
@@ -334,9 +334,8 @@ CRITICAL: Return ONLY the valid JSON object with no markdown, no explanations, n
         修正工作流中所有节点的参数，使用 MCP 提供的 ParameterType 信息。
         这只是兜底逻辑，LLM 应该直接根据 MCP ParameterType 生成正确的 mock values。
         
-        注意：
-        1. AI_AGENT 节点会被跳过，因为它们的 system_prompt 已经通过增强。
-        2. 有上游 AI_AGENT 连接的节点也会被跳过，因为它们的参数应该由 AI_AGENT 输出提供。
+        注意：AI_AGENT 节点会被跳过，因为它们的 system_prompt 已经通过 
+        _enhance_ai_agent_prompts_with_llm 方法进行了增强。
 
         Args:
             workflow: 完整的工作流数据
@@ -347,65 +346,14 @@ CRITICAL: Return ONLY the valid JSON object with no markdown, no explanations, n
         if "nodes" not in workflow:
             return workflow
 
-        # Find nodes that have upstream AI_AGENT connections
-        nodes_with_ai_upstream = self._find_nodes_with_ai_agent_upstream(workflow)
-
         for node in workflow["nodes"]:
-            node_id = node.get("id", "")
-            
             # Skip AI_AGENT nodes entirely - their prompts are already enhanced
             if node.get("type") == "AI_AGENT":
-                logger.debug(f"Skipping parameter fix for AI_AGENT node {node_id} - already enhanced")
+                logger.debug(f"Skipping parameter fix for AI_AGENT node {node.get('id')} - already enhanced")
                 continue
-                
-            # Skip nodes that have AI_AGENT upstream - their parameters should come from AI output
-            if node_id in nodes_with_ai_upstream:
-                logger.debug(f"Skipping parameter fix for node {node_id} - has upstream AI_AGENT connection")
-                continue
-                
             self._fix_node_parameters(node)
 
         return workflow
-
-    def _find_nodes_with_ai_agent_upstream(self, workflow: dict) -> set:
-        """
-        找到有上游 AI_AGENT 连接的节点。
-        这些节点的参数应该由 AI_AGENT 的输出提供，不需要参数修复。
-        
-        Args:
-            workflow: 工作流数据
-            
-        Returns:
-            set: 有上游 AI_AGENT 连接的节点 ID 集合
-        """
-        try:
-            connections = workflow.get("connections", {})
-            nodes = workflow.get("nodes", [])
-            
-            # Create a map of node IDs to their types
-            node_types = {node["id"]: node.get("type") for node in nodes}
-            
-            # Find all nodes that AI_AGENTs connect to
-            nodes_with_ai_upstream = set()
-            
-            for source_node_id, connection_data in connections.items():
-                # Check if the source node is an AI_AGENT
-                if node_types.get(source_node_id) == "AI_AGENT":
-                    connection_types = connection_data.get("connection_types", {})
-                    main_connections = connection_types.get("main", {}).get("connections", [])
-                    
-                    # Add all target nodes to the set
-                    for conn in main_connections:
-                        target_node_id = conn.get("node")
-                        if target_node_id:
-                            nodes_with_ai_upstream.add(target_node_id)
-                            logger.debug(f"Node {target_node_id} has upstream AI_AGENT connection from {source_node_id}")
-            
-            return nodes_with_ai_upstream
-            
-        except Exception as e:
-            logger.warning(f"Error finding nodes with AI_AGENT upstream: {e}")
-            return set()
 
     def _fix_node_parameters(self, node: dict) -> dict:
         """
