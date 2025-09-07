@@ -196,31 +196,33 @@ class BaseNodeExecutor(ABC):
         # Use node spec validation if available
         if node_spec_registry:
             try:
-                self.logger.info(
-                    f"🔍 BASE: Running spec validation for {getattr(node, 'subtype', 'NO_SUBTYPE')}"
-                )
+                if self.logger.isEnabledFor(logging.DEBUG):
+                    self.logger.debug(
+                        f"Running spec validation for {getattr(node, 'subtype', 'NO_SUBTYPE')}"
+                    )
                 spec_errors = node_spec_registry.validate_node(node)
                 if spec_errors:
-                    self.logger.warning(
-                        f"🔍 BASE: ⚠️ Spec validation found {len(spec_errors)} errors"
-                    )
+                    self.logger.warning(f"Spec validation found {len(spec_errors)} errors")
                     for error in spec_errors:
-                        self.logger.warning(f"🔍 BASE:   - {error}")
+                        self.logger.warning(f"  - {error}")
                 else:
-                    self.logger.info(f"🔍 BASE: ✅ Spec validation passed")
+                    if self.logger.isEnabledFor(logging.DEBUG):
+                        self.logger.debug("Spec validation passed")
                 errors.extend(spec_errors)
             except Exception as e:
-                self.logger.warning(f"🔍 BASE: ❌ Node spec validation failed: {e}")
+                self.logger.warning(f"Node spec validation failed: {e}")
                 # Fall back to legacy validation
                 legacy_errors = self._validate_legacy(node)
                 errors.extend(legacy_errors)
         else:
-            self.logger.info(f"🔍 BASE: Using legacy validation (no spec registry)")
+            if self.logger.isEnabledFor(logging.DEBUG):
+                self.logger.debug("Using legacy validation (no spec registry)")
             # If spec registry not available, use legacy validation
             legacy_errors = self._validate_legacy(node)
             errors.extend(legacy_errors)
 
-        self.logger.info(f"🔍 BASE: Validation complete - {len(errors)} total errors")
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug(f"Validation complete - {len(errors)} total errors")
         return errors
 
     def _validate_legacy(self, node: Any) -> List[str]:
@@ -357,67 +359,74 @@ class BaseNodeExecutor(ABC):
         """Get parameter value with type conversion based on spec."""
         raw_value = context.get_parameter(param_name)
 
-        self.logger.info(
-            f"🔧 BASE: Getting parameter '{param_name}' with spec, raw value: {raw_value}"
-        )
+        # Debug only: parameter retrieval details
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug(f"Getting parameter '{param_name}' with spec, raw value: {raw_value}")
 
         if self.spec:
             param_def = self.spec.get_parameter(param_name)
             if param_def:
-                self.logger.info(
-                    f"🔧 BASE: Found spec for parameter '{param_name}', type: {getattr(param_def, 'type', 'unknown')}"
-                )
+                if self.logger.isEnabledFor(logging.DEBUG):
+                    self.logger.debug(
+                        f"Found spec for parameter '{param_name}', type: {getattr(param_def, 'type', 'unknown')}"
+                    )
 
                 # Use default value if not provided
                 if raw_value is None and param_def.default_value is not None:
                     raw_value = param_def.default_value
-                    self.logger.info(f"🔧 BASE: Using default value for '{param_name}': {raw_value}")
+                    if self.logger.isEnabledFor(logging.DEBUG):
+                        self.logger.debug(f"Using default value for '{param_name}': {raw_value}")
 
                 # Type conversion based on spec
                 if raw_value is not None and hasattr(param_def, "type"):
                     try:
                         if param_def.type == ParameterType.INTEGER:
                             converted_value = int(raw_value)
-                            self.logger.info(
-                                f"🔧 BASE: Converted '{param_name}' to integer: {converted_value}"
-                            )
+                            if self.logger.isEnabledFor(logging.DEBUG):
+                                self.logger.debug(
+                                    f"Converted '{param_name}' to integer: {converted_value}"
+                                )
                             return converted_value
                         elif param_def.type == ParameterType.FLOAT:
                             converted_value = float(raw_value)
-                            self.logger.info(
-                                f"🔧 BASE: Converted '{param_name}' to float: {converted_value}"
-                            )
+                            if self.logger.isEnabledFor(logging.DEBUG):
+                                self.logger.debug(
+                                    f"Converted '{param_name}' to float: {converted_value}"
+                                )
                             return converted_value
                         elif param_def.type == ParameterType.BOOLEAN:
                             if isinstance(raw_value, str):
                                 converted_value = raw_value.lower() in ("true", "1", "yes")
                             else:
                                 converted_value = bool(raw_value)
-                            self.logger.info(
-                                f"🔧 BASE: Converted '{param_name}' to boolean: {converted_value}"
-                            )
+                            if self.logger.isEnabledFor(logging.DEBUG):
+                                self.logger.debug(
+                                    f"Converted '{param_name}' to boolean: {converted_value}"
+                                )
                             return converted_value
                         elif param_def.type == ParameterType.JSON:
                             if isinstance(raw_value, str):
                                 converted_value = json.loads(raw_value)
-                                self.logger.info(f"🔧 BASE: Parsed '{param_name}' as JSON")
+                                if self.logger.isEnabledFor(logging.DEBUG):
+                                    self.logger.debug(f"Parsed '{param_name}' as JSON")
                                 return converted_value
                             else:
-                                self.logger.info(
-                                    f"🔧 BASE: Using raw value for JSON parameter '{param_name}'"
-                                )
+                                if self.logger.isEnabledFor(logging.DEBUG):
+                                    self.logger.debug(
+                                        f"Using raw value for JSON parameter '{param_name}'"
+                                    )
                                 return raw_value
                     except (ValueError, json.JSONDecodeError) as e:
-                        self.logger.warning(
-                            f"🔧 BASE: ❌ Failed to convert parameter {param_name}: {e}"
-                        )
+                        self.logger.warning(f"Failed to convert parameter {param_name}: {e}")
                         return raw_value
             else:
-                self.logger.info(f"🔧 BASE: No spec definition found for parameter '{param_name}'")
+                if self.logger.isEnabledFor(logging.DEBUG):
+                    self.logger.debug(f"No spec definition found for parameter '{param_name}'")
         else:
-            self.logger.info(
-                f"🔧 BASE: No spec available, using raw parameter value for '{param_name}'"
-            )
+            if self.logger.isEnabledFor(logging.DEBUG):
+                self.logger.debug(
+                    f"No spec available, using raw parameter value for '{param_name}'"
+                )
 
         return raw_value
 
