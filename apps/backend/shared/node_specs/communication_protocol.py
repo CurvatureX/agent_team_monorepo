@@ -91,8 +91,55 @@ def transform_ai_to_text(ai_output: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def transform_text_to_slack(text_output: Dict[str, Any]) -> Dict[str, Any]:
-    """Transform standard text output to Slack input format."""
+    """Transform standard text output to Slack input format.
+    
+    Handles AI output by checking if content is JSON with structured data.
+    If it contains agenda, summary, or other structured fields, formats them
+    into a proper Slack message.
+    """
     content = text_output.get("content", "")
+    
+    # Check if content is a JSON string with structured data
+    if isinstance(content, str) and content.strip().startswith("{"):
+        try:
+            import json
+            parsed_content = json.loads(content)
+            
+            # Handle different structured formats from AI
+            if isinstance(parsed_content, dict):
+                # Check for agenda format
+                if "agenda" in parsed_content and isinstance(parsed_content["agenda"], list):
+                    message_parts = ["📅 **Meeting Agenda**\n"]
+                    
+                    for item in parsed_content["agenda"]:
+                        if isinstance(item, dict):
+                            time = item.get("time", "")
+                            topic = item.get("topic", "")
+                            duration = item.get("duration", "")
+                            if time and topic:
+                                line = f"🕘 {time} - {topic}"
+                                if duration:
+                                    line += f" ({duration})"
+                                message_parts.append(line)
+                    
+                    # Add summary if present
+                    if "summary" in parsed_content:
+                        message_parts.append(f"\n**Summary:** {parsed_content['summary']}")
+                    
+                    content = "\n".join(message_parts)
+                
+                # Check for summary-only format
+                elif "summary" in parsed_content and "agenda" not in parsed_content:
+                    content = parsed_content["summary"]
+                
+                # Check if it already has Slack-specific format
+                elif "message" in parsed_content:
+                    content = parsed_content["message"]
+                    
+        except json.JSONDecodeError:
+            # If JSON parsing fails, use content as-is
+            pass
+    
     return {
         "content": content,
         "blocks": [],  # Can be populated by Slack node based on content
@@ -126,8 +173,37 @@ TRANSFORMATION_REGISTRY = {
 
 
 def get_transformation_function(source_type: str, target_type: str):
-    """Get transformation function for converting between node types."""
-    return TRANSFORMATION_REGISTRY.get((source_type, target_type))
+    """Get transformation function for converting between node types.
+    
+    Handles subtypes by trying multiple patterns:
+    1. Exact match: (AI_AGENT.GEMINI, EXTERNAL_ACTION.SLACK)
+    2. Source without subtype: (AI_AGENT, EXTERNAL_ACTION.SLACK)
+    3. Target without subtype: (AI_AGENT.GEMINI, EXTERNAL_ACTION)
+    4. Both without subtypes: (AI_AGENT, EXTERNAL_ACTION)
+    """
+    # First try exact match
+    transform_fn = TRANSFORMATION_REGISTRY.get((source_type, target_type))
+    if transform_fn:
+        return transform_fn
+    
+    # Try without source subtype
+    source_base = source_type.split('.')[0]
+    transform_fn = TRANSFORMATION_REGISTRY.get((source_base, target_type))
+    if transform_fn:
+        return transform_fn
+    
+    # Try without target subtype
+    target_base = target_type.split('.')[0]
+    transform_fn = TRANSFORMATION_REGISTRY.get((source_type, target_base))
+    if transform_fn:
+        return transform_fn
+    
+    # Try base types only
+    transform_fn = TRANSFORMATION_REGISTRY.get((source_base, target_base))
+    if transform_fn:
+        return transform_fn
+    
+    return None
 
 
 def apply_transformation(
