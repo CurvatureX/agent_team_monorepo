@@ -65,7 +65,7 @@ class OAuth2ServiceLite:
 
         # OAuth2配置 - 从环境变量获取敏感信息
         self.provider_configs = {
-            "google_calendar": {
+            "google": {
                 "client_id": os.getenv("GOOGLE_CLIENT_ID", ""),
                 "client_secret": os.getenv("GOOGLE_CLIENT_SECRET", ""),
                 "token_url": "https://oauth2.googleapis.com/token",
@@ -550,9 +550,7 @@ class OAuth2ServiceLite:
         """
         # 不同提供商的refresh token过期策略
         refresh_token_lifetimes = {
-            "google_calendar": timedelta(
-                days=180
-            ),  # Google refresh tokens expire in 6 months if unused
+            "google": timedelta(days=180),  # Google refresh tokens expire in 6 months if unused
             "github": None,  # GitHub refresh tokens don't expire
             "slack": None,  # Slack refresh tokens don't expire
             "email": timedelta(days=90),  # Generic email provider - 3 months

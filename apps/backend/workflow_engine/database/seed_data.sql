@@ -18,8 +18,8 @@ INSERT INTO system_settings (setting_key, setting_value, description, is_public)
 
 -- Insert common integrations
 INSERT INTO integrations (integration_id, integration_type, name, description, version, configuration, supported_operations) VALUES
-('google_calendar', 'API', 'Google Calendar', 'Google Calendar API integration', '1.0.0', 
- '{"base_url": "https://www.googleapis.com/calendar/v3", "auth_type": "oauth2"}', 
+('google', 'API', 'Google Calendar', 'Google Calendar API integration', '1.0.0',
+ '{"base_url": "https://www.googleapis.com/calendar/v3", "auth_type": "oauth2"}',
  ARRAY['create_event', 'update_event', 'delete_event', 'list_events']),
 ('slack', 'API', 'Slack', 'Slack API integration', '1.0.0',
  '{"base_url": "https://slack.com/api", "auth_type": "oauth2"}',
@@ -54,7 +54,7 @@ BEGIN
 INSERT INTO node_templates (template_id, name, description, category, node_type, node_subtype, is_system_template, default_parameters, parameter_schema)
 VALUES
   ('trigger-manual', 'Manual Trigger', 'Manually starts a workflow execution.', 'Trigger', 'TRIGGER', 'MANUAL', true,
- '{"require_confirmation": false}', 
+ '{"require_confirmation": false}',
   '{"type": "object", "properties": {"require_confirmation": {"type": "boolean"}}}'),
 
   ('trigger-webhook', 'Webhook Trigger', 'Triggers a workflow via an HTTP webhook.', 'Trigger', 'TRIGGER', 'WEBHOOK', true,
@@ -96,7 +96,7 @@ VALUES
   '{"type": "object", "properties": {"filter_condition": {"type": "object"}}}'),
 
   ('flow-loop', 'Loop', 'Executes a branch multiple times (for-each, while, times).', 'Flow Control', 'FLOW', 'LOOP', true,
- '{"loop_type": "for_each", "max_iterations": 100}', 
+ '{"loop_type": "for_each", "max_iterations": 100}',
   '{"type": "object", "properties": {"loop_type": {"type": "string", "enum": ["for_each", "while", "times"]}, "max_iterations": {"type": "integer"}}}'),
 
   ('flow-merge', 'Merge', 'Merges data from multiple branches.', 'Flow Control', 'FLOW', 'MERGE', true,

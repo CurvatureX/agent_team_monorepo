@@ -14,17 +14,33 @@ class OpenAIProvider(AIProviderInterface):
         try:
             from shared.models.node_enums import OpenAIModel
 
-            return [model.value for model in OpenAIModel]
-        except ImportError:
+            models = [model.value for model in OpenAIModel]
+            self.logger.debug(f"Loaded {len(models)} OpenAI models from shared enums")
+            return models
+        except ImportError as e:
+            self.logger.warning(
+                f"Could not import shared node enums (falling back to hardcoded list): {e}"
+            )
             # Fallback to hardcoded list if shared enums not available
+            # This list should match the shared enums as closely as possible
             return [
                 "gpt-5",
-                "gpt-5-nano",
                 "gpt-5-mini",
+                "gpt-5-nano",
                 "gpt-5-mini-2025-08-07",
                 "gpt-5-chat-latest",
                 "gpt-4.1",
                 "gpt-4.1-mini",
+                # Legacy models for compatibility
+                "gpt-4.1-turbo",
+                "gpt-4.1-turbo-realtime",
+                "gpt-4.1-turbo-preview",
+                "gpt-4.1-mini-realtime",
+                "gpt-4.1-preview",
+                "o1",
+                "o1-preview",
+                "o1-mini",
+                "o3-mini",
             ]
 
     def __init__(self, api_key: Optional[str] = None):

@@ -87,7 +87,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
             try:
                 # Only initialize available SDKs
                 if GoogleCalendarSDK is not None:
-                    self._sdks["google_calendar"] = GoogleCalendarSDK()
+                    self._sdks["google"] = GoogleCalendarSDK()
                 if GitHubSDK is not None:
                     self._sdks["github"] = GitHubSDK()
                 if SlackSDK is not None:
@@ -111,7 +111,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         if not self._sdks and GoogleCalendarAdapter:
             try:
                 self._adapters = {
-                    "google_calendar": GoogleCalendarAdapter(),
+                    "google": GoogleCalendarAdapter(),
                 }
                 self.logger.info("Initialized fallback API adapters for external actions")
             except Exception as e:
@@ -486,7 +486,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         subtype_mapping = {
             ExternalActionSubtype.GITHUB.value: ("github", self._prepare_github_operation),
             ExternalActionSubtype.GOOGLE_CALENDAR.value: (
-                "google_calendar",
+                "google",
                 self._prepare_google_calendar_operation,
             ),
             ExternalActionSubtype.SLACK.value: ("slack", self._prepare_slack_operation),
@@ -909,7 +909,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
         Args:
             user_id: User ID from execution context
-            provider: Provider name (google_calendar, github, slack)
+            provider: Provider name (google, github, slack)
 
         Returns:
             Dictionary with access_token or None if not available
@@ -951,7 +951,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         """Call external API using the appropriate adapter with comprehensive logging.
 
         Args:
-            provider: Provider name (google_calendar, github, slack)
+            provider: Provider name (google, github, slack)
             operation: API operation to perform
             parameters: Operation parameters
             user_id: User ID for credential lookup
@@ -1330,7 +1330,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         try:
             # Direct async call since method is now async
             output_data = await self._call_external_api(
-                "google_calendar",
+                "google",
                 action,
                 api_parameters,
                 user_id,
@@ -1341,17 +1341,15 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
             # Check if this is an N8N-style error response (missing credentials)
             if not output_data.get("success", True) and output_data.get("requires_auth"):
-                self.logger.info(
-                    f"Missing credentials for google_calendar - authorization required"
-                )
+                self.logger.info(f"Missing credentials for google - authorization required")
                 return self._create_error_result(
-                    f"Missing credentials for google_calendar. Please authorize this provider first.",
+                    f"Missing credentials for google. Please authorize this provider first.",
                     error_details={
                         "error_type": "MISSING_CREDENTIALS",
-                        "provider": "google_calendar",
+                        "provider": "google",
                         "user_id": user_id,
                         "requires_auth": True,
-                        "auth_provider": "google_calendar",
+                        "auth_provider": "google",
                     },
                     execution_time=time.time() - start_time,
                     logs=logs,
@@ -1361,7 +1359,7 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
             self.logger.info(f"Failed to call Google Calendar API: {str(e)}")
             # Fallback to mock data with error info
             output_data = {
-                "provider": "google_calendar",
+                "provider": "google",
                 "action": action,
                 "calendar_id": calendar_id,
                 "result": f"Mock Google Calendar {action} result (API call failed: {str(e)})",
