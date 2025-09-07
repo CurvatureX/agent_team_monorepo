@@ -254,6 +254,18 @@ resource "aws_ecs_task_definition" "api_gateway" {
         {
           name      = "SLACK_REDIRECT_URI"
           valueFrom = aws_ssm_parameter.slack_redirect_uri.arn
+        },
+        {
+          name      = "GOOGLE_CLIENT_ID"
+          valueFrom = aws_ssm_parameter.google_client_id.arn
+        },
+        {
+          name      = "GOOGLE_CLIENT_SECRET"
+          valueFrom = aws_ssm_parameter.google_client_secret.arn
+        },
+        {
+          name      = "GOOGLE_REDIRECT_URI"
+          valueFrom = aws_ssm_parameter.google_redirect_uri.arn
         }
       ]
 
@@ -634,7 +646,7 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
         },
         {
           name  = "LOG_LEVEL"
-          value = "DEBUG"
+          value = "INFO"
         },
         {
           name  = "PYTHONUNBUFFERED"
@@ -730,6 +742,18 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
         {
           name      = "SLACK_SIGNING_SECRET"
           valueFrom = aws_ssm_parameter.slack_signing_secret.arn
+        },
+        {
+          name      = "GOOGLE_CLIENT_ID"
+          valueFrom = aws_ssm_parameter.google_client_id.arn
+        },
+        {
+          name      = "GOOGLE_CLIENT_SECRET"
+          valueFrom = aws_ssm_parameter.google_client_secret.arn
+        },
+        {
+          name      = "GOOGLE_REDIRECT_URI"
+          valueFrom = aws_ssm_parameter.google_redirect_uri.arn
         }
       ]
 
@@ -746,9 +770,9 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
       healthCheck = {
         command     = ["CMD-SHELL", "curl -f http://localhost:8003/health || exit 1"]
         interval    = 30
-        timeout     = 15
-        retries     = 3
-        startPeriod = 180
+        timeout     = 20
+        retries     = 5
+        startPeriod = 300  # Increased to 5 minutes for complex initialization
       }
     }
   ])

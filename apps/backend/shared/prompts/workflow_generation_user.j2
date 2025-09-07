@@ -50,4 +50,18 @@ When MCP returns node specifications, each parameter includes a "type" field tha
 
 **MCP's type field is the source of truth - ignore parameter names when determining types!**
 
+**🚨 CRITICAL - Complete Workflow Requirement:**
+You MUST generate a COMPLETE workflow that fully implements the user's requirements.
+
+For the given intent: "{{ intent_summary }}"
+- Analyze what ALL the steps are needed to complete this workflow end-to-end
+- Include EVERY node type needed: triggers, processing nodes, human interactions, external actions
+- Do NOT generate partial workflows - the workflow must be fully functional
+
+**Special Check for Approval Workflows:**
+If the user mentions "confirmation", "approval", "wait for user", or similar concepts:
+- You MUST include a HUMAN_IN_THE_LOOP node to wait for user response
+- You MUST include the final action node that executes after approval
+- Example flow: Trigger → Process → Send confirmation → HUMAN_IN_THE_LOOP → Final action
+
 **Output:** Complete JSON workflow only. Start with `{` and end with `}`. No explanations or markdown.

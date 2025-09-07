@@ -11,6 +11,7 @@ class ExecutionStatus(str, Enum):
     ERROR = "ERROR"
     CANCELED = "CANCELED"
     WAITING = "WAITING"
+    PAUSED = "PAUSED"
 
 
 class ExecutionLog(BaseModel):

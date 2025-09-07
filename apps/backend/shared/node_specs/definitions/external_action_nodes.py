@@ -506,7 +506,7 @@ NOTION_SPEC = NodeSpec(
 # Google Calendar - Google Calendar operations
 GOOGLE_CALENDAR_SPEC = NodeSpec(
     node_type=NodeType.EXTERNAL_ACTION,
-    subtype="GOOGLE_CALENDAR",
+    subtype=ExternalActionSubtype.GOOGLE_CALENDAR,
     description="Interact with Google Calendar API",
     display_name="Google Calendar",
     category="integrations",

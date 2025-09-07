@@ -158,34 +158,36 @@ class TriggerIndexManager:
             List of trigger information dictionaries
         """
         try:
-            async with self.session_factory() as session:
-                query = session.query(TriggerIndex).filter(
-                    TriggerIndex.workflow_id == uuid.UUID(workflow_id)
+            from workflow_scheduler.core.supabase_client import get_supabase_client
+
+            client = get_supabase_client()
+
+            # Query triggers using Supabase
+            response = (
+                client.table("trigger_index").select("*").eq("workflow_id", workflow_id).execute()
+            )
+
+            trigger_info = []
+
+            for trigger_record in response.data:
+                trigger_info.append(
+                    {
+                        "id": str(trigger_record["id"]),
+                        "workflow_id": str(trigger_record["workflow_id"]),
+                        "trigger_type": trigger_record["trigger_type"],
+                        "trigger_config": trigger_record["trigger_config"],
+                        "deployment_status": trigger_record["deployment_status"],
+                        "created_at": trigger_record["created_at"],
+                        "updated_at": trigger_record["updated_at"],
+                        # Type-specific fields
+                        "cron_expression": trigger_record.get("cron_expression"),
+                        "webhook_path": trigger_record.get("webhook_path"),
+                        "email_filter": trigger_record.get("email_filter"),
+                        "github_repository": trigger_record.get("github_repository"),
+                        "github_events": trigger_record.get("github_events"),
+                        "github_installation_id": trigger_record.get("github_installation_id"),
+                    }
                 )
-
-                result = await session.execute(query)
-                triggers = result.scalars().all()
-
-                trigger_info = []
-                for trigger in triggers:
-                    trigger_info.append(
-                        {
-                            "id": str(trigger.id),
-                            "workflow_id": str(trigger.workflow_id),
-                            "trigger_type": trigger.trigger_type,
-                            "trigger_config": trigger.trigger_config,
-                            "deployment_status": trigger.deployment_status,
-                            "created_at": trigger.created_at.isoformat(),
-                            "updated_at": trigger.updated_at.isoformat(),
-                            # Type-specific fields
-                            "cron_expression": trigger.cron_expression,
-                            "webhook_path": trigger.webhook_path,
-                            "email_filter": trigger.email_filter,
-                            "github_repository": trigger.github_repository,
-                            "github_events": trigger.github_events,
-                            "github_installation_id": trigger.github_installation_id,
-                        }
-                    )
 
                 return trigger_info
 
@@ -382,7 +384,13 @@ class TriggerIndexManager:
     ) -> bool:
         """Register a single trigger specification in the index"""
         try:
-            workflow_uuid = uuid.UUID(workflow_id)
+            # Handle workflow_id - it might not be a valid UUID
+            try:
+                workflow_uuid = uuid.UUID(workflow_id)
+            except ValueError:
+                # If not a valid UUID, use the string as-is and let the database handle it
+                logger.warning(f"Workflow ID '{workflow_id}' is not a valid UUID, using as string")
+                workflow_uuid = workflow_id
 
             # Check if trigger already exists for this workflow
             existing_query = select(TriggerIndex).where(
@@ -460,10 +468,16 @@ class TriggerIndexManager:
     async def _remove_workflow_triggers(self, session: AsyncSession, workflow_id: str) -> bool:
         """Remove all trigger index entries for a workflow"""
         try:
+            # Handle workflow_id - it might not be a valid UUID
+            try:
+                workflow_uuid = uuid.UUID(workflow_id)
+            except ValueError:
+                # If not a valid UUID, use the string as-is and let the database handle it
+                logger.warning(f"Workflow ID '{workflow_id}' is not a valid UUID, using as string")
+                workflow_uuid = workflow_id
+
             # Delete all triggers for this workflow
-            delete_query = delete(TriggerIndex).where(
-                TriggerIndex.workflow_id == uuid.UUID(workflow_id)
-            )
+            delete_query = delete(TriggerIndex).where(TriggerIndex.workflow_id == workflow_uuid)
 
             result = await session.execute(delete_query)
             deleted_count = result.rowcount

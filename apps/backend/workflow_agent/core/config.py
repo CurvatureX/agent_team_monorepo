@@ -50,8 +50,8 @@ class Settings(BaseSettings):
     MAX_WORKFLOW_NODES: int = int(os.getenv("MAX_WORKFLOW_NODES", "50"))
     DEFAULT_TIMEOUT: int = int(os.getenv("DEFAULT_TIMEOUT", "300"))  # 5 minutes
     WORKFLOW_GENERATION_MAX_RETRIES: int = int(
-        os.getenv("WORKFLOW_GENERATION_MAX_RETRIES", "2")
-    )  # Max workflow generation retry attempts
+        os.getenv("WORKFLOW_GENERATION_MAX_RETRIES", "1")
+    )  # Max workflow generation retry attempts (reduced for faster generation)
 
     # Gap Analysis settings
     GAP_ANALYSIS_MAX_ROUNDS: int = int(
@@ -66,7 +66,13 @@ class Settings(BaseSettings):
 
     # Workflow Engine settings
     WORKFLOW_ENGINE_URL: str = os.getenv("WORKFLOW_ENGINE_URL", "http://localhost:8002")
-    WORKFLOW_ENGINE_TIMEOUT: int = int(os.getenv("WORKFLOW_ENGINE_TIMEOUT", "60"))  # 60 seconds
+    WORKFLOW_ENGINE_TIMEOUT: int = int(
+        os.getenv("WORKFLOW_ENGINE_TIMEOUT", "300")
+    )  # 300 seconds (5 minutes)
+
+    # MCP API timeout settings
+    MCP_TOTAL_TIMEOUT: int = int(os.getenv("MCP_TOTAL_TIMEOUT", "60"))  # 60 seconds total
+    MCP_CONNECT_TIMEOUT: int = int(os.getenv("MCP_CONNECT_TIMEOUT", "10"))  # 10 seconds connect
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
