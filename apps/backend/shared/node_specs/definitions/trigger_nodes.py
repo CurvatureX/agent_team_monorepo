@@ -215,12 +215,6 @@ SLACK_TRIGGER_SPEC = NodeSpec(
             description="Command prefix to respond to (e.g., '!', '/')",
         ),
         ParameterDef(
-            name="user_filter",
-            type=ParameterType.STRING,
-            required=False,
-            description="Filter by user ID or username (regex pattern)",
-        ),
-        ParameterDef(
             name="ignore_bots",
             type=ParameterType.BOOLEAN,
             required=False,
