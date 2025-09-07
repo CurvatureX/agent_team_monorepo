@@ -317,15 +317,15 @@ async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Dep
         # Convert settings to dict if it's an object
         settings_dict = {}
         if request.settings:
-            if hasattr(request.settings, 'model_dump'):
+            if hasattr(request.settings, "model_dump"):
                 settings_dict = request.settings.model_dump()
-            elif hasattr(request.settings, 'dict'):
+            elif hasattr(request.settings, "dict"):
                 settings_dict = request.settings.dict()
             elif isinstance(request.settings, dict):
                 settings_dict = request.settings
             else:
                 settings_dict = {}
-        
+
         # Create workflow via HTTP
         result = await http_client.create_workflow(
             name=request.name,
@@ -704,6 +704,7 @@ async def deploy_workflow(
         result = await scheduler_client.deploy_workflow(
             workflow_id=workflow_id,
             workflow_spec=workflow_data_with_credentials,
+            user_id=deps.current_user.sub,
             trace_id=getattr(deps.request.state, "trace_id", None),
         )
 
