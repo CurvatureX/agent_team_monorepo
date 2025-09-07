@@ -438,6 +438,12 @@ class ExecuteWorkflowRequest(BaseModel):
         default=False,
         description="是否跳过触发器验证，用于从中间节点开始执行时使用"
     )
+    
+    # 新增：当使用start_from_node时，可以提供自定义输入数据
+    inputs: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="当使用start_from_node时的自定义输入数据，将传递给起始节点"
+    )
 
 
 class ExecuteWorkflowResponse(BaseModel):
