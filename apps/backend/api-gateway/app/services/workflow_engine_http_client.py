@@ -25,7 +25,7 @@ class WorkflowEngineHTTPClient:
         )
         # Separate timeouts for different operations
         self.connect_timeout = httpx.Timeout(5.0, connect=5.0)
-        self.execute_timeout = httpx.Timeout(60.0, connect=5.0)  # Increased timeout for safety
+        self.execute_timeout = httpx.Timeout(300.0, connect=5.0)  # 5 minutes for long-running workflows
         self.query_timeout = httpx.Timeout(30.0, connect=5.0)   # Longer timeout for queries
         self.connected = False
         # Connection pool for better performance
@@ -119,12 +119,21 @@ class WorkflowEngineHTTPClient:
             await self.connect()
 
         try:
+            # Convert settings to dict if it's an object
+            settings_dict = settings or {}
+            if hasattr(settings, 'model_dump'):
+                settings_dict = settings.model_dump()
+            elif hasattr(settings, 'dict'):
+                settings_dict = settings.dict()
+            elif hasattr(settings, '__dict__'):
+                settings_dict = settings.__dict__
+            
             request_data = {
                 "name": name,
                 "description": description,
                 "nodes": nodes or [],
                 "connections": connections or {},
-                "settings": settings or {},
+                "settings": settings_dict,
                 "static_data": static_data or {},
                 "tags": tags or [],
                 "user_id": user_id,
@@ -132,7 +141,6 @@ class WorkflowEngineHTTPClient:
             }
 
             log_info(f"📨 HTTP request to create workflow: {name}")
-            log_info(f"🐛 DEBUG: Request data: {request_data}")
 
             headers = {}
             if trace_id:

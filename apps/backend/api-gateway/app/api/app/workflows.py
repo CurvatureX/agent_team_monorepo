@@ -314,13 +314,25 @@ async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Dep
         # Use connections as-is (no conversion needed - using unified models)
         connections_dict = request.connections or {}
 
+        # Convert settings to dict if it's an object
+        settings_dict = {}
+        if request.settings:
+            if hasattr(request.settings, 'model_dump'):
+                settings_dict = request.settings.model_dump()
+            elif hasattr(request.settings, 'dict'):
+                settings_dict = request.settings.dict()
+            elif isinstance(request.settings, dict):
+                settings_dict = request.settings
+            else:
+                settings_dict = {}
+        
         # Create workflow via HTTP
         result = await http_client.create_workflow(
             name=request.name,
             description=request.description,
             nodes=nodes_list,
             connections=connections_dict,
-            settings=request.settings or {},
+            settings=settings_dict,
             static_data=getattr(request, "static_data", None) or {},
             tags=request.tags or [],
             user_id=deps.current_user.sub,
