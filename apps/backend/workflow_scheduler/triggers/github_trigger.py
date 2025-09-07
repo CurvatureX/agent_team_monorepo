@@ -54,7 +54,12 @@ class GitHubTrigger(BaseTrigger):
         )
 
         # Extract events from event_config for backward compatibility
-        self.events = list(self.event_config.keys()) if self.event_config else []
+        if isinstance(self.event_config, dict):
+            self.events = list(self.event_config.keys()) if self.event_config else []
+        elif isinstance(self.event_config, list):
+            self.events = self.event_config
+        else:
+            self.events = []
 
         # GitHub App configuration
         self.app_id = settings.github_app_id
