@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Set
 
 from .nodes.base import NodeExecutionContext, NodeExecutionResult
 from .nodes.factory import get_node_executor_factory, register_default_executors
+from .utils.logging_formatter import CleanWorkflowLogger
 
 # Import shared workflow models for proper connection validation
 try:
@@ -33,6 +34,7 @@ class WorkflowExecutionEngine:
 
     def __init__(self):
         self.logger = logging.getLogger(__name__)
+        self.clean_logger = CleanWorkflowLogger(self.logger)
         self.factory = get_node_executor_factory()
 
         # Register all default executors
@@ -52,16 +54,16 @@ class WorkflowExecutionEngine:
     ) -> Dict[str, Any]:
         """Execute a complete workflow with enhanced tracking."""
 
-        self.logger.info(
-            f"🚀 Starting enhanced workflow execution: {workflow_id} (execution: {execution_id})"
+        # Use clean logging for workflow start
+        node_count = len(workflow_definition.get("nodes", []))
+        self.clean_logger.workflow_start(workflow_id, execution_id, node_count)
+
+        # Log additional context at debug level
+        self.clean_logger.debug(f"Workflow definition keys: {list(workflow_definition.keys())}")
+        self.clean_logger.debug(
+            f"Initial data keys: {list(initial_data.keys()) if initial_data else 'None'}"
         )
-        self.logger.info(f"📋 Workflow definition keys: {list(workflow_definition.keys())}")
-        self.logger.info(f"📊 Number of nodes: {len(workflow_definition.get('nodes', []))}")
-        self.logger.info(f"🔗 Connections present: {bool(workflow_definition.get('connections'))}")
-        self.logger.info(
-            f"📥 Initial data keys: {list(initial_data.keys()) if initial_data else 'None'}"
-        )
-        self.logger.info(f"🔐 Credentials provided: {bool(credentials)}")
+        self.clean_logger.debug(f"Credentials provided: {bool(credentials)}")
 
         # Initialize enhanced execution state
         execution_state = self._initialize_enhanced_execution_state(
@@ -71,11 +73,11 @@ class WorkflowExecutionEngine:
 
         try:
             # Validate workflow
-            self.logger.info("🔍 Step 1: Validating workflow structure...")
+            self.clean_logger.process_step("Validating workflow structure")
             validation_errors = self._validate_workflow(workflow_definition)
             if validation_errors:
-                self.logger.error(
-                    f"❌ Workflow validation failed with {len(validation_errors)} errors:"
+                self.clean_logger.error(
+                    "Workflow validation", f"{len(validation_errors)} errors found"
                 )
                 for i, error in enumerate(validation_errors, 1):
                     self.logger.error(f"   {i}. {error}")
@@ -83,34 +85,33 @@ class WorkflowExecutionEngine:
                 execution_state["errors"] = validation_errors
                 self._record_execution_error(execution_id, "validation", validation_errors)
                 return execution_state
-            self.logger.info("✅ Workflow structure validation passed")
+            self.clean_logger.debug("Workflow structure validation passed")
 
             # Calculate execution order
-            self.logger.info("🔢 Step 2: Calculating execution order...")
+            self.clean_logger.process_step("Calculating execution order")
             execution_order = self._calculate_execution_order(workflow_definition)
             execution_state["execution_order"] = execution_order
-            self.logger.info(f"📋 Execution order calculated: {execution_order}")
+            self.clean_logger.debug(f"Execution order: {execution_order}")
 
             if not execution_order:
-                self.logger.error("❌ No execution order calculated - no nodes to execute!")
+                self.clean_logger.error(
+                    "Execution planning", "No execution order calculated - no nodes to execute"
+                )
                 execution_state["status"] = "ERROR"
                 execution_state["errors"] = ["No nodes found or circular dependency detected"]
                 return execution_state
 
             # Record execution context
-            self.logger.info("📝 Step 3: Recording execution context...")
+            self.clean_logger.debug("Recording execution context")
             self._record_execution_context(
                 execution_id, workflow_definition, initial_data, credentials
             )
-            self.logger.info("✅ Execution context recorded")
 
             # Execute nodes in order with enhanced tracking
-            self.logger.info(f"🏃 Step 4: Executing {len(execution_order)} nodes in order...")
+            self.clean_logger.process_step(
+                "Executing nodes", f"{len(execution_order)} nodes in sequence"
+            )
             for i, node_id in enumerate(execution_order, 1):
-                self.logger.info(
-                    f"🔄 [{i}/{len(execution_order)}] Starting execution of node: {node_id}"
-                )
-
                 try:
                     node_result = await self._execute_node_with_enhanced_tracking(
                         node_id,
@@ -253,20 +254,27 @@ class WorkflowExecutionEngine:
     ) -> Dict[str, Any]:
         """Execute a single node with enhanced tracking and data collection."""
 
-        self.logger.info(f"🔧 Executing node with enhanced tracking: {node_id}")
-
+        # Find node definition
         node_def = self._get_node_by_id(workflow_definition, node_id)
         if not node_def:
-            self.logger.error(f"❌ Node {node_id} not found in workflow definition")
+            self.clean_logger.error(f"Node {node_id}", "Not found in workflow definition")
             return {
                 "status": "ERROR",
                 "error_message": f"Node {node_id} not found in workflow definition",
             }
 
-        self.logger.info(
-            f"✅ Found node definition: {node_def.get('name', 'Unnamed')} (type: {node_def.get('type', 'Unknown')}, subtype: {node_def.get('subtype', 'None')})"
-        )
-        self.logger.info(f"🔍 Full node definition: {node_def}")
+        # Log node start with clean format
+        node_type = node_def["type"]
+        node_subtype = node_def.get("subtype", "")
+        node_name = node_def.get("name", "Unnamed")
+
+        # Find step number in execution order
+        execution_order = execution_state.get("execution_order", [])
+        step = execution_order.index(node_id) + 1 if node_id in execution_order else 0
+        total_steps = len(execution_order)
+
+        self.clean_logger.node_start(node_id, node_name, node_type, node_subtype, step, total_steps)
+        self.clean_logger.debug(f"Full node definition: {node_def}")
 
         # Record node execution start
         node_start_time = time.time()
@@ -276,23 +284,26 @@ class WorkflowExecutionEngine:
             "duration": None,
         }
 
-        # Get executor
+        # Track execution timing
         node_type = node_def["type"]
         node_subtype = node_def.get("subtype", "")
 
         try:
             executor = self.factory.create_executor(node_type, node_subtype)
             if not executor:
-                self.logger.error(
-                    f"❌ No executor found for node type: {node_type}, subtype: {node_subtype}"
+                self.clean_logger.error(
+                    f"Node {node_id}",
+                    f"No executor found for type: {node_type}, subtype: {node_subtype}",
                 )
                 return {
                     "status": "ERROR",
                     "error_message": f"No executor found for node type: {node_type}, subtype: {node_subtype}",
                 }
-            self.logger.info(f"✅ Created executor: {executor.__class__.__name__}")
+            self.clean_logger.debug(f"Created executor: {executor.__class__.__name__}")
         except Exception as executor_error:
-            self.logger.error(f"💥 Error creating executor: {str(executor_error)}")
+            self.clean_logger.error(
+                f"Node {node_id}", f"Error creating executor: {str(executor_error)}"
+            )
             self.logger.exception("Executor creation stack trace:")
             return {
                 "status": "ERROR",
@@ -300,16 +311,16 @@ class WorkflowExecutionEngine:
             }
 
         # Prepare input data with enhanced tracking
-        self.logger.info(f"📥 Preparing input data for node: {node_id}")
         try:
             input_data = self._prepare_node_input_data_with_tracking(
                 node_id, workflow_definition, execution_state, initial_data
             )
-            self.logger.info(
-                f"✅ Input data prepared - keys: {list(input_data.keys()) if input_data else 'None'}"
-            )
+            # Log node inputs with clean format
+            self.clean_logger.node_input(node_id, node_type, node_subtype, input_data)
         except Exception as input_error:
-            self.logger.error(f"💥 Error preparing input data: {str(input_error)}")
+            self.clean_logger.error(
+                f"Node {node_id}", f"Error preparing input data: {str(input_error)}"
+            )
             self.logger.exception("Input data preparation stack trace:")
             return {
                 "status": "ERROR",
@@ -321,9 +332,9 @@ class WorkflowExecutionEngine:
             self._record_node_input_data(
                 execution_state["execution_id"], node_id, node_def, input_data, credentials
             )
-            self.logger.info("✅ Node input data recorded")
+            self.clean_logger.debug("Node input data recorded")
         except Exception as record_error:
-            self.logger.warning(f"⚠️ Could not record node input data: {str(record_error)}")
+            self.clean_logger.debug(f"Could not record node input data: {str(record_error)}")
 
         # Create enhanced execution context
         trigger_data = execution_state.get("execution_context", {}).get("trigger_data", {})
@@ -354,61 +365,32 @@ class WorkflowExecutionEngine:
 
         try:
             # Execute node - handle both sync and async executors
-            self.logger.info(
-                f"🔥🚀 EXECUTING NODE: {node_id} with executor {executor.__class__.__name__}"
-            )
-            self.logger.info(f"🔥🚀 NODE TYPE: {node_type}, SUBTYPE: {node_subtype}")
-            self.logger.info(
-                f"🔥🚀 INPUT DATA KEYS: {list(input_data.keys()) if input_data else 'NO_INPUT_DATA'}"
-            )
-            self.logger.info(f"🔥🚀 CREDENTIALS PROVIDED: {bool(credentials)}")
-
-            self.logger.info(
-                f"🚀 Executing node {node_id} with executor {executor.__class__.__name__}"
-            )
-            self.logger.info(
-                f"🔧 Executor is async: {asyncio.iscoroutinefunction(executor.execute)}"
+            self.clean_logger.debug(
+                f"Executing {node_id} with {executor.__class__.__name__} (async: {asyncio.iscoroutinefunction(executor.execute)})"
             )
 
             if asyncio.iscoroutinefunction(executor.execute):
-                self.logger.info("⏳ Awaiting async executor...")
                 result = await executor.execute(context)
             else:
-                self.logger.info("⏳ Running sync executor...")
                 result = executor.execute(context)
 
-            self.logger.info(f"🔥✅ NODE EXECUTION COMPLETED: {node_id}")
-            self.logger.info(f"🔥✅ RESULT TYPE: {type(result).__name__}")
-            if hasattr(result, "status"):
-                self.logger.info(f"🔥✅ RESULT STATUS: {result.status}")
-            if hasattr(result, "output_data"):
-                if isinstance(result.output_data, dict):
-                    self.logger.info(f"🔥✅ OUTPUT DATA KEYS: {list(result.output_data.keys())}")
-                    for key, value in result.output_data.items():
-                        if isinstance(value, str) and len(value) > 200:
-                            self.logger.info(
-                                f"🔥✅ OUTPUT '{key}': {value[:200]}... ({len(value)} chars)"
-                            )
-                        else:
-                            self.logger.info(f"🔥✅ OUTPUT '{key}': {value}")
-                else:
-                    self.logger.info(f"🔥✅ OUTPUT DATA (non-dict): {result.output_data}")
-            if hasattr(result, "error_message") and result.error_message:
-                self.logger.info(f"🔥❌ RESULT ERROR: {result.error_message}")
-            if hasattr(result, "logs") and result.logs:
-                self.logger.info(f"🔥📝 RESULT LOGS ({len(result.logs)} entries):")
-                for i, log_entry in enumerate(result.logs):
-                    self.logger.info(f"🔥📝 [{i+1}] {log_entry}")
-
-            self.logger.info(f"✅ Node execution completed - result type: {type(result).__name__}")
-            if hasattr(result, "status"):
-                self.logger.info(f"📊 Execution result status: {result.status}")
+            # Log node outputs with clean format
             if hasattr(result, "output_data") and result.output_data:
-                self.logger.info(
-                    f"📤 Output data keys: {list(result.output_data.keys()) if isinstance(result.output_data, dict) else 'Non-dict output'}"
-                )
+                self.clean_logger.node_output(node_id, node_type, node_subtype, result.output_data)
+
+            # Log any errors
             if hasattr(result, "error_message") and result.error_message:
-                self.logger.error(f"⚠️ Execution result has error: {result.error_message}")
+                self.clean_logger.error(f"Node {node_id}", result.error_message)
+
+            # Debug logs for detailed information
+            self.clean_logger.debug(f"{node_id} execution result type: {type(result).__name__}")
+            if hasattr(result, "logs") and result.logs:
+                self.clean_logger.debug(f"{node_id} has {len(result.logs)} log entries")
+
+            # Detailed debug logging (only shown when debug enabled)
+            self.clean_logger.debug(
+                f"Node execution completed - result type: {type(result).__name__}"
+            )
 
             # Record node execution end
             node_end_time = time.time()
@@ -439,8 +421,8 @@ class WorkflowExecutionEngine:
                     "SUCCESS" if status_str in ["SUCCESS", "COMPLETED", "success"] else "ERROR"
                 )
 
-            self.logger.info(
-                f"🔄 Status conversion: {result.status} -> {status_str} -> {final_status}"
+            self.clean_logger.debug(
+                f"Status conversion: {result.status} -> {status_str} -> {final_status}"
             )
 
             result_dict = {
