@@ -69,7 +69,6 @@ class OpenAIModel(str, Enum):
     # GPT-4.1 Models
     GPT_4_1 = "gpt-4.1"  # $2.00 input, $0.50 cached, $8.00 output
     GPT_4_1_MINI = "gpt-4.1-mini"  # $0.40 input, $0.10 cached, $1.60 output
-    GPT_4_1_NANO = "gpt-4.1-nano"  # $0.10 input, $0.025 cached, $0.40 output
 
 
 class AnthropicModel(str, Enum):
