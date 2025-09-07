@@ -64,6 +64,7 @@ class OpenAIModel(str, Enum):
     GPT_5 = "gpt-5"  # $1.25 input, $0.125 cached, $10.00 output
     GPT_5_MINI = "gpt-5-mini"  # $0.25 input, $0.025 cached, $2.00 output
     GPT_5_NANO = "gpt-5-nano"  # $0.05 input, $0.005 cached, $0.40 output
+    GPT_5_MINI_0807 = "gpt-5-mini-2025-08-07"
     GPT_5_CHAT_LATEST = "gpt-5-chat-latest"  # $1.25 input, $0.125 cached, $10.00 output
 
     # GPT-4.1 Models
