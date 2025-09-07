@@ -3,6 +3,8 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+import httpx
+
 from shared.models.node_enums import NodeType
 from shared.models.trigger import DeploymentResult, DeploymentStatus, TriggerSpec, TriggerType
 from workflow_scheduler.services.direct_db_service import DirectDBService
