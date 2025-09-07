@@ -755,6 +755,12 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             # Extract content
             content = response.content
             
+            # Log raw AI response for debugging
+            if response.raw_response:
+                self.logger.info(f"[AIAgent Node]: 🔍 Raw AI Response (Gemini): {response.raw_response}")
+            else:
+                self.logger.info(f"[AIAgent Node]: 🔍 No raw response available (Gemini)")
+            
             # Store AI response in memory
             self._store_conversation_in_memory(context, input_text, content, logs)
             
@@ -959,6 +965,12 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             
             # Extract content
             content = response.content
+            
+            # Log raw AI response for debugging
+            if response.raw_response:
+                self.logger.info(f"[AIAgent Node]: 🔍 Raw AI Response (OpenAI): {response.raw_response}")
+            else:
+                self.logger.info(f"[AIAgent Node]: 🔍 No raw response available (OpenAI)")
             
             # Store AI response in memory if user message was provided
             self._store_conversation_in_memory(context, input_text, content, logs)
@@ -1167,6 +1179,12 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             
             # Extract content
             content = response.content
+            
+            # Log raw AI response for debugging
+            if response.raw_response:
+                self.logger.info(f"[AIAgent Node]: 🔍 Raw AI Response (Claude): {response.raw_response}")
+            else:
+                self.logger.info(f"[AIAgent Node]: 🔍 No raw response available (Claude)")
             
             # Store AI response in memory
             self._store_conversation_in_memory(context, input_text, content, logs)
