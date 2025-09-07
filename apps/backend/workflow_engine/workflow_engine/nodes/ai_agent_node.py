@@ -755,8 +755,29 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             # Extract content
             content = response.content
             
+            # Log raw AI response for debugging
+            if response.raw_response:
+                self.logger.info(f"[AIAgent Node]: 🔍 Raw AI Response (Gemini): {response.raw_response}")
+            else:
+                self.logger.info(f"[AIAgent Node]: 🔍 No raw response available (Gemini)")
+            
             # Store AI response in memory
             self._store_conversation_in_memory(context, input_text, content, logs)
+            
+            # Serialize raw response for storage
+            raw_response_data = None
+            if response.raw_response:
+                try:
+                    # Convert response object to dict for JSON serialization
+                    if hasattr(response.raw_response, 'dict'):
+                        raw_response_data = response.raw_response.dict()
+                    elif hasattr(response.raw_response, '__dict__'):
+                        raw_response_data = response.raw_response.__dict__
+                    else:
+                        raw_response_data = str(response.raw_response)
+                except Exception as e:
+                    self.logger.warning(f"[AIAgent Node]: Failed to serialize raw response: {e}")
+                    raw_response_data = str(response.raw_response)
             
             # Build output data (maintaining original format)
             output_data = {
@@ -770,6 +791,7 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                     "max_tokens": max_tokens,
                     "safety_settings": safety_settings,
                     "executed_at": datetime.now().isoformat(),
+                    "raw_response": raw_response_data,
                     **response.metadata
                 },
                 "format_type": "text",
@@ -960,8 +982,29 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             # Extract content
             content = response.content
             
+            # Log raw AI response for debugging
+            if response.raw_response:
+                self.logger.info(f"[AIAgent Node]: 🔍 Raw AI Response (OpenAI): {response.raw_response}")
+            else:
+                self.logger.info(f"[AIAgent Node]: 🔍 No raw response available (OpenAI)")
+            
             # Store AI response in memory if user message was provided
             self._store_conversation_in_memory(context, input_text, content, logs)
+            
+            # Serialize raw response for storage
+            raw_response_data = None
+            if response.raw_response:
+                try:
+                    # Convert response object to dict for JSON serialization
+                    if hasattr(response.raw_response, 'dict'):
+                        raw_response_data = response.raw_response.dict()
+                    elif hasattr(response.raw_response, '__dict__'):
+                        raw_response_data = response.raw_response.__dict__
+                    else:
+                        raw_response_data = str(response.raw_response)
+                except Exception as e:
+                    self.logger.warning(f"[AIAgent Node]: Failed to serialize raw response: {e}")
+                    raw_response_data = str(response.raw_response)
             
             # Build output data (maintaining original format)
             output_data = {
@@ -977,6 +1020,7 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                     "frequency_penalty": frequency_penalty,
                     "executed_at": datetime.now().isoformat(),
                     "conversation_messages_count": len(conversation_messages),
+                    "raw_response": raw_response_data,
                     **response.metadata  # Include any additional metadata from provider
                 },
                 "format_type": "text",
@@ -1168,8 +1212,29 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             # Extract content
             content = response.content
             
+            # Log raw AI response for debugging
+            if response.raw_response:
+                self.logger.info(f"[AIAgent Node]: 🔍 Raw AI Response (Claude): {response.raw_response}")
+            else:
+                self.logger.info(f"[AIAgent Node]: 🔍 No raw response available (Claude)")
+            
             # Store AI response in memory
             self._store_conversation_in_memory(context, input_text, content, logs)
+            
+            # Serialize raw response for storage
+            raw_response_data = None
+            if response.raw_response:
+                try:
+                    # Convert response object to dict for JSON serialization
+                    if hasattr(response.raw_response, 'dict'):
+                        raw_response_data = response.raw_response.dict()
+                    elif hasattr(response.raw_response, '__dict__'):
+                        raw_response_data = response.raw_response.__dict__
+                    else:
+                        raw_response_data = str(response.raw_response)
+                except Exception as e:
+                    self.logger.warning(f"[AIAgent Node]: Failed to serialize raw response: {e}")
+                    raw_response_data = str(response.raw_response)
             
             # Build output data (maintaining original format)
             output_data = {
@@ -1184,6 +1249,7 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                     "stop_sequences": stop_sequences,
                     "executed_at": datetime.now().isoformat(),
                     "conversation_messages_count": len(conversation_messages),
+                    "raw_response": raw_response_data,
                     **response.metadata
                 },
                 "format_type": "text",
