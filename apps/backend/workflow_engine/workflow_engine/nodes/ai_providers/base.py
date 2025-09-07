@@ -99,8 +99,9 @@ class AIProviderInterface(ABC):
         Returns:
             Tuple of (is_error, error_message)
         """
-        if not content:
-            return True, "Empty response content"
+        # Allow empty content - some API calls may legitimately return empty strings
+        if content is None:
+            return True, "Response content is None"
         
         # Common error patterns across providers
         error_indicators = [
