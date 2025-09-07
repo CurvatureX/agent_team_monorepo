@@ -466,21 +466,26 @@ class TriggerIndexManager:
                 return False
 
     async def _remove_workflow_triggers(self, session: AsyncSession, workflow_id: str) -> bool:
-        """Remove all trigger index entries for a workflow"""
+        """Remove all trigger index entries for a workflow using Supabase client"""
         try:
+            from workflow_scheduler.core.supabase_client import get_supabase_client
+
+            client = get_supabase_client()
+
             # Handle workflow_id - it might not be a valid UUID
             try:
-                workflow_uuid = uuid.UUID(workflow_id)
+                workflow_uuid = str(uuid.UUID(workflow_id))
             except ValueError:
-                # If not a valid UUID, use the string as-is and let the database handle it
+                # If not a valid UUID, use the string as-is
                 logger.warning(f"Workflow ID '{workflow_id}' is not a valid UUID, using as string")
                 workflow_uuid = workflow_id
 
-            # Delete all triggers for this workflow
-            delete_query = delete(TriggerIndex).where(TriggerIndex.workflow_id == workflow_uuid)
+            # Delete all triggers for this workflow using Supabase client
+            response = (
+                client.table("trigger_index").delete().eq("workflow_id", workflow_uuid).execute()
+            )
 
-            result = await session.execute(delete_query)
-            deleted_count = result.rowcount
+            deleted_count = len(response.data) if response.data else 0
 
             logger.debug(
                 f"Removed {deleted_count} trigger index entries for workflow {workflow_id}"
@@ -495,19 +500,22 @@ class TriggerIndexManager:
             return False
 
     async def health_check(self) -> Dict[str, Any]:
-        """Check health of trigger index manager"""
+        """Check health of trigger index manager using Supabase client"""
         try:
-            async with self.session_factory() as session:
-                # Test database connection
-                result = await session.execute("SELECT COUNT(*) FROM trigger_index")
-                trigger_count = result.scalar()
+            from workflow_scheduler.core.supabase_client import get_supabase_client
 
-                return {
-                    "service": "trigger_index_manager",
-                    "database_connected": True,
-                    "trigger_count": trigger_count,
-                    "status": "healthy",
-                }
+            client = get_supabase_client()
+
+            # Test database connection by counting triggers
+            response = client.table("trigger_index").select("count").execute()
+            trigger_count = len(response.data) if response.data else 0
+
+            return {
+                "service": "trigger_index_manager",
+                "database_connected": True,
+                "trigger_count": trigger_count,
+                "status": "healthy",
+            }
 
         except Exception as e:
             logger.error(f"Trigger index manager health check failed: {e}")

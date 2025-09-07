@@ -2,10 +2,13 @@
 Database configuration and session management
 """
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator, Callable
 
+import asyncpg
+from sqlalchemy.engine.events import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from shared.models.db_models import Base
@@ -28,18 +31,12 @@ base_url = settings.database_url.replace("postgresql://", "postgresql+asyncpg://
 if "?" in base_url:
     base_url = base_url.split("?")[0]
 
-# Add pgbouncer connection parameter to URL to force disable prepared statements
-if "?" in base_url:
-    base_url += "&prepared_statement_cache_size=0"
-else:
-    base_url += "?prepared_statement_cache_size=0"
-
 engine = create_async_engine(
     base_url,
     echo=settings.debug,
-    # Disable connection pooling completely to avoid pgbouncer conflicts
+    # Use NullPool to avoid connection reuse issues with pgbouncer
     poolclass=NullPool,
-    # Completely disable prepared statements for pgbouncer compatibility
+    # Disable prepared statements for pgbouncer compatibility
     connect_args={
         "statement_cache_size": 0,
         "prepared_statement_cache_size": 0,
@@ -48,12 +45,26 @@ engine = create_async_engine(
             "application_name": f"workflow_scheduler_{unique_suffix}",
         },
     },
-    # Additional SQLAlchemy-level settings for pgbouncer
+    # Additional SQLAlchemy-level settings
     execution_options={
         "compiled_cache": {},  # Disable compiled statement cache
         "autocommit": False,
     },
 )
+
+
+# Add event listener to ensure prepared statements are disabled on every connection
+@event.listens_for(engine.sync_engine, "connect")
+def set_asyncpg_pragmas(dbapi_connection, connection_record):
+    """Disable prepared statements on connection"""
+    if hasattr(dbapi_connection, "_connection"):
+        # This is an asyncpg connection wrapper
+        conn = dbapi_connection._connection
+        if hasattr(conn, "_statement_cache"):
+            conn._statement_cache.clear()
+        if hasattr(conn, "_prepared_stmt_cache"):
+            conn._prepared_stmt_cache.clear()
+
 
 # Create session factory with pgbouncer-compatible settings
 async_session_factory = async_sessionmaker(
