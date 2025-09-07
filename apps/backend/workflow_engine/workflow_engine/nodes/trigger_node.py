@@ -433,7 +433,9 @@ class TriggerNodeExecutor(BaseNodeExecutor):
 
         elif trigger_type == "manual":
             # Extract manual trigger content
-            if "message" in input_data:
+            if "content" in input_data:
+                return str(input_data["content"])
+            elif "message" in input_data:
                 return str(input_data["message"])
             elif "text" in input_data:
                 return str(input_data["text"])

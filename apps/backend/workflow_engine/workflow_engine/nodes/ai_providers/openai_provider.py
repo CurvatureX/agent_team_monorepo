@@ -109,12 +109,21 @@ class OpenAIProvider(AIProviderInterface):
             content = response.choices[0].message.content
             if content is None:
                 content = ""
+                self.logger.warning(f"OpenAI returned None content. Model: {model}, Finish reason: {response.choices[0].finish_reason}")
+                
+            # Log content details for debugging
+            self.logger.info(f"OpenAI response - Content length: {len(content) if content else 0}, Model: {model}")
+            
+            # Check finish reason for potential issues
+            finish_reason = response.choices[0].finish_reason if response.choices else None
+            if finish_reason and finish_reason not in ["stop", "function_call"]:
+                self.logger.warning(f"OpenAI finish reason indicates potential issue: {finish_reason}")
             
             # Create success response with metadata
             metadata = {
                 "model": model,
                 "usage": response.usage.dict() if response.usage else {},
-                "finish_reason": response.choices[0].finish_reason if response.choices else None
+                "finish_reason": finish_reason
             }
             
             return self.create_success_response(
