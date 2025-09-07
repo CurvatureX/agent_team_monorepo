@@ -439,7 +439,21 @@ class TriggerIndexManager:
 
             elif spec.subtype == TriggerType.SLACK:
                 # Use workspace_id as primary index key for Slack triggers
-                trigger_index.index_key = spec.parameters.get("workspace_id", "")
+                # workspace_id should always be auto-resolved from user's OAuth token during deployment
+                workspace_id = spec.parameters.get("workspace_id") or spec.parameters.get("team_id")
+                trigger_index.index_key = workspace_id or ""
+
+                # Log helpful information for debugging
+                if not workspace_id:
+                    logger.error(
+                        f"No workspace_id found for Slack trigger in workflow {workflow_id}. "
+                        f"This indicates the deployment service failed to auto-resolve workspace_id from user's OAuth token. "
+                        f"Available parameters: {list(spec.parameters.keys())}"
+                    )
+                else:
+                    logger.info(
+                        f"Using auto-resolved workspace_id '{workspace_id}' for Slack trigger index_key"
+                    )
 
             # TRIGGER_MANUAL doesn't need index_key (no fast lookup needed)
 

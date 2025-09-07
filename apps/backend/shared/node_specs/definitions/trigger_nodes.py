@@ -176,7 +176,7 @@ SLACK_TRIGGER_SPEC = NodeSpec(
             name="workspace_id",
             type=ParameterType.STRING,
             required=False,
-            description="Slack workspace ID to monitor (default: all connected workspaces)",
+            description="Slack workspace ID to monitor (auto-resolved from user's OAuth token - should not be manually configured)",
         ),
         ParameterDef(
             name="channel_filter",

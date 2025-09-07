@@ -168,6 +168,7 @@ class WorkflowSchedulerHTTPClient:
         self,
         workflow_id: str,
         workflow_spec: Dict[str, Any],
+        user_id: Optional[str] = None,
         trace_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Deploy a workflow with its trigger configuration"""
@@ -175,11 +176,17 @@ class WorkflowSchedulerHTTPClient:
             await self.connect()
 
         try:
-            request_data = {
-                "workflow_spec": workflow_spec,
-            }
+            # Ensure user_id is included in workflow_spec for OAuth resolution
+            enhanced_workflow_spec = workflow_spec.copy()
+            if user_id:
+                enhanced_workflow_spec["user_id"] = user_id
+                log_info(f"📨 Deploy workflow request for: {workflow_id} (user: {user_id})")
+            else:
+                log_info(f"📨 Deploy workflow request for: {workflow_id}")
 
-            log_info(f"📨 Deploy workflow request for: {workflow_id}")
+            request_data = {
+                "workflow_spec": enhanced_workflow_spec,
+            }
 
             headers = {}
             if trace_id:
