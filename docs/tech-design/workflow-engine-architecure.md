@@ -14,6 +14,8 @@ The engine is built on a modular, service-oriented architecture. A gRPC server e
 graph TD
     subgraph "API Layer"
         GRPC_SERVER[gRPC Server: main.py]
+        REST_API[FastAPI Endpoints]
+        RESUME_API[Resume API: /executions/{id}/resume]
     end
 
     subgraph "Service Layer (services/)"
@@ -21,32 +23,63 @@ graph TD
         WORKFLOW_SERVICE[WorkflowService: CRUD]
         EXECUTION_SERVICE[ExecutionService: Lifecycle]
         VALIDATION_SERVICE[ValidationService: Static Analysis]
+        HIL_SERVICE[HIL Service: Human Interactions]
     end
 
     subgraph "Execution Core"
         EXECUTION_ENGINE[EnhancedWorkflowExecutionEngine]
+        PAUSE_MANAGER[Pause/Resume Manager]
         NODE_FACTORY[NodeExecutorFactory]
         NODE_EXECUTORS[Node Executors]
+        HIL_NODE[HIL Node Executor]
+    end
+
+    subgraph "External Integrations"
+        SLACK_API[Slack Notifications]
+        EMAIL_SERVICE[Email Service]
+        WEB_DASHBOARD[Web Dashboard]
     end
 
     subgraph "Data Persistence (models/)"
         POSTGRES[(PostgreSQL Database)]
+        PAUSE_CONTEXT[(Pause Context Storage)]
+        HIL_INTERACTIONS[(HIL Interactions Table)]
     end
 
-    %% Connections
+    %% API Layer Connections
     GRPC_SERVER --> MAIN_SERVICE
+    REST_API --> EXECUTION_SERVICE
+    RESUME_API --> EXECUTION_SERVICE
 
+    %% Service Layer Connections
     MAIN_SERVICE --> WORKFLOW_SERVICE
     MAIN_SERVICE --> EXECUTION_SERVICE
     MAIN_SERVICE --> VALIDATION_SERVICE
+    EXECUTION_SERVICE --> HIL_SERVICE
 
+    %% Execution Core Connections
     EXECUTION_SERVICE --> EXECUTION_ENGINE
-
+    EXECUTION_ENGINE --> PAUSE_MANAGER
     EXECUTION_ENGINE --> NODE_FACTORY
-    EXECUTION_ENGINE --> POSTGRES
     NODE_FACTORY --> NODE_EXECUTORS
+    NODE_FACTORY --> HIL_NODE
+    HIL_NODE --> HIL_SERVICE
 
+    %% External Integration Connections
+    HIL_SERVICE --> SLACK_API
+    HIL_SERVICE --> EMAIL_SERVICE
+    HIL_SERVICE --> WEB_DASHBOARD
+
+    %% Database Connections
+    EXECUTION_ENGINE --> POSTGRES
+    PAUSE_MANAGER --> PAUSE_CONTEXT
+    HIL_SERVICE --> HIL_INTERACTIONS
     WORKFLOW_SERVICE --> POSTGRES
+
+    %% HIL Flow (dotted lines for pause/resume)
+    HIL_NODE -.-> PAUSE_MANAGER
+    PAUSE_MANAGER -.-> POSTGRES
+    RESUME_API -.-> PAUSE_MANAGER
 ```
 
 ## 3. The Lifecycle of a Workflow: From Creation to Execution
@@ -277,3 +310,331 @@ With the provider-based architecture, adding new AI capabilities is dramatically
 3. Update the protobuf schema and regenerate
 
 This approach has **revolutionized development velocity** - new AI functionalities can be created in minutes rather than hours or days.
+
+## 6. Human-in-the-Loop (HIL) & Workflow Pause/Resume Architecture
+
+### 6.1. Overview of HIL System
+
+The workflow engine includes a sophisticated **Human-in-the-Loop (HIL)** system that enables workflows to pause execution and await human interaction before continuing. This is essential for workflows requiring approvals, confirmations, data input, or human decision-making.
+
+**Key Capabilities:**
+- ✅ **Seamless Workflow Pause**: HIL nodes pause execution at precise points
+- ✅ **Complete Context Preservation**: All execution state is preserved during pause
+- ✅ **Multiple Pause Support**: Workflows can pause multiple times
+- ✅ **Re-trigger Prevention**: Paused workflows block new triggers
+- ✅ **Resume API**: REST endpoints for continuing paused workflows
+- ✅ **Multi-channel Support**: Slack, email, and web-based interactions
+
+### 6.2. HIL Node Architecture
+
+The `HUMAN_IN_THE_LOOP_NODE` is a specialized node executor that implements sophisticated pause/resume functionality:
+
+```python
+// In nodes/human_loop_node.py
+class HumanLoopNodeExecutor(BaseNodeExecutor):
+    def get_supported_subtypes(self) -> List[str]:
+        return [
+            "HIL_CONFIRMATION",    # Simple approval/rejection
+            "HIL_DATA_INPUT",      # Collect data from human
+            "HIL_DECISION",        # Multiple choice decisions
+            "HIL_REVIEW"           # Document/content review
+        ]
+
+    def execute(self, context: NodeExecutionContext) -> NodeExecutionResult:
+        # Create interaction request
+        interaction = await self._create_hil_interaction(context)
+
+        # Send notification (Slack, email, etc.)
+        await self._send_interaction_notification(interaction)
+
+        # Return PAUSED status to halt workflow execution
+        return self._create_pause_result(interaction, logs, execution_time)
+```
+
+**HIL Node Parameters:**
+- `question`: The question or prompt for the human
+- `timeout_minutes`: How long to wait for human response
+- `channel_type`: Notification method (slack, email, web)
+- `required_approvers`: List of users who can respond
+- `approval_threshold`: Number of approvals needed
+
+### 6.3. Workflow Pause/Resume Execution Flow
+
+```mermaid
+sequenceDiagram
+    participant WF as Workflow
+    participant EE as ExecutionEngine
+    participant HIL as HIL Node
+    participant DB as Database
+    participant API as Resume API
+    participant Human as Human User
+
+    Note over WF,Human: Normal execution until HIL node
+    WF->>EE: Execute workflow
+    EE->>HIL: Execute HIL node
+    HIL->>HIL: Create interaction
+    HIL->>Human: Send notification (Slack/Email)
+    HIL-->>EE: Return PAUSED status
+
+    Note over EE,DB: Pause mechanism activated
+    EE->>EE: Detect PAUSED status
+    EE->>EE: Store complete pause context
+    EE->>DB: Update execution status to PAUSED
+    EE-->>WF: Return PAUSED execution state
+
+    Note over Human,API: Human responds via UI/Slack
+    Human->>API: POST /executions/{id}/resume
+    API->>EE: Resume with human data
+    EE->>EE: Restore complete context
+    EE->>EE: Update paused node with response
+    EE->>EE: Continue remaining nodes
+    EE-->>API: Return final status
+```
+
+### 6.4. Complete Context Preservation
+
+When a workflow pauses, the engine stores a **comprehensive pause context** that enables seamless resume:
+
+```python
+pause_context = {
+    "execution_id": "exec_12345",
+    "workflow_id": "wf_67890",
+    "paused_at": "2024-01-15T10:30:00Z",
+    "paused_node_id": "hil_confirmation",
+    "remaining_nodes": ["node_3", "node_4", "node_5"],
+
+    # Complete execution state snapshot
+    "execution_state_snapshot": {
+        "status": "PAUSED",
+        "start_time": "2024-01-15T10:25:00Z",
+        "node_results": {
+            "node_1": {"status": "SUCCESS", "output_data": {...}},
+            "node_2": {"status": "PAUSED", "interaction_id": "hil_123"}
+        },
+        "execution_order": ["node_1", "node_2", "node_3", "node_4"],
+        "execution_context": {"initial_data": {...}},
+        "performance_metrics": {"total_time": 15000},
+        "execution_path": [...],
+        "data_flow": {...}
+    },
+
+    # Complete workflow context for resume
+    "workflow_context": {
+        "workflow_definition": {...},  # Full workflow JSON
+        "initial_data": {...},         # Original trigger data
+        "credentials": {...},          # Encrypted credentials
+        "user_id": "user_456"
+    },
+
+    # Resume metadata
+    "resume_metadata": {
+        "pause_reason": "human_interaction",
+        "interaction_id": "hil_123",
+        "timeout_at": "2024-01-15T11:30:00Z",
+        "resume_ready": true
+    }
+}
+```
+
+### 6.5. Re-trigger Prevention System
+
+The trigger system includes intelligent **pause detection** to prevent concurrent executions:
+
+```python
+// In triggers/base.py - Enhanced trigger logic
+async def _trigger_workflow(self, trigger_data):
+    # Check for existing paused executions
+    paused_check = await self._check_for_paused_executions()
+    if paused_check["has_paused"]:
+        logger.warning(f"Workflow {self.workflow_id} has {paused_check['count']} paused execution(s)")
+        return ExecutionResult(
+            status="skipped",
+            message="Workflow has paused execution(s) - new triggers blocked"
+        )
+
+    # Proceed with normal execution
+    return await self._execute_workflow(execution_id, trigger_data)
+```
+
+**Prevention Logic:**
+- 🚫 **Block New Triggers**: Workflows with `PAUSED` executions cannot be triggered again
+- 📊 **Multi-Execution Support**: Handles multiple concurrent paused executions
+- 🛡️ **Fail-Safe Behavior**: Falls back gracefully if pause check fails
+- ⚡ **Performance Optimized**: Quick database queries to check status
+
+### 6.6. Resume API & Human Response Handling
+
+The workflow engine exposes REST endpoints for resuming paused workflows:
+
+```bash
+POST /v1/executions/{execution_id}/resume
+```
+
+**Request Examples:**
+
+```json
+// Simple approval/rejection
+{
+  "approved": true,
+  "resume_data": {
+    "comment": "Approved by manager",
+    "timestamp": "2024-01-15T10:45:00Z"
+  }
+}
+
+// Custom data input
+{
+  "resume_data": {
+    "budget_amount": 50000,
+    "project_priority": "high",
+    "assigned_team": "engineering"
+  },
+  "output_port": "approved"
+}
+
+// Multi-option decision
+{
+  "resume_data": {
+    "selected_option": "escalate_to_senior",
+    "reasoning": "Requires director approval"
+  },
+  "output_port": "escalate"
+}
+```
+
+**Response Format:**
+```json
+{
+  "execution_id": "exec_12345",
+  "status": "completed",        // or "paused" if paused again
+  "message": "Workflow resumed and completed successfully",
+  "completed": true,
+  "paused_again": false,
+  "remaining_nodes": []
+}
+```
+
+### 6.7. Multi-Channel HIL Notifications
+
+The HIL system supports multiple notification channels:
+
+#### Slack Integration
+```python
+// Slack notification with interactive buttons
+await slack_client.send_message(
+    channel=hil_config.slack_channel,
+    blocks=[
+        SlackBlockBuilder.header("🤖 Approval Required"),
+        SlackBlockBuilder.section(f"**Question:** {question}"),
+        SlackBlockBuilder.actions([
+            {"text": "✅ Approve", "value": "approve"},
+            {"text": "❌ Reject", "value": "reject"}
+        ])
+    ]
+)
+```
+
+#### Email Notifications
+```python
+// Email with approval links
+email_content = {
+    "subject": f"Workflow Approval Required: {workflow_name}",
+    "html_body": generate_approval_email_template(
+        question=question,
+        approve_link=f"{base_url}/approve/{interaction_id}",
+        reject_link=f"{base_url}/reject/{interaction_id}"
+    )
+}
+```
+
+#### Web Dashboard
+- Real-time pending approvals list
+- Embedded approval forms
+- Workflow execution timeline
+- Mobile-responsive interface
+
+### 6.8. Advanced HIL Features
+
+#### Timeout Handling
+```python
+// Automatic workflow continuation on timeout
+if datetime.now() > interaction.timeout_at:
+    if hil_config.timeout_action == "auto_approve":
+        resume_data = {"approved": True, "timeout": True}
+    elif hil_config.timeout_action == "auto_reject":
+        resume_data = {"approved": False, "timeout": True}
+    else:  # fail
+        resume_data = {"error": "Human interaction timeout"}
+
+    await self.resume_workflow_execution(execution_id, resume_data)
+```
+
+#### Multi-Approver Support
+```python
+// Require multiple approvals
+hil_config = {
+    "required_approvers": ["manager@company.com", "director@company.com"],
+    "approval_threshold": 2,  # Both must approve
+    "rejection_threshold": 1   # Any can reject
+}
+```
+
+#### Conditional HIL Nodes
+```python
+// Only pause for high-value transactions
+hil_config = {
+    "condition": "{{transaction_amount}} > 10000",
+    "question": "Approve transaction of ${{transaction_amount}}?",
+    "auto_approve_below": 1000
+}
+```
+
+### 6.9. Database Schema for HIL
+
+The HIL system extends the existing database schema:
+
+```sql
+-- Enhanced workflow_executions table
+ALTER TABLE workflow_executions
+ADD COLUMN pause_data JSONB,
+ADD COLUMN paused_at TIMESTAMP,
+ADD COLUMN resume_count INTEGER DEFAULT 0;
+
+-- HIL interactions table
+CREATE TABLE hil_interactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    execution_id VARCHAR(255) NOT NULL,
+    workflow_id UUID NOT NULL,
+    node_id VARCHAR(255) NOT NULL,
+    question TEXT NOT NULL,
+    channel_type VARCHAR(50) NOT NULL,
+    status VARCHAR(50) DEFAULT 'pending',
+    timeout_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    responded_at TIMESTAMP,
+    response_data JSONB,
+    approver_id VARCHAR(255)
+);
+```
+
+### 6.10. HIL System Benefits
+
+**For Business Operations:**
+- ✅ **Compliance**: Audit trails for all human decisions
+- ✅ **Risk Management**: Human oversight for critical operations
+- ✅ **Flexibility**: Workflows adapt to business rules and thresholds
+- ✅ **Accountability**: Clear tracking of who approved what and when
+
+**For Technical Implementation:**
+- ✅ **Reliability**: Workflows never lose state during pause
+- ✅ **Scalability**: Supports thousands of concurrent paused workflows
+- ✅ **Observability**: Detailed logging and metrics for HIL interactions
+- ✅ **Integration**: Works seamlessly with existing workflow patterns
+
+**For User Experience:**
+- ✅ **Multi-Channel**: Users receive notifications where they work
+- ✅ **Context Rich**: Full workflow context provided with requests
+- ✅ **Mobile Friendly**: Approve requests from any device
+- ✅ **Real-time**: Instant workflow continuation after approval
+
+This HIL architecture transforms the workflow engine from a purely automated system into a **hybrid human-AI collaboration platform**, enabling sophisticated business processes that require the best of both human judgment and automated efficiency.

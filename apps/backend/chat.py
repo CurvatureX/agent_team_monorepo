@@ -7,11 +7,14 @@ import argparse
 import json
 import os
 import sys
+import time
 from datetime import datetime
 
 import requests
 from colorama import Fore, Style, init
 from dotenv import load_dotenv
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 # Initialize colorama
 init(autoreset=True)
@@ -33,6 +36,22 @@ class CleanChatTester:
         self.access_token = None
         self.session_id = None
 
+        # Configure retry strategy for SSL issues
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["HEAD", "GET", "OPTIONS", "POST"],
+        )
+
+        # Configure SSL adapter
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
+
+        # SSL configuration for potential issues
+        self.session.verify = True
+
     def print_separator(self):
         print(f"{Fore.WHITE}{'─'*80}{Style.RESET_ALL}")
 
@@ -40,19 +59,51 @@ class CleanChatTester:
         """Authenticate and get access token"""
         print(f"\n{Fore.CYAN}🔐 Authenticating...{Style.RESET_ALL}")
 
-        response = self.session.post(
-            f"{SUPABASE_URL}/auth/v1/token?grant_type=password",
-            headers={"apikey": SUPABASE_ANON_KEY, "Content-Type": "application/json"},
-            json={"email": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD},
-        )
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            try:
+                if attempt > 0:
+                    print(
+                        f"{Fore.YELLOW}Retry attempt {attempt + 1}/{max_attempts}...{Style.RESET_ALL}"
+                    )
+                    time.sleep(2**attempt)  # Exponential backoff
 
-        if response.status_code == 200:
-            self.access_token = response.json().get("access_token")
-            print(f"{Fore.GREEN}✓ Authentication successful{Style.RESET_ALL}")
-            return True
-        else:
-            print(f"{Fore.RED}✗ Authentication failed: {response.status_code}{Style.RESET_ALL}")
-            return False
+                response = self.session.post(
+                    f"{SUPABASE_URL}/auth/v1/token?grant_type=password",
+                    headers={
+                        "apikey": SUPABASE_ANON_KEY,
+                        "Content-Type": "application/json",
+                        "User-Agent": "ChatTester/1.0",
+                    },
+                    json={"email": TEST_USER_EMAIL, "password": TEST_USER_PASSWORD},
+                    timeout=(10, 30),  # Connect timeout, read timeout
+                )
+
+                if response.status_code == 200:
+                    self.access_token = response.json().get("access_token")
+                    print(f"{Fore.GREEN}✓ Authentication successful{Style.RESET_ALL}")
+                    return True
+                else:
+                    print(
+                        f"{Fore.RED}✗ Authentication failed: {response.status_code}{Style.RESET_ALL}"
+                    )
+                    if attempt == max_attempts - 1:
+                        return False
+
+            except requests.exceptions.SSLError as e:
+                print(f"{Fore.RED}SSL Error (attempt {attempt + 1}): {str(e)}{Style.RESET_ALL}")
+                if attempt == max_attempts - 1:
+                    print(
+                        f"{Fore.RED}All authentication attempts failed due to SSL issues{Style.RESET_ALL}"
+                    )
+                    return False
+
+            except requests.exceptions.RequestException as e:
+                print(f"{Fore.RED}Request Error (attempt {attempt + 1}): {str(e)}{Style.RESET_ALL}")
+                if attempt == max_attempts - 1:
+                    return False
+
+        return False
 
     def create_session(self):
         """Create chat session"""
@@ -90,7 +141,10 @@ class CleanChatTester:
             },
             json={"session_id": self.session_id, "user_message": message},
             stream=True,
-            timeout=(10, 300),  # (connection timeout, read timeout) - 10s to connect, 5 minutes to read
+            timeout=(
+                10,
+                300,
+            ),  # (connection timeout, read timeout) - 10s to connect, 5 minutes to read
         ) as response:
             if response.status_code != 200:
                 print(f"{Fore.RED}Request failed: {response.status_code}{Style.RESET_ALL}")
@@ -154,7 +208,7 @@ class CleanChatTester:
                             print(
                                 f"\n{Fore.RED}>>> Error: {event_data.get('error', 'Unknown')}{Style.RESET_ALL}"
                             )
-                        
+
                         # Handle heartbeat messages to show progress
                         elif event.get("response_type") == "RESPONSE_TYPE_HEARTBEAT":
                             print(
@@ -197,7 +251,9 @@ class CleanChatTester:
             return
 
         print(f"\n{Fore.YELLOW}Ready to chat. Type 'exit' to quit.{Style.RESET_ALL}")
-        print(f"{Fore.YELLOW}For multi-line input: End your message with '###' on a new line{Style.RESET_ALL}")
+        print(
+            f"{Fore.YELLOW}For multi-line input: End your message with '###' on a new line{Style.RESET_ALL}"
+        )
         print(
             f"{Fore.YELLOW}Example: Send a HTTP request to https://google.com every 5 minutes{Style.RESET_ALL}\n"
         )
@@ -205,7 +261,7 @@ class CleanChatTester:
         while True:
             try:
                 print(f"\n{Fore.CYAN}> {Style.RESET_ALL}", end="")
-                
+
                 # Check if input is being piped
                 if not sys.stdin.isatty():
                     # Read all piped input
@@ -219,19 +275,19 @@ class CleanChatTester:
                             print(f"{Fore.CYAN}  {Style.RESET_ALL}", end="")
                         line = input()
                         first_line = False
-                        
+
                         if line.strip() == "###":
                             break
                         lines.append(line)
-                        
+
                         # Single line mode - if no ### needed
                         if len(lines) == 1 and not line.endswith("\\"):
                             # Check if this looks like a complete single-line message
                             if "###" not in line:
                                 break
-                    
+
                     user_input = "\n".join(lines).strip()
-                
+
                 if user_input.lower() in ["exit", "quit"]:
                     break
                 if user_input:
@@ -245,32 +301,22 @@ class CleanChatTester:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Workflow Chat Test Client")
-    parser.add_argument(
-        "-m", "--message",
-        help="Send a message directly without interactive mode"
-    )
-    parser.add_argument(
-        "-f", "--file",
-        help="Read message from a file"
-    )
-    parser.add_argument(
-        "--stdin",
-        action="store_true",
-        help="Read message from stdin (for piping)"
-    )
-    
+    parser.add_argument("-m", "--message", help="Send a message directly without interactive mode")
+    parser.add_argument("-f", "--file", help="Read message from a file")
+    parser.add_argument("--stdin", action="store_true", help="Read message from stdin (for piping)")
+
     args = parser.parse_args()
-    
+
     tester = CleanChatTester()
-    
+
     # Determine input source
     initial_message = None
-    
+
     if args.message:
         initial_message = args.message
     elif args.file:
         try:
-            with open(args.file, 'r', encoding='utf-8') as f:
+            with open(args.file, "r", encoding="utf-8") as f:
                 initial_message = f.read().strip()
         except FileNotFoundError:
             print(f"{Fore.RED}File not found: {args.file}{Style.RESET_ALL}")
@@ -281,5 +327,5 @@ if __name__ == "__main__":
     elif args.stdin or not sys.stdin.isatty():
         # Read from stdin if --stdin flag or input is piped
         initial_message = sys.stdin.read().strip()
-    
+
     tester.run(initial_message)

@@ -129,7 +129,7 @@ class NodeSpecRegistry:
                 "FLOW": FlowSubtype,
                 "TRIGGER": TriggerSubtype,
                 "MEMORY": MemorySubtype,
-                "HUMAN_LOOP": HumanLoopSubtype,
+                "HUMAN_IN_THE_LOOP": HumanLoopSubtype,
                 "TOOL": ToolSubtype,
                 "EXTERNAL_ACTION": ExternalActionSubtype,
             }

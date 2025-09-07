@@ -191,6 +191,38 @@ class ExecutionService:
                     skip_trigger_validation
                 )
 
+                if execution_result.get("errors"):
+                    self.logger.error(f"⚠️ Execution errors: {execution_result['errors']}")
+
+                # Update execution record with results - handle PAUSED status specially
+                if execution_result["status"] == "completed":
+                    db_execution.status = ExecutionStatus.SUCCESS.value
+                    db_execution.end_time = int(datetime.now().timestamp())
+                elif execution_result["status"] == "ERROR":
+                    db_execution.status = ExecutionStatus.ERROR.value
+                    db_execution.error_message = "; ".join(execution_result.get("errors", []))
+                    db_execution.end_time = int(datetime.now().timestamp())
+                elif execution_result["status"] == "PAUSED":
+                    db_execution.status = ExecutionStatus.PAUSED.value
+                    # DON'T set end_time for paused workflows - they can still be resumed
+                    self.logger.info(
+                        f"⏸️ Workflow {execution_id} marked as PAUSED in database - no end_time set"
+                    )
+                    self.logger.info(
+                        f"🚫 This workflow will not be retriggered while in PAUSED state"
+                    )
+                else:
+                    db_execution.status = execution_result["status"].upper()
+                    db_execution.end_time = int(datetime.now().timestamp())
+
+                # Store execution results
+                if "node_results" in execution_result:
+                    db_execution.run_data = {
+                        "node_results": execution_result["node_results"],
+                        "execution_order": execution_result.get("execution_order", []),
+                        "performance_metrics": execution_result.get("performance_metrics", {}),
+                    }
+
             # 启动后台异步执行workflow
             await self._execute_workflow_background(
                 workflow_id=workflow_id,
@@ -268,6 +300,92 @@ class ExecutionService:
             self.db.rollback()
             self.logger.error(f"Error canceling execution: {str(e)}")
             raise
+
+    async def resume_workflow_execution(
+        self, execution_id: str, resume_data: Optional[dict] = None
+    ) -> dict:
+        """Resume a paused workflow execution."""
+        try:
+            self.logger.info(f"🔄 ExecutionService: Resuming workflow execution {execution_id}")
+
+            # Get the execution from database
+            execution = self.db.query(ExecutionModel).filter_by(execution_id=execution_id).first()
+            if not execution:
+                return {"status": "ERROR", "message": f"Execution {execution_id} not found"}
+
+            if execution.status != "PAUSED":
+                return {
+                    "status": "ERROR",
+                    "message": f"Execution {execution_id} is not in PAUSED state (current: {execution.status})",
+                }
+
+            # Get workflow definition and credentials for resume
+            workflow = self.workflow_service.get_workflow_by_id(execution.workflow_id)
+            if not workflow:
+                return {"status": "ERROR", "message": f"Workflow {execution.workflow_id} not found"}
+
+            workflow_definition = (
+                json.loads(workflow.definition)
+                if isinstance(workflow.definition, str)
+                else workflow.definition
+            )
+
+            # Get credentials if available (from original execution metadata)
+            execution_metadata = (
+                json.loads(execution.execution_metadata) if execution.execution_metadata else {}
+            )
+            user_id = execution_metadata.get("user_id")
+
+            # TODO: Implement credential retrieval for the user
+            credentials = {}
+
+            # Resume execution through the execution engine
+            result = await self.execution_engine.resume_workflow_execution(
+                execution_id=execution_id,
+                resume_data=resume_data,
+                workflow_definition=workflow_definition,
+                credentials=credentials,
+                user_id=user_id,
+            )
+
+            # Update database based on resume result
+            if result["status"] in ["completed", "ERROR"]:
+                execution.status = result["status"].upper()
+                if result["status"] == "completed":
+                    execution.ended_at = int(datetime.now().timestamp())
+            elif result["status"] == "PAUSED":
+                # Keep as PAUSED if it paused again
+                execution.status = "PAUSED"
+
+            # Update execution result with resume information
+            if execution.execution_result:
+                current_result = json.loads(execution.execution_result)
+            else:
+                current_result = {}
+
+            current_result.update(
+                {
+                    "resumed": True,
+                    "resumed_at": datetime.now().isoformat(),
+                    "resume_data": resume_data,
+                    "resume_result": result,
+                }
+            )
+
+            execution.execution_result = json.dumps(current_result)
+            self.db.commit()
+
+            self.logger.info(
+                f"✅ ExecutionService: Resume completed for {execution_id} with status {result['status']}"
+            )
+            return result
+
+        except Exception as e:
+            self.logger.error(
+                f"❌ ExecutionService: Error resuming workflow {execution_id}: {str(e)}"
+            )
+            self.db.rollback()
+            return {"status": "ERROR", "message": f"Resume operation failed: {str(e)}"}
 
     def get_execution_history(self, workflow_id: str, limit: int = 50) -> List[Execution]:
         """Get execution history for a workflow."""

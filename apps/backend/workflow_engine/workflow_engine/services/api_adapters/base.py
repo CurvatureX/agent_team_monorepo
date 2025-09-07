@@ -118,19 +118,28 @@ class APIAdapter(ABC):
         url: str,
         headers: Optional[Dict[str, str]] = None,
         json_data: Optional[Dict[str, Any]] = None,
+        data: Optional[Any] = None,
         params: Optional[Dict[str, str]] = None,
         timeout: int = 30,
     ) -> HTTPResponse:
         """Make an HTTP request with proper error handling."""
         try:
-            response = await self._http_client.request(
-                method=method,
-                url=url,
-                headers=headers,
-                json=json_data,
-                params=params,
-                timeout=timeout,
-            )
+            # Prepare request kwargs
+            request_kwargs = {
+                "method": method,
+                "url": url,
+                "headers": headers,
+                "params": params,
+                "timeout": timeout,
+            }
+
+            # Use either json or data, but not both
+            if json_data is not None:
+                request_kwargs["json"] = json_data
+            elif data is not None:
+                request_kwargs["data"] = data
+
+            response = await self._http_client.request(**request_kwargs)
             return HTTPResponse(response)
         except httpx.TimeoutException:
             raise TemporaryError(f"Request timeout after {timeout}s")

@@ -602,7 +602,7 @@ async def handle_slack_events(
                 should_trigger = await slack_trigger.process_slack_event(event_data)
 
                 if should_trigger:
-                    logger.info(f"Slack trigger matched for workflow {workflow_id}")
+                    logger.info(f"🚀 TRIGGERING WORKFLOW {workflow_id} - Slack trigger matched!")
 
                     # Execute workflow via SlackTrigger method (includes proper channel context)
                     result = await slack_trigger.trigger_from_slack_event(event_data)
@@ -619,12 +619,14 @@ async def handle_slack_events(
                         processed_workflows += 1
 
                         logger.info(
-                            f"Slack workflow executed {workflow_id}: "
+                            f"✅ WORKFLOW {workflow_id} EXECUTION COMPLETED: "
                             f"execution_id={result.execution_id}, status={result.status}"
                         )
+                    else:
+                        logger.error(f"❌ WORKFLOW {workflow_id}: Trigger failed to produce result")
                 else:
-                    logger.debug(
-                        f"Slack event did not match trigger filters for workflow {workflow_id}"
+                    logger.info(
+                        f"⏭️ WORKFLOW {workflow_id}: Event filters not matched - workflow skipped"
                     )
 
             except Exception as e:
