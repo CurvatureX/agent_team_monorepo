@@ -427,6 +427,17 @@ class ExecuteWorkflowRequest(BaseModel):
     trigger_data: Dict[str, str] = Field(default_factory=dict)
     user_id: str = Field(..., min_length=1)
     session_id: Optional[str] = None
+    
+    # 新增参数：支持从指定节点开始执行
+    start_from_node: Optional[str] = Field(
+        default=None, 
+        description="指定从哪个节点开始执行，为空时从触发器节点开始",
+        example="ai_message_classification"
+    )
+    skip_trigger_validation: bool = Field(
+        default=False,
+        description="是否跳过触发器验证，用于从中间节点开始执行时使用"
+    )
 
 
 class ExecuteWorkflowResponse(BaseModel):
@@ -526,6 +537,17 @@ class WorkflowExecutionRequest(BaseModel):
     inputs: Dict[str, Any] = Field(default_factory=dict, description="执行时的输入参数")
     settings: Optional[Dict[str, Any]] = Field(default=None, description="执行时的特殊设置")
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="执行元数据")
+    
+    # 新增参数：支持从指定节点开始执行
+    start_from_node: Optional[str] = Field(
+        default=None, 
+        description="指定从哪个节点开始执行，为空时从触发器节点开始",
+        example="ai_message_classification"
+    )
+    skip_trigger_validation: bool = Field(
+        default=False,
+        description="是否跳过触发器验证，用于从中间节点开始执行时使用"
+    )
 
 
 class WorkflowExecutionResponse(BaseModel):
