@@ -21,6 +21,27 @@ interface Message {
   timestamp: Date;
 }
 
+interface ApiWorkflow {
+  id?: string;
+  name?: string;
+  description?: string;
+  subtype?: string;
+  tags?: string[] | string;
+}
+
+interface LocalWorkflowEdge {
+  source: string;
+  target: string;
+  sourceHandle?: string;
+  targetHandle?: string;
+}
+
+interface WorkflowConnection {
+  node: string;
+  type?: string;
+  index?: number;
+}
+
 const CanvasPage = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -31,19 +52,19 @@ const CanvasPage = () => {
   const [isStreaming, setIsStreaming] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
-  
+
   const { toast } = useToast();
   const { updateWorkflow } = useWorkflowActions();
-  
+
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
-  
+
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
-  
+
   // Use the custom hook for resizable panels
   const { width: rightPanelWidth, isResizing, resizerProps, overlayProps } = useResizablePanel({
     initialWidth: 384,
@@ -53,7 +74,7 @@ const CanvasPage = () => {
 
   // Fetch workflows from API
   const { workflows: apiWorkflows, isLoading: isLoadingWorkflows, error } = useWorkflowsApi();
-  
+
   // Debug logging
   useEffect(() => {
     if (apiWorkflows) {
@@ -67,23 +88,24 @@ const CanvasPage = () => {
   // Map API workflows to Assistant format and merge with mock data
   const assistants = useMemo(() => {
     // Check if apiWorkflows has the expected structure
-    let workflowsArray: any[] = [];
-    
+    let workflowsArray: ApiWorkflow[] = [];
+
     if (apiWorkflows) {
       // If apiWorkflows is an object with a 'workflows' property (like the API response)
-      if (apiWorkflows.workflows && Array.isArray(apiWorkflows.workflows)) {
-        workflowsArray = apiWorkflows.workflows;
-      } 
+      if (typeof apiWorkflows === 'object' && !Array.isArray(apiWorkflows) && 'workflows' in apiWorkflows) {
+        const workflowResponse = apiWorkflows as { workflows: ApiWorkflow[] };
+        workflowsArray = workflowResponse.workflows;
+      }
       // If apiWorkflows is already an array
       else if (Array.isArray(apiWorkflows)) {
         workflowsArray = apiWorkflows;
       }
-      
+
       console.log('Workflows data structure:', apiWorkflows);
       console.log('Extracted workflows array:', workflowsArray);
     }
-    
-    const apiAssistants: Assistant[] = workflowsArray.map((workflow: any, index: number) => ({
+
+    const apiAssistants: Assistant[] = workflowsArray.map((workflow: ApiWorkflow, index: number) => ({
       id: `api-workflow-${index}`,
       name: workflow.name || `Workflow ${index + 1}`,
       title: workflow.subtype || 'Custom Workflow',
@@ -105,11 +127,11 @@ const CanvasPage = () => {
         console.log('Initializing chat session...');
         const sessionId = await chatService.createNewSession();
         console.log('Chat session initialized:', sessionId);
-        
+
         // Then try to load history
         const history = await chatService.getChatHistory();
         if (history.messages && history.messages.length > 0) {
-          const formattedMessages: Message[] = history.messages.map((msg: any) => ({
+          const formattedMessages: Message[] = history.messages.map((msg) => ({
             id: msg.id,
             content: msg.content,
             sender: msg.role === 'user' ? 'user' : 'assistant',
@@ -141,11 +163,11 @@ const CanvasPage = () => {
     const handleAssistantSelect = (event: Event) => {
       const customEvent = event as CustomEvent<{ assistantId: string }>;
       const assistantId = customEvent.detail.assistantId;
-      
+
       // Find the worker's workflow
       const assistant = assistants.find((a: Assistant) => a.id === assistantId);
       console.log('Selected worker:', assistant);
-      
+
       if (assistant?.workflow) {
         console.log('Setting workflow ---:', assistant.workflow);
         setCurrentWorkflow(assistant.workflow);
@@ -201,13 +223,13 @@ const CanvasPage = () => {
         (event: ChatSSEEvent) => {
           console.log('Received SSE event:', event);
           hasReceivedContent = true;
-          
+
           // Handle different message types from the SSE stream
           if (event.type === 'message') {
             // Check if it's a text message from assistant
             if (event.data?.text) {
               accumulatedContent += event.data.text;
-              
+
               // Update or create AI message
               setMessages(prev => {
                 const existingIndex = prev.findIndex(m => m.id === currentAiMessageId);
@@ -217,7 +239,7 @@ const CanvasPage = () => {
                   sender: 'assistant',
                   timestamp: new Date()
                 };
-                
+
                 if (existingIndex !== -1) {
                   const updated = [...prev];
                   updated[existingIndex] = aiMessage;
@@ -226,7 +248,7 @@ const CanvasPage = () => {
                   return [...prev, aiMessage];
                 }
               });
-            } 
+            }
             // Handle status/processing messages (these are transient, we can optionally show them)
             else if (event.data?.message && event.data?.status === 'processing') {
               // Optionally show processing status as a temporary message
@@ -238,7 +260,7 @@ const CanvasPage = () => {
               const messageText = event.data.text || event.data.message || '';
               if (messageText) {
                 accumulatedContent = messageText; // Replace accumulated content
-                
+
                 setMessages(prev => {
                   const existingIndex = prev.findIndex(m => m.id === currentAiMessageId);
                   const aiMessage: Message = {
@@ -247,7 +269,7 @@ const CanvasPage = () => {
                     sender: 'assistant',
                     timestamp: new Date()
                   };
-                  
+
                   if (existingIndex !== -1) {
                     const updated = [...prev];
                     updated[existingIndex] = aiMessage;
@@ -263,7 +285,7 @@ const CanvasPage = () => {
             if (event.data.workflow) {
               console.log('Received workflow:', event.data.workflow);
               setCurrentWorkflow(event.data.workflow);
-              
+
               // Also show a message about workflow creation if there's text
               if (event.data.text) {
                 const workflowMessage = event.data.text;
@@ -275,7 +297,7 @@ const CanvasPage = () => {
                     sender: 'assistant',
                     timestamp: new Date()
                   };
-                  
+
                   if (existingIndex !== -1) {
                     const updated = [...prev];
                     updated[existingIndex] = aiMessage;
@@ -299,7 +321,7 @@ const CanvasPage = () => {
         },
         (error) => {
           console.error('Chat API error:', error);
-          
+
           // If no content was received, show a fallback message
           if (!hasReceivedContent) {
             const fallbackMessage: Message = {
@@ -310,7 +332,7 @@ const CanvasPage = () => {
             };
             setMessages(prev => [...prev, fallbackMessage]);
           }
-          
+
           toast({
             title: "Connection Error",
             description: "Failed to connect to AI service. Make sure the backend is running.",
@@ -330,7 +352,7 @@ const CanvasPage = () => {
       setStreamCancelFn(() => cancelFn);
     } catch (error) {
       console.error('Failed to send message:', error);
-      
+
       // Show error message
       const errorMessage: Message = {
         id: currentAiMessageId,
@@ -339,11 +361,11 @@ const CanvasPage = () => {
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
-      
+
       setIsLoading(false);
       setIsStreaming(false);
     }
-  }, [currentWorkflow, toast, streamCancelFn]);
+  }, [toast, streamCancelFn]);
 
   // Handle stop streaming
   const handleStopStreaming = useCallback(() => {
@@ -393,7 +415,7 @@ const CanvasPage = () => {
   const handleSaveWorkflow = useCallback(async (workflowToSave?: WorkflowData) => {
     // Use the provided workflow or fall back to currentWorkflow
     const workflow = workflowToSave || currentWorkflow;
-    
+
     if (!workflow || !workflow.id) {
       toast({
         title: "Error",
@@ -404,19 +426,25 @@ const CanvasPage = () => {
     }
 
     setIsSavingWorkflow(true);
-    
+
     try {
       // Convert edges to connections format (n8n style)
-      const connections: Record<string, any> = {};
+      const connections: Record<string, { main: WorkflowConnection[][] }> = {};
       if (workflow.edges) {
-        workflow.edges.forEach((edge: any) => {
-          if (!connections[edge.source]) {
-            connections[edge.source] = {
+        workflow.edges.forEach((edge) => {
+          const localEdge: LocalWorkflowEdge = {
+            source: edge.source,
+            target: edge.target,
+            sourceHandle: edge.sourceHandle || undefined,
+            targetHandle: edge.targetHandle || undefined
+          };
+          if (!connections[localEdge.source]) {
+            connections[localEdge.source] = {
               main: [[]]
             };
           }
-          connections[edge.source].main[0].push({
-            node: edge.target,
+          connections[localEdge.source].main[0].push({
+            node: localEdge.target,
             type: 'main',
             index: 0,
           });
@@ -438,14 +466,14 @@ const CanvasPage = () => {
         nodesCount: updateData.nodes.length,
         connections: connections,
       });
-      
+
       await updateWorkflow(workflow.id, updateData);
-      
+
       // Update currentWorkflow with the saved data
       if (workflowToSave) {
         setCurrentWorkflow(workflowToSave);
       }
-      
+
       toast({
         title: "Success",
         description: "Workflow saved successfully",
@@ -470,7 +498,7 @@ const CanvasPage = () => {
       {/* <div className="fixed inset-0 bg-[radial-gradient(125%_125%_at_50%_101%,rgba(245,87,2,0.1)_10.5%,rgba(245,120,2,0.08)_16%,rgba(245,140,2,0.06)_17.5%,rgba(245,170,100,0.04)_25%,rgba(238,174,202,0.02)_40%,rgba(202,179,214,0.01)_65%,rgba(148,201,233,0.005)_100%)] dark:bg-[radial-gradient(125%_125%_at_50%_101%,rgba(245,87,2,0.05)_10.5%,rgba(245,120,2,0.04)_16%,rgba(245,140,2,0.03)_17.5%,rgba(245,170,100,0.02)_25%,rgba(238,174,202,0.01)_40%,rgba(202,179,214,0.005)_65%,rgba(148,201,233,0.002)_100%)] pointer-events-none" /> */}
 
       {/* Main Content */}
-      <motion.div 
+      <motion.div
         className="flex fixed inset-0 pt-[80px]"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -487,7 +515,7 @@ const CanvasPage = () => {
           {currentWorkflow ? (
             <div className="h-full flex flex-col gap-4">
               {/* Workflow Header */}
-              <motion.div 
+              <motion.div
                 className="flex items-center justify-between"
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -560,7 +588,7 @@ const CanvasPage = () => {
                 <Bot className="w-5 h-5 text-primary" />
                 <h3 className="text-lg font-semibold">Worker Manager</h3>
               </div>
-              
+
               {/* <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -576,7 +604,7 @@ const CanvasPage = () => {
               </motion.button> */}
             </div>
           </div>
-          
+
           {/* Chat Messages */}
           <div ref={chatContainerRef} className="flex-1 p-4 overflow-y-auto pt-2">
             <div className="space-y-4">
@@ -615,9 +643,9 @@ const CanvasPage = () => {
                   </motion.div>
                 ))}
               </AnimatePresence>
-              
+
               <div ref={messagesEndRef} />
-              
+
               {isLoading && !isStreaming && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
