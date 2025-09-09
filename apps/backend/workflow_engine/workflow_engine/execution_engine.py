@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Set
 
 from .nodes.base import NodeExecutionContext, NodeExecutionResult
 from .nodes.factory import get_node_executor_factory, register_default_executors
+from .utils.business_logger import NodeExecutionBusinessLogger, create_business_logger
 from .utils.logging_formatter import CleanWorkflowLogger
 
 # Import shared workflow models for proper connection validation
@@ -33,7 +34,10 @@ class WorkflowExecutionEngine:
     """Enhanced workflow execution engine with sophisticated tracking and debugging capabilities."""
 
     def __init__(self):
+        # 技术日志器 - 仅用于开发调试，DEBUG级别
         self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.DEBUG)  # 技术日志设为DEBUG级别
+
         self.clean_logger = CleanWorkflowLogger(self.logger)
         self.factory = get_node_executor_factory()
 
@@ -42,6 +46,8 @@ class WorkflowExecutionEngine:
 
         # Track execution states for debugging
         self.execution_states: Dict[str, Dict[str, Any]] = {}
+
+        # 业务日志器会在每次执行时动态创建
 
     async def execute_workflow(
         self,
@@ -54,16 +60,38 @@ class WorkflowExecutionEngine:
     ) -> Dict[str, Any]:
         """Execute a complete workflow with enhanced tracking."""
 
-        # Use clean logging for workflow start
-        node_count = len(workflow_definition.get("nodes", []))
-        self.clean_logger.workflow_start(workflow_id, execution_id, node_count)
+        # 创建业务日志器 - 专门记录用户友好信息
+        workflow_name = workflow_definition.get("name", "Unnamed Workflow")
+        business_logger = create_business_logger(execution_id, workflow_name)
 
-        # Log additional context at debug level
-        self.clean_logger.debug(f"Workflow definition keys: {list(workflow_definition.keys())}")
-        self.clean_logger.debug(
-            f"Initial data keys: {list(initial_data.keys()) if initial_data else 'None'}"
+        # 业务日志: 工作流开始，记录详细的触发信息
+        node_count = len(workflow_definition.get("nodes", []))
+
+        # 提取更详细的触发信息
+        trigger_info = "手动执行"  # 默认值
+        if initial_data:
+            if "trigger_type" in initial_data:
+                trigger_info = initial_data["trigger_type"]
+            elif "source" in initial_data:
+                trigger_info = f"来源: {initial_data['source']}"
+            elif "webhook" in initial_data:
+                trigger_info = "Webhook触发"
+            elif "user_id" in initial_data:
+                trigger_info = f"用户触发 (ID: {str(initial_data['user_id'])[:8]}...)"
+
+        # 添加用户信息
+        if user_id:
+            trigger_info += f" | 用户: {str(user_id)[:8]}..."
+
+        business_logger.workflow_started(node_count, trigger_info)
+
+        # 技术日志 (DEBUG级别，仅开发时可见)
+        self.logger.debug(f"[TECH] Starting workflow execution: {execution_id}")
+        self.logger.debug(f"[TECH] Workflow definition keys: {list(workflow_definition.keys())}")
+        self.logger.debug(
+            f"[TECH] Initial data keys: {list(initial_data.keys()) if initial_data else 'None'}"
         )
-        self.clean_logger.debug(f"Credentials provided: {bool(credentials)}")
+        self.logger.debug(f"[TECH] Credentials provided: {bool(credentials)}")
 
         # Initialize enhanced execution state
         execution_state = self._initialize_enhanced_execution_state(
@@ -73,46 +101,69 @@ class WorkflowExecutionEngine:
 
         try:
             # Validate workflow
-            self.clean_logger.process_step("Validating workflow structure")
+            self.logger.debug("[TECH] Validating workflow structure")
             validation_errors = self._validate_workflow(workflow_definition)
             if validation_errors:
-                self.clean_logger.error(
-                    "Workflow validation", f"{len(validation_errors)} errors found"
+                # 业务日志: 工作流验证失败
+                error_summary = f"工作流配置错误，发现{len(validation_errors)}个问题"
+                business_logger.step_error("工作流验证", "; ".join(validation_errors[:3]), error_summary)
+                business_logger.workflow_completed(node_count, 0, 0, "ERROR")
+
+                # 技术日志
+                self.logger.error(
+                    f"[TECH] Workflow validation failed: {len(validation_errors)} errors"
                 )
                 for i, error in enumerate(validation_errors, 1):
-                    self.logger.error(f"   {i}. {error}")
+                    self.logger.error(f"[TECH]    {i}. {error}")
+
                 execution_state["status"] = "ERROR"
                 execution_state["errors"] = validation_errors
                 self._record_execution_error(execution_id, "validation", validation_errors)
                 return execution_state
-            self.clean_logger.debug("Workflow structure validation passed")
+
+            self.logger.debug("[TECH] Workflow structure validation passed")
 
             # Calculate execution order
-            self.clean_logger.process_step("Calculating execution order")
+            self.logger.debug("[TECH] Calculating execution order")
             execution_order = self._calculate_execution_order(workflow_definition)
             execution_state["execution_order"] = execution_order
-            self.clean_logger.debug(f"Execution order: {execution_order}")
+            self.logger.debug(f"[TECH] Execution order: {execution_order}")
 
             if not execution_order:
-                self.clean_logger.error(
-                    "Execution planning", "No execution order calculated - no nodes to execute"
+                # 业务日志: 执行规划失败
+                business_logger.step_error(
+                    "执行规划", "No execution order calculated", "工作流节点配置错误，无法确定执行顺序"
                 )
+                business_logger.workflow_completed(node_count, 0, 0, "ERROR")
+
+                self.logger.error("[TECH] Execution planning failed - no nodes to execute")
                 execution_state["status"] = "ERROR"
                 execution_state["errors"] = ["No nodes found or circular dependency detected"]
                 return execution_state
 
             # Record execution context
-            self.clean_logger.debug("Recording execution context")
+            self.logger.debug("[TECH] Recording execution context")
             self._record_execution_context(
                 execution_id, workflow_definition, initial_data, credentials
             )
 
             # Execute nodes in order with enhanced tracking
-            self.clean_logger.process_step(
-                "Executing nodes", f"{len(execution_order)} nodes in sequence"
+            self.logger.debug(
+                f"[TECH] Executing {len(execution_order)} nodes in sequence: {execution_order}"
             )
+
+            successful_steps = 0
             for i, node_id in enumerate(execution_order, 1):
                 try:
+                    # 业务日志: 显示执行进度
+                    if i > 1:  # 不在第一步显示，因为已经在步骤开始时显示
+                        business_logger.workflow_progress(
+                            successful_steps,
+                            len(execution_order),
+                            f"即将执行: {self._get_node_name(workflow_definition, node_id)}",
+                        )
+
+                    # 执行节点并添加业务日志
                     node_result = await self._execute_node_with_enhanced_tracking(
                         node_id,
                         workflow_definition,
@@ -120,15 +171,19 @@ class WorkflowExecutionEngine:
                         initial_data or {},
                         credentials or {},
                         user_id,
+                        business_logger,  # 传递业务日志器
+                        i,  # 步骤编号
+                        len(execution_order),  # 总步骤数
                     )
 
-                    self.logger.info(
-                        f"✅ [{i}/{len(execution_order)}] Node {node_id} completed with status: {node_result.get('status', 'UNKNOWN')}"
+                    # 技术日志 (DEBUG级别)
+                    self.logger.debug(
+                        f"[TECH] Node {node_id} completed with status: {node_result.get('status', 'UNKNOWN')}"
                     )
 
                     if node_result.get("error_message"):
                         self.logger.error(
-                            f"⚠️ Node {node_id} error message: {node_result['error_message']}"
+                            f"[TECH] Node {node_id} error: {node_result['error_message']}"
                         )
 
                     execution_state["node_results"][node_id] = node_result
@@ -138,9 +193,24 @@ class WorkflowExecutionEngine:
                         execution_id, node_id, node_result, workflow_definition
                     )
 
+                    # 更新成功步骤计数
+                    if node_result["status"] == "SUCCESS":
+                        successful_steps += 1
+
                     # Stop execution if node failed
                     if node_result["status"] == "ERROR":
-                        self.logger.error(f"❌ Node {node_id} failed - stopping workflow execution")
+                        # 业务日志: 工作流因节点失败而中止
+                        remaining_steps = len(execution_order) - i
+                        if remaining_steps > 0:
+                            business_logger.workflow_progress(
+                                successful_steps,
+                                len(execution_order),
+                                f"工作流已停止 - {remaining_steps}个步骤未执行",
+                            )
+
+                        self.logger.error(
+                            f"[TECH] Node {node_id} failed - stopping workflow execution"
+                        )
                         execution_state["status"] = "ERROR"
                         execution_state["errors"].append(
                             f"Node {node_id} failed: {node_result.get('error_message', 'Unknown error')}"
@@ -149,6 +219,13 @@ class WorkflowExecutionEngine:
 
                     # Stop execution if node is paused (Human-in-the-Loop)
                     if node_result["status"] == "PAUSED":
+                        # 业务日志: 工作流暂停等待人工处理
+                        business_logger.workflow_progress(
+                            successful_steps,
+                            len(execution_order),
+                            f"暂停等待人工处理 - 剩余{len(execution_order) - i}个步骤",
+                        )
+
                         self.logger.info(
                             f"⏸️ Node {node_id} paused workflow execution - waiting for resume"
                         )
@@ -184,37 +261,48 @@ class WorkflowExecutionEngine:
                         break
 
                 except Exception as node_error:
-                    self.logger.error(
-                        f"💥 Exception during node {node_id} execution: {str(node_error)}"
+                    # 业务日志: 节点执行异常
+                    node_name = self._get_node_name(workflow_definition, node_id)
+                    business_logger.step_error(node_name, str(node_error), f"步骤执行发生异常，请联系技术支持")
+                    business_logger.workflow_completed(
+                        len(execution_order), successful_steps, 0, "ERROR"
                     )
-                    self.logger.exception("Full stack trace:")
+
+                    # 技术日志
+                    self.logger.error(
+                        f"[TECH] Exception during node {node_id} execution: {str(node_error)}"
+                    )
+                    self.logger.exception("[TECH] Full stack trace:")
                     execution_state["status"] = "ERROR"
                     execution_state["errors"].append(f"Node {node_id} exception: {str(node_error)}")
                     break
 
-            self.logger.info(f"🏁 Node execution phase completed")
-
             # Set final status
-            self.logger.info("🏁 Step 5: Finalizing workflow execution...")
+            self.logger.debug("[TECH] Step 5: Finalizing workflow execution...")
             if execution_state["status"] == "RUNNING":
                 execution_state["status"] = "completed"
-                self.logger.info("✅ Workflow completed successfully")
+                final_status = "SUCCESS"
+                self.logger.debug("[TECH] Workflow completed successfully")
             elif execution_state["status"] == "PAUSED":
-                self.logger.info("⏸️ Workflow paused - awaiting human interaction")
+                final_status = "PAUSED"
+                self.logger.debug("[TECH] Workflow paused - awaiting human interaction")
                 # Don't set end_time for paused workflows as they can be resumed
             else:
-                self.logger.info(f"⚠️ Workflow finished with status: {execution_state['status']}")
+                final_status = "ERROR"
+                self.logger.debug(
+                    f"[TECH] Workflow finished with status: {execution_state['status']}"
+                )
 
             # Only set end_time for completed or error workflows, not paused ones
             if execution_state["status"] != "PAUSED":
                 execution_state["end_time"] = datetime.now().isoformat()
 
             # Generate final execution report
-            self.logger.info("📊 Generating execution report...")
+            self.logger.debug("[TECH] Generating execution report...")
             execution_report = self._generate_execution_report(execution_id, execution_state)
             execution_state["execution_report"] = execution_report
 
-            # Log summary
+            # Calculate summary statistics
             total_nodes = len(execution_state.get("node_results", {}))
             successful_nodes = len(
                 [
@@ -223,10 +311,60 @@ class WorkflowExecutionEngine:
                     if r.get("status") == "SUCCESS"
                 ]
             )
-            failed_nodes = total_nodes - successful_nodes
 
-            self.logger.info(
-                f"🎯 Workflow execution summary: {execution_id} | Status: {execution_state['status']} | "
+            # 计算总执行时间
+            start_time_iso = execution_state.get("start_time")
+            if start_time_iso:
+                try:
+                    start_dt = datetime.fromisoformat(start_time_iso.replace("Z", "+00:00"))
+                    end_dt = datetime.now()
+                    total_duration = (end_dt - start_dt).total_seconds()
+                except:
+                    total_duration = 0
+            else:
+                total_duration = 0
+
+            # 业务日志: 工作流完成摘要，包含性能统计
+            if business_logger:
+                # 计算性能统计
+                performance_stats = {}
+                if successful_nodes > 0:
+                    performance_stats["avg_step_time"] = total_duration / successful_nodes
+
+                # 找到最慢的步骤
+                slowest_duration = 0
+                slowest_node = None
+                for node_id, result in execution_state.get("node_results", {}).items():
+                    if "execution_time" in result and result["execution_time"] > slowest_duration:
+                        slowest_duration = result["execution_time"]
+                        slowest_node = self._get_node_name(workflow_definition, node_id)
+
+                if slowest_node:
+                    performance_stats["slowest_step"] = {
+                        "name": slowest_node,
+                        "duration": slowest_duration,
+                    }
+
+                # 统计数据处理量（如果有的话）
+                total_data_items = 0
+                for result in execution_state.get("node_results", {}).values():
+                    output_data = result.get("output_data", {})
+                    if isinstance(output_data, dict):
+                        # 统计输出数据中的列表长度
+                        for key, value in output_data.items():
+                            if isinstance(value, list):
+                                total_data_items += len(value)
+
+                if total_data_items > 0:
+                    performance_stats["data_processed"] = f"{total_data_items}条记录"
+
+                business_logger.workflow_completed(
+                    total_nodes, successful_nodes, total_duration, final_status, performance_stats
+                )
+
+            # 技术日志 (DEBUG级别)
+            self.logger.debug(
+                f"[TECH] Workflow execution summary: {execution_id} | Status: {execution_state['status']} | "
                 f"Nodes: {successful_nodes}/{total_nodes} successful | "
                 f"Errors: {len(execution_state.get('errors', []))}"
             )
@@ -251,30 +389,43 @@ class WorkflowExecutionEngine:
         initial_data: Dict[str, Any],
         credentials: Dict[str, Any],
         user_id: Optional[str] = None,
+        business_logger=None,
+        step_number: int = 1,
+        total_steps: int = 1,
     ) -> Dict[str, Any]:
         """Execute a single node with enhanced tracking and data collection."""
 
         # Find node definition
         node_def = self._get_node_by_id(workflow_definition, node_id)
         if not node_def:
-            self.clean_logger.error(f"Node {node_id}", "Not found in workflow definition")
+            error_msg = f"Node {node_id} not found in workflow definition"
+            self.logger.error(f"[TECH] {error_msg}")  # ERROR级别
+            if business_logger:
+                business_logger.step_error(node_id, error_msg, "节点配置错误")
             return {
                 "status": "ERROR",
-                "error_message": f"Node {node_id} not found in workflow definition",
+                "error_message": error_msg,
             }
 
-        # Log node start with clean format
+        # 获取节点信息
         node_type = node_def["type"]
         node_subtype = node_def.get("subtype", "")
         node_name = node_def.get("name", "Unnamed")
 
-        # Find step number in execution order
-        execution_order = execution_state.get("execution_order", [])
-        step = execution_order.index(node_id) + 1 if node_id in execution_order else 0
-        total_steps = len(execution_order)
+        # 业务日志: 步骤开始
+        if business_logger:
+            description = NodeExecutionBusinessLogger.generate_step_description(
+                node_type, node_subtype, node_def.get("parameters", {})
+            )
+            business_logger.step_started(
+                step_number, total_steps, node_name, node_type, description
+            )
 
-        self.clean_logger.node_start(node_id, node_name, node_type, node_subtype, step, total_steps)
-        self.clean_logger.debug(f"Full node definition: {node_def}")
+        # 技术日志 (DEBUG级别)
+        self.logger.debug(
+            f"[TECH] Executing node {node_id} ({node_type}.{node_subtype}) - step {step_number}/{total_steps}"
+        )
+        self.logger.debug(f"[TECH] Node definition: {node_def}")
 
         # Record node execution start
         node_start_time = time.time()
@@ -315,16 +466,26 @@ class WorkflowExecutionEngine:
             input_data = self._prepare_node_input_data_with_tracking(
                 node_id, workflow_definition, execution_state, initial_data
             )
-            # Log node inputs with clean format
-            self.clean_logger.node_input(node_id, node_type, node_subtype, input_data)
+
+            # 业务日志: 记录输入摘要
+            if business_logger:
+                key_inputs = NodeExecutionBusinessLogger.extract_key_inputs(
+                    node_type, node_subtype, input_data
+                )
+                business_logger.step_input_summary(node_name, key_inputs)
+
+            # 技术日志 (DEBUG级别)
+            self.logger.debug(f"[TECH] Node {node_id} input data: {input_data}")
+
         except Exception as input_error:
-            self.clean_logger.error(
-                f"Node {node_id}", f"Error preparing input data: {str(input_error)}"
-            )
-            self.logger.exception("Input data preparation stack trace:")
+            error_msg = f"Error preparing input data: {str(input_error)}"
+            self.logger.error(f"[TECH] Node {node_id} - {error_msg}")
+            self.logger.exception("[TECH] Input data preparation stack trace:")
+            if business_logger:
+                business_logger.step_error(node_name, error_msg, "输入数据准备失败")
             return {
                 "status": "ERROR",
-                "error_message": f"Error preparing input data: {str(input_error)}",
+                "error_message": error_msg,
             }
 
         # Record node input data
@@ -364,9 +525,9 @@ class WorkflowExecutionEngine:
         )
 
         try:
-            # Execute node - handle both sync and async executors
-            self.clean_logger.debug(
-                f"Executing {node_id} with {executor.__class__.__name__} (async: {asyncio.iscoroutinefunction(executor.execute)})"
+            # 技术日志 (DEBUG级别)
+            self.logger.debug(
+                f"[TECH] Executing {node_id} with {executor.__class__.__name__} (async: {asyncio.iscoroutinefunction(executor.execute)})"
             )
 
             if asyncio.iscoroutinefunction(executor.execute):
@@ -374,29 +535,57 @@ class WorkflowExecutionEngine:
             else:
                 result = executor.execute(context)
 
-            # Log node outputs with clean format
-            if hasattr(result, "output_data") and result.output_data:
-                self.clean_logger.node_output(node_id, node_type, node_subtype, result.output_data)
-
-            # Log any errors
-            if hasattr(result, "error_message") and result.error_message:
-                self.clean_logger.error(f"Node {node_id}", result.error_message)
-
-            # Debug logs for detailed information
-            self.clean_logger.debug(f"{node_id} execution result type: {type(result).__name__}")
-            if hasattr(result, "logs") and result.logs:
-                self.clean_logger.debug(f"{node_id} has {len(result.logs)} log entries")
-
-            # Detailed debug logging (only shown when debug enabled)
-            self.clean_logger.debug(
-                f"Node execution completed - result type: {type(result).__name__}"
-            )
-
             # Record node execution end
             node_end_time = time.time()
+            duration = node_end_time - node_start_time
             execution_state["performance_metrics"]["node_execution_times"][node_id].update(
-                {"end_time": node_end_time, "duration": node_end_time - node_start_time}
+                {"end_time": node_end_time, "duration": duration}
             )
+
+            # 处理执行结果
+            status_value = result.status
+            if hasattr(status_value, "value"):
+                status_str = status_value.value.upper()
+            else:
+                status_str = str(status_value).upper()
+
+            # 转换状态格式
+            if status_str == "PAUSED":
+                final_status = "PAUSED"
+            else:
+                final_status = (
+                    "SUCCESS" if status_str in ["SUCCESS", "COMPLETED", "success"] else "ERROR"
+                )
+
+            # 业务日志: 记录输出摘要和完成状态
+            if business_logger:
+                if (
+                    final_status == "SUCCESS"
+                    and hasattr(result, "output_data")
+                    and result.output_data
+                ):
+                    key_outputs = NodeExecutionBusinessLogger.extract_key_outputs(
+                        node_type, node_subtype, result.output_data
+                    )
+                    business_logger.step_output_summary(node_name, key_outputs, success=True)
+                elif (
+                    final_status == "ERROR"
+                    and hasattr(result, "error_message")
+                    and result.error_message
+                ):
+                    business_logger.step_error(node_name, result.error_message)
+
+                # 记录步骤完成
+                business_logger.step_completed(node_name, duration, final_status)
+
+            # 技术日志 (DEBUG级别)
+            self.logger.debug(
+                f"[TECH] Node {node_id} execution result: status={final_status}, duration={duration:.2f}s"
+            )
+            if hasattr(result, "output_data") and result.output_data:
+                self.logger.debug(f"[TECH] Node {node_id} output_data: {result.output_data}")
+            if hasattr(result, "error_message") and result.error_message:
+                self.logger.error(f"[TECH] Node {node_id} error: {result.error_message}")
 
             # Record data flow
             self._record_data_flow(
@@ -1022,6 +1211,13 @@ class WorkflowExecutionEngine:
         if len(input_data) != len(output_data):
             return "data_structure_changed"
         return "data_preserved"
+
+    def _get_node_name(self, workflow_definition: Dict[str, Any], node_id: str) -> str:
+        """获取节点的用户友好名称"""
+        node_def = self._get_node_by_id(workflow_definition, node_id)
+        if node_def and "name" in node_def:
+            return node_def["name"]
+        return node_id  # 回退到节点ID
 
     def _get_node_by_id(
         self, workflow_definition: Dict[str, Any], node_id: str

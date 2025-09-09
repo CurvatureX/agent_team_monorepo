@@ -16,6 +16,7 @@ try:
         DateTime,
         Enum,
         Integer,
+        Numeric,
         String,
         Text,
         create_engine,
@@ -492,6 +493,144 @@ class TriggerStatus(Base, BaseModel):
         self.last_error_at = None
 
 
+# Execution Log enums
+class LogLevelEnum(str, enum.Enum):
+    """Log level enumeration"""
+
+    DEBUG = "DEBUG"
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+
+
+class LogEventTypeEnum(str, enum.Enum):
+    """Log event type enumeration"""
+
+    WORKFLOW_STARTED = "workflow_started"
+    WORKFLOW_COMPLETED = "workflow_completed"
+    WORKFLOW_PROGRESS = "workflow_progress"
+    STEP_STARTED = "step_started"
+    STEP_INPUT = "step_input"
+    STEP_OUTPUT = "step_output"
+    STEP_COMPLETED = "step_completed"
+    STEP_ERROR = "step_error"
+    SEPARATOR = "separator"
+
+
+class LogCategoryEnum(str, enum.Enum):
+    """日志分类枚举"""
+
+    TECHNICAL = "technical"  # 技术调试日志
+    BUSINESS = "business"  # 用户友好业务日志
+
+
+class DisplayPriorityEnum(int, enum.Enum):
+    """显示优先级枚举"""
+
+    LOWEST = 1  # 最低优先级 - 详细调试信息
+    LOW = 3  # 低优先级 - 一般技术信息
+    NORMAL = 5  # 普通优先级 - 常规业务信息
+    HIGH = 7  # 高优先级 - 重要业务事件
+    CRITICAL = 10  # 最高优先级 - 关键里程碑事件
+
+
+class WorkflowExecutionLog(Base, BaseModel):
+    """统一的工作流执行日志表 - 支持技术和业务两种用途"""
+
+    __tablename__ = "workflow_execution_logs"
+
+    # 基础字段
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    execution_id = Column(String(255), nullable=False, index=True)
+
+    # 日志分类 (新增)
+    log_category = Column(
+        Enum(LogCategoryEnum), nullable=False, default=LogCategoryEnum.TECHNICAL, index=True
+    )
+
+    # 日志内容
+    event_type = Column(Enum(LogEventTypeEnum), nullable=False, index=True)
+    level = Column(Enum(LogLevelEnum), nullable=False, default=LogLevelEnum.INFO, index=True)
+    message = Column(Text, nullable=False)
+
+    # 结构化数据
+    data = Column(JSON, nullable=True, default=dict)
+
+    # 节点信息
+    node_id = Column(String(255), nullable=True, index=True)
+    node_name = Column(String(255), nullable=True)
+    node_type = Column(String(100), nullable=True)
+
+    # 执行进度
+    step_number = Column(Integer, nullable=True)
+    total_steps = Column(Integer, nullable=True)
+    progress_percentage = Column(Numeric(5, 2), nullable=True)
+
+    # 性能信息
+    duration_seconds = Column(Integer, nullable=True)
+
+    # 用户友好信息 (新增)
+    user_friendly_message = Column(Text, nullable=True)
+    display_priority = Column(Integer, nullable=False, default=5, index=True)
+    is_milestone = Column(Boolean, nullable=False, default=False)
+
+    # 技术调试信息 (新增)
+    technical_details = Column(JSON, nullable=True, default=dict)
+    stack_trace = Column(Text, nullable=True)
+    performance_metrics = Column(JSON, nullable=True, default=dict)
+
+    # 时间戳
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    def __repr__(self) -> str:
+        return f"<WorkflowExecutionLog(id='{self.id}', execution_id='{self.execution_id}', category='{self.log_category}', event_type='{self.event_type}')>"
+
+    @property
+    def is_business_log(self) -> bool:
+        """检查是否为业务日志"""
+        return self.log_category == LogCategoryEnum.BUSINESS
+
+    @property
+    def is_technical_log(self) -> bool:
+        """检查是否为技术日志"""
+        return self.log_category == LogCategoryEnum.TECHNICAL
+
+    @property
+    def display_message(self) -> str:
+        """获取显示消息 - 优先使用用户友好消息"""
+        return self.user_friendly_message or self.message
+
+    @property
+    def is_high_priority(self) -> bool:
+        """检查是否为高优先级日志"""
+        return self.display_priority >= DisplayPriorityEnum.HIGH
+
+    @property
+    def is_error(self) -> bool:
+        """Check if this is an error log entry"""
+        return self.level == LogLevelEnum.ERROR or self.event_type == LogEventTypeEnum.STEP_ERROR
+
+    @property
+    def is_workflow_event(self) -> bool:
+        """Check if this is a workflow-level event"""
+        return self.event_type in [
+            LogEventTypeEnum.WORKFLOW_STARTED,
+            LogEventTypeEnum.WORKFLOW_COMPLETED,
+            LogEventTypeEnum.WORKFLOW_PROGRESS,
+        ]
+
+    @property
+    def is_step_event(self) -> bool:
+        """Check if this is a step-level event"""
+        return self.event_type in [
+            LogEventTypeEnum.STEP_STARTED,
+            LogEventTypeEnum.STEP_INPUT,
+            LogEventTypeEnum.STEP_OUTPUT,
+            LogEventTypeEnum.STEP_COMPLETED,
+            LogEventTypeEnum.STEP_ERROR,
+        ]
+
+
 # Database connection utilities
 def get_database_engine(
     database_url: str, echo: bool = False, pool_size: int = 5, max_overflow: int = 10
@@ -599,6 +738,10 @@ __all__ = [
     "TriggerTypeEnum",
     "WorkflowStatusEnum",
     "WorkflowModeEnum",
+    "LogLevelEnum",
+    "LogEventTypeEnum",
+    "LogCategoryEnum",
+    "DisplayPriorityEnum",
     # Models
     "WorkflowExecution",
     "WorkflowDB",
@@ -608,6 +751,7 @@ __all__ = [
     "TriggerExecution",
     "EmailMessage",
     "TriggerStatus",
+    "WorkflowExecutionLog",
     # Utilities
     "get_database_engine",
     "get_database_session",
