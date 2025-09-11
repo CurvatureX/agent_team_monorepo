@@ -1,21 +1,21 @@
 /**
  * Workflow Converter Utilities
- * 
+ *
  * This module handles conversions between API workflow format and editor workflow format.
  * API format: Based on backend API definition (WorkflowEntity, WorkflowNode from api.json)
  * Editor format: Used by React Flow for visual editing (WorkflowNode from workflow-editor.ts)
  */
 
-import type { 
-  Workflow as ApiWorkflow, 
+import type {
+  Workflow as ApiWorkflow,
   WorkflowNode as ApiWorkflowNode,
   WorkflowEdge as ApiWorkflowEdge,
   CreateWorkflowRequest,
   UpdateWorkflowRequest,
 } from '@/types/workflow';
-import type { 
-  WorkflowNode as EditorWorkflowNode, 
-  WorkflowEdge as EditorWorkflowEdge 
+import type {
+  WorkflowNode as EditorWorkflowNode,
+  WorkflowEdge as EditorWorkflowEdge
 } from '@/types/workflow-editor';
 import type { NodeTemplate } from '@/types/node-template';
 
@@ -139,7 +139,7 @@ export function apiWorkflowToEditor(
   const nodes: EditorWorkflowNode[] = [];
   apiWorkflow.nodes.forEach((apiNode) => {
     // Try to find template with different key formats
-    const template = 
+    const template =
       templateMap.get(`${apiNode.type}_${apiNode.subtype}`) ||
       templateMap.get(`${apiNode.type}:${apiNode.subtype}`) ||
       templateMap.get(apiNode.type as string) ||
@@ -153,29 +153,30 @@ export function apiWorkflowToEditor(
 
   // Convert connections to edges
   const edges: EditorWorkflowEdge[] = [];
-  
+
   // If workflow has edges array, use it directly
   if (apiWorkflow.edges && Array.isArray(apiWorkflow.edges)) {
     edges.push(...apiWorkflow.edges.map(apiEdgeToEditorEdge));
-  } 
+  }
   // Otherwise, try to extract from connections object
   else if (apiWorkflow.connections) {
     // Parse n8n-style connections format
     Object.entries(apiWorkflow.connections).forEach(([sourceNodeId, connectionData]) => {
       // Check if this is n8n format with main connections
       if (connectionData && typeof connectionData === 'object') {
-        const conn = connectionData as any;
-        
+        const conn = connectionData as { main?: unknown[][]; connection_types?: any };
+
         // Handle n8n format: { main: [[{ node: "targetId", type: "main", index: 0 }]] }
         if (conn.main && Array.isArray(conn.main)) {
-          conn.main.forEach((outputConnections: any[], outputIndex: number) => {
+          conn.main.forEach((outputConnections: unknown[], outputIndex: number) => {
             if (Array.isArray(outputConnections)) {
-              outputConnections.forEach((connection: any) => {
-                if (connection.node) {
+              outputConnections.forEach((connection) => {
+                const conn = connection as { node?: string; type?: string; index?: number };
+                if (conn.node) {
                   edges.push({
-                    id: `${sourceNodeId}-${connection.node}`,
+                    id: `${sourceNodeId}-${conn.node}`,
                     source: sourceNodeId,
-                    target: connection.node,
+                    target: conn.node,
                     sourceHandle: `output_${outputIndex}`,
                     targetHandle: 'input_0',
                     type: 'default',
@@ -193,17 +194,17 @@ export function apiWorkflowToEditor(
       }
     });
   }
-  
+
   // If no edges were found, try to infer connections from node positions (workflow sequence)
   if (edges.length === 0 && nodes.length > 1) {
     // Sort nodes by x position to infer flow
     const sortedNodes = [...nodes].sort((a, b) => a.position.x - b.position.x);
-    
+
     // Create sequential connections for nodes at similar y-positions
     for (let i = 0; i < sortedNodes.length - 1; i++) {
       const currentNode = sortedNodes[i];
       const nextNode = sortedNodes[i + 1];
-      
+
       // Only connect if nodes are roughly at the same vertical level (within 100px)
       if (Math.abs(currentNode.position.y - nextNode.position.y) < 100) {
         edges.push({
@@ -217,7 +218,7 @@ export function apiWorkflowToEditor(
       }
     }
   }
-  
+
   // Debug: Log the conversion results
   console.log('Workflow conversion:', {
     originalConnections: apiWorkflow.connections,
@@ -261,11 +262,11 @@ export function editorWorkflowToCreateRequest(
     type: string;
     index: number;
   }
-  
+
   interface ConnectionStructure {
     main: ConnectionNode[][];
   }
-  
+
   const connections: Record<string, ConnectionStructure> = {};
   edges.forEach((edge) => {
     if (!connections[edge.source]) {
@@ -314,11 +315,11 @@ export function editorWorkflowToUpdateRequest(
     type: string;
     index: number;
   }
-  
+
   interface ConnectionStructure {
     main: ConnectionNode[][];
   }
-  
+
   const connections: Record<string, ConnectionStructure> = {};
   edges.forEach((edge) => {
     if (!connections[edge.source]) {

@@ -14,13 +14,13 @@ import {
   workflowValidationAtom,
 } from '../atoms/workflow';
 import type { NodeTemplate } from '@/types/node-template';
-import type { 
-  WorkflowEdge as EditorWorkflowEdge 
+import type {
+  WorkflowEdge as EditorWorkflowEdge
 } from '@/types/workflow-editor';
 import type { Workflow } from '@/types/workflow';
-import { 
-  apiWorkflowToEditor, 
-  generateEdgeId 
+import {
+  apiWorkflowToEditor,
+  generateEdgeId
 } from '@/utils/workflow-converter';
 
 export const useWorkflow = () => {
@@ -101,12 +101,12 @@ export const useWorkflow = () => {
           ...node.data.originalData,
           position: node.position, // Update position from editor
           parameters: {
-            ...node.data.originalData.parameters,
+            ...(node.data.originalData?.parameters || {}),
             ...node.data.parameters, // Merge any updated parameters
           },
         };
       }
-      
+
       // Fallback: construct node data from template
       return {
         id: node.id,
@@ -124,7 +124,7 @@ export const useWorkflow = () => {
         webhooks: [],
       };
     });
-    
+
     // Export edges in the correct format
     const exportedEdges = edges.map((edge) => ({
       id: edge.id,
@@ -133,10 +133,10 @@ export const useWorkflow = () => {
       condition: null,
       label: edge.label || null,
     }));
-    
+
     console.log('Exporting workflow - nodes:', exportedNodes.length, 'edges:', exportedEdges.length);
     console.log('Exported edges:', exportedEdges);
-    
+
     return {
       metadata,
       nodes: exportedNodes,

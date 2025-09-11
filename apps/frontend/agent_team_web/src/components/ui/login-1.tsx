@@ -1,4 +1,5 @@
 import { FcGoogle } from "react-icons/fc";
+import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,10 +39,12 @@ const Login1 = ({
             {/* Logo */}
             <div className="flex items-center gap-1 lg:justify-start">
               <a href={logo.url}>
-                <img
+                <Image
                   src={logo.src}
                   alt={logo.alt}
                   title={logo.title}
+                  width={120}
+                  height={40}
                   className="h-10 dark:invert"
                 />
               </a>

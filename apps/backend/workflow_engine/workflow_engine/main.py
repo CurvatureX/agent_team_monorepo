@@ -49,7 +49,7 @@ except ImportError:
 
 from shared.models.common import HealthResponse, HealthStatus
 
-from .api.v1 import credentials, executions, triggers, workflows
+from .api.v1 import credentials, execution_logs, executions, triggers, workflows
 from .core.config import get_settings
 from .models.database import close_db
 
@@ -207,6 +207,7 @@ app.add_middleware(
 # Include routers
 app.include_router(workflows.router, prefix="/v1", tags=["Workflows"])
 app.include_router(executions.router, prefix="/v1", tags=["Executions"])
+app.include_router(execution_logs.router, tags=["Execution Logs"])
 app.include_router(triggers.router, prefix="/v1", tags=["Triggers"])
 app.include_router(credentials.router, prefix="/api/v1", tags=["Credentials"])
 
