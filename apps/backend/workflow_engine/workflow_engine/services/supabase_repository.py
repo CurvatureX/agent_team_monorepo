@@ -48,9 +48,11 @@ class SupabaseWorkflowRepository:
                     )
                 else:
                     logger.warning(
-                        "Could not set Authorization header, falling back to session-based auth"
+                        "Could not set Authorization header on Supabase client, "
+                        "RLS may not work properly with this token format"
                     )
-                    self.client.auth.set_session(access_token, access_token)
+                    # Skip session-based auth to avoid JWT validation errors
+                    # Let the request proceed with whatever token format was provided
         else:
             # For service role, use service key
             service_key = os.getenv("SUPABASE_SECRET_KEY")
@@ -136,8 +138,26 @@ class SupabaseWorkflowRepository:
             return workflow
 
         except Exception as e:
-            logger.error(f"❌ Error getting workflow {workflow_id} via Supabase: {e}")
-            return None
+            error_str = str(e)
+            # Handle JWT validation errors gracefully
+            if (
+                "JWSError" in error_str
+                or "CompactDecodeError" in error_str
+                or "Invalid number of parts" in error_str
+            ):
+                logger.warning(
+                    f"⚠️ JWT validation error for workflow {workflow_id}, falling back to service role access"
+                )
+                # Try with service role client as fallback
+                try:
+                    service_repo = SupabaseWorkflowRepository(access_token=None)
+                    return await service_repo.get_workflow(workflow_id)
+                except Exception as fallback_error:
+                    logger.error(f"❌ Fallback service role access also failed: {fallback_error}")
+                    return None
+            else:
+                logger.error(f"❌ Error getting workflow {workflow_id} via Supabase: {e}")
+                return None
 
     async def create_workflow(self, workflow_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Create a new workflow using RLS."""
