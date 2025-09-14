@@ -62,6 +62,7 @@ class WorkflowSchedulerHTTPClient:
         workflow_id: str,
         user_id: str = "system",
         trace_id: Optional[str] = None,
+        access_token: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Manually trigger a workflow execution"""
         if not self.connected:
@@ -75,6 +76,8 @@ class WorkflowSchedulerHTTPClient:
             headers = {}
             if trace_id:
                 headers["X-Trace-ID"] = trace_id
+            if access_token:
+                headers["Authorization"] = f"Bearer {access_token}"
 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(

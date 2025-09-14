@@ -64,6 +64,7 @@ export interface WorkflowNode {
     description?: string;
     subtype?: NodeSubtype;
     parameters?: Record<string, any>;
+    icon_url?: string;
     [key: string]: any;
   };
 }
