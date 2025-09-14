@@ -108,6 +108,11 @@ variable "dns_domain_name" {
   type        = string
   sensitive   = true
   default     = "https://dtijyicuvv7hy.cloudfront.net"
+
+  validation {
+    condition     = length(var.dns_domain_name) > 0
+    error_message = "DNS domain name cannot be empty."
+  }
 }
 
 variable "certificate_arn" {
