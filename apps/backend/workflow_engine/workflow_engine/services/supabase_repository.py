@@ -205,7 +205,9 @@ class SupabaseWorkflowRepository:
 
             if response.data:
                 created_execution = response.data[0]
-                logger.info(f"✅ Created execution {created_execution['id']} via Supabase")
+                logger.info(
+                    f"✅ Created execution {created_execution['execution_id']} (DB ID: {created_execution['id']}) via Supabase"
+                )
                 return created_execution
             else:
                 logger.error("❌ Failed to create execution - no data returned")
@@ -221,7 +223,7 @@ class SupabaseWorkflowRepository:
             response = (
                 self.client.table("workflow_executions")
                 .select("*")
-                .eq("id", execution_id)
+                .eq("execution_id", execution_id)
                 .single()
                 .execute()
             )
@@ -246,7 +248,7 @@ class SupabaseWorkflowRepository:
             response = (
                 self.client.table("workflow_executions")
                 .update(execution_data)
-                .eq("id", execution_id)
+                .eq("execution_id", execution_id)
                 .execute()
             )
 

@@ -146,7 +146,9 @@ class TriggerManager:
 
         return status
 
-    async def trigger_manual(self, workflow_id: str, user_id: str) -> ExecutionResult:
+    async def trigger_manual(
+        self, workflow_id: str, user_id: str, access_token: Optional[str] = None
+    ) -> ExecutionResult:
         """
         Manually trigger a workflow execution
 
@@ -175,11 +177,12 @@ class TriggerManager:
 
             # Call the manual trigger's specific method
             if hasattr(manual_trigger, "trigger_manual"):
-                return await manual_trigger.trigger_manual(user_id)
+                return await manual_trigger.trigger_manual(user_id, access_token)
             else:
                 # Fallback to base trigger method
                 return await manual_trigger._trigger_workflow(
-                    {"trigger_type": TriggerSubtype.MANUAL.value, "user_id": user_id}
+                    {"trigger_type": TriggerSubtype.MANUAL.value, "user_id": user_id},
+                    access_token=access_token,
                 )
 
         except Exception as e:

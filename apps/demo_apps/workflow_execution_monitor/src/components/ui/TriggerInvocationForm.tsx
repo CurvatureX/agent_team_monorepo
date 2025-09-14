@@ -21,7 +21,13 @@ interface TriggerInvocationFormProps {
 }
 
 interface TriggerSchema {
-  trigger_type: string;
+  // Old API format
+  trigger_type?: string;
+  // New API format
+  node_type?: string;
+  node_subtype?: string;
+  supported?: boolean;
+  // Common fields
   schema: {
     type: string;
     properties: any;
@@ -72,7 +78,11 @@ export const TriggerInvocationForm: React.FC<TriggerInvocationFormProps> = ({
 
       // Initialize parameters with examples if available
       if (schemaData.examples && schemaData.examples.length > 0) {
-        setParameters(schemaData.examples[0]);
+        const firstExample = schemaData.examples[0];
+        if (firstExample && typeof firstExample === 'object') {
+          // If the example has a 'parameters' field, use it. Otherwise use the example directly.
+          setParameters(firstExample.parameters || firstExample);
+        }
       }
 
     } catch (err) {
@@ -156,8 +166,18 @@ export const TriggerInvocationForm: React.FC<TriggerInvocationFormProps> = ({
     );
   }
 
-  // With the new public API, all triggers support manual invocation
-  // Remove the manual_invocation.supported check
+  // Check if manual invocation is supported for this node type
+  if (schema && schema.supported === false) {
+    return (
+      <div className="py-8 text-center">
+        <Info className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+        <p className="text-muted-foreground">Manual invocation is not supported for this node type</p>
+        <p className="text-xs text-muted-foreground mt-2">
+          {schema.description || 'This node type does not support manual execution'}
+        </p>
+      </div>
+    );
+  }
 
   if (result) {
     return (
@@ -206,26 +226,30 @@ export const TriggerInvocationForm: React.FC<TriggerInvocationFormProps> = ({
       <div className="bg-muted p-4 rounded-lg">
         <h3 className="font-semibold text-foreground mb-2">Manual Trigger Invocation</h3>
         <p className="text-sm text-muted-foreground mb-2">
-          {schema.manual_invocation.description}
+          {schema.description || 'Manually invoke this workflow trigger with custom parameters.'}
         </p>
         <div className="text-xs text-muted-foreground">
-          <span className="font-medium">Trigger Type:</span> {schema.trigger_type}
+          <span className="font-medium">Trigger Type:</span> {schema.trigger_type || `${schema.node_type}.${schema.node_subtype}` || triggerType}
         </div>
       </div>
 
       {/* Example Parameters */}
-      {schema.manual_invocation.parameter_examples.length > 0 && (
+      {schema.examples && schema.examples.length > 0 && (
         <div className="space-y-2">
           <h4 className="font-medium text-foreground text-sm">Quick Examples:</h4>
           <div className="grid gap-2">
-            {schema.manual_invocation.parameter_examples.map((example, index) => (
+            {schema.examples.map((example, index) => (
               <button
                 key={index}
                 onClick={() => handleExampleLoad(example)}
                 className="text-left p-2 bg-card border border-border rounded hover:bg-accent/50 transition-colors"
               >
-                <div className="text-sm font-medium text-foreground">{example.name}</div>
-                <div className="text-xs text-muted-foreground">{example.description}</div>
+                <div className="text-sm font-medium text-foreground">
+                  {example.name || example.description || `Example ${index + 1}`}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {example.description || 'Click to load this example'}
+                </div>
               </button>
             ))}
           </div>
