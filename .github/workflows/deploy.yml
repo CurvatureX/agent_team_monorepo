@@ -184,7 +184,7 @@ jobs:
           TF_VAR_google_client_id: ${{ secrets.GOOGLE_CLIENT_ID }}
           TF_VAR_google_client_secret: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           TF_VAR_google_redirect_uri: ${{ secrets.GOOGLE_REDIRECT_URI }}
-          TF_VAR_dns_domain_name: ${{ vars.DNS_DOMAIN_NAME }}
+          TF_VAR_dns_domain_name: ${{ secrets.DNS_DOMAIN_NAME }}
         run: terraform plan -out=tfplan
 
       - name: Handle Service Discovery cleanup if needed
@@ -237,7 +237,7 @@ jobs:
           TF_VAR_google_client_id: ${{ secrets.GOOGLE_CLIENT_ID }}
           TF_VAR_google_client_secret: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           TF_VAR_google_redirect_uri: ${{ secrets.GOOGLE_REDIRECT_URI }}
-          TF_VAR_dns_domain_name: ${{ vars.DNS_DOMAIN_NAME }}
+          TF_VAR_dns_domain_name: ${{ secrets.DNS_DOMAIN_NAME }}
         run: terraform apply -auto-approve tfplan
 
       - name: Update ECS Service - API Gateway
