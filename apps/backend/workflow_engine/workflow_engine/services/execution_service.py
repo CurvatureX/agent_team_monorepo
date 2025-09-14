@@ -450,7 +450,10 @@ class ExecutionService:
             )
 
             # Update execution status based on result
-            if execution_result.get("success", False):
+            # Check the actual status field returned by execution engine
+            execution_status = execution_result.get("status", "").lower()
+
+            if execution_status == "completed":
                 await self.repository.update_execution(
                     execution_id,
                     {
@@ -460,8 +463,31 @@ class ExecutionService:
                     },
                 )
                 self.logger.info(f"✅ Workflow execution completed successfully: {execution_id}")
+            elif execution_status == "paused":
+                await self.repository.update_execution(
+                    execution_id,
+                    {
+                        "status": ExecutionStatus.PAUSED.value,
+                        "metadata": execution_result.get("metadata", {}),
+                    },
+                )
+                self.logger.info(f"⏸️ Workflow execution paused: {execution_id}")
             else:
-                error_msg = execution_result.get("error", "Unknown execution error")
+                # Handle error case - extract error message from errors array or node results
+                error_msg = "Unknown execution error"
+                errors = execution_result.get("errors", [])
+                if errors:
+                    error_msg = "; ".join(errors)
+                else:
+                    # Check for node-level errors
+                    node_results = execution_result.get("node_results", {})
+                    node_errors = []
+                    for node_id, result in node_results.items():
+                        if result.get("status") == "ERROR" and result.get("error_message"):
+                            node_errors.append(f"{node_id}: {result['error_message']}")
+                    if node_errors:
+                        error_msg = "; ".join(node_errors)
+
                 await self.repository.update_execution(
                     execution_id,
                     {
