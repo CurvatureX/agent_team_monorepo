@@ -48,7 +48,7 @@ class BaseTrigger(ABC):
             await self._client.aclose()
 
     async def _trigger_workflow(
-        self, trigger_data: Optional[Dict[str, Any]] = None
+        self, trigger_data: Optional[Dict[str, Any]] = None, access_token: Optional[str] = None
     ) -> ExecutionResult:
         """
         Trigger workflow execution by calling workflow_engine HTTP API
@@ -73,7 +73,9 @@ class BaseTrigger(ABC):
 
         try:
             # Execute workflow
-            execution_result = await self._execute_workflow(execution_id, trigger_data)
+            execution_result = await self._execute_workflow(
+                execution_id, trigger_data, access_token
+            )
             return execution_result
 
         except Exception as e:
@@ -112,7 +114,10 @@ class BaseTrigger(ABC):
             return None
 
     async def _execute_workflow(
-        self, execution_id: str, trigger_data: Optional[Dict[str, Any]] = None
+        self,
+        execution_id: str,
+        trigger_data: Optional[Dict[str, Any]] = None,
+        access_token: Optional[str] = None,
     ) -> ExecutionResult:
         """
         Execute workflow by calling workflow_engine HTTP API
@@ -160,7 +165,9 @@ class BaseTrigger(ABC):
 
             # Fire-and-forget execution - don't wait for completion, especially for human-in-the-loop workflows
             asyncio.create_task(
-                self._execute_workflow_async(engine_url, payload, execution_id, trigger_data)
+                self._execute_workflow_async(
+                    engine_url, payload, execution_id, trigger_data, access_token
+                )
             )
 
             logger.info(
@@ -186,7 +193,12 @@ class BaseTrigger(ABC):
             )
 
     async def _execute_workflow_async(
-        self, engine_url: str, payload: dict, execution_id: str, trigger_data: dict
+        self,
+        engine_url: str,
+        payload: dict,
+        execution_id: str,
+        trigger_data: dict,
+        access_token: Optional[str] = None,
     ):
         """
         Execute workflow asynchronously in the background (fire-and-forget)
@@ -197,9 +209,15 @@ class BaseTrigger(ABC):
                 f"🔄 Starting async workflow execution for {self.workflow_id}: {execution_id}"
             )
 
-            response = await self._client.post(
-                engine_url, json=payload, headers={"Content-Type": "application/json"}
-            )
+            # Prepare headers with JWT token if available
+            headers = {"Content-Type": "application/json"}
+            if access_token:
+                headers["Authorization"] = f"Bearer {access_token}"
+                logger.info(
+                    f"🔐 Forwarding JWT token to workflow engine for execution: {execution_id}"
+                )
+
+            response = await self._client.post(engine_url, json=payload, headers=headers)
 
             if response.status_code in [200, 202]:  # OK or Accepted
                 result_data = response.json()

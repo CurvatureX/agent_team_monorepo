@@ -407,10 +407,10 @@ SLACK_TRIGGER_SPEC = NodeSpec(
                     "default": "U1234567890",
                     "description": "Slack user ID",
                 },
-                "channel_id": {
+                "channel_name": {
                     "type": "string",
-                    "default": "C1234567890",
-                    "description": "Slack channel ID",
+                    "default": "general",
+                    "description": "Slack channel name",
                 },
                 "thread_ts": {"type": "string", "description": "Thread timestamp (optional)"},
             },
@@ -424,7 +424,7 @@ SLACK_TRIGGER_SPEC = NodeSpec(
                     "event_type": "message",
                     "message": "Hello from the workflow!",
                     "user_id": "U1234567890",
-                    "channel_id": "C1234567890",
+                    "channel_name": "general",
                 },
             },
             {
@@ -434,7 +434,7 @@ SLACK_TRIGGER_SPEC = NodeSpec(
                     "event_type": "app_mention",
                     "message": "@bot please help with this task",
                     "user_id": "U1234567890",
-                    "channel_id": "C1234567890",
+                    "channel_name": "support",
                 },
             },
             {
@@ -444,7 +444,7 @@ SLACK_TRIGGER_SPEC = NodeSpec(
                     "event_type": "message",
                     "message": "This is a thread reply",
                     "user_id": "U1234567890",
-                    "channel_id": "C1234567890",
+                    "channel_name": "general",
                     "thread_ts": "1642505400.123456",
                 },
             },
@@ -452,7 +452,7 @@ SLACK_TRIGGER_SPEC = NodeSpec(
         default_parameters={
             "event_type": "message",
             "user_id": "U1234567890",
-            "channel_id": "C1234567890",
+            "channel_name": "general",
         },
     ),
 )

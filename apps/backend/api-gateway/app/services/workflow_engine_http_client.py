@@ -181,11 +181,12 @@ class WorkflowEngineHTTPClient:
         try:
             log_info(f"📨 HTTP request to get workflow: {workflow_id}")
 
-            client = await self._get_client()
-            headers = {"Authorization": f"Bearer {access_token}"}
-            response = await client.get(
-                f"{self.base_url}/v1/workflows/{workflow_id}", headers=headers
-            )
+            # Use query timeout for getting workflows (longer timeout)
+            async with httpx.AsyncClient(timeout=self.query_timeout, limits=self._limits) as client:
+                headers = {"Authorization": f"Bearer {access_token}"}
+                response = await client.get(
+                    f"{self.base_url}/v1/workflows/{workflow_id}", headers=headers
+                )
             response.raise_for_status()
 
             data = response.json()
@@ -214,6 +215,7 @@ class WorkflowEngineHTTPClient:
         trace_id: Optional[str] = None,
         start_from_node: Optional[str] = None,
         skip_trigger_validation: bool = False,
+        access_token: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Execute workflow via HTTP"""
         if not self.connected:
@@ -236,6 +238,8 @@ class WorkflowEngineHTTPClient:
             headers = {}
             if trace_id:
                 headers["X-Trace-ID"] = trace_id
+            if access_token:
+                headers["Authorization"] = f"Bearer {access_token}"
 
             async with httpx.AsyncClient(timeout=self.execute_timeout) as client:
                 response = await client.post(

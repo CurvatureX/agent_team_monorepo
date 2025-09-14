@@ -94,11 +94,21 @@ class ExecutionLogService:
         self.redis_client = None
         if REDIS_AVAILABLE:
             try:
+                import os
+
                 import redis
 
-                self.redis_client = redis.Redis(
-                    host="localhost", port=6379, db=1, decode_responses=True  # 使用db=1专门存储日志
-                )
+                # Use environment variable or fall back to localhost
+                redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+                # Parse Redis URL and set db=1 for logs
+                if "redis://" in redis_url:
+                    # Extract base URL and set db=1
+                    base_url = (
+                        redis_url.split("/")[0] + "//" + redis_url.split("//")[1].split("/")[0]
+                    )
+                    redis_url = base_url + "/1"  # Use db=1 for logs
+
+                self.redis_client = redis.from_url(redis_url, decode_responses=True)
                 # 测试连接
                 self.redis_client.ping()
                 self.logger.info("Redis connection established for log service")

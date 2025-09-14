@@ -1,7 +1,7 @@
 import logging
 import uuid
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from shared.models.node_enums import TriggerSubtype
 from shared.models.trigger import ExecutionResult, TriggerStatus
@@ -56,7 +56,9 @@ class ManualTrigger(BaseTrigger):
             )
             return False
 
-    async def trigger_manual(self, user_id: str) -> ExecutionResult:
+    async def trigger_manual(
+        self, user_id: str, access_token: Optional[str] = None
+    ) -> ExecutionResult:
         """
         Manually trigger workflow execution
 
@@ -90,7 +92,7 @@ class ManualTrigger(BaseTrigger):
             }
 
             # Execute workflow
-            result = await self._trigger_workflow(trigger_data)
+            result = await self._trigger_workflow(trigger_data, access_token=access_token)
 
             if result.status == "started":
                 logger.info(

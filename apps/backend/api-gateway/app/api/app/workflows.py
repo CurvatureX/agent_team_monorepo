@@ -5,6 +5,8 @@ Workflow API endpoints with authentication and enhanced gRPC client integration
 
 import logging
 import time
+import uuid
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from app.core.config import get_settings
@@ -31,6 +33,8 @@ from app.services.workflow_scheduler_http_client import get_workflow_scheduler_c
 # Node converter no longer needed - using unified models directly
 from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel
+
+from shared.models.workflow import ExecuteWorkflowRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -689,6 +693,7 @@ async def trigger_manual_workflow(
             workflow_id=workflow_id,
             user_id=deps.current_user.sub,
             trace_id=getattr(deps.request.state, "trace_id", None),
+            access_token=deps.access_token,
         )
 
         # Handle errors
@@ -1019,21 +1024,70 @@ async def manual_invoke_trigger(
 
         logger.info(f"🚀 Manual trigger invocation: {trigger_node_id} in workflow {workflow_id}")
 
-        # First validate that manual invocation is supported
-        schema_result = await get_manual_invocation_schema(workflow_id, trigger_node_id, deps)
-        manual_spec = schema_result["manual_invocation"]
+        # Get workflow to find trigger node type
+        workflow_engine_client = await get_workflow_engine_client()
+        workflow_result = await workflow_engine_client.get_workflow(
+            workflow_id=workflow_id, access_token=deps.access_token
+        )
 
-        if not manual_spec["supported"]:
+        # Check if workflow retrieval was successful
+        if not workflow_result.get("found", False) or not workflow_result.get("workflow"):
+            if workflow_result.get("success") == False:
+                error_msg = workflow_result.get("error", "Unknown error")
+                logger.error(f"❌ Failed to get workflow {workflow_id}: {error_msg}")
+                raise HTTPException(
+                    status_code=500, detail=f"Failed to retrieve workflow: {error_msg}"
+                )
+            else:
+                raise HTTPException(status_code=404, detail="Workflow not found")
+
+        workflow = workflow_result["workflow"]
+
+        # Find the trigger node
+        trigger_node = None
+        for node in workflow["nodes"]:
+            if node["id"] == trigger_node_id:
+                trigger_node = node
+                break
+
+        if not trigger_node:
+            raise HTTPException(status_code=404, detail="Trigger node not found in workflow")
+
+        # Get node schema from the public API using the node registry
+        from shared.node_specs.registry import NodeSpecRegistry
+
+        registry = NodeSpecRegistry()
+        node_type = trigger_node["type"]
+        node_subtype = trigger_node["subtype"]
+
+        try:
+            node_spec = registry.get_spec(node_type, node_subtype)
+            if (
+                not node_spec
+                or not node_spec.manual_invocation
+                or not node_spec.manual_invocation.supported
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Manual invocation not supported for {node_type}.{node_subtype}",
+                )
+
+            manual_spec = node_spec.manual_invocation
+            logger.info(f"✅ Manual invocation supported for {node_type}.{node_subtype}")
+
+        except Exception as e:
+            logger.error(f"❌ Error getting node spec: {e}")
             raise HTTPException(
-                status_code=400, detail="Manual invocation not supported for this trigger"
+                status_code=400,
+                detail=f"Failed to get node specification for {node_type}.{node_subtype}",
             )
 
         # Validate parameters against JSON schema
-        if manual_spec.get("parameter_schema"):
+        if manual_spec.parameter_schema:
             try:
                 import jsonschema
 
-                jsonschema.validate(parameters, manual_spec["parameter_schema"])
+                jsonschema.validate(parameters, manual_spec.parameter_schema)
                 logger.info("✅ Parameters validated against schema")
             except ImportError:
                 logger.warning("⚠️  jsonschema not available, skipping validation")
@@ -1043,29 +1097,38 @@ async def manual_invoke_trigger(
                 )
 
         # Merge with default parameters
-        resolved_parameters = {**manual_spec.get("default_parameters", {}), **parameters}
+        resolved_parameters = {**(manual_spec.default_parameters or {}), **parameters}
 
-        # Get workflow scheduler client to start execution
-        scheduler_client = await get_workflow_scheduler_client()
+        # Get workflow engine client for direct execution (simplified architecture)
+        workflow_engine_client = await get_workflow_engine_client()
 
-        # Create execution with manual invocation metadata
-        execution_result = await scheduler_client.trigger_workflow_execution(
-            workflow_id=workflow_id,
-            trigger_metadata={
-                "trigger_type": "MANUAL_INVOCATION",
-                "original_trigger_type": schema_result["trigger_type"],
+        # Convert resolved parameters to string format as required by ExecuteWorkflowRequest
+        trigger_data = {}
+        for key, value in resolved_parameters.items():
+            trigger_data[key] = str(value) if value is not None else ""
+
+        # Add execution metadata (all as strings)
+        trigger_data.update(
+            {
+                "trigger_type": "manual_trigger",
                 "trigger_node_id": trigger_node_id,
-                "initiated_by": deps.current_user.sub,
-                "invocation_description": description,
-                "simulated_parameters": resolved_parameters,
-                "manual_invocation_timestamp": time.time(),
-            },
-            input_data=resolved_parameters,
-            user_id=deps.current_user.sub,
-            trace_id=getattr(deps.request.state, "trace_id", None),
+                "original_trigger_type": node_subtype,
+                "invocation_type": "manual_invoke",
+                "triggered_at": datetime.now().isoformat(),
+                "trace_id": getattr(deps.request.state, "trace_id", None) or str(uuid.uuid4()),
+            }
         )
 
-        if not execution_result.get("success"):
+        # Call workflow engine directly with the correct parameters
+        execution_result = await workflow_engine_client.execute_workflow(
+            workflow_id=workflow_id,
+            user_id=deps.current_user.sub,
+            input_data=trigger_data,  # Pass trigger data as input_data
+            trace_id=getattr(deps.request.state, "trace_id", None),
+            access_token=deps.access_token,  # Pass JWT token for authentication
+        )
+
+        if not execution_result.get("success", False):
             raise HTTPException(
                 status_code=500,
                 detail=f"Failed to start execution: {execution_result.get('error', 'Unknown error')}",
@@ -1078,7 +1141,7 @@ async def manual_invoke_trigger(
             "execution_id": execution_result.get("execution_id"),
             "message": "Manual trigger invocation started successfully",
             "trigger_data": {
-                "trigger_type": schema_result["trigger_type"],
+                "trigger_type": node_subtype,
                 "resolved_parameters": resolved_parameters,
             },
             "execution_url": f"/api/v1/executions/{execution_result.get('execution_id')}",
