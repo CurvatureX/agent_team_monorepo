@@ -173,7 +173,7 @@ class WorkflowEngineHTTPClient:
             log_error(f"❌ Error creating workflow: {e}")
             return {"success": False, "error": str(e)}
 
-    async def get_workflow(self, workflow_id: str, access_token: str) -> Dict[str, Any]:
+    async def get_workflow(self, workflow_id: str, access_token: str, user_id: Optional[str] = None) -> Dict[str, Any]:
         """Get workflow by ID via HTTP using JWT token for RLS"""
         if not self.connected:
             await self.connect()
@@ -183,8 +183,17 @@ class WorkflowEngineHTTPClient:
 
             client = await self._get_client()
             headers = {"Authorization": f"Bearer {access_token}"}
+            
+            # Add user_id as query parameter if provided
+            params = {}
+            if user_id:
+                params["user_id"] = user_id
+                log_info(f"📨 Adding user_id to query params: {user_id}")
+                
             response = await client.get(
-                f"{self.base_url}/v1/workflows/{workflow_id}", headers=headers
+                f"{self.base_url}/v1/workflows/{workflow_id}", 
+                headers=headers,
+                params=params
             )
             response.raise_for_status()
 

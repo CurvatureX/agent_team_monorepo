@@ -434,7 +434,8 @@ async def get_workflow(workflow_id: str, deps: AuthenticatedDeps = Depends()):
         http_client = await get_workflow_engine_client()
 
         # Get workflow via HTTP with JWT token for RLS
-        result = await http_client.get_workflow(workflow_id, deps.access_token)
+        # Pass user_id for proper access control
+        result = await http_client.get_workflow(workflow_id, deps.access_token, deps.current_user.sub)
         if not result.get("found", False) or not result.get("workflow"):
             raise NotFoundError("Workflow")
 
