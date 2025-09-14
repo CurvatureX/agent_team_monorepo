@@ -12,9 +12,9 @@ import uuid
 from typing import List, Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 
 from workflow_agent.core.config import settings
+from workflow_agent.core.llm_provider import LLMFactory
 from workflow_agent.core.prompt_engine import get_prompt_engine
 
 from .mcp_tools import MCPToolCaller
@@ -44,111 +44,18 @@ class WorkflowAgentNodes:
         self.node_specs_cache = {}
 
     def _setup_llm(self):
-        """Setup the OpenAI language model"""
-        return ChatOpenAI(
-            model=settings.DEFAULT_MODEL_NAME, api_key=settings.OPENAI_API_KEY, temperature=0
-        )
+        """Setup the language model using configured provider"""
+        return LLMFactory.create_llm(temperature=0)
 
     def _setup_llm_with_tools(self):
-        """Setup OpenAI LLM with MCP tools bound"""
-        llm = ChatOpenAI(
-            model=settings.DEFAULT_MODEL_NAME, api_key=settings.OPENAI_API_KEY, temperature=0
-        )
+        """Setup LLM with MCP tools bound"""
+        llm = LLMFactory.create_llm(temperature=0)
         # Bind MCP tools to the LLM
         return llm.bind_tools(self.mcp_tools)
 
     async def load_prompt_template(self, template_name: str, **context) -> str:
         """Load and render a prompt template using the prompt engine"""
         return await self.prompt_engine.render_prompt(template_name, **context)
-
-    async def _repair_json(self, json_str: str) -> str:
-        """Use GEMINI to repair malformed JSON from gpt-5-mini"""
-        import json
-        import os
-
-        logger.info(f"Attempting to repair JSON using GEMINI, original length: {len(json_str)}")
-
-        # First try to parse the JSON as-is
-        try:
-            parsed = json.loads(json_str)
-            logger.info("JSON is already valid, no repair needed")
-            return json.dumps(parsed, indent=2)
-        except json.JSONDecodeError as e:
-            logger.info(f"JSON needs repair: {e}")
-
-        try:
-            # Initialize GEMINI model for JSON repair using enum
-            import google.generativeai as genai
-
-            from shared.models.node_enums import GoogleGeminiModel
-
-            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-            model = genai.GenerativeModel(GoogleGeminiModel.GEMINI_2_5_FLASH_LITE.value)
-
-            # Create repair prompt with explicit JSON formatting request
-            repair_prompt = f"""You are a JSON repair expert. Fix the malformed JSON below and return ONLY the valid JSON object.
-
-Common issues to fix:
-- Trailing backslashes in string values (e.g., "value\\" should be "value")
-- Invalid escape sequences
-- Control characters
-- Missing quotes around property names
-- Trailing commas
-- Unclosed brackets or braces
-
-CRITICAL: Return ONLY the valid JSON object with no markdown, no explanations, no code blocks:
-
-{json_str}"""
-
-            # Get GEMINI to repair the JSON
-            response = model.generate_content(
-                repair_prompt,
-                generation_config={
-                    "temperature": 0,
-                    "max_output_tokens": 8192,
-                },
-            )
-
-            repaired_json = response.text.strip() if response.text else ""
-
-            # Test the repaired JSON
-            parsed = json.loads(repaired_json)
-            logger.info("GEMINI JSON repair successful")
-            return json.dumps(parsed, indent=2)
-
-        except Exception as e:
-            logger.error(f"GEMINI JSON repair failed: {e}")
-
-            # Fallback to basic structure extraction
-            logger.info("Attempting basic structure extraction as fallback")
-            try:
-                import re
-
-                name_match = re.search(r'"name":\s*"([^"]*)"', json_str)
-                desc_match = re.search(r'"description":\s*"([^"]*)"', json_str)
-
-                if name_match and desc_match:
-                    fallback_json = {
-                        "name": name_match.group(1),
-                        "description": desc_match.group(1),
-                        "nodes": [],
-                        "connections": [],
-                    }
-                    json_str = json.dumps(fallback_json, indent=2)
-                    logger.info("Applied fallback JSON structure")
-                    return json_str
-
-            except Exception as fallback_error:
-                logger.error(f"Even fallback repair failed: {fallback_error}")
-
-            # Return a minimal valid workflow as last resort
-            minimal_workflow = {
-                "name": "Generated Workflow",
-                "description": "Workflow could not be parsed",
-                "nodes": [],
-                "connections": {},
-            }
-            return json.dumps(minimal_workflow, indent=2)
 
     def _filter_mcp_response_for_prompt(self, result: dict, tool_name: str) -> str:
         """
@@ -1365,9 +1272,8 @@ Your output MUST match the expected input format for the next node.
                         if workflow_json.endswith("```"):
                             workflow_json = workflow_json[:-3]
 
-                    # Attempt to repair common JSON issues
-                    workflow_json = await self._repair_json(workflow_json.strip())
-                    workflow = json.loads(workflow_json)
+                    # Parse the JSON directly - trust LLM to generate valid JSON
+                    workflow = json.loads(workflow_json.strip())
 
                     # Post-process the workflow to add missing required fields
                     workflow = self._normalize_workflow_structure(workflow)
@@ -1845,9 +1751,8 @@ Generate the complete workflow JSON now:"""
                             if clean_content.endswith("```"):
                                 clean_content = clean_content[:-3]
 
-                        # Apply JSON repair
-                        repaired_json = await self._repair_json(clean_content.strip())
-                        improved_workflow = json.loads(repaired_json)
+                        # Parse the JSON directly - trust LLM to generate valid JSON
+                        improved_workflow = json.loads(clean_content.strip())
                         improved_workflow = self._normalize_workflow_structure(improved_workflow)
                         improved_workflow = self._fix_workflow_parameters(improved_workflow)
 

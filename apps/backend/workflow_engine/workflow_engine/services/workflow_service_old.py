@@ -49,6 +49,8 @@ class WorkflowService:
 
             workflow_id = str(uuid.uuid4())
             now = datetime.now()
+            # Convert to Unix timestamp in milliseconds for BIGINT columns
+            now_timestamp = int(now.timestamp() * 1000)
 
             self.logger.debug(f"Processing {len(request.nodes)} nodes for workflow creation")
 
@@ -72,7 +74,7 @@ class WorkflowService:
                     "name": request.name,
                     "nodes": [node.dict() for node in temp_nodes],  # Convert to dict for validator
                     "connections": connections_data,  # Use resolved connections with IDs
-                    "settings": request.settings,
+                    "settings": request.settings.dict() if request.settings else {},  # Fix Pydantic serialization
                 },
                 validate_node_parameters=True,
             )
@@ -129,18 +131,18 @@ class WorkflowService:
                 "version": getattr(request, "version", 1),
                 "active": True,
                 "tags": request.tags or [],
-                "deployment_status": "draft",
+                "deployment_status": "DRAFT",
                 "deployed_at": None,
                 "latest_execution_status": None,
                 "latest_execution_time": None,
                 "latest_execution_id": None,
                 "icon_url": getattr(request, "icon_url", None),
-                "created_at": now.isoformat(),
-                "updated_at": now.isoformat(),
+                "created_at": now_timestamp,
+                "updated_at": now_timestamp,
                 "workflow_data": {
                     "nodes": [node.dict() for node in nodes],
                     "connections": connections_data,
-                    "settings": request.settings or {},
+                    "settings": request.settings.dict() if request.settings else {},  # Fix Pydantic serialization
                     "static_data": getattr(request, "static_data", {}),
                 },
             }
@@ -190,7 +192,8 @@ class WorkflowService:
             self.logger.info(f"Updating workflow {workflow_id}")
 
             # Prepare update data
-            update_dict = {"updated_at": datetime.now().isoformat()}
+            # Convert to Unix timestamp in milliseconds for BIGINT column
+            update_dict = {"updated_at": int(datetime.now().timestamp() * 1000)}
 
             # Update basic fields if provided
             if update_data.name is not None:
@@ -204,7 +207,7 @@ class WorkflowService:
                 current_workflow = await self.repository.get_workflow(workflow_id)
                 if current_workflow and current_workflow.get("workflow_data"):
                     workflow_data = current_workflow["workflow_data"]
-                    workflow_data["settings"] = update_data.settings
+                    workflow_data["settings"] = update_data.settings.dict() if update_data.settings else {}
                     update_dict["workflow_data"] = workflow_data
 
             # Handle nodes and connections update
@@ -251,7 +254,7 @@ class WorkflowService:
                         "name": update_data.name or "Updated Workflow",
                         "nodes": [node.dict() for node in temp_nodes],
                         "connections": connections_data,
-                        "settings": update_data.settings or {},
+                        "settings": update_data.settings.dict() if update_data.settings else {},
                     },
                     validate_node_parameters=True,
                 )
@@ -273,7 +276,7 @@ class WorkflowService:
                     {
                         "nodes": [node.dict() for node in temp_nodes],
                         "connections": connections_data,
-                        "settings": update_data.settings or workflow_data.get("settings", {}),
+                        "settings": update_data.settings.dict() if update_data.settings else workflow_data.get("settings", {}),
                     }
                 )
 

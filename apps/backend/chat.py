@@ -166,8 +166,8 @@ class CleanChatTester:
             stream=True,
             timeout=(
                 10,
-                300,
-            ),  # (connection timeout, read timeout) - 10s to connect, 5 minutes to read
+                600,
+            ),  # (connection timeout, read timeout) - 10s to connect, 10 minutes to read
         ) as response:
             if response.status_code != 200:
                 print(f"{Fore.RED}Request failed: {response.status_code}{Style.RESET_ALL}")
