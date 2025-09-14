@@ -39,6 +39,44 @@ class Settings(BaseSettings):
     # AI Configuration
     openai_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None
+    
+    # OAuth Configuration for External Services
+    # Google OAuth
+    google_client_id: Optional[str] = os.getenv("GOOGLE_CLIENT_ID")
+    google_client_secret: Optional[str] = os.getenv("GOOGLE_CLIENT_SECRET")
+    google_redirect_uri: Optional[str] = os.getenv(
+        "GOOGLE_REDIRECT_URI", 
+        "http://localhost:8000/api/v1/public/webhooks/google/auth"
+    )
+    
+    # Slack OAuth
+    slack_client_id: Optional[str] = os.getenv("SLACK_CLIENT_ID")
+    slack_client_secret: Optional[str] = os.getenv("SLACK_CLIENT_SECRET")
+    slack_redirect_uri: Optional[str] = os.getenv(
+        "SLACK_REDIRECT_URI",
+        "http://localhost:8000/api/v1/public/webhooks/slack/auth"
+    )
+    
+    # GitHub OAuth
+    github_client_id: Optional[str] = os.getenv("GITHUB_CLIENT_ID")
+    github_client_secret: Optional[str] = os.getenv("GITHUB_CLIENT_SECRET")
+    github_app_id: Optional[str] = os.getenv("GITHUB_APP_ID")
+    github_app_private_key: Optional[str] = os.getenv("GITHUB_APP_PRIVATE_KEY")
+    
+    # Notion OAuth  
+    notion_client_id: Optional[str] = os.getenv("NOTION_CLIENT_ID")
+    notion_client_secret: Optional[str] = os.getenv("NOTION_CLIENT_SECRET")
+    notion_redirect_uri: Optional[str] = os.getenv(
+        "NOTION_REDIRECT_URI",
+        "http://localhost:8000/api/v1/public/webhooks/notion/auth"
+    )
+    
+    # Supabase Configuration (for storing credentials)
+    supabase_url: Optional[str] = os.getenv("SUPABASE_URL")
+    supabase_secret_key: Optional[str] = os.getenv("SUPABASE_SECRET_KEY")
+    
+    # Redis Configuration (for caching)
+    redis_url: Optional[str] = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
     @field_validator("database_url", mode="before")
     @classmethod
