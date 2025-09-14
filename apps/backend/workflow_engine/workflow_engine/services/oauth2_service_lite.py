@@ -69,7 +69,7 @@ class OAuth2ServiceLite:
                 "client_id": os.getenv("GOOGLE_CLIENT_ID", ""),
                 "client_secret": os.getenv("GOOGLE_CLIENT_SECRET", ""),
                 "token_url": "https://oauth2.googleapis.com/token",
-                "scopes": ["https://www.googleapis.com/auth/calendar"],
+                "scopes": ["https://www.googleapis.com/auth/calendar", "https://www.googleapis.com/auth/calendar.events"],
             },
             "github": {
                 "client_id": os.getenv("GITHUB_CLIENT_ID", ""),
@@ -202,7 +202,7 @@ class OAuth2ServiceLite:
     async def store_user_credentials(
         self, user_id: str, provider: str, token_response: TokenResponse
     ) -> bool:
-        """存储用户凭据
+        """存储用户凭据到oauth_tokens表（兼容现有系统）
 
         Args:
             user_id: 用户ID
@@ -218,97 +218,100 @@ class OAuth2ServiceLite:
                 self.logger.error(f"User does not exist in auth.users: {user_id}")
                 return False
 
-            # 加密令牌
-            encrypted_access_token = self.encryption.encrypt_credential(token_response.access_token)
-            encrypted_refresh_token = None
-            if token_response.refresh_token:
-                encrypted_refresh_token = self.encryption.encrypt_credential(
-                    token_response.refresh_token
-                )
+            # Map provider to integration_id for consistency
+            integration_id = "google_calendar" if provider == "google" else provider
 
-            # Convert scope string to array for database storage
-            scope_array = token_response.scope.split(" ") if token_response.scope else []
-
-            # 检查是否已存在记录
+            # 检查是否已存在记录 (使用oauth_tokens表)
             check_query = text(
                 """
-                SELECT id FROM user_external_credentials
-                WHERE user_id = :user_id AND provider = :provider
+                SELECT id FROM oauth_tokens
+                WHERE user_id = :user_id 
+                AND (provider = :provider OR integration_id = :integration_id)
             """
             )
             existing = self.db.execute(
-                check_query, {"user_id": user_id, "provider": provider}
+                check_query, {
+                    "user_id": user_id, 
+                    "provider": provider,
+                    "integration_id": integration_id
+                }
             ).fetchone()
 
             if existing:
-                # 更新现有记录
+                # 更新现有记录 (oauth_tokens表存储明文)
                 update_query = text(
                     """
-                    UPDATE user_external_credentials
-                    SET encrypted_access_token = :access_token,
-                        encrypted_refresh_token = :refresh_token,
-                        token_expires_at = :expires_at,
-                        refresh_token_expires_at = :refresh_expires_at,
-                        scope = :scope,
+                    UPDATE oauth_tokens
+                    SET access_token = :access_token,
+                        refresh_token = :refresh_token,
+                        expires_at = :expires_at,
                         token_type = :token_type,
-                        is_valid = true,
-                        last_validated_at = CURRENT_TIMESTAMP,
-                        validation_error = NULL,
+                        is_active = true,
+                        credential_data = :credential_data,
                         updated_at = CURRENT_TIMESTAMP
-                    WHERE user_id = :user_id AND provider = :provider
+                    WHERE user_id = :user_id 
+                    AND (provider = :provider OR integration_id = :integration_id)
                 """
                 )
-                # Calculate refresh token expiration (provider-specific)
-                refresh_expires_at = self._calculate_refresh_token_expiration(
-                    provider, token_response
-                )
+                
+                # Prepare credential_data as JSONB
+                credential_data = {
+                    "scope": token_response.scope,
+                    "token_type": token_response.token_type,
+                    "expires_in": int((token_response.expires_at - datetime.now(timezone.utc)).total_seconds()) if token_response.expires_at else None,
+                    "callback_timestamp": datetime.now(timezone.utc).isoformat()
+                }
 
                 self.db.execute(
                     update_query,
                     {
                         "user_id": user_id,
                         "provider": provider,
-                        "access_token": encrypted_access_token,
-                        "refresh_token": encrypted_refresh_token,
+                        "integration_id": integration_id,
+                        "access_token": token_response.access_token,  # Store plaintext like Notion
+                        "refresh_token": token_response.refresh_token,
                         "expires_at": token_response.expires_at,
-                        "refresh_expires_at": refresh_expires_at,
-                        "scope": scope_array,
                         "token_type": token_response.token_type,
+                        "credential_data": json.dumps(credential_data),
                     },
                 )
             else:
-                # 插入新记录
+                # 插入新记录 (oauth_tokens表，与Notion等保持一致)
                 insert_query = text(
                     """
-                    INSERT INTO user_external_credentials (
-                        user_id, provider, credential_type,
-                        encrypted_access_token, encrypted_refresh_token,
-                        token_expires_at, refresh_token_expires_at, scope, token_type,
-                        is_valid, last_validated_at
+                    INSERT INTO oauth_tokens (
+                        user_id, integration_id, provider,
+                        access_token, refresh_token,
+                        expires_at, token_type,
+                        is_active, credential_data
                     ) VALUES (
-                        :user_id, :provider, 'oauth2',
+                        :user_id, :integration_id, :provider,
                         :access_token, :refresh_token,
-                        :expires_at, :refresh_expires_at, :scope, :token_type,
-                        true, CURRENT_TIMESTAMP
+                        :expires_at, :token_type,
+                        true, :credential_data
                     )
                 """
                 )
-                # Calculate refresh token expiration (provider-specific)
-                refresh_expires_at = self._calculate_refresh_token_expiration(
-                    provider, token_response
-                )
+                
+                # Prepare credential_data as JSONB
+                credential_data = {
+                    "scope": token_response.scope,
+                    "token_type": token_response.token_type,
+                    "expires_in": int((token_response.expires_at - datetime.now(timezone.utc)).total_seconds()) if token_response.expires_at else None,
+                    "callback_timestamp": datetime.now(timezone.utc).isoformat()
+                }
 
                 self.db.execute(
                     insert_query,
                     {
                         "user_id": user_id,
+                        "integration_id": integration_id,
                         "provider": provider,
-                        "access_token": encrypted_access_token,
-                        "refresh_token": encrypted_refresh_token,
+                        "access_token": token_response.access_token,  # Store plaintext like Notion
+                        "refresh_token": token_response.refresh_token,
                         "expires_at": token_response.expires_at,
-                        "refresh_expires_at": refresh_expires_at,
-                        "scope": scope_array,
                         "token_type": token_response.token_type,
+                        "credential_data": json.dumps(credential_data),
                     },
                 )
 
@@ -336,27 +339,30 @@ class OAuth2ServiceLite:
             有效的访问令牌，如果没有或无法刷新则返回None
         """
         try:
+            # Query oauth_tokens table (primary storage, like Notion)
             query = text(
                 """
                 SELECT access_token, refresh_token, expires_at, is_active
                 FROM oauth_tokens
-                WHERE user_id = :user_id AND provider = :provider
+                WHERE user_id = :user_id 
+                AND (provider = :provider OR integration_id = :integration_id)
                 ORDER BY updated_at DESC
                 LIMIT 1
             """
             )
-            result = self.db.execute(query, {"user_id": user_id, "provider": provider}).fetchone()
-
+            # Map provider to integration_id for oauth_tokens table
+            integration_id = "google_calendar" if provider == "google" else provider
+            result = self.db.execute(
+                query, 
+                {"user_id": user_id, "provider": provider, "integration_id": integration_id}
+            ).fetchone()
+            
             if not result:
                 self.logger.debug(f"No credentials found for user {user_id}, provider {provider}")
                 return None
-
-            (
-                access_token,
-                refresh_token,
-                expires_at,
-                is_active,
-            ) = result
+            
+            # oauth_tokens table has plaintext tokens (like Notion)
+            access_token, refresh_token, expires_at, is_active = result
 
             if not is_active:
                 self.logger.debug(
@@ -508,17 +514,30 @@ class OAuth2ServiceLite:
             reason: 失效原因
         """
         try:
+            # Map provider to integration_id
+            integration_id = "google_calendar" if provider == "google" else provider
+            
             update_query = text(
                 """
-                UPDATE user_external_credentials
-                SET is_valid = false,
-                    validation_error = :reason,
+                UPDATE oauth_tokens
+                SET is_active = false,
+                    credential_data = jsonb_set(
+                        COALESCE(credential_data, '{}')::jsonb,
+                        '{validation_error}',
+                        :reason::jsonb
+                    ),
                     updated_at = CURRENT_TIMESTAMP
-                WHERE user_id = :user_id AND provider = :provider
+                WHERE user_id = :user_id 
+                AND (provider = :provider OR integration_id = :integration_id)
             """
             )
             self.db.execute(
-                update_query, {"user_id": user_id, "provider": provider, "reason": reason}
+                update_query, {
+                    "user_id": user_id, 
+                    "provider": provider, 
+                    "integration_id": integration_id,
+                    "reason": json.dumps(reason)
+                }
             )
             self.db.commit()
             self.logger.info(

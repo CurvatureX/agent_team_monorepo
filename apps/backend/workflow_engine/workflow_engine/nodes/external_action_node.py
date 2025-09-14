@@ -944,12 +944,20 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         """Get credentials for SDK from OAuth2 service (N8N-style automatic credential querying).
 
         This method implements the N8N-style approach where:
-        1. Credentials are automatically queried from database, not passed in requests
-        2. Missing credentials result in structured error responses
-        3. Frontend handles authorization flow based on error responses
+        1. First check if credentials are passed in context (for testing/direct API calls)
+        2. If not, query stored credentials from database
+        3. Missing credentials result in structured error responses
+        4. Frontend handles authorization flow based on error responses
         """
-        # Always query stored credentials from database (N8N style)
-        # Don't check context.credentials - this enforces the N8N pattern
+        # First check if credentials are provided in context
+        if context.credentials and provider in context.credentials:
+            creds = context.credentials.get(provider, {})
+            if creds and creds.get("access_token"):
+                self.logger.info(f"Using credentials from context for {provider}")
+                return creds
+        
+        # Fallback to querying stored credentials from database (N8N style)
+        self.logger.info(f"Querying stored credentials for {provider} from database")
         return await self._get_user_credentials(user_id, provider) or {}
 
     async def _get_user_credentials(self, user_id: str, provider: str) -> Optional[Dict[str, str]]:
