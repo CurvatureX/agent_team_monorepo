@@ -233,7 +233,24 @@ class ApiClient {
 
   // Note: User profile is now handled by Supabase auth context
 
-  // Manual trigger invocation APIs
+  // Manual node invocation APIs
+  async getNodeSchema(nodeType: string, nodeSubtype: string): Promise<{
+    node_type: string;
+    node_subtype: string;
+    supported: boolean;
+    schema: {
+      type: string;
+      properties: any;
+      required: string[];
+    };
+    examples: any[];
+    description: string;
+    success: boolean;
+  }> {
+    return this.makeRequest(`/v1/public/node-schemas/${nodeType.toLowerCase()}/${nodeSubtype.toLowerCase()}`);
+  }
+
+  // Backward compatibility - getTriggerSchema now uses the new node-schemas endpoint
   async getTriggerSchema(triggerType: string): Promise<{
     trigger_type: string;
     schema: {
@@ -245,7 +262,38 @@ class ApiClient {
     description: string;
     success: boolean;
   }> {
-    return this.makeRequest(`/v1/public/trigger-schemas/${triggerType.toLowerCase()}`);
+    const nodeSchema = await this.getNodeSchema('trigger', triggerType);
+    // Transform the response to maintain backward compatibility
+    return {
+      trigger_type: triggerType,
+      schema: nodeSchema.schema,
+      examples: nodeSchema.examples,
+      description: nodeSchema.description,
+      success: nodeSchema.success
+    };
+  }
+
+  // Get all available node types and their manual invocation support
+  async getNodeTypes(): Promise<{
+    node_types: Record<string, {
+      subtypes: Array<{
+        subtype: string;
+        name: string;
+        description: string;
+        manual_invocation_supported: boolean;
+      }>;
+      manual_invocation_count: number;
+      total_count: number;
+    }>;
+    summary: {
+      total_node_types: number;
+      total_specifications: number;
+      manual_invocation_supported: number;
+      manual_invocation_percentage: number;
+    };
+    success: boolean;
+  }> {
+    return this.makeRequest('/v1/public/node-types');
   }
 
   async manualInvokeTrigger(workflowId: string, triggerNodeId: string, data: {

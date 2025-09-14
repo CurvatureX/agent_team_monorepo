@@ -73,14 +73,28 @@ class GitHubTriggerRequest(BaseModel):
     timestamp: str
 
 
+def get_jwt_token(request: Request) -> Optional[str]:
+    """Extract JWT token from Authorization header"""
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.startswith("Bearer "):
+        return auth_header[7:]  # Remove "Bearer " prefix
+    return None
+
+
 @router.post("/workflows/{workflow_id}/manual", response_model=ExecutionResult)
 async def trigger_manual(
     workflow_id: str,
+    request_obj: Request,
     request: ManualTriggerRequest,
     trigger_manager: TriggerManager = Depends(get_trigger_manager),
 ):
     """Manually trigger a workflow execution"""
     try:
+        # Extract JWT token from Authorization header
+        access_token = get_jwt_token(request_obj)
+        if access_token:
+            logger.info(f"🔐 JWT token received for manual trigger: {workflow_id}")
+
         # Get the workflow owner ID
         workflow_owner_id = await _get_workflow_owner_id(workflow_id)
         if not workflow_owner_id:
@@ -92,7 +106,7 @@ async def trigger_manual(
         )
 
         result = await trigger_manager.trigger_manual(
-            workflow_id=workflow_id, user_id=workflow_owner_id
+            workflow_id=workflow_id, user_id=workflow_owner_id, access_token=access_token
         )
 
         return result

@@ -191,6 +191,9 @@ const CustomNode = ({ data }: { data: any }) => {
   const isFirstNode = data.type === 'TRIGGER';
   const isLastNode = data.isLast;
 
+  // Use icon_url if available, otherwise fallback to IconComponent
+  const hasCustomIcon = data.icon_url && typeof data.icon_url === 'string' && data.icon_url.trim() !== '';
+
   return (
     <>
       {/* Input handle - all nodes except the first one */}
@@ -216,7 +219,20 @@ const CustomNode = ({ data }: { data: any }) => {
             className="p-1 rounded text-white flex-shrink-0"
             style={{ backgroundColor: nodeColor }}
           >
-            <IconComponent className="w-3 h-3" />
+            {hasCustomIcon ? (
+              <img
+                src={data.icon_url}
+                alt={`${data.name || data.type} icon`}
+                className="w-3 h-3"
+                onError={(e) => {
+                  // Fallback to IconComponent if image fails to load
+                  const target = e.target as HTMLImageElement;
+                  target.style.display = 'none';
+                  target.nextElementSibling?.classList.remove('hidden');
+                }}
+              />
+            ) : null}
+            <IconComponent className={`w-3 h-3 ${hasCustomIcon ? 'hidden' : ''}`} />
           </div>
           <div className="flex-1 min-w-0">
             <div className="font-medium text-xs text-foreground truncate">{data.name || data.type}</div>

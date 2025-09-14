@@ -19,7 +19,7 @@ from shared.models import (
     Execution,
     SingleNodeExecutionResponse,
 )
-from workflow_engine.services.supabase_execution_service import SupabaseExecutionService
+from workflow_engine.services.execution_service import ExecutionService
 
 router = APIRouter()
 
@@ -52,10 +52,10 @@ def get_jwt_token(request: Request) -> Optional[str]:
     return None
 
 
-def get_execution_service(request: Request) -> SupabaseExecutionService:
-    """Get SupabaseExecutionService with JWT token for RLS."""
+def get_execution_service(request: Request) -> ExecutionService:
+    """Get ExecutionService with JWT token for RLS."""
     access_token = get_jwt_token(request)
-    return SupabaseExecutionService(access_token=access_token)
+    return ExecutionService(access_token=access_token)
 
 
 @router.post("/workflows/{workflow_id}/execute", response_model=ExecuteWorkflowResponse)
@@ -170,7 +170,7 @@ async def resume_workflow(
         # Get Supabase service with JWT token for RLS
         service = get_execution_service(request_obj)
 
-        # Note: resume_workflow_execution is not implemented in SupabaseExecutionService yet
+        # Resume workflow execution using ExecutionService
         # This would need to be implemented if resume functionality is needed
         raise HTTPException(
             status_code=501,

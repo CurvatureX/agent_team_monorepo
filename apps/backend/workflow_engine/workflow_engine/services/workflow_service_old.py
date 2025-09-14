@@ -1,5 +1,5 @@
 """
-Supabase-based Workflow Service - 工作流CRUD操作服务.
+Workflow Service - 工作流CRUD操作服务.
 
 This module implements workflow-related operations using Supabase SDK instead of SQLAlchemy.
 """
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
-class SupabaseWorkflowService:
+class WorkflowService:
     """Service for workflow CRUD operations using Supabase SDK."""
 
     def __init__(self, access_token: Optional[str] = None):
@@ -66,12 +66,12 @@ class SupabaseWorkflowService:
 
             temp_nodes = [NodeData(**node_data) for node_data in nodes_data]
 
-            # Validate workflow before saving
+            # Validate workflow before saving - validator expects dict, not objects
             validation_result = self.validator.validate_workflow_structure(
                 {
                     "name": request.name,
-                    "nodes": [node.dict() for node in temp_nodes],
-                    "connections": connections_data,
+                    "nodes": [node.dict() for node in temp_nodes],  # Convert to dict for validator
+                    "connections": connections_data,  # Use resolved connections with IDs
                     "settings": request.settings,
                 },
                 validate_node_parameters=True,
@@ -89,8 +89,38 @@ class SupabaseWorkflowService:
                     f"Workflow validation warnings: {'; '.join(validation_warnings)}"
                 )
 
+            # Check if any IDs were changed (for connection updates)
+            original_ids = {node.id: node.id for node in request.nodes if node.id}
+            new_ids = {node["id"]: node["id"] for node in nodes_data}
+            id_changed = False
+            id_mapping = {}
+
+            for i, original_node in enumerate(request.nodes):
+                if original_node.id and nodes_data[i]["id"] != original_node.id:
+                    id_changed = True
+                    id_mapping[original_node.id] = nodes_data[i]["id"]
+                    self.logger.info(
+                        f"Node ID changed: {original_node.id} -> {nodes_data[i]['id']}"
+                    )
+
+            # If any IDs were changed during generation, update the connections
+            if id_changed and connections_data:
+                connections_data = NodeIdGenerator.update_connection_references(
+                    connections_data, id_mapping
+                )
+                self.logger.info("Updated connection references after ID changes")
+
+            # Convert nodes back to NodeData objects
+            from shared.models import NodeData
+
+            nodes = [NodeData(**node_data) for node_data in nodes_data]
+
+            # 先打印 connections_data 的内容
+            self.logger.info(f"connections_data before WorkflowData creation: {connections_data}")
+            self.logger.info(f"connections_data type: {type(connections_data)}")
+
             # Prepare workflow data for Supabase
-            workflow_data = {
+            workflow_data_dict = {
                 "id": workflow_id,
                 "user_id": request.user_id,
                 "session_id": getattr(request, "session_id", None),
@@ -108,14 +138,15 @@ class SupabaseWorkflowService:
                 "created_at": now.isoformat(),
                 "updated_at": now.isoformat(),
                 "workflow_data": {
-                    "nodes": [node.dict() for node in temp_nodes],
+                    "nodes": [node.dict() for node in nodes],
                     "connections": connections_data,
                     "settings": request.settings or {},
+                    "static_data": getattr(request, "static_data", {}),
                 },
             }
 
             # Create workflow in Supabase
-            created_workflow = await self.repository.create_workflow(workflow_data)
+            created_workflow = await self.repository.create_workflow(workflow_data_dict)
 
             if not created_workflow:
                 raise ValueError("Failed to create workflow in database")
@@ -124,6 +155,8 @@ class SupabaseWorkflowService:
             workflow_data = self._dict_to_workflow_data(created_workflow)
             if workflow_data is None:
                 raise ValueError("Created workflow has invalid data structure (no nodes)")
+
+            self.logger.info(f"Workflow created successfully: {workflow_id}")
             return workflow_data
 
         except Exception as e:
@@ -179,14 +212,34 @@ class SupabaseWorkflowService:
                 nodes_data = [node.dict() for node in update_data.nodes]
                 nodes_data = NodeIdGenerator.ensure_unique_node_ids(nodes_data)
 
+                # Check if any IDs were changed
+                id_mapping = {}
+                for i, original_node in enumerate(update_data.nodes):
+                    orig_id = original_node.id
+                    if orig_id and nodes_data[i]["id"] != orig_id:
+                        id_mapping[orig_id] = nodes_data[i]["id"]
+                        self.logger.info(
+                            f"Node ID changed during update: {orig_id} -> {nodes_data[i]['id']}"
+                        )
+
                 connections_data = {}
                 if update_data.connections is not None:
                     connections_data = update_data.connections
+                    # Update connections if IDs changed
+                    if id_mapping:
+                        connections_data = NodeIdGenerator.update_connection_references(
+                            connections_data, id_mapping
+                        )
                 else:
                     # Try to preserve existing connections if only nodes are updated
                     current_workflow = await self.repository.get_workflow(workflow_id)
                     if current_workflow and current_workflow.get("workflow_data"):
                         connections_data = current_workflow["workflow_data"].get("connections", {})
+                        # Update connections if IDs changed
+                        if id_mapping:
+                            connections_data = NodeIdGenerator.update_connection_references(
+                                connections_data, id_mapping
+                            )
 
                 # Validate updated workflow
                 from shared.models import NodeData
@@ -274,19 +327,6 @@ class SupabaseWorkflowService:
             self.logger.error(f"Error listing workflows: {e}")
             raise
 
-    def _process_workflow_connections(
-        self, request: CreateWorkflowRequest, nodes_data: List[dict]
-    ) -> dict:
-        """Process and resolve workflow connections."""
-        # This is a simplified version - the original method has more complex logic
-        # You may need to import the full implementation from the original service
-        connections_data = {}
-
-        if hasattr(request, "connections") and request.connections:
-            connections_data = request.connections
-
-        return connections_data
-
     def _dict_to_workflow_data(self, workflow_dict: dict) -> Optional[WorkflowData]:
         """Convert dictionary from Supabase to WorkflowData object."""
         try:
@@ -326,11 +366,60 @@ class SupabaseWorkflowService:
                 nodes=nodes,
                 connections=connections_data,
                 settings=settings_data,
+                static_data=workflow_data.get("static_data", {}),
                 created_at=workflow_dict.get("created_at"),
                 updated_at=workflow_dict.get("updated_at"),
-                icon_url=workflow_dict.get("icon_url"),  # Add missing icon_url field
+                icon_url=workflow_dict.get("icon_url"),
+                # Add metadata fields
+                deployment_status=workflow_dict.get("deployment_status"),
+                deployed_at=workflow_dict.get("deployed_at"),
+                latest_execution_status=workflow_dict.get("latest_execution_status"),
+                latest_execution_time=workflow_dict.get("latest_execution_time"),
+                latest_execution_id=workflow_dict.get("latest_execution_id"),
             )
 
         except Exception as e:
             self.logger.error(f"Error converting workflow dict to WorkflowData: {e}")
+            raise
+
+    def _process_workflow_connections(
+        self, request: CreateWorkflowRequest, nodes_data: List[dict]
+    ) -> dict:
+        """Process and resolve workflow connections, supporting both name and ID references."""
+        connections_data = request.connections if request.connections else {}
+        self.logger.debug(f"Processing {len(connections_data)} connections")
+
+        # Create name to ID mapping for all nodes
+        name_to_id_mapping = NodeIdGenerator.create_name_to_id_mapping(nodes_data)
+        node_ids = {node["id"] for node in nodes_data}
+
+        # Resolve any name-based references to IDs BEFORE validation
+        resolved_connections = NodeIdGenerator.resolve_connection_references(
+            connections_data, name_to_id_mapping, node_ids
+        )
+
+        self.logger.debug("Successfully resolved connection references to node IDs")
+        return resolved_connections
+
+    def list_all_node_templates(
+        self, category_filter: Optional[str] = None, include_system_templates: bool = True
+    ) -> List[NodeTemplate]:
+        """List all available node templates using node specs."""
+        try:
+            self.logger.info("Listing node templates from node specs (database deprecated)")
+
+            # Import here to avoid circular imports
+            from shared.services.node_specs_api_service import get_node_specs_api_service
+
+            # Use the new node specs service instead of database
+            specs_service = get_node_specs_api_service()
+            templates = specs_service.list_all_node_templates(
+                category_filter=category_filter, include_system_templates=include_system_templates
+            )
+
+            self.logger.info(f"Retrieved {len(templates)} templates from node specs")
+            return templates
+
+        except Exception as e:
+            self.logger.error(f"Error listing node templates: {str(e)}")
             raise

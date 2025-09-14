@@ -68,15 +68,32 @@ async def _trigger_workflow_engine(
     """Trigger workflow execution via workflow engine"""
 
     try:
-        # Prepare execution request
-        execution_request = {
-            "inputs": input_data or {},
-            "trigger_metadata": trigger_metadata,
-            "execution_context": {
+        # Convert all values to strings as required by ExecuteWorkflowRequest
+        trigger_data = {}
+
+        # Add trigger metadata (convert values to strings)
+        for key, value in trigger_metadata.items():
+            trigger_data[key] = str(value) if value is not None else ""
+
+        # Add input data (convert values to strings)
+        for key, value in (input_data or {}).items():
+            trigger_data[key] = str(value) if value is not None else ""
+
+        # Add execution context (all strings)
+        trigger_data.update(
+            {
                 "trigger_source": "manual_invocation",
                 "initiated_by": user_id,
-                "trace_id": trace_id,
-            },
+                "trace_id": trace_id or str(uuid.uuid4()),
+            }
+        )
+
+        # Prepare execution request in ExecuteWorkflowRequest format
+        execution_request = {
+            "workflow_id": workflow_id,
+            "trigger_data": trigger_data,
+            "user_id": user_id,
+            "session_id": None,
         }
 
         headers = {"Content-Type": "application/json"}
@@ -87,9 +104,8 @@ async def _trigger_workflow_engine(
         # Call workflow engine
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
-                f"{settings.workflow_engine_url}/api/v1/workflows/{workflow_id}/execute",
+                f"{settings.workflow_engine_url}/v1/workflows/{workflow_id}/execute",
                 json=execution_request,
-                params={"user_id": user_id},
                 headers=headers,
             )
             response.raise_for_status()

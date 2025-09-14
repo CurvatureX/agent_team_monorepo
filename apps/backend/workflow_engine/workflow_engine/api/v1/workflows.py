@@ -21,7 +21,7 @@ from shared.models import (
     WorkflowData,
     WorkflowMetadata,
 )
-from workflow_engine.services.supabase_workflow_service import SupabaseWorkflowService
+from workflow_engine.services.workflow_service import WorkflowService
 
 router = APIRouter()
 
@@ -34,10 +34,10 @@ def get_jwt_token(request: Request) -> Optional[str]:
     return None
 
 
-def get_workflow_service(request: Request) -> SupabaseWorkflowService:
-    """Get SupabaseWorkflowService with JWT token for RLS."""
+def get_workflow_service(request: Request) -> WorkflowService:
+    """Get WorkflowService with JWT token for RLS."""
     access_token = get_jwt_token(request)
-    return SupabaseWorkflowService(access_token=access_token)
+    return WorkflowService(access_token=access_token)
 
 
 @router.post("/workflows", response_model=CreateWorkflowResponse)
