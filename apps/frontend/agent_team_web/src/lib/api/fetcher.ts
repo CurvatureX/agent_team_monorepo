@@ -1,6 +1,10 @@
 import useSWR, { SWRConfiguration } from 'swr';
 import { useAuth } from '@/contexts/auth-context';
 
+interface ApiError extends Error {
+  status?: number;
+}
+
 /**
  * 通用的 SWR fetcher
  */
@@ -13,13 +17,13 @@ export const fetcher = async ([url, token]: FetcherArgs) => {
       'Content-Type': 'application/json',
     },
   });
-  
+
   if (!res.ok) {
     const error = new Error(`API Error: ${res.statusText}`);
-    (error as any).status = res.status;
+    (error as ApiError).status = res.status;
     throw error;
   }
-  
+
   return res.json();
 };
 
@@ -38,13 +42,13 @@ export const apiRequest = async (
     },
     body: data ? JSON.stringify(data) : undefined,
   });
-  
+
   if (!res.ok) {
     const error = new Error(`API Error: ${res.statusText}`);
-    (error as any).status = res.status;
+    (error as ApiError).status = res.status;
     throw error;
   }
-  
+
   return res.status === 204 ? null : res.json();
 };
 
@@ -54,7 +58,7 @@ export function useAuthSWR<T = any>(
   config?: SWRConfiguration
 ) {
   const { session } = useAuth();
-  
+
   return useSWR<T>(
     session?.access_token && url ? [url, session.access_token] : null,
     fetcher,

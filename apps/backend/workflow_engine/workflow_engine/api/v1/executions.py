@@ -11,7 +11,6 @@ sys.path.insert(0, str(backend_dir))
 from typing import Any, Dict, Optional
 
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
 from shared.models import (
     ExecuteSingleNodeRequest,
@@ -20,8 +19,7 @@ from shared.models import (
     Execution,
     SingleNodeExecutionResponse,
 )
-from workflow_engine.models.database import get_db
-from workflow_engine.services.execution_service import ExecutionService
+from workflow_engine.services.supabase_execution_service import SupabaseExecutionService
 
 router = APIRouter()
 
@@ -46,15 +44,24 @@ class ResumeWorkflowResponse(BaseModel):
     remaining_nodes: Optional[List[str]] = None
 
 
-def get_execution_service(db: Session = Depends(get_db)):
-    return ExecutionService(db)
+def get_jwt_token(request: Request) -> Optional[str]:
+    """Extract JWT token from Authorization header for RLS."""
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.startswith("Bearer "):
+        return auth_header[7:]  # Remove "Bearer " prefix
+    return None
+
+
+def get_execution_service(request: Request) -> SupabaseExecutionService:
+    """Get SupabaseExecutionService with JWT token for RLS."""
+    access_token = get_jwt_token(request)
+    return SupabaseExecutionService(access_token=access_token)
 
 
 @router.post("/workflows/{workflow_id}/execute", response_model=ExecuteWorkflowResponse)
 async def execute_workflow(
     request: ExecuteWorkflowRequest,
     request_obj: Request,
-    service: ExecutionService = Depends(get_execution_service),
 ):
     try:
         # 获取 trace_id
@@ -65,6 +72,8 @@ async def execute_workflow(
             logger = logging.getLogger(__name__)
             logger.info(f"Executing workflow with trace_id: {trace_id}")
 
+        # Get Supabase service with JWT token for RLS
+        service = get_execution_service(request_obj)
         execution_id = await service.execute_workflow(request)
         return ExecuteWorkflowResponse(
             execution_id=execution_id,
@@ -77,11 +86,11 @@ async def execute_workflow(
 
 
 @router.get("/executions/{execution_id}", response_model=Execution)
-async def get_execution_status(
-    execution_id: str, service: ExecutionService = Depends(get_execution_service)
-):
+async def get_execution_status(execution_id: str, request_obj: Request):
     try:
-        execution = service.get_execution_status(execution_id)
+        # Get Supabase service with JWT token for RLS
+        service = get_execution_service(request_obj)
+        execution = await service.get_execution_status(execution_id)
         if not execution:
             raise HTTPException(status_code=404, detail="Execution not found")
         return execution
@@ -90,11 +99,11 @@ async def get_execution_status(
 
 
 @router.post("/executions/{execution_id}/cancel", response_model=dict)
-async def cancel_execution(
-    execution_id: str, service: ExecutionService = Depends(get_execution_service)
-):
+async def cancel_execution(execution_id: str, request_obj: Request):
     try:
-        success = service.cancel_execution(execution_id)
+        # Get Supabase service with JWT token for RLS
+        service = get_execution_service(request_obj)
+        success = await service.cancel_execution(execution_id)
         if not success:
             raise HTTPException(status_code=404, detail="Execution not found")
         return {"success": True, "message": "Execution cancelled successfully"}
@@ -123,7 +132,6 @@ async def resume_workflow(
     execution_id: str,
     request: ResumeWorkflowRequest,
     request_obj: Request,
-    service: ExecutionService = Depends(get_execution_service),
 ):
     """
     Resume a paused workflow execution.
@@ -159,9 +167,14 @@ async def resume_workflow(
         if request.output_port:
             resume_data["output_port"] = request.output_port
 
-        # Resume the workflow
-        result = await service.resume_workflow_execution(
-            execution_id=execution_id, resume_data=resume_data
+        # Get Supabase service with JWT token for RLS
+        service = get_execution_service(request_obj)
+
+        # Note: resume_workflow_execution is not implemented in SupabaseExecutionService yet
+        # This would need to be implemented if resume functionality is needed
+        raise HTTPException(
+            status_code=501,
+            detail="Resume workflow functionality not implemented in Supabase service yet",
         )
 
         if result["status"] == "ERROR":
@@ -186,11 +199,12 @@ async def resume_workflow(
 
 
 @router.get("/workflows/{workflow_id}/executions", response_model=List[Execution])
-async def get_execution_history(
-    workflow_id: str, limit: int = 50, service: ExecutionService = Depends(get_execution_service)
-):
+async def get_execution_history(workflow_id: str, limit: int = 50, request_obj: Request = None):
     try:
-        return service.get_execution_history(workflow_id, limit)
+        # Get Supabase service with JWT token for RLS
+        service = get_execution_service(request_obj)
+        executions = await service.list_executions(workflow_id=workflow_id, limit=limit)
+        return executions
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -213,7 +227,7 @@ async def execute_single_node(
     workflow_id: str,
     node_id: str,
     request: ExecuteSingleNodeRequest,
-    service: ExecutionService = Depends(get_execution_service),
+    request_obj: Request,
 ):
     """
     Execute a single node in a workflow.
@@ -231,9 +245,16 @@ async def execute_single_node(
         500: If execution fails
     """
     try:
-        result = await service.execute_single_node(
-            workflow_id=workflow_id, node_id=node_id, request=request
-        )
+        # Get Supabase service with JWT token for RLS
+        service = get_execution_service(request_obj)
+
+        # Set the workflow_id and node_id in the request if not already set
+        if not hasattr(request, "workflow_id") or not request.workflow_id:
+            request.workflow_id = workflow_id
+        if not hasattr(request, "node_id") or not request.node_id:
+            request.node_id = node_id
+
+        result = await service.execute_single_node(request)
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

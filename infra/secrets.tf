@@ -71,6 +71,16 @@ resource "aws_ssm_parameter" "database_url" {
   })
 }
 
+resource "aws_ssm_parameter" "dns_domain_name" {
+  name  = "/${local.name_prefix}/dns/domain-name"
+  type  = "SecureString"
+  value = var.dns_domain_name
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-dns-domain-name"
+  })
+}
+
 # Workflow Scheduler SSM Parameters
 resource "aws_ssm_parameter" "smtp_username" {
   name  = "/${local.name_prefix}/smtp/username"

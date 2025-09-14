@@ -103,6 +103,13 @@ variable "domain_name" {
   default     = ""
 }
 
+variable "dns_domain_name" {
+  description = "DNS domain name for CloudFront distribution"
+  type        = string
+  sensitive   = true
+  default     = "https://dtijyicuvv7hy.cloudfront.net"
+}
+
 variable "certificate_arn" {
   description = "ACM certificate ARN"
   type        = string

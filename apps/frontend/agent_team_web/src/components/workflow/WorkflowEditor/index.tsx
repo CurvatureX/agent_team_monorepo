@@ -37,7 +37,7 @@ const WorkflowEditorContent: React.FC<WorkflowEditorProps> = ({
       x: window.innerWidth / 2 - 100,
       y: window.innerHeight / 2 - 50,
     };
-    
+
     addNode({ template, position: centerPosition });
   }, [addNode]);
 
@@ -47,11 +47,11 @@ const WorkflowEditorContent: React.FC<WorkflowEditorProps> = ({
       // First export the current workflow state
       const currentState = exportWorkflow();
       console.log('Exported workflow state:', currentState);
-      
+
       // Convert timestamps to strings if they are numbers
       const metadata = {
         ...currentState.metadata,
-        created_at: typeof currentState.metadata.created_at === 'number' 
+        created_at: typeof currentState.metadata.created_at === 'number'
           ? new Date(currentState.metadata.created_at).toISOString()
           : currentState.metadata.created_at,
         updated_at: typeof currentState.metadata.updated_at === 'number'
@@ -62,7 +62,7 @@ const WorkflowEditorContent: React.FC<WorkflowEditorProps> = ({
           ? parseInt(currentState.metadata.version, 10) || 1
           : currentState.metadata.version || 1,
       };
-      
+
       // Merge with initial workflow to preserve all fields (ID, settings, etc.)
       const updatedWorkflow: Workflow = {
         ...initialWorkflow,
@@ -71,20 +71,20 @@ const WorkflowEditorContent: React.FC<WorkflowEditorProps> = ({
         edges: currentState.edges,
         // Ensure edges is always an array
         ...(currentState.edges && currentState.edges.length > 0 ? { edges: currentState.edges } : {}),
-      } as Workflow;
-      
+      } as unknown as Workflow;
+
       console.log('Updated workflow with edges:', {
         id: updatedWorkflow.id,
         nodesCount: updatedWorkflow.nodes?.length,
         edgesCount: updatedWorkflow.edges?.length,
         edges: updatedWorkflow.edges,
       });
-      
+
       // Update parent component's state
       if (onSave) {
         onSave(updatedWorkflow);
       }
-      
+
       // Trigger API save with the updated workflow
       // Use setTimeout to ensure state is updated first
       setTimeout(() => {
