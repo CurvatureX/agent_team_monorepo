@@ -7,9 +7,11 @@ import asyncio
 import json
 import logging
 import time
+from collections import deque
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from enum import Enum
+from threading import Lock
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
 try:
@@ -82,6 +84,7 @@ class ExecutionLogService:
     2. 历史日志查询
     3. 流式日志推送
     4. 用户友好的日志格式化
+    5. 批量写入优化（仅用户友好日志存储到Supabase）
     """
 
     def __init__(self):
@@ -109,10 +112,22 @@ class ExecutionLogService:
         # WebSocket连接管理
         self._websocket_connections: Dict[str, List[Any]] = {}
 
+        # 批量写入缓冲区 - 仅存储用户友好日志
+        self._batch_buffer: deque = deque()
+        self._buffer_lock = Lock()
+        self._batch_writer_task = None
+        self._shutdown = False
+
+        # 启动批量写入任务
+        self._start_batch_writer()
+
+        # Note: Log cleanup (10-day TTL) is handled by database-level pg_cron job
+        # See migration: 20250913000002_add_log_ttl_function.sql
+
     async def add_log_entry(self, entry: ExecutionLogEntry):
         """添加日志条目"""
         try:
-            # 1. 存储到Redis缓存
+            # 1. 存储到Redis缓存（所有日志）
             if self.redis_client:
                 await self._store_to_redis(entry)
             else:
@@ -122,11 +137,164 @@ class ExecutionLogService:
             # 2. 推送到WebSocket连接
             await self._push_to_websockets(entry)
 
-            # 3. 异步存储到数据库(历史记录)
-            asyncio.create_task(self._store_to_database(entry))
+            # 3. 仅用户友好日志添加到批量写入缓冲区
+            if self._is_user_friendly_log(entry):
+                await self._add_to_batch_buffer(entry)
 
         except Exception as e:
             self.logger.error(f"Failed to add log entry: {e}")
+
+    def _is_user_friendly_log(self, entry: ExecutionLogEntry) -> bool:
+        """判断是否为用户友好日志（需要存储到Supabase）"""
+        # 检查是否有用户友好的消息或者是重要的里程碑事件
+        if entry.data and entry.data.get("user_friendly_message"):
+            return True
+
+        # 检查是否为重要的里程碑事件
+        milestone_events = {
+            "workflow_started",
+            "workflow_completed",
+            "step_completed",
+            "step_error",
+        }
+
+        if entry.event_type in milestone_events:
+            return True
+
+        # 检查是否为高优先级日志
+        if entry.data and entry.data.get("display_priority", 5) >= 7:
+            return True
+
+        return False
+
+    async def _add_to_batch_buffer(self, entry: ExecutionLogEntry):
+        """添加用户友好日志到批量写入缓冲区"""
+        try:
+            with self._buffer_lock:
+                self._batch_buffer.append(entry)
+
+            # 如果缓冲区过大，立即触发写入
+            if len(self._batch_buffer) >= 50:  # 达到50条立即写入
+                asyncio.create_task(self._flush_batch_buffer())
+
+        except Exception as e:
+            self.logger.error(f"Failed to add to batch buffer: {e}")
+
+    def _start_batch_writer(self):
+        """启动批量写入后台任务"""
+        if not DATABASE_AVAILABLE:
+            return
+
+        async def batch_writer():
+            while not self._shutdown:
+                try:
+                    await asyncio.sleep(1.0)  # 每1秒执行一次
+                    await self._flush_batch_buffer()
+                except Exception as e:
+                    self.logger.error(f"Batch writer error: {e}")
+
+        # 在事件循环中启动后台任务
+        try:
+            loop = asyncio.get_event_loop()
+            self._batch_writer_task = loop.create_task(batch_writer())
+        except RuntimeError:
+            # 如果没有运行的事件循环，稍后启动
+            self._batch_writer_task = None
+
+    async def _flush_batch_buffer(self):
+        """批量写入缓冲区中的日志到数据库"""
+        if not DATABASE_AVAILABLE:
+            return
+
+        # 获取待写入的日志条目
+        entries_to_write = []
+        with self._buffer_lock:
+            if not self._batch_buffer:
+                return  # 缓冲区为空
+
+            # 一次最多处理100条日志
+            batch_size = min(len(self._batch_buffer), 100)
+            for _ in range(batch_size):
+                if self._batch_buffer:
+                    entries_to_write.append(self._batch_buffer.popleft())
+
+        if not entries_to_write:
+            return
+
+        try:
+            db = get_db_session()
+            try:
+                # 批量创建数据库记录
+                db_logs = []
+                for entry in entries_to_write:
+                    # 转换事件类型到数据库枚举
+                    event_type_enum = self._convert_to_db_event_type(entry.event_type)
+                    level_enum = self._convert_to_db_level(entry.level)
+
+                    # 从数据中提取节点信息
+                    node_info = self._extract_node_info_from_data(entry.data)
+
+                    # 提取用户友好消息
+                    user_friendly_message = None
+                    display_priority = 5
+                    is_milestone = False
+
+                    if entry.data:
+                        user_friendly_message = entry.data.get("user_friendly_message")
+                        display_priority = entry.data.get("display_priority", 5)
+                        is_milestone = entry.data.get("is_milestone", False)
+
+                    # 创建数据库记录
+                    db_log = WorkflowExecutionLog(
+                        execution_id=entry.execution_id,
+                        log_category="business",  # 用户友好日志都标记为business
+                        event_type=event_type_enum,
+                        level=level_enum,
+                        message=entry.message,
+                        data=entry.data or {},
+                        node_id=node_info.get("node_id"),
+                        node_name=node_info.get("node_name"),
+                        node_type=node_info.get("node_type"),
+                        step_number=node_info.get("step_number"),
+                        total_steps=node_info.get("total_steps"),
+                        duration_seconds=node_info.get("duration_seconds"),
+                        user_friendly_message=user_friendly_message,
+                        display_priority=display_priority,
+                        is_milestone=is_milestone,
+                    )
+                    db_logs.append(db_log)
+
+                # 批量插入
+                db.add_all(db_logs)
+                db.commit()
+
+                self.logger.debug(
+                    f"Successfully wrote {len(db_logs)} user-friendly logs to database"
+                )
+
+            finally:
+                db.close()
+
+        except Exception as e:
+            self.logger.error(f"Failed to flush batch buffer to database: {e}")
+
+            # 失败的日志重新放回缓冲区头部
+            with self._buffer_lock:
+                for entry in reversed(entries_to_write):
+                    self._batch_buffer.appendleft(entry)
+
+    async def shutdown(self):
+        """关闭服务，确保所有缓冲区的日志都被写入"""
+        self._shutdown = True
+
+        # 等待批量写入任务完成
+        if self._batch_writer_task:
+            await self._batch_writer_task
+
+        # 最后一次刷新缓冲区
+        await self._flush_batch_buffer()
+
+        self.logger.info("ExecutionLogService shutdown completed")
 
     async def _store_to_redis(self, entry: ExecutionLogEntry):
         """存储到Redis"""
@@ -159,45 +327,6 @@ class ExecutionLogService:
         # 限制内存缓存大小
         if len(self._memory_cache[entry.execution_id]) > 1000:
             self._memory_cache[entry.execution_id] = self._memory_cache[entry.execution_id][-500:]
-
-    async def _store_to_database(self, entry: ExecutionLogEntry):
-        """异步存储到数据库(历史记录)"""
-        if not DATABASE_AVAILABLE:
-            return
-
-        try:
-            db = get_db_session()
-            try:
-                # 转换事件类型到数据库枚举
-                event_type_enum = self._convert_to_db_event_type(entry.event_type)
-                level_enum = self._convert_to_db_level(entry.level)
-
-                # 从数据中提取节点信息
-                node_info = self._extract_node_info_from_data(entry.data)
-
-                # 创建数据库记录
-                db_log = WorkflowExecutionLog(
-                    execution_id=entry.execution_id,
-                    event_type=event_type_enum,
-                    level=level_enum,
-                    message=entry.message,
-                    data=entry.data or {},
-                    node_id=node_info.get("node_id"),
-                    node_name=node_info.get("node_name"),
-                    node_type=node_info.get("node_type"),
-                    step_number=node_info.get("step_number"),
-                    total_steps=node_info.get("total_steps"),
-                    duration_seconds=node_info.get("duration_seconds"),
-                )
-
-                db.add(db_log)
-                db.commit()
-
-            finally:
-                db.close()
-
-        except Exception as e:
-            self.logger.error(f"Failed to store to database: {e}")
 
     def _convert_to_db_event_type(self, event_type: LogEventType) -> LogEventTypeEnum:
         """转换事件类型到数据库枚举"""

@@ -108,7 +108,7 @@ class TriggerTypeEnum(str, enum.Enum):
 class WorkflowStatusEnum(str, enum.Enum):
     """Workflow execution status enumeration"""
 
-    NEW = "NEW"
+    DRAFT = "DRAFT"  # Never executed, same as deployment status
     RUNNING = "RUNNING"
     SUCCESS = "SUCCESS"
     ERROR = "ERROR"
@@ -173,7 +173,7 @@ class WorkflowExecution(Base, BaseModel):
     workflow_id = Column(UUID(as_uuid=True), nullable=False, index=True)
 
     # Execution information
-    status = Column(Enum(WorkflowStatusEnum), nullable=False, default=WorkflowStatusEnum.NEW)
+    status = Column(Enum(WorkflowStatusEnum), nullable=False, default=WorkflowStatusEnum.DRAFT)
     mode = Column(Enum(WorkflowModeEnum), nullable=False, default=WorkflowModeEnum.MANUAL)
 
     # Execution metadata
@@ -253,6 +253,14 @@ class WorkflowDB(Base, BaseModel):
     undeployed_at = Column(DateTime(timezone=True), nullable=True)
     deployment_version = Column(Integer, nullable=False, default=1)
     deployment_config = Column(JSON, nullable=False, default=dict)
+
+    # Latest execution tracking
+    latest_execution_status = Column(String(50), nullable=True, index=True, default="DRAFT")
+    latest_execution_id = Column(String(255), nullable=True)
+    latest_execution_time = Column(DateTime(timezone=True), nullable=True)
+
+    # Visual identification
+    icon_url = Column(String(500), nullable=True)
 
     # Timestamps - using Integer for bigint fields to match database schema
     created_at = Column(Integer, nullable=False)

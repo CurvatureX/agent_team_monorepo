@@ -87,6 +87,12 @@ services:
 
   # Workflow Agent - AI workflow consultant (FastAPI service on port 8001)
   workflow-agent:
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    extra_hosts:
+      - "aws-0-ap-southeast-1.pooler.supabase.com:54.255.219.82"
+      - "mkrczzgjeduruwxpanbj.supabase.co:54.255.219.82"
     build:
       context: .
       dockerfile: ./workflow_agent/Dockerfile
@@ -136,6 +142,7 @@ services:
       - 8.8.8.8
     extra_hosts:
       - "aws-0-ap-southeast-1.pooler.supabase.com:54.255.219.82"
+      - "mkrczzgjeduruwxpanbj.supabase.co:54.255.219.82"
     build:
       context: .
       dockerfile: ./workflow_engine/Dockerfile
@@ -180,6 +187,7 @@ services:
       - 8.8.8.8
     extra_hosts:
       - "aws-0-ap-southeast-1.pooler.supabase.com:54.255.219.82"
+      - "mkrczzgjeduruwxpanbj.supabase.co:54.255.219.82"
     build:
       context: .
       dockerfile: ./workflow_scheduler/Dockerfile
@@ -218,6 +226,12 @@ services:
 
   # API Gateway - Three-layer FastAPI service (HTTP on port 8000)
   api-gateway:
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    extra_hosts:
+      - "aws-0-ap-southeast-1.pooler.supabase.com:54.255.219.82"
+      - "mkrczzgjeduruwxpanbj.supabase.co:54.255.219.82"
     build:
       context: .
       dockerfile: ./api-gateway/Dockerfile
@@ -232,6 +246,7 @@ services:
     environment:
       # HTTP client configuration (replacing gRPC)
       - WORKFLOW_ENGINE_HOST=workflow-engine
+      - WORKFLOW_ENGINE_URL=http://workflow-engine:8002
       - WORKFLOW_ENGINE_PORT=8002
       - WORKFLOW_AGENT_HOST=workflow-agent
       - WORKFLOW_AGENT_PORT=8001
@@ -245,9 +260,6 @@ services:
       - OTEL_EXPORTER_OTLP_INSECURE=true
       - OTEL_SERVICE_NAME=api-gateway
       - OTEL_RESOURCE_ATTRIBUTES=service.namespace=agent-team,deployment.environment=development
-    dns:
-      - 1.1.1.1
-      - 8.8.8.8
     depends_on:
       redis:
         condition: service_healthy

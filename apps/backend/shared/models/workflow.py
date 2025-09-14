@@ -103,6 +103,28 @@ class WorkflowData(BaseModel):
     created_at: Optional[int] = None
     updated_at: Optional[int] = None
     version: str = Field(default="1.0")
+    icon_url: Optional[str] = Field(
+        default=None, description="URL to the workflow icon/image for visual identification in UI"
+    )
+
+    # Deployment metadata (populated during list operations)
+    deployment_status: Optional[str] = Field(
+        default=None, description="Latest deployment status from workflow_deployments table"
+    )
+    deployed_at: Optional[str] = Field(
+        default=None, description="Latest deployment timestamp in ISO format"
+    )
+
+    # Execution metadata (populated during list operations)
+    latest_execution_status: Optional[str] = Field(
+        default=None, description="Status of the most recent workflow execution"
+    )
+    latest_execution_time: Optional[str] = Field(
+        default=None, description="Timestamp of the most recent execution in ISO format"
+    )
+    latest_execution_id: Optional[str] = Field(
+        default=None, description="ID of the most recent execution"
+    )
 
     @field_validator("name")
     @classmethod
@@ -200,6 +222,7 @@ class CreateWorkflowRequest(BaseModel):
     tags: List[str] = Field(default_factory=list)
     user_id: str = Field(..., min_length=1)
     session_id: Optional[str] = None
+    icon_url: Optional[str] = None
 
     @field_validator("name")
     @classmethod
@@ -412,10 +435,49 @@ class ListWorkflowsRequest(BaseModel):
     offset: int = Field(default=0, ge=0)
 
 
+class WorkflowMetadata(BaseModel):
+    """工作流元数据 - 用于列表显示，不包含完整的nodes和settings"""
+
+    id: Optional[str] = None
+    user_id: Optional[str] = None
+    session_id: Optional[str] = None
+    name: str
+    description: Optional[str] = None
+    version: str = Field(default="1.0")
+    active: bool = True
+    tags: Optional[List[str]] = Field(default_factory=list)
+    created_at: Optional[int] = None
+    updated_at: Optional[int] = None
+
+    # Deployment metadata
+    deployment_status: Optional[str] = Field(
+        default=None, description="Latest deployment status from workflow_deployments table"
+    )
+    deployed_at: Optional[str] = Field(
+        default=None, description="Latest deployment timestamp in ISO format"
+    )
+
+    # Execution metadata
+    latest_execution_status: Optional[str] = Field(
+        default=None, description="Status of the most recent workflow execution"
+    )
+    latest_execution_time: Optional[str] = Field(
+        default=None, description="Timestamp of the most recent execution in ISO format"
+    )
+    latest_execution_id: Optional[str] = Field(
+        default=None, description="ID of the most recent execution"
+    )
+
+    # Icon URL
+    icon_url: Optional[str] = Field(
+        default=None, description="URL to the workflow icon/image for visual identification in UI"
+    )
+
+
 class ListWorkflowsResponse(BaseModel):
     """列表工作流响应"""
 
-    workflows: List[WorkflowData]
+    workflows: List[WorkflowMetadata]  # Changed from WorkflowData to WorkflowMetadata
     total_count: int
     has_more: bool
 
@@ -427,22 +489,16 @@ class ExecuteWorkflowRequest(BaseModel):
     trigger_data: Dict[str, str] = Field(default_factory=dict)
     user_id: str = Field(..., min_length=1)
     session_id: Optional[str] = None
-    
+
     # 新增参数：支持从指定节点开始执行
     start_from_node: Optional[str] = Field(
-        default=None, 
-        description="指定从哪个节点开始执行，为空时从触发器节点开始",
-        example="ai_message_classification"
+        default=None, description="指定从哪个节点开始执行，为空时从触发器节点开始", example="ai_message_classification"
     )
-    skip_trigger_validation: bool = Field(
-        default=False,
-        description="是否跳过触发器验证，用于从中间节点开始执行时使用"
-    )
-    
+    skip_trigger_validation: bool = Field(default=False, description="是否跳过触发器验证，用于从中间节点开始执行时使用")
+
     # 新增：当使用start_from_node时，可以提供自定义输入数据
     inputs: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="当使用start_from_node时的自定义输入数据，将传递给起始节点"
+        default=None, description="当使用start_from_node时的自定义输入数据，将传递给起始节点"
     )
 
 
@@ -543,17 +599,12 @@ class WorkflowExecutionRequest(BaseModel):
     inputs: Dict[str, Any] = Field(default_factory=dict, description="执行时的输入参数")
     settings: Optional[Dict[str, Any]] = Field(default=None, description="执行时的特殊设置")
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="执行元数据")
-    
+
     # 新增参数：支持从指定节点开始执行
     start_from_node: Optional[str] = Field(
-        default=None, 
-        description="指定从哪个节点开始执行，为空时从触发器节点开始",
-        example="ai_message_classification"
+        default=None, description="指定从哪个节点开始执行，为空时从触发器节点开始", example="ai_message_classification"
     )
-    skip_trigger_validation: bool = Field(
-        default=False,
-        description="是否跳过触发器验证，用于从中间节点开始执行时使用"
-    )
+    skip_trigger_validation: bool = Field(default=False, description="是否跳过触发器验证，用于从中间节点开始执行时使用")
 
 
 class WorkflowExecutionResponse(BaseModel):

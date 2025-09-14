@@ -214,24 +214,26 @@ app.include_router(credentials.router, prefix="/api/v1", tags=["Credentials"])
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Health check that validates database connection."""
+    """Health check that validates database connection using Supabase."""
     details = {"service": "workflow-engine", "database": "unknown"}
 
     overall_status = HealthStatus.HEALTHY
 
-    # Check database connection
+    # Check Supabase connection
     try:
-        from sqlalchemy import text
+        from .services.supabase_repository import SupabaseWorkflowRepository
 
-        from .models.database import engine
+        # Test with service role (no access token for health check)
+        repo = SupabaseWorkflowRepository()
 
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
+        # Try a simple query to test connectivity
+        workflows, _ = await repo.list_workflows(limit=1)
         details["database"] = "connected"
+        logger.info("Health check: Supabase connection successful")
     except Exception as e:
         details["database"] = f"failed: {str(e)}"
         overall_status = HealthStatus.UNHEALTHY
-        logger.error(f"Database health check failed: {e}")
+        logger.error(f"Supabase health check failed: {e}")
 
     return HealthResponse(
         status=overall_status, version="1.0.0", timestamp=int(time.time()), details=details
