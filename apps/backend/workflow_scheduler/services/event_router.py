@@ -451,9 +451,29 @@ class EventRouter:
         try:
             config = trigger.trigger_config or {}
 
-            # Check if event type is in the allowed events list
-            allowed_events = config.get("events", [])
-            if allowed_events and event_type not in allowed_events:
+            # Check if event type is configured - support both old and new formats
+            event_config = config.get("event_config", config.get("events", []))
+
+            if isinstance(event_config, list):
+                # Old array format: ["push", "pull_request"]
+                allowed_events = event_config
+                if allowed_events and event_type not in allowed_events:
+                    return False
+            elif isinstance(event_config, dict):
+                # New object format: {"push": {...}, "pull_request": {...}}
+                if event_type not in event_config:
+                    return False
+
+                # For pull_request events, check action filters
+                if event_type == "pull_request":
+                    event_filters = event_config.get(event_type, {})
+                    expected_actions = event_filters.get("actions", [])
+                    if expected_actions:
+                        action = payload.get("action")
+                        if action not in expected_actions:
+                            return False
+            else:
+                # No event configuration or invalid format
                 return False
 
             # Check branch filters for push and pull_request events

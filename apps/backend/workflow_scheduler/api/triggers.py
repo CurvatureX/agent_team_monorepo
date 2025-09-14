@@ -431,6 +431,8 @@ async def _find_workflows_with_github_triggers(
                 trigger_config = trigger_record["trigger_config"]
                 workflow_id = trigger_record["workflow_id"]
 
+                logger.info(f"Processing trigger for workflow {workflow_id}: {trigger_config}")
+
                 # Check installation ID match
                 trigger_installation_id = trigger_config.get("github_app_installation_id")
                 if trigger_installation_id and str(trigger_installation_id) != str(installation_id):
@@ -452,18 +454,29 @@ async def _find_workflows_with_github_triggers(
                 else:
                     event_config = event_config_raw
 
-                # Check if this event type is configured
-                if event_type not in event_config:
-                    logger.debug(
-                        f"Event type {event_type} not in config: {list(event_config.keys())}"
+                # Check if this event type is configured - support both array and object formats
+                if isinstance(event_config, list):
+                    # Array format: ["push", "pull_request"]
+                    event_supported = event_type in event_config
+                    logger.info(
+                        f"Checking event {event_type} in array config: {event_config} -> {event_supported}"
                     )
+                else:
+                    # Object format: {"pull_request": {"actions": [...]}}
+                    event_supported = event_type in event_config
+                    logger.info(
+                        f"Checking event {event_type} in object config: {list(event_config.keys())} -> {event_supported}"
+                    )
+
+                if not event_supported:
+                    logger.info(f"Event type {event_type} not supported in config: {event_config}")
                     continue
 
-                # Check action match for pull_request events
-                if event_type == "pull_request":
+                # Check action match for pull_request events (only for object format)
+                if event_type == "pull_request" and isinstance(event_config, dict):
                     action = payload.get("action")
-                    expected_actions = event_config[event_type].get("actions", [])
-                    if action not in expected_actions:
+                    expected_actions = event_config.get(event_type, {}).get("actions", [])
+                    if expected_actions and action not in expected_actions:
                         logger.debug(f"Action {action} not in expected actions: {expected_actions}")
                         continue
 
