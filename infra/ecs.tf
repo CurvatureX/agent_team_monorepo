@@ -266,6 +266,10 @@ resource "aws_ecs_task_definition" "api_gateway" {
         {
           name      = "GOOGLE_REDIRECT_URI"
           valueFrom = aws_ssm_parameter.google_redirect_uri.arn
+        },
+        {
+          name      = "DNS_DOMAIN_NAME"
+          valueFrom = aws_ssm_parameter.dns_domain_name.arn
         }
       ]
 
@@ -373,6 +377,10 @@ resource "aws_ecs_task_definition" "workflow_engine" {
         {
           name      = "DATABASE_URL"
           valueFrom = aws_ssm_parameter.database_url.arn
+        },
+        {
+          name      = "DNS_DOMAIN_NAME"
+          valueFrom = aws_ssm_parameter.dns_domain_name.arn
         }
       ]
 
@@ -529,6 +537,10 @@ resource "aws_ecs_task_definition" "workflow_agent" {
         {
           name      = "SUPABASE_SECRET_KEY"
           valueFrom = aws_ssm_parameter.supabase_secret_key.arn
+        },
+        {
+          name      = "DNS_DOMAIN_NAME"
+          valueFrom = aws_ssm_parameter.dns_domain_name.arn
         }
       ]
 
@@ -754,6 +766,10 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
         {
           name      = "GOOGLE_REDIRECT_URI"
           valueFrom = aws_ssm_parameter.google_redirect_uri.arn
+        },
+        {
+          name      = "DNS_DOMAIN_NAME"
+          valueFrom = aws_ssm_parameter.dns_domain_name.arn
         }
       ]
 

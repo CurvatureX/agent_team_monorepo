@@ -8,8 +8,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 backend_dir = Path(__file__).parent.parent.parent.parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from sqlalchemy.orm import Session
-
 from shared.models import (
     CreateWorkflowRequest,
     CreateWorkflowResponse,
@@ -21,22 +19,31 @@ from shared.models import (
     UpdateWorkflowRequest,
     UpdateWorkflowResponse,
     WorkflowData,
+    WorkflowMetadata,
 )
-from workflow_engine.models.database import get_db
-from workflow_engine.services.workflow_service import WorkflowService
+from workflow_engine.services.supabase_workflow_service import SupabaseWorkflowService
 
 router = APIRouter()
 
 
-def get_workflow_service(db: Session = Depends(get_db)):
-    return WorkflowService(db)
+def get_jwt_token(request: Request) -> Optional[str]:
+    """Extract JWT token from Authorization header for RLS."""
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.startswith("Bearer "):
+        return auth_header[7:]  # Remove "Bearer " prefix
+    return None
+
+
+def get_workflow_service(request: Request) -> SupabaseWorkflowService:
+    """Get SupabaseWorkflowService with JWT token for RLS."""
+    access_token = get_jwt_token(request)
+    return SupabaseWorkflowService(access_token=access_token)
 
 
 @router.post("/workflows", response_model=CreateWorkflowResponse)
 async def create_workflow(
     request: CreateWorkflowRequest,
     request_obj: Request,
-    service: WorkflowService = Depends(get_workflow_service),
 ):
     try:
         # DEBUG: Log the FastAPI request
@@ -56,7 +63,9 @@ async def create_workflow(
             logger = logging.getLogger(__name__)
             logger.info(f"Creating workflow with trace_id: {trace_id}")
 
-        workflow = service.create_workflow_from_data(request)
+        # Get Supabase service with JWT token for RLS
+        service = get_workflow_service(request_obj)
+        workflow = await service.create_workflow_from_data(request)
         return CreateWorkflowResponse(
             workflow=workflow, success=True, message="Workflow created successfully"
         )
@@ -69,7 +78,6 @@ async def list_node_templates(
     category: Optional[str] = None,
     node_type: Optional[str] = None,
     include_system: bool = True,
-    service: WorkflowService = Depends(get_workflow_service),
 ):
     """
     List all available node templates from node specs, with optional filters.
@@ -92,11 +100,18 @@ async def list_node_templates(
 
 
 @router.get("/workflows/{workflow_id}", response_model=GetWorkflowResponse)
-async def get_workflow(
-    workflow_id: str, user_id: str, service: WorkflowService = Depends(get_workflow_service)
-):
+async def get_workflow(workflow_id: str, request_obj: Request):
+    """
+    Get a specific workflow using Supabase RLS with JWT token authentication.
+    No longer requires user_id parameter - RLS handles user filtering automatically.
+    """
     try:
-        workflow = service.get_workflow(workflow_id=workflow_id, user_id=user_id)
+        # Get Supabase service with JWT token for RLS
+        service = get_workflow_service(request_obj)
+
+        # Get workflow using RLS
+        workflow = await service.get_workflow_by_id(workflow_id)
+
         if workflow:
             return GetWorkflowResponse(
                 workflow=workflow, found=True, message="Workflow retrieved successfully"
@@ -110,7 +125,7 @@ async def get_workflow(
 async def update_workflow(
     workflow_id: str,
     request: UpdateWorkflowRequest,
-    service: WorkflowService = Depends(get_workflow_service),
+    request_obj: Request,
 ):
     import logging
 
@@ -139,7 +154,9 @@ async def update_workflow(
         if request.tags is not None:
             logger.info(f"🐛 DEBUG: Updating tags: {request.tags}")
 
-        updated_workflow = service.update_workflow_from_data(
+        # Get Supabase service with JWT token for RLS
+        service = get_workflow_service(request_obj)
+        updated_workflow = await service.update_workflow_from_data(
             workflow_id=workflow_id, user_id=request.user_id, update_data=request
         )
         return UpdateWorkflowResponse(
@@ -151,31 +168,40 @@ async def update_workflow(
 
 
 @router.delete("/workflows/{workflow_id}", response_model=DeleteWorkflowResponse)
-async def delete_workflow(
-    workflow_id: str, user_id: str, service: WorkflowService = Depends(get_workflow_service)
-):
+async def delete_workflow(workflow_id: str, user_id: str, request_obj: Request):
     try:
-        service.delete_workflow(workflow_id=workflow_id, user_id=user_id)
-        return DeleteWorkflowResponse(success=True, message="Workflow deleted successfully")
+        # Get Supabase service with JWT token for RLS
+        service = get_workflow_service(request_obj)
+        success = await service.delete_workflow(workflow_id=workflow_id, user_id=user_id)
+        return DeleteWorkflowResponse(success=success, message="Workflow deleted successfully")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/workflows", response_model=ListWorkflowsResponse)
 async def list_workflows(
-    user_id: str,
-    active_only: bool = True,
+    request_obj: Request,
+    active_only: bool = False,
     tags: str = "",
     limit: int = 50,
     offset: int = 0,
-    service: WorkflowService = Depends(get_workflow_service),
 ):
+    """
+    List workflows using Supabase RLS with JWT token authentication.
+    No longer requires user_id parameter - RLS handles user filtering automatically.
+    """
     try:
+        # Get Supabase service with JWT token for RLS
+        service = get_workflow_service(request_obj)
+
+        # Parse tags
         tag_list = tags.split(",") if tags else []
-        request = ListWorkflowsRequest(
-            user_id=user_id, active_only=active_only, tags=tag_list, limit=limit, offset=offset
+
+        # Get workflows using RLS
+        workflows, total_count = await service.list_workflows(
+            active_only=active_only, tags=tag_list, limit=limit, offset=offset
         )
-        workflows, total_count = service.list_workflows(request)
+
         return ListWorkflowsResponse(
             workflows=workflows,
             total_count=total_count,

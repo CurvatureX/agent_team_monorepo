@@ -73,6 +73,17 @@ class OutputPortSpec:
 
 
 @dataclass
+class ManualInvocationSpec:
+    """Specification for manual trigger invocation parameters."""
+
+    supported: bool = False  # Whether manual invocation is supported
+    parameter_schema: Optional[Dict[str, Any]] = None  # JSON Schema for manual parameters
+    parameter_examples: Optional[List[Dict[str, Any]]] = None  # Example parameter sets
+    default_parameters: Optional[Dict[str, Any]] = None  # Default parameter values
+    description: str = ""  # Description of manual invocation behavior
+
+
+@dataclass
 class NodeSpec:
     """Complete specification for a node type."""
 
@@ -90,6 +101,9 @@ class NodeSpec:
     category: Optional[str] = None  # Category for grouping (e.g., "ai", "actions")
     template_id: Optional[str] = None  # Legacy template ID for migration
     is_system_template: bool = True  # Whether this is a system-provided spec
+
+    # Manual invocation support for triggers
+    manual_invocation: Optional[ManualInvocationSpec] = None
 
     def get_parameter(self, name: str) -> Optional[ParameterDef]:
         """Get a parameter definition by name."""

@@ -20,7 +20,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  
+
   const supabase = createClient();
 
   useEffect(() => {
@@ -48,7 +48,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [supabase.auth]);
 
   const signIn = async (email: string, password: string) => {
     try {
@@ -85,7 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(data.session);
         setUser(data.session.user);
       }
-      
+
       return { error: null };
     } catch (error) {
       return { error: error as Error };
