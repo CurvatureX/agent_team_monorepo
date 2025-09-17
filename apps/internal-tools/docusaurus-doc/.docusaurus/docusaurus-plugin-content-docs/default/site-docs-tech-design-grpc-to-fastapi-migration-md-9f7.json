@@ -18,7 +18,7 @@
     "permalink": "/docs/tech-design/grpc-to-fastapi-migration-zh"
   },
   "next": {
-    "title": "MCP Node Knowledge Server - Tech Design",
-    "permalink": "/docs/tech-design/mcp-node-knowledge-server"
+    "title": "Human-in-the-Loop Node Data Formats Specification",
+    "permalink": "/docs/tech-design/hil-node-data-formats"
   }
 }

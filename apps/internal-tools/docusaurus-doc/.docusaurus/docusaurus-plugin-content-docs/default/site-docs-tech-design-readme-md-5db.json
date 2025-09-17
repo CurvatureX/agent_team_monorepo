@@ -20,8 +20,8 @@
   },
   "sidebar": "tutorialSidebar",
   "previous": {
-    "title": "产品设计",
-    "permalink": "/docs/product-design/core-product-design"
+    "title": "PMO 智能代理工作流 - 产品设计文档",
+    "permalink": "/docs/product-design/pmo_agent_workflow_zh"
   },
   "next": {
     "title": "MVP Workflow 数据结构",

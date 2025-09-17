@@ -18,7 +18,7 @@
     "permalink": "/docs/tech-design/db-design"
   },
   "next": {
-    "title": "GitHub App Integration Architecture",
-    "permalink": "/docs/tech-design/github-app-integration"
+    "title": "Workflow执行日志API设计",
+    "permalink": "/docs/tech-design/execution_log_api_design"
   }
 }

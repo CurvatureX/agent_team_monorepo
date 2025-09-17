@@ -1,392 +1,409 @@
 {
-  "/__docusaurus/debug-5ff": {
-    "__comp": "__comp---theme-debug-config-23-a-2ff",
-    "__context": {
-      "plugin": "plugin---docusaurus-debugb-38-ad3"
-    }
-  },
-  "/__docusaurus/debug/config-5ba": {
-    "__comp": "__comp---theme-debug-config-23-a-2ff",
-    "__context": {
-      "plugin": "plugin---docusaurus-debugb-38-ad3"
-    }
-  },
-  "/__docusaurus/debug/content-a2b": {
-    "__comp": "__comp---theme-debug-contentba-8-ce7",
-    "__context": {
-      "plugin": "plugin---docusaurus-debugb-38-ad3"
-    },
-    "__props": "__props---docusaurus-debug-content-3-c-0-be2"
-  },
-  "/__docusaurus/debug/globalData-c3c": {
-    "__comp": "__comp---theme-debug-global-dataede-0fa",
-    "__context": {
-      "plugin": "plugin---docusaurus-debugb-38-ad3"
-    }
-  },
-  "/__docusaurus/debug/metadata-156": {
-    "__comp": "__comp---theme-debug-site-metadata-68-e-3d4",
-    "__context": {
-      "plugin": "plugin---docusaurus-debugb-38-ad3"
-    }
-  },
-  "/__docusaurus/debug/registry-88c": {
-    "__comp": "__comp---theme-debug-registry-679-501",
-    "__context": {
-      "plugin": "plugin---docusaurus-debugb-38-ad3"
-    }
-  },
-  "/__docusaurus/debug/routes-000": {
-    "__comp": "__comp---theme-debug-routes-946-699",
-    "__context": {
-      "plugin": "plugin---docusaurus-debugb-38-ad3"
-    }
-  },
   "/blog-b2f": {
-    "__comp": "__comp---theme-blog-list-pagea-6-a-7ba",
+    "__comp": "a6aa9e1f",
     "__context": {
-      "plugin": "plugin---blog-369-22e"
+      "plugin": "36994c47"
     },
-    "sidebar": "sidebar---blog-814-8ac",
+    "sidebar": "814f3328",
     "items": [
       {
-        "content": "content---blog-766-e3c"
+        "content": "7661071f"
       },
       {
-        "content": "content---blogf-4-f-cd7"
+        "content": "f4f34a3a"
       },
       {
-        "content": "content---blog-871-381"
+        "content": "8717b14a"
       },
       {
-        "content": "content---blog-925-e00"
+        "content": "925b3f96"
       }
     ],
-    "__props": "__props---blogc-15-573"
+    "__props": "c15d9823"
   },
   "/blog/archive-182": {
-    "__comp": "__comp---theme-blog-archive-page-9-e-4-1d8",
+    "__comp": "9e4087bc",
     "__context": {
-      "plugin": "plugin---blog-369-22e"
+      "plugin": "36994c47"
     },
-    "__props": "__props---blog-archivef-81-229"
+    "__props": "f81c1134"
   },
   "/blog/authors-0b7": {
-    "__comp": "__comp---theme-blog-pages-blog-authors-list-page-621-70c",
+    "__comp": "621db11d",
     "__context": {
       "data": {
-        "blogMetadata": "blogMetadata---blog-authorsace-e7d"
+        "blogMetadata": "acecf23e"
       },
-      "plugin": "plugin---blog-369-22e"
+      "plugin": "36994c47"
     },
-    "sidebar": "sidebar---blog-814-8ac",
-    "__props": "__props---blog-authorsef-8-44f"
+    "sidebar": "814f3328",
+    "__props": "ef8b811a"
   },
   "/blog/authors/all-sebastien-lorber-articles-4a1": {
-    "__comp": "__comp---theme-blog-pages-blog-authors-posts-page-33-f-bd5",
+    "__comp": "33fc5bb8",
     "__context": {
       "data": {
-        "blogMetadata": "blogMetadata---blog-authorsace-e7d"
+        "blogMetadata": "acecf23e"
       },
-      "plugin": "plugin---blog-369-22e"
+      "plugin": "36994c47"
     },
     "items": [
       {
-        "content": "content---blog-766-e3c"
+        "content": "7661071f"
       },
       {
-        "content": "content---blogf-4-f-cd7"
+        "content": "f4f34a3a"
       },
       {
-        "content": "content---blog-925-e00"
+        "content": "925b3f96"
       }
     ],
-    "sidebar": "sidebar---blog-814-8ac",
-    "__props": "__props---blog-authors-all-sebastien-lorber-articlesc-9-c-639"
+    "sidebar": "814f3328",
+    "__props": "c9c9bef8"
   },
   "/blog/authors/yangshun-a68": {
-    "__comp": "__comp---theme-blog-pages-blog-authors-posts-page-33-f-bd5",
+    "__comp": "33fc5bb8",
     "__context": {
       "data": {
-        "blogMetadata": "blogMetadata---blog-authorsace-e7d"
+        "blogMetadata": "acecf23e"
       },
-      "plugin": "plugin---blog-369-22e"
+      "plugin": "36994c47"
     },
     "items": [
       {
-        "content": "content---blog-766-e3c"
+        "content": "7661071f"
       },
       {
-        "content": "content---blog-871-381"
+        "content": "8717b14a"
       },
       {
-        "content": "content---blog-925-e00"
+        "content": "925b3f96"
       }
     ],
-    "sidebar": "sidebar---blog-814-8ac",
-    "__props": "__props---blog-authors-yangshun-1-de-d0c"
+    "sidebar": "814f3328",
+    "__props": "1dea6ca3"
   },
   "/blog/first-blog-post-89a": {
-    "__comp": "__comp---theme-blog-post-pageccc-cab",
+    "__comp": "ccc49370",
     "__context": {
       "data": {
-        "blogMetadata": "blogMetadata---blog-authorsace-e7d"
+        "blogMetadata": "acecf23e"
       },
-      "plugin": "plugin---blog-369-22e"
+      "plugin": "36994c47"
     },
-    "sidebar": "sidebar---blog-814-8ac",
-    "content": "content---blog-first-blog-poste-27-4a1"
+    "sidebar": "814f3328",
+    "content": "e273c56f"
   },
   "/blog/long-blog-post-9ad": {
-    "__comp": "__comp---theme-blog-post-pageccc-cab",
+    "__comp": "ccc49370",
     "__context": {
       "data": {
-        "blogMetadata": "blogMetadata---blog-authorsace-e7d"
+        "blogMetadata": "acecf23e"
       },
-      "plugin": "plugin---blog-369-22e"
+      "plugin": "36994c47"
     },
-    "sidebar": "sidebar---blog-814-8ac",
-    "content": "content---blog-long-blog-post-736-bc7"
+    "sidebar": "814f3328",
+    "content": "73664a40"
   },
   "/blog/mdx-blog-post-e9f": {
-    "__comp": "__comp---theme-blog-post-pageccc-cab",
+    "__comp": "ccc49370",
     "__context": {
       "data": {
-        "blogMetadata": "blogMetadata---blog-authorsace-e7d"
+        "blogMetadata": "acecf23e"
       },
-      "plugin": "plugin---blog-369-22e"
+      "plugin": "36994c47"
     },
-    "sidebar": "sidebar---blog-814-8ac",
-    "content": "content---blog-mdx-blog-post-593-37b"
+    "sidebar": "814f3328",
+    "content": "59362658"
   },
   "/blog/tags-287": {
-    "__comp": "__comp---theme-blog-tags-list-page-01-a-d0b",
+    "__comp": "01a85c17",
     "__context": {
-      "plugin": "plugin---blog-369-22e"
+      "plugin": "36994c47"
     },
-    "sidebar": "sidebar---blog-814-8ac",
-    "__props": "__props---blog-tags-3-a-2-fa2"
+    "sidebar": "814f3328",
+    "__props": "3a2db09e"
   },
   "/blog/tags/docusaurus-704": {
-    "__comp": "__comp---theme-blog-tags-posts-page-687-b6c",
+    "__comp": "6875c492",
     "__context": {
-      "plugin": "plugin---blog-369-22e"
+      "plugin": "36994c47"
     },
-    "sidebar": "sidebar---blog-814-8ac",
+    "sidebar": "814f3328",
     "items": [
       {
-        "content": "content---blog-766-e3c"
+        "content": "7661071f"
       },
       {
-        "content": "content---blogf-4-f-cd7"
+        "content": "f4f34a3a"
       },
       {
-        "content": "content---blog-871-381"
+        "content": "8717b14a"
       },
       {
-        "content": "content---blog-925-e00"
+        "content": "925b3f96"
       }
     ],
-    "__props": "__props---blog-tags-docusaurus-321-832"
+    "__props": "3217192f"
   },
   "/blog/tags/facebook-858": {
-    "__comp": "__comp---theme-blog-tags-posts-page-687-b6c",
+    "__comp": "6875c492",
     "__context": {
-      "plugin": "plugin---blog-369-22e"
+      "plugin": "36994c47"
     },
-    "sidebar": "sidebar---blog-814-8ac",
+    "sidebar": "814f3328",
     "items": [
       {
-        "content": "content---blog-766-e3c"
+        "content": "7661071f"
       }
     ],
-    "__props": "__props---blog-tags-facebooke-5-a-514"
+    "__props": "e5aefb32"
   },
   "/blog/tags/hello-299": {
-    "__comp": "__comp---theme-blog-tags-posts-page-687-b6c",
+    "__comp": "6875c492",
     "__context": {
-      "plugin": "plugin---blog-369-22e"
+      "plugin": "36994c47"
     },
-    "sidebar": "sidebar---blog-814-8ac",
+    "sidebar": "814f3328",
     "items": [
       {
-        "content": "content---blog-766-e3c"
+        "content": "7661071f"
       },
       {
-        "content": "content---blog-871-381"
+        "content": "8717b14a"
       }
     ],
-    "__props": "__props---blog-tags-hellof-82-2fd"
+    "__props": "f82cd581"
   },
   "/blog/tags/hola-00d": {
-    "__comp": "__comp---theme-blog-tags-posts-page-687-b6c",
+    "__comp": "6875c492",
     "__context": {
-      "plugin": "plugin---blog-369-22e"
+      "plugin": "36994c47"
     },
-    "sidebar": "sidebar---blog-814-8ac",
+    "sidebar": "814f3328",
     "items": [
       {
-        "content": "content---blog-925-e00"
+        "content": "925b3f96"
       }
     ],
-    "__props": "__props---blog-tags-hola-5-e-9-9a3"
+    "__props": "5e90a9b3"
   },
   "/blog/welcome-d2b": {
-    "__comp": "__comp---theme-blog-post-pageccc-cab",
+    "__comp": "ccc49370",
     "__context": {
       "data": {
-        "blogMetadata": "blogMetadata---blog-authorsace-e7d"
+        "blogMetadata": "acecf23e"
       },
-      "plugin": "plugin---blog-369-22e"
+      "plugin": "36994c47"
     },
-    "sidebar": "sidebar---blog-814-8ac",
-    "content": "content---blog-welcomed-9-f-ffb"
+    "sidebar": "814f3328",
+    "content": "d9f32620"
   },
   "/markdown-page-3d7": {
-    "__comp": "__comp---theme-mdx-page-1-f-3-b90",
+    "__comp": "1f391b9e",
     "__context": {
-      "plugin": "plugin---markdown-pagea-74-7b5"
+      "plugin": "a7456010"
     },
-    "content": "content---markdown-page-393-028"
+    "content": "393be207"
   },
-  "/docs-6e5": {
-    "__comp": "__comp---theme-docs-root-5-e-9-0b6",
+  "/docs-0c5": {
+    "__comp": "5e95c892",
     "__context": {
-      "plugin": "plugin---docsaba-d7c"
+      "plugin": "aba21aa0"
     }
   },
-  "/docs-d3d": {
-    "__comp": "__comp---theme-doc-version-roota-7-b-5de",
-    "__props": "__props---docs-005-788"
+  "/docs-c3e": {
+    "__comp": "a7bd4aaa",
+    "__props": "0058b4c6"
   },
-  "/docs-d92": {
-    "__comp": "__comp---theme-doc-roota-94-67a"
+  "/docs-9b6": {
+    "__comp": "a94703ab"
   },
   "/docs/-441": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-1-e-8-7dd"
+    "__comp": "17896441",
+    "content": "1e89b1b8"
   },
   "/docs/development/-3dd": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-development-31-e-474"
+    "__comp": "17896441",
+    "content": "31e641d8"
   },
   "/docs/development/agent_development_one_pager-36a": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-development-agent-development-one-pagerd-16-f5b"
+    "__comp": "17896441",
+    "content": "d166cd66"
   },
   "/docs/development/api_workflow_integration-f43": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-development-api-workflow-integration-4-cd-eb8"
+    "__comp": "17896441",
+    "content": "4cd00ef8"
   },
   "/docs/development/DEPLOYMENT-b8a": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-development-deployment-096-bc2"
+    "__comp": "17896441",
+    "content": "096a450a"
   },
   "/docs/development/NODE_SPEC_IMPLEMENTATION_PLAN-d71": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-development-node-spec-implementation-pla-nf-77-270"
+    "__comp": "17896441",
+    "content": "f77e65dd"
+  },
+  "/docs/development/SUPABASE_RPC_FUNCTIONS-add": {
+    "__comp": "17896441",
+    "content": "76a91d8a"
   },
   "/docs/development/workflow_agent_mvp_plan-a82": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-development-workflow-agent-mvp-plan-742-6f6"
+    "__comp": "17896441",
+    "content": "74215438"
+  },
+  "/docs/development/workflow_engine_analysis-8ee": {
+    "__comp": "17896441",
+    "content": "10795fe6"
   },
   "/docs/development/workflow_runtime_tasks-0b4": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-development-workflow-runtime-tasksb-0-f-e3c"
+    "__comp": "17896441",
+    "content": "b0f023e7"
   },
   "/docs/development/workflows_for_trigger_debug-9c9": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-development-workflows-for-trigger-debug-985-377"
+    "__comp": "17896441",
+    "content": "9856fe15"
   },
   "/docs/product-design/-298": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-product-design-2-a-7-74f"
+    "__comp": "17896441",
+    "content": "2a7f457b"
   },
   "/docs/product-design/core-product-design-12d": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-product-design-core-product-design-8-c-2-146"
+    "__comp": "17896441",
+    "content": "8c22af95"
+  },
+  "/docs/product-design/pmo_agent_workflow-e83": {
+    "__comp": "17896441",
+    "content": "af80b173"
+  },
+  "/docs/product-design/pmo_agent_workflow_zh-efe": {
+    "__comp": "17896441",
+    "content": "94724b36"
+  },
+  "/docs/product-design/privacy-policy-af8": {
+    "__comp": "17896441",
+    "content": "5a33b990"
+  },
+  "/docs/product-design/terms-of-service-fe0": {
+    "__comp": "17896441",
+    "content": "269482c1"
   },
   "/docs/tech-design/-ab5": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-tech-design-5-db-961"
+    "__comp": "17896441",
+    "content": "5dbd24a4"
   },
   "/docs/tech-design/api-gateway-architecture-eb2": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-tech-design-api-gateway-architectureaa-4-793"
+    "__comp": "17896441",
+    "content": "aa440849"
   },
   "/docs/tech-design/data_mapping_system-d89": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-tech-design-data-mapping-system-103-fe6"
+    "__comp": "17896441",
+    "content": "1039d7a7"
   },
   "/docs/tech-design/db-design-8b7": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-tech-design-db-design-0-b-3-8c9"
+    "__comp": "17896441",
+    "content": "0b3d2314"
   },
   "/docs/tech-design/distributed-tracing-system-c1b": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-tech-design-distributed-tracing-system-514-3e2"
+    "__comp": "17896441",
+    "content": "51435ec5"
+  },
+  "/docs/tech-design/execution_log_api_design-e05": {
+    "__comp": "17896441",
+    "content": "9c9f3142"
+  },
+  "/docs/tech-design/frontend_integration_examples-a16": {
+    "__comp": "17896441",
+    "content": "483b2d6a"
   },
   "/docs/tech-design/github-app-integration-c60": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-tech-design-github-app-integration-177-2e9"
+    "__comp": "17896441",
+    "content": "17779a3f"
   },
   "/docs/tech-design/grpc-to-fastapi-migration-6ad": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-tech-design-grpc-to-fastapi-migration-9-f-7-a4d"
+    "__comp": "17896441",
+    "content": "9f7592dd"
   },
   "/docs/tech-design/grpc-to-fastapi-migration-zh-742": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-tech-design-grpc-to-fastapi-migration-zhb-81-9d5"
+    "__comp": "17896441",
+    "content": "b81a92aa"
+  },
+  "/docs/tech-design/hil-node-data-formats-c0c": {
+    "__comp": "17896441",
+    "content": "f13c85ed"
+  },
+  "/docs/tech-design/human-in-loop-node-system-9f2": {
+    "__comp": "17896441",
+    "content": "df4834b9"
+  },
+  "/docs/tech-design/manual-trigger-invocation-system-155": {
+    "__comp": "17896441",
+    "content": "c4458277"
   },
   "/docs/tech-design/mcp-node-knowledge-server-468": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-tech-design-mcp-node-knowledge-server-328-c36"
+    "__comp": "17896441",
+    "content": "32869d23"
   },
   "/docs/tech-design/monitoring-guide-161": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-tech-design-monitoring-guidebeb-a54"
+    "__comp": "17896441",
+    "content": "beb3c704"
   },
   "/docs/tech-design/mvp-workflow-data-structure-definition-3d4": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-tech-design-mvp-workflow-data-structure-definitione-55-e7d"
+    "__comp": "17896441",
+    "content": "e559d517"
   },
   "/docs/tech-design/mvp-workflow-planning-ec0": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-tech-design-mvp-workflow-planning-36-a-fa5"
+    "__comp": "17896441",
+    "content": "36a6e250"
   },
   "/docs/tech-design/node_spec-126": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-tech-design-node-spec-7-a-1-a5f"
+    "__comp": "17896441",
+    "content": "7a17c8e2"
+  },
+  "/docs/tech-design/node-communication-protocol-2bc": {
+    "__comp": "17896441",
+    "content": "4e9e5f2b"
   },
   "/docs/tech-design/node-structure-4a2": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-tech-design-node-structure-9-ff-a3d"
+    "__comp": "17896441",
+    "content": "9ffecfcd"
   },
   "/docs/tech-design/slack-app-integration-678": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-tech-design-slack-app-integrationa-11-a3a"
+    "__comp": "17896441",
+    "content": "a11d9c3c"
+  },
+  "/docs/tech-design/unified_log_table_design-c56": {
+    "__comp": "17896441",
+    "content": "8a31dc2e"
   },
   "/docs/tech-design/workflow-agent-api-doc-817": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-tech-design-workflow-agent-api-doc-6-d-2-3a4"
+    "__comp": "17896441",
+    "content": "6d2a2375"
   },
   "/docs/tech-design/workflow-agent-architecture-7dc": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-tech-design-workflow-agent-architecture-804-e55"
+    "__comp": "17896441",
+    "content": "804e0fdf"
   },
   "/docs/tech-design/workflow-engine-architecure-924": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-tech-design-workflow-engine-architecure-7-a-2-24d"
+    "__comp": "17896441",
+    "content": "7a23c7c9"
+  },
+  "/docs/tech-design/workflow-engine-integration-tests-09b": {
+    "__comp": "17896441",
+    "content": "93b671ec"
+  },
+  "/docs/tech-design/workflow-engine-integration-tests-focused-402": {
+    "__comp": "17896441",
+    "content": "e3629308"
   },
   "/docs/tech-design/workflow-scheduler-architecture-c43": {
-    "__comp": "__comp---theme-doc-item-178-a40",
-    "content": "content---docs-tech-design-workflow-scheduler-architecturefa-6-b8e"
+    "__comp": "17896441",
+    "content": "fa64db2c"
   },
   "/-e5f": {
-    "__comp": "__comp---site-src-pages-index-tsx-1-df-d3e",
+    "__comp": "1df93b7f",
     "__context": {
-      "plugin": "plugin---markdown-pagea-74-7b5"
+      "plugin": "a7456010"
     },
-    "config": "config---5-e-9-4f3"
+    "config": "5e9f5e1a"
   }
 }
