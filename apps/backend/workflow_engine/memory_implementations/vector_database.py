@@ -11,7 +11,7 @@ This implements vector storage and semantic search using Supabase with pgvector:
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np

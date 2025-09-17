@@ -73,14 +73,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             console.log('[Auth] Environment check:', {
               NODE_ENV: process.env.NODE_ENV,
-              allEnvVars: Object.keys(process.env).filter(key => key.startsWith('NEXT_PUBLIC'))
+              allEnvVars: Object.keys(process.env).filter(key => key.startsWith('NEXT_PUBLIC')),
+              defaultEmail,
+              defaultPassword: defaultPassword ? `${defaultPassword.substring(0, 4)}...` : 'NOT_SET'
             });
 
             console.log('[Auth] No session found. Auto-login config:', {
               defaultEmail: !!defaultEmail,
               defaultPassword: !!defaultPassword,
               actualEmail: defaultEmail,
-              actualPassword: defaultPassword?.substring(0, 4) + '...'
+              actualPassword: defaultPassword?.substring(0, 4) + '...',
+              supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+              supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'SET' : 'NOT_SET'
             });
 
             if (defaultEmail && defaultPassword) {
@@ -100,10 +104,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   apiClient.setAccessToken(data.session.access_token);
                   console.log('[Auth] Set API client token after auto-login');
                 } else {
-                  console.warn('[Auth] Auto-login failed:', error?.message);
+                  console.error('[Auth] Auto-login failed:', {
+                    error: error?.message || 'Unknown error',
+                    fullError: error,
+                    credentials: { email: defaultEmail, passwordLength: defaultPassword?.length }
+                  });
                 }
               } catch (autoLoginError) {
-                console.warn('[Auth] Auto-login error:', autoLoginError);
+                console.error('[Auth] Auto-login error:', {
+                  error: autoLoginError,
+                  message: autoLoginError instanceof Error ? autoLoginError.message : 'Unknown error'
+                });
               }
             } else {
               console.log('[Auth] Auto-login credentials not configured');

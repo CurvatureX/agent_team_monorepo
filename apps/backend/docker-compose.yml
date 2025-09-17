@@ -146,7 +146,6 @@ services:
     build:
       context: .
       dockerfile: ./workflow_engine/Dockerfile
-      target: production
     container_name: agent-team-workflow-engine
     ports:
       - "8002:8002"

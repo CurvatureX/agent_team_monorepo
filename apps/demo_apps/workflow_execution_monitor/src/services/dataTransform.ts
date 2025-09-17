@@ -240,8 +240,11 @@ const generateNodePositions = (nodes: any[], connections?: any): { x: number; y:
 };
 
 const extractTriggerInfo = (workflow: ApiWorkflow) => {
+  // Handle different API response structures - nodes might be at top level or nested in workflow_data
+  const nodesArray = workflow.nodes || (workflow as any).workflow_data?.nodes || [];
+
   // Look for trigger node in the workflow nodes
-  const triggerNode = workflow.nodes?.find(node =>
+  const triggerNode = nodesArray.find(node =>
     node.type?.toLowerCase() === 'trigger' || node.node_type?.toLowerCase() === 'trigger'
   );
 
@@ -274,9 +277,13 @@ export const transformAPIWorkflowToAIWorker = (
     ? new Date(Date.now() + 30 * 60 * 1000) // 30 minutes from now
     : undefined;
 
+  // Handle different API response structures - nodes might be at top level or nested in workflow_data
+  const nodesArray = apiWorkflow.nodes || (apiWorkflow as any).workflow_data?.nodes || [];
+  const connectionsData = apiWorkflow.connections || (apiWorkflow as any).workflow_data?.connections || {};
+
   // Transform nodes with positions
-  const positions = generateNodePositions(apiWorkflow.nodes || [], apiWorkflow.connections);
-  const workflowNodes = (apiWorkflow.nodes || []).map((node, index) => ({
+  const positions = generateNodePositions(nodesArray, connectionsData);
+  const workflowNodes = (nodesArray).map((node, index) => ({
     id: node.id || `node-${index}`,
     type: mapNodeType(node.type || node.node_type),
     position: positions[index],
@@ -291,6 +298,14 @@ export const transformAPIWorkflowToAIWorker = (
 
   // Transform execution history with logs extraction
   const executionHistory: ExecutionRecord[] = executions.map(execution => {
+    // Use start_time/end_time if available, otherwise fall back to created_at/updated_at
+    const startTime = execution.start_time || execution.created_at;
+    const endTime = execution.end_time || execution.updated_at;
+
+    // Convert ISO strings to Date objects if needed
+    const startDate = startTime ? (typeof startTime === 'string' ? new Date(startTime) : new Date(startTime)) : undefined;
+    const endDate = endTime ? (typeof endTime === 'string' ? new Date(endTime) : new Date(endTime)) : undefined;
+
     // Extract node executions and logs from run_data
     const nodeExecutionsMap = new Map<string, any>();
     const logs: any[] = [];
@@ -304,7 +319,7 @@ export const transformAPIWorkflowToAIWorker = (
           if (nodeResult && nodeResult.logs && Array.isArray(nodeResult.logs)) {
             // Convert node logs to our format
             const nodeLogs = nodeResult.logs.map((logMessage: string) => ({
-              timestamp: new Date(execution.start_time * 1000), // Use execution time as fallback
+              timestamp: new Date(execution.start_time), // API already returns milliseconds
               level: nodeResult.status === 'ERROR' ? 'error' : 'info',
               message: logMessage,
               nodeId: nodeId
@@ -315,11 +330,11 @@ export const transformAPIWorkflowToAIWorker = (
           nodeExecutionsMap.set(nodeId, {
             nodeId: nodeId,
             nodeName: nodeId,
-            startTime: new Date(execution.start_time * 1000),
-            endTime: execution.end_time ? new Date(execution.end_time * 1000) : undefined,
+            startTime: new Date(execution.start_time), // API already returns milliseconds
+            endTime: execution.end_time ? new Date(execution.end_time) : undefined, // API already returns milliseconds
             status: nodeResult.status || 'SUCCESS',
             logs: nodeResult.logs ? nodeResult.logs.map((logMessage: string) => ({
-              timestamp: new Date(execution.start_time * 1000),
+              timestamp: new Date(execution.start_time), // API already returns milliseconds
               level: nodeResult.status === 'ERROR' ? 'error' : 'info',
               message: logMessage,
               nodeId: nodeId
@@ -331,7 +346,7 @@ export const transformAPIWorkflowToAIWorker = (
       // Also add any general execution logs or error messages
       if (execution.error_message) {
         logs.push({
-          timestamp: new Date(execution.start_time * 1000),
+          timestamp: startDate || new Date(),
           level: 'error',
           message: execution.error_message,
           nodeId: 'system'
@@ -340,12 +355,12 @@ export const transformAPIWorkflowToAIWorker = (
     }
 
     return {
-      id: execution.id,
-      startTime: new Date(execution.start_time * 1000),
-      endTime: execution.end_time ? new Date(execution.end_time * 1000) : undefined,
+      id: execution.execution_id || execution.id, // Use execution_id for logs API, fallback to id
+      startTime: startDate,
+      endTime: endDate,
       status: mapExecutionStatus(execution.status),
-      duration: execution.end_time ?
-        Math.round((execution.end_time - execution.start_time) / 1000) : undefined,
+      duration: startDate && endDate ?
+        Math.round((endDate.getTime() - startDate.getTime()) / 1000) : undefined,
       triggerType: extractTriggerInfo(apiWorkflow).type,
       error: execution.error_message,
       nodeExecutions: Array.from(nodeExecutionsMap.values())
@@ -361,14 +376,14 @@ export const transformAPIWorkflowToAIWorker = (
     latestExecutionStatus: apiWorkflow.latest_execution_status ?
       mapExecutionStatus(apiWorkflow.latest_execution_status) :
       (latestExecution ? mapExecutionStatus(latestExecution.status) : 'DRAFT'),
-    // Use the latest execution time from the workflow metadata
+    // Use the latest execution time from the workflow metadata, or fallback to most recent execution
     lastRunTime: apiWorkflow.latest_execution_time ?
       new Date(apiWorkflow.latest_execution_time) :
-      (latestExecution ? new Date(latestExecution.start_time * 1000) : undefined),
+      (latestExecution?.start_time ? new Date(latestExecution.start_time) : undefined),
     nextRunTime,
     trigger: extractTriggerInfo(apiWorkflow),
     graph: workflowNodes,
-    connections: apiWorkflow.connections, // Pass through the connections data
+    connections: connectionsData, // Pass through the connections data
     executionHistory
   };
 };
@@ -413,15 +428,35 @@ export const transformAPIExecutionToRecord = (
     }
   });
 
+  // If we have no node executions but there's an error message, create a synthetic execution log
+  const nodeExecutions = Array.from(nodeExecutionsMap.values());
+  if (nodeExecutions.length === 0 && apiExecution.error_message) {
+    // Create a synthetic "execution" node to hold the error message
+    nodeExecutions.push({
+      nodeId: 'execution',
+      nodeName: 'Execution',
+      startTime: new Date(apiExecution.start_time),
+      endTime: apiExecution.end_time ? new Date(apiExecution.end_time) : new Date(),
+      status: 'ERROR',
+      logs: [{
+        timestamp: apiExecution.end_time ? new Date(apiExecution.end_time) : new Date(),
+        level: 'error',
+        message: apiExecution.error_message,
+        nodeId: 'execution',
+        data: {}
+      }]
+    });
+  }
+
   return {
-    id: apiExecution.id,
-    startTime: new Date(apiExecution.start_time * 1000),
-    endTime: apiExecution.end_time ? new Date(apiExecution.end_time * 1000) : undefined,
+    id: apiExecution.execution_id || apiExecution.id, // Use execution_id for logs API, fallback to id
+    startTime: new Date(apiExecution.start_time), // API already returns milliseconds
+    endTime: apiExecution.end_time ? new Date(apiExecution.end_time) : undefined, // API already returns milliseconds
     status: mapExecutionStatus(apiExecution.status),
     duration: apiExecution.end_time ?
       Math.round((apiExecution.end_time - apiExecution.start_time) / 1000) : undefined,
     triggerType: 'MANUAL' as any, // Would need to get from workflow trigger info
-    nodeExecutions: Array.from(nodeExecutionsMap.values()),
+    nodeExecutions: nodeExecutions,
     error: apiExecution.error_message
   };
 };

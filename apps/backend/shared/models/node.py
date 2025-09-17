@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class NodeTemplate(BaseModel):
@@ -16,5 +16,4 @@ class NodeTemplate(BaseModel):
     required_parameters: List[str] = Field(default_factory=list)
     parameter_schema: Dict[str, Any] = Field(default_factory=dict)
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

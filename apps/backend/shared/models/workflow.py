@@ -2,7 +2,7 @@
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .common import BaseResponse, EntityModel
 from .node_enums import NodeType
@@ -215,7 +215,7 @@ class CreateWorkflowRequest(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = Field(None, max_length=1000)
-    nodes: List[NodeData] = Field(..., min_items=1)
+    nodes: List[NodeData] = Field(..., min_length=1)
     connections: Dict[str, Any] = Field(default_factory=dict)
     settings: Optional[WorkflowSettingsData] = None
     static_data: Dict[str, str] = Field(default_factory=dict)
@@ -492,7 +492,9 @@ class ExecuteWorkflowRequest(BaseModel):
 
     # 新增参数：支持从指定节点开始执行
     start_from_node: Optional[str] = Field(
-        default=None, description="指定从哪个节点开始执行，为空时从触发器节点开始", example="ai_message_classification"
+        default=None,
+        description="指定从哪个节点开始执行，为空时从触发器节点开始",
+        json_schema_extra={"example": "ai_message_classification"},
     )
     skip_trigger_validation: bool = Field(default=False, description="是否跳过触发器验证，用于从中间节点开始执行时使用")
 
@@ -500,6 +502,9 @@ class ExecuteWorkflowRequest(BaseModel):
     inputs: Optional[Dict[str, Any]] = Field(
         default=None, description="当使用start_from_node时的自定义输入数据，将传递给起始节点"
     )
+
+    # 新增：异步执行标志
+    async_execution: bool = Field(default=False, description="是否异步执行，True时立即返回execution_id而不等待执行完成")
 
 
 class ExecuteWorkflowResponse(BaseModel):
@@ -602,7 +607,9 @@ class WorkflowExecutionRequest(BaseModel):
 
     # 新增参数：支持从指定节点开始执行
     start_from_node: Optional[str] = Field(
-        default=None, description="指定从哪个节点开始执行，为空时从触发器节点开始", example="ai_message_classification"
+        default=None,
+        description="指定从哪个节点开始执行，为空时从触发器节点开始",
+        json_schema_extra={"example": "ai_message_classification"},
     )
     skip_trigger_validation: bool = Field(default=False, description="是否跳过触发器验证，用于从中间节点开始执行时使用")
 
@@ -656,16 +663,18 @@ class ExecuteSingleNodeRequest(BaseModel):
     execution_context: Dict[str, Any] = Field(
         default_factory=dict,
         description="执行上下文配置",
-        example={
-            "use_previous_results": False,
-            "previous_execution_id": None,
-            "override_parameters": {},
-            "credentials": {},
+        json_schema_extra={
+            "example": {
+                "use_previous_results": False,
+                "previous_execution_id": None,
+                "override_parameters": {},
+                "credentials": {},
+            }
         },
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "user_id": "00000000-0000-0000-0000-000000000123",
                 "input_data": {"url": "https://api.example.com", "method": "GET"},
@@ -675,6 +684,7 @@ class ExecuteSingleNodeRequest(BaseModel):
                 },
             }
         }
+    )
 
 
 class SingleNodeExecutionResponse(BaseModel):
@@ -691,8 +701,8 @@ class SingleNodeExecutionResponse(BaseModel):
     logs: List[str] = Field(default_factory=list, description="执行日志")
     error_message: Optional[str] = Field(None, description="错误信息")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "execution_id": "single-node-exec-123",
                 "node_id": "http_request_node",
@@ -704,3 +714,4 @@ class SingleNodeExecutionResponse(BaseModel):
                 "error_message": None,
             }
         }
+    )

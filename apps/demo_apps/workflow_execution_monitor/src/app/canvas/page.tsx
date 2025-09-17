@@ -621,12 +621,14 @@ const CanvasPage = () => {
                     <div className="text-center">
                       <div className="text-xl font-bold text-foreground">
                         {selectedWorker.lastRunTime
-                          ? Math.round(
-                              (Date.now() -
-                                selectedWorker.lastRunTime.getTime()) /
+                          ? (() => {
+                              const minsAgo = Math.floor(
+                                (Date.now() - selectedWorker.lastRunTime.getTime()) /
                                 1000 /
                                 60
-                            ) || "--"
+                              );
+                              return minsAgo === 0 ? "<1" : minsAgo.toString();
+                            })()
                           : "--"}
                       </div>
                       <div className="text-xs text-muted-foreground">

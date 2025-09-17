@@ -14,7 +14,18 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from shared.models.node_enums import GoogleGeminiModel, MemorySubtype
+# Fallback for shared models when not available
+try:
+    from shared.models.node_enums import GoogleGeminiModel, MemorySubtype
+except ImportError:
+    # Fallback enum values for standalone use
+    class GoogleGeminiModel:
+        GEMINI_2_5_FLASH = "gemini-2.5-flash"
+
+    class MemorySubtype:
+        CONVERSATION_SUMMARY = "conversation_summary"
+
+
 from supabase import Client, create_client
 
 from .base import MemoryBase
@@ -49,7 +60,7 @@ class ConversationSummaryMemory(MemoryBase):
 
         # Simple configuration - only what we need
         self.google_api_key = config.get("google_api_key")
-        self.summarization_model = GoogleGeminiModel.GEMINI_2_5_FLASH.value
+        self.summarization_model = GoogleGeminiModel.GEMINI_2_5_FLASH
 
         # Components
         self.buffer_memory: Optional[ConversationBufferMemory] = None

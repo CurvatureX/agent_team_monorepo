@@ -165,11 +165,20 @@ const NodeDetailModal: React.FC<NodeDetailModalProps> = ({ isOpen, onClose, node
                   triggerType={nodeData.subtype || 'MANUAL'}
                   onSuccess={(result) => {
                     console.log('Trigger invocation successful:', result);
-                    // You could add a toast notification here
+                    // Close modal after successful invocation
+                    onClose();
+                    // Trigger a refresh of the workflow execution state
+                    window.dispatchEvent(new CustomEvent('workflowExecutionStarted', {
+                      detail: {
+                        workflowId,
+                        executionId: result.execution_id,
+                        triggerNodeId: nodeData.id
+                      }
+                    }));
                   }}
                   onError={(error) => {
                     console.error('Trigger invocation error:', error);
-                    // You could add a toast notification here
+                    // Keep modal open on error so user can see the error and retry
                   }}
                 />
               )

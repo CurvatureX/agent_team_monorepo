@@ -6,7 +6,7 @@ Execution management API endpoints with authentication
 from typing import Any, Dict, Optional
 
 from app.core.config import get_settings
-from app.dependencies import AuthenticatedDeps
+from app.dependencies import AuthenticatedDeps, SSEDeps
 from app.exceptions import NotFoundError, ValidationError
 from app.models import ResponseModel
 from pydantic import BaseModel, Field
@@ -128,15 +128,25 @@ async def get_workflow_execution_history(
         http_client = await get_workflow_engine_client()
 
         # Get execution history via HTTP
-        executions = await http_client.get_execution_history(workflow_id, limit)
+        execution_data = await http_client.get_execution_history(workflow_id, limit)
 
-        logger.info(f"✅ Retrieved {len(executions)} executions for workflow {workflow_id}")
-
-        return {
-            "workflow_id": workflow_id,
-            "executions": executions,
-            "total_count": len(executions),
-        }
+        # The workflow engine returns: {"workflow_id": "...", "executions": [...], "total": N}
+        # Return this directly instead of double-wrapping
+        if isinstance(execution_data, dict) and "executions" in execution_data:
+            logger.info(
+                f"✅ Retrieved {len(execution_data.get('executions', []))} executions for workflow {workflow_id}"
+            )
+            return execution_data
+        else:
+            # Fallback for unexpected response format
+            logger.info(
+                f"✅ Retrieved {len(execution_data) if isinstance(execution_data, list) else 0} executions for workflow {workflow_id}"
+            )
+            return {
+                "workflow_id": workflow_id,
+                "executions": execution_data if isinstance(execution_data, list) else [],
+                "total": len(execution_data) if isinstance(execution_data, list) else 0,
+            }
 
     except HTTPException:
         raise
@@ -147,7 +157,7 @@ async def get_workflow_execution_history(
 
 @router.get("/executions/{execution_id}/logs/stream")
 async def stream_execution_logs(
-    execution_id: str, request: Request, follow: bool = False, access_token: Optional[str] = None
+    execution_id: str, follow: bool = False, sse_deps: SSEDeps = Depends()
 ) -> StreamingResponse:
     """
     Stream execution logs in real-time via Server-Sent Events (SSE)
@@ -161,23 +171,9 @@ async def stream_execution_logs(
     async def log_stream():
         """Generate SSE events for execution logs"""
         try:
-            # Handle authentication for SSE (supports both header and query param)
-            token = access_token
-            if not token:
-                # Try to get from Authorization header
-                auth_header = request.headers.get("Authorization")
-                if auth_header and auth_header.startswith("Bearer "):
-                    token = auth_header[7:]
-
-            if not token:
-                raise HTTPException(status_code=401, detail="Access token required for SSE")
-
-            # Verify token and get user
-            from app.services.auth_service import verify_supabase_token
-
-            user = await verify_supabase_token(token)
-            if not user:
-                raise HTTPException(status_code=401, detail="Invalid access token")
+            # Use SSEDeps for authentication (supports both header and URL param for SSE)
+            token = sse_deps.access_token
+            user = sse_deps.current_user
 
             logger.info(f"🔄 Starting log stream for execution {execution_id} (user: {user.sub})")
 
