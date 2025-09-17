@@ -18,7 +18,7 @@
     "permalink": "/docs/development/DEPLOYMENT"
   },
   "next": {
-    "title": "Agent Development Guide",
-    "permalink": "/docs/development/agent_development_one_pager"
+    "title": "Supabase RPC Functions Documentation",
+    "permalink": "/docs/development/SUPABASE_RPC_FUNCTIONS"
   }
 }
