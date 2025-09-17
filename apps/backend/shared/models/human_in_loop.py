@@ -9,7 +9,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class HILInteractionType(str, Enum):
@@ -199,8 +199,9 @@ class HILInputData(BaseModel):
         default=None, description="Tags for categorizing the interaction"
     )
 
-    @validator("interaction_type", pre=True)
-    def validate_interaction_type_data(cls, v, values):
+    @field_validator("interaction_type", mode="before")
+    @classmethod
+    def validate_interaction_type_data(cls, v):
         """Ensure appropriate request data is provided for interaction type."""
         # This validation will be expanded in the actual implementation
         return v

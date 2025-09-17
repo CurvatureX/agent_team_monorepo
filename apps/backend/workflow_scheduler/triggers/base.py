@@ -160,26 +160,45 @@ class BaseTrigger(ABC):
             engine_url = f"{settings.workflow_engine_url}/v1/workflows/{self.workflow_id}/execute"
 
             logger.info(
-                f"🚀 Triggering workflow {self.workflow_id} via {engine_url} (async execution)"
+                f"🚀 Triggering workflow {self.workflow_id} via {engine_url} (immediate execution)"
             )
 
-            # Fire-and-forget execution - don't wait for completion, especially for human-in-the-loop workflows
-            asyncio.create_task(
-                self._execute_workflow_async(
-                    engine_url, payload, execution_id, trigger_data, access_token
+            # Prepare headers with JWT token if available
+            headers = {"Content-Type": "application/json"}
+            if access_token:
+                headers["Authorization"] = f"Bearer {access_token}"
+                logger.info(
+                    f"🔐 Forwarding JWT token to workflow engine for execution: {execution_id}"
                 )
-            )
 
-            logger.info(
-                f"✅ Workflow {self.workflow_id} execution started asynchronously: {execution_id}"
-            )
+            # Execute workflow and wait for actual execution_id
+            response = await self._client.post(engine_url, json=payload, headers=headers)
 
-            return ExecutionResult(
-                execution_id=execution_id,
-                status="started",
-                message="Workflow execution started asynchronously",
-                trigger_data=trigger_data or {},
-            )
+            if response.status_code in [200, 202]:  # OK or Accepted
+                result_data = response.json()
+                actual_execution_id = result_data.get("execution_id", execution_id)
+
+                logger.info(
+                    f"✅ Workflow {self.workflow_id} execution started successfully: {actual_execution_id}"
+                )
+
+                return ExecutionResult(
+                    execution_id=actual_execution_id,
+                    status="started",
+                    message="Workflow execution started successfully",
+                    trigger_data=trigger_data or {},
+                )
+            else:
+                error_msg = (
+                    f"Workflow execution failed: HTTP {response.status_code} - {response.text}"
+                )
+                logger.error(error_msg)
+                return ExecutionResult(
+                    execution_id=execution_id,
+                    status="error",
+                    message=error_msg,
+                    trigger_data=trigger_data or {},
+                )
 
         except Exception as e:
             error_msg = f"Error calling workflow engine: {str(e)}"

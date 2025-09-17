@@ -6,7 +6,7 @@ ProcessConversation 接口的 Pydantic 模型
 from enum import Enum
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class WorkflowContext(BaseModel):
@@ -25,8 +25,8 @@ class ConversationRequest(BaseModel):
     user_message: str = Field(..., description="用户消息")
     workflow_context: Optional[WorkflowContext] = Field(default=None, description="工作流上下文")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "session_id": "sess_123456",
                 "user_id": "user_123",
@@ -35,6 +35,7 @@ class ConversationRequest(BaseModel):
                 "workflow_context": {"origin": "create", "source_workflow_id": ""},
             }
         }
+    )
 
 
 class ResponseType(str, Enum):
@@ -78,8 +79,8 @@ class ConversationResponse(BaseModel):
     error: Optional[ErrorContent] = Field(default=None, description="错误内容")
     status_change: Optional[StatusChangeContent] = Field(default=None, description="状态变化内容")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "session_id": "sess_123456",
                 "response_type": "RESPONSE_TYPE_MESSAGE",
@@ -89,3 +90,4 @@ class ConversationResponse(BaseModel):
                 "error": None,
             }
         }
+    )

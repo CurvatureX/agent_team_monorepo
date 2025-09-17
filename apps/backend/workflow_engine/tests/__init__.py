@@ -1,1 +1,1 @@
-"""Tests for workflow engine."""
+# Empty init file to make tests a package

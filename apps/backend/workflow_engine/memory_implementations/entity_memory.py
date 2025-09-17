@@ -17,7 +17,17 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import openai
 from supabase import Client, create_client
 
-from shared.models.node_enums import OpenAIModel
+# Fallback for shared models when not available
+try:
+    from shared.models.node_enums import MemorySubtype, OpenAIModel
+except ImportError:
+    # Fallback enum values for standalone use
+    class OpenAIModel:
+        GPT_5_NANO = "gpt-5-nano"
+
+    class MemorySubtype:
+        ENTITY_MEMORY = "entity_memory"
+
 
 from .base import MemoryBase
 
@@ -47,7 +57,7 @@ class EntityMemory(MemoryBase):
                 - supabase_key: Supabase service key
                 - openai_api_key: OpenAI API key for extraction
                 - entity_types: List of entity types to track
-                - extraction_model: Model for entity extraction (default: 'gpt-4o-mini')
+                - extraction_model: Model for entity extraction (default: 'gpt-5-nano')
                 - relationship_tracking: Enable relationship tracking (default: True)
                 - importance_scoring: Enable importance scoring (default: True)
                 - min_confidence: Minimum confidence for entity storage (default: 0.7)
@@ -58,7 +68,7 @@ class EntityMemory(MemoryBase):
         self.entity_types = config.get(
             "entity_types", ["person", "organization", "location", "product", "concept"]
         )
-        self.extraction_model = config.get("extraction_model", OpenAIModel.GPT_5_NANO.value)
+        self.extraction_model = config.get("extraction_model", OpenAIModel.GPT_5_NANO)
         self.relationship_tracking = config.get("relationship_tracking", True)
         self.importance_scoring = config.get("importance_scoring", True)
         self.min_confidence = config.get("min_confidence", 0.7)

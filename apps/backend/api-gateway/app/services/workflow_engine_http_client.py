@@ -216,6 +216,7 @@ class WorkflowEngineHTTPClient:
         start_from_node: Optional[str] = None,
         skip_trigger_validation: bool = False,
         access_token: Optional[str] = None,
+        async_execution: bool = False,
     ) -> Dict[str, Any]:
         """Execute workflow via HTTP"""
         if not self.connected:
@@ -226,6 +227,7 @@ class WorkflowEngineHTTPClient:
                 "workflow_id": workflow_id,
                 "user_id": user_id,
                 "trigger_data": input_data or {},  # 修正字段名从input_data到trigger_data
+                "async_execution": async_execution,  # Pass async flag to workflow engine
             }
 
             # 添加新的start_from_node参数
@@ -233,32 +235,74 @@ class WorkflowEngineHTTPClient:
                 request_data["start_from_node"] = start_from_node
                 request_data["skip_trigger_validation"] = skip_trigger_validation
 
-            log_info(f"📨 HTTP request to execute workflow: {workflow_id}")
-
             headers = {}
             if trace_id:
                 headers["X-Trace-ID"] = trace_id
             if access_token:
                 headers["Authorization"] = f"Bearer {access_token}"
 
-            async with httpx.AsyncClient(timeout=self.execute_timeout) as client:
-                response = await client.post(
-                    f"{self.base_url}/v1/workflows/{workflow_id}/execute",
-                    json=request_data,
-                    headers=headers,
-                )
-                response.raise_for_status()
+            # Use appropriate timeout for async vs sync execution
+            # Async execution should return immediately with execution_id, so use short timeout
+            timeout = httpx.Timeout(10.0, connect=5.0) if async_execution else self.execute_timeout
 
-                data = response.json()
-                log_info(f"✅ Executed workflow: {workflow_id}")
-                return data
+            log_info(
+                f"📨 HTTP request to execute workflow: {workflow_id} (async: {async_execution})"
+            )
+
+            # Use pooled client for better connection handling
+            client = await self._get_client()
+
+            # Time the HTTP request to debug performance
+            import time
+
+            start_time = time.time()
+
+            response = await client.post(
+                f"{self.base_url}/v1/workflows/{workflow_id}/execute",
+                json=request_data,
+                headers=headers,
+                timeout=timeout,  # Override timeout for this specific request
+            )
+
+            end_time = time.time()
+            response_time = end_time - start_time
+
+            response.raise_for_status()
+
+            data = response.json()
+            log_info(
+                f"✅ Executed workflow: {workflow_id} (execution_id: {data.get('execution_id', 'N/A')}) - HTTP response time: {response_time:.2f}s"
+            )
+            return data
 
         except httpx.HTTPStatusError as e:
-            log_error(f"❌ HTTP error executing workflow: {e.response.status_code}")
-            return {"success": False, "error": f"HTTP {e.response.status_code}"}
+            error_details = f"HTTP {e.response.status_code}"
+            try:
+                response_text = e.response.text
+                if response_text:
+                    error_details += f" - Response: {response_text[:500]}"  # Limit response text
+            except Exception as text_error:
+                error_details += (
+                    f" - Failed to read response: {type(text_error).__name__}: {str(text_error)}"
+                )
+                # Add full traceback for response text reading issues
+                import traceback
+
+                log_error(f"🐛 Response text read error traceback: {traceback.format_exc()}")
+            log_error(f"❌ HTTP error executing workflow: {error_details}")
+            return {"success": False, "error": error_details}
+        except httpx.TimeoutException as e:
+            error_details = f"Timeout error: {type(e).__name__} - {str(e)}"
+            log_error(f"❌ Timeout executing workflow: {error_details}")
+            return {"success": False, "error": error_details}
         except Exception as e:
-            log_error(f"❌ Error executing workflow: {e}")
-            return {"success": False, "error": str(e)}
+            error_details = f"{type(e).__name__}: {str(e)}"
+            log_error(f"❌ Error executing workflow: {error_details}")
+            # Add more detailed logging for debugging
+            import traceback
+
+            log_error(f"🐛 Full exception traceback: {traceback.format_exc()}")
+            return {"success": False, "error": error_details}
 
     async def get_execution_status(self, execution_id: str) -> Dict[str, Any]:
         """Get execution status via HTTP"""
@@ -532,7 +576,12 @@ class WorkflowEngineHTTPClient:
                 )
                 return {"execution_id": execution_id, "logs": [], "total_count": 0}
         except Exception as e:
-            log_error(f"Error getting execution logs {execution_id}: {e}")
+            error_details = f"{type(e).__name__}: {str(e)}"
+            log_error(f"Error getting execution logs {execution_id}: {error_details}")
+            # Add traceback for debugging
+            import traceback
+
+            log_error(f"🐛 Full exception traceback: {traceback.format_exc()}")
             return {"execution_id": execution_id, "logs": [], "total_count": 0}
 
     async def stream_execution_logs(self, execution_id: str, access_token: str = None):

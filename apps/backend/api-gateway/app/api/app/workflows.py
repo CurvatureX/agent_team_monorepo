@@ -1119,13 +1119,14 @@ async def manual_invoke_trigger(
             }
         )
 
-        # Call workflow engine directly with the correct parameters
+        # Call workflow engine directly with the correct parameters (async execution for immediate response)
         execution_result = await workflow_engine_client.execute_workflow(
             workflow_id=workflow_id,
             user_id=deps.current_user.sub,
             input_data=trigger_data,  # Pass trigger data as input_data
             trace_id=getattr(deps.request.state, "trace_id", None),
             access_token=deps.access_token,  # Pass JWT token for authentication
+            async_execution=True,  # Return immediately without waiting for completion
         )
 
         if not execution_result.get("success", False):

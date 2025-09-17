@@ -54,13 +54,14 @@ async function proxyHandler(request: NextRequest, { params }: { params: Promise<
     const resolvedParams = await params;
     const path = resolvedParams.path.join('/');
 
-    // Ensure the backend URL ends with /api and path doesn't have duplicate slashes
+    // Ensure the backend URL ends without /api and construct proper API path
     let cleanBackendUrl = BACKEND_URL;
-    if (!cleanBackendUrl.endsWith('/api')) {
-      cleanBackendUrl = cleanBackendUrl.replace(/\/+$/, '') + '/api';
+    if (cleanBackendUrl.endsWith('/api')) {
+      cleanBackendUrl = cleanBackendUrl.replace(/\/api$/, '');
     }
+    cleanBackendUrl = cleanBackendUrl.replace(/\/+$/, '');
 
-    const url = `${cleanBackendUrl}/${path}${request.nextUrl.search}`;
+    const url = `${cleanBackendUrl}/api/${path}${request.nextUrl.search}`;
 
     console.log(`[API Proxy] ${request.method} ${path} -> ${url}`);
     console.log(`[API Proxy] Clean backend URL: ${cleanBackendUrl}`);

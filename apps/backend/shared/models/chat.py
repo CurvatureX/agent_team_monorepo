@@ -6,7 +6,7 @@ Chat Models
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
-from pydantic import Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 
 from .common import BaseModel, EntityModel
 
@@ -35,7 +35,7 @@ class ChatRequest(BaseModel):
         if not v or not v.strip():
             raise ValueError("User message cannot be empty")
         return v.strip()
-    
+
     @field_validator("workflow_id")
     @classmethod
     def validate_workflow_id(cls, v, values):
@@ -142,8 +142,8 @@ class ChatSSEEvent(BaseModel):
     timestamp: str = Field(description="ISO格式时间戳")
     is_final: Optional[bool] = Field(default=False, description="是否为最终响应")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "examples": [
                 {
                     "type": "message",
@@ -179,6 +179,7 @@ class ChatSSEEvent(BaseModel):
                 },
             ]
         }
+    )
 
 
 class ChatStreamResponse(BaseModel):
@@ -189,8 +190,9 @@ class ChatStreamResponse(BaseModel):
 
     event_stream: List[ChatSSEEvent] = Field(description="SSE事件流，实际响应为text/event-stream格式")
 
-    class Config:
-        json_schema_extra = {"description": "注意：实际响应为SSE (Server-Sent Events) 流式格式，此模型仅用于文档展示"}
+    model_config = ConfigDict(
+        json_schema_extra={"description": "注意：实际响应为SSE (Server-Sent Events) 流式格式，此模型仅用于文档展示"}
+    )
 
 
 class ChatHistory(BaseModel):

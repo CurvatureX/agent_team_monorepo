@@ -459,6 +459,12 @@ export const useWorkflowExecutions = (workflowId: string | null, limit: number =
     try {
       const executionsResponse = await apiClient.getWorkflowExecutions(workflowId, limit);
 
+      // Safety check: ensure executions is an array
+      if (!executionsResponse || !Array.isArray(executionsResponse.executions)) {
+        console.error('[useApiData] Invalid executions response:', executionsResponse);
+        throw new Error('Invalid executions response format');
+      }
+
       // Transform executions to records
       const executionRecords = executionsResponse.executions.map(execution =>
         transformAPIExecutionToRecord(execution, [])
