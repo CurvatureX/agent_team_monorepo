@@ -111,8 +111,8 @@ build_and_push_images() {
 
     # Build and push Workflow Engine
     print_status "Building Workflow Engine image..."
-    cd ../workflow_engine
-    docker build -t $WORKFLOW_ENGINE_REPO:latest .
+    cd ../
+    docker build -f workflow_engine/Dockerfile -t $WORKFLOW_ENGINE_REPO:latest .
     docker push $WORKFLOW_ENGINE_REPO:latest
 
     # Build and push Workflow Scheduler

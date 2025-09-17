@@ -84,6 +84,9 @@ dependencies = [
     "nest-asyncio",
 ]
 
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.4.3",

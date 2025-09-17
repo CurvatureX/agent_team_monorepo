@@ -11,14 +11,14 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
-COPY ./workflow_engine/requirements.txt .
+COPY workflow_engine/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY ./workflow_engine/ .
+COPY workflow_engine/ .
 
 # Copy shared models (for compatibility)
-COPY ./shared ./shared
+COPY shared/ ./shared
 
 # Expose port 8002 to the outside world
 EXPOSE 8002
