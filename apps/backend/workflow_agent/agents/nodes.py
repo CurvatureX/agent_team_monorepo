@@ -1095,9 +1095,6 @@ Your output MUST match the expected input format for the next node.
 
             messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
 
-            # Log the model being used
-            logger.info(f"Using model: {settings.DEFAULT_MODEL_NAME}")
-
             # Try to use response_format, fall back if not supported
             try:
                 response = await self.llm.ainvoke(messages, response_format={"type": "json_object"})

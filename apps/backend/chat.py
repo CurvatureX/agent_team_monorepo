@@ -114,26 +114,26 @@ class CleanChatTester:
 
         return False
 
-    def create_session(self):
+    def create_session(self, retry_auth=True):
         """Create chat session"""
         print(f"\n{Fore.CYAN}📝 Creating session...{Style.RESET_ALL}")
-        
+
         url = f"{API_BASE_URL}/api/v1/app/sessions"
         headers = {
             "Authorization": f"Bearer {self.access_token}",
             "Content-Type": "application/json",
         }
-        
+
         print(f"{Fore.CYAN}Request URL: {url}{Style.RESET_ALL}")
         print(f"{Fore.CYAN}Auth header preview: Bearer {self.access_token[:30]}...{Style.RESET_ALL}")
-        
+
         try:
             # Use session (which now has proxy disabled)
             response = self.session.post(
                 url,
                 headers=headers,
                 json={"action": "create"},
-                timeout=10,
+                timeout=30,  # Increase timeout to 30 seconds
             )
         except requests.exceptions.RequestException as e:
             print(f"{Fore.RED}Request exception: {e}{Style.RESET_ALL}")
@@ -143,6 +143,13 @@ class CleanChatTester:
             self.session_id = response.json()["session"]["id"]
             print(f"{Fore.GREEN}✓ Session created: {self.session_id}{Style.RESET_ALL}")
             return True
+        elif response.status_code == 401 and retry_auth:
+            # Token expired, re-authenticate and retry
+            print(f"{Fore.YELLOW}Token expired, re-authenticating...{Style.RESET_ALL}")
+            if self.authenticate():
+                return self.create_session(retry_auth=False)
+            else:
+                return False
         else:
             print(f"{Fore.RED}✗ Session creation failed: {response.status_code}{Style.RESET_ALL}")
             print(f"{Fore.RED}Response text: {response.text[:500]}{Style.RESET_ALL}")
