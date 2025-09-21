@@ -88,6 +88,13 @@ This FastAPI application implements a **three-layer API architecture** with dist
 2. **App API** (`/api/v1/app/*`) - Supabase OAuth + JWT authentication for web/mobile applications
 3. **MCP API** (`/api/v1/mcp/*`) - API Key authentication with scopes for LLM clients
 
+**IMPORTANT: Node Type Validation**
+The API validates workflow node types strictly. Use these exact values (without `_NODE` suffix):
+- `TRIGGER` (not `TRIGGER_NODE`)
+- `AI_AGENT` (not `AI_AGENT_NODE`)
+- `EXTERNAL_ACTION` (not `EXTERNAL_ACTION_NODE`)
+- `ACTION`, `FLOW`, `HUMAN_LOOP`, `TOOL`, `MEMORY`
+
 ### Core Components
 1. **FastAPI Application** (`app/main.py`) - Factory pattern with lifespan events, middleware stack
 2. **Three-Layer API Structure**:
@@ -110,8 +117,11 @@ This FastAPI application implements a **three-layer API architecture** with dist
 - `/api/v1/public/health` - Service health check (no auth)
 - `/api/v1/app/sessions` - Session management with RLS (Supabase auth required)
 - `/api/v1/app/chat/stream` - Real-time chat with SSE streaming (Supabase auth required)
+- `/api/v1/app/workflows` - Workflow CRUD operations (Supabase auth required, user_id required in body)
 - `/api/v1/mcp/tools` - Tool discovery for LLM clients (API key required)
 - `/api/v1/mcp/invoke` - Tool invocation with parameters (API key required)
+
+**NOTE**: Despite JWT token authentication extracting user_id from the token, the workflow creation endpoint still requires `user_id` in the request body for validation.
 
 ### Authentication Flow
 1. **Frontend handles authentication** - User registration/login via Supabase Auth client
@@ -222,8 +232,47 @@ Use the provided curl commands in README.md for basic flow testing:
 2. Session creation (with/without auth)
 3. Chat messaging (requires JWT token)
 4. Workflow monitoring (requires JWT token)
+5. Workflow creation (requires JWT token AND user_id in body)
 
 Note: User registration/login is now handled by the frontend application using Supabase Auth client.
+
+#### Workflow Creation Example
+```bash
+# Create workflow with correct node types
+curl -X POST http://localhost:8000/api/v1/app/workflows \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "your-user-id",
+    "name": "My Workflow",
+    "nodes": [
+      {
+        "name": "Slack Trigger",
+        "type": "TRIGGER",
+        "subtype": "SLACK",
+        "parameters": {
+          "action_type": "message"
+        }
+      },
+      {
+        "name": "Process Message",
+        "type": "AI_AGENT",
+        "subtype": "ANTHROPIC_CLAUDE",
+        "parameters": {
+          "model_version": "claude-3-5-haiku-20241022"
+        }
+      },
+      {
+        "name": "Update Notion",
+        "type": "EXTERNAL_ACTION",
+        "subtype": "NOTION",
+        "parameters": {
+          "action_type": "page_update"
+        }
+      }
+    ]
+  }'
+```
 
 ### Automated Testing
 ```bash
