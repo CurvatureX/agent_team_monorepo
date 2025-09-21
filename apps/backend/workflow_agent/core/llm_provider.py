@@ -10,7 +10,29 @@ from typing import Any, Dict, Optional
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_openai import ChatOpenAI
 
+# Ensure logger level is set correctly in case setup_logging() hasn't run yet
 logger = logging.getLogger(__name__)
+
+# Force proper logging setup for this module
+log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+if hasattr(logging, log_level):
+    target_level = getattr(logging, log_level)
+
+    # Set root logger level
+    root_logger = logging.getLogger()
+    root_logger.setLevel(target_level)
+
+    # Ensure we have a handler
+    if not root_logger.handlers:
+        import sys
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setLevel(target_level)
+        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        handler.setFormatter(formatter)
+        root_logger.addHandler(handler)
+
+    # Set this logger level
+    logger.setLevel(target_level)
 
 
 class LLMProvider(str, Enum):
