@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional, Union
 
 # Import logging service
 try:
-    from ..services.execution_log_service import (
+    from services.execution_log_service import (
         ExecutionLogEntry,
         LogEventType,
         get_execution_log_service,
@@ -287,23 +287,3 @@ class BaseNodeExecutor(ABC):
                 error_details={"exception": str(e), "type": type(e).__name__},
                 execution_time=execution_time,
             )
-
-
-class MockNodeExecutor(BaseNodeExecutor):
-    """Mock node executor for testing and fallback."""
-
-    def __init__(self, node_type: str, subtype: Optional[str] = None):
-        super().__init__(node_type, subtype)
-
-    async def execute(self, context: NodeExecutionContext) -> NodeExecutionResult:
-        """Mock execution that returns success."""
-        self.log_execution(context, f"Mock execution of {self.node_type} node")
-
-        return NodeExecutionResult(
-            status=ExecutionStatus.SUCCESS,
-            output_data={
-                "message": f"Mock execution completed for {self.node_type}",
-                "node_id": context.node_id,
-                "timestamp": datetime.now().isoformat(),
-            },
-        )

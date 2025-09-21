@@ -23,8 +23,11 @@ except ImportError:
 # Ensure local module imports (when running from repo root)
 CURRENT_DIR = os.path.dirname(__file__)
 APP_DIR = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
+BACKEND_DIR = os.path.abspath(os.path.join(APP_DIR, ".."))
 if APP_DIR not in sys.path:
     sys.path.insert(0, APP_DIR)
+if BACKEND_DIR not in sys.path:
+    sys.path.insert(0, BACKEND_DIR)
 
 from main import app as fastapi_app  # type: ignore
 from main import db as real_db  # type: ignore

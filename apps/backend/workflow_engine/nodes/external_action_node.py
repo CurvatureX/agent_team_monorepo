@@ -2,6 +2,7 @@
 External Action Node Executor.
 
 Handles external integrations like Slack, webhooks, email, etc.
+This file has been refactored to use modular external action handlers.
 """
 
 import asyncio
@@ -9,9 +10,16 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+import httpx
 from shared.models.node_enums import ExternalActionSubtype, NodeType
 
 from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
+from .external_actions import (
+    GitHubExternalAction,
+    GoogleCalendarExternalAction,
+    NotionExternalAction,
+    SlackExternalAction,
+)
 from .factory import NodeExecutorFactory
 
 logger = logging.getLogger(__name__)
@@ -23,10 +31,17 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
 
     def __init__(self, node_type: str = NodeType.EXTERNAL_ACTION.value, subtype: str = None):
         super().__init__(node_type, subtype)
+        # Initialize external action handlers
+        self.external_actions = {
+            "slack": SlackExternalAction(),
+            "github": GitHubExternalAction(),
+            "google": GoogleCalendarExternalAction(),
+            "notion": NotionExternalAction(),
+        }
 
     async def execute(self, context: NodeExecutionContext) -> NodeExecutionResult:
-        """Execute external action node."""
-        # Very basic debug logging first
+        """Execute external action node using modular handlers."""
+        # Basic debug logging
         print(f"🔥 EXTERNAL ACTION EXECUTE CALLED: node_id={context.node_id}")
 
         try:
@@ -40,25 +55,49 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
             self.log_execution(
                 context, f"Executing external action: {integration_type}/{operation}"
             )
-            self.log_execution(
-                context,
-                f"DEBUG: subtype={self.subtype}, integration_type={integration_type}, operation={operation}",
-            )
+
         except Exception as e:
             print(f"🔥 ERROR IN EXTERNAL ACTION SETUP: {e}")
             raise
 
         try:
-            # Handle different integration types
-            if integration_type.upper() in [ExternalActionSubtype.SLACK.value, "SLACK_MESSAGE"]:
-                return await self._handle_slack_action(context, operation)
+            # Map integration type to handler
+            handler_key = self._get_handler_key(integration_type)
+
+            if handler_key in self.external_actions:
+                # Use modular external action handler
+                handler = self.external_actions[handler_key]
+                return await handler.handle_operation(context, operation)
             elif integration_type.upper() in [ExternalActionSubtype.WEBHOOK.value, "HTTP"]:
+                # Keep webhook handling in main file (not OAuth-based)
                 return await self._handle_webhook_action(context, operation)
             elif integration_type.upper() == ExternalActionSubtype.EMAIL.value:
+                # Keep email handling in main file (SMTP-based)
                 return await self._handle_email_action(context, operation)
             else:
-                # Default fallback to mock behavior for unknown integrations
-                return await self._handle_mock_action(context, integration_type, operation)
+                # Return error for unsupported integrations instead of mock
+                return NodeExecutionResult(
+                    status=ExecutionStatus.ERROR,
+                    error_message=f"Unsupported integration type: {integration_type}",
+                    error_details={
+                        "integration_type": integration_type,
+                        "operation": operation,
+                        "supported_integrations": [
+                            "slack",
+                            "github",
+                            "google_calendar",
+                            "notion",
+                            "webhook",
+                            "email",
+                        ],
+                        "solution": f"Use one of the supported integration types or check if '{integration_type}' is properly configured",
+                    },
+                    metadata={
+                        "node_type": "external_action",
+                        "integration": integration_type,
+                        "operation": operation,
+                    },
+                )
 
         except Exception as e:
             return NodeExecutionResult(
@@ -67,120 +106,25 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                 error_details={"integration_type": integration_type, "operation": operation},
             )
 
-    async def _handle_slack_action(
-        self, context: NodeExecutionContext, operation: str
-    ) -> NodeExecutionResult:
-        """Handle Slack-specific actions."""
-        import os
+    def _get_handler_key(self, integration_type: str) -> str:
+        """Map integration type to handler key."""
+        integration_upper = integration_type.upper()
 
-        import httpx
-
-        try:
-            # Get message content from AI agent output or input data
-            message = (
-                context.input_data.get("response")
-                or context.input_data.get("message")  # From AI agent
-                or context.get_parameter("message")  # From trigger
-                or "Hello from workflow!"  # From node config  # Default fallback
-            )
-
-            # Get channel from parameters or input data
-            channel = (
-                context.get_parameter("channel")
-                or context.input_data.get("channel")
-                or context.input_data.get("channel_name")
-                or "#general"  # Default fallback
-            )
-
-            # Format channel name properly
-            if not channel.startswith("#") and not channel.startswith("C"):
-                channel = f"#{channel}"
-
-            # Get Slack bot token from environment
-            slack_token = os.getenv("SLACK_BOT_TOKEN")
-
-            self.log_execution(context, f"Sending Slack message to {channel}: {message[:100]}...")
-
-            if slack_token and slack_token != "":
-                # Real Slack API call
-                headers = {
-                    "Authorization": f"Bearer {slack_token}",
-                    "Content-Type": "application/json",
-                }
-
-                payload = {
-                    "channel": channel,
-                    "text": message,
-                    "username": context.get_parameter("username", "Workflow Bot"),
-                    "icon_emoji": context.get_parameter("icon_emoji", ":robot_face:"),
-                }
-
-                async with httpx.AsyncClient() as client:
-                    response = await client.post(
-                        "https://slack.com/api/chat.postMessage",
-                        headers=headers,
-                        json=payload,
-                        timeout=10.0,
-                    )
-
-                result = response.json()
-
-                if result.get("ok", False):
-                    self.log_execution(context, f"✅ Slack message sent successfully to {channel}")
-                    slack_response = {
-                        "success": True,
-                        "ts": result.get("ts"),
-                        "channel": result.get("channel"),
-                        "message": result.get("message", {}),
-                    }
-                else:
-                    error = result.get("error", "unknown_error")
-                    self.log_execution(context, f"❌ Slack API error: {error}", "ERROR")
-                    slack_response = {"success": False, "error": error, "response": result}
-            else:
-                # Mock mode when no token is available
-                self.log_execution(context, "⚠️ No SLACK_BOT_TOKEN found, using mock mode")
-                await asyncio.sleep(0.1)  # Simulate API call
-                slack_response = {
-                    "success": True,
-                    "ts": str(datetime.now().timestamp()),
-                    "channel": channel,
-                    "message": {"text": message},
-                    "mock": True,
-                }
-
-            return NodeExecutionResult(
-                status=ExecutionStatus.SUCCESS,
-                output_data={
-                    "integration_type": "slack",
-                    "operation": operation,
-                    "channel": channel,
-                    "message_sent": message,
-                    "timestamp": datetime.now().isoformat(),
-                    "slack_response": slack_response,
-                    "real_api_call": slack_token is not None and slack_token != "",
-                },
-                metadata={
-                    "node_type": "external_action",
-                    "integration": "slack",
-                    "operation": operation,
-                },
-            )
-
-        except Exception as e:
-            self.log_execution(context, f"Slack action failed: {str(e)}", "ERROR")
-            return NodeExecutionResult(
-                status=ExecutionStatus.ERROR,
-                error_message=f"Slack action failed: {str(e)}",
-                error_details={"integration_type": "slack", "operation": operation},
-            )
+        if integration_upper in [ExternalActionSubtype.SLACK.value, "SLACK_MESSAGE"]:
+            return "slack"
+        elif integration_upper in ["GITHUB", "GITHUB_ACTION"]:
+            return "github"
+        elif integration_upper in ["GOOGLE_CALENDAR", "GOOGLE", "CALENDAR"]:
+            return "google"
+        elif integration_upper in ["NOTION", "NOTION_ACTION"]:
+            return "notion"
+        else:
+            return integration_type.lower()
 
     async def _handle_webhook_action(
         self, context: NodeExecutionContext, operation: str
     ) -> NodeExecutionResult:
         """Handle webhook/HTTP actions."""
-        import httpx
-
         try:
             # Get webhook URL
             webhook_url = context.get_parameter("webhook_url") or context.get_parameter("url")
@@ -341,21 +285,24 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
                     },
                 )
             else:
-                # Mock mode when no SMTP configuration
-                self.log_execution(context, "⚠️ No email configuration found, using mock mode")
-                await asyncio.sleep(0.1)
+                # No SMTP configuration available - report error instead of mock mode
+                error_msg = "❌ No email SMTP configuration found. Please configure SMTP settings in environment variables."
+                self.log_execution(context, error_msg, "ERROR")
 
                 return NodeExecutionResult(
-                    status=ExecutionStatus.SUCCESS,
-                    output_data={
-                        "integration_type": "email",
+                    status=ExecutionStatus.ERROR,
+                    error_message=error_msg,
+                    error_details={
+                        "integration": "email",
                         "operation": operation,
                         "to_email": to_email,
-                        "from_email": from_email,
-                        "subject": subject,
-                        "body": body,
-                        "timestamp": datetime.now().isoformat(),
-                        "mock": True,
+                        "reason": "missing_smtp_configuration",
+                        "solution": "Configure SMTP_SERVER, SMTP_PORT, SMTP_USER, and SMTP_PASSWORD environment variables",
+                    },
+                    metadata={
+                        "node_type": "external_action",
+                        "integration": "email",
+                        "operation": operation,
                     },
                 )
 
@@ -377,22 +324,6 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         text = msg.as_string()
         server.sendmail(msg["From"], msg["To"], text)
         server.quit()
-
-    async def _handle_mock_action(
-        self, context: NodeExecutionContext, integration_type: str, operation: str
-    ) -> NodeExecutionResult:
-        """Handle unknown integrations with mock behavior."""
-        await asyncio.sleep(0.1)
-
-        return NodeExecutionResult(
-            status=ExecutionStatus.SUCCESS,
-            output_data={
-                "integration_type": integration_type,
-                "operation": operation,
-                "message": f"Mock external action: {integration_type}/{operation}",
-                "timestamp": datetime.now().isoformat(),
-            },
-        )
 
     def validate_parameters(self, context: NodeExecutionContext) -> tuple[bool, str]:
         """Validate external action node parameters."""

@@ -29,16 +29,10 @@ class HILWorkflowService:
 
     def _initialize_integrations(self):
         """Initialize external integrations for message sending."""
-        # Initialize Slack client
-        try:
-            slack_token = os.getenv("DEFAULT_SLACK_BOT_TOKEN")
-            if slack_token:
-                self.slack_client = SlackWebClient(slack_token)
-                self.slack_client.auth_test()  # Test authentication
-                logger.info("HIL Service: Slack integration initialized")
-        except Exception as e:
-            logger.warning(f"HIL Service: Slack initialization failed: {e}")
-            self.slack_client = None
+        # Note: Slack client will be initialized per-user using OAuth tokens from database
+        # No longer initialize global Slack client with environment variable
+        self.slack_client = None
+        logger.info("HIL Service: Integrations will be initialized per-user using OAuth tokens")
 
     def handle_hil_response(
         self,

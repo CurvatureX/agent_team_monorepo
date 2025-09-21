@@ -64,7 +64,7 @@ class HILResponseClassifier:
                 interaction_context, response_context
             )
 
-            # Get AI classification (mock implementation for now)
+            # Get AI classification (uses real Gemini API if configured, otherwise heuristic fallback)
             ai_result = await self._call_gemini_api(classification_prompt)
 
             # Parse AI response

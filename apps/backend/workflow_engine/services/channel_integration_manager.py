@@ -44,10 +44,14 @@ class SlackIntegration(ChannelIntegration):
         import os
 
         self.logger = logging.getLogger(f"{__name__}.SlackIntegration")
-        self.slack_token = slack_token or os.getenv("SLACK_BOT_TOKEN")
+        # Note: Slack token should be retrieved per-user from OAuth tokens table
+        # No longer use environment variable for token
+        self.slack_token = slack_token  # Only use explicitly passed token
 
         if not self.slack_token:
-            self.logger.warning("Slack integration initialized without token")
+            self.logger.info(
+                "Slack integration initialized without token - will need to retrieve OAuth token per-user"
+            )
 
     async def send_request(
         self, interaction_data: Dict[str, Any], hil_input: HILInputData
@@ -114,14 +118,16 @@ class SlackIntegration(ChannelIntegration):
                     "error": str(e),
                 }
         else:
-            # Mock mode when no token
-            self.logger.info(f"⚠️ Mock Slack message sent to {channel} (no token available)")
+            # Return error when no token instead of mock response
+            error_msg = "❌ No Slack authentication token found. Please connect your Slack account in integrations settings."
+            self.logger.error(error_msg)
             return {
+                "status": "failed",
+                "error": error_msg,
+                "reason": "missing_slack_token",
+                "solution": "Connect Slack account in integrations settings",
                 "channel": channel,
-                "message": message,
                 "timestamp": datetime.now().isoformat(),
-                "message_id": f"mock_msg_{interaction_data['id'][:8]}",
-                "status": "sent_mock",
             }
 
     def format_message(self, hil_input: HILInputData) -> str:
@@ -280,15 +286,17 @@ class EmailIntegration(ChannelIntegration):
                     "error": str(e),
                 }
         else:
-            # Mock mode when no SMTP config or recipients
-            self.logger.info(f"⚠️ Mock email sent to {len(recipients)} recipients (no SMTP config)")
+            # Return error when no SMTP config instead of mock response
+            error_msg = "❌ No email SMTP configuration found. Please configure SMTP settings in environment variables."
+            self.logger.error(error_msg)
             return {
+                "status": "failed",
+                "error": error_msg,
+                "reason": "missing_smtp_configuration",
+                "solution": "Configure SMTP_SERVER, SMTP_PORT, SMTP_USER, and SMTP_PASSWORD environment variables",
                 "recipients": recipients,
                 "subject": subject,
-                "message": message,
                 "timestamp": datetime.now().isoformat(),
-                "message_id": f"mock_email_{interaction_data['id'][:8]}",
-                "status": "sent_mock",
             }
 
     def _send_email_sync(self, recipients: List[str], subject: str, message: str):
@@ -552,15 +560,16 @@ class WebhookIntegration(ChannelIntegration):
             headers["Content-Type"] = "application/json"
 
         if not webhook_url:
-            self.logger.warning("No webhook URL provided for HIL request")
+            error_msg = "❌ No webhook URL provided for HIL request. Please configure webhook URL."
+            self.logger.error(error_msg)
             return {
-                "webhook_url": None,
+                "status": "failed",
+                "error": error_msg,
+                "reason": "missing_webhook_url",
+                "solution": "Configure webhook URL in HIL node parameters or workflow settings",
                 "payload": payload,
                 "headers": headers,
                 "timestamp": datetime.now().isoformat(),
-                "status": "failed",
-                "error": "No webhook URL provided",
-                "mock": True,
             }
 
         try:
@@ -693,16 +702,17 @@ class InAppIntegration(ChannelIntegration):
                     "error": str(e),
                 }
         else:
-            # Mock mode when no Supabase config or users
-            self.logger.info(
-                f"⚠️ Mock in-app notification sent to {len(user_ids)} users (no Supabase config)"
-            )
+            # Return error when no Supabase config instead of mock response
+            error_msg = "❌ No Supabase configuration found for in-app notifications. Please configure SUPABASE_URL and SUPABASE_SECRET_KEY."
+            self.logger.error(error_msg)
             return {
+                "status": "failed",
+                "error": error_msg,
+                "reason": "missing_supabase_configuration",
+                "solution": "Configure SUPABASE_URL and SUPABASE_SECRET_KEY environment variables",
                 "user_ids": user_ids,
                 "notification_data": notification_data,
                 "timestamp": datetime.now().isoformat(),
-                "status": "sent_mock",
-                "mock": True,
             }
 
     async def _send_realtime_notification(
@@ -848,7 +858,9 @@ class ChannelIntegrationManager:
 
         # Channel-specific availability checks
         if channel_type == HILChannelType.SLACK:
-            return bool(os.getenv("SLACK_BOT_TOKEN"))
+            # Slack availability depends on OAuth token in database, not environment variable
+            # This check is now generic - actual token validation happens at runtime
+            return True  # Assume available, will validate OAuth token when needed
         elif channel_type == HILChannelType.EMAIL:
             return bool(
                 os.getenv("SMTP_SERVER") and os.getenv("SMTP_USER") and os.getenv("SMTP_PASSWORD")

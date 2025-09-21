@@ -8,9 +8,9 @@ import asyncio
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from utils.unicode_utils import clean_unicode_string, safe_json_dumps
-
 from shared.models.node_enums import NodeType
+
+from utils.unicode_utils import clean_unicode_string, safe_json_dumps
 
 from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
 from .factory import NodeExecutorFactory
@@ -24,7 +24,7 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         super().__init__(node_type, subtype)
 
     async def execute(self, context: NodeExecutionContext) -> NodeExecutionResult:
-        """Execute AI agent node."""
+        """Execute AI agent node with memory integration."""
         provider = self.subtype or context.get_parameter("provider", "openai")
         model = context.get_parameter("model_version", "gpt-4")
         system_prompt = context.get_parameter("system_prompt", "")
@@ -41,8 +41,37 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         self.log_execution(context, f"Executing AI agent node: {provider}/{model}")
 
         try:
-            # Call real AI API
-            response_text = await self._real_ai_call(provider, model, system_prompt, user_message)
+            # 1. BEFORE AI execution: Load memory from connected memory nodes
+            connected_memory_nodes = self._detect_connected_memory_nodes(context)
+            enhanced_user_message = user_message
+
+            if connected_memory_nodes:
+                self.log_execution(
+                    context, f"🧠 Found {len(connected_memory_nodes)} connected memory nodes"
+                )
+                conversation_history = await self._load_conversation_history_from_memory_nodes(
+                    context, connected_memory_nodes
+                )
+                if conversation_history:
+                    # Enhance user message with conversation history
+                    enhanced_user_message = (
+                        f"{conversation_history}\n\nCurrent message: {user_message}"
+                    )
+                    self.log_execution(
+                        context,
+                        f"🧠 Enhanced user message with {len(conversation_history)} chars of memory",
+                    )
+
+            # 2. Execute AI with enhanced context
+            response_text = await self._real_ai_call(
+                provider, model, system_prompt, enhanced_user_message
+            )
+
+            # 3. AFTER AI execution: Store conversation in connected memory nodes
+            if connected_memory_nodes and user_message and response_text:
+                await self._store_conversation_in_memory_nodes(
+                    context, connected_memory_nodes, user_message, response_text
+                )
 
             output_data = {
                 "response": response_text,
@@ -80,14 +109,14 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             elif provider.lower() in ["anthropic", "claude"]:
                 return await self._call_anthropic(model, system_prompt, user_message)
             else:
-                # Fallback to mock for unknown providers
-                await asyncio.sleep(0.1)
-                return f"[Mock {provider}/{model} Response] Processed message: '{user_message}' with system prompt: '{system_prompt}'"
+                # Return error for unsupported AI providers
+                raise ValueError(
+                    f"Unsupported AI provider: {provider}. Supported providers: openai, anthropic, claude"
+                )
 
         except Exception as e:
-            # Fallback to mock on error
-            await asyncio.sleep(0.1)
-            return f"[Fallback Response] Error calling {provider}: {str(e)} | Message: '{user_message}'"
+            # Re-raise the exception instead of returning mock response
+            raise Exception(f"AI provider {provider} call failed: {str(e)}")
 
     async def _call_openai(self, model: str, system_prompt: str, user_message: str) -> str:
         """Call OpenAI API."""
@@ -98,7 +127,9 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
 
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            return f"[Mock OpenAI Response] No API key found. Message: '{user_message}'"
+            raise ValueError(
+                "OpenAI API key not found. Please set OPENAI_API_KEY environment variable."
+            )
 
         headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
@@ -179,7 +210,9 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
 
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
-            return f"[Mock Anthropic Response] No API key found. Message: '{user_message}'"
+            raise ValueError(
+                "Anthropic API key not found. Please set ANTHROPIC_API_KEY environment variable."
+            )
 
         headers = {
             "x-api-key": api_key,
@@ -282,3 +315,159 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             return False, error_msg
 
         return True, ""
+
+    def _detect_connected_memory_nodes(self, context: NodeExecutionContext) -> list:
+        """Detect memory nodes connected to this AI agent via memory connections."""
+        connected_memory_nodes = []
+
+        try:
+            # Get workflow metadata containing connections and nodes
+            if not hasattr(context, "metadata") or not context.metadata:
+                self.log_execution(context, "🧠 No metadata available for memory node detection")
+                return []
+
+            workflow_connections = context.metadata.get("workflow_connections", {})
+            workflow_nodes = context.metadata.get("workflow_nodes", [])
+            current_node_id = context.metadata.get("node_id")
+
+            if not current_node_id or not workflow_connections or not workflow_nodes:
+                self.log_execution(
+                    context,
+                    f"🧠 Missing required data - node_id: {current_node_id}, connections: {bool(workflow_connections)}, nodes: {len(workflow_nodes)}",
+                )
+                return []
+
+            # Find outgoing memory connections from this AI agent node
+            if current_node_id in workflow_connections:
+                node_connections = workflow_connections[current_node_id]
+                connection_types = node_connections.get("connection_types", {})
+
+                # Look specifically for memory connections
+                memory_connections = connection_types.get("memory", {})
+                if memory_connections and "connections" in memory_connections:
+                    for connection in memory_connections["connections"]:
+                        target_node_id = connection.get("node")
+                        if target_node_id:
+                            # Find the target node definition
+                            for node in workflow_nodes:
+                                if (
+                                    node.get("id") == target_node_id
+                                    and node.get("type") == "MEMORY"
+                                ):
+                                    connected_memory_nodes.append(
+                                        {
+                                            "node_id": target_node_id,
+                                            "node": node,
+                                            "connection": connection,
+                                        }
+                                    )
+                                    self.log_execution(
+                                        context,
+                                        f"🧠 Found connected memory node: {target_node_id} ({node.get('name', 'unnamed')})",
+                                    )
+
+            return connected_memory_nodes
+
+        except Exception as e:
+            self.log_execution(context, f"🧠 Error detecting memory nodes: {str(e)}", "ERROR")
+            return []
+
+    async def _load_conversation_history_from_memory_nodes(
+        self, context: NodeExecutionContext, memory_nodes: list
+    ) -> str:
+        """Load conversation history from connected memory nodes."""
+        conversation_history = ""
+
+        try:
+            from .memory_node import MemoryNodeExecutor
+
+            for memory_info in memory_nodes:
+                memory_node = memory_info["node"]
+                memory_node_id = memory_info["node_id"]
+
+                # Create execution context for memory node (retrieve operation)
+                memory_context = NodeExecutionContext(
+                    workflow_id=context.workflow_id,
+                    execution_id=context.execution_id,
+                    node_id=memory_node_id,
+                    parameters={
+                        **memory_node.get("parameters", {}),
+                        "operation": "retrieve",  # Set operation to retrieve
+                    },
+                    input_data=context.input_data.copy(),
+                    metadata=context.metadata,
+                )
+
+                # Execute memory node to retrieve conversation history
+                memory_executor = MemoryNodeExecutor()
+                memory_result = await memory_executor.execute(memory_context)
+
+                if memory_result.status == ExecutionStatus.SUCCESS and memory_result.output_data:
+                    history_data = memory_result.output_data.get("conversation_history", "")
+                    if history_data:
+                        conversation_history += (
+                            f"\n--- Memory from {memory_node.get('name', memory_node_id)} ---\n"
+                        )
+                        conversation_history += str(history_data)
+                        self.log_execution(
+                            context,
+                            f"🧠 Loaded {len(str(history_data))} chars from memory node {memory_node_id}",
+                        )
+
+        except Exception as e:
+            self.log_execution(context, f"🧠 Error loading conversation history: {str(e)}", "ERROR")
+
+        return conversation_history.strip()
+
+    async def _store_conversation_in_memory_nodes(
+        self, context: NodeExecutionContext, memory_nodes: list, user_message: str, ai_response: str
+    ):
+        """Store conversation exchange in connected memory nodes."""
+        try:
+            from .memory_node import MemoryNodeExecutor
+
+            for memory_info in memory_nodes:
+                memory_node = memory_info["node"]
+                memory_node_id = memory_info["node_id"]
+
+                # Create conversation exchange data
+                conversation_data = {
+                    "user_message": user_message,
+                    "ai_response": ai_response,
+                    "timestamp": datetime.now().isoformat(),
+                    "ai_provider": self.subtype,
+                }
+
+                # Create execution context for memory node (store operation)
+                memory_context = NodeExecutionContext(
+                    workflow_id=context.workflow_id,
+                    execution_id=context.execution_id,
+                    node_id=memory_node_id,
+                    parameters={
+                        **memory_node.get("parameters", {}),
+                        "operation": "store",  # Set operation to store
+                        "conversation_data": conversation_data,
+                    },
+                    input_data=conversation_data,
+                    metadata=context.metadata,
+                )
+
+                # Execute memory node to store conversation
+                memory_executor = MemoryNodeExecutor()
+                memory_result = await memory_executor.execute(memory_context)
+
+                if memory_result.status == ExecutionStatus.SUCCESS:
+                    self.log_execution(
+                        context, f"🧠 Stored conversation in memory node {memory_node_id}"
+                    )
+                else:
+                    self.log_execution(
+                        context,
+                        f"🧠 Failed to store in memory node {memory_node_id}: {memory_result.error_message}",
+                        "ERROR",
+                    )
+
+        except Exception as e:
+            self.log_execution(
+                context, f"🧠 Error storing conversation in memory: {str(e)}", "ERROR"
+            )

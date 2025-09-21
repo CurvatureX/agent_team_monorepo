@@ -16,52 +16,43 @@ dependencies = [
     "pydantic>=2.5.0",
     "pydantic-settings>=2.0.0",
     "python-multipart>=0.0.6",
-
     # Database & Storage
     "psycopg2-binary>=2.9.0",
     "sqlalchemy>=2.0.0",
     "alembic>=1.12.0",
     "supabase>=2.17.0",
     "pgvector",
-
     # Environment & Config
     "python-dotenv>=1.0.0",
     "structlog>=23.2.0",
-
     # HTTP Clients
     "requests>=2.31.0",
     "httpx>=0.25.0",
     "urllib3>=2.0.0",
-
     # AI & ML Stack
     "google-generativeai>=0.8.0",
     "langchain>=0.1.0",
     "langgraph>=0.0.20",
     "openai>=1.3.0",
     "anthropic>=0.7.0",
-
     # Scientific Computing & Utils
     "numpy>=1.24.0",
     "networkx>=3.0.0",
     "tiktoken",
     "croniter>=2.0.0",
     "cryptography",
-
     # Task Processing & Cache
     "celery>=5.3.0",
     "redis>=5.0.0",
     "flower",
-
     # Authentication
     "python-jose[cryptography]>=3.3.0",
     "passlib[bcrypt]>=1.7.4",
     "pyjwt>=2.10.1",
-
     # gRPC & Protocol Buffers
     "grpcio>=1.68.0",
     "grpcio-tools>=1.68.0",
     "protobuf>=4.21.0,<6.0.0",
-
     # Monitoring & Observability
     "prometheus-client",
     "psutil",
@@ -79,9 +70,9 @@ dependencies = [
     "opentelemetry-instrumentation-boto3sqs",
     "opentelemetry-instrumentation-botocore",
     "opentelemetry-exporter-prometheus",
-
     # Python utilities
     "nest-asyncio",
+    "pytest>=8.4.1",
 ]
 
 [tool.hatch.build.targets.wheel]

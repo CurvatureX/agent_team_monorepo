@@ -3,13 +3,74 @@ Supabase-based repository for workflow operations with RLS support.
 Replaces direct PostgreSQL connection to leverage Row Level Security.
 """
 
+import json
 import logging
 import os
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from supabase import Client, create_client
 
 logger = logging.getLogger(__name__)
+
+# Redis-based caching for automatic TTL management
+try:
+    import redis
+
+    _redis_client = redis.Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+    # Test Redis connection
+    _redis_client.ping()
+    REDIS_AVAILABLE = True
+    logger.info("✅ Redis client initialized for caching")
+except (ImportError, redis.ConnectionError, redis.TimeoutError) as e:
+    _redis_client = None
+    REDIS_AVAILABLE = False
+    logger.warning(f"⚠️ Redis not available ({e}), using in-memory cache")
+
+# Fallback in-memory cache when Redis is not available
+_memory_cache = {}
+_memory_cache_ttl = {}
+
+# Cache TTL durations (seconds) - Redis automatically handles expiration
+CACHE_TTL_EXECUTIONS = 1  # 1 second for execution lists (ensures immediate freshness)
+CACHE_TTL_WORKFLOWS = 30  # 30 seconds for workflow metadata
+CACHE_TTL_TEMPLATES = 300  # 5 minutes for static data like node templates
+
+
+# Global client instance for connection pooling
+_global_service_client: Optional[Client] = None
+
+
+def _get_cache(key: str) -> Optional[Any]:
+    """Get value from cache (Redis or memory fallback)."""
+    if REDIS_AVAILABLE:
+        try:
+            cached_data = _redis_client.get(key)
+            if cached_data:
+                return json.loads(cached_data.decode("utf-8"))
+        except Exception as e:
+            logger.warning(f"Redis cache get error: {e}")
+
+    # Fallback to memory cache
+    current_time = time.time()
+    if key in _memory_cache and current_time < _memory_cache_ttl.get(key, 0):
+        return _memory_cache[key]
+
+    return None
+
+
+def _set_cache(key: str, value: Any, ttl: int):
+    """Set value in cache with TTL (Redis or memory fallback)."""
+    if REDIS_AVAILABLE:
+        try:
+            _redis_client.setex(key, ttl, json.dumps(value))
+            return
+        except Exception as e:
+            logger.warning(f"Redis cache set error: {e}")
+
+    # Fallback to memory cache
+    _memory_cache[key] = value
+    _memory_cache_ttl[key] = time.time() + ttl
 
 
 class SupabaseWorkflowRepository:
@@ -22,6 +83,8 @@ class SupabaseWorkflowRepository:
         Args:
             access_token: JWT token for RLS user context. If None, uses service role.
         """
+        global _global_service_client
+
         self.supabase_url = os.getenv("SUPABASE_URL")
         self.access_token = access_token
         self.use_rls = access_token is not None
@@ -54,14 +117,18 @@ class SupabaseWorkflowRepository:
                     # Skip session-based auth to avoid JWT validation errors
                     # Let the request proceed with whatever token format was provided
         else:
-            # For service role, use service key
-            service_key = os.getenv("SUPABASE_SECRET_KEY")
-            if not service_key:
-                raise ValueError("SUPABASE_SECRET_KEY must be configured")
-            self.client: Client = create_client(self.supabase_url, service_key)
+            # For service role, use global shared client for connection pooling
+            if _global_service_client is None:
+                service_key = os.getenv("SUPABASE_SECRET_KEY")
+                if not service_key:
+                    raise ValueError("SUPABASE_SECRET_KEY must be configured")
+                _global_service_client = create_client(self.supabase_url, service_key)
+                logger.info("✅ Global Supabase service client initialized")
+
+            self.client: Client = _global_service_client
 
         logger.info(
-            f"✅ Supabase client initialized with {'RLS (user token)' if self.use_rls else 'service role'}"
+            f"✅ Supabase client initialized with {'RLS (user token)' if self.use_rls else 'service role (pooled)'}"
         )
 
     async def list_workflows(
@@ -219,7 +286,7 @@ class SupabaseWorkflowRepository:
 
     # Workflow Execution operations
     async def create_execution(self, execution_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Create a new workflow execution."""
+        """Create a new workflow execution (Redis TTL handles cache freshness automatically)."""
         try:
             response = self.client.table("workflow_executions").insert(execution_data).execute()
 
@@ -228,6 +295,7 @@ class SupabaseWorkflowRepository:
                 logger.info(
                     f"✅ Created execution {created_execution['execution_id']} (DB ID: {created_execution['id']}) via Supabase"
                 )
+                # Note: Redis TTL will automatically expire cache within 1 second, ensuring freshness
                 return created_execution
             else:
                 logger.error("❌ Failed to create execution - no data returned")
@@ -291,9 +359,25 @@ class SupabaseWorkflowRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> Tuple[List[Dict[str, Any]], int]:
-        """List workflow executions with optional filters."""
+        """List workflow executions with Redis-based caching and automatic TTL."""
+        # Create cache key
+        cache_key = f"executions:{workflow_id}:{status_filter}:{limit}:{offset}"
+
+        # Check cache first (only for frequent queries)
+        if workflow_id and not status_filter and offset == 0 and limit <= 20:
+            cached_result = _get_cache(cache_key)
+            if cached_result:
+                logger.info(f"✅ Redis cache hit for executions {workflow_id}")
+                return tuple(cached_result)  # Convert back to tuple
+
         try:
-            query = self.client.table("workflow_executions").select("*", count="exact")
+            # Optimize field selection - only fetch essential fields for listing
+            # Exclude potentially large fields like run_data, error_details, execution_metadata
+            query = self.client.table("workflow_executions").select(
+                "id, execution_id, workflow_id, status, mode, triggered_by, "
+                "start_time, end_time, error_message, created_at, updated_at",
+                count="exact",
+            )
 
             # Apply filters
             if workflow_id:
@@ -309,11 +393,19 @@ class SupabaseWorkflowRepository:
 
             executions = response.data or []
             total_count = response.count or 0
+            result = (executions, total_count)
+
+            # Cache with Redis TTL (automatically expires after 1 second)
+            if workflow_id and not status_filter and offset == 0 and limit <= 20:
+                _set_cache(cache_key, result, CACHE_TTL_EXECUTIONS)
+                logger.info(
+                    f"📦 Cached executions for {workflow_id} with {CACHE_TTL_EXECUTIONS}s TTL"
+                )
 
             logger.info(
                 f"✅ Retrieved {len(executions)} executions (total: {total_count}) via Supabase"
             )
-            return executions, total_count
+            return result
 
         except Exception as e:
             logger.error(f"❌ Error listing executions via Supabase: {e}")
