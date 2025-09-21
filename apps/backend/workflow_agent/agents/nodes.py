@@ -45,11 +45,16 @@ class WorkflowAgentNodes:
 
     def _setup_llm(self):
         """Setup the language model using configured provider"""
-        return LLMFactory.create_llm(temperature=0)
+        logger.info("=== Creating LLM for workflow execution ===")
+        llm = LLMFactory.create_llm(temperature=0)
+        logger.info(f"LLM created successfully: {type(llm).__name__}")
+        return llm
 
     def _setup_llm_with_tools(self):
         """Setup LLM with MCP tools bound"""
+        logger.info("=== Creating LLM with MCP tools for workflow execution ===")
         llm = LLMFactory.create_llm(temperature=0)
+        logger.info(f"LLM with tools created successfully: {type(llm).__name__}")
         # Bind MCP tools to the LLM
         return llm.bind_tools(self.mcp_tools)
 
@@ -1094,9 +1099,6 @@ Your output MUST match the expected input format for the next node.
             )
 
             messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
-
-            # Log the model being used
-            logger.info(f"Using model: {settings.DEFAULT_MODEL_NAME}")
 
             # Try to use response_format, fall back if not supported
             try:
