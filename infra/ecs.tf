@@ -520,10 +520,6 @@ resource "aws_ecs_task_definition" "workflow_agent" {
           value = "openai"
         },
         {
-          name  = "OPENAI_MODEL"
-          value = "gpt-5-mini-2025-08-07"
-        },
-        {
           name  = "LLM_TIMEOUT"
           value = "1200"  # 20 minutes timeout
         },
