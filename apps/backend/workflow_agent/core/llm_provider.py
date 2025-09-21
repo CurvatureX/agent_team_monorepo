@@ -151,10 +151,19 @@ class LLMFactory:
                 "api_key": api_key,
                 "model": model_name,
                 "temperature": temperature,
-                "max_tokens": max_tokens,
                 "timeout": config.timeout,
                 **kwargs
             }
+
+            # GPT-5 models use max_completion_tokens instead of max_tokens
+            if model_name and "gpt-5" in model_name:
+                if max_tokens is not None:
+                    llm_kwargs["max_completion_tokens"] = max_tokens
+                    logger.info(f"Using max_completion_tokens={max_tokens} for GPT-5 model: {model_name}")
+            else:
+                if max_tokens is not None:
+                    llm_kwargs["max_tokens"] = max_tokens
+
             if base_url:
                 llm_kwargs["base_url"] = base_url
             return ChatOpenAI(**llm_kwargs)
