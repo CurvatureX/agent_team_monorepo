@@ -88,8 +88,14 @@ services:
   # Workflow Agent - AI workflow consultant (FastAPI service on port 8001)
   workflow-agent:
     dns:
-      - 1.1.1.1
-      - 8.8.8.8
+      - 8.8.8.8       # Google DNS (reliable worldwide)
+      - 1.1.1.1       # Cloudflare DNS (fast backup)
+      - 208.67.222.222 # OpenDNS (additional fallback)
+    dns_opt:
+      - ndots:0
+      - timeout:10
+      - attempts:3
+    dns_search: []
     # Removed extra_hosts to allow normal DNS resolution for SSL certificates
     build:
       context: .
@@ -136,8 +142,14 @@ services:
   # Workflow Engine - Workflow execution engine (FastAPI service on port 8002)
   workflow-engine:
     dns:
-      - 1.1.1.1
-      - 8.8.8.8
+      - 8.8.8.8       # Google DNS (reliable worldwide)
+      - 1.1.1.1       # Cloudflare DNS (fast backup)
+      - 208.67.222.222 # OpenDNS (additional fallback)
+    dns_opt:
+      - ndots:0
+      - timeout:10
+      - attempts:3
+    dns_search: []
     # Removed extra_hosts to allow normal DNS resolution for SSL certificates
     build:
       context: .
@@ -178,13 +190,13 @@ services:
   # Workflow Scheduler - Workflow trigger management (FastAPI service on port 8003)
   workflow-scheduler:
     dns:
-      - 192.168.31.1  # Use host DNS server
-      - 8.8.8.8       # Fallback to Google DNS
-      - 1.1.1.1       # Fallback to Cloudflare DNS
+      - 8.8.8.8       # Google DNS (reliable worldwide)
+      - 1.1.1.1       # Cloudflare DNS (fast backup)
+      - 208.67.222.222 # OpenDNS (additional fallback)
     dns_opt:
       - ndots:0
-      - timeout:5
-      - attempts:2
+      - timeout:10
+      - attempts:3
     dns_search: []
     build:
       context: .
@@ -225,8 +237,14 @@ services:
   # API Gateway - Three-layer FastAPI service (HTTP on port 8000)
   api-gateway:
     dns:
-      - 1.1.1.1
-      - 8.8.8.8
+      - 8.8.8.8       # Google DNS (reliable worldwide)
+      - 1.1.1.1       # Cloudflare DNS (fast backup)
+      - 208.67.222.222 # OpenDNS (additional fallback)
+    dns_opt:
+      - ndots:0
+      - timeout:10
+      - attempts:3
+    dns_search: []
     # Removed extra_hosts to allow normal DNS resolution for SSL certificates
     build:
       context: .

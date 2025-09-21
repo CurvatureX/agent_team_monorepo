@@ -11,8 +11,9 @@ from typing import Any, Dict, List, Optional
 
 # Configure SSL for better compatibility
 import urllib3
-from config import settings
 from supabase import Client, create_client
+
+from config import settings
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -40,32 +41,50 @@ class Database:
             self.client = None
 
     async def test_connection(self) -> bool:
-        """Test database connection with SSL error handling"""
+        """Test database connection with DNS and SSL error handling"""
         try:
             if not self.client:
                 raise Exception("Database client not initialized")
 
-            # Simple test query with retry for SSL issues
+            # Simple test query with retry for DNS, SSL, and network issues
             max_retries = 3
             for attempt in range(max_retries):
                 try:
                     result = self.client.table("workflows").select("id").limit(1).execute()
                     logger.info("✅ Database connection test successful")
                     return True
-                except (ssl.SSLError, ConnectionError, OSError) as ssl_err:
-                    if "SSL" in str(ssl_err) or "EOF" in str(ssl_err):
+                except Exception as err:
+                    error_str = str(err).lower()
+                    # Handle various network issues gracefully
+                    if any(
+                        keyword in error_str
+                        for keyword in [
+                            "ssl",
+                            "eof",
+                            "connection",
+                            "timeout",
+                            "dns",
+                            "resolve",
+                            "name resolution",
+                            "temporary failure",
+                            "network",
+                        ]
+                    ):
                         logger.warning(
-                            f"⚠️  SSL connection attempt {attempt + 1} failed: {ssl_err}"
+                            f"⚠️  Network connection attempt {attempt + 1} failed: {err}"
                         )
                         if attempt < max_retries - 1:
                             import time
 
-                            time.sleep(1)  # Brief pause before retry
+                            time.sleep(2)  # Longer pause for network issues
                             continue
                         else:
-                            logger.error("❌ All SSL connection attempts failed")
+                            logger.warning(
+                                "⚠️  All network connection attempts failed - service will run with limited functionality"
+                            )
                             return False
                     else:
+                        # Re-raise non-network errors
                         raise
 
         except Exception as e:
