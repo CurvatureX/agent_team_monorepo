@@ -359,6 +359,10 @@ resource "aws_ecs_task_definition" "workflow_engine" {
           valueFrom = aws_ssm_parameter.openai_api_key.arn
         },
         {
+          name      = "OPENAI_MODEL"
+          valueFrom = aws_ssm_parameter.openai_model.arn
+        },
+        {
           name      = "ANTHROPIC_API_KEY"
           valueFrom = aws_ssm_parameter.anthropic_api_key.arn
         },
@@ -541,6 +545,10 @@ resource "aws_ecs_task_definition" "workflow_agent" {
         {
           name      = "OPENAI_API_KEY"
           valueFrom = aws_ssm_parameter.openai_api_key.arn
+        },
+        {
+          name      = "OPENAI_MODEL"
+          valueFrom = aws_ssm_parameter.openai_model.arn
         },
         {
           name      = "ANTHROPIC_API_KEY"
