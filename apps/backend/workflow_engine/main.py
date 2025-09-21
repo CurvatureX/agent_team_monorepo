@@ -275,9 +275,9 @@ async def delete_credentials(user_id: str, provider: str):
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint with SSL error tolerance"""
+    """Health check endpoint with database connectivity test"""
     try:
-        # Test database connection
+        # Test database connection to ensure service is fully functional
         db_healthy = await db.test_connection()
         if db_healthy:
             return {"status": "healthy", "timestamp": datetime.now().isoformat()}
