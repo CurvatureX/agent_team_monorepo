@@ -22,6 +22,7 @@ init(autoreset=True)
 # Load environment variables
 load_dotenv()
 
+
 # Configuration
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
