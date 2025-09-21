@@ -19,8 +19,7 @@ backend_dir = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(backend_dir))
 
 try:
-    from sqlalchemy.orm import Session
-
+    from models.database import get_db_session
     from shared.models.db_models import (
         DisplayPriorityEnum,
         LogCategoryEnum,
@@ -28,8 +27,7 @@ try:
         LogLevelEnum,
         WorkflowExecutionLog,
     )
-
-    from ..models.database import get_db_session
+    from sqlalchemy.orm import Session
 
     DATABASE_AVAILABLE = True
 except ImportError:

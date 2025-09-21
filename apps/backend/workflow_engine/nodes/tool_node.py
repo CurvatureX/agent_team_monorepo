@@ -48,60 +48,21 @@ class ToolNodeExecutor(BaseNodeExecutor):
     ) -> NodeExecutionResult:
         """Handle MCP (Model Context Protocol) tools."""
         tool_name = context.get_parameter("tool_name", "unknown")
-        tool_params = context.get_parameter("tool_parameters", {})
 
         try:
-            # In a real implementation, this would:
-            # 1. Connect to MCP server
-            # 2. List available tools
-            # 3. Execute the specified tool with parameters
-            # 4. Return the tool execution result
+            self.log_execution(context, f"MCP tool execution requested: {tool_name}")
 
-            self.log_execution(context, f"Executing MCP tool: {tool_name}")
-
-            # For now, simulate tool execution with meaningful output
-            if tool_name == "file_read":
-                file_path = tool_params.get("path", "unknown")
-                mock_content = f"Mock file content from {file_path}"
-                output_data = {
-                    "tool_name": tool_name,
-                    "operation": operation,
-                    "file_path": file_path,
-                    "content": mock_content,
-                    "size": len(mock_content),
-                    "success": True,
-                }
-            elif tool_name == "file_write":
-                file_path = tool_params.get("path", "unknown")
-                content = tool_params.get("content", "")
-                output_data = {
-                    "tool_name": tool_name,
-                    "operation": operation,
-                    "file_path": file_path,
-                    "bytes_written": len(content),
-                    "success": True,
-                }
-            else:
-                output_data = {
-                    "tool_name": tool_name,
-                    "operation": operation,
-                    "parameters": tool_params,
-                    "result": f"Tool {tool_name} executed successfully",
-                    "success": True,
-                }
-
-            output_data.update(
-                {
-                    "tool_type": "mcp",
-                    "timestamp": datetime.now().isoformat(),
-                    "execution_time_ms": 150,  # Simulated execution time
-                }
-            )
-
+            # Return error for unsupported MCP tools instead of mock responses
             return NodeExecutionResult(
-                status=ExecutionStatus.SUCCESS,
-                output_data=output_data,
-                metadata={"node_type": "tool", "tool_type": "mcp", "tool_name": tool_name},
+                status=ExecutionStatus.ERROR,
+                error_message=f"MCP tool execution not implemented: {tool_name}",
+                error_details={
+                    "tool_name": tool_name,
+                    "operation": operation,
+                    "reason": "mcp_not_implemented",
+                    "solution": "Implement proper MCP tool integration or use supported node types",
+                },
+                metadata={"node_type": "tool", "tool_name": tool_name, "operation": operation},
             )
 
         except Exception as e:

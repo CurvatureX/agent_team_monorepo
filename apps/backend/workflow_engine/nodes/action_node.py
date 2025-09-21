@@ -8,9 +8,9 @@ import json
 from datetime import datetime
 from typing import Any, Dict
 
-from utils.unicode_utils import clean_unicode_string, safe_json_loads
-
 from shared.models.node_enums import ActionSubtype, NodeType
+
+from utils.unicode_utils import clean_unicode_string, safe_json_loads
 
 from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
 from .factory import NodeExecutorFactory
@@ -38,8 +38,16 @@ class ActionNodeExecutor(BaseNodeExecutor):
             return await self._execute_data_transform(context)
         else:
             return NodeExecutionResult(
-                status=ExecutionStatus.SUCCESS,
-                output_data={"message": f"Mock execution of {action_type}"},
+                status=ExecutionStatus.ERROR,
+                error_message=f"Unsupported action type: {action_type}",
+                error_details={
+                    "action_type": action_type,
+                    "supported_actions": [
+                        ActionSubtype.HTTP_REQUEST.value,
+                        ActionSubtype.DATA_TRANSFORMATION.value,
+                    ],
+                    "solution": "Use one of the supported action types",
+                },
             )
 
     async def _execute_http_request(self, context: NodeExecutionContext) -> NodeExecutionResult:

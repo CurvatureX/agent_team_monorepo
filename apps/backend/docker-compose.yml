@@ -182,8 +182,14 @@ services:
   # Workflow Scheduler - Workflow trigger management (FastAPI service on port 8003)
   workflow-scheduler:
     dns:
-      - 1.1.1.1
-      - 8.8.8.8
+      - 192.168.31.1  # Use host DNS server
+      - 8.8.8.8       # Fallback to Google DNS
+      - 1.1.1.1       # Fallback to Cloudflare DNS
+    dns_opt:
+      - ndots:0
+      - timeout:5
+      - attempts:2
+    dns_search: []
     extra_hosts:
       - "aws-0-ap-southeast-1.pooler.supabase.com:54.255.219.82"
       - "mkrczzgjeduruwxpanbj.supabase.co:54.255.219.82"

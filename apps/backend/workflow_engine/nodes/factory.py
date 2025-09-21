@@ -7,7 +7,7 @@ Simplified factory pattern for creating node executors.
 import logging
 from typing import Dict, Optional, Set, Type
 
-from .base import BaseNodeExecutor, MockNodeExecutor
+from .base import BaseNodeExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +47,10 @@ class NodeExecutorFactory:
             logger.debug(f"Creating executor for node type: {node_type} (subtype: {subtype})")
             return executor_class(node_type, subtype)
         else:
-            logger.warning(f"No executor found for node type: {node_type}, using mock executor")
-            return MockNodeExecutor(node_type, subtype)
+            logger.error(f"No executor found for node type: {node_type}")
+            raise ValueError(
+                f"Unsupported node type: {node_type}. No executor registered for this type."
+            )
 
     @classmethod
     def get_registered_types(cls) -> Set[str]:

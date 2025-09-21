@@ -16,6 +16,8 @@ from typing import Any, Dict, List, Optional
 # Add shared models to path
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
+from shared.models.execution import ExecutionStatus as SharedExecutionStatus
+
 from database import Database
 from models import ExecuteWorkflowRequest
 from nodes import ExecutionStatus, NodeExecutionContext, NodeExecutorFactory
@@ -26,9 +28,8 @@ from services.execution_log_service import (
 )
 from utils.unicode_utils import clean_unicode_data, safe_json_dumps
 
-from shared.models.execution import ExecutionStatus as SharedExecutionStatus
-
 logger = logging.getLogger(__name__)
+logger.info("🔥 EXECUTOR DEBUG VERSION LOADED")
 
 
 class WorkflowExecutor:
@@ -58,14 +59,14 @@ class WorkflowExecutor:
                 logger.warning(f"❌ Workflow {workflow_id} not found in database")
 
                 # DEBUG: Try to understand why workflow is not found
-                logger.error(f"🔍 DEBUG: Attempting to debug workflow not found issue...")
+                logger.debug(f"🔍 DEBUG: Attempting to debug workflow not found issue...")
 
                 # Let's see if we can list all workflows to understand what's in the database
                 try:
                     workflows, total = await repo.list_workflows(limit=10)
-                    logger.error(f"🔍 DEBUG: Found {total} total workflows in database")
+                    logger.debug(f"🔍 DEBUG: Found {total} total workflows in database")
                     for wf in workflows[:3]:  # Show first 3 workflows
-                        logger.error(f"🔍 DEBUG: Workflow in DB: {wf.get('id')} - {wf.get('name')}")
+                        logger.debug(f"🔍 DEBUG: Workflow in DB: {wf.get('id')} - {wf.get('name')}")
 
                     # Try a direct table query to see if the workflow exists
                     if hasattr(repo.client, "table"):
@@ -75,10 +76,10 @@ class WorkflowExecutor:
                             .eq("id", workflow_id)
                             .execute()
                         )
-                        logger.error(f"🔍 DEBUG: Direct table query result: {direct_result.data}")
+                        logger.debug(f"🔍 DEBUG: Direct table query result: {direct_result.data}")
 
                 except Exception as debug_e:
-                    logger.error(f"🔍 DEBUG: Failed to debug workflow access: {debug_e}")
+                    logger.debug(f"🔍 DEBUG: Failed to debug workflow access: {debug_e}")
 
                 return None
 
@@ -136,17 +137,28 @@ class WorkflowExecutor:
         access_token: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Execute nodes based on workflow graph connections."""
+        print(f"🔥🔥🔥 EXECUTE_WORKFLOW_NODES CALLED FOR {execution_id} 🔥🔥🔥")
+        logger.error(f"🔥🔥🔥 EXECUTE_WORKFLOW_NODES CALLED FOR {execution_id} 🔥🔥🔥")
         nodes = workflow_definition.get("nodes", [])
         connections = workflow_definition.get("connections", {})
         workflow_id = workflow_definition.get("id")
 
         # Build execution plan based on graph
+        logger.info(
+            f"🔍 DEBUG: Building execution plan with {len(nodes)} nodes and {len(connections)} connections"
+        )
+        logger.info(f"🔍 DEBUG: Node IDs: {[node.get('id') for node in nodes]}")
+        logger.info(f"🔍 DEBUG: Raw connections data: {connections}")
         execution_plan = self._build_execution_plan(nodes, connections)
+        logger.info(f"🔍 DEBUG: Execution plan result: {execution_plan}")
         if not execution_plan:
+            logger.info(f"🔍 DEBUG: Empty execution plan - falling back to sequential execution")
             # Fallback to sequential execution if no connections defined
             return await self._execute_nodes_sequentially(
                 nodes, workflow_id, execution_id, trigger_data, access_token
             )
+        else:
+            logger.info(f"🔍 DEBUG: Using graph-based execution with {len(execution_plan)} levels")
 
         # Execute nodes according to graph
         return await self._execute_nodes_by_graph(
@@ -157,46 +169,87 @@ class WorkflowExecutor:
         self, nodes: List[Dict], connections: Dict[str, Any]
     ) -> List[List[str]]:
         """Build execution plan from workflow graph using topological sort."""
-        # Create node map
+        # Create node map and filter out memory nodes (they're managed by AI agents internally)
         node_map = {node["id"]: node for node in nodes}
+
+        # Filter out memory nodes from execution graph - they're managed internally by AI agents
+        execution_nodes = [node for node in nodes if node.get("type") != "MEMORY"]
+        logger.info(
+            f"🔍 DEBUG: Filtered {len(nodes)} total nodes to {len(execution_nodes)} execution nodes (excluded {len(nodes) - len(execution_nodes)} memory nodes)"
+        )
 
         # Build adjacency list from connections
         graph = {}
         in_degree = {}
 
-        for node in nodes:
+        for node in execution_nodes:
             node_id = node["id"]
             graph[node_id] = []
             in_degree[node_id] = 0
 
         # Process connections to build graph
+        logger.info(f"🔍 DEBUG: Processing connections: {connections}")
         for source_node_id, node_connections in connections.items():
+            logger.info(
+                f"🔍 DEBUG: Processing source node {source_node_id} with connections: {node_connections}"
+            )
             if source_node_id not in graph:
+                logger.info(f"🔍 DEBUG: Skipping {source_node_id} - not in graph")
                 continue
 
             # Handle nested connection structure: {"connection_types": {"main": {"connections": [...]}}}
             if isinstance(node_connections, dict) and "connection_types" in node_connections:
+                logger.info(f"🔍 DEBUG: Using new nested format for {source_node_id}")
                 # New nested format from workflow factory
                 for connection_type, type_data in node_connections["connection_types"].items():
+                    # Only use "main" connections for execution order - memory connections are for data flow only
+                    if connection_type != "main":
+                        logger.info(
+                            f"🔍 DEBUG: Skipping {connection_type} connections from {source_node_id} for execution graph (data-only)"
+                        )
+                        continue
+
                     if "connections" in type_data:
                         for connection in type_data["connections"]:
                             target_node_id = connection.get(
                                 "node"
                             )  # Use "node" field from new format
+                            logger.info(
+                                f"🔍 DEBUG: Found main execution connection {source_node_id} -> {target_node_id}"
+                            )
                             if target_node_id and target_node_id in graph:
                                 graph[source_node_id].append(target_node_id)
                                 in_degree[target_node_id] += 1
+                                logger.info(
+                                    f"🔍 DEBUG: Added execution edge {source_node_id} -> {target_node_id}"
+                                )
+                            else:
+                                logger.info(
+                                    f"🔍 DEBUG: Skipping connection {source_node_id} -> {target_node_id} (target not in graph or None)"
+                                )
             else:
                 # Legacy flat format fallback
+                logger.info(f"🔍 DEBUG: Using legacy flat format for {source_node_id}")
                 for connection in node_connections:
                     target_node_id = connection.get("target_node_id")
+                    logger.info(f"🔍 DEBUG: Legacy connection {source_node_id} -> {target_node_id}")
                     if target_node_id and target_node_id in graph:
                         graph[source_node_id].append(target_node_id)
                         in_degree[target_node_id] += 1
+                        logger.info(
+                            f"🔍 DEBUG: Added legacy edge {source_node_id} -> {target_node_id}"
+                        )
+                    else:
+                        logger.info(
+                            f"🔍 DEBUG: Skipping legacy connection {source_node_id} -> {target_node_id} (target not in graph or None)"
+                        )
 
         # Topological sort to determine execution order
+        logger.info(f"🔍 DEBUG: Final graph: {graph}")
+        logger.info(f"🔍 DEBUG: Final in_degree: {in_degree}")
         execution_levels = []
         available_nodes = [node_id for node_id, degree in in_degree.items() if degree == 0]
+        logger.info(f"🔍 DEBUG: Initial available nodes (degree 0): {available_nodes}")
 
         while available_nodes:
             current_level = available_nodes[:]
@@ -247,6 +300,8 @@ class WorkflowExecutor:
         access_token: Optional[str],
     ) -> List[Dict[str, Any]]:
         """Execute nodes based on graph levels."""
+        print(f"🔥🔥🔥 _EXECUTE_NODES_BY_GRAPH CALLED WITH LEVELS: {execution_levels} 🔥🔥🔥")
+        logger.error(f"🔥🔥🔥 _EXECUTE_NODES_BY_GRAPH CALLED WITH LEVELS: {execution_levels} 🔥🔥🔥")
         all_results = []
         node_outputs = {"trigger": trigger_data}  # Store outputs by node ID
 
@@ -256,6 +311,12 @@ class WorkflowExecutor:
 
         # Execute each level of nodes
         for level_idx, node_ids in enumerate(execution_levels):
+            print(
+                f"🔥🔥🔥 CRITICAL DEBUG: Executing level {level_idx + 1} with {len(node_ids)} nodes: {node_ids} 🔥🔥🔥"
+            )
+            logger.error(
+                f"🔥🔥🔥 CRITICAL DEBUG: Executing level {level_idx + 1} with {len(node_ids)} nodes: {node_ids} 🔥🔥🔥"
+            )
             logger.info(f"🔄 Executing level {level_idx + 1} with {len(node_ids)} nodes: {node_ids}")
 
             # Execute nodes in current level concurrently
@@ -857,7 +918,10 @@ class WorkflowExecutor:
                 f"🧹 Cleaned Unicode data for node {node_id}: params={len(str(cleaned_parameters))}, input={len(str(cleaned_input_data))}"
             )
 
-            # Create execution context
+            # Get workflow definition for memory integration
+            workflow_definition = await self.get_workflow_definition(workflow_id)
+
+            # Create execution context with workflow metadata for memory integration
             context = NodeExecutionContext(
                 node_id=node_id,
                 workflow_id=workflow_id,
@@ -866,7 +930,16 @@ class WorkflowExecutor:
                 input_data=cleaned_input_data,
                 static_data={},
                 credentials={},
-                metadata={"access_token": access_token} if access_token else {},
+                metadata={
+                    "access_token": access_token if access_token else None,
+                    "node_id": node_id,
+                    "workflow_connections": workflow_definition.get("connections", {})
+                    if workflow_definition
+                    else {},
+                    "workflow_nodes": workflow_definition.get("nodes", [])
+                    if workflow_definition
+                    else [],
+                },
             )
 
             # Add node start log

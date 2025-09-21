@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..nodes.base import ExecutionStatus
+from nodes.base import ExecutionStatus
 
 
 class WorkflowPauseReason(str, Enum):

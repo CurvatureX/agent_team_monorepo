@@ -18,23 +18,23 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from shared.models.db_models import WorkflowStatusEnum
+
 # Import our migrated modules
 from config import settings
 from database import Database
 from executor import WorkflowExecutor
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
 from models import (
     ExecuteWorkflowRequest,
     ExecuteWorkflowResponse,
     GetExecutionRequest,
     GetExecutionResponse,
 )
-from pydantic import BaseModel
 from services.oauth2_service_lite import OAuth2ServiceLite
 from utils.unicode_utils import clean_unicode_data, ensure_utf8_safe_dict
-
-from shared.models.db_models import WorkflowStatusEnum
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -580,19 +580,27 @@ async def cancel_execution(execution_id: str):
 
 @app.get("/v1/workflows/{workflow_id}/executions")
 async def get_workflow_executions(workflow_id: str, limit: int = 20):
-    """Get execution history for workflow"""
+    """Get execution history for workflow - OPTIMIZED VERSION"""
     try:
-        logger.info(f"🔍 Getting executions for workflow {workflow_id} (limit: {limit})")
+        logger.info(f"🔍 Getting executions for workflow {workflow_id} (limit: {limit}) - optimized")
 
-        # Get executions from database
-        executions = await db.get_workflow_executions(workflow_id, limit)
+        # Use optimized SupabaseWorkflowRepository instead of slow database.py
+        from services.supabase_repository import SupabaseWorkflowRepository
 
-        logger.info(f"✅ Found {len(executions)} executions for workflow {workflow_id}")
+        # Use service role for performance (no RLS overhead for this read-only query)
+        repository = SupabaseWorkflowRepository(access_token=None)
+        executions, total_count = await repository.list_executions(
+            workflow_id=workflow_id, limit=limit, offset=0
+        )
 
-        return {"workflow_id": workflow_id, "executions": executions, "total": len(executions)}
+        logger.info(f"✅ Found {len(executions)} executions for workflow {workflow_id} (optimized)")
+
+        return {"workflow_id": workflow_id, "executions": executions, "total": total_count}
     except Exception as e:
-        logger.error(f"❌ Failed to get workflow executions: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"❌ OPTIMIZATION FAILED - falling back to old method: {e}")
+        # Fallback to old method if optimization fails
+        executions = await db.get_workflow_executions(workflow_id, limit)
+        return {"workflow_id": workflow_id, "executions": executions, "total": len(executions)}
 
 
 @app.post("/v1/workflows/{workflow_id}/nodes/{node_id}/execute")
