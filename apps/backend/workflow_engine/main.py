@@ -11,26 +11,8 @@ A clean, simple workflow execution engine that:
 No complex nested structures, just simple, clear code.
 """
 
-# Fix DNS resolution issue in Docker containers
-# This patches socket.getaddrinfo to force IPv4-only resolution
-# which fixes "Temporary failure in name resolution" errors
-import socket
-
-original_getaddrinfo = socket.getaddrinfo
-
-
-def ipv4_only_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
-    """Force IPv4-only DNS resolution to fix Docker DNS issues."""
-    try:
-        # Try IPv4 first
-        return original_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
-    except Exception:
-        # Fallback to original behavior if IPv4 fails
-        return original_getaddrinfo(host, port, family, type, proto, flags)
-
-
-# Apply the patch globally for all HTTP libraries (requests, httpx, etc.)
-socket.getaddrinfo = ipv4_only_getaddrinfo
+# DNS resolution should work normally in Docker
+# Removed IPv4-only patch that was causing resolution failures
 
 import asyncio
 import logging
@@ -39,23 +21,23 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from shared.models.db_models import WorkflowStatusEnum
+
 # Import our migrated modules
 from config import settings
 from database import Database
 from executor import WorkflowExecutor
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
 from models import (
     ExecuteWorkflowRequest,
     ExecuteWorkflowResponse,
     GetExecutionRequest,
     GetExecutionResponse,
 )
-from pydantic import BaseModel
 from services.oauth2_service_lite import OAuth2ServiceLite
 from utils.unicode_utils import clean_unicode_data, ensure_utf8_safe_dict
-
-from shared.models.db_models import WorkflowStatusEnum
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)

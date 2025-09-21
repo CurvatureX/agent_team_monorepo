@@ -41,6 +41,16 @@ resource "aws_ssm_parameter" "openai_api_key" {
   })
 }
 
+resource "aws_ssm_parameter" "openai_model" {
+  name  = "/${local.name_prefix}/openai/model"
+  type  = "SecureString"
+  value = var.openai_model
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-openai-model"
+  })
+}
+
 resource "aws_ssm_parameter" "anthropic_api_key" {
   name  = "/${local.name_prefix}/anthropic/api-key"
   type  = "SecureString"
