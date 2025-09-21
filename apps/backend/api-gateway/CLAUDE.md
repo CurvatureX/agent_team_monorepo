@@ -84,16 +84,16 @@ uv run pytest tests/ --cov=app
 ### Three-Layer API Architecture
 This FastAPI application implements a **three-layer API architecture** with distinct authentication and authorization patterns:
 
-1. **Public API** (`/api/public/*`) - No authentication required, rate-limited public endpoints
-2. **App API** (`/api/app/*`) - Supabase OAuth + JWT authentication for web/mobile applications
-3. **MCP API** (`/api/mcp/*`) - API Key authentication with scopes for LLM clients
+1. **Public API** (`/api/v1/public/*`) - No authentication required, rate-limited public endpoints
+2. **App API** (`/api/v1/app/*`) - Supabase OAuth + JWT authentication for web/mobile applications
+3. **MCP API** (`/api/v1/mcp/*`) - API Key authentication with scopes for LLM clients
 
 ### Core Components
 1. **FastAPI Application** (`app/main.py`) - Factory pattern with lifespan events, middleware stack
 2. **Three-Layer API Structure**:
-   - `app/api/public/` - Health checks, service information
-   - `app/api/app/` - Sessions, chat, workflows (requires Supabase auth)
-   - `app/api/mcp/` - Tool discovery and invocation (requires API key)
+   - `app/api/public/` - Health checks, service information (accessed via `/api/v1/public/*`)
+   - `app/api/app/` - Sessions, chat, workflows (accessed via `/api/v1/app/*`, requires Supabase auth)
+   - `app/api/mcp/` - Tool discovery and invocation (accessed via `/api/v1/mcp/*`, requires API key)
 3. **Structured Models** (`app/models/`) - Organized Pydantic models with inheritance
 4. **Dependency Injection** (`app/dependencies.py`) - FastAPI dependencies for auth, validation, context
 5. **Middleware Stack** (`app/middleware/`) - Rate limiting, authentication, request logging
@@ -107,11 +107,11 @@ This FastAPI application implements a **three-layer API architecture** with dist
 - **Admin Override**: Service role key bypasses RLS for administrative operations
 
 ### Key API Endpoints
-- `/api/public/health` - Service health check (no auth)
-- `/api/app/sessions` - Session management with RLS (Supabase auth required)
-- `/api/app/chat/stream` - Real-time chat with SSE streaming (Supabase auth required)
-- `/api/mcp/tools` - Tool discovery for LLM clients (API key required)
-- `/api/mcp/invoke` - Tool invocation with parameters (API key required)
+- `/api/v1/public/health` - Service health check (no auth)
+- `/api/v1/app/sessions` - Session management with RLS (Supabase auth required)
+- `/api/v1/app/chat/stream` - Real-time chat with SSE streaming (Supabase auth required)
+- `/api/v1/mcp/tools` - Tool discovery for LLM clients (API key required)
+- `/api/v1/mcp/invoke` - Tool invocation with parameters (API key required)
 
 ### Authentication Flow
 1. **Frontend handles authentication** - User registration/login via Supabase Auth client

@@ -90,9 +90,7 @@ services:
     dns:
       - 1.1.1.1
       - 8.8.8.8
-    extra_hosts:
-      - "aws-0-ap-southeast-1.pooler.supabase.com:54.255.219.82"
-      - "mkrczzgjeduruwxpanbj.supabase.co:54.255.219.82"
+    # Removed extra_hosts to allow normal DNS resolution for SSL certificates
     build:
       context: .
       dockerfile: ./workflow_agent/Dockerfile
@@ -140,9 +138,7 @@ services:
     dns:
       - 1.1.1.1
       - 8.8.8.8
-    extra_hosts:
-      - "aws-0-ap-southeast-1.pooler.supabase.com:54.255.219.82"
-      - "mkrczzgjeduruwxpanbj.supabase.co:54.255.219.82"
+    # Removed extra_hosts to allow normal DNS resolution for SSL certificates
     build:
       context: .
       dockerfile: ./workflow_engine/Dockerfile
@@ -190,9 +186,6 @@ services:
       - timeout:5
       - attempts:2
     dns_search: []
-    extra_hosts:
-      - "aws-0-ap-southeast-1.pooler.supabase.com:54.255.219.82"
-      - "mkrczzgjeduruwxpanbj.supabase.co:54.255.219.82"
     build:
       context: .
       dockerfile: ./workflow_scheduler/Dockerfile
@@ -234,9 +227,7 @@ services:
     dns:
       - 1.1.1.1
       - 8.8.8.8
-    extra_hosts:
-      - "aws-0-ap-southeast-1.pooler.supabase.com:54.255.219.82"
-      - "mkrczzgjeduruwxpanbj.supabase.co:54.255.219.82"
+    # Removed extra_hosts to allow normal DNS resolution for SSL certificates
     build:
       context: .
       dockerfile: ./api-gateway/Dockerfile
@@ -306,3 +297,11 @@ volumes:
 networks:
   agent-team-network:
     driver: bridge
+    enable_ipv6: true
+    ipam:
+      driver: default
+      config:
+        - subnet: "172.18.0.0/16"
+          gateway: "172.18.0.1"
+        - subnet: "2001:db8::/64"
+          gateway: "2001:db8::1"
