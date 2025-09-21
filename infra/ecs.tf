@@ -513,7 +513,23 @@ resource "aws_ecs_task_definition" "workflow_agent" {
         },
         {
           name  = "DEFAULT_MODEL_NAME"
-          value = "gpt-4.1"  # GPT-4.1 which supports response_format
+          value = "gpt-5-mini-2025-08-07"  # Updated to GPT-5 mini model
+        },
+        {
+          name  = "LLM_PROVIDER"
+          value = "openai"
+        },
+        {
+          name  = "LLM_TIMEOUT"
+          value = "1200"  # 20 minutes timeout
+        },
+        {
+          name  = "LLM_MAX_TOKENS"
+          value = "0"  # 0 means no limit
+        },
+        {
+          name  = "LLM_TEMPERATURE"
+          value = "0"
         },
         {
           name  = "OTEL_SDK_DISABLED"
