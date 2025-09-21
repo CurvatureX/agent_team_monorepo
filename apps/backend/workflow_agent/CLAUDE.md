@@ -60,6 +60,23 @@ The system outputs a human-readable YAML-like DSL (`dsl/` directory):
 - **Connection Types**: Define execution flow between nodes
 - **See `dsl/README.md`** for complete specification
 
+**CRITICAL NODE TYPE VALIDATION:**
+The workflow engine validates node types strictly. Always use:
+- `TRIGGER` (not `TRIGGER_NODE`)
+- `AI_AGENT` (not `AI_AGENT_NODE`) 
+- `EXTERNAL_ACTION` (not `EXTERNAL_ACTION_NODE`)
+- `ACTION`, `FLOW`, `HUMAN_LOOP`, `TOOL`, `MEMORY`
+
+**AI AGENT SUBTYPES:**
+- `ANTHROPIC_CLAUDE` (not `CLAUDE` or `CLAUDE_NODE`)
+- `OPENAI` for GPT models
+
+**EXTERNAL ACTION REQUIREMENTS:**
+All EXTERNAL_ACTION nodes must include `action_type` parameter:
+- Notion: `search`, `page_update`, `update_page`
+- Slack: `send_message`
+- GitHub: `create_issue`, `create_pr`
+
 ## Key Design Patterns
 
 ### 1. Defensive Workflow Generation
@@ -101,6 +118,10 @@ SUPABASE_SECRET_KEY=your_key
 EMBEDDING_MODEL=text-embedding-ada-002
 RAG_SIMILARITY_THRESHOLD=0.3
 RAG_MAX_RESULTS=5
+
+# Model Validation Note
+# OpenAI validates model names strictly. Custom endpoints may differ.
+# Standard models: gpt-4o-mini, gpt-3.5-turbo, claude-3-5-haiku-20241022
 ```
 
 ## Testing Strategy
@@ -145,6 +166,8 @@ Each node can route back to previous stages if issues are found.
 2. Add knowledge entry in `scripts/insert_node_knowledge.py`
 3. Run knowledge insertion script
 4. Test with example workflows
+5. Ensure node type follows naming convention (no `_NODE` suffix)
+6. For EXTERNAL_ACTION nodes, always require `action_type` parameter
 
 ### Debugging Workflows
 1. Use `debug_server.py` for interactive testing

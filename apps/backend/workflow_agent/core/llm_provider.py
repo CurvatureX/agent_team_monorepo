@@ -27,6 +27,19 @@ class LLMConfig:
         # Read from environment variables
         self.provider = os.getenv("LLM_PROVIDER", "openai").lower()
 
+        # Log all LLM-related environment variables for debugging
+        logger.info("=== LLM Configuration Debug ===")
+        logger.info(f"LLM_PROVIDER: {self.provider}")
+        logger.info(f"OPENAI_MODEL env: {os.getenv('OPENAI_MODEL', 'not set')}")
+        logger.info(f"OPENROUTER_MODEL env: {os.getenv('OPENROUTER_MODEL', 'not set')}")
+        logger.info(f"ANTHROPIC_MODEL env: {os.getenv('ANTHROPIC_MODEL', 'not set')}")
+        logger.info(f"DEFAULT_MODEL_NAME env: {os.getenv('DEFAULT_MODEL_NAME', 'not set')}")
+        logger.info(f"DEFAULT_MODEL_PROVIDER env: {os.getenv('DEFAULT_MODEL_PROVIDER', 'not set')}")
+        logger.info(f"LLM_MAX_TOKENS: {os.getenv('LLM_MAX_TOKENS', 'not set')}")
+        logger.info(f"OPENAI_API_KEY present: {bool(os.getenv('OPENAI_API_KEY'))}")
+        logger.info(f"OPENROUTER_API_KEY present: {bool(os.getenv('OPENROUTER_API_KEY'))}")
+        logger.info("==============================")
+
         # OpenAI configuration
         self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
         self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
@@ -49,6 +62,10 @@ class LLMConfig:
         # Embedding settings (for RAG)
         self.embedding_provider = os.getenv("EMBEDDING_PROVIDER", "openai").lower()
         self.embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
+
+        # Log final selected model
+        logger.info(f"Selected provider: {self.provider}")
+        logger.info(f"Will use model: {self.get_model_name()}")
 
     def get_api_key(self) -> str:
         """Get API key for the configured provider"""
@@ -117,6 +134,7 @@ class LLMFactory:
             max_tokens = None
 
         logger.info(f"Creating LLM with provider={config.provider}, model={model_name}, base_url={base_url}")
+        logger.info(f"Final parameters: temperature={temperature}, max_tokens={max_tokens}, timeout={config.timeout}")
 
         if config.provider == LLMProvider.OPENROUTER:
             # OpenRouter uses OpenAI-compatible API
@@ -134,6 +152,7 @@ class LLMFactory:
             }
             if max_tokens is not None:  # Only add max_tokens if it's set
                 llm_kwargs["max_tokens"] = max_tokens
+            logger.info(f"OpenRouter LLM kwargs: {llm_kwargs}")
             return ChatOpenAI(**llm_kwargs)
         elif config.provider == LLMProvider.ANTHROPIC:
             # For Anthropic, we could use langchain_anthropic.ChatAnthropic
@@ -151,12 +170,22 @@ class LLMFactory:
                 "api_key": api_key,
                 "model": model_name,
                 "temperature": temperature,
-                "max_tokens": max_tokens,
                 "timeout": config.timeout,
                 **kwargs
             }
+
+            # GPT-5 models use max_completion_tokens instead of max_tokens
+            if model_name and "gpt-5" in model_name:
+                if max_tokens is not None:
+                    llm_kwargs["max_completion_tokens"] = max_tokens
+                    logger.info(f"Using max_completion_tokens={max_tokens} for GPT-5 model: {model_name}")
+            else:
+                if max_tokens is not None:
+                    llm_kwargs["max_tokens"] = max_tokens
+
             if base_url:
                 llm_kwargs["base_url"] = base_url
+            logger.info(f"OpenAI LLM kwargs: {llm_kwargs}")
             return ChatOpenAI(**llm_kwargs)
 
     @staticmethod
