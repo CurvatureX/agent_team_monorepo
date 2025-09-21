@@ -33,18 +33,18 @@ Instead of hardcoded AI roles like "REPORT_GENERATOR" or "TASK_ANALYZER", we now
 "AI_AGENT_NODE.TASK_ANALYZER"
 
 # NEW: Flexible, prompt-driven providers
-"AI_AGENT_NODE.GEMINI_NODE"
-"AI_AGENT_NODE.OPENAI_NODE"
-"AI_AGENT_NODE.CLAUDE_NODE"
+"AI_AGENT.GEMINI"        # Note: No _NODE suffix in actual usage
+"AI_AGENT.OPENAI"        # These are the actual types used
+"AI_AGENT.ANTHROPIC_CLAUDE"  # Not CLAUDE_NODE
 ```
 
 ### AI Node Types
 
-| Provider        | Description       | Key Features                                            |
-| --------------- | ----------------- | ------------------------------------------------------- |
-| **GEMINI_NODE** | Google Gemini AI  | Vision support, safety filters, multi-modal             |
-| **OPENAI_NODE** | OpenAI GPT models | Advanced reasoning, function calling, structured output |
-| **CLAUDE_NODE** | Anthropic Claude  | Long context, helpful and harmless, precise control     |
+| Provider                | Description       | Key Features                                            |
+| ----------------------- | ----------------- | ------------------------------------------------------- |
+| **GEMINI**              | Google Gemini AI  | Vision support, safety filters, multi-modal             |
+| **OPENAI**              | OpenAI GPT models | Advanced reasoning, function calling, structured output |
+| **ANTHROPIC_CLAUDE**    | Anthropic Claude  | Long context, helpful and harmless, precise control     |
 
 ### System Prompt Examples
 

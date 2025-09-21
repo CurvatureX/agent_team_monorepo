@@ -90,6 +90,7 @@ services:
     dns:
       - 1.1.1.1
       - 8.8.8.8
+    # Removed extra_hosts to allow normal DNS resolution for SSL certificates
     build:
       context: .
       dockerfile: ./workflow_agent/Dockerfile
@@ -137,6 +138,7 @@ services:
     dns:
       - 1.1.1.1
       - 8.8.8.8
+    # Removed extra_hosts to allow normal DNS resolution for SSL certificates
     build:
       context: .
       dockerfile: ./workflow_engine/Dockerfile
@@ -225,6 +227,7 @@ services:
     dns:
       - 1.1.1.1
       - 8.8.8.8
+    # Removed extra_hosts to allow normal DNS resolution for SSL certificates
     build:
       context: .
       dockerfile: ./api-gateway/Dockerfile
@@ -294,3 +297,11 @@ volumes:
 networks:
   agent-team-network:
     driver: bridge
+    enable_ipv6: true
+    ipam:
+      driver: default
+      config:
+        - subnet: "172.18.0.0/16"
+          gateway: "172.18.0.1"
+        - subnet: "2001:db8::/64"
+          gateway: "2001:db8::1"
