@@ -16,8 +16,6 @@ from typing import Any, Dict, List, Optional
 # Add shared models to path
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
-from shared.models.execution import ExecutionStatus as SharedExecutionStatus
-
 from database import Database
 from models import ExecuteWorkflowRequest
 from nodes import ExecutionStatus, NodeExecutionContext, NodeExecutorFactory
@@ -27,6 +25,8 @@ from services.execution_log_service import (
     get_execution_log_service,
 )
 from utils.unicode_utils import clean_unicode_data, safe_json_dumps
+
+from shared.models.execution import ExecutionStatus as SharedExecutionStatus
 
 logger = logging.getLogger(__name__)
 logger.info("🔥 EXECUTOR DEBUG VERSION LOADED")
@@ -79,7 +79,7 @@ class WorkflowExecutor:
                         logger.debug(f"🔍 DEBUG: Direct table query result: {direct_result.data}")
 
                 except Exception as debug_e:
-                    logger.debug(f"🔍 DEBUG: Failed to debug workflow access: {debug_e}")
+                    logger.warning(f"🔍 Failed to debug workflow access: {debug_e}")
 
                 return None
 
@@ -577,13 +577,13 @@ class WorkflowExecutor:
                 },
             )
             try:
-                logger.error(f"🔥 DEBUG: About to add workflow start log entry for {execution_id}")
+                logger.debug(f"🔥 DEBUG: About to add workflow start log entry for {execution_id}")
                 await self.log_service.add_log_entry(start_entry)
-                logger.error(
+                logger.debug(
                     f"🔥 DEBUG: Successfully added workflow start log entry for {execution_id}"
                 )
             except Exception as e:
-                logger.error(f"🔥 DEBUG: Failed to add workflow start log: {e}")
+                logger.error(f"🔥 Failed to add workflow start log: {e}")
 
             # Get workflow definition
             workflow_definition = await self.get_workflow_definition(workflow_id)

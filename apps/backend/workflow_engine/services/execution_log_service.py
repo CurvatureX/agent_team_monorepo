@@ -187,7 +187,7 @@ class ExecutionLogService:
         try:
             # Clean the entry first to prevent Unicode issues
             entry = self._clean_log_entry(entry)
-            self.logger.error(f"🔥 DEBUG: Adding log entry {entry.execution_id}: {entry.message}")
+            self.logger.debug(f"🔥 DEBUG: Adding log entry {entry.execution_id}: {entry.message}")
 
             # 1. 存储到Redis缓存（所有日志）
             if self.redis_client:
@@ -201,22 +201,22 @@ class ExecutionLogService:
 
             # 3. 仅用户友好日志添加到批量写入缓冲区
             is_user_friendly = self._is_user_friendly_log(entry)
-            self.logger.error(
+            self.logger.debug(
                 f"🔥 DEBUG: Is user friendly: {is_user_friendly} for {entry.execution_id}"
             )
 
             if is_user_friendly:
                 await self._add_to_batch_buffer(entry)
-                self.logger.error(f"🔥 DEBUG: Added to batch buffer: {entry.execution_id}")
+                self.logger.debug(f"🔥 DEBUG: Added to batch buffer: {entry.execution_id}")
 
                 # DIRECT DATABASE WRITE for debugging - bypass batch system
                 try:
                     await self._direct_write_to_database(entry)
-                    self.logger.error(
+                    self.logger.debug(
                         f"🔥 DEBUG: Direct database write successful for {entry.execution_id}"
                     )
                 except Exception as direct_error:
-                    self.logger.error(f"🔥 DEBUG: Direct database write failed: {direct_error}")
+                    self.logger.error(f"🔥 Direct database write failed: {direct_error}")
 
         except Exception as e:
             self.logger.error(f"Failed to add log entry: {e}")
@@ -258,10 +258,10 @@ class ExecutionLogService:
             # Clean the result before logging to prevent Unicode issues
             if UNICODE_UTILS_AVAILABLE:
                 cleaned_result = clean_unicode_data(str(result)[:500])  # Truncate and clean
-                self.logger.error(f"🔥 DEBUG: Direct insert result: {cleaned_result}")
+                self.logger.debug(f"🔥 DEBUG: Direct insert result: {cleaned_result}")
             else:
                 # Fallback: just log success without details
-                self.logger.error(f"🔥 DEBUG: Direct insert completed successfully")
+                self.logger.debug(f"🔥 DEBUG: Direct insert completed successfully")
 
         except Exception as e:
             self.logger.error(f"Direct database write error: {e}")
@@ -306,13 +306,13 @@ class ExecutionLogService:
     def _start_batch_writer(self):
         """启动批量写入后台任务"""
         if not DATABASE_AVAILABLE:
-            self.logger.error("🔥 DEBUG: DATABASE_AVAILABLE is False, batch writer not started")
+            self.logger.debug("🔥 DEBUG: DATABASE_AVAILABLE is False, batch writer not started")
             return
 
-        self.logger.error("🔥 DEBUG: Starting batch writer initialization")
+        self.logger.debug("🔥 DEBUG: Starting batch writer initialization")
 
         async def batch_writer():
-            self.logger.error("🔥 DEBUG: Batch writer started successfully")
+            self.logger.debug("🔥 DEBUG: Batch writer started successfully")
             while not self._shutdown:
                 try:
                     await asyncio.sleep(1.0)  # 每1秒执行一次
@@ -325,16 +325,16 @@ class ExecutionLogService:
             # Try to get the running event loop (modern approach)
             loop = asyncio.get_running_loop()
             self._batch_writer_task = loop.create_task(batch_writer())
-            self.logger.error("🔥 DEBUG: Batch writer task created successfully")
+            self.logger.debug("🔥 DEBUG: Batch writer task created successfully")
         except RuntimeError:
             # No running event loop, defer task creation
-            self.logger.error("🔥 DEBUG: No running event loop, deferring batch writer start")
+            self.logger.debug("🔥 DEBUG: No running event loop, deferring batch writer start")
             self._batch_writer_task = None
 
     async def _flush_batch_buffer(self):
         """批量写入缓冲区中的日志到数据库"""
         if not DATABASE_AVAILABLE:
-            self.logger.error("🔥 DEBUG: DATABASE_AVAILABLE is False, cannot flush")
+            self.logger.debug("🔥 DEBUG: DATABASE_AVAILABLE is False, cannot flush")
             return
 
         # 获取待写入的日志条目
@@ -345,13 +345,13 @@ class ExecutionLogService:
 
             # 一次最多处理100条日志
             batch_size = min(len(self._batch_buffer), 100)
-            self.logger.error(f"🔥 DEBUG: Flushing {batch_size} entries from buffer")
+            self.logger.debug(f"🔥 DEBUG: Flushing {batch_size} entries from buffer")
             for _ in range(batch_size):
                 if self._batch_buffer:
                     entries_to_write.append(self._batch_buffer.popleft())
 
         if not entries_to_write:
-            self.logger.error("🔥 DEBUG: No entries to write after dequeue")
+            self.logger.debug("🔥 DEBUG: No entries to write after dequeue")
             return
 
         try:

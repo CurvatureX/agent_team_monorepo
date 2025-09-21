@@ -404,15 +404,59 @@ async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Dep
             icon_url=icon_url,
         )
 
-        if not result.get("success", False) or not result.get("workflow", {}).get("id"):
+        # Debug logging to understand response format
+        logger.info(f"🐛 DEBUG: Workflow Engine response: {result}")
+
+        # Check for Workflow Engine response format: {"id": "...", "status": "created", "workflow": {...}}
+        if not result.get("workflow", {}).get("id") or result.get("status") != "created":
+            logger.error(f"❌ Invalid response format from Workflow Engine: {result}")
             raise HTTPException(status_code=500, detail="Failed to create workflow")
 
         workflow_data = result["workflow"]
 
         logger.info(f"✅ Workflow created: {workflow_data['id']}")
 
-        # Create workflow object
-        workflow = Workflow(**workflow_data)
+        # Create workflow object - filter out extra fields from Workflow Engine
+        try:
+            # Log the workflow data structure for debugging
+            logger.info(f"🐛 DEBUG: workflow_data keys: {list(workflow_data.keys())}")
+
+            # Filter to only include fields that WorkflowData expects
+            filtered_data = {
+                key: value
+                for key, value in workflow_data.items()
+                if key
+                in [
+                    "id",
+                    "name",
+                    "description",
+                    "nodes",
+                    "connections",
+                    "settings",
+                    "static_data",
+                    "pin_data",
+                    "tags",
+                    "active",
+                    "created_at",
+                    "updated_at",
+                    "version",
+                    "icon_url",
+                    "deployment_status",
+                    "deployed_at",
+                    "latest_execution_status",
+                    "latest_execution_time",
+                    "latest_execution_id",
+                ]
+            }
+            logger.info(f"🐛 DEBUG: filtered_data keys: {list(filtered_data.keys())}")
+
+            workflow = Workflow(**filtered_data)
+        except Exception as model_error:
+            logger.error(f"❌ Error creating Workflow model: {model_error}")
+            logger.error(f"🐛 DEBUG: workflow_data: {workflow_data}")
+            raise HTTPException(
+                status_code=500, detail=f"Failed to create workflow object: {str(model_error)}"
+            )
 
         return WorkflowResponse(workflow=workflow, message="Workflow created successfully")
 

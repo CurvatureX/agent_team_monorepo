@@ -5,12 +5,13 @@ Handles OpenAI, Anthropic, and other AI provider integrations.
 """
 
 import asyncio
+import socket
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from shared.models.node_enums import NodeType
-
 from utils.unicode_utils import clean_unicode_string, safe_json_dumps
+
+from shared.models.node_enums import AIAgentSubtype, NodeType
 
 from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
 from .factory import NodeExecutorFactory
@@ -23,9 +24,67 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
     def __init__(self, node_type: str = NodeType.AI_AGENT.value, subtype: str = None):
         super().__init__(node_type, subtype)
 
+    async def _make_resilient_request(
+        self,
+        method: str,
+        url: str,
+        headers: dict,
+        content: str = None,
+        context: NodeExecutionContext = None,
+        max_retries: int = 3,
+        base_delay: float = 1.0,
+    ) -> "httpx.Response":
+        """Make HTTP request with retry logic for DNS and connection failures."""
+        import httpx
+
+        last_exception = None
+
+        for attempt in range(max_retries):
+            try:
+                async with httpx.AsyncClient() as client:
+                    if method.upper() == "POST":
+                        response = await client.post(
+                            url, headers=headers, content=content, timeout=30.0
+                        )
+                    else:
+                        response = await client.get(url, headers=headers, timeout=30.0)
+                    return response
+
+            except (socket.gaierror, httpx.ConnectError, httpx.TimeoutException) as e:
+                last_exception = e
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2**attempt)  # Exponential backoff
+                    if context:
+                        self.log_execution(
+                            context,
+                            f"⚠️ AI API request failed (attempt {attempt + 1}/{max_retries}): {str(e)}. Retrying in {delay}s...",
+                            "WARNING",
+                        )
+                    await asyncio.sleep(delay)
+                else:
+                    if context:
+                        self.log_execution(
+                            context,
+                            f"❌ All {max_retries} AI API retry attempts failed. Last error: {str(e)}",
+                            "ERROR",
+                        )
+                    raise e
+            except Exception as e:
+                # For non-network errors, don't retry
+                if context:
+                    self.log_execution(context, f"❌ Non-retryable AI API error: {str(e)}", "ERROR")
+                raise e
+
+        # This should never be reached, but just in case
+        raise last_exception if last_exception else Exception(
+            "Unknown error in resilient AI API request"
+        )
+
     async def execute(self, context: NodeExecutionContext) -> NodeExecutionResult:
         """Execute AI agent node with memory integration."""
-        provider = self.subtype or context.get_parameter("provider", "openai")
+        provider = self.subtype or context.get_parameter(
+            "provider", AIAgentSubtype.OPENAI_CHATGPT.value
+        )
         model = context.get_parameter("model_version", "gpt-4")
         system_prompt = context.get_parameter("system_prompt", "")
 
@@ -104,14 +163,17 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
         import httpx
 
         try:
-            if provider.lower() in ["openai", "openai_chatgpt"]:
+            if provider in [AIAgentSubtype.OPENAI_CHATGPT.value]:
                 return await self._call_openai(model, system_prompt, user_message)
-            elif provider.lower() in ["anthropic", "claude"]:
+            elif provider in [AIAgentSubtype.ANTHROPIC_CLAUDE.value]:
                 return await self._call_anthropic(model, system_prompt, user_message)
+            elif provider in [AIAgentSubtype.GOOGLE_GEMINI.value]:
+                return await self._call_google_gemini(model, system_prompt, user_message)
             else:
                 # Return error for unsupported AI providers
+                supported_providers = [e.value for e in AIAgentSubtype]
                 raise ValueError(
-                    f"Unsupported AI provider: {provider}. Supported providers: openai, anthropic, claude"
+                    f"Unsupported AI provider: {provider}. Supported providers: {supported_providers}"
                 )
 
         except Exception as e:
@@ -185,13 +247,13 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                 )
                 return f"[OpenAI Encoding Error] Could not encode message properly. Fallback: Processing message with cleaned content."
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers=headers,
-                content=json_data,
-                timeout=30.0,
-            )
+        response = await self._make_resilient_request(
+            "POST",
+            "https://api.openai.com/v1/chat/completions",
+            headers,
+            json_data,
+            context=None,  # We don't have context in this method, but it's optional
+        )
 
         result = response.json()
 
@@ -263,13 +325,13 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
                 )
                 return f"[Anthropic Encoding Error] Could not encode message properly. Fallback: Processing message with cleaned content."
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers=headers,
-                content=json_data,
-                timeout=30.0,
-            )
+        response = await self._make_resilient_request(
+            "POST",
+            "https://api.anthropic.com/v1/messages",
+            headers,
+            json_data,
+            context=None,  # We don't have context in this method, but it's optional
+        )
 
         result = response.json()
 
@@ -471,3 +533,20 @@ class AIAgentNodeExecutor(BaseNodeExecutor):
             self.log_execution(
                 context, f"🧠 Error storing conversation in memory: {str(e)}", "ERROR"
             )
+
+    async def _call_google_gemini(self, model: str, system_prompt: str, user_message: str) -> str:
+        """Call Google Gemini API."""
+        import os
+
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "Google API key not found. Set GOOGLE_API_KEY environment variable. "
+                "Get your API key from: https://makersuite.google.com/app/apikey"
+            )
+
+        # For now, return a clear error that Google Gemini integration needs to be implemented
+        raise ValueError(
+            "Google Gemini integration not yet implemented. "
+            "Please use OPENAI_CHATGPT or ANTHROPIC_CLAUDE providers instead."
+        )

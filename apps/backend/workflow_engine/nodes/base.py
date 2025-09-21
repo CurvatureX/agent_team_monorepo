@@ -96,16 +96,16 @@ class BaseNodeExecutor(ABC):
         self.logger = logging.getLogger(f"{self.__class__.__name__}")
 
         # Debug logging service initialization
-        logger.error(f"🔧 DEBUG: LOGGING_SERVICE_AVAILABLE = {LOGGING_SERVICE_AVAILABLE}")
+        logger.debug(f"🔧 DEBUG: LOGGING_SERVICE_AVAILABLE = {LOGGING_SERVICE_AVAILABLE}")
         if LOGGING_SERVICE_AVAILABLE:
             try:
                 self.log_service = get_execution_log_service()
-                logger.error(f"🔧 DEBUG: Log service initialized successfully: {self.log_service}")
+                logger.debug(f"🔧 DEBUG: Log service initialized successfully: {self.log_service}")
             except Exception as e:
-                logger.error(f"🔧 DEBUG: Failed to initialize log service: {e}")
+                logger.debug(f"🔧 DEBUG: Failed to initialize log service: {e}")
                 self.log_service = None
         else:
-            logger.error(f"🔧 DEBUG: Logging service not available - import failed")
+            logger.debug(f"🔧 DEBUG: Logging service not available - import failed")
             self.log_service = None
 
     @abstractmethod
@@ -138,9 +138,9 @@ class BaseNodeExecutor(ABC):
 
     async def execute_with_logging(self, context: NodeExecutionContext) -> NodeExecutionResult:
         """Execute node with comprehensive logging."""
-        logger.error(f"🔧 DEBUG: execute_with_logging called for {context.node_id}")
-        logger.error(f"🔧 DEBUG: self.log_service = {self.log_service}")
-        logger.error(f"🔧 DEBUG: LOGGING_SERVICE_AVAILABLE = {LOGGING_SERVICE_AVAILABLE}")
+        logger.debug(f"🔧 DEBUG: execute_with_logging called for {context.node_id}")
+        logger.debug(f"🔧 DEBUG: self.log_service = {self.log_service}")
+        logger.debug(f"🔧 DEBUG: LOGGING_SERVICE_AVAILABLE = {LOGGING_SERVICE_AVAILABLE}")
 
         start_time = datetime.now()
         self.log_execution(context, f"Starting execution of {self.node_type} node")

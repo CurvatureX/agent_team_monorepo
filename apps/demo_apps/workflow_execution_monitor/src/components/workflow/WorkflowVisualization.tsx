@@ -303,7 +303,7 @@ export const WorkflowVisualization: React.FC<WorkflowVisualizationProps> = ({
       return {
         id: node.id,
         type: 'custom',
-        position: node.position,
+        position: node.position || { x: 100 + (index * 200), y: 100 },
         data: {
           ...node.data,
           type: node.type,
