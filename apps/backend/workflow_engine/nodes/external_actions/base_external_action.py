@@ -2,6 +2,62 @@
 Base external action class for external action handlers.
 """
 
+# Apply comprehensive DNS fix for Docker containers
+import socket
+
+# Patch socket.getaddrinfo
+original_getaddrinfo = getattr(socket, "_original_getaddrinfo", socket.getaddrinfo)
+
+
+def ipv4_only_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    """Force IPv4-only DNS resolution to fix Docker DNS issues."""
+    try:
+        # Force IPv4 family
+        return original_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
+    except Exception as e:
+        # Log the error for debugging
+        print(f"DNS resolution failed for {host}:{port} - {e}")
+        raise
+
+
+# Apply socket patch
+if not hasattr(socket, "_original_getaddrinfo"):
+    socket._original_getaddrinfo = socket.getaddrinfo
+    socket.getaddrinfo = ipv4_only_getaddrinfo
+
+# Also patch urllib3 connection creation
+try:
+    import urllib3.util.connection
+
+    if not hasattr(urllib3.util.connection, "_original_create_connection"):
+        original_create_connection = urllib3.util.connection.create_connection
+
+        def patched_create_connection(
+            address, timeout=None, source_address=None, socket_options=None
+        ):
+            """Patched connection that uses our IPv4-only DNS resolution."""
+            host, port = address
+            try:
+                # Use our patched getaddrinfo to resolve to IPv4
+                addr_info = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)
+                if addr_info:
+                    # Use first IPv4 address
+                    ipv4_address = (addr_info[0][4][0], port)
+                    return original_create_connection(
+                        ipv4_address, timeout, source_address, socket_options
+                    )
+            except Exception as e:
+                print(f"Connection creation failed for {host}:{port} - {e}")
+                raise
+            return original_create_connection(address, timeout, source_address, socket_options)
+
+        urllib3.util.connection._original_create_connection = original_create_connection
+        urllib3.util.connection.create_connection = patched_create_connection
+
+except ImportError:
+    # urllib3 not available, skip this patch
+    pass
+
 from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Any, Dict, Optional

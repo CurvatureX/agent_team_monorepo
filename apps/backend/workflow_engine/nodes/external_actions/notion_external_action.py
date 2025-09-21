@@ -2,11 +2,12 @@
 Notion external action for external actions.
 """
 
+import asyncio
+import socket
 from datetime import datetime
 from typing import Any, Dict
 
 import httpx
-
 from nodes.base import ExecutionStatus, NodeExecutionContext, NodeExecutionResult
 
 from .base_external_action import BaseExternalAction
@@ -17,6 +18,58 @@ class NotionExternalAction(BaseExternalAction):
 
     def __init__(self):
         super().__init__("notion")
+
+    async def _make_resilient_request(
+        self,
+        method: str,
+        url: str,
+        headers: dict,
+        json_data: dict = None,
+        context: NodeExecutionContext = None,
+        max_retries: int = 3,
+        base_delay: float = 1.0,
+    ) -> httpx.Response:
+        """Make HTTP request with retry logic for DNS and connection failures."""
+        last_exception = None
+
+        for attempt in range(max_retries):
+            try:
+                async with httpx.AsyncClient() as client:
+                    if method.upper() == "POST":
+                        response = await client.post(
+                            url, headers=headers, json=json_data, timeout=30.0
+                        )
+                    else:
+                        response = await client.get(url, headers=headers, timeout=30.0)
+                    return response
+
+            except (socket.gaierror, httpx.ConnectError, httpx.TimeoutException) as e:
+                last_exception = e
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2**attempt)  # Exponential backoff
+                    if context:
+                        self.log_execution(
+                            context,
+                            f"⚠️ Request failed (attempt {attempt + 1}/{max_retries}): {str(e)}. Retrying in {delay}s...",
+                            "WARNING",
+                        )
+                    await asyncio.sleep(delay)
+                else:
+                    if context:
+                        self.log_execution(
+                            context,
+                            f"❌ All {max_retries} retry attempts failed. Last error: {str(e)}",
+                            "ERROR",
+                        )
+                    raise e
+            except Exception as e:
+                # For non-network errors, don't retry
+                if context:
+                    self.log_execution(context, f"❌ Non-retryable error: {str(e)}", "ERROR")
+                raise e
+
+        # This should never be reached, but just in case
+        raise last_exception if last_exception else Exception("Unknown error in resilient request")
 
     async def handle_operation(
         self, context: NodeExecutionContext, operation: str
@@ -119,13 +172,9 @@ class NotionExternalAction(BaseExternalAction):
 
         self.log_execution(context, f"Creating Notion page: {title}")
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "https://api.notion.com/v1/pages",
-                headers=headers,
-                json=payload,
-                timeout=30.0,
-            )
+        response = await self._make_resilient_request(
+            "POST", "https://api.notion.com/v1/pages", headers, payload, context
+        )
 
         if response.status_code == 200:
             result = response.json()
@@ -184,13 +233,13 @@ class NotionExternalAction(BaseExternalAction):
 
         self.log_execution(context, f"Querying Notion database: {database_id}")
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"https://api.notion.com/v1/databases/{database_id}/query",
-                headers=headers,
-                json=payload,
-                timeout=30.0,
-            )
+        response = await self._make_resilient_request(
+            "POST",
+            f"https://api.notion.com/v1/databases/{database_id}/query",
+            headers,
+            payload,
+            context,
+        )
 
         if response.status_code == 200:
             result = response.json()
@@ -274,12 +323,9 @@ class NotionExternalAction(BaseExternalAction):
 
         self.log_execution(context, f"Getting Notion page: {page_id}")
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"https://api.notion.com/v1/pages/{page_id}",
-                headers=headers,
-                timeout=30.0,
-            )
+        response = await self._make_resilient_request(
+            "GET", f"https://api.notion.com/v1/pages/{page_id}", headers, None, context
+        )
 
         if response.status_code == 200:
             result = response.json()
@@ -338,13 +384,9 @@ class NotionExternalAction(BaseExternalAction):
 
         self.log_execution(context, "Listing Notion databases")
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "https://api.notion.com/v1/search",
-                headers=headers,
-                json=payload,
-                timeout=30.0,
-            )
+        response = await self._make_resilient_request(
+            "POST", "https://api.notion.com/v1/search", headers, payload, context
+        )
 
         if response.status_code == 200:
             result = response.json()
