@@ -108,9 +108,9 @@ terraform apply
 - **Workflow Scheduler**: 8003 (HTTP/REST) - Trigger management and scheduling
 
 ### Authentication Layers
-- **Public API** (`/api/public/*`): No auth, rate-limited public endpoints
-- **App API** (`/api/app/*`): Supabase OAuth + JWT for web/mobile apps
-- **MCP API** (`/api/mcp/*`): API Key authentication for LLM clients
+- **Public API** (`/api/v1/public/*`): No auth, rate-limited public endpoints
+- **App API** (`/api/v1/app/*`): Supabase OAuth + JWT for web/mobile apps
+- **MCP API** (`/api/v1/mcp/*`): API Key authentication for LLM clients
 
 ### Service Communication
 - **Internal**: HTTP/REST between services (migrated from gRPC)
@@ -431,7 +431,7 @@ psql $SUPABASE_DATABASE_URL -c "SELECT version();"
 
 ### Service-Specific OAuth Requirements
 
-- **API Gateway**: Needs OAuth credentials for generating install links (`/integrations/install-links`)
+- **API Gateway**: Needs OAuth credentials for generating install links (`/api/v1/app/integrations/install-links`)
 - **Workflow Scheduler**: Needs OAuth credentials for handling callbacks (`/auth/{provider}/callback`)
 - **Workflow Agent**: May need credentials for AI-driven OAuth operations
 - **Workflow Engine**: Usually doesn't need OAuth credentials directly
