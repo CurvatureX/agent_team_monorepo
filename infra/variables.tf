@@ -147,6 +147,13 @@ variable "openai_api_key" {
   sensitive   = true
 }
 
+variable "openai_model" {
+  description = "OpenAI model to use (e.g., gpt-4o, gpt-4o-mini, o1-preview)"
+  type        = string
+  sensitive   = true
+  default     = "gpt-4o"
+}
+
 variable "anthropic_api_key" {
   description = "Anthropic API key"
   type        = string
