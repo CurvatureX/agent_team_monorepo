@@ -79,7 +79,7 @@ class LLMConfig:
         # Common settings
         self.temperature = float(os.getenv("LLM_TEMPERATURE", "0"))
         self.max_tokens = int(os.getenv("LLM_MAX_TOKENS", "4096"))
-        self.timeout = int(os.getenv("LLM_TIMEOUT", "60"))
+        self.timeout = int(os.getenv("LLM_TIMEOUT", "1200"))
 
         # Embedding settings (for RAG)
         self.embedding_provider = os.getenv("EMBEDDING_PROVIDER", "openai").lower()
@@ -193,6 +193,8 @@ class LLMFactory:
                 "model": model_name,
                 "temperature": temperature,
                 "timeout": config.timeout,
+                "max_retries": 3,  # Add retry configuration
+                "request_timeout": config.timeout,  # Explicit request timeout
                 **kwargs
             }
 
