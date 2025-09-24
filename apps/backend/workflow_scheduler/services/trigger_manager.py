@@ -60,24 +60,43 @@ class TriggerManager:
                         await t.cleanup()
                     return False
 
-            # Start all triggers
+            # Start all triggers (allow partial failures)
+            successful_triggers = []
+            failed_triggers = []
+
             for trigger in triggers:
                 success = await trigger.start()
-                if not success:
-                    logger.error(
-                        f"Failed to start trigger {trigger.trigger_type} for workflow {workflow_id}"
+                if success:
+                    successful_triggers.append(trigger)
+                    logger.info(
+                        f"✅ Started trigger {trigger.trigger_type} for workflow {workflow_id}"
                     )
-                    # Cleanup all triggers
-                    for t in triggers:
-                        await t.stop()
-                        await t.cleanup()
-                    return False
+                else:
+                    failed_triggers.append(trigger)
+                    logger.warning(
+                        f"⚠️ Failed to start trigger {trigger.trigger_type} for workflow {workflow_id}, continuing with other triggers"
+                    )
+                    # Clean up the failed trigger
+                    await trigger.stop()
+                    await trigger.cleanup()
 
-            # Store triggers
-            self._triggers[workflow_id] = triggers
+            # If no triggers started successfully, consider it a failure
+            if not successful_triggers:
+                logger.error(f"❌ No triggers started successfully for workflow {workflow_id}")
+                return False
+
+            # Log summary of results
+            if failed_triggers:
+                logger.warning(
+                    f"⚠️ Partial deployment success for workflow {workflow_id}: "
+                    f"{len(successful_triggers)} triggers started, {len(failed_triggers)} failed"
+                )
+
+            # Store only successful triggers
+            self._triggers[workflow_id] = successful_triggers
 
             logger.info(
-                f"Successfully registered {len(triggers)} triggers for workflow {workflow_id}"
+                f"Successfully registered {len(successful_triggers)} triggers for workflow {workflow_id}"
             )
             return True
 
@@ -146,7 +165,9 @@ class TriggerManager:
 
         return status
 
-    async def trigger_manual(self, workflow_id: str, user_id: str) -> ExecutionResult:
+    async def trigger_manual(
+        self, workflow_id: str, user_id: str, access_token: Optional[str] = None
+    ) -> ExecutionResult:
         """
         Manually trigger a workflow execution
 
@@ -175,11 +196,12 @@ class TriggerManager:
 
             # Call the manual trigger's specific method
             if hasattr(manual_trigger, "trigger_manual"):
-                return await manual_trigger.trigger_manual(user_id)
+                return await manual_trigger.trigger_manual(user_id, access_token)
             else:
                 # Fallback to base trigger method
                 return await manual_trigger._trigger_workflow(
-                    {"trigger_type": TriggerSubtype.MANUAL.value, "user_id": user_id}
+                    {"trigger_type": TriggerSubtype.MANUAL.value, "user_id": user_id},
+                    access_token=access_token,
                 )
 
         except Exception as e:

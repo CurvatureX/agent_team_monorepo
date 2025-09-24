@@ -10,6 +10,7 @@ from ..base import (
     ConnectionType,
     DataFormat,
     InputPortSpec,
+    ManualInvocationSpec,
     NodeSpec,
     OutputPortSpec,
     ParameterDef,
@@ -55,6 +56,45 @@ MANUAL_TRIGGER_SPEC = NodeSpec(
             validation_schema='{"type": "object", "properties": {"trigger_time": {"type": "string"}, "execution_id": {"type": "string"}, "user_id": {"type": "string"}}, "required": ["trigger_time", "execution_id"]}',
         )
     ],
+    manual_invocation=ManualInvocationSpec(
+        supported=True,
+        description="Manual triggers can be invoked directly with custom context data",
+        parameter_schema={
+            "type": "object",
+            "properties": {
+                "trigger_context": {
+                    "type": "object",
+                    "description": "Custom context data for manual execution",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Description of this manual execution",
+                },
+            },
+        },
+        parameter_examples=[
+            {
+                "name": "Simple Manual Trigger",
+                "description": "Basic manual trigger execution",
+                "parameters": {
+                    "trigger_context": {"source": "manual", "purpose": "testing"},
+                    "description": "Testing workflow manually",
+                },
+            },
+            {
+                "name": "Emergency Execution",
+                "description": "Emergency workflow execution",
+                "parameters": {
+                    "trigger_context": {"source": "emergency", "urgency": "high"},
+                    "description": "Emergency execution due to system alert",
+                },
+            },
+        ],
+        default_parameters={
+            "trigger_context": {"source": "manual"},
+            "description": "Manual workflow execution",
+        },
+    ),
 )
 
 
@@ -105,6 +145,43 @@ CRON_TRIGGER_SPEC = NodeSpec(
             validation_schema='{"type": "object", "properties": {"trigger_time": {"type": "string"}, "execution_id": {"type": "string"}, "scheduled_time": {"type": "string"}}, "required": ["trigger_time", "execution_id", "scheduled_time"]}',
         )
     ],
+    manual_invocation=ManualInvocationSpec(
+        supported=True,
+        description="Simulate cron trigger execution with custom scheduled time",
+        parameter_schema={
+            "type": "object",
+            "properties": {
+                "scheduled_time": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Simulated scheduled execution time (ISO format)",
+                },
+                "cron_context": {
+                    "type": "object",
+                    "description": "Additional context for cron execution",
+                },
+            },
+        },
+        parameter_examples=[
+            {
+                "name": "Test Daily Job",
+                "description": "Simulate daily scheduled execution",
+                "parameters": {
+                    "scheduled_time": "2025-01-28T09:00:00Z",
+                    "cron_context": {"job_type": "daily", "simulation": True},
+                },
+            },
+            {
+                "name": "Test Weekly Report",
+                "description": "Simulate weekly report generation",
+                "parameters": {
+                    "scheduled_time": "2025-01-27T00:00:00Z",
+                    "cron_context": {"job_type": "weekly", "report_type": "analytics"},
+                },
+            },
+        ],
+        default_parameters={"cron_context": {"simulation": True}},
+    ),
 )
 
 
@@ -163,6 +240,66 @@ WEBHOOK_TRIGGER_SPEC = NodeSpec(
             validation_schema='{"type": "object", "properties": {"headers": {"type": "object"}, "body": {"type": "object"}, "query_params": {"type": "object"}, "method": {"type": "string"}, "path": {"type": "string"}}, "required": ["method", "path"]}',
         )
     ],
+    manual_invocation=ManualInvocationSpec(
+        supported=True,
+        description="Simulate webhook HTTP requests with custom headers, body, and query parameters",
+        parameter_schema={
+            "type": "object",
+            "properties": {
+                "method": {
+                    "type": "string",
+                    "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"],
+                    "default": "POST",
+                    "description": "HTTP method",
+                },
+                "headers": {
+                    "type": "object",
+                    "description": "HTTP headers",
+                    "default": {"Content-Type": "application/json"},
+                },
+                "body": {"type": "object", "description": "Request body payload"},
+                "query_params": {"type": "object", "description": "URL query parameters"},
+            },
+        },
+        parameter_examples=[
+            {
+                "name": "Simple API Webhook",
+                "description": "Basic webhook with JSON payload",
+                "parameters": {
+                    "method": "POST",
+                    "headers": {"Content-Type": "application/json", "X-Source": "api"},
+                    "body": {"event": "user.created", "user_id": 123},
+                },
+            },
+            {
+                "name": "GitHub Push Webhook",
+                "description": "Simulate GitHub push event",
+                "parameters": {
+                    "method": "POST",
+                    "headers": {"X-GitHub-Event": "push"},
+                    "body": {
+                        "ref": "refs/heads/main",
+                        "repository": {"name": "test-repo"},
+                        "commits": [{"message": "Test commit"}],
+                    },
+                },
+            },
+            {
+                "name": "Form Data Webhook",
+                "description": "Webhook with form data",
+                "parameters": {
+                    "method": "POST",
+                    "headers": {"Content-Type": "application/x-www-form-urlencoded"},
+                    "body": {"name": "John Doe", "email": "john@example.com"},
+                },
+            },
+        ],
+        default_parameters={
+            "method": "POST",
+            "headers": {"Content-Type": "application/json"},
+            "body": {},
+        },
+    ),
 )
 
 
@@ -176,7 +313,7 @@ SLACK_TRIGGER_SPEC = NodeSpec(
             name="workspace_id",
             type=ParameterType.STRING,
             required=False,
-            description="Slack workspace ID to monitor (default: all connected workspaces)",
+            description="Slack workspace ID to monitor (auto-resolved from user's OAuth token - should not be manually configured)",
         ),
         ParameterDef(
             name="channel_filter",
@@ -215,12 +352,6 @@ SLACK_TRIGGER_SPEC = NodeSpec(
             description="Command prefix to respond to (e.g., '!', '/')",
         ),
         ParameterDef(
-            name="user_filter",
-            type=ParameterType.STRING,
-            required=False,
-            description="Filter by user ID or username (regex pattern)",
-        ),
-        ParameterDef(
             name="ignore_bots",
             type=ParameterType.BOOLEAN,
             required=False,
@@ -252,6 +383,78 @@ SLACK_TRIGGER_SPEC = NodeSpec(
             validation_schema='{"type": "object", "properties": {"event_type": {"type": "string"}, "message": {"type": "string"}, "user_id": {"type": "string"}, "channel_id": {"type": "string"}, "team_id": {"type": "string"}, "timestamp": {"type": "string"}, "thread_ts": {"type": ["string", "null"]}, "event_data": {"type": "object"}}, "required": ["event_type", "user_id", "channel_id", "team_id", "timestamp"]}',
         )
     ],
+    manual_invocation=ManualInvocationSpec(
+        supported=True,
+        description="Simulate Slack events like messages, mentions, and interactions",
+        parameter_schema={
+            "type": "object",
+            "properties": {
+                "event_type": {
+                    "type": "string",
+                    "enum": [
+                        "message",
+                        "app_mention",
+                        "reaction_added",
+                        "pin_added",
+                        "file_shared",
+                    ],
+                    "default": "message",
+                    "description": "Type of Slack event to simulate",
+                },
+                "message": {"type": "string", "description": "Message text content"},
+                "user_id": {
+                    "type": "string",
+                    "default": "U1234567890",
+                    "description": "Slack user ID",
+                },
+                "channel_name": {
+                    "type": "string",
+                    "default": "general",
+                    "description": "Slack channel name",
+                },
+                "thread_ts": {"type": "string", "description": "Thread timestamp (optional)"},
+            },
+            "required": ["message"],
+        },
+        parameter_examples=[
+            {
+                "name": "Simple Message",
+                "description": "Basic Slack message",
+                "parameters": {
+                    "event_type": "message",
+                    "message": "Hello from the workflow!",
+                    "user_id": "U1234567890",
+                    "channel_name": "general",
+                },
+            },
+            {
+                "name": "Bot Mention",
+                "description": "Message mentioning the bot",
+                "parameters": {
+                    "event_type": "app_mention",
+                    "message": "@bot please help with this task",
+                    "user_id": "U1234567890",
+                    "channel_name": "support",
+                },
+            },
+            {
+                "name": "Thread Reply",
+                "description": "Reply in a thread",
+                "parameters": {
+                    "event_type": "message",
+                    "message": "This is a thread reply",
+                    "user_id": "U1234567890",
+                    "channel_name": "general",
+                    "thread_ts": "1642505400.123456",
+                },
+            },
+        ],
+        default_parameters={
+            "event_type": "message",
+            "user_id": "U1234567890",
+            "channel_name": "general",
+        },
+    ),
 )
 
 
@@ -306,6 +509,56 @@ EMAIL_TRIGGER_SPEC = NodeSpec(
             validation_schema='{"type": "object", "properties": {"from": {"type": "string"}, "to": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}, "attachments": {"type": "array"}, "timestamp": {"type": "string"}}, "required": ["from", "subject", "timestamp"]}',
         )
     ],
+    manual_invocation=ManualInvocationSpec(
+        supported=True,
+        description="Simulate incoming email messages with custom sender, subject, and content",
+        parameter_schema={
+            "type": "object",
+            "properties": {
+                "from": {
+                    "type": "string",
+                    "format": "email",
+                    "description": "Email sender address",
+                },
+                "subject": {"type": "string", "description": "Email subject line"},
+                "body": {"type": "string", "description": "Email body content"},
+                "to": {
+                    "type": "string",
+                    "format": "email",
+                    "description": "Email recipient (optional)",
+                },
+                "attachments": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of attachment filenames",
+                },
+            },
+            "required": ["from", "subject", "body"],
+        },
+        parameter_examples=[
+            {
+                "name": "Customer Support Email",
+                "description": "Simulate customer support request",
+                "parameters": {
+                    "from": "customer@example.com",
+                    "subject": "Login Issue - Urgent",
+                    "body": "I cannot access my account. Please help!",
+                    "attachments": ["screenshot.png"],
+                },
+            },
+            {
+                "name": "Newsletter Email",
+                "description": "Simulate newsletter subscription",
+                "parameters": {
+                    "from": "newsletter@company.com",
+                    "subject": "Weekly Update - January 2025",
+                    "body": "Here are this week's highlights...",
+                    "attachments": [],
+                },
+            },
+        ],
+        default_parameters={"attachments": []},
+    ),
 )
 
 
@@ -397,4 +650,72 @@ GITHUB_TRIGGER_SPEC = NodeSpec(
             validation_schema='{"type": "object", "properties": {"event": {"type": "string"}, "action": {"type": ["string", "null"]}, "repository": {"type": "object"}, "sender": {"type": "object"}, "payload": {"type": "object"}, "timestamp": {"type": "string"}, "review_state": {"type": ["string", "null"]}, "ref_type": {"type": ["string", "null"]}, "workflow": {"type": ["object", "null"]}, "job": {"type": ["object", "null"]}}, "required": ["event", "repository", "sender", "payload", "timestamp"]}',
         )
     ],
+    manual_invocation=ManualInvocationSpec(
+        supported=True,
+        description="Simulate GitHub webhook events like push, pull request, and workflow events",
+        parameter_schema={
+            "type": "object",
+            "properties": {
+                "event": {
+                    "type": "string",
+                    "enum": [
+                        "push",
+                        "pull_request",
+                        "issues",
+                        "release",
+                        "workflow_run",
+                        "create",
+                        "delete",
+                    ],
+                    "default": "push",
+                    "description": "GitHub event type",
+                },
+                "action": {
+                    "type": "string",
+                    "description": "Event action (e.g., opened, closed, synchronize)",
+                },
+                "repository": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$",
+                    "description": "Repository in owner/name format",
+                },
+                "ref": {"type": "string", "description": "Git reference (branch/tag)"},
+                "payload": {"type": "object", "description": "Event-specific payload data"},
+            },
+            "required": ["event", "repository"],
+        },
+        parameter_examples=[
+            {
+                "name": "Push to Main",
+                "description": "Simulate push to main branch",
+                "parameters": {
+                    "event": "push",
+                    "repository": "myorg/myrepo",
+                    "ref": "refs/heads/main",
+                    "payload": {"commits": [{"message": "Fix critical bug", "id": "abc123"}]},
+                },
+            },
+            {
+                "name": "Pull Request Opened",
+                "description": "Simulate new pull request",
+                "parameters": {
+                    "event": "pull_request",
+                    "action": "opened",
+                    "repository": "myorg/myrepo",
+                    "payload": {"number": 42, "title": "Add new feature", "draft": False},
+                },
+            },
+            {
+                "name": "Release Created",
+                "description": "Simulate new release",
+                "parameters": {
+                    "event": "release",
+                    "action": "published",
+                    "repository": "myorg/myrepo",
+                    "payload": {"tag_name": "v1.2.0", "name": "Version 1.2.0"},
+                },
+            },
+        ],
+        default_parameters={"event": "push", "ref": "refs/heads/main"},
+    ),
 )

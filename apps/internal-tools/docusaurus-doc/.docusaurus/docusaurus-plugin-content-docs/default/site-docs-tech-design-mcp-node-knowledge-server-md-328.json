@@ -14,8 +14,8 @@
   "frontMatter": {},
   "sidebar": "tutorialSidebar",
   "previous": {
-    "title": "gRPC 迁移到 FastAPI + Pydantic 技术方案",
-    "permalink": "/docs/tech-design/grpc-to-fastapi-migration"
+    "title": "Manual Trigger Invocation System - Technical Design",
+    "permalink": "/docs/tech-design/manual-trigger-invocation-system"
   },
   "next": {
     "title": "📚 AI Teams 分布式监控系统完整使用手册",

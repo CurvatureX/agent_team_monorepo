@@ -3,41 +3,6 @@ import ComponentCreator from '@docusaurus/ComponentCreator';
 
 export default [
   {
-    path: '/__docusaurus/debug',
-    component: ComponentCreator('/__docusaurus/debug', '5ff'),
-    exact: true
-  },
-  {
-    path: '/__docusaurus/debug/config',
-    component: ComponentCreator('/__docusaurus/debug/config', '5ba'),
-    exact: true
-  },
-  {
-    path: '/__docusaurus/debug/content',
-    component: ComponentCreator('/__docusaurus/debug/content', 'a2b'),
-    exact: true
-  },
-  {
-    path: '/__docusaurus/debug/globalData',
-    component: ComponentCreator('/__docusaurus/debug/globalData', 'c3c'),
-    exact: true
-  },
-  {
-    path: '/__docusaurus/debug/metadata',
-    component: ComponentCreator('/__docusaurus/debug/metadata', '156'),
-    exact: true
-  },
-  {
-    path: '/__docusaurus/debug/registry',
-    component: ComponentCreator('/__docusaurus/debug/registry', '88c'),
-    exact: true
-  },
-  {
-    path: '/__docusaurus/debug/routes',
-    component: ComponentCreator('/__docusaurus/debug/routes', '000'),
-    exact: true
-  },
-  {
     path: '/blog',
     component: ComponentCreator('/blog', 'b2f'),
     exact: true
@@ -114,15 +79,15 @@ export default [
   },
   {
     path: '/docs',
-    component: ComponentCreator('/docs', '6e5'),
+    component: ComponentCreator('/docs', '0c5'),
     routes: [
       {
         path: '/docs',
-        component: ComponentCreator('/docs', 'd3d'),
+        component: ComponentCreator('/docs', 'c3e'),
         routes: [
           {
             path: '/docs',
-            component: ComponentCreator('/docs', 'd92'),
+            component: ComponentCreator('/docs', '9b6'),
             routes: [
               {
                 path: '/docs/',
@@ -161,8 +126,20 @@ export default [
                 sidebar: "tutorialSidebar"
               },
               {
+                path: '/docs/development/SUPABASE_RPC_FUNCTIONS',
+                component: ComponentCreator('/docs/development/SUPABASE_RPC_FUNCTIONS', 'add'),
+                exact: true,
+                sidebar: "tutorialSidebar"
+              },
+              {
                 path: '/docs/development/workflow_agent_mvp_plan',
                 component: ComponentCreator('/docs/development/workflow_agent_mvp_plan', 'a82'),
+                exact: true,
+                sidebar: "tutorialSidebar"
+              },
+              {
+                path: '/docs/development/workflow_engine_analysis',
+                component: ComponentCreator('/docs/development/workflow_engine_analysis', '8ee'),
                 exact: true,
                 sidebar: "tutorialSidebar"
               },
@@ -187,6 +164,30 @@ export default [
               {
                 path: '/docs/product-design/core-product-design',
                 component: ComponentCreator('/docs/product-design/core-product-design', '12d'),
+                exact: true,
+                sidebar: "tutorialSidebar"
+              },
+              {
+                path: '/docs/product-design/pmo_agent_workflow',
+                component: ComponentCreator('/docs/product-design/pmo_agent_workflow', 'e83'),
+                exact: true,
+                sidebar: "tutorialSidebar"
+              },
+              {
+                path: '/docs/product-design/pmo_agent_workflow_zh',
+                component: ComponentCreator('/docs/product-design/pmo_agent_workflow_zh', 'efe'),
+                exact: true,
+                sidebar: "tutorialSidebar"
+              },
+              {
+                path: '/docs/product-design/privacy-policy',
+                component: ComponentCreator('/docs/product-design/privacy-policy', 'af8'),
+                exact: true,
+                sidebar: "tutorialSidebar"
+              },
+              {
+                path: '/docs/product-design/terms-of-service',
+                component: ComponentCreator('/docs/product-design/terms-of-service', 'fe0'),
                 exact: true,
                 sidebar: "tutorialSidebar"
               },
@@ -221,6 +222,18 @@ export default [
                 sidebar: "tutorialSidebar"
               },
               {
+                path: '/docs/tech-design/execution_log_api_design',
+                component: ComponentCreator('/docs/tech-design/execution_log_api_design', 'e05'),
+                exact: true,
+                sidebar: "tutorialSidebar"
+              },
+              {
+                path: '/docs/tech-design/frontend_integration_examples',
+                component: ComponentCreator('/docs/tech-design/frontend_integration_examples', 'a16'),
+                exact: true,
+                sidebar: "tutorialSidebar"
+              },
+              {
                 path: '/docs/tech-design/github-app-integration',
                 component: ComponentCreator('/docs/tech-design/github-app-integration', 'c60'),
                 exact: true,
@@ -235,6 +248,24 @@ export default [
               {
                 path: '/docs/tech-design/grpc-to-fastapi-migration-zh',
                 component: ComponentCreator('/docs/tech-design/grpc-to-fastapi-migration-zh', '742'),
+                exact: true,
+                sidebar: "tutorialSidebar"
+              },
+              {
+                path: '/docs/tech-design/hil-node-data-formats',
+                component: ComponentCreator('/docs/tech-design/hil-node-data-formats', 'c0c'),
+                exact: true,
+                sidebar: "tutorialSidebar"
+              },
+              {
+                path: '/docs/tech-design/human-in-loop-node-system',
+                component: ComponentCreator('/docs/tech-design/human-in-loop-node-system', '9f2'),
+                exact: true,
+                sidebar: "tutorialSidebar"
+              },
+              {
+                path: '/docs/tech-design/manual-trigger-invocation-system',
+                component: ComponentCreator('/docs/tech-design/manual-trigger-invocation-system', '155'),
                 exact: true,
                 sidebar: "tutorialSidebar"
               },
@@ -269,6 +300,12 @@ export default [
                 sidebar: "tutorialSidebar"
               },
               {
+                path: '/docs/tech-design/node-communication-protocol',
+                component: ComponentCreator('/docs/tech-design/node-communication-protocol', '2bc'),
+                exact: true,
+                sidebar: "tutorialSidebar"
+              },
+              {
                 path: '/docs/tech-design/node-structure',
                 component: ComponentCreator('/docs/tech-design/node-structure', '4a2'),
                 exact: true,
@@ -277,6 +314,12 @@ export default [
               {
                 path: '/docs/tech-design/slack-app-integration',
                 component: ComponentCreator('/docs/tech-design/slack-app-integration', '678'),
+                exact: true,
+                sidebar: "tutorialSidebar"
+              },
+              {
+                path: '/docs/tech-design/unified_log_table_design',
+                component: ComponentCreator('/docs/tech-design/unified_log_table_design', 'c56'),
                 exact: true,
                 sidebar: "tutorialSidebar"
               },
@@ -295,6 +338,18 @@ export default [
               {
                 path: '/docs/tech-design/workflow-engine-architecure',
                 component: ComponentCreator('/docs/tech-design/workflow-engine-architecure', '924'),
+                exact: true,
+                sidebar: "tutorialSidebar"
+              },
+              {
+                path: '/docs/tech-design/workflow-engine-integration-tests',
+                component: ComponentCreator('/docs/tech-design/workflow-engine-integration-tests', '09b'),
+                exact: true,
+                sidebar: "tutorialSidebar"
+              },
+              {
+                path: '/docs/tech-design/workflow-engine-integration-tests-focused',
+                component: ComponentCreator('/docs/tech-design/workflow-engine-integration-tests-focused', '402'),
                 exact: true,
                 sidebar: "tutorialSidebar"
               },

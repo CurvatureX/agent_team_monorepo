@@ -44,9 +44,11 @@ async def test_trigger_indexing():
             subtype=TriggerType.GITHUB,
             parameters={
                 "repository": "test-org/test-repo",
-                "events": ["push", "pull_request"],
-                "installation_id": 12345,
-                "branch_filter": ["main", "develop"],
+                "event_config": {
+                    "push": {"branches": ["main", "develop"]},
+                    "pull_request": {"actions": ["opened", "synchronize", "closed"]},
+                },
+                "github_app_installation_id": "12345",
             },
             enabled=True,
         ),

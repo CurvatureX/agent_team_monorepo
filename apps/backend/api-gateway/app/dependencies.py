@@ -181,6 +181,85 @@ async def get_user_supabase_client(
 
 
 # =============================================================================
+# SSE认证依赖（支持URL参数token）
+# =============================================================================
+
+
+async def get_sse_authorization_token(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> Optional[str]:
+    """
+    获取SSE流的认证token，支持Authorization头部和URL参数
+    因为EventSource不支持自定义头部，需要支持URL参数
+    """
+    # 1. 优先使用中间件存储的 token
+    if hasattr(request.state, "access_token") and request.state.access_token:
+        return request.state.access_token
+
+    # 2. 检查Authorization头部
+    if credentials and credentials.scheme.lower() == "bearer":
+        return credentials.credentials
+
+    # 3. 检查URL参数中的access_token（SSE专用）
+    access_token = request.query_params.get("access_token")
+    if access_token:
+        return access_token
+
+    return None
+
+
+async def get_sse_current_user(
+    request: Request,
+    token: Optional[str] = Depends(get_sse_authorization_token),
+    settings: Settings = Depends(get_app_settings),
+) -> Optional[AuthUser]:
+    """
+    获取SSE流的当前认证用户（支持URL参数token）
+    """
+    # 1. 首先检查中间件是否已经验证并存储了用户信息
+    if hasattr(request.state, "user") and request.state.user:
+        try:
+            logger.debug("Using cached user from middleware for SSE")
+            return AuthUser(**request.state.user)
+        except Exception as e:
+            logger.warning(f"Failed to create AuthUser from request.state: {e}")
+
+    # 2. 如果没有token，返回None
+    if not token:
+        return None
+
+    if not settings.SUPABASE_AUTH_ENABLED:
+        return None
+
+    try:
+        user_data = await verify_supabase_token(token)
+        if user_data:
+            logger.debug(f"SSE authentication successful for user: {user_data.get('sub')}")
+            return AuthUser(**user_data)
+        return None
+    except Exception as e:
+        logger.warning(f"SSE token verification failed: {e}")
+        return None
+
+
+async def get_required_sse_user(
+    current_user: Optional[AuthUser] = Depends(get_sse_current_user),
+) -> AuthUser:
+    """
+    获取当前认证用户（SSE流专用，必需认证）
+    如果未认证则抛出401错误
+    """
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required for SSE stream",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return current_user
+
+
+# =============================================================================
 # MCP API认证依赖
 # =============================================================================
 
@@ -457,3 +536,24 @@ class MCPDeps:
         self.settings = settings
         self.mcp_client = mcp_client
         self.request_context = request_context
+
+
+class SSEDeps:
+    """SSE流认证依赖组合类（支持URL参数token）"""
+
+    def __init__(
+        self,
+        request: Request,
+        settings: Settings = Depends(get_app_settings),
+        current_user: AuthUser = Depends(get_required_sse_user),
+        access_token: Optional[str] = Depends(get_sse_authorization_token),
+    ):
+        self.request = request
+        self.settings = settings
+        self.current_user = current_user
+        self.access_token = access_token
+
+    @property
+    def user_data(self) -> Dict[str, Any]:
+        """Get user data as dictionary for compatibility"""
+        return self.current_user.model_dump() if self.current_user else {}

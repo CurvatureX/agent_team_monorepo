@@ -14,8 +14,8 @@
   "frontMatter": {},
   "sidebar": "tutorialSidebar",
   "previous": {
-    "title": "Slack App Integration Architecture",
-    "permalink": "/docs/tech-design/slack-app-integration"
+    "title": "统一日志表设计 - 同时支持技术调试和用户友好日志",
+    "permalink": "/docs/tech-design/unified_log_table_design"
   },
   "next": {
     "title": "Workflow Engine: Architecture & Execution Flow",

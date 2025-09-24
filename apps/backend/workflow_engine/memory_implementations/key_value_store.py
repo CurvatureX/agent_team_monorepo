@@ -252,10 +252,14 @@ class KeyValueStoreMemory(MemoryBase):
                     if value is not None:
                         context_data[key] = value
 
+            # Import the enum from the correct path
+            from shared.models.node_enums import MemorySubtype
+
             return {
                 "context_data": context_data,
                 "namespace": namespace,
                 "total_items": len(context_data),
+                "memory_type": MemorySubtype.KEY_VALUE_STORE.value,
                 "context_generated_at": datetime.utcnow().isoformat(),
             }
 
@@ -527,4 +531,109 @@ class KeyValueStoreMemory(MemoryBase):
 
         except Exception as e:
             logger.error(f"Failed to list keys: {str(e)}")
+            raise
+
+    async def clear_namespace(self, namespace: Optional[str] = None) -> Dict[str, Any]:
+        """Clear all keys in a namespace."""
+        await self.initialize()
+
+        try:
+            namespace = namespace or self.default_namespace
+            search_pattern = f"kv:{namespace}:*"
+
+            # Get all keys in namespace
+            redis_keys = await self.redis_client.keys(search_pattern)
+
+            # Delete from Redis
+            deleted_from_redis = 0
+            if redis_keys:
+                deleted_from_redis = await self.redis_client.delete(*redis_keys)
+
+            # Delete from PostgreSQL if sync enabled
+            deleted_from_postgres = 0
+            if self.sync_to_postgres and self.supabase_client:
+                result = (
+                    self.supabase_client.table("kv_memory")
+                    .delete()
+                    .like("key", f"{namespace}:%")
+                    .execute()
+                )
+                deleted_from_postgres = len(result.data) if result.data else 0
+
+            return {
+                "cleared": True,
+                "namespace": namespace,
+                "deleted_from_redis": deleted_from_redis,
+                "deleted_from_postgres": deleted_from_postgres,
+                "cleared_at": datetime.utcnow().isoformat(),
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to clear namespace: {str(e)}")
+            raise
+
+    async def get_stats(self, namespace: Optional[str] = None) -> Dict[str, Any]:
+        """Get statistics for a namespace."""
+        await self.initialize()
+
+        try:
+            namespace = namespace or self.default_namespace
+            search_pattern = f"kv:{namespace}:*"
+
+            # Get all keys in namespace
+            redis_keys = await self.redis_client.keys(search_pattern)
+            total_keys = len(redis_keys)
+
+            # Calculate total memory usage (approximate)
+            total_memory = 0
+            for key in redis_keys:
+                try:
+                    memory_usage = await self.redis_client.memory_usage(key)
+                    if memory_usage:
+                        total_memory += memory_usage
+                except:
+                    # Some Redis versions don't support MEMORY USAGE
+                    pass
+
+            return {
+                "namespace": namespace,
+                "total_keys": total_keys,
+                "total_memory_bytes": total_memory,
+                "redis_keys_count": total_keys,
+                "stats_generated_at": datetime.utcnow().isoformat(),
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get stats: {str(e)}")
+            raise
+
+    async def cleanup_expired_keys(self) -> Dict[str, Any]:
+        """Clean up expired keys from PostgreSQL."""
+        if not self.sync_to_postgres or not self.supabase_client:
+            return {"cleaned_up": False, "reason": "PostgreSQL sync not enabled"}
+
+        try:
+            current_time = datetime.utcnow().isoformat()
+
+            # Delete expired keys from PostgreSQL
+            result = (
+                self.supabase_client.table("kv_memory")
+                .delete()
+                .not_.is_("expires_at", "null")
+                .lt("expires_at", current_time)
+                .execute()
+            )
+
+            deleted_count = len(result.data) if result.data else 0
+
+            logger.info(f"Cleaned up {deleted_count} expired keys from PostgreSQL")
+
+            return {
+                "cleaned_up": True,
+                "deleted_count": deleted_count,
+                "cleanup_time": current_time,
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to cleanup expired keys: {str(e)}")
             raise

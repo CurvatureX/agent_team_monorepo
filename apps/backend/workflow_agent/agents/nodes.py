@@ -4,6 +4,7 @@ Implements the 2 core nodes: Clarification and Workflow Generation
 Simplified architecture with automatic gap handling for better user experience
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -11,9 +12,9 @@ import uuid
 from typing import List, Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 
 from workflow_agent.core.config import settings
+from workflow_agent.core.llm_provider import LLMFactory
 from workflow_agent.core.prompt_engine import get_prompt_engine
 
 from .mcp_tools import MCPToolCaller
@@ -43,18 +44,89 @@ class WorkflowAgentNodes:
         self.node_specs_cache = {}
 
     def _setup_llm(self):
-        """Setup the OpenAI language model"""
-        return ChatOpenAI(
-            model=settings.DEFAULT_MODEL_NAME, api_key=settings.OPENAI_API_KEY, temperature=0
-        )
+        """Setup the language model using configured provider"""
+        logger.info("=== Creating LLM for workflow execution ===")
+        llm = LLMFactory.create_llm(temperature=0)
+        logger.info(f"LLM created successfully: {type(llm).__name__}")
+        return llm
 
     def _setup_llm_with_tools(self):
-        """Setup OpenAI LLM with MCP tools bound"""
-        llm = ChatOpenAI(
-            model=settings.DEFAULT_MODEL_NAME, api_key=settings.OPENAI_API_KEY, temperature=0
-        )
+        """Setup LLM with MCP tools bound"""
+        logger.info("=== Creating LLM with MCP tools for workflow execution ===")
+        llm = LLMFactory.create_llm(temperature=0)
+        logger.info(f"LLM with tools created successfully: {type(llm).__name__}")
         # Bind MCP tools to the LLM
         return llm.bind_tools(self.mcp_tools)
+
+    async def load_prompt_template(self, template_name: str, **context) -> str:
+        """Load and render a prompt template using the prompt engine"""
+        return await self.prompt_engine.render_prompt(template_name, **context)
+
+    def _filter_mcp_response_for_prompt(self, result: dict, tool_name: str) -> str:
+        """
+        Filter MCP tool responses to include only essential information for workflow generation.
+        This prevents the system prompt from becoming too large while preserving critical data.
+        """
+        if not isinstance(result, dict):
+            return str(result)
+
+        if tool_name == "get_node_types":
+            # For node types, include essential structure but limit verbosity
+            if "node_types" in result:
+                filtered_types = {}
+                for node_type, subtypes in result["node_types"].items():
+                    # Keep only subtype names, not full descriptions
+                    filtered_types[node_type] = (
+                        list(subtypes.keys()) if isinstance(subtypes, dict) else subtypes
+                    )
+                return json.dumps({"node_types": filtered_types}, indent=2)
+
+        elif tool_name == "get_node_details":
+            # For node details, include only critical workflow generation data
+            if "nodes" in result:
+                filtered_nodes = []
+                for node in result["nodes"]:
+                    if isinstance(node, dict):
+                        # Keep only essential fields for workflow generation
+                        filtered_node = {
+                            "node_type": node.get("node_type"),
+                            "subtype": node.get("subtype"),
+                            "name": node.get("name"),
+                            "parameters": [],
+                        }
+
+                        # For parameters, keep only type, name, required status - remove descriptions and examples
+                        parameters = node.get("parameters", [])
+                        for param in parameters:
+                            if isinstance(param, dict):
+                                filtered_param = {
+                                    "name": param.get("name"),
+                                    "type": param.get("type"),
+                                    "required": param.get("required", False),
+                                }
+                                # Include enum values if present (essential for correct generation)
+                                if "enum_values" in param:
+                                    filtered_param["enum_values"] = param["enum_values"]
+                                filtered_node["parameters"].append(filtered_param)
+
+                        filtered_nodes.append(filtered_node)
+
+                # Add essential reminder about type compliance
+                response_data = {
+                    "nodes": filtered_nodes,
+                    "_instructions": {
+                        "critical": "Use EXACT types from 'type' field",
+                        "types": {
+                            "integer": 'numbers (123, not "123")',
+                            "string": 'quoted strings ("example")',
+                            "boolean": 'true/false (not "true")',
+                        },
+                    },
+                }
+                return json.dumps(response_data, indent=2)
+
+        # For other tools or if filtering fails, return compact JSON
+        return json.dumps(result, separators=(",", ":"))
 
     def _add_conversation(self, state: WorkflowState, role: str, text: str) -> None:
         """Add a new message to conversations"""
@@ -173,6 +245,9 @@ class WorkflowAgentNodes:
         """
         修正工作流中所有节点的参数，使用 MCP 提供的 ParameterType 信息。
         这只是兜底逻辑，LLM 应该直接根据 MCP ParameterType 生成正确的 mock values。
+        
+        注意：AI_AGENT 节点会被跳过，因为它们的 system_prompt 已经通过 
+        _enhance_ai_agent_prompts_with_llm 方法进行了增强。
 
         Args:
             workflow: 完整的工作流数据
@@ -184,6 +259,10 @@ class WorkflowAgentNodes:
             return workflow
 
         for node in workflow["nodes"]:
+            # Skip AI_AGENT nodes entirely - their prompts are already enhanced
+            if node.get("type") == "AI_AGENT":
+                logger.debug(f"Skipping parameter fix for AI_AGENT node {node.get('id')} - already enhanced")
+                continue
             self._fix_node_parameters(node)
 
         return workflow
@@ -243,10 +322,13 @@ class WorkflowAgentNodes:
 
             # Handle template variables (another form of placeholder)
             elif isinstance(param_value, str):
+                # Check for common placeholder patterns
                 is_placeholder = (
-                    ("{{" in param_value and "}}" in param_value)
-                    or ("${" in param_value and "}" in param_value)
-                    or ("<" in param_value and ">" in param_value)
+                    ("{{" in param_value and "}}" in param_value)  # Template variables
+                    or ("${" in param_value and "}" in param_value)  # Template variables
+                    or ("<" in param_value and ">" in param_value)  # Placeholders like <VALUE>
+                    or param_value.startswith("example-value")  # Generated example values
+                    or param_value.startswith("mock-")  # Mock values
                 )
 
                 if is_placeholder:
@@ -269,6 +351,473 @@ class WorkflowAgentNodes:
 
         return node
 
+    async def _prefetch_node_specs_for_workflow(self, workflow: dict):
+        """Pre-fetch MCP specifications for all nodes that AI Agents connect to."""
+        try:
+            connections = workflow.get("connections", {})
+            nodes = workflow.get("nodes", [])
+            node_map = {node["id"]: node for node in nodes}
+            
+            # Find all node types that AI Agents connect to
+            nodes_to_fetch = set()
+            for node in nodes:
+                if node.get("type") == "AI_AGENT":
+                    node_id = node["id"]
+                    if node_id in connections:
+                        node_connections = connections[node_id].get("connection_types", {})
+                        main_connections = node_connections.get("main", {}).get("connections", [])
+                        
+                        for conn in main_connections:
+                            next_node_id = conn.get("node")
+                            if next_node_id and next_node_id in node_map:
+                                next_node = node_map[next_node_id]
+                                node_type = next_node.get("type")
+                                node_subtype = next_node.get("subtype")
+                                if node_type and node_subtype:
+                                    nodes_to_fetch.add(f"{node_type}:{node_subtype}")
+            
+            # Fetch all needed specs in one call
+            if nodes_to_fetch and hasattr(self, 'mcp_client'):
+                logger.info(f"Pre-fetching MCP specs for nodes: {nodes_to_fetch}")
+                try:
+                    spec_result = await self.mcp_client.call_tool(
+                        "get_node_details",
+                        {"node_types": list(nodes_to_fetch)}
+                    )
+                    if spec_result and "nodes" in spec_result:
+                        nodes_list = spec_result.get("nodes", [])
+                        for node_spec in nodes_list:
+                            if "error" not in node_spec:
+                                node_type = node_spec.get("node_type")
+                                subtype = node_spec.get("subtype")
+                                if node_type and subtype:
+                                    cache_key = f"{node_type}:{subtype}"
+                                    self.node_specs_cache[cache_key] = node_spec
+                                    logger.info(f"Cached MCP spec for {cache_key}")
+                except Exception as e:
+                    logger.warning(f"Failed to pre-fetch node specs from MCP: {e}")
+        except Exception as e:
+            logger.warning(f"Error in pre-fetch node specs: {e}")
+    
+    async def _enhance_ai_agent_prompts_with_llm(self, workflow: dict) -> dict:
+        """
+        Enhance AI Agent node prompts using LLM to ensure output format matches the next node's expected input.
+        Uses concurrent LLM calls for better performance.
+        """
+        try:
+            logger.info("Enhancing AI Agent prompts with LLM assistance (concurrent)")
+            
+            # Get all connections to understand the workflow flow
+            connections = workflow.get("connections", {})
+            nodes = workflow.get("nodes", [])
+            
+            # Create a map of node IDs to nodes for quick lookup
+            node_map = {node["id"]: node for node in nodes}
+            
+            # Collect all AI Agent nodes that need enhancement
+            enhancement_tasks = []
+            ai_agent_nodes = []
+            
+            for node in nodes:
+                if node.get("type") == "AI_AGENT":
+                    node_id = node["id"]
+                    
+                    # Find what this AI Agent connects to
+                    if node_id in connections:
+                        node_connections = connections[node_id].get("connection_types", {})
+                        main_connections = node_connections.get("main", {}).get("connections", [])
+                        
+                        if main_connections:
+                            # Get the first connected node (primary output target)
+                            next_node_id = main_connections[0].get("node")
+                            if next_node_id and next_node_id in node_map:
+                                next_node = node_map[next_node_id]
+                                
+                                # Create async task for enhancing this AI Agent's prompt
+                                task = self._enhance_single_ai_agent_prompt(
+                                    node, next_node, node_id, next_node_id
+                                )
+                                enhancement_tasks.append(task)
+                                ai_agent_nodes.append((node, node_id))
+            
+            if enhancement_tasks:
+                # Run enhancement tasks with controlled concurrency
+                max_concurrent = getattr(settings, "MAX_CONCURRENT_LLM_ENHANCEMENTS", 5)
+                logger.info(f"Running {len(enhancement_tasks)} LLM enhancements with max concurrency of {max_concurrent}")
+                
+                # Process in batches to control concurrency
+                enhanced_prompts = []
+                for i in range(0, len(enhancement_tasks), max_concurrent):
+                    batch = enhancement_tasks[i:i + max_concurrent]
+                    batch_results = await asyncio.gather(*batch, return_exceptions=True)
+                    enhanced_prompts.extend(batch_results)
+                    
+                    # Small delay between batches to avoid rate limiting
+                    if i + max_concurrent < len(enhancement_tasks):
+                        await asyncio.sleep(0.5)
+                
+                # Apply the enhanced prompts back to the nodes
+                for (node, node_id), enhanced_prompt in zip(ai_agent_nodes, enhanced_prompts):
+                    if isinstance(enhanced_prompt, Exception):
+                        logger.warning(f"Failed to enhance prompt for node {node_id}: {enhanced_prompt}")
+                        # Keep original prompt if enhancement failed
+                    elif enhanced_prompt:
+                        # Update the node's system prompt with LLM-enhanced version
+                        if "parameters" not in node:
+                            node["parameters"] = {}
+                        node["parameters"]["system_prompt"] = enhanced_prompt
+                        logger.info(f"Successfully enhanced AI Agent node '{node_id}' prompt with LLM")
+            
+            return workflow
+            
+        except Exception as e:
+            logger.warning(f"Error in concurrent AI Agent prompt enhancement: {e}")
+            # Fall back to non-LLM enhancement
+            return self._enhance_ai_agent_prompts(workflow)
+    
+    async def _enhance_single_ai_agent_prompt(self, ai_node: dict, next_node: dict, ai_node_id: str, next_node_id: str) -> str:
+        """
+        Enhance a single AI Agent's prompt using LLM to understand the next node's requirements.
+        """
+        try:
+            current_prompt = ai_node.get("parameters", {}).get("system_prompt", "")
+            next_node_type = next_node.get("type")
+            next_node_subtype = next_node.get("subtype")
+            
+            # Get the node spec from cache if available
+            node_key = f"{next_node_type}:{next_node_subtype}"
+            node_spec = self.node_specs_cache.get(node_key)
+            
+            # Prepare context for LLM
+            enhancement_prompt = f"""You are a workflow optimization expert. You need to enhance an AI Agent's system prompt to ensure its output format matches what the next node expects.
+
+Current AI Agent System Prompt:
+{current_prompt}
+
+This AI Agent connects to: {next_node_type} - {next_node_subtype}
+Next node's purpose: {next_node.get('name', 'Unknown')}
+
+"""
+            
+            if node_spec:
+                # Add spec details if available
+                parameters = node_spec.get("parameters", [])
+                if parameters:
+                    enhancement_prompt += "Next node expects these parameters:\n"
+                    for param in parameters[:10]:  # Limit to first 10 params
+                        enhancement_prompt += f"- {param.get('name')} ({param.get('type')}): {param.get('description', 'N/A')}\n"
+            
+            enhancement_prompt += """
+Please enhance the system prompt to:
+1. Clearly specify the output format required by the next node
+2. Include JSON structure if the next node expects JSON
+3. Add examples if helpful
+4. Keep the original intent and functionality
+5. Be concise but explicit about format requirements
+
+Return ONLY the enhanced system prompt, no explanations."""
+
+            # Use LLM to enhance the prompt
+            messages = [
+                SystemMessage(content="You are an expert at optimizing AI system prompts for workflow integration."),
+                HumanMessage(content=enhancement_prompt)
+            ]
+            
+            response = await self.llm.ainvoke(messages)
+            enhanced_prompt = response.content.strip()
+            
+            # Validate the enhanced prompt isn't empty or too different
+            if enhanced_prompt and len(enhanced_prompt) > 20:
+                logger.info(f"LLM enhanced prompt for node {ai_node_id} connecting to {next_node_id}")
+                return enhanced_prompt
+            else:
+                # Fall back to simple enhancement
+                format_prompt = self._generate_format_prompt_for_node(next_node)
+                return self._add_format_requirements_to_prompt(current_prompt, format_prompt, next_node)
+                
+        except Exception as e:
+            logger.warning(f"Error enhancing single prompt with LLM: {e}")
+            # Fall back to simple enhancement
+            format_prompt = self._generate_format_prompt_for_node(next_node)
+            return self._add_format_requirements_to_prompt(current_prompt, format_prompt, next_node)
+    
+    def _enhance_ai_agent_prompts(self, workflow: dict) -> dict:
+        """
+        Enhance AI Agent node prompts to ensure output format matches the next node's expected input.
+        This is crucial for workflow reliability - preventing format mismatches between nodes.
+        """
+        try:
+            logger.info("Enhancing AI Agent prompts based on connected nodes")
+            
+            # Get all connections to understand the workflow flow
+            connections = workflow.get("connections", {})
+            nodes = workflow.get("nodes", [])
+            
+            # Create a map of node IDs to nodes for quick lookup
+            node_map = {node["id"]: node for node in nodes}
+            
+            # Process each AI Agent node
+            for node in nodes:
+                if node.get("type") == "AI_AGENT":
+                    node_id = node["id"]
+                    
+                    # Find what this AI Agent connects to
+                    if node_id in connections:
+                        node_connections = connections[node_id].get("connection_types", {})
+                        main_connections = node_connections.get("main", {}).get("connections", [])
+                        
+                        if main_connections:
+                            # Get the first connected node (primary output target)
+                            next_node_id = main_connections[0].get("node")
+                            if next_node_id and next_node_id in node_map:
+                                next_node = node_map[next_node_id]
+                                
+                                # Generate format requirements based on next node type
+                                format_prompt = self._generate_format_prompt_for_node(next_node)
+                                
+                                if format_prompt:
+                                    # Enhance the system prompt with format requirements
+                                    current_prompt = node.get("parameters", {}).get("system_prompt", "")
+                                    enhanced_prompt = self._add_format_requirements_to_prompt(
+                                        current_prompt, format_prompt, next_node
+                                    )
+                                    
+                                    # Update the node's system prompt
+                                    if "parameters" not in node:
+                                        node["parameters"] = {}
+                                    node["parameters"]["system_prompt"] = enhanced_prompt
+                                    
+                                    logger.info(
+                                        f"Enhanced AI Agent node '{node_id}' prompt for "
+                                        f"connection to '{next_node['type']}' node '{next_node_id}'"
+                                    )
+            
+            return workflow
+            
+        except Exception as e:
+            logger.warning(f"Error enhancing AI Agent prompts: {e}")
+            # Return workflow unchanged if enhancement fails
+            return workflow
+    
+    def _generate_format_prompt_for_node(self, node: dict) -> str:
+        """Generate format requirements based on the node's MCP specification."""
+        node_type = node.get("type")
+        node_subtype = node.get("subtype")
+        
+        # Try to get node spec from cache first
+        node_key = f"{node_type}:{node_subtype}"
+        node_spec = self.node_specs_cache.get(node_key)
+        
+        # If not in cache, try to fetch from MCP
+        if not node_spec and hasattr(self, 'mcp_client'):
+            try:
+                # Query MCP for this specific node's details
+                # Note: We'll use the cached specs if available, otherwise skip dynamic fetch
+                # since this is called from sync context but MCP client is async
+                logger.info(f"Node spec for {node_key} not in cache, will use generic format prompt")
+            except Exception as e:
+                logger.warning(f"Failed to fetch node spec from MCP: {e}")
+        
+        # Generate format prompt from MCP spec
+        if node_spec:
+            return self._generate_format_from_mcp_spec(node_spec, node_type, node_subtype)
+        
+        # Fallback: Generic prompt for unknown nodes
+        return """
+Your output should be structured data that the next node can process.
+Check the node's expected input format and structure your response accordingly.
+"""
+    
+    def _add_format_requirements_to_prompt(self, current_prompt: str, format_prompt: str, next_node: dict) -> str:
+        """Add format requirements to the existing prompt."""
+        if not format_prompt:
+            return current_prompt
+        
+        # Add a clear section about output format requirements
+        enhanced_prompt = current_prompt
+        
+        # Check if prompt already has format requirements
+        if "output format" not in current_prompt.lower() and "json" not in current_prompt.lower():
+            node_name = next_node.get("name", next_node.get("subtype", "next node"))
+            node_subtype = next_node.get("subtype", "")
+            
+            enhanced_prompt += f"""
+
+=== CRITICAL OUTPUT FORMAT REQUIREMENT ===
+Your response will be passed to a {node_subtype or node_name} node.
+{format_prompt}
+
+IMPORTANT: 
+- Your entire response should be ONLY the JSON object
+- Do NOT include any explanation, markdown formatting, or code blocks
+- The JSON must be valid and parseable
+- All required fields must be present
+"""
+        
+        return enhanced_prompt
+    
+    def _generate_format_from_mcp_spec(self, node_spec: dict, node_type: str, node_subtype: str) -> str:
+        """Generate format prompt from MCP node specification."""
+        format_prompt = """
+Your output MUST match the expected input format for the next node.
+"""
+        
+        # Extract parameters from the spec
+        parameters = node_spec.get("parameters", [])
+        required_params = [p for p in parameters if p.get("required", False)]
+        optional_params = [p for p in parameters if not p.get("required", False)]
+        
+        if parameters:
+            format_prompt += f"\nThe {node_subtype} node expects the following input:\n\n"
+            
+            # Build a JSON structure example based on parameters
+            format_prompt += "Required JSON structure:\n```json\n{\n"
+            
+            # Add required parameters
+            if required_params:
+                for i, param in enumerate(required_params):
+                    param_name = param.get("name", "param")
+                    param_type = param.get("type", "string")
+                    param_desc = param.get("description", "")
+                    
+                    # Generate example value based on type
+                    example_value = self._get_example_for_param_type(param_type, param_name)
+                    
+                    format_prompt += f'    "{param_name}": {example_value}'
+                    if param_desc:
+                        format_prompt += f'  // {param_desc}'
+                    
+                    if i < len(required_params) - 1 or optional_params:
+                        format_prompt += ","
+                    format_prompt += "\n"
+            
+            # Add optional parameters as comments
+            if optional_params:
+                format_prompt += "    // Optional fields:\n"
+                for param in optional_params[:3]:  # Show max 3 optional fields
+                    param_name = param.get("name", "param")
+                    param_type = param.get("type", "string")
+                    example_value = self._get_example_for_param_type(param_type, param_name)
+                    format_prompt += f'    // "{param_name}": {example_value}\n'
+            
+            format_prompt += "}\n```\n"
+            
+            # Add parameter descriptions if available
+            if required_params:
+                format_prompt += "\nRequired fields:\n"
+                for param in required_params:
+                    param_name = param.get("name")
+                    param_desc = param.get("description", "No description")
+                    param_type = param.get("type", "string")
+                    format_prompt += f"- **{param_name}** ({param_type}): {param_desc}\n"
+        
+        # Add any specific notes based on node type
+        if node_type == "EXTERNAL_ACTION":
+            format_prompt += "\nIMPORTANT: This is an external API integration. Ensure your output exactly matches the API's expected format."
+        elif node_type == "ACTION":
+            format_prompt += "\nIMPORTANT: Structure your output as valid JSON that can be processed by the action node."
+        
+        return format_prompt
+    
+    def _get_example_for_param_type(self, param_type: str, param_name: str) -> str:
+        """Generate an example value for a parameter based on its type."""
+        # Map MCP parameter types to example values
+        type_examples = {
+            "string": '"example text"',
+            "integer": "123",
+            "float": "1.5",
+            "boolean": "true",
+            "json": "{}",
+            "array": "[]",
+            "object": "{}"
+        }
+        
+        # Use parameter name hints for better examples
+        if "email" in param_name.lower():
+            return '"user@example.com"'
+        elif "date" in param_name.lower() or "time" in param_name.lower():
+            return '"2024-01-15T10:00:00Z"'
+        elif "url" in param_name.lower() or "link" in param_name.lower():
+            return '"https://example.com"'
+        elif "title" in param_name.lower() or "name" in param_name.lower():
+            return '"Example Title"'
+        elif "description" in param_name.lower() or "body" in param_name.lower():
+            return '"Detailed description here"'
+        elif "id" in param_name.lower():
+            return '"item-123"'
+        elif "channel" in param_name.lower():
+            return '"#general"'
+        
+        # Return type-based default
+        return type_examples.get(param_type, '"value"')
+    
+    def _validate_ai_agent_prompts(self, workflow: dict) -> List[str]:
+        """
+        Validate that AI Agent prompts are properly configured for their connections.
+        Returns a list of warnings if issues are found.
+        """
+        warnings = []
+        
+        try:
+            connections = workflow.get("connections", {})
+            nodes = workflow.get("nodes", [])
+            node_map = {node["id"]: node for node in nodes}
+            
+            for node in nodes:
+                if node.get("type") == "AI_AGENT":
+                    node_id = node["id"]
+                    system_prompt = node.get("parameters", {}).get("system_prompt", "")
+                    
+                    # Check if this AI Agent connects to an action node
+                    if node_id in connections:
+                        node_connections = connections[node_id].get("connection_types", {})
+                        main_connections = node_connections.get("main", {}).get("connections", [])
+                        
+                        if main_connections:
+                            next_node_id = main_connections[0].get("node")
+                            if next_node_id and next_node_id in node_map:
+                                next_node = node_map[next_node_id]
+                                next_type = next_node.get("type")
+                                next_subtype = next_node.get("subtype")
+                                
+                                # Check if connecting to an action node that needs structured output
+                                needs_json = False
+                                if next_type == "EXTERNAL_ACTION":
+                                    needs_json = True
+                                elif next_type == "ACTION" and next_subtype in ["HTTP_REQUEST", "SAVE_TO_DATABASE"]:
+                                    needs_json = True
+                                
+                                if needs_json:
+                                    # Check if prompt mentions JSON or output format
+                                    prompt_lower = system_prompt.lower()
+                                    has_format = any(keyword in prompt_lower for keyword in [
+                                        "json", "format", "output", "structure", "object", "api"
+                                    ])
+                                    
+                                    if not has_format:
+                                        warnings.append(
+                                            f"AI Agent '{node_id}' connects to '{next_subtype}' but "
+                                            f"system prompt doesn't specify output format. This may cause failures."
+                                        )
+                                    
+                                    # Check for specific node types
+                                    if next_subtype == "GOOGLE_CALENDAR" and "calendar" not in prompt_lower:
+                                        warnings.append(
+                                            f"AI Agent '{node_id}' connects to Google Calendar but "
+                                            f"prompt doesn't mention calendar event format"
+                                        )
+                                    elif next_subtype == "SLACK" and "slack" not in prompt_lower and "message" not in prompt_lower:
+                                        warnings.append(
+                                            f"AI Agent '{node_id}' connects to Slack but "
+                                            f"prompt doesn't mention message format"
+                                        )
+            
+            return warnings
+            
+        except Exception as e:
+            logger.error(f"Error validating AI Agent prompts: {e}")
+            return warnings
+    
     def _generate_proper_value_for_type(self, param_type: str) -> object:
         """Generate a proper value based on MCP ParameterType without hardcoding"""
         import random
@@ -361,11 +910,13 @@ class WorkflowAgentNodes:
                     if from_node not in connections_dict:
                         connections_dict[from_node] = {"connection_types": {}}
                     if from_port not in connections_dict[from_node]["connection_types"]:
-                        connections_dict[from_node]["connection_types"][from_port] = {"connections": []}
+                        connections_dict[from_node]["connection_types"][from_port] = {
+                            "connections": []
+                        }
 
-                    connections_dict[from_node]["connection_types"][from_port]["connections"].append(
-                        {"node": to_node, "type": to_port, "index": 0}
-                    )
+                    connections_dict[from_node]["connection_types"][from_port][
+                        "connections"
+                    ].append({"node": to_node, "type": to_port, "index": 0})
 
             workflow["connections"] = connections_dict
         elif "connections" not in workflow:
@@ -517,15 +1068,19 @@ class WorkflowAgentNodes:
                 "existing_intent": existing_intent,
                 "conversation_history": conversation_history,
             }
-            
+
             # Add source workflow if in edit/copy mode
             if "source_workflow" in state and state["source_workflow"]:
                 template_context["source_workflow"] = json.dumps(state["source_workflow"], indent=2)
-                logger.info(f"Including source workflow in clarification context for edit/copy mode")
-            
+                logger.info(
+                    f"Including source workflow in clarification context for edit/copy mode"
+                )
+
             # Add workflow context if present
             if "workflow_context" in state and state["workflow_context"]:
-                template_context["workflow_mode"] = state["workflow_context"].get("origin", "create")
+                template_context["workflow_mode"] = state["workflow_context"].get(
+                    "origin", "create"
+                )
                 logger.info(f"Workflow mode: {template_context['workflow_mode']}")
 
             # Use the f2 template system - both system and user prompts
@@ -544,9 +1099,6 @@ class WorkflowAgentNodes:
             )
 
             messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
-
-            # Log the model being used
-            logger.info(f"Using model: {settings.DEFAULT_MODEL_NAME}")
 
             # Try to use response_format, fall back if not supported
             try:
@@ -674,14 +1226,16 @@ class WorkflowAgentNodes:
                 "current_workflow": state.get("current_workflow"),
                 "creation_error": error_context,
             }
-            
+
             # Add source workflow and mode for edit/copy operations
             if "source_workflow" in state and state["source_workflow"]:
                 template_context["source_workflow"] = json.dumps(state["source_workflow"], indent=2)
                 logger.info(f"Including source workflow in generation context for edit/copy mode")
-            
+
             if "workflow_context" in state and state["workflow_context"]:
-                template_context["workflow_mode"] = state["workflow_context"].get("origin", "create")
+                template_context["workflow_mode"] = state["workflow_context"].get(
+                    "origin", "create"
+                )
                 logger.info(f"Workflow generation mode: {template_context['workflow_mode']}")
 
             # Use the original f1 template system - the working approach
@@ -720,13 +1274,44 @@ class WorkflowAgentNodes:
                         if workflow_json.endswith("```"):
                             workflow_json = workflow_json[:-3]
 
+                    # Parse the JSON directly - trust LLM to generate valid JSON
                     workflow = json.loads(workflow_json.strip())
 
                     # Post-process the workflow to add missing required fields
                     workflow = self._normalize_workflow_structure(workflow)
+                    
+                    # Pre-fetch node specs for connected nodes
+                    await self._prefetch_node_specs_for_workflow(workflow)
+                    
+                    # Enhance AI Agent prompts based on connected nodes
+                    # Try to use LLM-enhanced version for better quality
+                    try:
+                        # Check if we should use LLM enhancement (can be controlled by settings)
+                        use_llm_enhancement = getattr(settings, "USE_LLM_PROMPT_ENHANCEMENT", True)
+                        
+                        if use_llm_enhancement:
+                            logger.info("Using concurrent LLM enhancement for AI Agent prompts")
+                            workflow = await self._enhance_ai_agent_prompts_with_llm(workflow)
+                        else:
+                            logger.info("Using rule-based enhancement for AI Agent prompts")
+                            workflow = self._enhance_ai_agent_prompts(workflow)
+                    except Exception as e:
+                        logger.warning(f"LLM enhancement failed, falling back to rule-based: {e}")
+                        workflow = self._enhance_ai_agent_prompts(workflow)
+                    
+                    # Validate that AI Agent prompts are properly configured
+                    validation_warnings = self._validate_ai_agent_prompts(workflow)
+                    if validation_warnings:
+                        for warning in validation_warnings:
+                            logger.warning(f"AI Agent prompt validation: {warning}")
 
                     # Fix parameters using MCP-provided types (only as fallback)
                     workflow = self._fix_workflow_parameters(workflow)
+
+                    # Skip iterative validation - single pass generation for better performance
+                    logger.info(
+                        "Single-pass workflow generation completed - skipping validation rounds"
+                    )
 
                     logger.info(
                         "Successfully generated workflow using MCP tools, workflow: %s", workflow
@@ -744,12 +1329,12 @@ class WorkflowAgentNodes:
             engine_client = WorkflowEngineClient()
             user_id = state.get("user_id", "test_user")
             session_id = state.get("session_id")
-            
+
             # Always create a new workflow, even in edit mode
             # This allows users to test edits without overwriting the original
             workflow_context = state.get("workflow_context", {})
             workflow_mode = workflow_context.get("origin", "create")
-            
+
             logger.info(f"Creating new workflow in workflow_engine (mode: {workflow_mode})")
             creation_result = await engine_client.create_workflow(workflow, user_id, session_id)
 
@@ -772,12 +1357,12 @@ class WorkflowAgentNodes:
                 workflow_name = workflow.get("name", "Workflow")
                 workflow_description = workflow.get("description", "")
                 node_count = len(workflow.get("nodes", []))
-                
+
                 # Check if we're in edit mode
                 workflow_context = state.get("workflow_context", {})
                 workflow_mode = workflow_context.get("origin", "create")
                 source_workflow_id = workflow_context.get("source_workflow_id")
-                
+
                 if workflow_mode == "edit":
                     completion_message = f"""✅ **New Workflow Created from Edit!**
 
@@ -884,7 +1469,9 @@ Would you like to make any adjustments or shall we proceed with testing?"""
                 "stage": WorkflowStage.WORKFLOW_GENERATION,
             }
 
-    async def _generate_with_natural_tools(self, messages: List, state: Optional[dict] = None) -> str:
+    async def _generate_with_natural_tools(
+        self, messages: List, state: Optional[dict] = None
+    ) -> str:
         """
         Natural workflow generation - let LLM decide when and how to use MCP tools.
         Still emphasizes following MCP type specifications but doesn't force specific calling patterns.
@@ -892,10 +1479,10 @@ Would you like to make any adjustments or shall we proceed with testing?"""
         """
         try:
             logger.info("Starting natural workflow generation with MCP tools")
-            
+
             # Track timing for diagnostics
             start_time = time.time()
-            
+
             # Update state to indicate we're generating
             if state:
                 state["generation_status"] = "Starting LLM workflow generation..."
@@ -904,7 +1491,7 @@ Would you like to make any adjustments or shall we proceed with testing?"""
             # Let LLM use tools naturally - no forced multi-turn pattern
             logger.info("Invoking LLM for initial workflow generation")
             response = await self.llm_with_tools.ainvoke(messages)
-            
+
             elapsed = time.time() - start_time
             logger.info(f"Initial LLM response received after {elapsed:.2f} seconds")
 
@@ -923,11 +1510,13 @@ Would you like to make any adjustments or shall we proceed with testing?"""
                 logger.info(
                     f"LLM made {len(response.tool_calls)} tool calls (iteration {iteration})"
                 )
-                
+
                 # Update progress
                 if state:
                     progress = min(20 + (iteration * 15), 80)  # Progress from 20% to 80%
-                    state["generation_status"] = f"Processing MCP tools (iteration {iteration}/{max_iterations})..."
+                    state[
+                        "generation_status"
+                    ] = f"Processing MCP tools (iteration {iteration}/{max_iterations})..."
                     state["generation_progress"] = progress
 
                 # Add assistant response to conversation
@@ -962,9 +1551,15 @@ Would you like to make any adjustments or shall we proceed with testing?"""
                                 self.node_specs_cache[node_key] = node_spec
                                 logger.debug(f"Cached node spec for {node_key}")
 
-                    # Add tool result to conversation
-                    result_str = (
-                        json.dumps(result, indent=2) if isinstance(result, dict) else str(result)
+                    # Add tool result to conversation with optimized filtering
+                    original_size = (
+                        len(json.dumps(result, indent=2))
+                        if isinstance(result, dict)
+                        else len(str(result))
+                    )
+                    result_str = self._filter_mcp_response_for_prompt(result, tool_name)
+                    logger.debug(
+                        f"💡 MCP response filtered: reduced from {original_size} to {len(result_str)} characters"
                     )
                     current_messages.append(
                         HumanMessage(content=f"Tool result for {tool_name}:\n{result_str}")
@@ -975,14 +1570,23 @@ Would you like to make any adjustments or shall we proceed with testing?"""
                 if has_node_details:
                     current_messages.append(
                         HumanMessage(
-                            content="""FINAL REMINDER - MCP Type Compliance:
-You now have the node specifications with exact type requirements.
-For EVERY parameter, you MUST use the type specified in the MCP response:
-- If MCP says type="integer" → Use numbers WITHOUT quotes (123, not "123")
-- If MCP says type="string" → Use strings WITH quotes ("example", not example)
-- If MCP says type="boolean" → Use true/false WITHOUT quotes
+                            content="""FINAL REMINDER - Complete Workflow Generation:
+You now have the node specifications. You MUST generate a COMPLETE workflow that includes ALL steps to fulfill the user's request.
 
-Generate the complete JSON workflow now, strictly following these MCP types."""
+🚨 CRITICAL REQUIREMENTS:
+1. **COMPLETE WORKFLOW**: Include ALL nodes needed for the ENTIRE user workflow, not just the first few steps
+2. **MCP Type Compliance**: For EVERY parameter, use the exact type from MCP response:
+   - type="integer" → numbers (123, not "123")
+   - type="string" → strings ("example", not example)
+   - type="boolean" → true/false (not "true"/"false")
+
+3. **For approval/confirmation workflows**: You MUST include:
+   - Initial processing nodes
+   - Confirmation/notification step
+   - HUMAN_IN_THE_LOOP node to wait for response
+   - Final action node that executes after approval
+
+Generate the COMPLETE JSON workflow now with ALL required nodes."""
                         )
                     )
 
@@ -990,7 +1594,7 @@ Generate the complete JSON workflow now, strictly following these MCP types."""
                 if state:
                     state["generation_status"] = "Generating final workflow JSON..."
                     state["generation_progress"] = 85
-                    
+
                 tool_start = time.time()
                 response = await self.llm_with_tools.ainvoke(current_messages)
                 tool_elapsed = time.time() - tool_start
@@ -998,18 +1602,378 @@ Generate the complete JSON workflow now, strictly following these MCP types."""
 
             if iteration >= max_iterations:
                 logger.warning(f"Reached max iterations ({max_iterations}) in tool calling")
-            
+
             # Final progress update
             if state:
                 state["generation_status"] = "Workflow generation complete"
                 state["generation_progress"] = 100
-                
+
             total_elapsed = time.time() - start_time
             logger.info(f"Total workflow generation time: {total_elapsed:.2f} seconds")
 
-            # Return the final response content
-            return str(response.content) if hasattr(response, "content") else ""
+            # Check if we have a final response with content
+            final_content = ""
+            if hasattr(response, "content") and response.content:
+                final_content = str(response.content)
+                logger.info(f"LLM final response length: {len(final_content)} characters")
+            else:
+                logger.warning("No final content from LLM, attempting one more generation request")
+                # Force final generation if we don't have content
+                current_messages.append(
+                    HumanMessage(
+                        content="Generate the complete workflow JSON now. Output only the JSON starting with { and ending with }."
+                    )
+                )
+                try:
+                    final_response = await self.llm_with_tools.ainvoke(current_messages)
+                    if hasattr(final_response, "content") and final_response.content:
+                        final_content = str(final_response.content)
+                        logger.info(f"Forced generation produced {len(final_content)} characters")
+                    else:
+                        logger.error("Even forced generation produced no content")
+                except Exception as e:
+                    logger.error(f"Forced generation failed: {e}")
+
+            return final_content
 
         except Exception as e:
             logger.error(f"Natural tool generation failed: {e}", exc_info=True)
             return ""
+
+    async def _validate_and_complete_workflow(
+        self, workflow: dict, intent_summary: str, state: dict
+    ) -> dict:
+        """
+        Use LLM with MCP tools to validate workflow completeness and add missing nodes.
+
+        This approach is fully LLM-driven and uses the same MCP tools that the original
+        workflow generation uses, ensuring consistency and flexibility.
+        """
+        try:
+            logger.info("Using LLM to validate workflow completeness")
+
+            # Use LLM to determine if workflow is complete and needs enhancement
+            validation_result = await self._llm_validate_workflow_completeness(
+                workflow, intent_summary, state
+            )
+
+            if validation_result.get("needs_completion", False):
+                logger.info("LLM determined workflow needs completion")
+                # Use LLM with MCP tools to analyze and complete the workflow
+                completed_workflow = await self._llm_complete_workflow(
+                    workflow, intent_summary, state
+                )
+
+                if completed_workflow and len(completed_workflow.get("nodes", [])) > len(
+                    workflow.get("nodes", [])
+                ):
+                    logger.info(
+                        f"LLM completed workflow: {len(workflow.get('nodes', []))} → {len(completed_workflow.get('nodes', []))} nodes"
+                    )
+                    return completed_workflow
+                else:
+                    logger.info("LLM did not improve workflow, keeping original")
+                    return workflow
+            else:
+                logger.info("LLM determined workflow is complete")
+                return workflow
+
+        except Exception as e:
+            logger.error(f"Workflow validation failed: {e}", exc_info=True)
+            return workflow
+
+    async def _iterative_workflow_validation(
+        self, workflow: dict, intent_summary: str, state: dict, current_messages: list
+    ) -> dict:
+        """
+        Iteratively validate and improve workflow using LLM feedback loop.
+
+        This method validates the workflow and if issues are found, dynamically creates
+        feedback messages to guide the LLM to regenerate with missing nodes/connections.
+        Runs up to 3 iterations to achieve completeness.
+        """
+        max_iterations = 2
+        iteration = 0
+
+        while iteration < max_iterations:
+            iteration += 1
+            logger.info(f"Workflow validation iteration {iteration}/{max_iterations}")
+
+            # Validate current workflow
+            validation_result = await self._llm_validate_workflow_completeness(
+                workflow, intent_summary, state
+            )
+
+            if not validation_result.get("needs_completion", False):
+                logger.info(f"Workflow validation passed on iteration {iteration}")
+                return workflow
+
+            # Workflow needs improvement - create dynamic feedback message
+            logger.info(
+                f"Workflow needs improvement: {validation_result.get('reasoning', 'Unknown')}"
+            )
+
+            if iteration >= max_iterations:
+                logger.warning(
+                    f"Reached max validation iterations ({max_iterations}), using current workflow"
+                )
+                break
+
+            # Generate improvement feedback message
+            improvement_message = f"""The workflow validation failed with this feedback:
+{validation_result.get('reasoning', 'Workflow needs improvement')}
+
+Please regenerate the workflow JSON to address these issues. The workflow must:
+1. Include ALL required nodes to implement the complete user request
+2. Have proper connections between nodes
+3. Use valid JSON formatting without trailing backslashes
+4. Follow the exact MCP parameter types
+
+Generate the complete workflow JSON now:"""
+
+            # Add feedback to conversation
+            current_messages.append(HumanMessage(content=improvement_message))
+
+            # Regenerate workflow with feedback
+            try:
+                response = await self.llm_with_tools.ainvoke(current_messages)
+                logger.info(f"Improvement iteration {iteration} response received")
+
+                # Extract improved workflow JSON
+                if hasattr(response, "content") and response.content:
+                    try:
+                        # Use the same JSON repair logic as the main workflow generation
+                        clean_content = response.content.strip()
+                        if clean_content.startswith("```json"):
+                            clean_content = clean_content[7:]
+                            if clean_content.endswith("```"):
+                                clean_content = clean_content[:-3]
+                        elif clean_content.startswith("```"):
+                            clean_content = clean_content[3:]
+                            if clean_content.endswith("```"):
+                                clean_content = clean_content[:-3]
+
+                        # Parse the JSON directly - trust LLM to generate valid JSON
+                        improved_workflow = json.loads(clean_content.strip())
+                        improved_workflow = self._normalize_workflow_structure(improved_workflow)
+                        improved_workflow = self._fix_workflow_parameters(improved_workflow)
+
+                        # Update workflow for next iteration
+                        workflow = improved_workflow
+                        logger.info(
+                            f"Workflow improved in iteration {iteration}: {len(workflow.get('nodes', []))} nodes"
+                        )
+
+                        # Add assistant response to conversation for next iteration
+                        current_messages.append(
+                            SystemMessage(content=f"Assistant: {response.content}")
+                        )
+
+                    except json.JSONDecodeError as e:
+                        logger.warning(
+                            f"Failed to parse improved workflow JSON in iteration {iteration}: {e}"
+                        )
+                        logger.warning(f"Raw response: {response.content[:500]}...")
+                        break
+                else:
+                    logger.warning(f"No content in improvement response for iteration {iteration}")
+                    break
+
+            except Exception as e:
+                logger.error(f"Workflow improvement iteration {iteration} failed: {e}")
+                break
+
+        return workflow
+
+    async def _generate_improvement_feedback(
+        self, workflow: dict, intent_summary: str, validation_result: dict
+    ) -> str:
+        """Generate dynamic feedback message to guide workflow improvement."""
+        workflow_json = json.dumps(workflow, indent=2)
+        node_count = len(workflow.get("nodes", []))
+        reasoning = validation_result.get("reasoning", "Workflow may be incomplete")
+
+        feedback_message = f"""🔄 WORKFLOW IMPROVEMENT NEEDED
+
+**Current Status:** Your workflow has {node_count} nodes but may not fully implement the user's requirements.
+
+**Issue Identified:** {reasoning}
+
+**User Requirements:** {intent_summary}
+
+**Current Workflow:**
+```json
+{workflow_json}
+```
+
+**Required Actions:**
+1. **Analyze gaps**: Compare current workflow against user requirements
+2. **Add missing nodes**: Include any missing steps, approvals, or final actions
+3. **Fix connections**: Ensure proper flow between all nodes
+4. **Use correct subtypes**: Use enum values from MCP specifications
+
+**For approval workflows specifically:**
+- Include HUMAN_IN_THE_LOOP node with correct subtype (e.g., SLACK_INTERACTION)
+- Include final action nodes that execute after approval
+- Ensure proper connection flow: trigger → process → confirm → approve → final_action
+
+**Generate the COMPLETE improved workflow JSON now:**"""
+
+        return feedback_message
+
+    async def _llm_validate_workflow_completeness(
+        self, workflow: dict, intent_summary: str, state: dict
+    ) -> dict:
+        """
+        Use LLM to determine if the workflow is complete or needs additional nodes.
+
+        Returns a dict with 'needs_completion' boolean and optional 'reasoning' string.
+        """
+        try:
+            workflow_json = json.dumps(workflow, indent=2)
+
+            # Load validation prompt template
+            validation_prompt = await self.load_prompt_template(
+                "workflow_validation", intent_summary=intent_summary, workflow_json=workflow_json
+            )
+
+            messages = [HumanMessage(content=validation_prompt)]
+
+            # Use basic LLM without tools for this validation step
+            response = await self.llm.ainvoke(messages)
+
+            if hasattr(response, "content") and response.content:
+                try:
+                    # Parse the JSON response
+                    validation_result = json.loads(response.content.strip())
+                    logger.info(f"LLM validation result: {validation_result}")
+                    return validation_result
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to parse LLM validation response: {e}")
+                    logger.warning(f"Raw response: {response.content}")
+                    # Default to not needing completion if we can't parse
+                    return {
+                        "needs_completion": False,
+                        "reasoning": "Failed to parse validation response",
+                    }
+
+            # Default to not needing completion if no response
+            return {"needs_completion": False, "reasoning": "No validation response received"}
+
+        except Exception as e:
+            logger.error(f"Workflow validation failed: {e}", exc_info=True)
+            # Default to not needing completion if validation fails
+            return {"needs_completion": False, "reasoning": f"Validation error: {str(e)}"}
+
+    async def _llm_complete_workflow(
+        self, incomplete_workflow: dict, intent_summary: str, state: dict
+    ) -> dict:
+        """
+        Use LLM with MCP tools to analyze an incomplete workflow and add missing nodes.
+
+        This reuses the existing workflow generation prompt in "edit mode" to modify
+        the incomplete workflow in place, ensuring consistency with the main generation system.
+        """
+        try:
+            workflow_json = json.dumps(incomplete_workflow, indent=2)
+
+            # Use the existing workflow generation prompt in edit mode
+            completion_prompt = await self.load_prompt_template(
+                "workflow_gen_simplified",
+                workflow_mode="edit",
+                source_workflow=workflow_json,
+                intent_summary=intent_summary,
+            )
+
+            # Use the same natural tool generation approach
+            messages = [HumanMessage(content=completion_prompt)]
+
+            # Generate with a shorter timeout since this is completion, not full generation
+            start_time = time.time()
+            response = await self.llm_with_tools.ainvoke(messages)
+            elapsed = time.time() - start_time
+            logger.info(f"Initial completion response received after {elapsed:.2f} seconds")
+
+            # Process tool calls (similar to main generation but with max 3 iterations)
+            current_messages = list(messages)
+            max_iterations = 3
+            iteration = 0
+
+            while (
+                hasattr(response, "tool_calls")
+                and response.tool_calls
+                and iteration < max_iterations
+            ):
+                iteration += 1
+                logger.info(f"Completion tool calls (iteration {iteration})")
+
+                # Add assistant response to conversation
+                if hasattr(response, "content") and response.content:
+                    current_messages.append(SystemMessage(content=f"Assistant: {response.content}"))
+
+                # Process each tool call
+                for tool_call in response.tool_calls:
+                    tool_name = getattr(tool_call, "name", tool_call.get("name", ""))
+                    tool_args = getattr(tool_call, "args", tool_call.get("args", {}))
+
+                    logger.info(f"Completion processing tool call: {tool_name}")
+                    result = await self.mcp_client.call_tool(tool_name, tool_args)
+
+                    # Add tool result to conversation with optimized filtering
+                    original_size = (
+                        len(json.dumps(result, indent=2))
+                        if isinstance(result, dict)
+                        else len(str(result))
+                    )
+                    result_str = self._filter_mcp_response_for_prompt(result, tool_name)
+                    logger.debug(
+                        f"💡 MCP response filtered: reduced from {original_size} to {len(result_str)} characters"
+                    )
+                    current_messages.append(
+                        HumanMessage(content=f"Tool result for {tool_name}:\n{result_str}")
+                    )
+
+                # Add completion reminder
+                if iteration >= 2:  # After getting node details
+                    current_messages.append(
+                        HumanMessage(
+                            content="Generate the complete workflow JSON now. Include all existing nodes plus any missing nodes for full functionality. Use exact MCP parameter types."
+                        )
+                    )
+
+                # Continue the conversation
+                response = await self.llm_with_tools.ainvoke(current_messages)
+
+            # Extract and return the completed workflow
+            final_content = str(response.content) if hasattr(response, "content") else ""
+
+            if final_content:
+                # Parse the JSON response
+                try:
+                    # Clean up the response (similar to main generation)
+                    clean_content = final_content.strip()
+                    if clean_content.startswith("```json"):
+                        clean_content = clean_content[7:]
+                        if clean_content.endswith("```"):
+                            clean_content = clean_content[:-3]
+                    elif clean_content.startswith("```"):
+                        clean_content = clean_content[3:]
+                        if clean_content.endswith("```"):
+                            clean_content = clean_content[:-3]
+
+                    completed_workflow = json.loads(clean_content.strip())
+                    logger.info(
+                        f"LLM workflow completion successful: {len(completed_workflow.get('nodes', []))} nodes"
+                    )
+                    return completed_workflow
+
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse completed workflow JSON: {e}")
+                    return incomplete_workflow
+            else:
+                logger.warning("No completion content from LLM")
+                return incomplete_workflow
+
+        except Exception as e:
+            logger.error(f"LLM workflow completion failed: {e}", exc_info=True)
+            return incomplete_workflow

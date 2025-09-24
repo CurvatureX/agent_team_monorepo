@@ -73,14 +73,28 @@ class GitHubTriggerRequest(BaseModel):
     timestamp: str
 
 
+def get_jwt_token(request: Request) -> Optional[str]:
+    """Extract JWT token from Authorization header"""
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.startswith("Bearer "):
+        return auth_header[7:]  # Remove "Bearer " prefix
+    return None
+
+
 @router.post("/workflows/{workflow_id}/manual", response_model=ExecutionResult)
 async def trigger_manual(
     workflow_id: str,
+    request_obj: Request,
     request: ManualTriggerRequest,
     trigger_manager: TriggerManager = Depends(get_trigger_manager),
 ):
     """Manually trigger a workflow execution"""
     try:
+        # Extract JWT token from Authorization header
+        access_token = get_jwt_token(request_obj)
+        if access_token:
+            logger.info(f"🔐 JWT token received for manual trigger: {workflow_id}")
+
         # Get the workflow owner ID
         workflow_owner_id = await _get_workflow_owner_id(workflow_id)
         if not workflow_owner_id:
@@ -92,7 +106,7 @@ async def trigger_manual(
         )
 
         result = await trigger_manager.trigger_manual(
-            workflow_id=workflow_id, user_id=workflow_owner_id
+            workflow_id=workflow_id, user_id=workflow_owner_id, access_token=access_token
         )
 
         return result
@@ -417,6 +431,8 @@ async def _find_workflows_with_github_triggers(
                 trigger_config = trigger_record["trigger_config"]
                 workflow_id = trigger_record["workflow_id"]
 
+                logger.info(f"Processing trigger for workflow {workflow_id}: {trigger_config}")
+
                 # Check installation ID match
                 trigger_installation_id = trigger_config.get("github_app_installation_id")
                 if trigger_installation_id and str(trigger_installation_id) != str(installation_id):
@@ -438,18 +454,29 @@ async def _find_workflows_with_github_triggers(
                 else:
                     event_config = event_config_raw
 
-                # Check if this event type is configured
-                if event_type not in event_config:
-                    logger.debug(
-                        f"Event type {event_type} not in config: {list(event_config.keys())}"
+                # Check if this event type is configured - support both array and object formats
+                if isinstance(event_config, list):
+                    # Array format: ["push", "pull_request"]
+                    event_supported = event_type in event_config
+                    logger.info(
+                        f"Checking event {event_type} in array config: {event_config} -> {event_supported}"
                     )
+                else:
+                    # Object format: {"pull_request": {"actions": [...]}}
+                    event_supported = event_type in event_config
+                    logger.info(
+                        f"Checking event {event_type} in object config: {list(event_config.keys())} -> {event_supported}"
+                    )
+
+                if not event_supported:
+                    logger.info(f"Event type {event_type} not supported in config: {event_config}")
                     continue
 
-                # Check action match for pull_request events
-                if event_type == "pull_request":
+                # Check action match for pull_request events (only for object format)
+                if event_type == "pull_request" and isinstance(event_config, dict):
                     action = payload.get("action")
-                    expected_actions = event_config[event_type].get("actions", [])
-                    if action not in expected_actions:
+                    expected_actions = event_config.get(event_type, {}).get("actions", [])
+                    if expected_actions and action not in expected_actions:
                         logger.debug(f"Action {action} not in expected actions: {expected_actions}")
                         continue
 
@@ -602,7 +629,7 @@ async def handle_slack_events(
                 should_trigger = await slack_trigger.process_slack_event(event_data)
 
                 if should_trigger:
-                    logger.info(f"Slack trigger matched for workflow {workflow_id}")
+                    logger.info(f"🚀 TRIGGERING WORKFLOW {workflow_id} - Slack trigger matched!")
 
                     # Execute workflow via SlackTrigger method (includes proper channel context)
                     result = await slack_trigger.trigger_from_slack_event(event_data)
@@ -619,12 +646,14 @@ async def handle_slack_events(
                         processed_workflows += 1
 
                         logger.info(
-                            f"Slack workflow executed {workflow_id}: "
+                            f"✅ WORKFLOW {workflow_id} EXECUTION COMPLETED: "
                             f"execution_id={result.execution_id}, status={result.status}"
                         )
+                    else:
+                        logger.error(f"❌ WORKFLOW {workflow_id}: Trigger failed to produce result")
                 else:
-                    logger.debug(
-                        f"Slack event did not match trigger filters for workflow {workflow_id}"
+                    logger.info(
+                        f"⏭️ WORKFLOW {workflow_id}: Event filters not matched - workflow skipped"
                     )
 
             except Exception as e:

@@ -103,6 +103,12 @@ class NodeSpecRegistry:
         if spec:
             return spec
 
+        # Try with NodeType prefix (for specs registered with enum node types)
+        nodetype_key = f"NodeType.{node_type}.{subtype}"
+        spec = self._specs.get(nodetype_key)
+        if spec:
+            return spec
+
         # Try with NodeType/Subtype prefixes (for new enum format)
         enum_key = f"NodeType.{node_type}.{self._get_subtype_enum_key(node_type, subtype)}"
         return self._specs.get(enum_key)
@@ -129,7 +135,7 @@ class NodeSpecRegistry:
                 "FLOW": FlowSubtype,
                 "TRIGGER": TriggerSubtype,
                 "MEMORY": MemorySubtype,
-                "HUMAN_LOOP": HumanLoopSubtype,
+                "HUMAN_IN_THE_LOOP": HumanLoopSubtype,
                 "TOOL": ToolSubtype,
                 "EXTERNAL_ACTION": ExternalActionSubtype,
             }

@@ -25,25 +25,12 @@ from app.models import (
     WorkflowEventData,
 )
 from app.utils.logger import get_logger
-from app.utils.sse import create_mock_chat_stream, format_sse_event
+from app.utils.sse import create_mock_chat_stream, create_sse_event, format_sse_event
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 logger = get_logger(__name__)
 router = APIRouter()
-
-
-def create_sse_event(
-    event_type: SSEEventType, data: Dict[str, Any], session_id: str, is_final: bool = False
-) -> ChatSSEEvent:
-    """创建类型化的SSE事件"""
-    return ChatSSEEvent(
-        type=event_type,
-        data=data,
-        session_id=session_id,
-        timestamp=datetime.now(timezone.utc).isoformat(),
-        is_final=is_final,
-    )
 
 
 @router.post(
@@ -164,13 +151,15 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                 # Priority: ChatRequest parameters > session data
                 action = chat_request.action or session.get("action", "create")
                 workflow_id = chat_request.workflow_id or session.get("workflow_id", "")
-                
+
                 if action and action != "create":
                     workflow_context = {
                         "origin": action,  # edit 或 copy
                         "source_workflow_id": workflow_id,
                     }
-                    logger.info(f"📝 Workflow context created: action={action}, workflow_id={workflow_id}")
+                    logger.info(
+                        f"📝 Workflow context created: action={action}, workflow_id={workflow_id}"
+                    )
 
                 # Process conversation stream with workflow agent
                 async for response in workflow_client.process_conversation_stream(

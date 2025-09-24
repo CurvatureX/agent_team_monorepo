@@ -6,7 +6,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel as PydanticBaseModel
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 
 class BaseModel(PydanticBaseModel):
@@ -15,15 +15,16 @@ class BaseModel(PydanticBaseModel):
     为所有数据模型提供通用字段和配置
     """
 
-    class Config:
+    model_config = ConfigDict(
         # 允许从ORM对象转换为Pydantic模型
-        from_attributes = True
+        from_attributes=True,
         # 在序列化时排除None值
-        exclude_none = True
+        exclude_none=True,
         # 使用枚举值而不是枚举名称
-        use_enum_values = True
+        use_enum_values=True,
         # 验证赋值
-        validate_assignment = True
+        validate_assignment=True,
+    )
 
 
 class TimestampedModel(BaseModel):
@@ -78,8 +79,7 @@ class BaseResponse(BaseModel):
     success: bool = True
     message: str = ""
 
-    class Config:
-        json_schema_extra = {"example": {"success": True, "message": "操作成功"}}
+    model_config = ConfigDict(json_schema_extra={"example": {"success": True, "message": "操作成功"}})
 
 
 class ErrorModel(ResponseModel):
@@ -100,8 +100,8 @@ class ErrorResponse(BaseResponse):
     error_code: Optional[str] = None
     details: Optional[Dict[str, Any]] = None
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "success": False,
                 "message": "操作失败",
@@ -109,6 +109,7 @@ class ErrorResponse(BaseResponse):
                 "details": {"field": "name", "issue": "名称不能为空"},
             }
         }
+    )
 
 
 class HealthStatus(str, Enum):
@@ -144,8 +145,8 @@ class HealthResponse(BaseModel):
     timestamp: int = Field(default_factory=lambda: int(time.time()))
     details: Optional[Dict[str, Any]] = None
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "status": "healthy",
                 "version": "1.0.0",
@@ -153,6 +154,7 @@ class HealthResponse(BaseModel):
                 "details": {"database": "connected", "redis": "connected"},
             }
         }
+    )
 
 
 class PaginationModel(BaseModel):
@@ -195,8 +197,8 @@ class ServiceHealthCheck(BaseModel):
     url: str
     error: Optional[str] = None
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "status": "healthy",
                 "status_code": 200,
@@ -204,3 +206,4 @@ class ServiceHealthCheck(BaseModel):
                 "error": None,
             }
         }
+    )

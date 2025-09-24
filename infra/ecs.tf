@@ -254,6 +254,22 @@ resource "aws_ecs_task_definition" "api_gateway" {
         {
           name      = "SLACK_REDIRECT_URI"
           valueFrom = aws_ssm_parameter.slack_redirect_uri.arn
+        },
+        {
+          name      = "GOOGLE_CLIENT_ID"
+          valueFrom = aws_ssm_parameter.google_client_id.arn
+        },
+        {
+          name      = "GOOGLE_CLIENT_SECRET"
+          valueFrom = aws_ssm_parameter.google_client_secret.arn
+        },
+        {
+          name      = "GOOGLE_REDIRECT_URI"
+          valueFrom = aws_ssm_parameter.google_redirect_uri.arn
+        },
+        {
+          name      = "DNS_DOMAIN_NAME"
+          valueFrom = aws_ssm_parameter.dns_domain_name.arn
         }
       ]
 
@@ -343,6 +359,10 @@ resource "aws_ecs_task_definition" "workflow_engine" {
           valueFrom = aws_ssm_parameter.openai_api_key.arn
         },
         {
+          name      = "OPENAI_MODEL"
+          valueFrom = aws_ssm_parameter.openai_model.arn
+        },
+        {
           name      = "ANTHROPIC_API_KEY"
           valueFrom = aws_ssm_parameter.anthropic_api_key.arn
         },
@@ -361,6 +381,10 @@ resource "aws_ecs_task_definition" "workflow_engine" {
         {
           name      = "DATABASE_URL"
           valueFrom = aws_ssm_parameter.database_url.arn
+        },
+        {
+          name      = "DNS_DOMAIN_NAME"
+          valueFrom = aws_ssm_parameter.dns_domain_name.arn
         }
       ]
 
@@ -489,7 +513,23 @@ resource "aws_ecs_task_definition" "workflow_agent" {
         },
         {
           name  = "DEFAULT_MODEL_NAME"
-          value = "gpt-4.1"  # GPT-4.1 which supports response_format
+          value = "gpt-5-mini-2025-08-07"  # Updated to GPT-5 mini model
+        },
+        {
+          name  = "LLM_PROVIDER"
+          value = "openai"
+        },
+        {
+          name  = "LLM_TIMEOUT"
+          value = "1200"  # 20 minutes timeout
+        },
+        {
+          name  = "LLM_MAX_TOKENS"
+          value = "0"  # 0 means no limit
+        },
+        {
+          name  = "LLM_TEMPERATURE"
+          value = "0"
         },
         {
           name  = "OTEL_SDK_DISABLED"
@@ -501,6 +541,10 @@ resource "aws_ecs_task_definition" "workflow_agent" {
         {
           name      = "OPENAI_API_KEY"
           valueFrom = aws_ssm_parameter.openai_api_key.arn
+        },
+        {
+          name      = "OPENAI_MODEL"
+          valueFrom = aws_ssm_parameter.openai_model.arn
         },
         {
           name      = "ANTHROPIC_API_KEY"
@@ -517,6 +561,10 @@ resource "aws_ecs_task_definition" "workflow_agent" {
         {
           name      = "SUPABASE_SECRET_KEY"
           valueFrom = aws_ssm_parameter.supabase_secret_key.arn
+        },
+        {
+          name      = "DNS_DOMAIN_NAME"
+          valueFrom = aws_ssm_parameter.dns_domain_name.arn
         }
       ]
 
@@ -634,7 +682,7 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
         },
         {
           name  = "LOG_LEVEL"
-          value = "DEBUG"
+          value = "INFO"
         },
         {
           name  = "PYTHONUNBUFFERED"
@@ -730,6 +778,22 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
         {
           name      = "SLACK_SIGNING_SECRET"
           valueFrom = aws_ssm_parameter.slack_signing_secret.arn
+        },
+        {
+          name      = "GOOGLE_CLIENT_ID"
+          valueFrom = aws_ssm_parameter.google_client_id.arn
+        },
+        {
+          name      = "GOOGLE_CLIENT_SECRET"
+          valueFrom = aws_ssm_parameter.google_client_secret.arn
+        },
+        {
+          name      = "GOOGLE_REDIRECT_URI"
+          valueFrom = aws_ssm_parameter.google_redirect_uri.arn
+        },
+        {
+          name      = "DNS_DOMAIN_NAME"
+          valueFrom = aws_ssm_parameter.dns_domain_name.arn
         }
       ]
 
@@ -746,9 +810,9 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
       healthCheck = {
         command     = ["CMD-SHELL", "curl -f http://localhost:8003/health || exit 1"]
         interval    = 30
-        timeout     = 15
-        retries     = 3
-        startPeriod = 180
+        timeout     = 20
+        retries     = 5
+        startPeriod = 300  # Increased to 5 minutes for complex initialization
       }
     }
   ])

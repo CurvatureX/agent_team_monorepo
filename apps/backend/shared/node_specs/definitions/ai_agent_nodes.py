@@ -22,7 +22,15 @@ from ..base import (
     ParameterDef,
     ParameterType,
 )
-from ..communication_protocol import STANDARD_TEXT_OUTPUT
+
+# Standard output format for AI agents
+STANDARD_TEXT_OUTPUT = DataFormat(
+    mime_type="application/json",
+    schema='{"content": "string", "metadata": "object", "format_type": "string", "source_node": "string", "timestamp": "string"}',
+    examples=[
+        '{"content": "AI response text", "metadata": {"provider": "openai", "model": "gpt-4"}, "format_type": "text", "source_node": "ai_agent_1", "timestamp": "2025-01-28T10:30:00Z"}'
+    ],
+)
 
 
 # Base AI Agent specification with common parameters

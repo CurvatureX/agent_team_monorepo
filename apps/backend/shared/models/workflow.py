@@ -2,7 +2,7 @@
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .common import BaseResponse, EntityModel
 from .node_enums import NodeType
@@ -23,7 +23,14 @@ class RetryPolicyData(BaseModel):
 
 
 class NodeData(BaseModel):
-    """工作流节点数据"""
+    """
+    工作流节点数据
+
+    🎯 WORKFLOW GENERATION TIP:
+    When using HUMAN_IN_THE_LOOP nodes, they have built-in AI response analysis capabilities.
+    Use their confirmed/rejected/unrelated/timeout output ports instead of creating
+    separate AI_AGENT or FLOW (IF) nodes for response classification.
+    """
 
     id: Optional[str] = None  # 可选，系统会自动生成
     name: str
@@ -96,6 +103,28 @@ class WorkflowData(BaseModel):
     created_at: Optional[int] = None
     updated_at: Optional[int] = None
     version: str = Field(default="1.0")
+    icon_url: Optional[str] = Field(
+        default=None, description="URL to the workflow icon/image for visual identification in UI"
+    )
+
+    # Deployment metadata (populated during list operations)
+    deployment_status: Optional[str] = Field(
+        default=None, description="Latest deployment status from workflow_deployments table"
+    )
+    deployed_at: Optional[str] = Field(
+        default=None, description="Latest deployment timestamp in ISO format"
+    )
+
+    # Execution metadata (populated during list operations)
+    latest_execution_status: Optional[str] = Field(
+        default=None, description="Status of the most recent workflow execution"
+    )
+    latest_execution_time: Optional[str] = Field(
+        default=None, description="Timestamp of the most recent execution in ISO format"
+    )
+    latest_execution_id: Optional[str] = Field(
+        default=None, description="ID of the most recent execution"
+    )
 
     @field_validator("name")
     @classmethod
@@ -186,13 +215,14 @@ class CreateWorkflowRequest(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = Field(None, max_length=1000)
-    nodes: List[NodeData] = Field(..., min_items=1)
+    nodes: List[NodeData] = Field(..., min_length=1)
     connections: Dict[str, Any] = Field(default_factory=dict)
     settings: Optional[WorkflowSettingsData] = None
     static_data: Dict[str, str] = Field(default_factory=dict)
     tags: List[str] = Field(default_factory=list)
     user_id: str = Field(..., min_length=1)
     session_id: Optional[str] = None
+    icon_url: Optional[str] = None
 
     @field_validator("name")
     @classmethod
@@ -405,10 +435,49 @@ class ListWorkflowsRequest(BaseModel):
     offset: int = Field(default=0, ge=0)
 
 
+class WorkflowMetadata(BaseModel):
+    """工作流元数据 - 用于列表显示，不包含完整的nodes和settings"""
+
+    id: Optional[str] = None
+    user_id: Optional[str] = None
+    session_id: Optional[str] = None
+    name: str
+    description: Optional[str] = None
+    version: str = Field(default="1.0")
+    active: bool = True
+    tags: Optional[List[str]] = Field(default_factory=list)
+    created_at: Optional[int] = None
+    updated_at: Optional[int] = None
+
+    # Deployment metadata
+    deployment_status: Optional[str] = Field(
+        default=None, description="Latest deployment status from workflow_deployments table"
+    )
+    deployed_at: Optional[str] = Field(
+        default=None, description="Latest deployment timestamp in ISO format"
+    )
+
+    # Execution metadata
+    latest_execution_status: Optional[str] = Field(
+        default=None, description="Status of the most recent workflow execution"
+    )
+    latest_execution_time: Optional[str] = Field(
+        default=None, description="Timestamp of the most recent execution in ISO format"
+    )
+    latest_execution_id: Optional[str] = Field(
+        default=None, description="ID of the most recent execution"
+    )
+
+    # Icon URL
+    icon_url: Optional[str] = Field(
+        default=None, description="URL to the workflow icon/image for visual identification in UI"
+    )
+
+
 class ListWorkflowsResponse(BaseModel):
     """列表工作流响应"""
 
-    workflows: List[WorkflowData]
+    workflows: List[WorkflowMetadata]  # Changed from WorkflowData to WorkflowMetadata
     total_count: int
     has_more: bool
 
@@ -420,17 +489,22 @@ class ExecuteWorkflowRequest(BaseModel):
     trigger_data: Dict[str, str] = Field(default_factory=dict)
     user_id: str = Field(..., min_length=1)
     session_id: Optional[str] = None
-    
+
     # 新增参数：支持从指定节点开始执行
     start_from_node: Optional[str] = Field(
-        default=None, 
+        default=None,
         description="指定从哪个节点开始执行，为空时从触发器节点开始",
-        example="ai_message_classification"
+        json_schema_extra={"example": "ai_message_classification"},
     )
-    skip_trigger_validation: bool = Field(
-        default=False,
-        description="是否跳过触发器验证，用于从中间节点开始执行时使用"
+    skip_trigger_validation: bool = Field(default=False, description="是否跳过触发器验证，用于从中间节点开始执行时使用")
+
+    # 新增：当使用start_from_node时，可以提供自定义输入数据
+    inputs: Optional[Dict[str, Any]] = Field(
+        default=None, description="当使用start_from_node时的自定义输入数据，将传递给起始节点"
     )
+
+    # 新增：异步执行标志
+    async_execution: bool = Field(default=False, description="是否异步执行，True时立即返回execution_id而不等待执行完成")
 
 
 class ExecuteWorkflowResponse(BaseModel):
@@ -530,17 +604,14 @@ class WorkflowExecutionRequest(BaseModel):
     inputs: Dict[str, Any] = Field(default_factory=dict, description="执行时的输入参数")
     settings: Optional[Dict[str, Any]] = Field(default=None, description="执行时的特殊设置")
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="执行元数据")
-    
+
     # 新增参数：支持从指定节点开始执行
     start_from_node: Optional[str] = Field(
-        default=None, 
+        default=None,
         description="指定从哪个节点开始执行，为空时从触发器节点开始",
-        example="ai_message_classification"
+        json_schema_extra={"example": "ai_message_classification"},
     )
-    skip_trigger_validation: bool = Field(
-        default=False,
-        description="是否跳过触发器验证，用于从中间节点开始执行时使用"
-    )
+    skip_trigger_validation: bool = Field(default=False, description="是否跳过触发器验证，用于从中间节点开始执行时使用")
 
 
 class WorkflowExecutionResponse(BaseModel):
@@ -592,16 +663,18 @@ class ExecuteSingleNodeRequest(BaseModel):
     execution_context: Dict[str, Any] = Field(
         default_factory=dict,
         description="执行上下文配置",
-        example={
-            "use_previous_results": False,
-            "previous_execution_id": None,
-            "override_parameters": {},
-            "credentials": {},
+        json_schema_extra={
+            "example": {
+                "use_previous_results": False,
+                "previous_execution_id": None,
+                "override_parameters": {},
+                "credentials": {},
+            }
         },
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "user_id": "00000000-0000-0000-0000-000000000123",
                 "input_data": {"url": "https://api.example.com", "method": "GET"},
@@ -611,6 +684,7 @@ class ExecuteSingleNodeRequest(BaseModel):
                 },
             }
         }
+    )
 
 
 class SingleNodeExecutionResponse(BaseModel):
@@ -627,8 +701,8 @@ class SingleNodeExecutionResponse(BaseModel):
     logs: List[str] = Field(default_factory=list, description="执行日志")
     error_message: Optional[str] = Field(None, description="错误信息")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "execution_id": "single-node-exec-123",
                 "node_id": "http_request_node",
@@ -640,3 +714,4 @@ class SingleNodeExecutionResponse(BaseModel):
                 "error_message": None,
             }
         }
+    )

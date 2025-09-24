@@ -62,6 +62,7 @@ class WorkflowSchedulerHTTPClient:
         workflow_id: str,
         user_id: str = "system",
         trace_id: Optional[str] = None,
+        access_token: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Manually trigger a workflow execution"""
         if not self.connected:
@@ -75,6 +76,8 @@ class WorkflowSchedulerHTTPClient:
             headers = {}
             if trace_id:
                 headers["X-Trace-ID"] = trace_id
+            if access_token:
+                headers["Authorization"] = f"Bearer {access_token}"
 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
@@ -168,6 +171,7 @@ class WorkflowSchedulerHTTPClient:
         self,
         workflow_id: str,
         workflow_spec: Dict[str, Any],
+        user_id: Optional[str] = None,
         trace_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Deploy a workflow with its trigger configuration"""
@@ -175,11 +179,17 @@ class WorkflowSchedulerHTTPClient:
             await self.connect()
 
         try:
-            request_data = {
-                "workflow_spec": workflow_spec,
-            }
+            # Ensure user_id is included in workflow_spec for OAuth resolution
+            enhanced_workflow_spec = workflow_spec.copy()
+            if user_id:
+                enhanced_workflow_spec["user_id"] = user_id
+                log_info(f"📨 Deploy workflow request for: {workflow_id} (user: {user_id})")
+            else:
+                log_info(f"📨 Deploy workflow request for: {workflow_id}")
 
-            log_info(f"📨 Deploy workflow request for: {workflow_id}")
+            request_data = {
+                "workflow_spec": enhanced_workflow_spec,
+            }
 
             headers = {}
             if trace_id:
@@ -304,6 +314,79 @@ class WorkflowSchedulerHTTPClient:
             return {"success": False, "error": f"HTTP {e.response.status_code}"}
         except Exception as e:
             log_error(f"❌ Error getting deployment status: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def trigger_workflow_execution(
+        self,
+        workflow_id: str,
+        trigger_metadata: Dict[str, Any],
+        input_data: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None,
+        trace_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Trigger a workflow execution with custom metadata and input data"""
+        if not self.connected:
+            await self.connect()
+
+        try:
+            log_info(
+                f"📨 Triggering workflow execution: {workflow_id} with metadata: "
+                f"{trigger_metadata.get('trigger_type', 'unknown')}"
+            )
+
+            request_data = {
+                "trigger_metadata": trigger_metadata,
+                "input_data": input_data or {},
+            }
+
+            headers = {}
+            if trace_id:
+                headers["X-Trace-ID"] = trace_id
+
+            params = {}
+            if user_id:
+                params["user_id"] = user_id
+
+            client = await self._get_client()
+            response = await client.post(
+                f"{self.base_url}/api/v1/executions/workflows/{workflow_id}/trigger",
+                json=request_data,
+                params=params,
+                headers=headers,
+            )
+            response.raise_for_status()
+
+            data = response.json()
+            log_info(
+                f"✅ Workflow execution triggered: {workflow_id}, "
+                f"execution_id: {data.get('execution_id', 'N/A')}"
+            )
+            return data
+
+        except httpx.HTTPStatusError as e:
+            # Try to extract detailed error message from response
+            error_detail = f"HTTP {e.response.status_code}"
+            try:
+                error_response = e.response.json()
+                if "detail" in error_response:
+                    error_detail = error_response["detail"]
+                elif "message" in error_response:
+                    error_detail = error_response["message"]
+                else:
+                    error_detail = str(error_response)
+            except Exception:
+                # Fallback to text response if JSON parsing fails
+                try:
+                    error_detail = e.response.text or error_detail
+                except Exception:
+                    pass
+
+            log_error(
+                f"❌ HTTP error triggering workflow execution: {e.response.status_code} - {error_detail}"
+            )
+            return {"success": False, "error": error_detail}
+        except Exception as e:
+            log_error(f"❌ Error triggering workflow execution: {e}")
             return {"success": False, "error": str(e)}
 
     async def health_check(self) -> Dict[str, Any]:

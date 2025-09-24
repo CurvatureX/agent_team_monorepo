@@ -15,15 +15,11 @@ from typing import Any, Dict, List, Optional, Type, Union
 
 from .base import MemoryBase
 
-# Import all memory implementations
+# Import all available memory implementations
 from .conversation_buffer import ConversationBufferMemory
 from .conversation_summary import ConversationSummaryMemory
-from .document_store import DocumentStoreMemory
 from .entity_memory import EntityMemory
-from .episodic_memory import EpisodicMemory
-from .graph_memory import GraphMemory
 from .key_value_store import KeyValueStoreMemory
-from .knowledge_base import KnowledgeBaseMemory
 from .vector_database import VectorDatabaseMemory
 from .working_memory import WorkingMemory
 
@@ -39,10 +35,6 @@ class MemoryType(Enum):
     WORKING_MEMORY = "working_memory"
     KEY_VALUE_STORE = "key_value_store"
     ENTITY_MEMORY = "entity_memory"
-    EPISODIC_MEMORY = "episodic_memory"
-    KNOWLEDGE_BASE = "knowledge_base"
-    GRAPH_MEMORY = "graph_memory"
-    DOCUMENT_STORE = "document_store"
 
 
 @dataclass
@@ -120,7 +112,7 @@ class MemoryOrchestrator:
             return
 
         try:
-            # Memory type mappings
+            # Memory type mappings (only include migrated implementations)
             memory_classes: Dict[MemoryType, Type[MemoryBase]] = {
                 MemoryType.CONVERSATION_BUFFER: ConversationBufferMemory,
                 MemoryType.CONVERSATION_SUMMARY: ConversationSummaryMemory,
@@ -128,10 +120,6 @@ class MemoryOrchestrator:
                 MemoryType.WORKING_MEMORY: WorkingMemory,
                 MemoryType.KEY_VALUE_STORE: KeyValueStoreMemory,
                 MemoryType.ENTITY_MEMORY: EntityMemory,
-                MemoryType.EPISODIC_MEMORY: EpisodicMemory,
-                MemoryType.KNOWLEDGE_BASE: KnowledgeBaseMemory,
-                MemoryType.GRAPH_MEMORY: GraphMemory,
-                MemoryType.DOCUMENT_STORE: DocumentStoreMemory,
             }
 
             # Initialize enabled memories
@@ -142,6 +130,10 @@ class MemoryOrchestrator:
                     memory_instance = memory_classes[memory_type](memory_config)
                     self.memories[memory_type] = memory_instance
                     init_tasks.append(memory_instance.initialize())
+                else:
+                    logger.warning(
+                        f"Memory type {memory_type.value} is not available in current implementation"
+                    )
 
             # Initialize all memories in parallel
             await asyncio.gather(*init_tasks, return_exceptions=True)
@@ -279,7 +271,7 @@ class MemoryOrchestrator:
             "query": request.query,
             "session_id": request.session_id,
             "user_id": request.user_id,
-            "context_sources": list(contexts.keys()),
+            "context_sources": [memory_type.value for memory_type in contexts.keys()],
             "composed_at": datetime.utcnow().isoformat(),
         }
 

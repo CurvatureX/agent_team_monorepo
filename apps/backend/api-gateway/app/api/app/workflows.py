@@ -5,6 +5,8 @@ Workflow API endpoints with authentication and enhanced gRPC client integration
 
 import logging
 import time
+import uuid
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from app.core.config import get_settings
@@ -30,6 +32,9 @@ from app.services.workflow_scheduler_http_client import get_workflow_scheduler_c
 
 # Node converter no longer needed - using unified models directly
 from fastapi import APIRouter, Body, Depends, HTTPException
+from pydantic import BaseModel
+
+from shared.models.workflow import ExecuteWorkflowRequest
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -37,6 +42,59 @@ router = APIRouter()
 # Workflow validation and data cache
 WORKFLOW_CACHE = {}
 CACHE_TTL = 300  # 5 minutes TTL for workflow data
+
+
+class WorkflowSummary(BaseModel):
+    """Lightweight workflow model for list view - excludes detailed nodes"""
+
+    id: Optional[str] = None
+    name: str
+    description: Optional[str] = None
+    tags: List[str] = []
+    active: bool = True
+    created_at: Optional[int] = None
+    updated_at: Optional[int] = None
+    version: str = "1.0"
+    logo_url: Optional[str] = None  # Mapped from icon_url
+
+    # Keep deployment and execution status for list view
+    deployment_status: Optional[str] = None
+    latest_execution_status: Optional[str] = None
+    latest_execution_time: Optional[str] = None
+
+
+class WorkflowListResponseModel(BaseModel):
+    """Response model for workflow list"""
+
+    workflows: List[WorkflowSummary]
+    total_count: int
+    has_more: bool
+
+
+class WorkflowDetailResponse(BaseModel):
+    """Workflow detail response with logo_url field"""
+
+    id: Optional[str] = None
+    name: str
+    description: Optional[str] = None
+    nodes: List[Dict[str, Any]]  # Keep nodes for detail view
+    connections: Dict[str, Any] = {}
+    settings: Dict[str, Any] = {}
+    static_data: Dict[str, str] = {}
+    pin_data: Dict[str, str] = {}
+    tags: List[str] = []
+    active: bool = True
+    created_at: Optional[int] = None
+    updated_at: Optional[int] = None
+    version: str = "1.0"
+    logo_url: Optional[str] = None  # Mapped from icon_url
+
+
+class WorkflowDetailResponseModel(BaseModel):
+    """Response wrapper for workflow detail"""
+
+    workflow: WorkflowDetailResponse
+    message: Optional[str] = None
 
 
 def _get_cached_workflow(workflow_id: str, user_id: str):
@@ -301,6 +359,12 @@ async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Dep
     try:
         logger.info(f"📝 Creating workflow for user {deps.current_user.sub}")
 
+        # Generate random icon_url
+        from shared.utils.icon_utils import generate_random_icon_url
+
+        icon_url = generate_random_icon_url()
+        logger.info(f"🎨 Generated random icon_url: {icon_url}")
+
         # Get HTTP client
         settings = get_settings()
 
@@ -314,28 +378,85 @@ async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Dep
         # Use connections as-is (no conversion needed - using unified models)
         connections_dict = request.connections or {}
 
+        # Convert settings to dict if it's an object
+        settings_dict = {}
+        if request.settings:
+            if hasattr(request.settings, "model_dump"):
+                settings_dict = request.settings.model_dump()
+            elif hasattr(request.settings, "dict"):
+                settings_dict = request.settings.dict()
+            elif isinstance(request.settings, dict):
+                settings_dict = request.settings
+            else:
+                settings_dict = {}
+
         # Create workflow via HTTP
         result = await http_client.create_workflow(
             name=request.name,
             description=request.description,
             nodes=nodes_list,
             connections=connections_dict,
-            settings=request.settings or {},
+            settings=settings_dict,
             static_data=getattr(request, "static_data", None) or {},
             tags=request.tags or [],
             user_id=deps.current_user.sub,
             trace_id=getattr(deps.request.state, "trace_id", None),
+            icon_url=icon_url,
         )
 
-        if not result.get("success", False) or not result.get("workflow", {}).get("id"):
+        # Debug logging to understand response format
+        logger.info(f"🐛 DEBUG: Workflow Engine response: {result}")
+
+        # Check for Workflow Engine response format: {"id": "...", "status": "created", "workflow": {...}}
+        if not result.get("workflow", {}).get("id") or result.get("status") != "created":
+            logger.error(f"❌ Invalid response format from Workflow Engine: {result}")
             raise HTTPException(status_code=500, detail="Failed to create workflow")
 
         workflow_data = result["workflow"]
 
         logger.info(f"✅ Workflow created: {workflow_data['id']}")
 
-        # Create workflow object
-        workflow = Workflow(**workflow_data)
+        # Create workflow object - filter out extra fields from Workflow Engine
+        try:
+            # Log the workflow data structure for debugging
+            logger.info(f"🐛 DEBUG: workflow_data keys: {list(workflow_data.keys())}")
+
+            # Filter to only include fields that WorkflowData expects
+            filtered_data = {
+                key: value
+                for key, value in workflow_data.items()
+                if key
+                in [
+                    "id",
+                    "name",
+                    "description",
+                    "nodes",
+                    "connections",
+                    "settings",
+                    "static_data",
+                    "pin_data",
+                    "tags",
+                    "active",
+                    "created_at",
+                    "updated_at",
+                    "version",
+                    "icon_url",
+                    "deployment_status",
+                    "deployed_at",
+                    "latest_execution_status",
+                    "latest_execution_time",
+                    "latest_execution_id",
+                ]
+            }
+            logger.info(f"🐛 DEBUG: filtered_data keys: {list(filtered_data.keys())}")
+
+            workflow = Workflow(**filtered_data)
+        except Exception as model_error:
+            logger.error(f"❌ Error creating Workflow model: {model_error}")
+            logger.error(f"🐛 DEBUG: workflow_data: {workflow_data}")
+            raise HTTPException(
+                status_code=500, detail=f"Failed to create workflow object: {str(model_error)}"
+            )
 
         return WorkflowResponse(workflow=workflow, message="Workflow created successfully")
 
@@ -346,33 +467,30 @@ async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Dep
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/{workflow_id}", response_model=WorkflowResponse)
+@router.get("/{workflow_id}")
 async def get_workflow(workflow_id: str, deps: AuthenticatedDeps = Depends()):
     """
     Get a workflow with user access control
     通过ID获取工作流（支持用户访问控制）
     """
     try:
-        logger.info(f"🔍 Getting workflow {workflow_id} for user {deps.current_user.sub}")
+        logger.info(f"🔍 Getting workflow {workflow_id} using RLS with JWT token")
 
         # Get HTTP client
         settings = get_settings()
 
         http_client = await get_workflow_engine_client()
 
-        # Get workflow via HTTP
-        result = await http_client.get_workflow(workflow_id, deps.current_user.sub)
+        # Get workflow via HTTP with JWT token for RLS
+        result = await http_client.get_workflow(workflow_id, deps.access_token)
         if not result.get("found", False) or not result.get("workflow"):
             raise NotFoundError("Workflow")
 
-        # Create workflow object using WorkflowData
-        from shared.models.workflow import WorkflowData
-
-        workflow = WorkflowData(**result["workflow"])
-
         logger.info(f"✅ Workflow retrieved: {workflow_id}")
 
-        return WorkflowResponse(workflow=workflow, message="Workflow retrieved successfully")
+        # Return the original GetWorkflowResponse structure from workflow engine
+        # This preserves the "found" field that the frontend expects
+        return result
 
     except (NotFoundError, HTTPException):
         raise
@@ -480,7 +598,7 @@ async def delete_workflow(workflow_id: str, deps: AuthenticatedDeps = Depends())
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/", response_model=dict)
+@router.get("/", response_model=WorkflowListResponseModel)
 async def list_workflows(
     active_only: bool = True,
     tags: Optional[str] = None,
@@ -503,18 +621,46 @@ async def list_workflows(
         # Parse tags
         tag_list = tags.split(",") if tags else None
 
-        # List workflows via HTTP
+        # List workflows via HTTP using JWT token for RLS
         result = await http_client.list_workflows(
-            user_id=deps.current_user.sub,
+            access_token=deps.access_token,  # Pass JWT token for RLS
             active_only=active_only,
             tags=tag_list,
             limit=limit,
             offset=offset,
         )
 
-        logger.info(f"✅ Listed {len(result.get('workflows', []))} workflows")
+        # Convert workflows to lightweight summaries with logo_url
+        workflow_summaries = []
+        for workflow_data in result.get("workflows", []):
+            # Handle None values for tags - ensure it's always a list
+            tags_value = workflow_data.get("tags")
+            if tags_value is None:
+                tags_value = []
 
-        return result
+            summary = WorkflowSummary(
+                id=workflow_data.get("id"),
+                name=workflow_data.get("name", ""),
+                description=workflow_data.get("description"),
+                tags=tags_value,
+                active=workflow_data.get("active", True),
+                created_at=workflow_data.get("created_at"),
+                updated_at=workflow_data.get("updated_at"),
+                version=workflow_data.get("version", "1.0"),
+                logo_url=workflow_data.get("icon_url"),  # Map icon_url to logo_url
+                deployment_status=workflow_data.get("deployment_status"),
+                latest_execution_status=workflow_data.get("latest_execution_status"),
+                latest_execution_time=workflow_data.get("latest_execution_time"),
+            )
+            workflow_summaries.append(summary)
+
+        logger.info(f"✅ Listed {len(workflow_summaries)} workflows")
+
+        return WorkflowListResponseModel(
+            workflows=workflow_summaries,
+            total_count=result.get("total_count", len(workflow_summaries)),
+            has_more=result.get("has_more", False),
+        )
 
     except HTTPException:
         raise
@@ -591,6 +737,7 @@ async def trigger_manual_workflow(
             workflow_id=workflow_id,
             user_id=deps.current_user.sub,
             trace_id=getattr(deps.request.state, "trace_id", None),
+            access_token=deps.access_token,
         )
 
         # Handle errors
@@ -692,6 +839,7 @@ async def deploy_workflow(
         result = await scheduler_client.deploy_workflow(
             workflow_id=workflow_id,
             workflow_spec=workflow_data_with_credentials,
+            user_id=deps.current_user.sub,
             trace_id=getattr(deps.request.state, "trace_id", None),
         )
 
@@ -799,4 +947,256 @@ async def get_deployment_status(
         raise
     except Exception as e:
         logger.error(f"❌ Error getting deployment status for workflow {workflow_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/{workflow_id}/triggers/{trigger_node_id}/manual-invocation-schema")
+async def get_manual_invocation_schema(
+    workflow_id: str,
+    trigger_node_id: str,
+    deps: AuthenticatedDeps = Depends(),
+) -> Dict[str, Any]:
+    """
+    Get manual invocation parameter schema for a specific trigger node.
+
+    Returns the JSON schema and examples for manually invoking this trigger,
+    enabling frontend forms to be dynamically generated.
+    """
+    try:
+        logger.info(
+            f"🔍 Getting manual invocation schema for trigger {trigger_node_id} in workflow {workflow_id}"
+        )
+
+        # Get workflow data to find the trigger node
+        workflow_engine_client = await get_workflow_engine_client()
+        workflow = await workflow_engine_client.get_workflow(
+            workflow_id=workflow_id, access_token=deps.access_token
+        )
+
+        # Check if the response indicates an error (success: False) or if it's empty
+        if not workflow or workflow.get("success") == False:
+            error_msg = (
+                workflow.get("error", "Workflow not found") if workflow else "Workflow not found"
+            )
+            raise HTTPException(status_code=404, detail=error_msg)
+
+        # For successful responses, the workflow data is in the "workflow" field or might be the root
+        workflow_data = workflow.get("workflow", workflow)
+        nodes = workflow_data.get("nodes", [])
+
+        # Find the specific trigger node
+        trigger_node = None
+        for node in nodes:
+            if node.get("id") == trigger_node_id and node.get("type") == "TRIGGER":
+                trigger_node = node
+                break
+
+        if not trigger_node:
+            raise HTTPException(
+                status_code=404, detail=f"Trigger node {trigger_node_id} not found in workflow"
+            )
+
+        # Get node spec for this trigger type
+        from shared.node_specs.registry import NodeSpecRegistry
+
+        registry = NodeSpecRegistry()
+        trigger_subtype = trigger_node.get("subtype", "")
+
+        try:
+            node_spec = registry.get_spec("TRIGGER", trigger_subtype)
+        except Exception:
+            raise HTTPException(
+                status_code=400,
+                detail=f"No specification found for trigger type: {trigger_subtype}",
+            )
+
+        if (
+            not node_spec
+            or not node_spec.manual_invocation
+            or not node_spec.manual_invocation.supported
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Manual invocation not supported for trigger type: {trigger_subtype}",
+            )
+
+        # Return comprehensive schema information
+        manual_spec = node_spec.manual_invocation
+
+        result = {
+            "workflow_id": workflow_id,
+            "trigger_node_id": trigger_node_id,
+            "trigger_type": trigger_subtype,
+            "manual_invocation": {
+                "supported": manual_spec.supported,
+                "description": manual_spec.description,
+                "parameter_schema": manual_spec.parameter_schema,
+                "parameter_examples": manual_spec.parameter_examples or [],
+                "default_parameters": manual_spec.default_parameters or {},
+            },
+            "trigger_configuration": {
+                "name": trigger_node.get("name", ""),
+                "parameters": trigger_node.get("parameters", {}),
+            },
+        }
+
+        logger.info(f"✅ Retrieved manual invocation schema for trigger {trigger_node_id}")
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error getting manual invocation schema: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/{workflow_id}/triggers/{trigger_node_id}/manual-invoke")
+async def manual_invoke_trigger(
+    workflow_id: str,
+    trigger_node_id: str,
+    request_body: Dict[str, Any] = Body(...),
+    deps: AuthenticatedDeps = Depends(),
+) -> Dict[str, Any]:
+    """
+    Manually invoke a specific trigger with custom parameters.
+
+    Creates a normal workflow execution with manual invocation metadata.
+    """
+    try:
+        parameters = request_body.get("parameters", {})
+        description = request_body.get("description", "Manual trigger invocation")
+
+        logger.info(f"🚀 Manual trigger invocation: {trigger_node_id} in workflow {workflow_id}")
+
+        # Get workflow to find trigger node type
+        workflow_engine_client = await get_workflow_engine_client()
+        workflow_result = await workflow_engine_client.get_workflow(
+            workflow_id=workflow_id, access_token=deps.access_token
+        )
+
+        # Check if workflow retrieval was successful
+        if not workflow_result.get("found", False) or not workflow_result.get("workflow"):
+            if workflow_result.get("success") == False:
+                error_msg = workflow_result.get("error", "Unknown error")
+                logger.error(f"❌ Failed to get workflow {workflow_id}: {error_msg}")
+                raise HTTPException(
+                    status_code=500, detail=f"Failed to retrieve workflow: {error_msg}"
+                )
+            else:
+                raise HTTPException(status_code=404, detail="Workflow not found")
+
+        workflow = workflow_result["workflow"]
+
+        # Find the trigger node
+        trigger_node = None
+        for node in workflow["nodes"]:
+            if node["id"] == trigger_node_id:
+                trigger_node = node
+                break
+
+        if not trigger_node:
+            raise HTTPException(status_code=404, detail="Trigger node not found in workflow")
+
+        # Get node schema from the public API using the node registry
+        from shared.node_specs.registry import NodeSpecRegistry
+
+        registry = NodeSpecRegistry()
+        node_type = trigger_node["type"]
+        node_subtype = trigger_node["subtype"]
+
+        try:
+            node_spec = registry.get_spec(node_type, node_subtype)
+            if (
+                not node_spec
+                or not node_spec.manual_invocation
+                or not node_spec.manual_invocation.supported
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Manual invocation not supported for {node_type}.{node_subtype}",
+                )
+
+            manual_spec = node_spec.manual_invocation
+            logger.info(f"✅ Manual invocation supported for {node_type}.{node_subtype}")
+
+        except Exception as e:
+            logger.error(f"❌ Error getting node spec: {e}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to get node specification for {node_type}.{node_subtype}",
+            )
+
+        # Validate parameters against JSON schema
+        if manual_spec.parameter_schema:
+            try:
+                import jsonschema
+
+                jsonschema.validate(parameters, manual_spec.parameter_schema)
+                logger.info("✅ Parameters validated against schema")
+            except ImportError:
+                logger.warning("⚠️  jsonschema not available, skipping validation")
+            except jsonschema.ValidationError as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Parameter validation failed: {e.message}"
+                )
+
+        # Merge with default parameters
+        resolved_parameters = {**(manual_spec.default_parameters or {}), **parameters}
+
+        # Get workflow engine client for direct execution (simplified architecture)
+        workflow_engine_client = await get_workflow_engine_client()
+
+        # Convert resolved parameters to string format as required by ExecuteWorkflowRequest
+        trigger_data = {}
+        for key, value in resolved_parameters.items():
+            trigger_data[key] = str(value) if value is not None else ""
+
+        # Add execution metadata (all as strings)
+        trigger_data.update(
+            {
+                "trigger_type": "manual_trigger",
+                "trigger_node_id": trigger_node_id,
+                "original_trigger_type": node_subtype,
+                "invocation_type": "manual_invoke",
+                "triggered_at": datetime.now().isoformat(),
+                "trace_id": getattr(deps.request.state, "trace_id", None) or str(uuid.uuid4()),
+            }
+        )
+
+        # Call workflow engine directly with the correct parameters (async execution for immediate response)
+        execution_result = await workflow_engine_client.execute_workflow(
+            workflow_id=workflow_id,
+            user_id=deps.current_user.sub,
+            input_data=trigger_data,  # Pass trigger data as input_data
+            trace_id=getattr(deps.request.state, "trace_id", None),
+            access_token=deps.access_token,  # Pass JWT token for authentication
+            async_execution=True,  # Return immediately without waiting for completion
+        )
+
+        if not execution_result.get("success", False):
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to start execution: {execution_result.get('error', 'Unknown error')}",
+            )
+
+        result = {
+            "success": True,
+            "workflow_id": workflow_id,
+            "trigger_node_id": trigger_node_id,
+            "execution_id": execution_result.get("execution_id"),
+            "message": "Manual trigger invocation started successfully",
+            "trigger_data": {
+                "trigger_type": node_subtype,
+                "resolved_parameters": resolved_parameters,
+            },
+            "execution_url": f"/api/v1/executions/{execution_result.get('execution_id')}",
+        }
+
+        logger.info(f"✅ Manual trigger invocation started: {execution_result.get('execution_id')}")
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error in manual trigger invocation: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

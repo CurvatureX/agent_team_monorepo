@@ -41,6 +41,16 @@ resource "aws_ssm_parameter" "openai_api_key" {
   })
 }
 
+resource "aws_ssm_parameter" "openai_model" {
+  name  = "/${local.name_prefix}/openai/model"
+  type  = "SecureString"
+  value = var.openai_model
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-openai-model"
+  })
+}
+
 resource "aws_ssm_parameter" "anthropic_api_key" {
   name  = "/${local.name_prefix}/anthropic/api-key"
   type  = "SecureString"
@@ -68,6 +78,16 @@ resource "aws_ssm_parameter" "database_url" {
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-database-url"
+  })
+}
+
+resource "aws_ssm_parameter" "dns_domain_name" {
+  name  = "/${local.name_prefix}/dns/domain-name"
+  type  = "SecureString"
+  value = var.dns_domain_name
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-dns-domain-name"
   })
 }
 
@@ -209,6 +229,36 @@ resource "aws_ssm_parameter" "notion_redirect_uri" {
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-notion-redirect-uri"
+  })
+}
+
+resource "aws_ssm_parameter" "google_client_id" {
+  name  = "/${local.name_prefix}/google/client-id"
+  type  = "SecureString"
+  value = var.google_client_id
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-google-client-id"
+  })
+}
+
+resource "aws_ssm_parameter" "google_client_secret" {
+  name  = "/${local.name_prefix}/google/client-secret"
+  type  = "SecureString"
+  value = var.google_client_secret
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-google-client-secret"
+  })
+}
+
+resource "aws_ssm_parameter" "google_redirect_uri" {
+  name  = "/${local.name_prefix}/google/redirect-uri"
+  type  = "SecureString"
+  value = var.google_redirect_uri
+
+  tags = merge(local.common_tags, {
+    Name = "${local.name_prefix}-google-redirect-uri"
   })
 }
 

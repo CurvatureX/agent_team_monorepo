@@ -1,0 +1,20 @@
+{
+  "inputs": {
+    "content": "hello, help me schedule a meeting to talk about cat",
+    "metadata": {
+      "trigger_type": "slack",
+      "channel": "test",
+      "message_filter": "",
+      "slack_data": {},
+      "text": "",
+      "user": "test_user",
+      "event_timestamp": "",
+      "triggered_at": "2025-09-07T08:50:00.000000"
+    },
+    "format_type": "text",
+    "source_node": "trigger_slack_1",
+    "timestamp": "2025-09-07T08:50:00.000000"
+  },
+  "start_from_node": "filter_contains_meeting",
+  "skip_trigger_validation": true
+}

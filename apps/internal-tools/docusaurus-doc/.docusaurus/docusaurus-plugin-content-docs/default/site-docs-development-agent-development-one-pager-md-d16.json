@@ -14,8 +14,8 @@
   "frontMatter": {},
   "sidebar": "tutorialSidebar",
   "previous": {
-    "title": "节点规范与数据映射系统实施计划",
-    "permalink": "/docs/development/NODE_SPEC_IMPLEMENTATION_PLAN"
+    "title": "Supabase RPC Functions Documentation",
+    "permalink": "/docs/development/SUPABASE_RPC_FUNCTIONS"
   },
   "next": {
     "title": "Workflow Agent 完整技术设计方案",

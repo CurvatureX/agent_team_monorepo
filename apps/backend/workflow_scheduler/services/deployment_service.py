@@ -3,6 +3,8 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+import httpx
+
 from shared.models.node_enums import NodeType
 from shared.models.trigger import DeploymentResult, DeploymentStatus, TriggerSpec, TriggerType
 from workflow_scheduler.services.direct_db_service import DirectDBService
@@ -41,7 +43,7 @@ class DeploymentService:
             # Async optimization: Run validation and trigger extraction in parallel
             validation_task = asyncio.create_task(self._validate_workflow_definition(workflow_spec))
             trigger_extraction_task = asyncio.create_task(
-                asyncio.to_thread(self._extract_trigger_specs, workflow_spec)
+                self._extract_trigger_specs(workflow_spec)
             )
 
             # Run validation and trigger extraction concurrently
@@ -587,7 +589,7 @@ class DeploymentService:
         except Exception as e:
             return {"valid": False, "error": f"Validation error: {str(e)}"}
 
-    def _extract_trigger_specs(self, workflow_spec: Dict) -> List[TriggerSpec]:
+    async def _extract_trigger_specs(self, workflow_spec: Dict) -> List[TriggerSpec]:
         """
         Extract trigger specifications from workflow definition
 
@@ -609,6 +611,10 @@ class DeploymentService:
                     # For GitHub triggers, resolve installation_id from oauth_tokens
                     if node.get("subtype") == "GITHUB":
                         self._resolve_github_installation_id(parameters, workflow_spec)
+
+                    # For Slack triggers, resolve channel names to channel IDs
+                    elif node.get("subtype") == "SLACK":
+                        await self._resolve_slack_channel_ids(parameters, workflow_spec)
 
                     trigger_spec = TriggerSpec(
                         node_type=node.get("type"),
@@ -680,6 +686,237 @@ class DeploymentService:
 
         except Exception as e:
             logger.error(f"Error resolving GitHub installation_id: {e}", exc_info=True)
+
+    async def _resolve_slack_channel_ids(self, parameters: Dict, workflow_spec: Dict):
+        """
+        Resolve Slack channel names to channel IDs and workspace_id during deployment
+
+        This converts channel names like "general", "hil" to channel IDs like "C09D2JW6814"
+        and automatically resolves workspace_id from user's OAuth token.
+
+        Args:
+            parameters: Trigger parameters to modify
+            workflow_spec: Complete workflow specification
+        """
+        try:
+            # Get workflow owner (user_id) from workflow_spec
+            user_id = workflow_spec.get("user_id")
+            if not user_id:
+                logger.warning(
+                    "No user_id found in workflow_spec, cannot resolve Slack configuration"
+                )
+                return
+
+            # Get user's Slack OAuth token and workspace info
+            slack_token, workspace_id = await self._get_user_slack_token_and_workspace(user_id)
+            if not slack_token:
+                logger.warning(
+                    f"No Slack OAuth token found for user {user_id}, cannot resolve Slack configuration"
+                )
+                return
+
+            # Always auto-resolve workspace_id - ignore any workspace_id in workflow configuration
+            if workspace_id:
+                parameters["workspace_id"] = workspace_id
+                logger.info(f"Auto-resolved workspace_id to '{workspace_id}' for user {user_id}")
+            else:
+                logger.warning(
+                    f"Could not resolve workspace_id for user {user_id}. "
+                    f"Ensure user has an active Slack OAuth integration."
+                )
+
+            # Resolve channel names to IDs if channel_filter is specified
+            channel_filter = parameters.get("channel_filter")
+            if not channel_filter:
+                logger.debug("No channel_filter specified for Slack trigger")
+                return
+
+            # If already looks like a channel ID (starts with C), skip resolution
+            if channel_filter.startswith("C"):
+                logger.debug(
+                    f"Channel filter '{channel_filter}' already appears to be a channel ID"
+                )
+                return
+
+            # Resolve channel name(s) to ID(s)
+            resolved_channel_ids = await self._resolve_channel_names_to_ids(
+                channel_filter, slack_token
+            )
+
+            if resolved_channel_ids:
+                # Update the parameters with resolved channel IDs
+                parameters["channel_filter"] = resolved_channel_ids
+                logger.info(
+                    f"Resolved Slack channel filter '{channel_filter}' to '{resolved_channel_ids}' for user {user_id}"
+                )
+            else:
+                logger.warning(
+                    f"Could not resolve Slack channel filter '{channel_filter}' for user {user_id}"
+                )
+
+        except Exception as e:
+            logger.error(f"Error resolving Slack configuration: {e}", exc_info=True)
+
+    async def _get_user_slack_token(self, user_id: str) -> Optional[str]:
+        """
+        Get the user's Slack OAuth token from the database
+
+        Args:
+            user_id: User ID to look up
+
+        Returns:
+            str: Slack access token, or None if not found
+        """
+        token, _ = await self._get_user_slack_token_and_workspace(user_id)
+        return token
+
+    async def _get_user_slack_token_and_workspace(
+        self, user_id: str
+    ) -> tuple[Optional[str], Optional[str]]:
+        """
+        Get the user's Slack OAuth token and workspace_id from the database
+
+        Args:
+            user_id: User ID to look up
+
+        Returns:
+            tuple: (access_token, workspace_id) or (None, None) if not found
+        """
+        try:
+            from workflow_scheduler.core.supabase_client import get_supabase_client
+
+            supabase = get_supabase_client()
+            if not supabase:
+                logger.error("Supabase client not available")
+                return None, None
+
+            # Get user's Slack OAuth token with credential data
+            oauth_result = (
+                supabase.table("oauth_tokens")
+                .select("access_token, credential_data")
+                .eq("user_id", user_id)
+                .eq("integration_id", "slack")
+                .eq("is_active", True)
+                .execute()
+            )
+
+            if not oauth_result.data:
+                logger.warning(f"No active Slack OAuth token found for user {user_id}")
+                return None, None
+
+            token_record = oauth_result.data[0]
+            access_token = token_record.get("access_token")
+            credential_data = token_record.get("credential_data", {})
+
+            # Extract workspace_id (team_id) from credential_data
+            workspace_id = credential_data.get("team_id")
+
+            if access_token:
+                logger.debug(
+                    f"Retrieved Slack token and workspace_id '{workspace_id}' for user {user_id}"
+                )
+                return access_token, workspace_id
+            else:
+                logger.warning(f"Empty access_token for user {user_id}")
+                return None, workspace_id
+
+        except Exception as e:
+            logger.error(f"Error getting user Slack token and workspace: {e}", exc_info=True)
+            return None, None
+
+    async def _resolve_channel_names_to_ids(
+        self, channel_filter: str, slack_token: str
+    ) -> Optional[str]:
+        """
+        Resolve channel names to channel IDs using Slack API
+
+        Args:
+            channel_filter: Channel names (single or comma-separated)
+            slack_token: Slack OAuth token
+
+        Returns:
+            str: Resolved channel IDs (single or comma-separated), or None if failed
+        """
+        import httpx
+
+        try:
+            # Handle comma-separated channel names
+            if "," in channel_filter:
+                channel_names = [name.strip() for name in channel_filter.split(",")]
+            else:
+                channel_names = [channel_filter.strip()]
+
+            resolved_ids = []
+
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                for channel_name in channel_names:
+                    # Try to find the channel by name
+                    channel_id = await self._find_channel_id_by_name(
+                        client, slack_token, channel_name
+                    )
+                    if channel_id:
+                        resolved_ids.append(channel_id)
+                        logger.debug(f"Resolved channel '{channel_name}' to ID '{channel_id}'")
+                    else:
+                        logger.warning(f"Could not find channel ID for '{channel_name}'")
+                        # Keep the original name if we can't resolve it
+                        resolved_ids.append(channel_name)
+
+            if resolved_ids:
+                return ",".join(resolved_ids)
+            else:
+                return None
+
+        except Exception as e:
+            logger.error(f"Error resolving channel names to IDs: {e}", exc_info=True)
+            return None
+
+    async def _find_channel_id_by_name(
+        self, client: httpx.AsyncClient, slack_token: str, channel_name: str
+    ) -> Optional[str]:
+        """
+        Find a single channel ID by name using Slack API
+
+        Args:
+            client: HTTP client
+            slack_token: Slack OAuth token
+            channel_name: Channel name to look up
+
+        Returns:
+            str: Channel ID, or None if not found
+        """
+        try:
+            # Use conversations.list to find the channel
+            response = await client.get(
+                "https://slack.com/api/conversations.list",
+                headers={"Authorization": f"Bearer {slack_token}"},
+                params={
+                    "types": "public_channel,private_channel",
+                    "limit": 1000,  # Slack's max limit
+                },
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("ok"):
+                    channels = data.get("channels", [])
+                    for channel in channels:
+                        if channel.get("name") == channel_name:
+                            return channel.get("id")
+                    logger.debug(f"Channel '{channel_name}' not found in {len(channels)} channels")
+                else:
+                    error_msg = data.get("error", "unknown")
+                    logger.warning(
+                        f"Slack API error looking up channel '{channel_name}': {error_msg}"
+                    )
+            else:
+                logger.warning(f"HTTP error getting channel list: {response.status_code}")
+
+            return None
+
+        except Exception as e:
+            logger.warning(f"Failed to find channel ID for '{channel_name}': {e}")
+            return None
 
     async def _handle_deployment_failure(
         self, workflow_id: str, deployment_id: str, error_msg: str

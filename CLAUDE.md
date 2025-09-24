@@ -108,9 +108,9 @@ terraform apply
 - **Workflow Scheduler**: 8003 (HTTP/REST) - Trigger management and scheduling
 
 ### Authentication Layers
-- **Public API** (`/api/public/*`): No auth, rate-limited public endpoints
-- **App API** (`/api/app/*`): Supabase OAuth + JWT for web/mobile apps
-- **MCP API** (`/api/mcp/*`): API Key authentication for LLM clients
+- **Public API** (`/api/v1/public/*`): No auth, rate-limited public endpoints
+- **App API** (`/api/v1/app/*`): Supabase OAuth + JWT for web/mobile apps
+- **MCP API** (`/api/v1/mcp/*`): API Key authentication for LLM clients
 
 ### Service Communication
 - **Internal**: HTTP/REST between services (migrated from gRPC)
@@ -217,6 +217,81 @@ cd apps/frontend/agent_team_web
 npm run lint
 npm run type-check
 ```
+
+## Development Philosophy: "Fail Fast with Clear Feedback"
+
+### Core Principle
+**CRITICAL**: Never use mock responses or silent failures in production code. Always provide real errors with actionable feedback when functionality is not implemented or misconfigured.
+
+### Why This Matters
+- **Real Error Visibility**: Developers see actual configuration issues instead of false successes
+- **Faster Debugging**: Clear error codes and solutions reduce investigation time
+- **No False Positives**: Workflows fail when they should, preventing silent data corruption
+- **Better User Experience**: Users get actionable guidance instead of confusion
+
+### Implementation Standards
+
+#### ✅ **DO: Structured Error Responses**
+```python
+return NodeExecutionResult(
+    status=ExecutionStatus.ERROR,
+    error_message="Clear description of what failed",
+    error_details={
+        "reason": "specific_error_code",
+        "solution": "Exact steps to fix the issue",
+        "documentation": "https://relevant-docs-link"
+    },
+    metadata={"node_type": "...", "context": "..."},
+)
+```
+
+#### ❌ **DON'T: Mock Responses**
+```python
+# NEVER do this - creates false positives
+if not api_key:
+    return f"[Mock Response] Success: {message}"
+
+# NEVER do this - silent failures confuse users
+return {"status": "success", "message": "Mock execution completed"}
+```
+
+### Error Categories & Solutions
+
+**OAuth Authentication Failures:**
+```python
+{
+    "reason": "missing_oauth_token",
+    "solution": "Connect [Service] account in integrations settings",
+    "oauth_flow_url": "/integrations/connect/slack"
+}
+```
+
+**Missing Configuration:**
+```python
+{
+    "reason": "missing_environment_variable",
+    "solution": "Set OPENAI_API_KEY environment variable",
+    "required_env_vars": ["OPENAI_API_KEY"]
+}
+```
+
+**Unimplemented Features:**
+```python
+{
+    "reason": "feature_not_implemented",
+    "solution": "Implement proper [feature] integration",
+    "alternatives": ["use HTTP action", "use external action"]
+}
+```
+
+### Applied Across All Services
+
+- **Workflow Engine**: All node executors return proper errors instead of mock responses
+- **API Gateway**: Authentication failures provide clear OAuth guidance
+- **Workflow Agent**: AI provider errors include specific configuration steps
+- **External Integrations**: OAuth token failures guide users to integration settings
+
+**Remember**: If functionality isn't ready, return a clear error explaining what needs to be implemented - never pretend it works with mock data.
 
 ## Deployment & Infrastructure
 
@@ -356,7 +431,7 @@ psql $SUPABASE_DATABASE_URL -c "SELECT version();"
 
 ### Service-Specific OAuth Requirements
 
-- **API Gateway**: Needs OAuth credentials for generating install links (`/integrations/install-links`)
+- **API Gateway**: Needs OAuth credentials for generating install links (`/api/v1/app/integrations/install-links`)
 - **Workflow Scheduler**: Needs OAuth credentials for handling callbacks (`/auth/{provider}/callback`)
 - **Workflow Agent**: May need credentials for AI-driven OAuth operations
 - **Workflow Engine**: Usually doesn't need OAuth credentials directly

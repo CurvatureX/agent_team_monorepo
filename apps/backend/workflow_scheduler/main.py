@@ -39,7 +39,15 @@ except ImportError:
 
 
 from shared.models.trigger import TriggerType
-from workflow_scheduler.api import auth, deployment, github, google_calendar, slack, triggers
+from workflow_scheduler.api import (
+    auth,
+    deployment,
+    executions,
+    github,
+    google_calendar,
+    slack,
+    triggers,
+)
 from workflow_scheduler.core.config import settings
 from workflow_scheduler.dependencies import (
     get_lock_manager,
@@ -68,6 +76,15 @@ logging.basicConfig(
     else "%(message)s",
     stream=sys.stdout,
 )
+
+# Silence noisy loggers
+logging.getLogger("hpack.hpack").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("h2").setLevel(logging.WARNING)
+logging.getLogger("httpcore.http2").setLevel(logging.WARNING)
+logging.getLogger("httpcore.http11").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 # Global service instances will be managed through dependencies.py
@@ -197,6 +214,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(deployment.router, prefix="/api/v1")
+app.include_router(executions.router, prefix="/api/v1")
 app.include_router(triggers.router, prefix="/api/v1")
 app.include_router(github.router, prefix="/api/v1")
 app.include_router(google_calendar.router, prefix="/api/v1")
@@ -212,8 +230,46 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Simple health check endpoint for load balancer"""
-    return {"service": "workflow_scheduler", "status": "healthy", "version": "0.1.0"}
+    """Enhanced health check endpoint for load balancer that validates core services"""
+    try:
+        # Check if core services are initialized
+        try:
+            trigger_manager = get_trigger_manager()
+            if not trigger_manager:
+                return {
+                    "service": "workflow_scheduler",
+                    "status": "unhealthy",
+                    "version": "0.1.0",
+                    "error": "TriggerManager not initialized",
+                }
+        except Exception as e:
+            return {
+                "service": "workflow_scheduler",
+                "status": "unhealthy",
+                "version": "0.1.0",
+                "error": f"TriggerManager unavailable: {str(e)}",
+            }
+
+        # Quick Redis connectivity test (non-blocking)
+        try:
+            lock_manager = get_lock_manager()
+            if lock_manager and lock_manager._redis:
+                # Quick ping with short timeout
+                await asyncio.wait_for(lock_manager._redis.ping(), timeout=2.0)
+        except (asyncio.TimeoutError, Exception):
+            # Redis issues shouldn't fail health check, but we log it
+            logger.warning("Redis connectivity issue during health check")
+
+        return {"service": "workflow_scheduler", "status": "healthy", "version": "0.1.0"}
+
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return {
+            "service": "workflow_scheduler",
+            "status": "unhealthy",
+            "version": "0.1.0",
+            "error": str(e),
+        }
 
 
 @app.get("/health/detailed")

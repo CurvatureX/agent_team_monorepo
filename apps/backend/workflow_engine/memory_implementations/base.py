@@ -1,5 +1,7 @@
 """
 Base class for memory implementations.
+
+Provides common interface and utilities for all memory types.
 """
 
 import asyncio

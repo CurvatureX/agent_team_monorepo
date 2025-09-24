@@ -103,6 +103,18 @@ variable "domain_name" {
   default     = ""
 }
 
+variable "dns_domain_name" {
+  description = "DNS domain name for CloudFront distribution"
+  type        = string
+  sensitive   = true
+  default     = "https://dtijyicuvv7hy.cloudfront.net"
+
+  validation {
+    condition     = length(var.dns_domain_name) > 0
+    error_message = "DNS domain name cannot be empty."
+  }
+}
+
 variable "certificate_arn" {
   description = "ACM certificate ARN"
   type        = string
@@ -133,6 +145,13 @@ variable "openai_api_key" {
   description = "OpenAI API key"
   type        = string
   sensitive   = true
+}
+
+variable "openai_model" {
+  description = "OpenAI model to use (e.g., gpt-4o, gpt-4o-mini, o1-preview)"
+  type        = string
+  sensitive   = true
+  default     = "gpt-4o"
 }
 
 variable "anthropic_api_key" {
@@ -245,6 +264,27 @@ variable "notion_client_secret" {
 
 variable "notion_redirect_uri" {
   description = "Notion OAuth redirect URI"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "google_client_id" {
+  description = "Google OAuth client ID for calendar integration"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "google_client_secret" {
+  description = "Google OAuth client secret for calendar integration"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "google_redirect_uri" {
+  description = "Google OAuth redirect URI for calendar integration"
   type        = string
   sensitive   = true
   default     = ""

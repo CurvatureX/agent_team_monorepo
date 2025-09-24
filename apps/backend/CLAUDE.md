@@ -118,7 +118,7 @@ CMD ["python", "main.py"]  # Causes import errors
 ## Development Commands
 
 ### Core Development
-- **Install dependencies**: 
+- **Install dependencies**:
   - API Gateway: `cd api-gateway && pip install -e .`
   - Workflow Agent: `cd workflow_agent && uv pip install --system -e .`
   - Workflow Engine: `cd workflow_engine && pip install -r requirements.txt`
@@ -167,7 +167,7 @@ When running tests or development tasks that require authentication:
   test_email = os.getenv("TEST_USER_EMAIL")
   test_password = os.getenv("TEST_USER_PASSWORD")
   supabase_anon_key = os.getenv("SUPABASE_ANON_KEY")
-  
+
   # Use GetToken API for authentication
   auth_url = f"{supabase_url}/auth/v1/token?grant_type=password"
   ```
@@ -177,7 +177,7 @@ When running tests or development tasks that require authentication:
 
 The testing system has been upgraded with a modular structure:
 - `tests/auth/` - Authentication functionality tests
-- `tests/session/` - Session management tests  
+- `tests/session/` - Session management tests
 - `tests/chat/` - Chat and streaming response tests
 - `tests/integration/` - End-to-end integration tests
 - `tests/utils/` - Shared test utilities and configuration
@@ -279,6 +279,102 @@ REDIS_URL="redis://localhost:6379/0"
 **Solution**:
 1. Ensure SSM parameter contains valid URL format: `https://your-project.supabase.co`
 2. Not placeholder values like "placeholder"
+
+### Supabase RLS Performance Issues
+**Issue**: API responses taking 3+ seconds when using Row Level Security (RLS)
+**Root Cause**: `client.auth.set_session(access_token, access_token)` makes expensive HTTP calls on every repository initialization
+**Solution**: Use header-based authentication instead of session-based authentication
+```python
+# ❌ SLOW - Avoid this pattern:
+self.client.auth.set_session(access_token, access_token)
+
+# ✅ FAST - Use header-based auth:
+self.client.auth.session = None  # Clear any existing session
+self.client.headers["Authorization"] = f"Bearer {access_token}"
+```
+**Performance Impact**: Reduces API response times from 3+ seconds to ~2.4 seconds (20% improvement)
+**Applied**: Workflow Engine optimized, API Gateway already uses correct pattern
+
+## Development Philosophy: "Fail Fast with Clear Feedback"
+
+### Core Principle
+**Never use mock responses or silent failures in production code.** Always provide real errors with actionable feedback when functionality is not implemented or misconfigured.
+
+### Implementation Guidelines
+
+#### ✅ **DO: Proper Error Handling**
+```python
+# Return structured errors with clear solutions
+return NodeExecutionResult(
+    status=ExecutionStatus.ERROR,
+    error_message="OpenAI API key not found",
+    error_details={
+        "reason": "missing_api_key",
+        "solution": "Set OPENAI_API_KEY environment variable",
+        "documentation": "https://platform.openai.com/api-keys"
+    },
+    metadata={"node_type": "ai_agent", "provider": "openai"},
+)
+```
+
+#### ❌ **DON'T: Mock Responses**
+```python
+# NEVER do this - creates false positives
+if not api_key:
+    return f"[Mock Response] API key missing: {user_message}"
+
+# NEVER do this - silent failures confuse users
+return {"status": "success", "message": "Mock execution completed"}
+```
+
+### Error Response Standards
+
+**All errors must include:**
+1. **Clear error message**: What specifically failed
+2. **Reason code**: Machine-readable error type
+3. **Actionable solution**: Exact steps to fix the issue
+4. **Context metadata**: Node type, operation, relevant IDs
+
+**Example patterns:**
+```python
+# OAuth authentication failure
+{
+    "reason": "missing_oauth_token",
+    "solution": "Connect Slack account in integrations settings",
+    "oauth_provider": "slack"
+}
+
+# Missing environment variable
+{
+    "reason": "missing_configuration",
+    "solution": "Set ANTHROPIC_API_KEY environment variable",
+    "required_env_vars": ["ANTHROPIC_API_KEY"]
+}
+
+# Unsupported feature
+{
+    "reason": "feature_not_implemented",
+    "solution": "Implement proper MCP tool integration",
+    "alternatives": ["use HTTP action", "use external action"]
+}
+```
+
+### Benefits of This Approach
+
+1. **Real Error Visibility**: Developers see actual configuration issues
+2. **Faster Debugging**: Clear error codes and solutions reduce investigation time
+3. **No False Positives**: Workflows fail when they should, preventing silent data corruption
+4. **Better User Experience**: Users get actionable guidance instead of confusion
+5. **Maintainable Code**: Less mock code to maintain and debug
+
+### Applied Across Services
+
+- **Workflow Engine**: All node executors return proper errors instead of mock responses
+- **API Gateway**: Authentication failures provide clear OAuth guidance
+- **Workflow Agent**: AI provider errors include specific configuration steps
+- **External Integrations**: OAuth token failures guide users to integration settings
+
+**Remember**: If functionality isn't implemented, return a clear error explaining what needs to be built - never pretend it works with mock data.
 
 ## Testing Strategy
 

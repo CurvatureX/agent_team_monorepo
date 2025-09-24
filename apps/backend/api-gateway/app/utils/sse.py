@@ -4,6 +4,7 @@ Server-Sent Events (SSE) utilities for MVP
 
 import asyncio
 import json
+from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict
 
 from fastapi.responses import StreamingResponse
@@ -37,6 +38,20 @@ def create_sse_response(generator: AsyncGenerator[Dict[str, Any], None]) -> Stre
 def format_sse_event(data: Dict[str, Any]) -> str:
     """Format data as SSE event"""
     return f"data: {json.dumps(data)}\n\n"
+
+
+def create_sse_event(event_type, data: Dict[str, Any], session_id: str, is_final: bool = False):
+    """Create typed SSE event"""
+    # Import here to avoid circular imports
+    from app.models import ChatSSEEvent, SSEEventType
+
+    return ChatSSEEvent(
+        type=event_type,
+        data=data,
+        session_id=session_id,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        is_final=is_final,
+    )
 
 
 async def create_mock_chat_stream(

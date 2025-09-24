@@ -18,7 +18,7 @@
     "permalink": "/docs/tech-design/mvp-workflow-planning"
   },
   "next": {
-    "title": "Workflow Runtime Development Tasks",
-    "permalink": "/docs/development/workflow_runtime_tasks"
+    "title": "Workflow Engine 技术分析与Gap评估（修订版）",
+    "permalink": "/docs/development/workflow_engine_analysis"
   }
 }

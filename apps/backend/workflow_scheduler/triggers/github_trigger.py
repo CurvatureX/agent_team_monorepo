@@ -9,10 +9,10 @@ from typing import Any, Dict, List, Optional
 import httpx
 import jwt
 from github import Github, GithubIntegration
-
 from shared.models.node_enums import TriggerSubtype
 from shared.models.trigger import ExecutionResult, TriggerStatus
 from workflow_scheduler.core.config import settings
+from workflow_scheduler.core.supabase_client import get_supabase_client
 from workflow_scheduler.triggers.base import BaseTrigger
 
 # Import our GitHub SDK for enhanced functionality
@@ -54,7 +54,12 @@ class GitHubTrigger(BaseTrigger):
         )
 
         # Extract events from event_config for backward compatibility
-        self.events = list(self.event_config.keys()) if self.event_config else []
+        if isinstance(self.event_config, dict):
+            self.events = list(self.event_config.keys()) if self.event_config else []
+        elif isinstance(self.event_config, list):
+            self.events = self.event_config
+        else:
+            self.events = []
 
         # GitHub App configuration
         self.app_id = settings.github_app_id
@@ -561,9 +566,9 @@ class GitHubTrigger(BaseTrigger):
             return []
 
     async def _get_access_token(self) -> Optional[str]:
-        """Get GitHub App access token"""
+        """Get GitHub access token from oauth_tokens table"""
         try:
-            # Check if current token is still valid
+            # Check if current token is cached and still valid
             current_time = time.time()
             if (
                 self._access_token
@@ -572,20 +577,61 @@ class GitHubTrigger(BaseTrigger):
             ):
                 return self._access_token
 
-            # Generate new token
-            if not self._integration:
+            # Get user_id for this workflow from database
+            supabase = get_supabase_client()
+            workflow_result = (
+                supabase.table("workflows")
+                .select("user_id")
+                .eq("id", self.workflow_id)
+                .single()
+                .execute()
+            )
+
+            if not workflow_result.data:
+                logger.error(f"Could not find workflow {self.workflow_id} to get user_id")
                 return None
 
-            token_data = self._integration.get_access_token(int(self.installation_id))
-            self._access_token = token_data.token
+            user_id = workflow_result.data["user_id"]
 
-            # Tokens expire in 1 hour, we'll refresh 1 minute early
-            self._token_expires_at = current_time + 3540  # 59 minutes
+            # Fetch GitHub OAuth token from oauth_tokens table
+            oauth_result = (
+                supabase.table("oauth_tokens")
+                .select("access_token, expires_at")
+                .eq("user_id", user_id)
+                .eq("integration_id", "github_app")
+                .single()
+                .execute()
+            )
 
+            if not oauth_result.data:
+                logger.error(
+                    f"No GitHub OAuth token found for user {user_id} with integration_id=github_app"
+                )
+                return None
+
+            token_data = oauth_result.data
+            self._access_token = token_data["access_token"]
+
+            # Handle token expiration if available
+            if token_data.get("expires_at"):
+                # Parse expires_at if it's a string timestamp
+                expires_at = token_data["expires_at"]
+                if isinstance(expires_at, str):
+                    from datetime import datetime
+
+                    expires_at = datetime.fromisoformat(
+                        expires_at.replace("Z", "+00:00")
+                    ).timestamp()
+                self._token_expires_at = expires_at
+            else:
+                # If no expiration info, assume token is valid for a reasonable time
+                self._token_expires_at = current_time + 3600  # 1 hour
+
+            logger.info(f"✅ Retrieved GitHub access token from oauth_tokens for user {user_id}")
             return self._access_token
 
         except Exception as e:
-            logger.error(f"Error getting GitHub access token: {e}", exc_info=True)
+            logger.error(f"Error getting GitHub access token from oauth_tokens: {e}", exc_info=True)
             return None
 
     async def health_check(self) -> Dict[str, Any]:

@@ -15,6 +15,15 @@ from typing import Any, Dict, List, Optional, Union
 import redis.asyncio as redis
 from supabase import Client, create_client
 
+# Fallback for shared models when not available
+try:
+    from shared.models.node_enums import MemorySubtype
+except ImportError:
+    # Fallback enum values for standalone use
+    class MemorySubtype:
+        CONVERSATION_BUFFER = "conversation_buffer"
+
+
 from .base import MemoryBase
 
 logger = logging.getLogger(__name__)
@@ -249,9 +258,6 @@ class ConversationBufferMemory(MemoryBase):
                 "oldest_message_time": messages[0]["timestamp"] if messages else None,
                 "newest_message_time": messages[-1]["timestamp"] if messages else None,
             }
-
-            # Import the enum
-            from shared.models.node_enums import MemorySubtype
 
             return {
                 "messages": formatted_messages,  # This is the key field for API consumption
