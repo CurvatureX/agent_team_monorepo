@@ -1,16 +1,11 @@
-# Multi-stage build for workflow_scheduler
-FROM python:3.11-slim AS builder
+# Use full python:3.11 image - no apt-get needed
+FROM python:3.11 AS builder
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    curl \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
+# All build tools already available in python:3.11
 
 # Create working directory
 WORKDIR /app
@@ -21,20 +16,15 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir setuptools wheel && \
     pip install --no-cache-dir .
 
-# Production stage
-FROM python:3.11-slim AS production
+# Production stage - use full python:3.11 to avoid apt-get issues
+FROM python:3.11 AS production
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PATH="/app/.local/bin:$PATH"
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    netcat-openbsd \
-    libpq5 \
-    && rm -rf /var/lib/apt/lists/*
+# No runtime dependencies needed - python:3.11 has curl built-in
 
 # Create non-root user
 RUN groupadd -r appuser && useradd -r -g appuser appuser

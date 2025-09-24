@@ -4,6 +4,8 @@ Direct Database Service - Uses raw SQL connections to bypass SQLAlchemy prepared
 
 import asyncio
 import logging
+import socket
+import time
 from datetime import datetime, timezone
 from typing import Dict, Optional
 from uuid import UUID
@@ -20,15 +22,90 @@ class DirectDBService:
 
     def __init__(self):
         self.database_url = settings.database_url
+        self.pool: Optional[asyncpg.Pool] = None
+        self._pool_initialized = False
+
+    async def _initialize_pool(self):
+        """Initialize connection pool if not already done"""
+        if self._pool_initialized:
+            return
+
+        max_retries = 3
+        retry_delay = 1.0
+
+        for attempt in range(max_retries):
+            try:
+                logger.info(
+                    f"Initializing database connection pool (attempt {attempt + 1}/{max_retries})"
+                )
+                self.pool = await asyncpg.create_pool(
+                    self.database_url,
+                    min_size=2,
+                    max_size=8,
+                    command_timeout=30,
+                    statement_cache_size=0,  # Disable prepared statements for pgbouncer compatibility
+                    server_settings={"application_name": "workflow_scheduler_direct"},
+                )
+                logger.info("✅ Database connection pool initialized successfully")
+                self._pool_initialized = True
+                return
+            except (OSError, socket.gaierror, asyncpg.ConnectionError, asyncpg.InterfaceError) as e:
+                error_str = str(e).lower()
+                # Classify network vs other errors like workflow engine
+                if any(
+                    keyword in error_str
+                    for keyword in [
+                        "ssl",
+                        "eof",
+                        "connection",
+                        "timeout",
+                        "dns",
+                        "resolve",
+                        "name resolution",
+                        "temporary failure",
+                        "network",
+                    ]
+                ):
+                    logger.warning(
+                        f"⚠️ Network connection attempt {attempt + 1} failed: {type(e).__name__}: {e}"
+                    )
+                    if attempt < max_retries - 1:
+                        logger.info(
+                            f"Retrying database pool initialization in {retry_delay} seconds..."
+                        )
+                        time.sleep(
+                            retry_delay
+                        )  # Use sync sleep like workflow engine for network issues
+                        retry_delay *= 2  # Exponential backoff
+                    else:
+                        logger.error(
+                            f"❌ All {max_retries} database pool initialization attempts failed"
+                        )
+                        raise
+                else:
+                    # Non-network error - re-raise immediately
+                    logger.error(
+                        f"❌ Database pool initialization failed with non-network error: {e}"
+                    )
+                    raise
 
     async def _get_connection(self):
-        """Get a raw asyncpg connection"""
-        return await asyncpg.connect(
-            self.database_url,
-            command_timeout=30,
-            statement_cache_size=0,  # Disable prepared statements for pgbouncer compatibility
-            server_settings={"application_name": "workflow_scheduler_direct"},
-        )
+        """Get a database connection from pool with fallback to direct connection"""
+        # Ensure pool is initialized
+        await self._initialize_pool()
+
+        if self.pool:
+            # Use pool connection (preferred)
+            return self.pool.acquire()
+        else:
+            # Fallback to direct connection
+            logger.warning("Using fallback direct connection (pool unavailable)")
+            return await asyncpg.connect(
+                self.database_url,
+                command_timeout=30,
+                statement_cache_size=0,
+                server_settings={"application_name": "workflow_scheduler_direct_fallback"},
+            )
 
     async def update_workflow_deployment_status(
         self,
@@ -41,8 +118,11 @@ class DirectDBService:
     ) -> bool:
         """Update workflow deployment status using raw SQL"""
         try:
-            conn = await self._get_connection()
-            try:
+            # Ensure pool is initialized
+            await self._initialize_pool()
+
+            # Use pool connection with context manager
+            async with self.pool.acquire() as conn:
                 # Validate workflow_id format
                 if isinstance(workflow_id, str):
                     try:
@@ -109,9 +189,6 @@ class DirectDBService:
                     logger.warning(f"❌ No workflow found to update: {workflow_id}")
                     return False
 
-            finally:
-                await conn.close()
-
         except Exception as e:
             logger.error(
                 f"❌ Error updating workflow deployment status {workflow_id}: {e}",
@@ -133,8 +210,11 @@ class DirectDBService:
     ) -> bool:
         """Create a deployment history record using raw SQL"""
         try:
-            conn = await self._get_connection()
-            try:
+            # Ensure pool is initialized
+            await self._initialize_pool()
+
+            # Use pool connection with context manager
+            async with self.pool.acquire() as conn:
                 # Validate workflow_id format
                 if isinstance(workflow_id, str):
                     try:
@@ -184,9 +264,6 @@ class DirectDBService:
                 )
                 return True
 
-            finally:
-                await conn.close()
-
         except Exception as e:
             logger.error(
                 f"❌ Error creating deployment history record {workflow_id}: {e}",
@@ -197,8 +274,11 @@ class DirectDBService:
     async def get_workflow_current_status(self, workflow_id: str) -> Optional[Dict]:
         """Get current workflow deployment status"""
         try:
-            conn = await self._get_connection()
-            try:
+            # Ensure pool is initialized
+            await self._initialize_pool()
+
+            # Use pool connection with context manager
+            async with self.pool.acquire() as conn:
                 # Validate workflow_id format
                 if isinstance(workflow_id, str):
                     try:
@@ -223,9 +303,27 @@ class DirectDBService:
                     logger.warning(f"Workflow not found: {workflow_id}")
                     return None
 
-            finally:
-                await conn.close()
-
         except Exception as e:
             logger.error(f"Error getting workflow status {workflow_id}: {e}", exc_info=True)
             return None
+
+    async def test_connection(self) -> bool:
+        """Test database connection and pool health"""
+        try:
+            await self._initialize_pool()
+            if not self.pool:
+                return False
+
+            async with self.pool.acquire() as conn:
+                result = await conn.fetchval("SELECT 1")
+                return result == 1
+        except Exception as e:
+            logger.error(f"❌ Database connection test failed: {e}")
+            return False
+
+    async def close_pool(self):
+        """Close the connection pool"""
+        if self.pool:
+            await self.pool.close()
+            logger.info("🔌 Database connection pool closed")
+            self._pool_initialized = False

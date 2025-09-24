@@ -29,12 +29,24 @@ class NotionSDK(BaseSDK):
     def supported_operations(self) -> Dict[str, str]:
         """Get supported operations and their descriptions."""
         return {
-            "search": "Search across pages and databases",
-            "page_get": "Retrieve a page by ID",
-            "page_create": "Create a new page",
-            "page_update": "Update an existing page",
-            "database_get": "Retrieve a database schema",
-            "database_query": "Query database records",
+            # MCP-aligned operations only
+            "notion_create_page": "Create a new Notion page",
+            "notion_get_page": "Get Notion page by ID",
+            "notion_update_page_properties": "Update properties of a page",
+            "notion_query_database": "Query database",
+            "notion_get_database": "Get database schema",
+            "notion_create_database": "Create a new database",
+            "notion_update_database": "Update a database",
+            "notion_create_database_item": "Create a new database item (page)",
+            "notion_search": "Search pages and databases",
+            "notion_get_user": "Get user info",
+            "notion_list_users": "List workspace users",
+            "notion_get_me": "Get bot user info",
+            "notion_retrieve_block": "Get block info",
+            "notion_update_block": "Update block",
+            "notion_delete_block": "Delete (archive) block",
+            "notion_get_block_children": "List children of a block",
+            "notion_append_block_children": "Append children to a block",
         }
 
     def get_oauth2_config(self) -> OAuth2Config:
@@ -85,18 +97,40 @@ class NotionSDK(BaseSDK):
 
         try:
             async with NotionClient(auth_token=access_token) as client:
-                if operation == "search":
+                if operation == "notion_search":
                     return await self._handle_search(client, parameters)
-                elif operation == "page_get":
+                elif operation == "notion_get_page":
                     return await self._handle_page_get(client, parameters)
-                elif operation == "page_create":
+                elif operation == "notion_create_page":
                     return await self._handle_page_create(client, parameters)
-                elif operation == "page_update":
+                elif operation == "notion_update_page_properties":
                     return await self._handle_page_update(client, parameters)
-                elif operation == "database_get":
+                elif operation == "notion_get_database":
                     return await self._handle_database_get(client, parameters)
-                elif operation == "database_query":
+                elif operation == "notion_query_database":
                     return await self._handle_database_query(client, parameters)
+                elif operation == "notion_create_database":
+                    return await self._handle_database_create(client, parameters)
+                elif operation == "notion_update_database":
+                    return await self._handle_database_update(client, parameters)
+                elif operation == "notion_create_database_item":
+                    return await self._handle_database_item_create(client, parameters)
+                elif operation == "notion_get_user":
+                    return await self._handle_get_user(client, parameters)
+                elif operation == "notion_list_users":
+                    return await self._handle_list_users(client, parameters)
+                elif operation == "notion_get_me":
+                    return await self._handle_get_me(client, parameters)
+                elif operation == "notion_retrieve_block":
+                    return await self._handle_get_block(client, parameters)
+                elif operation == "notion_update_block":
+                    return await self._handle_update_block(client, parameters)
+                elif operation == "notion_delete_block":
+                    return await self._handle_delete_block(client, parameters)
+                elif operation == "notion_get_block_children":
+                    return await self._handle_get_block_children(client, parameters)
+                elif operation == "notion_append_block_children":
+                    return await self._handle_append_block_children(client, parameters)
                 else:
                     return APIResponse(
                         success=False,
@@ -341,6 +375,128 @@ class NotionSDK(BaseSDK):
             },
             status_code=200,
         )
+
+    async def _handle_database_create(
+        self, client: NotionClient, parameters: Dict[str, Any]
+    ) -> APIResponse:
+        parent_id = parameters.get("parent_id")
+        title = parameters.get("title", [])
+        properties = parameters.get("properties", {})
+        if not parent_id:
+            return APIResponse(success=False, error="parent_id is required", status_code=400)
+        parent = {"page_id": parent_id}
+        db = await client.create_database(parent=parent, title=title, properties=properties)
+        return APIResponse(success=True, data=self._serialize_object(db), status_code=201)
+
+    async def _handle_database_update(
+        self, client: NotionClient, parameters: Dict[str, Any]
+    ) -> APIResponse:
+        database_id = parameters.get("database_id")
+        if not database_id:
+            return APIResponse(success=False, error="database_id is required", status_code=400)
+        kwargs = {}
+        for k in ("title", "description", "icon", "cover", "properties"):
+            if k in parameters:
+                kwargs[k] = parameters[k]
+        db = await client.update_database(database_id, **kwargs)
+        return APIResponse(success=True, data=self._serialize_object(db), status_code=200)
+
+    async def _handle_database_item_create(
+        self, client: NotionClient, parameters: Dict[str, Any]
+    ) -> APIResponse:
+        database_id = parameters.get("database_id")
+        properties = parameters.get("properties", {})
+        children = parameters.get("children")
+        if not database_id:
+            return APIResponse(success=False, error="database_id is required", status_code=400)
+        page = await client.create_page(
+            parent={"database_id": database_id}, properties=properties, children=children
+        )
+        return APIResponse(
+            success=True, data={"page": self._serialize_object(page)}, status_code=201
+        )
+
+    async def _handle_get_user(
+        self, client: NotionClient, parameters: Dict[str, Any]
+    ) -> APIResponse:
+        user_id = parameters.get("user_id")
+        if not user_id:
+            return APIResponse(success=False, error="user_id is required", status_code=400)
+        user = await client.get_user(user_id)
+        return APIResponse(success=True, data=self._serialize_object(user), status_code=200)
+
+    async def _handle_list_users(
+        self, client: NotionClient, parameters: Dict[str, Any]
+    ) -> APIResponse:
+        result = await client.list_users()
+        return APIResponse(
+            success=True,
+            data={"users": [self._serialize_object(u) for u in result["users"]]},
+            status_code=200,
+        )
+
+    async def _handle_get_me(self, client: NotionClient, parameters: Dict[str, Any]) -> APIResponse:
+        me = await client.get_me()
+        return APIResponse(success=True, data=self._serialize_object(me), status_code=200)
+
+    async def _handle_get_block(
+        self, client: NotionClient, parameters: Dict[str, Any]
+    ) -> APIResponse:
+        block_id = parameters.get("block_id")
+        if not block_id:
+            return APIResponse(success=False, error="block_id is required", status_code=400)
+        block = await client.get_block(block_id)
+        return APIResponse(success=True, data=self._serialize_object(block), status_code=200)
+
+    async def _handle_update_block(
+        self, client: NotionClient, parameters: Dict[str, Any]
+    ) -> APIResponse:
+        block_id = parameters.get("block_id")
+        block_data = parameters.get("block_data")
+        if not block_id or not block_data:
+            return APIResponse(
+                success=False, error="block_id and block_data are required", status_code=400
+            )
+        block = await client.update_block(block_id, block_data)
+        return APIResponse(success=True, data=self._serialize_object(block), status_code=200)
+
+    async def _handle_delete_block(
+        self, client: NotionClient, parameters: Dict[str, Any]
+    ) -> APIResponse:
+        block_id = parameters.get("block_id")
+        if not block_id:
+            return APIResponse(success=False, error="block_id is required", status_code=400)
+        block = await client.delete_block(block_id)
+        return APIResponse(success=True, data=self._serialize_object(block), status_code=200)
+
+    async def _handle_get_block_children(
+        self, client: NotionClient, parameters: Dict[str, Any]
+    ) -> APIResponse:
+        block_id = parameters.get("block_id")
+        if not block_id:
+            return APIResponse(success=False, error="block_id is required", status_code=400)
+        res = await client.get_block_children(block_id)
+        return APIResponse(
+            success=True,
+            data={
+                "blocks": [self._serialize_object(b) for b in res["blocks"]],
+                "has_more": res["has_more"],
+                "next_cursor": res["next_cursor"],
+            },
+            status_code=200,
+        )
+
+    async def _handle_append_block_children(
+        self, client: NotionClient, parameters: Dict[str, Any]
+    ) -> APIResponse:
+        block_id = parameters.get("block_id")
+        children = parameters.get("children", [])
+        if not block_id or not children:
+            return APIResponse(
+                success=False, error="block_id and children are required", status_code=400
+            )
+        res = await client.append_block_children(block_id, children)
+        return APIResponse(success=True, data=res, status_code=200)
 
     def _serialize_object(self, obj: Any) -> Dict[str, Any]:
         """Serialize Notion objects to dictionaries."""

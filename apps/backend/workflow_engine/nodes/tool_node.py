@@ -47,27 +47,84 @@ class ToolNodeExecutor(BaseNodeExecutor):
         self, context: NodeExecutionContext, operation: str
     ) -> NodeExecutionResult:
         """Handle MCP (Model Context Protocol) tools."""
-        tool_name = context.get_parameter("tool_name", "unknown")
-
         try:
-            self.log_execution(context, f"MCP tool execution requested: {tool_name}")
+            if operation == "discover":
+                return await self.handle_function_discovery(context)
+            elif operation == "execute":
+                function_name = context.input_data.get("function_name") or context.get_parameter(
+                    "function_name"
+                )
+                function_args = context.input_data.get("function_args") or context.get_parameter(
+                    "function_args", {}
+                )
 
-            # Return error for unsupported MCP tools instead of mock responses
-            return NodeExecutionResult(
-                status=ExecutionStatus.ERROR,
-                error_message=f"MCP tool execution not implemented: {tool_name}",
-                error_details={
-                    "tool_name": tool_name,
-                    "operation": operation,
-                    "reason": "mcp_not_implemented",
-                    "solution": "Implement proper MCP tool integration or use supported node types",
-                },
-                metadata={"node_type": "tool", "tool_name": tool_name, "operation": operation},
-            )
+                # Handle case where function_name is "unknown" - look for tool-specific parameters
+                if not function_name or function_name == "unknown":
+                    # Try to infer function from tool type or node name
+                    tool_subtype = context.get_parameter("tool_subtype") or context.get_parameter(
+                        "subtype"
+                    )
+                    if tool_subtype and tool_subtype.lower() in ["notion", "notion_mcp"]:
+                        function_name = "notion_search"  # Default Notion function
+                        function_args = {
+                            "query": context.input_data.get("query", ""),
+                            "max_results": context.input_data.get("max_results", 5),
+                        }
+                        self.log_execution(context, f"🔧 Inferred MCP function: {function_name}")
+                    elif tool_subtype and tool_subtype.lower() in ["calendar", "google_calendar"]:
+                        function_name = "list_events"  # Default Calendar function
+                        function_args = {"max_results": context.input_data.get("max_results", 10)}
+                        self.log_execution(context, f"🔧 Inferred MCP function: {function_name}")
+
+                if not function_name or function_name == "unknown":
+                    return NodeExecutionResult(
+                        status=ExecutionStatus.ERROR,
+                        error_message="Missing or invalid function_name for MCP execution",
+                        error_details={
+                            "operation": operation,
+                            "received_function_name": function_name,
+                            "available_data": list(context.input_data.keys()),
+                            "solution": "Specify 'function_name' parameter or use tool-specific subtype",
+                            "examples": {
+                                "notion": "notion_search, create_page",
+                                "calendar": "list_events, create_event",
+                            },
+                        },
+                    )
+
+                result = await self.handle_function_execution(context, function_name, function_args)
+
+                return NodeExecutionResult(
+                    status=ExecutionStatus.SUCCESS,
+                    output_data={
+                        "operation": "execute",
+                        "function_name": function_name,
+                        "result": result,
+                        "execution_time": 0.1,  # Placeholder
+                    },
+                    metadata={
+                        "node_type": "tool",
+                        "operation": operation,
+                        "function_name": function_name,
+                    },
+                )
+            else:
+                return NodeExecutionResult(
+                    status=ExecutionStatus.ERROR,
+                    error_message=f"Unknown MCP operation: {operation}",
+                    error_details={
+                        "operation": operation,
+                        "supported_operations": ["discover", "execute"],
+                    },
+                )
 
         except Exception as e:
             self.log_execution(context, f"MCP tool execution failed: {str(e)}", "ERROR")
-            raise
+            return NodeExecutionResult(
+                status=ExecutionStatus.ERROR,
+                error_message=f"MCP tool execution failed: {str(e)}",
+                error_details={"operation": operation},
+            )
 
     async def _handle_utility_tool(
         self, context: NodeExecutionContext, operation: str
@@ -350,3 +407,265 @@ class ToolNodeExecutor(BaseNodeExecutor):
                 return False, "API tools require 'url' parameter"
 
         return True, ""
+
+    async def handle_function_discovery(self, context: NodeExecutionContext) -> list:
+        """Discover available MCP functions via API Gateway."""
+        try:
+            import os
+
+            import httpx
+
+            # Get MCP server URL from parameters or use default API Gateway
+            mcp_server_url = context.get_parameter("mcp_server_url")
+            if not mcp_server_url:
+                # Determine API Gateway URL based on environment
+                api_gateway_url = os.getenv("API_GATEWAY_URL")
+                if api_gateway_url:
+                    mcp_server_url = f"{api_gateway_url.rstrip('/')}/api/v1/mcp"
+                elif os.getenv("WORKFLOW_ENGINE_URL", "").startswith("http://workflow-engine"):
+                    # We're in Docker, use service name
+                    mcp_server_url = "http://api-gateway:8000/api/v1/mcp"
+                else:
+                    # Local development
+                    mcp_server_url = "http://localhost:8000/api/v1/mcp"
+
+            # Get API key from parameters or environment
+            api_key = context.get_parameter("api_key") or os.getenv("MCP_API_KEY", "dev_default")
+
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+
+            self.log_execution(context, f"🔧 Discovering MCP tools from: {mcp_server_url}")
+
+            # Query API Gateway for available tools
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{mcp_server_url}/tools", headers=headers, timeout=30.0
+                )
+
+                if response.status_code == 200:
+                    result = response.json()
+
+                    # Extract tools from MCP response format
+                    if "result" in result and "tools" in result["result"]:
+                        tools = result["result"]["tools"]
+                    elif "tools" in result:
+                        tools = result["tools"]
+                    else:
+                        tools = []
+
+                    # Apply filtering based on Tool Node parameters (subset exposure)
+                    params = tool_context.parameters or {}
+                    allowed_tools = set(params.get("allowed_tools", []) or [])
+                    allowed_prefixes = list(params.get("allowed_prefixes", []) or [])
+                    providers = params.get("providers") or []
+                    if isinstance(providers, str):
+                        providers = [providers]
+                    provider_alias = (
+                        params.get("tool_subtype")
+                        or params.get("subtype")
+                        or params.get("provider")
+                    )
+
+                    # Map providers to prefixes
+                    provider_prefix = {
+                        "notion": "notion_",
+                        "notion_mcp": "notion_",
+                        "calendar": "google_calendar_",
+                        "google_calendar": "google_calendar_",
+                        "slack": "slack_",
+                        "github": "github_",
+                        "gmail": "gmail_",
+                        "discord": "discord_",
+                        "firecrawl": "firecrawl_",
+                    }
+                    for p in providers:
+                        pref = provider_prefix.get(str(p).lower())
+                        if pref and pref not in allowed_prefixes:
+                            allowed_prefixes.append(pref)
+                    if provider_alias and not allowed_prefixes and not allowed_tools:
+                        pref = provider_prefix.get(str(provider_alias).lower())
+                        if pref:
+                            allowed_prefixes.append(pref)
+
+                    def _allowed_tool(name: str) -> bool:
+                        if allowed_tools:
+                            return name in allowed_tools
+                        if allowed_prefixes:
+                            return any(name.startswith(p) for p in allowed_prefixes)
+                        # If no filters provided, expose all tools (backward compatible)
+                        return True
+
+                    tools = [
+                        t
+                        for t in tools
+                        if isinstance(t, dict) and t.get("name") and _allowed_tool(t["name"])
+                    ]
+
+                    # Determine output format for tools list
+                    # Supported: openai (default), anthropic (claude), gemini
+                    output_format = (
+                        context.get_parameter("format")
+                        or context.get_parameter("llm_provider")
+                        or "openai"
+                    )
+                    output_format = str(output_format).lower()
+
+                    if output_format in ("anthropic", "claude"):
+                        # Convert MCP tools to Anthropic tool schema
+                        anthropic_tools = []
+                        for tool in tools:
+                            if isinstance(tool, dict) and tool.get("name"):
+                                anthropic_tools.append(
+                                    {
+                                        "name": tool["name"],
+                                        "description": tool.get("description", ""),
+                                        "input_schema": tool.get(
+                                            "inputSchema", tool.get("parameters", {})
+                                        )
+                                        or {"type": "object", "properties": {}},
+                                    }
+                                )
+                        self.log_execution(
+                            context, f"🔧 Discovered {len(anthropic_tools)} Anthropic tools"
+                        )
+                        return anthropic_tools
+
+                    elif output_format in ("gemini", "google"):
+                        # Convert MCP tools to Gemini function declarations
+                        function_declarations = []
+                        for tool in tools:
+                            if isinstance(tool, dict) and tool.get("name"):
+                                function_declarations.append(
+                                    {
+                                        "name": tool["name"],
+                                        "description": tool.get("description", ""),
+                                        "parameters": tool.get(
+                                            "inputSchema", tool.get("parameters", {})
+                                        )
+                                        or {"type": "object", "properties": {}},
+                                    }
+                                )
+                        self.log_execution(
+                            context, f"🔧 Discovered {len(function_declarations)} Gemini functions"
+                        )
+                        return function_declarations
+
+                    else:
+                        # Default: Convert MCP tools to OpenAI function calling format
+                        openai_functions = []
+                        for tool in tools:
+                            if isinstance(tool, dict) and "name" in tool:
+                                function_def = {
+                                    "type": "function",
+                                    "function": {
+                                        "name": tool["name"],
+                                        "description": tool.get("description", ""),
+                                        "parameters": tool.get(
+                                            "inputSchema", tool.get("parameters", {})
+                                        )
+                                        or {"type": "object", "properties": {}},
+                                    },
+                                }
+                                openai_functions.append(function_def)
+
+                        self.log_execution(
+                            context, f"🔧 Discovered {len(openai_functions)} MCP functions"
+                        )
+                        return openai_functions
+                else:
+                    self.log_execution(
+                        context,
+                        f"🔧 MCP discovery failed: {response.status_code} - {response.text}",
+                        "ERROR",
+                    )
+                    return []
+
+        except Exception as e:
+            self.log_execution(context, f"🔧 Error discovering MCP functions: {str(e)}", "ERROR")
+            return []
+
+    async def handle_function_execution(
+        self, context: NodeExecutionContext, function_name: str, function_args: dict
+    ) -> dict:
+        """Execute MCP function via API Gateway."""
+        try:
+            import os
+
+            import httpx
+
+            # Get MCP server URL from parameters or use default API Gateway
+            mcp_server_url = context.get_parameter("mcp_server_url")
+            if not mcp_server_url:
+                # Determine API Gateway URL based on environment
+                api_gateway_url = os.getenv("API_GATEWAY_URL")
+                if api_gateway_url:
+                    mcp_server_url = f"{api_gateway_url.rstrip('/')}/api/v1/mcp"
+                elif os.getenv("WORKFLOW_ENGINE_URL", "").startswith("http://workflow-engine"):
+                    # We're in Docker, use service name
+                    mcp_server_url = "http://api-gateway:8000/api/v1/mcp"
+                else:
+                    # Local development
+                    mcp_server_url = "http://localhost:8000/api/v1/mcp"
+
+            # Get API key from parameters or environment
+            api_key = context.get_parameter("api_key") or os.getenv("MCP_API_KEY", "dev_default")
+
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+
+            # Prepare MCP invoke request
+            invoke_payload = {"name": function_name, "arguments": function_args}
+
+            self.log_execution(
+                context, f"🔧 Executing MCP function: {function_name} with args: {function_args}"
+            )
+
+            # Call API Gateway MCP invoke endpoint
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{mcp_server_url}/invoke", headers=headers, json=invoke_payload, timeout=30.0
+                )
+
+                if response.status_code == 200:
+                    result = response.json()
+
+                    # Extract result from MCP response format
+                    if "result" in result:
+                        mcp_result = result["result"]
+
+                        # Handle different result formats
+                        if "structuredContent" in mcp_result:
+                            return mcp_result["structuredContent"]
+                        elif "content" in mcp_result:
+                            content = mcp_result["content"]
+                            if isinstance(content, list) and content:
+                                # Combine text content
+                                text_parts = []
+                                for item in content:
+                                    if isinstance(item, dict) and item.get("type") == "text":
+                                        text_parts.append(item.get("text", ""))
+                                return {"result": "\n".join(text_parts)}
+                            return {"content": content}
+                        else:
+                            return mcp_result
+                    else:
+                        return result
+
+                else:
+                    error_msg = (
+                        f"MCP function execution failed: {response.status_code} - {response.text}"
+                    )
+                    self.log_execution(context, f"🔧 {error_msg}", "ERROR")
+                    return {"error": error_msg, "status_code": response.status_code}
+
+        except Exception as e:
+            error_msg = f"Error executing MCP function '{function_name}': {str(e)}"
+            self.log_execution(context, f"🔧 {error_msg}", "ERROR")
+            return {"error": error_msg}

@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 import httpx
+
 from shared.models.node_enums import ExternalActionSubtype, NodeType
 
 from .base import BaseNodeExecutor, ExecutionStatus, NodeExecutionContext, NodeExecutionResult
@@ -330,6 +331,15 @@ class ExternalActionNodeExecutor(BaseNodeExecutor):
         integration_type = self.subtype or context.get_parameter(
             "integration_type", ExternalActionSubtype.SLACK.value
         )
+
+        # Check for required action_type parameter
+        action_type = context.get_parameter("action_type")
+        if not action_type:
+            return False, (
+                f"Missing required parameter: action_type. "
+                f"For {integration_type} integration, specify action like: "
+                f"send_message, search, update_page, etc."
+            )
 
         # Basic validation for different integration types
         if integration_type.upper() in [ExternalActionSubtype.SLACK.value, "SLACK_MESSAGE"]:

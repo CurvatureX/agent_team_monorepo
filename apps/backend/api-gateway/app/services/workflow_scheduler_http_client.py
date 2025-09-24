@@ -116,8 +116,10 @@ class WorkflowSchedulerHTTPClient:
             log_error(f"❌ HTTP error triggering manual workflow: {e.response.status_code}")
             return {"success": False, "error": f"HTTP {e.response.status_code}"}
         except Exception as e:
-            log_error(f"❌ Error triggering manual workflow: {e}")
-            return {"success": False, "error": str(e)}
+            error_msg = str(e) if str(e) else f"Unknown error: {type(e).__name__}"
+            log_error(f"❌ Error triggering manual workflow: {error_msg}")
+            log_error(f"❌ Exception type: {type(e).__name__}, args: {e.args}")
+            return {"success": False, "error": error_msg}
 
     async def get_trigger_status(self, workflow_id: str) -> Dict[str, Any]:
         """Get status of all triggers for a workflow"""
@@ -141,8 +143,10 @@ class WorkflowSchedulerHTTPClient:
             log_error(f"❌ HTTP error getting trigger status: {e.response.status_code}")
             return {"success": False, "error": f"HTTP {e.response.status_code}"}
         except Exception as e:
-            log_error(f"❌ Error getting trigger status: {e}")
-            return {"success": False, "error": str(e)}
+            error_msg = str(e) if str(e) else f"Unknown error: {type(e).__name__}"
+            log_error(f"❌ Error getting trigger status: {error_msg}")
+            log_error(f"❌ Exception type: {type(e).__name__}, args: {e.args}")
+            return {"success": False, "error": error_msg}
 
     async def get_trigger_types(self) -> Dict[str, Any]:
         """Get all available trigger types"""
@@ -164,8 +168,10 @@ class WorkflowSchedulerHTTPClient:
             log_error(f"❌ HTTP error getting trigger types: {e.response.status_code}")
             return {"success": False, "error": f"HTTP {e.response.status_code}"}
         except Exception as e:
-            log_error(f"❌ Error getting trigger types: {e}")
-            return {"success": False, "error": str(e)}
+            error_msg = str(e) if str(e) else f"Unknown error: {type(e).__name__}"
+            log_error(f"❌ Error getting trigger types: {error_msg}")
+            log_error(f"❌ Exception type: {type(e).__name__}, args: {e.args}")
+            return {"success": False, "error": error_msg}
 
     async def deploy_workflow(
         self,
@@ -232,8 +238,10 @@ class WorkflowSchedulerHTTPClient:
             log_error(f"❌ HTTP error deploying workflow: {e.response.status_code} - {error_detail}")
             return {"success": False, "error": error_detail}
         except Exception as e:
-            log_error(f"❌ Error deploying workflow: {e}")
-            return {"success": False, "error": str(e)}
+            error_msg = str(e) if str(e) else f"Unknown error: {type(e).__name__}"
+            log_error(f"❌ Error deploying workflow: {error_msg}")
+            log_error(f"❌ Exception type: {type(e).__name__}, args: {e.args}")
+            return {"success": False, "error": error_msg}
 
     async def undeploy_workflow(
         self,
@@ -285,8 +293,10 @@ class WorkflowSchedulerHTTPClient:
             )
             return {"success": False, "error": error_detail}
         except Exception as e:
-            log_error(f"❌ Error undeploying workflow: {e}")
-            return {"success": False, "error": str(e)}
+            error_msg = str(e) if str(e) else f"Unknown error: {type(e).__name__}"
+            log_error(f"❌ Error undeploying workflow: {error_msg}")
+            log_error(f"❌ Exception type: {type(e).__name__}, args: {e.args}")
+            return {"success": False, "error": error_msg}
 
     async def get_deployment_status(self, workflow_id: str) -> Dict[str, Any]:
         """Get deployment status for a workflow"""
@@ -313,8 +323,10 @@ class WorkflowSchedulerHTTPClient:
             log_error(f"❌ HTTP error getting deployment status: {e.response.status_code}")
             return {"success": False, "error": f"HTTP {e.response.status_code}"}
         except Exception as e:
-            log_error(f"❌ Error getting deployment status: {e}")
-            return {"success": False, "error": str(e)}
+            error_msg = str(e) if str(e) else f"Unknown error: {type(e).__name__}"
+            log_error(f"❌ Error getting deployment status: {error_msg}")
+            log_error(f"❌ Exception type: {type(e).__name__}, args: {e.args}")
+            return {"success": False, "error": error_msg}
 
     async def trigger_workflow_execution(
         self,
@@ -386,8 +398,10 @@ class WorkflowSchedulerHTTPClient:
             )
             return {"success": False, "error": error_detail}
         except Exception as e:
-            log_error(f"❌ Error triggering workflow execution: {e}")
-            return {"success": False, "error": str(e)}
+            error_msg = str(e) if str(e) else f"Unknown error: {type(e).__name__}"
+            log_error(f"❌ Error triggering workflow execution: {error_msg}")
+            log_error(f"❌ Exception type: {type(e).__name__}, args: {e.args}")
+            return {"success": False, "error": error_msg}
 
     async def health_check(self) -> Dict[str, Any]:
         """Get health status of the workflow scheduler"""
@@ -407,8 +421,10 @@ class WorkflowSchedulerHTTPClient:
                 "error": f"HTTP {e.response.status_code}",
             }
         except Exception as e:
-            log_error(f"❌ Error during health check: {e}")
-            return {"success": False, "status": "unreachable", "error": str(e)}
+            error_msg = str(e) if str(e) else f"Unknown error: {type(e).__name__}"
+            log_error(f"❌ Error during health check: {error_msg}")
+            log_error(f"❌ Exception type: {type(e).__name__}, args: {e.args}")
+            return {"success": False, "status": "unreachable", "error": error_msg}
 
 
 # Global HTTP client instance

@@ -3,6 +3,7 @@ Supabase-based repository for workflow operations with RLS support.
 Replaces direct PostgreSQL connection to leverage Row Level Security.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -88,6 +89,8 @@ class SupabaseWorkflowRepository:
         self.supabase_url = os.getenv("SUPABASE_URL")
         self.access_token = access_token
         self.use_rls = access_token is not None
+        # Prefer direct DB when not using RLS (service role/admin operations)
+        self.prefer_direct_db = not self.use_rls
 
         if not self.supabase_url:
             raise ValueError("SUPABASE_URL must be configured")
@@ -128,8 +131,61 @@ class SupabaseWorkflowRepository:
             self.client: Client = _global_service_client
 
         logger.info(
-            f"✅ Supabase client initialized with {'RLS (user token)' if self.use_rls else 'service role (pooled)'}"
+            f"✅ Repository ready: {'RLS (user token via Supabase REST)' if self.use_rls else 'service role (prefer direct Postgres)'}"
         )
+
+    async def _handle_supabase_error(
+        self, e: Exception, operation: str, **kwargs
+    ) -> tuple[bool, any]:
+        """
+        Centralized error handling for DNS resolution and JWT validation issues.
+        Returns (should_return_result, result_value).
+        If should_return_result is False, calling method should continue with general error handling.
+        """
+        error_str = str(e)
+
+        # Handle DNS resolution issues with retry
+        if "Temporary failure in name resolution" in error_str or "[Errno -3]" in error_str:
+            logger.warning(f"🔄 DNS resolution failed for {operation}, retrying in 2s...")
+            await asyncio.sleep(2)
+            try:
+                # The retry_callback should be provided by the calling method
+                retry_callback = kwargs.get("retry_callback")
+                if retry_callback:
+                    result = await retry_callback()
+                    if result is not None:
+                        logger.info(f"✅ {operation} successful after DNS retry")
+                        return True, result
+                    else:
+                        logger.warning(f"⚠️ {operation} failed - no data returned after DNS retry")
+                        return True, None
+            except Exception as retry_e:
+                retry_error_str = str(retry_e)
+                logger.error(f"❌ Retry failed for {operation}: {retry_error_str}")
+
+        # Handle JWT validation errors gracefully
+        elif (
+            "JWSError" in error_str
+            or "CompactDecodeError" in error_str
+            or "Invalid number of parts" in error_str
+        ):
+            logger.warning(
+                f"⚠️ JWT validation error for {operation}, falling back to service role access"
+            )
+            try:
+                fallback_callback = kwargs.get("fallback_callback")
+                if fallback_callback:
+                    service_repo = SupabaseWorkflowRepository(access_token=None)
+                    result = await fallback_callback(service_repo)
+                    logger.info(f"✅ {operation} successful via service role fallback")
+                    return True, result
+            except Exception as fallback_error:
+                logger.error(
+                    f"❌ Fallback service role access also failed for {operation}: {fallback_error}"
+                )
+
+        # No special handling needed, let calling method handle
+        return False, None
 
     async def list_workflows(
         self,
@@ -145,6 +201,26 @@ class SupabaseWorkflowRepository:
             Tuple of (workflow_list, total_count)
         """
         try:
+            # Fast path: direct SQL when not using RLS
+            if self.prefer_direct_db:
+                try:
+                    from database_direct import get_direct_db
+
+                    direct_db = await get_direct_db()
+
+                    # Build direct query with filters
+                    # database_direct.list_workflows_fast already excludes workflow_data
+                    result = await direct_db.list_workflows_fast(
+                        active_only=active_only, limit=limit, offset=offset, user_id=None
+                    )
+                    workflows = result.get("workflows", [])
+                    total_count = result.get("total_count", 0)
+                    return workflows, total_count
+                except Exception as de:
+                    logger.warning(
+                        f"⚠️ Direct DB list_workflows failed, falling back to Supabase REST: {de}"
+                    )
+
             # Build query - RLS automatically filters by user
             # Metadata only for listing - no workflow_data needed
             query = self.client.table("workflows").select(
@@ -173,7 +249,7 @@ class SupabaseWorkflowRepository:
             total_count = response.count or 0
 
             logger.info(
-                f"✅ Retrieved {len(workflows)} workflows (total: {total_count}) via Supabase RLS"
+                f"✅ Retrieved {len(workflows)} workflows (total: {total_count}) via Supabase"
             )
             return workflows, total_count
 
@@ -182,8 +258,22 @@ class SupabaseWorkflowRepository:
             raise
 
     async def get_workflow(self, workflow_id: str) -> Optional[Dict[str, Any]]:
-        """Get a single workflow by ID using RLS."""
+        """Get a single workflow by ID."""
         try:
+            if self.prefer_direct_db:
+                try:
+                    from database_direct import get_direct_db
+
+                    direct_db = await get_direct_db()
+                    workflow = await direct_db.get_workflow_fast(workflow_id)
+                    if workflow:
+                        logger.info(f"✅ Retrieved workflow {workflow_id} via direct SQL")
+                        return workflow
+                except Exception as de:
+                    logger.warning(
+                        f"⚠️ Direct DB get_workflow failed, falling back to Supabase REST: {de}"
+                    )
+
             response = (
                 self.client.table("workflows")
                 .select(
@@ -198,7 +288,7 @@ class SupabaseWorkflowRepository:
 
             workflow = response.data
             if workflow:
-                logger.info(f"✅ Retrieved workflow {workflow_id} via Supabase RLS")
+                logger.info(f"✅ Retrieved workflow {workflow_id} via Supabase")
             else:
                 logger.info(f"❌ Workflow {workflow_id} not found or not accessible")
 
@@ -206,8 +296,49 @@ class SupabaseWorkflowRepository:
 
         except Exception as e:
             error_str = str(e)
+
+            # Handle DNS resolution issues with retry
+            if "Temporary failure in name resolution" in error_str or "[Errno -3]" in error_str:
+                logger.warning(
+                    f"🔄 DNS resolution failed for workflow {workflow_id}, retrying in 2s..."
+                )
+                await asyncio.sleep(2)
+                try:
+                    # Retry once with the same query
+                    response = (
+                        self.client.table("workflows")
+                        .select(
+                            "id, user_id, session_id, name, description, version, active, tags, icon_url, "
+                            "deployment_status, deployed_at, latest_execution_status, "
+                            "latest_execution_time, latest_execution_id, created_at, updated_at, workflow_data"
+                        )
+                        .eq("id", workflow_id)
+                        .single()
+                        .execute()
+                    )
+
+                    workflow = response.data
+                    if workflow:
+                        logger.info(
+                            f"✅ Retrieved workflow {workflow_id} via Supabase (retry successful)"
+                        )
+                        return workflow
+                    else:
+                        logger.warning(
+                            f"⚠️ Workflow {workflow_id} not found after successful retry"
+                        )
+                        return None
+
+                except Exception as retry_e:
+                    retry_error_str = str(retry_e)
+                    logger.error(f"❌ Retry failed for workflow {workflow_id}: {retry_error_str}")
+                    # If retry also has DNS issues, fall through to general error handling
+                    if "Temporary failure in name resolution" not in retry_error_str:
+                        # Different error on retry, log and continue to general error handling
+                        pass
+
             # Handle JWT validation errors gracefully
-            if (
+            elif (
                 "JWSError" in error_str
                 or "CompactDecodeError" in error_str
                 or "Invalid number of parts" in error_str
@@ -221,26 +352,77 @@ class SupabaseWorkflowRepository:
                     return await service_repo.get_workflow(workflow_id)
                 except Exception as fallback_error:
                     logger.error(f"❌ Fallback service role access also failed: {fallback_error}")
-                    return None
-            else:
-                logger.error(f"❌ Error getting workflow {workflow_id} via Supabase: {e}")
-                return None
+
+            # General error logging
+            logger.error(f"❌ Error getting workflow {workflow_id} via Supabase: {e}")
+            return None
 
     async def create_workflow(self, workflow_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Create a new workflow using RLS."""
+        """Create a new workflow."""
         try:
+            if self.prefer_direct_db:
+                try:
+                    from database_direct import get_direct_db
+
+                    direct_db = await get_direct_db()
+                    created = await direct_db.create_workflow_fast(workflow_data)
+                    if created:
+                        logger.info(f"✅ Created workflow {created['id']} via direct SQL")
+                        return created
+                except Exception as de:
+                    logger.warning(
+                        f"⚠️ Direct DB create_workflow failed, falling back to Supabase REST: {de}"
+                    )
+
             response = self.client.table("workflows").insert(workflow_data).execute()
 
             if response.data:
                 created_workflow = response.data[0]
-                logger.info(f"✅ Created workflow {created_workflow['id']} via Supabase RLS")
+                logger.info(f"✅ Created workflow {created_workflow['id']} via Supabase")
                 return created_workflow
             else:
                 logger.error("❌ Failed to create workflow - no data returned")
                 return None
 
         except Exception as e:
-            logger.error(f"❌ Error creating workflow via Supabase: {e}")
+            error_str = str(e)
+
+            # Handle DNS resolution issues with retry
+            if "Temporary failure in name resolution" in error_str or "[Errno -3]" in error_str:
+                logger.warning("🔄 DNS resolution failed for create_workflow, retrying in 2s...")
+                await asyncio.sleep(2)
+                try:
+                    # Retry once
+                    response = self.client.table("workflows").insert(workflow_data).execute()
+                    if response.data:
+                        created_workflow = response.data[0]
+                        logger.info(
+                            f"✅ Created workflow {created_workflow['id']} via Supabase (retry successful)"
+                        )
+                        return created_workflow
+                    else:
+                        logger.error("❌ Failed to create workflow - no data returned after retry")
+                        return None
+                except Exception as retry_e:
+                    logger.error(f"❌ Retry failed for create_workflow: {retry_e}")
+
+            # Handle JWT validation errors gracefully
+            elif (
+                "JWSError" in error_str
+                or "CompactDecodeError" in error_str
+                or "Invalid number of parts" in error_str
+            ):
+                logger.warning(
+                    "⚠️ JWT validation error for create_workflow, falling back to service role access"
+                )
+                try:
+                    service_repo = SupabaseWorkflowRepository(access_token=None)
+                    return await service_repo.create_workflow(workflow_data)
+                except Exception as fallback_error:
+                    logger.error(f"❌ Fallback service role access also failed: {fallback_error}")
+
+            # General error logging and re-raise
+            logger.error(f"❌ Error creating workflow via repository: {e}")
             raise
 
     async def update_workflow(
@@ -248,13 +430,27 @@ class SupabaseWorkflowRepository:
     ) -> Optional[Dict[str, Any]]:
         """Update a workflow using RLS."""
         try:
+            if self.prefer_direct_db:
+                try:
+                    from database_direct import get_direct_db
+
+                    direct_db = await get_direct_db()
+                    updated = await direct_db.update_workflow_fast(workflow_id, workflow_data)
+                    if updated:
+                        logger.info(f"✅ Updated workflow {workflow_id} via direct SQL")
+                        return updated
+                except Exception as de:
+                    logger.warning(
+                        f"⚠️ Direct DB update_workflow failed, falling back to Supabase REST: {de}"
+                    )
+
             response = (
                 self.client.table("workflows").update(workflow_data).eq("id", workflow_id).execute()
             )
 
             if response.data:
                 updated_workflow = response.data[0]
-                logger.info(f"✅ Updated workflow {workflow_id} via Supabase RLS")
+                logger.info(f"✅ Updated workflow {workflow_id} via Supabase")
                 return updated_workflow
             else:
                 logger.error(
@@ -263,16 +459,76 @@ class SupabaseWorkflowRepository:
                 return None
 
         except Exception as e:
-            logger.error(f"❌ Error updating workflow {workflow_id} via Supabase: {e}")
+            error_str = str(e)
+
+            # Handle DNS resolution issues with retry
+            if "Temporary failure in name resolution" in error_str or "[Errno -3]" in error_str:
+                logger.warning(
+                    f"🔄 DNS resolution failed for update_workflow {workflow_id}, retrying in 2s..."
+                )
+                await asyncio.sleep(2)
+                try:
+                    # Retry once
+                    response = (
+                        self.client.table("workflows")
+                        .update(workflow_data)
+                        .eq("id", workflow_id)
+                        .execute()
+                    )
+                    if response.data:
+                        updated_workflow = response.data[0]
+                        logger.info(
+                            f"✅ Updated workflow {workflow_id} via Supabase (retry successful)"
+                        )
+                        return updated_workflow
+                    else:
+                        logger.error(
+                            f"❌ Failed to update workflow {workflow_id} - not found after retry"
+                        )
+                        return None
+                except Exception as retry_e:
+                    logger.error(f"❌ Retry failed for update_workflow {workflow_id}: {retry_e}")
+
+            # Handle JWT validation errors gracefully
+            elif (
+                "JWSError" in error_str
+                or "CompactDecodeError" in error_str
+                or "Invalid number of parts" in error_str
+            ):
+                logger.warning(
+                    f"⚠️ JWT validation error for update_workflow {workflow_id}, falling back to service role access"
+                )
+                try:
+                    service_repo = SupabaseWorkflowRepository(access_token=None)
+                    return await service_repo.update_workflow(workflow_id, workflow_data)
+                except Exception as fallback_error:
+                    logger.error(f"❌ Fallback service role access also failed: {fallback_error}")
+
+            # General error logging and re-raise
+            logger.error(f"❌ Error updating workflow {workflow_id} via repository: {e}")
             raise
 
     async def delete_workflow(self, workflow_id: str) -> bool:
         """Delete a workflow using RLS."""
         try:
+            if self.prefer_direct_db:
+                try:
+                    from database_direct import get_direct_db
+
+                    direct_db = await get_direct_db()
+                    ok = await direct_db.delete_workflow_fast(workflow_id)
+                    if ok:
+                        logger.info(f"✅ Deleted workflow {workflow_id} via direct SQL")
+                        return True
+                except Exception as de:
+                    logger.warning(
+                        f"⚠️ Direct DB delete_workflow failed, falling back to Supabase REST: {de}"
+                    )
+
             response = self.client.table("workflows").delete().eq("id", workflow_id).execute()
 
             if response.data:
-                logger.info(f"✅ Deleted workflow {workflow_id} via Supabase RLS")
+                logger.info(f"✅ Deleted workflow {workflow_id} via Supabase")
                 return True
             else:
                 logger.error(
@@ -281,20 +537,32 @@ class SupabaseWorkflowRepository:
                 return False
 
         except Exception as e:
-            logger.error(f"❌ Error deleting workflow {workflow_id} via Supabase: {e}")
+            logger.error(f"❌ Error deleting workflow {workflow_id} via repository: {e}")
             raise
 
     # Workflow Execution operations
     async def create_execution(self, execution_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Create a new workflow execution (Redis TTL handles cache freshness automatically)."""
         try:
+            if self.prefer_direct_db:
+                try:
+                    from database_direct import get_direct_db
+
+                    direct_db = await get_direct_db()
+                    created = await direct_db.create_execution_fast(execution_data)
+                    if created:
+                        logger.info(f"✅ Created execution {created['execution_id']} via direct SQL")
+                        return created
+                except Exception as de:
+                    logger.warning(
+                        f"⚠️ Direct DB create_execution failed, falling back to Supabase REST: {de}"
+                    )
+
             response = self.client.table("workflow_executions").insert(execution_data).execute()
 
             if response.data:
                 created_execution = response.data[0]
-                logger.info(
-                    f"✅ Created execution {created_execution['execution_id']} (DB ID: {created_execution['id']}) via Supabase"
-                )
+                logger.info(f"✅ Created execution {created_execution['execution_id']} via Supabase")
                 # Note: Redis TTL will automatically expire cache within 1 second, ensuring freshness
                 return created_execution
             else:
@@ -302,12 +570,65 @@ class SupabaseWorkflowRepository:
                 return None
 
         except Exception as e:
-            logger.error(f"❌ Error creating execution via Supabase: {e}")
+            error_str = str(e)
+
+            # Handle DNS resolution issues with retry
+            if "Temporary failure in name resolution" in error_str or "[Errno -3]" in error_str:
+                logger.warning("🔄 DNS resolution failed for create_execution, retrying in 2s...")
+                await asyncio.sleep(2)
+                try:
+                    # Retry once
+                    response = (
+                        self.client.table("workflow_executions").insert(execution_data).execute()
+                    )
+                    if response.data:
+                        created_execution = response.data[0]
+                        logger.info(
+                            f"✅ Created execution {created_execution['execution_id']} via Supabase (retry successful)"
+                        )
+                        return created_execution
+                    else:
+                        logger.error("❌ Failed to create execution - no data returned after retry")
+                        return None
+                except Exception as retry_e:
+                    logger.error(f"❌ Retry failed for create_execution: {retry_e}")
+
+            # Handle JWT validation errors gracefully
+            elif (
+                "JWSError" in error_str
+                or "CompactDecodeError" in error_str
+                or "Invalid number of parts" in error_str
+            ):
+                logger.warning(
+                    "⚠️ JWT validation error for create_execution, falling back to service role access"
+                )
+                try:
+                    service_repo = SupabaseWorkflowRepository(access_token=None)
+                    return await service_repo.create_execution(execution_data)
+                except Exception as fallback_error:
+                    logger.error(f"❌ Fallback service role access also failed: {fallback_error}")
+
+            # General error logging and re-raise
+            logger.error(f"❌ Error creating execution via repository: {e}")
             raise
 
     async def get_execution(self, execution_id: str) -> Optional[Dict[str, Any]]:
         """Get a single execution by ID."""
         try:
+            if self.prefer_direct_db:
+                try:
+                    from database_direct import get_direct_db
+
+                    direct_db = await get_direct_db()
+                    execution = await direct_db.get_execution_fast(execution_id)
+                    if execution:
+                        logger.info(f"✅ Retrieved execution {execution_id} via direct SQL")
+                        return execution
+                except Exception as de:
+                    logger.warning(
+                        f"⚠️ Direct DB get_execution failed, falling back to Supabase REST: {de}"
+                    )
+
             response = (
                 self.client.table("workflow_executions")
                 .select("*")
@@ -325,7 +646,7 @@ class SupabaseWorkflowRepository:
             return execution
 
         except Exception as e:
-            logger.error(f"❌ Error getting execution {execution_id} via Supabase: {e}")
+            logger.error(f"❌ Error getting execution {execution_id}: {e}")
             return None
 
     async def update_execution(
@@ -333,6 +654,20 @@ class SupabaseWorkflowRepository:
     ) -> Optional[Dict[str, Any]]:
         """Update an execution."""
         try:
+            if self.prefer_direct_db:
+                try:
+                    from database_direct import get_direct_db
+
+                    direct_db = await get_direct_db()
+                    updated = await direct_db.update_execution_fast(execution_id, execution_data)
+                    if updated:
+                        logger.info(f"✅ Updated execution {execution_id} via direct SQL")
+                        return updated
+                except Exception as de:
+                    logger.warning(
+                        f"⚠️ Direct DB update_execution failed, falling back to Supabase REST: {de}"
+                    )
+
             response = (
                 self.client.table("workflow_executions")
                 .update(execution_data)
@@ -349,7 +684,7 @@ class SupabaseWorkflowRepository:
                 return None
 
         except Exception as e:
-            logger.error(f"❌ Error updating execution {execution_id} via Supabase: {e}")
+            logger.error(f"❌ Error updating execution {execution_id}: {e}")
             raise
 
     async def list_executions(
@@ -371,6 +706,28 @@ class SupabaseWorkflowRepository:
                 return tuple(cached_result)  # Convert back to tuple
 
         try:
+            if self.prefer_direct_db:
+                try:
+                    from database_direct import get_direct_db
+
+                    direct_db = await get_direct_db()
+                    result = await direct_db.list_executions_fast(
+                        workflow_id=workflow_id,
+                        status_filter=status_filter,
+                        limit=limit,
+                        offset=offset,
+                    )
+                    executions = result.get("executions", [])
+                    total_count = result.get("total_count", 0)
+                    # Cache with TTL only for frequent default query
+                    if workflow_id and not status_filter and offset == 0 and limit <= 20:
+                        _set_cache(cache_key, (executions, total_count), CACHE_TTL_EXECUTIONS)
+                    return executions, total_count
+                except Exception as de:
+                    logger.warning(
+                        f"⚠️ Direct DB list_executions failed, falling back to Supabase REST: {de}"
+                    )
+
             # Optimize field selection - only fetch essential fields for listing
             # Exclude potentially large fields like run_data, error_details, execution_metadata
             query = self.client.table("workflow_executions").select(
@@ -421,6 +778,20 @@ class SupabaseWorkflowRepository:
     ) -> Tuple[List[Dict[str, Any]], int]:
         """List node templates with optional filters."""
         try:
+            if self.prefer_direct_db:
+                try:
+                    from database_direct import get_direct_db
+
+                    direct_db = await get_direct_db()
+                    result = await direct_db.list_node_templates_fast(
+                        category=category, node_type=node_type, limit=limit, offset=offset
+                    )
+                    return result.get("templates", []), result.get("total_count", 0)
+                except Exception as de:
+                    logger.warning(
+                        f"⚠️ Direct DB list_node_templates failed, falling back to Supabase REST: {de}"
+                    )
+
             query = self.client.table("node_templates").select("*", count="exact")
 
             # Apply filters
@@ -450,6 +821,17 @@ class SupabaseWorkflowRepository:
     async def get_node_template(self, template_id: str) -> Optional[Dict[str, Any]]:
         """Get a single node template by ID."""
         try:
+            if self.prefer_direct_db:
+                try:
+                    from database_direct import get_direct_db
+
+                    direct_db = await get_direct_db()
+                    template = await direct_db.get_node_template_fast(template_id)
+                    return template
+                except Exception as de:
+                    logger.warning(
+                        f"⚠️ Direct DB get_node_template failed, falling back to Supabase REST: {de}"
+                    )
             response = (
                 self.client.table("node_templates")
                 .select("*")

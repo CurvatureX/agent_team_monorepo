@@ -1,43 +1,28 @@
 # Production Dockerfile for Three-Layer API Gateway with uv
-FROM python:3.11-slim AS builder
+FROM python:3.11 AS builder
 
 WORKDIR /app
 
-# Install system dependencies for building
-RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    curl \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install uv with retry and increased timeout
+# Install uv with retry and increased timeout (build tools already available in python:3.11)
 RUN pip install --default-timeout=120 --retries 5 uv
 
 # Copy workspace files from parent directory (context should be apps/backend)
 COPY pyproject.toml ./
 COPY uv.lock ./
 COPY api-gateway/pyproject.toml ./api-gateway/
-COPY api-gateway/.python-version* ./api-gateway/
+# COPY api-gateway/.python-version* ./api-gateway/  # File doesn't exist, commented out
 
 # Install Python dependencies with uv
 RUN uv sync --frozen --package api-gateway-mvp
 
 # No proto files needed for HTTP-only deployment
 
-# Production stage
-FROM python:3.11-slim AS production
+# Production stage - use full python:3.11 to avoid apt-get
+FROM python:3.11 AS production
 
 WORKDIR /app
 
-# Install runtime dependencies including Redis client tools
-RUN apt-get update && apt-get install -y \
-    curl \
-    redis-tools \
-    netcat-openbsd \
-    libpq5 \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+# No runtime dependencies needed - python:3.11 has everything
 
 # Copy uv and dependencies from builder
 COPY --from=builder /app/.venv /app/.venv

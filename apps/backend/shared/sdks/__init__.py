@@ -45,6 +45,18 @@ except ImportError as e:
     NotionSDK = None
     print(f"Warning: Failed to import NotionSDK: {e}")
 
+try:
+    from .discord_sdk import DiscordSDK
+except ImportError as e:
+    DiscordSDK = None
+    print(f"Warning: Failed to import DiscordSDK: {e}")
+
+try:
+    from .firecrawl_sdk import FirecrawlSDK
+except ImportError as e:
+    FirecrawlSDK = None
+    print(f"Warning: Failed to import FirecrawlSDK: {e}")
+
 __all__ = [
     "BaseSDK",
     "SDKError",
@@ -56,4 +68,6 @@ __all__ = [
     "EmailSDK",
     "ApiCallSDK",
     "NotionSDK",
+    "DiscordSDK",
+    "FirecrawlSDK",
 ]

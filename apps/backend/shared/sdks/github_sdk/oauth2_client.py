@@ -20,7 +20,7 @@ class GitHubOAuth2SDK(BaseSDK):
 
     @property
     def supported_operations(self) -> Dict[str, str]:
-        return {
+        ops = {
             "create_issue": "Create new issue in repository",
             "create_pull_request": "Create new pull request",
             "add_comment": "Add comment to issue or PR",
@@ -36,6 +36,26 @@ class GitHubOAuth2SDK(BaseSDK):
             "update_file": "Update existing file",
             "get_user": "Get authenticated user info",
         }
+        # MCP-aligned aliases
+        ops.update(
+            {
+                "github_create_issue": ops["create_issue"],
+                "github_create_pull_request": ops["create_pull_request"],
+                "github_add_comment": ops["add_comment"],
+                "github_close_issue": ops["close_issue"],
+                "github_merge_pr": ops["merge_pr"],
+                "github_list_issues": ops["list_issues"],
+                "github_get_issue": ops["get_issue"],
+                "github_list_repos": ops["list_repos"],
+                "github_get_repo": ops["get_repo"],
+                "github_create_branch": ops["create_branch"],
+                "github_get_file": ops["get_file"],
+                "github_create_file": ops["create_file"],
+                "github_update_file": ops["update_file"],
+                "github_get_user": ops["get_user"],
+            }
+        )
+        return ops
 
     def get_oauth2_config(self) -> OAuth2Config:
         """Get GitHub OAuth2 configuration."""
@@ -93,8 +113,24 @@ class GitHubOAuth2SDK(BaseSDK):
                 "update_file": self._update_file,
                 "get_user": self._get_user,
             }
-
-            handler = handler_map[operation]
+            alias = {
+                "github_create_issue": "create_issue",
+                "github_create_pull_request": "create_pull_request",
+                "github_add_comment": "add_comment",
+                "github_close_issue": "close_issue",
+                "github_merge_pr": "merge_pr",
+                "github_list_issues": "list_issues",
+                "github_get_issue": "get_issue",
+                "github_list_repos": "list_repos",
+                "github_get_repo": "get_repo",
+                "github_create_branch": "create_branch",
+                "github_get_file": "get_file",
+                "github_create_file": "create_file",
+                "github_update_file": "update_file",
+                "github_get_user": "get_user",
+            }
+            op = alias.get(operation, operation)
+            handler = handler_map[op]
             result = await handler(parameters, credentials)
 
             return APIResponse(success=True, data=result, provider="github", operation=operation)

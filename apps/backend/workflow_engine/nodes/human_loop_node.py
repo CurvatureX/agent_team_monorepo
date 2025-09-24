@@ -33,6 +33,13 @@ class HumanLoopNodeExecutor(BaseNodeExecutor):
                 "description": description,
                 "reason": "human_interaction_not_implemented",
                 "solution": "Implement real human-in-the-loop functionality with actual user interface and interaction handling",
+                "next_steps": [
+                    "Create UI components for human approval workflows",
+                    "Implement real-time notification system",
+                    "Add approval state management in database",
+                    "Connect with frontend interface for user interactions",
+                ],
+                "workflow_impact": f"This workflow requires human approval for '{title}' - execution halted",
                 "supported_types": [
                     HumanLoopSubtype.IN_APP_APPROVAL.value,
                     HumanLoopSubtype.FORM_SUBMISSION.value,
@@ -40,7 +47,11 @@ class HumanLoopNodeExecutor(BaseNodeExecutor):
                     "selection",
                 ],
             },
-            metadata={"node_type": "human_loop", "interaction_type": interaction_type},
+            metadata={
+                "node_type": "human_loop",
+                "interaction_type": interaction_type,
+                "requires_ui_implementation": True,
+            },
         )
 
     def validate_parameters(self, context: NodeExecutionContext) -> tuple[bool, str]:

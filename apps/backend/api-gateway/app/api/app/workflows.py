@@ -4,6 +4,7 @@ Workflow API endpoints with authentication and enhanced gRPC client integration
 """
 
 import logging
+import socket
 import time
 import uuid
 from datetime import datetime
@@ -126,6 +127,86 @@ def _clear_workflow_cache(workflow_id: str, user_id: str):
         logger.info(f"📋 Cleared cached workflow data for {workflow_id}")
 
 
+async def _fetch_oauth_tokens_with_retry(user_id: str) -> List[Dict[str, Any]]:
+    """
+    Fetch OAuth tokens with retry logic for DNS resolution failures.
+    Applies the same robust patterns used in workflow scheduler database connections.
+    """
+    max_retries = 3
+    retry_delay = 1.0
+
+    for attempt in range(max_retries):
+        try:
+            logger.debug(
+                f"Fetching OAuth tokens for user {user_id} (attempt {attempt + 1}/{max_retries})"
+            )
+
+            # Prefer direct Postgres for performance
+            try:
+                from app.core.database_direct import get_direct_pg_manager
+
+                direct = await get_direct_pg_manager()
+                tokens = await direct.get_user_oauth_tokens_fast(user_id)
+                logger.debug(f"✅ Fetched OAuth tokens via direct SQL for user {user_id}")
+                return tokens
+            except Exception as de:
+                logger.warning(
+                    f"⚠️ Direct SQL token fetch failed, falling back to Supabase REST: {de}"
+                )
+
+            # Fallback to Supabase admin client
+            supabase = get_supabase_admin()
+            if not supabase:
+                logger.error("❌ Failed to get Supabase admin client")
+                return []
+
+            oauth_tokens_result = (
+                supabase.table("oauth_tokens")
+                .select("provider, integration_id, access_token, refresh_token, credential_data")
+                .eq("user_id", user_id)
+                .eq("is_active", True)
+                .execute()
+            )
+
+            logger.debug(f"✅ Successfully fetched OAuth tokens for user {user_id}")
+            return oauth_tokens_result.data or []
+
+        except Exception as e:
+            error_str = str(e).lower()
+            # Classify network vs other errors like workflow engine
+            if any(
+                keyword in error_str
+                for keyword in [
+                    "ssl",
+                    "eof",
+                    "connection",
+                    "timeout",
+                    "dns",
+                    "resolve",
+                    "name resolution",
+                    "temporary failure",
+                    "network",
+                    "gaierror",
+                ]
+            ):
+                logger.warning(
+                    f"⚠️ Network error fetching OAuth tokens (attempt {attempt + 1}): {type(e).__name__}: {e}"
+                )
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying OAuth token fetch in {retry_delay} seconds...")
+                    time.sleep(
+                        retry_delay
+                    )  # Use sync sleep like workflow engine for network issues
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    logger.error(f"❌ All {max_retries} OAuth token fetch attempts failed")
+                    return []  # Return empty list instead of raising
+            else:
+                # Non-network error - re-raise immediately
+                logger.error(f"❌ OAuth token fetch failed with non-network error: {e}")
+                return []  # Return empty list for graceful degradation
+
+
 async def _inject_oauth_credentials(workflow_data: Dict[str, Any], user_id: str) -> Dict[str, Any]:
     """
     Inject OAuth credentials from oauth_tokens table into workflow nodes.
@@ -135,25 +216,16 @@ async def _inject_oauth_credentials(workflow_data: Dict[str, Any], user_id: str)
     try:
         logger.info(f"🔐 Injecting OAuth credentials for workflow deployment - user {user_id}")
 
-        # Get Supabase admin client for database access (need admin to access oauth_tokens)
-        supabase = get_supabase_admin()
+        # Fetch user's OAuth tokens with retry logic
+        oauth_tokens_data = await _fetch_oauth_tokens_with_retry(user_id)
 
-        # Fetch user's OAuth tokens
-        oauth_tokens_result = (
-            supabase.table("oauth_tokens")
-            .select("provider, integration_id, access_token, refresh_token, credential_data")
-            .eq("user_id", user_id)
-            .eq("is_active", True)
-            .execute()
-        )
-
-        if not oauth_tokens_result.data:
+        if not oauth_tokens_data:
             logger.info("🔐 No OAuth tokens found for user, skipping credential injection")
             return workflow_data
 
         # Create provider -> token mapping with integration_id handling
         provider_tokens = {}
-        for token_record in oauth_tokens_result.data:
+        for token_record in oauth_tokens_data:
             provider = token_record["provider"]
             integration_id = token_record["integration_id"]
 
