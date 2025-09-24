@@ -445,7 +445,7 @@ class GoogleCalendarMCPService:
                             "type": "string",
                             "enum": ["asc", "desc"],
                             "default": "asc",
-                            "description": "Sort order",
+                            "description": "Sort order (ascending or descending)",
                         },
                         "max_results": {
                             "type": "integer",
@@ -546,7 +546,7 @@ class GoogleCalendarMCPService:
 
     async def _handle_events(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Handle universal event management operations."""
-        from ..services.google_calendar_client import GoogleCalendarClient
+        from app.services.google_calendar_client import GoogleCalendarClient
 
         action = params.get("action")
         access_token = params.get("access_token")
@@ -669,7 +669,7 @@ class GoogleCalendarMCPService:
 
     async def _handle_quick_add(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Handle natural language event creation."""
-        from ..services.google_calendar_client import GoogleCalendarClient
+        from app.services.google_calendar_client import GoogleCalendarClient
 
         access_token = params.get("access_token")
         text = params.get("text")
@@ -700,7 +700,7 @@ class GoogleCalendarMCPService:
 
     async def _handle_search(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Handle advanced calendar search."""
-        from ..services.google_calendar_client import GoogleCalendarClient
+        from app.services.google_calendar_client import GoogleCalendarClient
 
         access_token = params.get("access_token")
         query = params.get("query")
@@ -774,7 +774,7 @@ class GoogleCalendarMCPService:
 
     async def _handle_availability(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Handle availability checking and free slot finding."""
-        from ..services.google_calendar_client import GoogleCalendarClient
+        from app.services.google_calendar_client import GoogleCalendarClient
 
         access_token = params.get("access_token")
         calendars = params.get("calendars", ["primary"])
@@ -859,7 +859,7 @@ class GoogleCalendarMCPService:
 
     async def _handle_date_query(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """Handle advanced date-based calendar queries with natural language support."""
-        from ..services.google_calendar_client import GoogleCalendarClient
+        from app.services.google_calendar_client import GoogleCalendarClient
 
         access_token = params.get("access_token")
         date_query = params.get("date_query")

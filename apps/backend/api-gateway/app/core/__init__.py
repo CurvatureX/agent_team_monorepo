@@ -4,31 +4,28 @@ Core Components for API Gateway
 """
 
 from .config import (
-    Settings,
-    get_settings,
-    get_app_settings,
-    DatabaseSettings,
-    AuthSettings,
     APILayerSettings,
-    ServiceSettings,
-    SecuritySettings,
     AppSettings,
+    AuthSettings,
+    DatabaseSettings,
+    SecuritySettings,
+    ServiceSettings,
+    Settings,
+    get_app_settings,
+    get_settings,
 )
-
 from .database import (
     DatabaseManager,
+    create_user_supabase_client,
     get_database_manager,
+    get_database_manager_dependency,
+    get_redis,
+    get_redis_dependency,
     get_supabase,
     get_supabase_admin,
-    get_redis,
-    create_user_supabase_client,
-    get_database_manager_dependency,
     get_supabase_dependency,
-    get_redis_dependency,
 )
-
-
-from .events import lifespan, startup_event, shutdown_event, health_check
+from .events import health_check, lifespan, shutdown_event, startup_event
 
 __all__ = [
     # Configuration

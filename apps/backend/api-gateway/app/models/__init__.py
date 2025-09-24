@@ -18,6 +18,9 @@ try:
         ChatStreamResponse,
         ConversationRequest,
         ConversationResponse,
+    )
+    from shared.models import CreateWorkflowRequest as WorkflowCreate
+    from shared.models import (
         DebugEventData,
         ErrorContent,
         ErrorEventData,
@@ -43,7 +46,7 @@ try:
         SSEEventType,
         StatusChangeEventData,
     )
-    from shared.models import CreateWorkflowRequest as WorkflowCreate
+    from shared.models import UpdateWorkflowRequest as WorkflowUpdate
     from shared.models import WorkflowData
     from shared.models import WorkflowData as Workflow
     from shared.models import (
@@ -52,7 +55,6 @@ try:
         WorkflowExecutionResponse,
         WorkflowResponse,
     )
-    from shared.models import UpdateWorkflowRequest as WorkflowUpdate
     from shared.models.trigger import (
         DeploymentResult,
         DeploymentStatus,
@@ -82,6 +84,9 @@ except ImportError:
         ChatStreamResponse,
         ConversationRequest,
         ConversationResponse,
+    )
+    from shared.models import CreateWorkflowRequest as WorkflowCreate
+    from shared.models import (
         DebugEventData,
         ErrorContent,
         ErrorEventData,
@@ -107,7 +112,7 @@ except ImportError:
         SSEEventType,
         StatusChangeEventData,
     )
-    from shared.models import CreateWorkflowRequest as WorkflowCreate
+    from shared.models import UpdateWorkflowRequest as WorkflowUpdate
     from shared.models import WorkflowData
     from shared.models import WorkflowData as Workflow
     from shared.models import (
@@ -116,7 +121,6 @@ except ImportError:
         WorkflowExecutionResponse,
         WorkflowResponse,
     )
-    from shared.models import UpdateWorkflowRequest as WorkflowUpdate
     from shared.models.trigger import (
         DeploymentResult,
         DeploymentStatus,

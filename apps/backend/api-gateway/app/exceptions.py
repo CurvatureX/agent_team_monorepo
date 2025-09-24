@@ -4,15 +4,14 @@ Global Exception Handling for API Gateway
 """
 
 import traceback
-from typing import Union, Dict, Any
 from datetime import datetime, timezone
-
-from fastapi import Request, HTTPException, status
-from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
-from starlette.exceptions import HTTPException as StarletteHTTPException
+from typing import Any, Dict, Union
 
 from app.utils.logger import get_logger
+from fastapi import HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 logger = get_logger(__name__)
 
