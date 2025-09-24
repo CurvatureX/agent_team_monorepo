@@ -70,20 +70,38 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
     try:
         logger.info(f"💬 Starting chat stream for session {chat_request.session_id}")
 
-        # Session validation with service role key
-        admin_client = deps.db_manager.supabase_admin
-        if not admin_client:
-            raise HTTPException(status_code=500, detail="Failed to create database client")
+        # Session validation - OPTIMIZED with direct PostgreSQL
+        session_result = None
+        try:
+            from app.core.database_direct import get_direct_pg_manager
 
-        session_result = (
-            admin_client.table("sessions")
-            .select("*")
-            .eq("id", chat_request.session_id)
-            .eq("user_id", deps.current_user.sub)
-            .execute()
-        )
-        session = session_result.data[0] if session_result.data else None
-        if not session:
+            direct_db = await get_direct_pg_manager()
+
+            session_result = await direct_db.get_session_fast(
+                session_id=chat_request.session_id, user_id=deps.current_user.sub
+            )
+
+            if session_result:
+                logger.info(f"✅ Direct SQL: Session validated {chat_request.session_id}")
+
+        except Exception as direct_error:
+            logger.warning(f"⚠️ Direct SQL failed, falling back to REST API: {direct_error}")
+
+            # Fallback to Supabase REST API
+            admin_client = deps.db_manager.supabase_admin
+            if not admin_client:
+                raise HTTPException(status_code=500, detail="Failed to create database client")
+
+            session_query_result = (
+                admin_client.table("sessions")
+                .select("*")
+                .eq("id", chat_request.session_id)
+                .eq("user_id", deps.current_user.sub)
+                .execute()
+            )
+            session_result = session_query_result.data[0] if session_query_result.data else None
+
+        if not session_result:
             raise NotFoundError("Session")
 
         # Get the next sequence number for this session
@@ -113,10 +131,26 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
             "sequence_number": next_sequence,
         }
 
-        # Store user message with service role key
+        # Store user message - OPTIMIZED with direct PostgreSQL
+        stored_user_message = None
         try:
-            chat_result = admin_client.table("chats").insert(user_message_data).execute()
-            stored_user_message = chat_result.data[0] if chat_result.data else None
+            # Try direct PostgreSQL first (fastest)
+            try:
+                stored_user_message = await direct_db.insert_chat_message_fast(
+                    session_id=chat_request.session_id,
+                    role="user",
+                    content=chat_request.message,
+                    user_id=deps.current_user.sub,
+                )
+                if stored_user_message:
+                    logger.info(f"✅ Direct SQL: Stored chat message")
+            except Exception as direct_error:
+                logger.warning(f"⚠️ Direct SQL failed for chat, falling back: {direct_error}")
+
+                # Fallback to REST API
+                chat_result = admin_client.table("chats").insert(user_message_data).execute()
+                stored_user_message = chat_result.data[0] if chat_result.data else None
+
         except Exception as e:
             logger.warning(f"Failed to store user message: {e}")
             stored_user_message = None

@@ -14,6 +14,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class DatabaseSettings(BaseSettings):
     """数据库相关配置"""
 
+    # Direct PostgreSQL Configuration
+    DATABASE_URL: str = Field(
+        default_factory=lambda: os.getenv("DATABASE_URL", ""),
+        description="Direct PostgreSQL connection URL for high performance",
+    )
+
     # Supabase Configuration
     SUPABASE_URL: str = Field(
         default_factory=lambda: os.getenv("SUPABASE_URL", "https://your-project-id.supabase.co"),

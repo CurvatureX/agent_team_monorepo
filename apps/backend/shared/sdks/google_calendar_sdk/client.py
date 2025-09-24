@@ -28,7 +28,7 @@ class GoogleCalendarSDK(BaseSDK):
 
     @property
     def supported_operations(self) -> Dict[str, str]:
-        return {
+        ops = {
             "list_events": "List calendar events",
             "create_event": "Create new calendar event",
             "update_event": "Update existing event",
@@ -42,6 +42,18 @@ class GoogleCalendarSDK(BaseSDK):
             "watch_events": "Set up webhook for event changes",
             "stop_watching": "Stop webhook monitoring",
         }
+        # MCP-aligned aliases
+        ops.update(
+            {
+                "google_calendar_list_calendars": ops["list_calendars"],
+                "google_calendar_create_event": ops["create_event"],
+                "google_calendar_list_events": ops["list_events"],
+                "google_calendar_update_event": ops["update_event"],
+                "google_calendar_delete_event": ops["delete_event"],
+                "google_calendar_add_attendees_to_event": "Add attendees to an existing event",
+            }
+        )
+        return ops
 
     def get_oauth2_config(self) -> OAuth2Config:
         """Get Google Calendar OAuth2 configuration."""
@@ -100,8 +112,23 @@ class GoogleCalendarSDK(BaseSDK):
                 "watch_events": self._watch_events,
                 "stop_watching": self._stop_watching,
             }
+            alias = {
+                "google_calendar_list_calendars": "list_calendars",
+                "google_calendar_create_event": "create_event",
+                "google_calendar_list_events": "list_events",
+                "google_calendar_update_event": "update_event",
+                "google_calendar_delete_event": "delete_event",
+                "google_calendar_add_attendees_to_event": "add_attendees_to_event",
+            }
+            op = alias.get(operation, operation)
 
-            handler = handler_map[operation]
+            if op == "add_attendees_to_event":
+                result = await self._add_attendees_to_event(parameters, credentials)
+                return APIResponse(
+                    success=True, data=result, provider="google_calendar", operation=operation
+                )
+
+            handler = handler_map[op]
             result = await handler(parameters, credentials)
 
             return APIResponse(
@@ -221,7 +248,8 @@ class GoogleCalendarSDK(BaseSDK):
 
         # Handle attendees
         if "attendees" in parameters:
-            event_data["attendees"] = [{"email": email} for email in parameters["attendees"]]
+            attendees = parameters["attendees"]
+            event_data["attendees"] = [{"email": a} if isinstance(a, str) else a for a in attendees]
 
         # Handle other optional parameters
         if "reminders" in parameters:
@@ -248,6 +276,178 @@ class GoogleCalendarSDK(BaseSDK):
         }
 
     # ... (继续其他方法的实现)
+
+    async def _get_event(
+        self, parameters: Dict[str, Any], credentials: Dict[str, str]
+    ) -> Dict[str, Any]:
+        calendar_id = parameters.get("calendar_id", "primary")
+        event_id = parameters.get("event_id")
+        if not event_id:
+            raise GoogleCalendarValidationError("Missing required parameter: event_id")
+        url = f"{self.base_url}/calendars/{calendar_id}/events/{event_id}"
+        headers = self._prepare_headers(credentials)
+        response = await self.make_http_request("GET", url, headers=headers)
+        if not (200 <= response.status_code < 300):
+            self._handle_error(response)
+        event_data = response.json()
+        return {"event": event_data}
+
+    async def _update_event(
+        self, parameters: Dict[str, Any], credentials: Dict[str, str]
+    ) -> Dict[str, Any]:
+        calendar_id = parameters.get("calendar_id", "primary")
+        event_id = parameters.get("event_id")
+        if not event_id:
+            raise GoogleCalendarValidationError("Missing required parameter: event_id")
+        # Build partial event payload
+        body: Dict[str, Any] = {}
+        for field in ("summary", "description", "location"):
+            if field in parameters:
+                body[field] = parameters[field]
+        # Time
+        if "start" in parameters:
+            body["start"] = self._format_event_time(parameters["start"])
+        if "end" in parameters:
+            body["end"] = self._format_event_time(parameters["end"])
+        if "start_datetime" in parameters:
+            body.setdefault("start", {})["dateTime"] = self._format_google_datetime(
+                parameters["start_datetime"]
+            )
+        if "end_datetime" in parameters:
+            body.setdefault("end", {})["dateTime"] = self._format_google_datetime(
+                parameters["end_datetime"]
+            )
+        # Attendees
+        if "attendees" in parameters:
+            attendees = parameters["attendees"]
+            body["attendees"] = [{"email": a} if isinstance(a, str) else a for a in attendees]
+        if "reminders" in parameters:
+            body["reminders"] = parameters["reminders"]
+        if "recurrence" in parameters:
+            body["recurrence"] = parameters["recurrence"]
+
+        url = f"{self.base_url}/calendars/{calendar_id}/events/{event_id}"
+        headers = self._prepare_headers(credentials)
+        response = await self.make_http_request("PATCH", url, headers=headers, json_data=body)
+        if not (200 <= response.status_code < 300):
+            self._handle_error(response)
+        return {"event": response.json()}
+
+    async def _delete_event(
+        self, parameters: Dict[str, Any], credentials: Dict[str, str]
+    ) -> Dict[str, Any]:
+        calendar_id = parameters.get("calendar_id", "primary")
+        event_id = parameters.get("event_id")
+        if not event_id:
+            raise GoogleCalendarValidationError("Missing required parameter: event_id")
+        url = f"{self.base_url}/calendars/{calendar_id}/events/{event_id}"
+        headers = self._prepare_headers(credentials)
+        response = await self.make_http_request("DELETE", url, headers=headers)
+        if response.status_code not in (200, 204):
+            self._handle_error(response)
+        return {"success": True}
+
+    async def _list_calendars(
+        self, parameters: Dict[str, Any], credentials: Dict[str, str]
+    ) -> Dict[str, Any]:
+        max_results = min(int(parameters.get("max_results", 100)), 250)
+        url = f"{self.base_url}/users/me/calendarList?maxResults={max_results}"
+        headers = self._prepare_headers(credentials)
+        response = await self.make_http_request("GET", url, headers=headers)
+        if not (200 <= response.status_code < 300):
+            self._handle_error(response)
+        data = response.json()
+        return {"calendars": data.get("items", []), "total_count": len(data.get("items", []))}
+
+    async def _create_calendar(
+        self, parameters: Dict[str, Any], credentials: Dict[str, str]
+    ) -> Dict[str, Any]:
+        summary = parameters.get("summary")
+        description = parameters.get("description")
+        time_zone = parameters.get("time_zone") or parameters.get("timezone")
+        if not summary:
+            raise GoogleCalendarValidationError("Missing required parameter: summary")
+        body: Dict[str, Any] = {"summary": summary}
+        if description:
+            body["description"] = description
+        if time_zone:
+            body["timeZone"] = time_zone
+        url = f"{self.base_url}/calendars"
+        headers = self._prepare_headers(credentials)
+        response = await self.make_http_request("POST", url, headers=headers, json_data=body)
+        if not (200 <= response.status_code < 300):
+            self._handle_error(response)
+        return {"calendar": response.json()}
+
+    async def _get_calendar(
+        self, parameters: Dict[str, Any], credentials: Dict[str, str]
+    ) -> Dict[str, Any]:
+        calendar_id = parameters.get("calendar_id", "primary")
+        url = f"{self.base_url}/calendars/{calendar_id}"
+        headers = self._prepare_headers(credentials)
+        response = await self.make_http_request("GET", url, headers=headers)
+        if not (200 <= response.status_code < 300):
+            self._handle_error(response)
+        return {"calendar": response.json()}
+
+    async def _search_events(
+        self, parameters: Dict[str, Any], credentials: Dict[str, str]
+    ) -> Dict[str, Any]:
+        calendar_id = parameters.get("calendar_id", "primary")
+        query = parameters.get("query") or parameters.get("q")
+        if not query:
+            raise GoogleCalendarValidationError("Missing required parameter: query")
+        params: Dict[str, Any] = {"q": query, "singleEvents": True, "orderBy": "startTime"}
+        if "time_min" in parameters:
+            params["timeMin"] = self._format_google_datetime(parameters["time_min"])
+        if "time_max" in parameters:
+            params["timeMax"] = self._format_google_datetime(parameters["time_max"])
+        if "max_results" in parameters:
+            params["maxResults"] = min(int(parameters["max_results"]), 250)
+        url = f"{self.base_url}/calendars/{calendar_id}/events?{urlencode(params)}"
+        headers = self._prepare_headers(credentials)
+        response = await self.make_http_request("GET", url, headers=headers)
+        if not (200 <= response.status_code < 300):
+            self._handle_error(response)
+        return response.json()
+
+    async def _quick_add(
+        self, parameters: Dict[str, Any], credentials: Dict[str, str]
+    ) -> Dict[str, Any]:
+        calendar_id = parameters.get("calendar_id", "primary")
+        text = parameters.get("text")
+        send_updates = parameters.get("send_updates")
+        if not text:
+            raise GoogleCalendarValidationError("Missing required parameter: text")
+        query = {"text": text}
+        if send_updates:
+            query["sendUpdates"] = send_updates
+        url = f"{self.base_url}/calendars/{calendar_id}/events/quickAdd?{urlencode(query)}"
+        headers = self._prepare_headers(credentials)
+        response = await self.make_http_request("POST", url, headers=headers)
+        if not (200 <= response.status_code < 300):
+            self._handle_error(response)
+        return response.json()
+
+    async def _add_attendees_to_event(
+        self, parameters: Dict[str, Any], credentials: Dict[str, str]
+    ) -> Dict[str, Any]:
+        calendar_id = parameters.get("calendar_id", "primary")
+        event_id = parameters.get("event_id")
+        attendees = parameters.get("attendees", [])
+        if not event_id or not attendees:
+            raise GoogleCalendarValidationError(
+                "Missing required parameters: event_id and attendees"
+            )
+        get_res = await self._get_event(
+            {"calendar_id": calendar_id, "event_id": event_id}, credentials
+        )
+        current = get_res.get("event", {})
+        existing = current.get("attendees", [])
+        merged = existing + [{"email": a} if isinstance(a, str) else a for a in attendees]
+        return await self._update_event(
+            {"calendar_id": calendar_id, "event_id": event_id, "attendees": merged}, credentials
+        )
 
     async def _test_connection_impl(self, credentials: Dict[str, str]) -> Dict[str, Any]:
         """Google Calendar specific connection test."""

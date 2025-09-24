@@ -43,6 +43,9 @@ async def startup_event(app: FastAPI) -> None:
     # 初始化数据库连接
     await initialize_database_connections()
 
+    # 初始化直接PostgreSQL连接池 (性能优化)
+    await initialize_direct_postgresql()
+
     # 执行健康检查
     await perform_startup_health_checks()
 
@@ -61,6 +64,9 @@ async def shutdown_event(app: FastAPI) -> None:
 
     # 关闭数据库连接
     await cleanup_database_connections(app)
+
+    # 关闭直接PostgreSQL连接池
+    await cleanup_direct_postgresql()
 
     # 清理其他资源
     await cleanup_resources(app)
@@ -111,6 +117,40 @@ async def initialize_database_connections() -> None:
     except Exception as e:
         logger.warning(f"⚠️ Database connections initialization completed with warnings: {e}")
         # Don't raise - allow app to start with degraded functionality
+
+
+async def initialize_direct_postgresql() -> None:
+    """初始化直接PostgreSQL连接池 - 性能优化"""
+    logger = get_logger(__name__)
+
+    try:
+        logger.info("🚀 Initializing direct PostgreSQL connection pool...")
+
+        from app.core.database_direct import get_direct_pg_manager
+
+        direct_db = await get_direct_pg_manager()
+        if await direct_db.test_connection():
+            logger.info("✅ Direct PostgreSQL pool initialized successfully")
+        else:
+            logger.warning("⚠️ Direct PostgreSQL connection test failed")
+
+    except Exception as e:
+        logger.warning(f"⚠️ Direct PostgreSQL initialization failed: {e}")
+        # Don't raise - allow app to start with REST API fallback
+
+
+async def cleanup_direct_postgresql() -> None:
+    """清理直接PostgreSQL连接池"""
+    logger = get_logger(__name__)
+
+    try:
+        from app.core.database_direct import close_direct_pg_manager
+
+        await close_direct_pg_manager()
+        logger.info("✅ Direct PostgreSQL pool cleaned up")
+
+    except Exception as e:
+        logger.error(f"❌ Error cleaning up direct PostgreSQL pool: {e}")
 
 
 async def perform_startup_health_checks() -> None:

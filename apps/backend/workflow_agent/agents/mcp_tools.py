@@ -1,11 +1,26 @@
 """
 MCP (Model Context Protocol) tools for workflow generation.
-Provides tools for discovering and retrieving workflow node specifications.
+
+Adds provider-agnostic MCP integration helpers so Claude, OpenAI, and Gemini
+can easily consume MCP server tools and invoke them:
+
+- OpenAI (function calling)
+  - Fetch tool schemas via GET /api/v1/mcp/tools
+  - Convert to OpenAI function definitions
+  - Invoke tools via POST /api/v1/mcp/invoke
+
+- Claude (tool use)
+  - Convert to Anthropic tools array (name, description, input_schema)
+  - Invoke on tool_use events (name + input) via /invoke
+
+- Gemini (function calling)
+  - Convert to Gemini function declarations (JSON schema under parameters)
+  - Invoke when Gemini emits functionCall via /invoke
 """
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import aiohttp
 from langchain_core.tools import Tool
@@ -74,6 +89,158 @@ class MCPToolCaller:
         self._session = None
 
         logger.info(f"MCP Tool initialized with server URL: {self.server_url}")
+
+    async def list_mcp_tools(self) -> List[Dict[str, Any]]:
+        """Fetch all available tools from the MCP server.
+
+        Returns a list of tool dicts compatible with OpenAI/Claude/Gemini
+        conversion helpers.
+        """
+        try:
+            session = await self._get_session()
+            async with session.get(f"{self.server_url}/tools", headers=self.headers) as resp:
+                resp.raise_for_status()
+                data = await resp.json()
+                if isinstance(data, dict) and "result" in data and "tools" in data["result"]:
+                    return data["result"]["tools"]
+                if isinstance(data, dict) and "tools" in data:
+                    return data["tools"]
+                return []
+        except Exception as e:
+            logger.error(f"❌ Error fetching MCP tools: {e}")
+            return []
+
+    @staticmethod
+    def convert_tools_to_openai_functions(mcp_tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Convert MCP tools to OpenAI function-calling spec.
+
+        Each tool becomes a function definition with JSON Schema parameters.
+        """
+        functions: List[Dict[str, Any]] = []
+        for t in mcp_tools:
+            name = t.get("name")
+            desc = t.get("description")
+            params = t.get("parameters") or t.get("inputSchema") or {}
+            if not name:
+                continue
+            functions.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "description": desc or "",
+                        "parameters": params or {"type": "object", "properties": {}},
+                    },
+                }
+            )
+        return functions
+
+    @staticmethod
+    def convert_tools_to_anthropic_tools(mcp_tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Convert MCP tools to Anthropic (Claude) tools array.
+
+        Claude expects: {"name", "description", "input_schema"}
+        """
+        tools: List[Dict[str, Any]] = []
+        for t in mcp_tools:
+            name = t.get("name")
+            desc = t.get("description")
+            params = t.get("parameters") or t.get("inputSchema") or {}
+            if not name:
+                continue
+            tools.append(
+                {
+                    "name": name,
+                    "description": desc or "",
+                    "input_schema": params or {"type": "object", "properties": {}},
+                }
+            )
+        return tools
+
+    @staticmethod
+    def convert_tools_to_gemini_functions(mcp_tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Convert MCP tools to Gemini function declarations.
+
+        Gemini expects function declarations typically under a tools list, e.g.:
+        [{"function_declarations": [{"name", "description", "parameters"}, ...]}]
+        We return just the function_declarations array, which callers can wrap.
+        """
+        decls: List[Dict[str, Any]] = []
+        for t in mcp_tools:
+            name = t.get("name")
+            desc = t.get("description")
+            params = t.get("parameters") or t.get("inputSchema") or {}
+            if not name:
+                continue
+            decls.append(
+                {
+                    "name": name,
+                    "description": desc or "",
+                    "parameters": params or {"type": "object", "properties": {}},
+                }
+            )
+        return decls
+
+    async def invoke(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Invoke an MCP tool and return the raw JSON-RPC shaped response."""
+        try:
+            payload = {"name": tool_name, "tool_name": tool_name, "arguments": arguments or {}}
+            session = await self._get_session()
+            async with session.post(
+                f"{self.server_url}/invoke", json=payload, headers=self.headers
+            ) as resp:
+                resp.raise_for_status()
+                return await resp.json()
+        except Exception as e:
+            logger.error(f"❌ MCP invoke error for {tool_name}: {e}")
+            return {"error": str(e)}
+
+    @staticmethod
+    def _extract_mcp_result_payload(invoke_response: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
+        """Extract best-effort (text, structured) from MCP invoke response."""
+        data = invoke_response.get("result", invoke_response)
+        # Default text
+        text = ""
+        if isinstance(data, dict):
+            content = data.get("content") or []
+            if content and isinstance(content, list) and content[0].get("type") == "text":
+                text = content[0].get("text", "")
+        structured = data.get("structuredContent") if isinstance(data, dict) else None
+        return text, structured or {}
+
+    async def openai_invoke(self, function_name: str, function_arguments: Any) -> Dict[str, Any]:
+        """Invoke tool based on OpenAI function call (name + JSON arguments)."""
+        try:
+            args = function_arguments
+            if isinstance(args, str):
+                args = json.loads(args)
+            raw = await self.invoke(function_name, args or {})
+            text, structured = self._extract_mcp_result_payload(raw)
+            return {"text": text, "structured": structured, "raw": raw}
+        except Exception as e:
+            return {"error": str(e)}
+
+    async def claude_invoke(self, tool_use: Dict[str, Any]) -> Dict[str, Any]:
+        """Invoke tool based on Claude tool_use (name + input)."""
+        try:
+            name = tool_use.get("name")
+            args = tool_use.get("input", {})
+            raw = await self.invoke(name, args)
+            text, structured = self._extract_mcp_result_payload(raw)
+            return {"text": text, "structured": structured, "raw": raw}
+        except Exception as e:
+            return {"error": str(e)}
+
+    async def gemini_invoke(self, function_call: Dict[str, Any]) -> Dict[str, Any]:
+        """Invoke tool based on Gemini functionCall (name + args)."""
+        try:
+            name = function_call.get("name") or function_call.get("functionName")
+            args = function_call.get("args") or function_call.get("arguments") or {}
+            raw = await self.invoke(name, args)
+            text, structured = self._extract_mcp_result_payload(raw)
+            return {"text": text, "structured": structured, "raw": raw}
+        except Exception as e:
+            return {"error": str(e)}
 
     async def _get_session(self):
         """Get or create the aiohttp session with connection pooling"""
@@ -372,3 +539,19 @@ def create_openai_function_definitions() -> List[Dict[str, Any]]:
             },
         },
     ]
+
+
+# Convenience helpers for provider-specific schemas for all MCP tools
+async def get_openai_functions_from_mcp(mcp: MCPToolCaller) -> List[Dict[str, Any]]:
+    tools = await mcp.list_mcp_tools()
+    return MCPToolCaller.convert_tools_to_openai_functions(tools)
+
+
+async def get_claude_tools_from_mcp(mcp: MCPToolCaller) -> List[Dict[str, Any]]:
+    tools = await mcp.list_mcp_tools()
+    return MCPToolCaller.convert_tools_to_anthropic_tools(tools)
+
+
+async def get_gemini_functions_from_mcp(mcp: MCPToolCaller) -> List[Dict[str, Any]]:
+    tools = await mcp.list_mcp_tools()
+    return MCPToolCaller.convert_tools_to_gemini_functions(tools)

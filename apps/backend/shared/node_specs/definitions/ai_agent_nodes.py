@@ -97,6 +97,20 @@ def _create_ai_agent_spec(
                 default_value=3,
                 description="Number of retry attempts on failure",
             ),
+            ParameterDef(
+                name="enable_function_calling",
+                type=ParameterType.BOOLEAN,
+                required=False,
+                default_value=True,
+                description="Enable MCP function calling via connected TOOL nodes",
+            ),
+            ParameterDef(
+                name="max_function_calls",
+                type=ParameterType.INTEGER,
+                required=False,
+                default_value=5,
+                description="Maximum function calls per AI execution",
+            ),
         ],
         input_ports=[
             InputPortSpec(
@@ -139,6 +153,20 @@ def _create_ai_agent_spec(
                 description="AI agent response in standard text format",
                 data_format=STANDARD_TEXT_OUTPUT,
                 validation_schema='{"type": "object", "properties": {"content": {"type": "string"}, "metadata": {"type": "object"}, "format_type": {"type": "string"}, "source_node": {"type": "string"}, "timestamp": {"type": "string"}}, "required": ["content"]}',
+            ),
+            OutputPortSpec(
+                name="mcp_tools",
+                type=ConnectionType.MCP_TOOLS,
+                description="Connection to MCP tool nodes for function calling",
+                max_connections=-1,  # Allow multiple tool connections
+                data_format=DataFormat(
+                    mime_type="application/json",
+                    schema='{"operation": "string", "function_name": "string", "function_args": "object", "request_id": "string"}',
+                    examples=[
+                        '{"operation": "discover", "request_id": "req_123"}',
+                        '{"operation": "execute", "function_name": "get_weather", "function_args": {"location": "New York"}, "request_id": "req_124"}',
+                    ],
+                ),
             ),
             OutputPortSpec(
                 name="error",

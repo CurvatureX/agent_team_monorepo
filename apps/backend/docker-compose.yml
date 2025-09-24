@@ -57,9 +57,9 @@ services:
     volumes:
       - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
     ports:
-      - "4317:4317"   # OTLP gRPC receiver
-      - "4318:4318"   # OTLP HTTP receiver
-      - "8889:8889"   # Prometheus metrics
+      - "4317:4317" # OTLP gRPC receiver
+      - "4318:4318" # OTLP HTTP receiver
+      - "8889:8889" # Prometheus metrics
     depends_on:
       - jaeger
     restart: unless-stopped
@@ -74,8 +74,8 @@ services:
     environment:
       - COLLECTOR_OTLP_ENABLED=true
     ports:
-      - "16686:16686"  # Jaeger UI
-      - "14250:14250"  # gRPC
+      - "16686:16686" # Jaeger UI
+      - "14250:14250" # gRPC
 
     restart: unless-stopped
     networks:
@@ -88,15 +88,9 @@ services:
   # Workflow Agent - AI workflow consultant (FastAPI service on port 8001)
   workflow-agent:
     dns:
-      - 8.8.8.8       # Google DNS (reliable worldwide)
-      - 1.1.1.1       # Cloudflare DNS (fast backup)
+      - 8.8.8.8 # Google DNS (reliable worldwide)
+      - 1.1.1.1 # Cloudflare DNS (fast backup)
       - 208.67.222.222 # OpenDNS (additional fallback)
-    dns_opt:
-      - ndots:0
-      - timeout:10
-      - attempts:3
-    dns_search: []
-    # Removed extra_hosts to allow normal DNS resolution for SSL certificates
     build:
       context: .
       dockerfile: ./workflow_agent/Dockerfile
@@ -104,6 +98,8 @@ services:
       args:
         - PYTHON_VERSION=3.11
         - BUILDKIT_PROGRESS=plain
+      shm_size: "8g"
+      network: host
     container_name: agent-team-workflow-agent
     ports:
       - "8001:8001" # FastAPI port
@@ -142,18 +138,14 @@ services:
   # Workflow Engine - Workflow execution engine (FastAPI service on port 8002)
   workflow-engine:
     dns:
-      - 8.8.8.8       # Google DNS (reliable worldwide)
-      - 1.1.1.1       # Cloudflare DNS (fast backup)
+      - 8.8.8.8 # Google DNS (reliable worldwide)
+      - 1.1.1.1 # Cloudflare DNS (fast backup)
       - 208.67.222.222 # OpenDNS (additional fallback)
-    dns_opt:
-      - ndots:0
-      - timeout:10
-      - attempts:3
-    dns_search: []
-    # Removed extra_hosts to allow normal DNS resolution for SSL certificates
     build:
       context: .
       dockerfile: ./workflow_engine/Dockerfile
+      shm_size: "8g"
+      network: host
     container_name: agent-team-workflow-engine
     ports:
       - "8002:8002"
@@ -190,17 +182,14 @@ services:
   # Workflow Scheduler - Workflow trigger management (FastAPI service on port 8003)
   workflow-scheduler:
     dns:
-      - 8.8.8.8       # Google DNS (reliable worldwide)
-      - 1.1.1.1       # Cloudflare DNS (fast backup)
+      - 8.8.8.8 # Google DNS (reliable worldwide)
+      - 1.1.1.1 # Cloudflare DNS (fast backup)
       - 208.67.222.222 # OpenDNS (additional fallback)
-    dns_opt:
-      - ndots:0
-      - timeout:10
-      - attempts:3
-    dns_search: []
     build:
       context: .
       dockerfile: ./workflow_scheduler/Dockerfile
+      shm_size: "8g"
+      network: host
     container_name: agent-team-workflow-scheduler
     ports:
       - "8003:8003"
@@ -210,7 +199,7 @@ services:
       # Override specific settings
       PYTHONPATH: "/app"
       PYTHONUNBUFFERED: "1"
-      redis_url: "redis://redis:6379/1"  # Use different Redis DB
+      redis_url: "redis://redis:6379/1" # Use different Redis DB
       SERVICE_NAME: "workflow-scheduler"
       # Service URLs for internal communication
       WORKFLOW_ENGINE_URL: "http://workflow-engine:8002"
@@ -237,20 +226,16 @@ services:
   # API Gateway - Three-layer FastAPI service (HTTP on port 8000)
   api-gateway:
     dns:
-      - 8.8.8.8       # Google DNS (reliable worldwide)
-      - 1.1.1.1       # Cloudflare DNS (fast backup)
+      - 8.8.8.8 # Google DNS (reliable worldwide)
+      - 1.1.1.1 # Cloudflare DNS (fast backup)
       - 208.67.222.222 # OpenDNS (additional fallback)
-    dns_opt:
-      - ndots:0
-      - timeout:10
-      - attempts:3
-    dns_search: []
-    # Removed extra_hosts to allow normal DNS resolution for SSL certificates
     build:
       context: .
       dockerfile: ./api-gateway/Dockerfile
       args:
         - BUILDKIT_PROGRESS=plain
+      shm_size: "8g"
+      network: host
     container_name: api_gateway_service
     user: "1000:1000"
     ports:

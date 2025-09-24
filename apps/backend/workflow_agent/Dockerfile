@@ -1,14 +1,8 @@
-FROM python:3.11-slim AS builder
+FROM python:3.11 AS builder
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install uv with timeout and retry
+# Install uv with timeout and retry (gcc already available in python:3.11)
 RUN pip install --default-timeout=120 --retries 5 uv
 ENV PATH="/root/.local/bin:$PATH"
 
@@ -25,17 +19,12 @@ RUN UV_HTTP_TIMEOUT=120 uv pip install --system -e .
 # Now copy the actual workflow_agent code (changes here won't invalidate the dependency cache)
 COPY workflow_agent/ ./workflow_agent/
 
-# Production stage
-FROM python:3.11-slim AS production
+# Production stage - use full python:3.11 to avoid apt-get
+FROM python:3.11 AS production
 
 WORKDIR /app
 
-# Install runtime dependencies only
-RUN apt-get update && apt-get install -y \
-    curl \
-    netcat-traditional \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+# No runtime dependencies needed - python:3.11 has everything
 
 # Copy Python environment from builder
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages

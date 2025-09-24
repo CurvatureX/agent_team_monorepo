@@ -175,85 +175,353 @@ CODE_EXECUTION_TOOL_SPEC = NodeSpec(
     ],
 )
 
-# Google Calendar MCP Tool Node
-GOOGLE_CALENDAR_MCP_TOOL_SPEC = NodeSpec(
+# Generic MCP Tool Node - connects to MCP API Gateway
+MCP_TOOL_SPEC = NodeSpec(
     node_type=NodeType.TOOL,
-    subtype=ToolSubtype.GOOGLE_CALENDAR,
-    description="Access Google Calendar through MCP protocol",
+    subtype=ToolSubtype.MCP_TOOL.value if hasattr(ToolSubtype, "MCP_TOOL") else "MCP_TOOL",
+    description="Generic MCP tool node that provides access to Model Context Protocol functions",
+    display_name="MCP Tool",
+    category="tools",
+    template_id="tool_mcp",
     parameters=[
         ParameterDef(
-            name="tool_name",
+            name="mcp_server_url",
             type=ParameterType.STRING,
-            required=True,
-            description="MCP tool name",
+            required=False,
+            description="MCP server URL (defaults to API Gateway MCP endpoint)",
         ),
         ParameterDef(
-            name="operation",
+            name="api_key",
             type=ParameterType.STRING,
-            required=True,
-            description="Specific operation or method",
+            required=False,
+            description="API key for MCP authentication (optional)",
         ),
         ParameterDef(
-            name="parameters",
+            name="tool_categories",
             type=ParameterType.JSON,
             required=False,
-            default_value={},
-            description="Operation parameters",
-        ),
-        ParameterDef(
-            name="server_url",
-            type=ParameterType.STRING,
-            required=False,
-            description="MCP server URL",
+            default_value=[],
+            description="Filter tools by categories (empty = all tools)",
         ),
         ParameterDef(
             name="timeout_seconds",
             type=ParameterType.INTEGER,
             required=False,
             default_value=30,
-            description="Timeout time",
-        ),
-        ParameterDef(
-            name="retry_attempts",
-            type=ParameterType.INTEGER,
-            required=False,
-            default_value=3,
-            description="Retry count",
+            description="MCP operation timeout",
         ),
     ],
     input_ports=[
         InputPortSpec(
             name="main",
             type=ConnectionType.MAIN,
-            required=True,
-            description="Tool parameters and execution context",
+            required=False,
+            description="MCP tool execution parameters",
             data_format=DataFormat(
                 mime_type="application/json",
-                schema='{"tool_params": "object", "context": "object"}',
+                schema='{"tool_name": "string", "tool_args": "object", "operation": "string"}',
                 examples=[
-                    '{"tool_params": {"calendar_id": "primary", "event_id": "123"}, "context": {"user_id": "user123"}}'
+                    '{"operation": "discover"}',
+                    '{"operation": "execute", "tool_name": "get_weather", "tool_args": {"location": "New York"}}',
                 ],
             ),
-        )
+        ),
+        InputPortSpec(
+            name="mcp_tools",
+            type=ConnectionType.MCP_TOOLS,
+            required=False,
+            max_connections=-1,  # Allow multiple AI connections
+            description="Receive function calls from connected AI nodes",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"operation": "string", "function_name": "string", "function_args": "object", "request_id": "string"}',
+                examples=[
+                    '{"operation": "discover", "request_id": "req_123"}',
+                    '{"operation": "execute", "function_name": "get_weather", "function_args": {"location": "New York"}, "request_id": "req_124"}',
+                ],
+            ),
+        ),
     ],
     output_ports=[
         OutputPortSpec(
             name="main",
             type=ConnectionType.MAIN,
-            description="Tool execution result",
+            description="MCP tool execution result",
             data_format=DataFormat(
                 mime_type="application/json",
-                schema='{"result": "object", "tool_name": "string", "operation": "string", "execution_time": "number"}',
+                schema='{"result": "object", "tool_name": "string", "operation": "string", "execution_time": "number", "available_functions": "array"}',
                 examples=[
-                    '{"result": {"events": []}, "tool_name": "google_calendar", "operation": "list_events", "execution_time": 1.2}'
+                    '{"operation": "discover", "available_functions": [{"name": "get_weather", "description": "Get weather info"}], "execution_time": 0.1}',
+                    '{"operation": "execute", "tool_name": "get_weather", "result": {"temperature": 25, "condition": "sunny"}, "execution_time": 1.2}',
                 ],
             ),
         ),
         OutputPortSpec(
             name="error",
             type=ConnectionType.ERROR,
-            description="Tool execution error",
+            description="MCP tool execution error",
         ),
+    ],
+    examples=[
+        {
+            "name": "Weather Tool Access",
+            "description": "Connect AI agent to weather MCP tools",
+            "parameters": {"tool_categories": ["weather", "location"]},
+            "workflow_usage": "Connect AI node output 'mcp_tools' to this node's input 'mcp_tools'",
+        },
+        {
+            "name": "General MCP Access",
+            "description": "Provide access to all available MCP tools",
+            "parameters": {},
+            "workflow_usage": "Use for AI agents that need access to multiple tool categories",
+        },
+    ],
+)
+
+# Notion MCP Tool Node
+NOTION_MCP_TOOL_SPEC = NodeSpec(
+    node_type=NodeType.TOOL,
+    subtype=ToolSubtype.MCP_TOOL,
+    description="Access Notion workspace through MCP protocol for real-time TODO and content queries",
+    display_name="Notion MCP Tool",
+    category="tools",
+    template_id="tool_notion_mcp",
+    parameters=[
+        ParameterDef(
+            name="mcp_server_url",
+            type=ParameterType.STRING,
+            required=False,
+            description="MCP server URL (defaults to API Gateway MCP endpoint)",
+        ),
+        ParameterDef(
+            name="notion_integration_token",
+            type=ParameterType.STRING,
+            required=False,
+            description="Notion integration token (handled via OAuth if not provided)",
+        ),
+        ParameterDef(
+            name="default_database_ids",
+            type=ParameterType.JSON,
+            required=False,
+            default_value={},
+            description="Default database IDs for common operations (todo_db, weekly_plan_db, etc.)",
+        ),
+        ParameterDef(
+            name="timeout_seconds",
+            type=ParameterType.INTEGER,
+            required=False,
+            default_value=30,
+            description="MCP operation timeout",
+        ),
+        ParameterDef(
+            name="include_content",
+            type=ParameterType.BOOLEAN,
+            required=False,
+            default_value=True,
+            description="Include page content in search results for AI context",
+        ),
+    ],
+    input_ports=[
+        InputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            required=False,
+            description="Direct MCP operation parameters",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"operation": "string", "tool_args": "object", "database_id": "string", "query": "string"}',
+                examples=[
+                    '{"operation": "query_database", "tool_args": {"database_id": "todo_db", "filter": {"property": "Status", "select": {"equals": "In Progress"}}}}',
+                    '{"operation": "search", "tool_args": {"query": "weekly plan", "filter": {"property": "object_type", "value": "page"}}}',
+                ],
+            ),
+        ),
+        InputPortSpec(
+            name="mcp_tools",
+            type=ConnectionType.MCP_TOOLS,
+            required=False,
+            max_connections=-1,
+            description="Receive function calls from connected AI nodes for real-time Notion queries",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"operation": "string", "function_name": "string", "function_args": "object", "request_id": "string"}',
+                examples=[
+                    '{"operation": "execute", "function_name": "notion_query_todos", "function_args": {"status": "In Progress", "priority": "High"}, "request_id": "req_125"}',
+                    '{"operation": "execute", "function_name": "notion_get_weekly_plan", "function_args": {"week_start": "2025-01-27"}, "request_id": "req_126"}',
+                ],
+            ),
+        ),
+    ],
+    output_ports=[
+        OutputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            description="Notion MCP operation result with structured data",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"result": "object", "operation": "string", "execution_time": "number", "available_functions": "array", "context_summary": "string"}',
+                examples=[
+                    '{"operation": "query_database", "result": {"results": [{"properties": {"Name": {"title": [{"text": {"content": "Complete quarterly report"}}]}, "Status": {"select": {"name": "In Progress"}}, "Priority": {"select": {"name": "High"}}}}]}, "context_summary": "Found 1 high-priority in-progress task", "execution_time": 0.8}',
+                    '{"operation": "search", "result": {"results": [{"properties": {"title": {"title": [{"text": {"content": "Weekly Plan - Week of Jan 27"}}]}}}]}, "context_summary": "Found current weekly plan document", "execution_time": 0.6}',
+                ],
+            ),
+        ),
+        OutputPortSpec(
+            name="error",
+            type=ConnectionType.ERROR,
+            description="Notion MCP operation error",
+        ),
+    ],
+    examples=[
+        {
+            "name": "AI Assistant TODO Access",
+            "description": "Connect AI agent to real-time Notion TODO database queries",
+            "parameters": {
+                "default_database_ids": {
+                    "todo_db": "your-todo-database-id",
+                    "weekly_plan_db": "your-weekly-plan-database-id",
+                },
+                "include_content": True,
+            },
+            "workflow_usage": "Connect AI node output 'mcp_tools' to this node's input 'mcp_tools' for real-time TODO queries during conversations",
+        },
+        {
+            "name": "Weekly Plan Monitoring",
+            "description": "Enable AI to access and understand weekly planning documents",
+            "parameters": {
+                "default_database_ids": {"weekly_plan_db": "your-weekly-plan-database-id"},
+                "timeout_seconds": 45,
+            },
+            "workflow_usage": "AI can query current week's plans to provide context-aware scheduling suggestions",
+        },
+    ],
+)
+
+# Google Calendar MCP Tool Node
+GOOGLE_CALENDAR_MCP_TOOL_SPEC = NodeSpec(
+    node_type=NodeType.TOOL,
+    subtype=ToolSubtype.GOOGLE_CALENDAR,
+    description="Access Google Calendar through MCP protocol for real-time schedule queries and availability checks",
+    display_name="Google Calendar MCP Tool",
+    category="tools",
+    template_id="tool_google_calendar_mcp",
+    parameters=[
+        ParameterDef(
+            name="mcp_server_url",
+            type=ParameterType.STRING,
+            required=False,
+            description="MCP server URL (defaults to API Gateway MCP endpoint)",
+        ),
+        ParameterDef(
+            name="access_token",
+            type=ParameterType.STRING,
+            required=True,
+            description="Google Calendar OAuth access token (required for MCP authentication)",
+        ),
+        ParameterDef(
+            name="calendar_id",
+            type=ParameterType.STRING,
+            required=False,
+            default_value="primary",
+            description="Default calendar ID to query",
+        ),
+        ParameterDef(
+            name="default_time_range_days",
+            type=ParameterType.INTEGER,
+            required=False,
+            default_value=14,
+            description="Default number of days to look ahead for events",
+        ),
+        ParameterDef(
+            name="include_declined_events",
+            type=ParameterType.BOOLEAN,
+            required=False,
+            default_value=False,
+            description="Include declined events in results",
+        ),
+        ParameterDef(
+            name="timeout_seconds",
+            type=ParameterType.INTEGER,
+            required=False,
+            default_value=30,
+            description="MCP operation timeout",
+        ),
+        ParameterDef(
+            name="timezone",
+            type=ParameterType.STRING,
+            required=False,
+            default_value="UTC",
+            description="Timezone for calendar operations",
+        ),
+    ],
+    input_ports=[
+        InputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            required=False,
+            description="Direct calendar operation parameters",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"operation": "string", "tool_args": "object", "time_min": "string", "time_max": "string"}',
+                examples=[
+                    '{"operation": "list_events", "tool_args": {"calendar_id": "primary", "time_min": "2025-01-27T00:00:00Z", "time_max": "2025-02-03T23:59:59Z"}}',
+                    '{"operation": "check_availability", "tool_args": {"start_time": "2025-01-30T14:00:00Z", "end_time": "2025-01-30T16:00:00Z"}}',
+                ],
+            ),
+        ),
+        InputPortSpec(
+            name="mcp_tools",
+            type=ConnectionType.MCP_TOOLS,
+            required=False,
+            max_connections=-1,
+            description="Receive function calls from connected AI nodes for real-time calendar queries",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"operation": "string", "function_name": "string", "function_args": "object", "request_id": "string"}',
+                examples=[
+                    '{"operation": "execute", "function_name": "calendar_check_availability", "function_args": {"date": "2025-01-30", "duration_hours": 2}, "request_id": "req_127"}',
+                    '{"operation": "execute", "function_name": "calendar_list_week_events", "function_args": {"week_start": "2025-01-27"}, "request_id": "req_128"}',
+                ],
+            ),
+        ),
+    ],
+    output_ports=[
+        OutputPortSpec(
+            name="main",
+            type=ConnectionType.MAIN,
+            description="Google Calendar MCP operation result with schedule data",
+            data_format=DataFormat(
+                mime_type="application/json",
+                schema='{"result": "object", "operation": "string", "execution_time": "number", "available_functions": "array", "schedule_summary": "string"}',
+                examples=[
+                    '{"operation": "list_events", "result": {"items": [{"summary": "Team Meeting", "start": {"dateTime": "2025-01-30T10:00:00Z"}, "end": {"dateTime": "2025-01-30T11:00:00Z"}}]}, "schedule_summary": "Found 3 events this week", "execution_time": 0.9}',
+                    '{"operation": "check_availability", "result": {"available": true, "conflicting_events": [], "suggested_times": ["2025-01-30T14:00:00Z", "2025-01-30T15:30:00Z"]}, "schedule_summary": "Time slot available with no conflicts", "execution_time": 0.5}',
+                ],
+            ),
+        ),
+        OutputPortSpec(
+            name="error",
+            type=ConnectionType.ERROR,
+            description="Google Calendar MCP operation error",
+        ),
+    ],
+    examples=[
+        {
+            "name": "AI Assistant Calendar Access",
+            "description": "Connect AI agent to real-time Google Calendar queries for intelligent scheduling",
+            "parameters": {
+                "calendar_id": "primary",
+                "default_time_range_days": 14,
+                "include_declined_events": False,
+            },
+            "workflow_usage": "Connect AI node output 'mcp_tools' to this node's input 'mcp_tools' for real-time availability checks during conversations",
+        },
+        {
+            "name": "Weekly Schedule Overview",
+            "description": "Enable AI to understand current and upcoming week schedules",
+            "parameters": {"default_time_range_days": 7, "timezone": "America/New_York"},
+            "workflow_usage": "AI can provide weekly schedule summaries and identify optimal meeting times",
+        },
     ],
 )
 

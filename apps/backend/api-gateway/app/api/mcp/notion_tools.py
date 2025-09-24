@@ -47,7 +47,7 @@ class NotionMCPService:
         tools = [
             MCPTool(
                 name="notion_search",
-                description="Universal search across all Notion content (pages, databases, blocks)",
+                description="Universal search across all Notion content with AI-optimized results formatting for OpenAI, Claude, and Gemini",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -90,6 +90,17 @@ class NotionMCPService:
                             "default": False,
                             "description": "Include page/block content in results",
                         },
+                        "ai_format": {
+                            "type": "string",
+                            "enum": ["structured", "narrative", "summary"],
+                            "default": "structured",
+                            "description": "Format results for AI consumption: structured (JSON), narrative (conversational), or summary (condensed)",
+                        },
+                        "relevance_scoring": {
+                            "type": "boolean",
+                            "default": True,
+                            "description": "Include relevance scores and ranking for better AI decision-making",
+                        },
                     },
                     "required": ["access_token", "query"],
                 },
@@ -98,7 +109,7 @@ class NotionMCPService:
             ),
             MCPTool(
                 name="notion_page",
-                description="Complete page management (get, create, update with full block control)",
+                description="Complete page management (get, create, update, retrieve documents with full content)",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -108,8 +119,8 @@ class NotionMCPService:
                         },
                         "action": {
                             "type": "string",
-                            "enum": ["get", "create", "update"],
-                            "description": "Action to perform on the page",
+                            "enum": ["get", "create", "update", "retrieve", "list_metadata"],
+                            "description": "Action to perform: get (single page), create (new page), update (modify existing), retrieve (multiple documents with full content), list_metadata (document metadata overview)",
                         },
                         "page_id": {
                             "type": "string",
@@ -179,11 +190,119 @@ class NotionMCPService:
                             "default": True,
                             "description": "Include page content in response (for get/update)",
                         },
+                        "page_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of page IDs to retrieve (for retrieve action)",
+                        },
+                        "search_query": {
+                            "type": "string",
+                            "description": "Search query to find documents (alternative to page_ids for retrieve action)",
+                        },
+                        "max_documents": {
+                            "type": "integer",
+                            "default": 5,
+                            "minimum": 1,
+                            "maximum": 20,
+                            "description": "Maximum number of documents to retrieve when using search_query",
+                        },
+                        "include_children": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "Include nested child pages and databases (retrieve action)",
+                        },
+                        "content_format": {
+                            "type": "string",
+                            "enum": ["full", "text_only", "structured"],
+                            "default": "full",
+                            "description": "Format for content extraction: full (all details), text_only (plain text), structured (organized hierarchy)",
+                        },
+                        "ai_format": {
+                            "type": "string",
+                            "enum": ["structured", "narrative", "summary"],
+                            "default": "structured",
+                            "description": "AI-optimized output format for better LLM consumption",
+                        },
+                        "workspace_search": {
+                            "type": "object",
+                            "properties": {
+                                "query": {
+                                    "type": "string",
+                                    "description": "Search query to find documents (for list_metadata action)",
+                                },
+                                "filter_type": {
+                                    "type": "string",
+                                    "enum": ["page", "database", "all"],
+                                    "default": "all",
+                                    "description": "Filter by object type",
+                                },
+                                "sort_by": {
+                                    "type": "string",
+                                    "enum": ["created_time", "last_edited_time", "title"],
+                                    "default": "last_edited_time",
+                                    "description": "Sort documents by specified field",
+                                },
+                                "sort_order": {
+                                    "type": "string",
+                                    "enum": ["asc", "desc"],
+                                    "default": "desc",
+                                    "description": "Sort order (newest first by default)",
+                                },
+                                "limit": {
+                                    "type": "integer",
+                                    "default": 20,
+                                    "minimum": 1,
+                                    "maximum": 100,
+                                    "description": "Maximum number of documents to return",
+                                },
+                            },
+                            "description": "Workspace search configuration for list_metadata action",
+                        },
+                        "metadata_options": {
+                            "type": "object",
+                            "properties": {
+                                "include_properties": {
+                                    "type": "boolean",
+                                    "default": True,
+                                    "description": "Include custom properties (tags, status, dates, etc.)",
+                                },
+                                "include_content_preview": {
+                                    "type": "boolean",
+                                    "default": False,
+                                    "description": "Include brief content preview (first 100 characters)",
+                                },
+                                "include_parent_info": {
+                                    "type": "boolean",
+                                    "default": True,
+                                    "description": "Include parent page/database information",
+                                },
+                                "include_child_count": {
+                                    "type": "boolean",
+                                    "default": False,
+                                    "description": "Include count of child pages/blocks",
+                                },
+                                "property_filters": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "Specific properties to include (if empty, includes all)",
+                                },
+                            },
+                            "description": "Metadata extraction options for list_metadata action",
+                        },
                     },
                     "required": ["access_token", "action"],
                 },
                 category="notion",
-                tags=["page", "crud", "blocks", "content"],
+                tags=[
+                    "page",
+                    "crud",
+                    "blocks",
+                    "content",
+                    "retrieve",
+                    "documents",
+                    "metadata",
+                    "list",
+                ],
             ),
             MCPTool(
                 name="notion_database",
@@ -368,11 +487,13 @@ class NotionMCPService:
     async def _universal_search(
         self, client: NotionClient, params: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Universal search across all Notion content types."""
+        """Universal search across all Notion content types with AI-optimized formatting."""
         query = params.get("query")
         filter_config = params.get("filter", {})
         limit = params.get("limit", 10)
         include_content = params.get("include_content", False)
+        ai_format = params.get("ai_format", "structured")
+        relevance_scoring = params.get("relevance_scoring", True)
 
         # Build filter conditions
         filter_conditions = None
@@ -428,15 +549,39 @@ class NotionMCPService:
                 except:
                     result_item["filtered_pages"] = 0
 
+            # Add relevance scoring for AI optimization
+            if relevance_scoring:
+                # Simple relevance scoring based on query match in title/content
+                score = 0
+                if query.lower() in result_item["title"].lower():
+                    score += 10
+                if result_item.get("content"):
+                    content_str = str(result_item["content"]).lower()
+                    score += content_str.count(query.lower()) * 2
+                result_item["relevance_score"] = score
+
             results.append(result_item)
 
-        return {
+        # Sort by relevance if scoring is enabled
+        if relevance_scoring:
+            results.sort(key=lambda x: x.get("relevance_score", 0), reverse=True)
+
+        base_result = {
             "query": query,
             "results": results,
             "total_count": search_results.get("total_count", len(results)),
             "has_more": search_results.get("has_more", False),
             "filter": filter_config,
         }
+
+        # Apply AI-specific formatting
+        if ai_format == "narrative":
+            return self._format_for_narrative(base_result, query)
+        elif ai_format == "summary":
+            return self._format_for_summary(base_result, query)
+        else:
+            # Default structured format
+            return base_result
 
     async def _page_operations(
         self, client: NotionClient, params: Dict[str, Any]
@@ -633,6 +778,14 @@ class NotionMCPService:
 
             return results
 
+        elif action == "retrieve":
+            # Handle document retrieval action
+            return await self._retrieve_documents(client, params)
+
+        elif action == "list_metadata":
+            # Handle metadata listing action
+            return await self._list_document_metadata(client, params)
+
         else:
             raise ValueError(f"Unknown action: {action}")
 
@@ -745,39 +898,932 @@ class NotionMCPService:
     def _extract_title(self, notion_object) -> str:
         """Extract title from Notion object."""
         try:
-            if hasattr(notion_object, "properties"):
-                # For pages/databases with properties
-                if "title" in notion_object.properties:
-                    title_prop = notion_object.properties["title"]
-                    if isinstance(title_prop, list) and len(title_prop) > 0:
-                        return title_prop[0].get("text", {}).get("content", "Untitled")
-
-                # Look for Name property (common in databases)
-                if "Name" in notion_object.properties:
-                    name_prop = notion_object.properties["Name"]
-                    if isinstance(name_prop, dict) and "title" in name_prop:
-                        title_list = name_prop["title"]
-                        if isinstance(title_list, list) and len(title_list) > 0:
-                            return title_list[0].get("text", {}).get("content", "Untitled")
-
-            # Fallback to direct title attribute
-            if hasattr(notion_object, "title"):
+            # Check direct title attribute first (for databases and some pages)
+            if hasattr(notion_object, "title") and notion_object.title:
                 if isinstance(notion_object.title, list) and len(notion_object.title) > 0:
-                    return notion_object.title[0].get("text", {}).get("content", "Untitled")
+                    first_title = notion_object.title[0]
+                    if isinstance(first_title, dict) and "text" in first_title:
+                        return first_title["text"].get("content", "Untitled")
+                    elif isinstance(first_title, dict) and "plain_text" in first_title:
+                        return first_title["plain_text"]
+
+            # For pages with properties
+            if hasattr(notion_object, "properties") and notion_object.properties:
+                # Look for title property
+                for prop_name, prop_value in notion_object.properties.items():
+                    if isinstance(prop_value, dict) and prop_value.get("type") == "title":
+                        if "title" in prop_value and prop_value["title"]:
+                            title_list = prop_value["title"]
+                            if isinstance(title_list, list) and len(title_list) > 0:
+                                first_item = title_list[0]
+                                if isinstance(first_item, dict):
+                                    return first_item.get(
+                                        "plain_text",
+                                        first_item.get("text", {}).get("content", "Untitled"),
+                                    )
 
             return "Untitled"
         except Exception:
             return "Untitled"
+
+    async def _retrieve_documents(
+        self, client: NotionClient, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Retrieve complete Notion documents with full content."""
+        page_ids = params.get("page_ids", [])
+        search_query = params.get("search_query")
+        max_documents = params.get("max_documents", 5)
+        include_properties = params.get("include_properties", True)
+        include_blocks = params.get("include_blocks", True)
+        include_children = params.get("include_children", False)
+        content_format = params.get("content_format", "full")
+        ai_format = params.get("ai_format", "structured")
+
+        documents = []
+
+        # If search_query provided, find documents first
+        if search_query and not page_ids:
+            search_results = await client.search(query=search_query, page_size=max_documents)
+            # Filter to only pages
+            from shared.sdks.notion_sdk import NotionPage
+
+            results = search_results.get("results", []) if isinstance(search_results, dict) else []
+            pages = [item for item in results if isinstance(item, NotionPage)]
+            page_ids = [page.id for page in pages[:max_documents]]
+
+        # Retrieve each document
+        for page_id in page_ids:
+            try:
+                document = {
+                    "page_id": page_id,
+                    "retrieved_at": datetime.now(timezone.utc).isoformat(),
+                }
+
+                # Get page properties
+                if include_properties:
+                    page = await client.get_page(page_id)
+                    document["properties"] = {
+                        "title": self._extract_title(page),
+                        "url": page.url,
+                        "created_time": page.created_time.isoformat()
+                        if page.created_time
+                        else None,
+                        "last_edited_time": page.last_edited_time.isoformat()
+                        if page.last_edited_time
+                        else None,
+                        "created_by": getattr(page.created_by, "id", None)
+                        if page.created_by
+                        else None,
+                        "last_edited_by": getattr(page.last_edited_by, "id", None)
+                        if page.last_edited_by
+                        else None,
+                        "cover": page.cover.file.url
+                        if page.cover and hasattr(page.cover, "file")
+                        else None,
+                        "icon": page.icon.file.url
+                        if page.icon and hasattr(page.icon, "file")
+                        else None,
+                        "archived": page.archived,
+                        "parent": {
+                            "type": page.parent.type,
+                            "id": getattr(page.parent, page.parent.type + "_id", None),
+                        }
+                        if page.parent
+                        else None,
+                        "custom_properties": page.properties if hasattr(page, "properties") else {},
+                    }
+
+                # Get page content blocks
+                if include_blocks:
+                    blocks = await client.get_block_children(page_id)
+                    document["content"] = await self._format_blocks_content(
+                        client, blocks.results, content_format, include_children
+                    )
+
+                documents.append(document)
+
+            except Exception as e:
+                logger.error(f"Error retrieving document {page_id}: {e}")
+                documents.append(
+                    {
+                        "page_id": page_id,
+                        "error": str(e),
+                        "retrieved_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                )
+
+        result = {
+            "action": "retrieve_documents",
+            "total_documents": len(documents),
+            "successful_retrievals": len([d for d in documents if "error" not in d]),
+            "failed_retrievals": len([d for d in documents if "error" in d]),
+            "documents": documents,
+            "search_query": search_query,
+            "content_format": content_format,
+            "settings": {
+                "include_properties": include_properties,
+                "include_blocks": include_blocks,
+                "include_children": include_children,
+            },
+        }
+
+        # Apply AI formatting
+        if ai_format == "narrative":
+            return self._format_documents_for_narrative(result)
+        elif ai_format == "summary":
+            return self._format_documents_for_summary(result)
+        else:
+            return result
+
+    async def _format_blocks_content(
+        self, client: NotionClient, blocks: List, content_format: str, include_children: bool
+    ) -> List[Dict[str, Any]]:
+        """Format block content based on specified format."""
+        formatted_blocks = []
+
+        for block in blocks:
+            if content_format == "text_only":
+                # Extract only text content
+                text_content = self._extract_text_from_block(block)
+                if text_content:
+                    formatted_blocks.append({"type": "text", "content": text_content})
+            elif content_format == "structured":
+                # Organized hierarchy
+                formatted_block = {
+                    "id": block.id,
+                    "type": block.type,
+                    "content": self._extract_text_from_block(block),
+                    "created_time": block.created_time.isoformat()
+                    if hasattr(block, "created_time") and block.created_time
+                    else None,
+                    "last_edited_time": block.last_edited_time.isoformat()
+                    if hasattr(block, "last_edited_time") and block.last_edited_time
+                    else None,
+                }
+                formatted_blocks.append(formatted_block)
+            else:  # full format
+                # All block details
+                formatted_block = {
+                    "id": block.id,
+                    "object": block.object,
+                    "type": block.type,
+                    "created_time": block.created_time.isoformat()
+                    if hasattr(block, "created_time") and block.created_time
+                    else None,
+                    "last_edited_time": block.last_edited_time.isoformat()
+                    if hasattr(block, "last_edited_time") and block.last_edited_time
+                    else None,
+                    "created_by": getattr(block.created_by, "id", None)
+                    if hasattr(block, "created_by") and block.created_by
+                    else None,
+                    "last_edited_by": getattr(block.last_edited_by, "id", None)
+                    if hasattr(block, "last_edited_by") and block.last_edited_by
+                    else None,
+                    "has_children": block.has_children if hasattr(block, "has_children") else False,
+                    "archived": block.archived if hasattr(block, "archived") else False,
+                    "content": self._extract_block_content(block),
+                }
+                formatted_blocks.append(formatted_block)
+
+            # Include children if requested
+            if include_children and hasattr(block, "has_children") and block.has_children:
+                try:
+                    children = await client.get_block_children(block.id)
+                    formatted_block["children"] = await self._format_blocks_content(
+                        client, children.results, content_format, include_children
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not retrieve children for block {block.id}: {e}")
+
+        return formatted_blocks
+
+    def _extract_text_from_block(self, block) -> str:
+        """Extract plain text from a block."""
+        try:
+            block_type = block.type
+            if hasattr(block, block_type):
+                block_data = getattr(block, block_type)
+                if hasattr(block_data, "rich_text"):
+                    return "".join([text.plain_text for text in block_data.rich_text])
+                elif hasattr(block_data, "title"):
+                    return "".join([text.plain_text for text in block_data.title])
+        except Exception:
+            pass
+        return ""
+
+    def _extract_block_content(self, block) -> Dict[str, Any]:
+        """Extract full block content."""
+        try:
+            block_type = block.type
+            if hasattr(block, block_type):
+                block_data = getattr(block, block_type)
+                return block_data.__dict__ if hasattr(block_data, "__dict__") else str(block_data)
+        except Exception:
+            pass
+        return {}
+
+    def _format_documents_for_narrative(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        """Format document retrieval results as narrative text."""
+        documents = result["documents"]
+        total_docs = result["total_documents"]
+        successful = result["successful_retrievals"]
+
+        if total_docs == 0:
+            narrative = "No documents were found or specified for retrieval."
+        else:
+            narrative = f"I retrieved {successful} of {total_docs} requested Notion documents:\n\n"
+
+            for i, doc in enumerate(documents, 1):
+                if "error" in doc:
+                    narrative += (
+                        f"{i}. Document {doc['page_id']}: ❌ Failed to retrieve - {doc['error']}\n"
+                    )
+                else:
+                    title = doc.get("properties", {}).get("title", "Untitled")
+                    narrative += f"{i}. **{title}**\n"
+
+                    if doc.get("properties"):
+                        props = doc["properties"]
+                        if props.get("url"):
+                            narrative += f"   📄 URL: {props['url']}\n"
+                        if props.get("created_time"):
+                            narrative += f"   📅 Created: {props['created_time'][:10]}\n"
+                        if props.get("last_edited_time"):
+                            narrative += f"   ✏️ Last edited: {props['last_edited_time'][:10]}\n"
+
+                    if doc.get("content"):
+                        content_preview = ""
+                        for block in doc["content"][:3]:  # First 3 blocks
+                            if isinstance(block, dict) and block.get("content"):
+                                text = block["content"][:100]
+                                if text:
+                                    content_preview += f"   {text}...\n"
+
+                        if content_preview:
+                            narrative += f"   📝 Content preview:\n{content_preview}"
+
+                    narrative += "\n"
+
+        return {**result, "ai_narrative": narrative, "format_type": "narrative"}
+
+    def _format_documents_for_summary(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        """Format document retrieval results as summary."""
+        documents = result["documents"]
+
+        summary = {
+            "total_requested": result["total_documents"],
+            "successful_retrievals": result["successful_retrievals"],
+            "failed_retrievals": result["failed_retrievals"],
+            "retrieval_successful": result["successful_retrievals"] > 0,
+            "search_query": result.get("search_query"),
+            "content_format": result["content_format"],
+            "documents_summary": [],
+        }
+
+        for doc in documents:
+            if "error" not in doc:
+                doc_summary = {
+                    "page_id": doc["page_id"],
+                    "title": doc.get("properties", {}).get("title", "Untitled"),
+                    "url": doc.get("properties", {}).get("url"),
+                    "has_content": bool(doc.get("content")),
+                    "block_count": len(doc.get("content", [])),
+                    "created_time": doc.get("properties", {}).get("created_time"),
+                    "word_count": self._estimate_word_count(doc.get("content", [])),
+                }
+                summary["documents_summary"].append(doc_summary)
+
+        return {**result, "ai_summary": summary, "format_type": "summary"}
+
+    def _estimate_word_count(self, blocks: List) -> int:
+        """Estimate word count from blocks."""
+        total_words = 0
+        for block in blocks:
+            if isinstance(block, dict) and block.get("content"):
+                if isinstance(block["content"], str):
+                    total_words += len(block["content"].split())
+        return total_words
+
+    async def _list_document_metadata(
+        self, client: NotionClient, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """List document metadata without full content."""
+        workspace_search = params.get("workspace_search", {})
+        metadata_options = params.get("metadata_options", {})
+        ai_format = params.get("ai_format", "structured")
+
+        # Extract search parameters
+        search_query = workspace_search.get("query", "")
+        filter_type = workspace_search.get("filter_type", "all")
+        sort_by = workspace_search.get("sort_by", "last_edited_time")
+        sort_order = workspace_search.get("sort_order", "desc")
+        limit = workspace_search.get("limit", 20)
+
+        # Extract metadata options
+        include_properties = metadata_options.get("include_properties", True)
+        include_content_preview = metadata_options.get("include_content_preview", False)
+        include_parent_info = metadata_options.get("include_parent_info", True)
+        include_child_count = metadata_options.get("include_child_count", False)
+        property_filters = metadata_options.get("property_filters", [])
+
+        documents_metadata = []
+
+        try:
+            # Search for documents
+            search_params = {
+                "query": search_query if search_query else "",
+                "page_size": limit,
+            }
+
+            # Add filter if specified - Note: Notion search API has limited filtering
+            # We'll filter results after getting them since the API doesn't support object type filters
+
+            search_results = await client.search(**search_params)
+            results = search_results.get("results", []) if isinstance(search_results, dict) else []
+
+            # Filter by object type if specified
+            if filter_type == "page":
+                from shared.sdks.notion_sdk import NotionPage
+
+                results = [item for item in results if isinstance(item, NotionPage)]
+            elif filter_type == "database":
+                from shared.sdks.notion_sdk import NotionDatabase
+
+                results = [item for item in results if isinstance(item, NotionDatabase)]
+            # filter_type == "all" means no filtering needed
+
+            # Process each document
+            for item in results:
+                try:
+                    metadata = await self._extract_document_metadata(
+                        client,
+                        item,
+                        include_properties,
+                        include_content_preview,
+                        include_parent_info,
+                        include_child_count,
+                        property_filters,
+                    )
+                    documents_metadata.append(metadata)
+
+                    # If it's a database and we want to include its pages, query them
+                    from shared.sdks.notion_sdk import NotionDatabase
+
+                    if isinstance(item, NotionDatabase) and filter_type in ["all", "page"]:
+                        try:
+                            # Try to get pages from this database
+                            db_pages = await self._get_database_pages(client, item.id, limit)
+                            for page_metadata in db_pages:
+                                documents_metadata.append(page_metadata)
+                        except Exception as e:
+                            logger.warning(f"Failed to get pages from database {item.id}: {e}")
+
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to extract metadata for {getattr(item, 'id', 'unknown')}: {e}"
+                    )
+                    # Add error entry
+                    documents_metadata.append(
+                        {"id": getattr(item, "id", "unknown"), "error": str(e), "object": "unknown"}
+                    )
+
+            # Sort documents
+            sorted_documents = self._sort_documents_metadata(
+                documents_metadata, sort_by, sort_order
+            )
+
+            result = {
+                "action": "list_metadata",
+                "search_query": search_query,
+                "filter_type": filter_type,
+                "total_documents": len(sorted_documents),
+                "documents": sorted_documents,
+                "sort_by": sort_by,
+                "sort_order": sort_order,
+                "metadata_options": metadata_options,
+                "retrieved_at": datetime.now(timezone.utc).isoformat(),
+            }
+
+            # Apply AI formatting
+            if ai_format == "narrative":
+                return self._format_metadata_for_narrative(result)
+            elif ai_format == "summary":
+                return self._format_metadata_for_summary(result)
+            else:
+                return result
+
+        except Exception as e:
+            logger.error(f"Error listing document metadata: {e}")
+            return {
+                "action": "list_metadata",
+                "error": str(e),
+                "search_query": search_query,
+                "total_documents": 0,
+                "documents": [],
+                "retrieved_at": datetime.now(timezone.utc).isoformat(),
+            }
+
+    async def _extract_document_metadata(
+        self,
+        client: NotionClient,
+        document: Any,
+        include_properties: bool,
+        include_content_preview: bool,
+        include_parent_info: bool,
+        include_child_count: bool,
+        property_filters: List[str],
+    ) -> Dict[str, Any]:
+        """Extract metadata from a single document."""
+        doc_id = getattr(document, "id", None)
+
+        # Determine object type based on class
+        from shared.sdks.notion_sdk import NotionDatabase, NotionPage
+
+        if isinstance(document, NotionPage):
+            doc_object = "page"
+        elif isinstance(document, NotionDatabase):
+            doc_object = "database"
+        else:
+            doc_object = "unknown"
+
+        # Base metadata
+        metadata = {
+            "id": doc_id,
+            "object": doc_object,
+            "title": self._extract_title(document),
+            "url": getattr(document, "url", None),
+            "created_time": getattr(document, "created_time", None),
+            "last_edited_time": getattr(document, "last_edited_time", None),
+            "archived": getattr(document, "archived", False),
+        }
+
+        # Convert datetime objects to ISO strings
+        if metadata["created_time"]:
+            metadata["created_time"] = (
+                metadata["created_time"].isoformat()
+                if hasattr(metadata["created_time"], "isoformat")
+                else str(metadata["created_time"])
+            )
+        if metadata["last_edited_time"]:
+            metadata["last_edited_time"] = (
+                metadata["last_edited_time"].isoformat()
+                if hasattr(metadata["last_edited_time"], "isoformat")
+                else str(metadata["last_edited_time"])
+            )
+
+        # Add cover and icon if available
+        if hasattr(document, "cover") and document.cover:
+            metadata["cover"] = (
+                getattr(document.cover, "file", {}).get("url")
+                if hasattr(document.cover, "file")
+                else None
+            )
+        if hasattr(document, "icon") and document.icon:
+            metadata["icon"] = (
+                getattr(document.icon, "file", {}).get("url")
+                if hasattr(document.icon, "file")
+                else None
+            )
+
+        # Include custom properties
+        if include_properties and hasattr(document, "properties"):
+            custom_properties = {}
+            properties = document.properties if isinstance(document.properties, dict) else {}
+
+            for prop_name, prop_value in properties.items():
+                # Apply property filters if specified
+                if property_filters and prop_name not in property_filters:
+                    continue
+
+                try:
+                    custom_properties[prop_name] = self._extract_property_value(prop_value)
+                except Exception as e:
+                    custom_properties[prop_name] = f"Error extracting: {str(e)}"
+
+            metadata["custom_properties"] = custom_properties
+
+        # Include parent information
+        if include_parent_info and hasattr(document, "parent"):
+            parent = document.parent
+            metadata["parent"] = {
+                "type": getattr(parent, "type", None),
+                "id": getattr(parent, getattr(parent, "type", "unknown") + "_id", None)
+                if hasattr(parent, "type")
+                else None,
+            }
+
+        # Include content preview
+        if include_content_preview and doc_object == "page":
+            try:
+                blocks = await client.get_block_children(doc_id)
+                preview_text = ""
+                for block in blocks.results[:3]:  # First 3 blocks
+                    text = self._extract_text_from_block(block)
+                    if text:
+                        preview_text += text + " "
+                        if len(preview_text) > 100:
+                            break
+
+                metadata["content_preview"] = preview_text[:100].strip() + (
+                    "..." if len(preview_text) > 100 else ""
+                )
+            except Exception as e:
+                metadata["content_preview"] = f"Error: {str(e)}"
+
+        # Include child count
+        if include_child_count:
+            try:
+                if doc_object == "page":
+                    blocks = await client.get_block_children(doc_id)
+                    metadata["child_blocks_count"] = len(blocks.results)
+                elif doc_object == "database":
+                    # For databases, count pages
+                    db_results = await client.query_database(doc_id, page_size=1)
+                    metadata["child_pages_count"] = db_results.get("total_count", 0)
+            except Exception as e:
+                metadata["child_count_error"] = str(e)
+
+        return metadata
+
+    async def _get_database_pages(
+        self, client: NotionClient, database_id: str, limit: int
+    ) -> List[Dict[str, Any]]:
+        """Get pages from a database, working around SDK parsing issues."""
+        try:
+            # Make direct HTTP call to avoid SDK parsing issues
+            import httpx
+
+            headers = {
+                "Authorization": f"Bearer {client.auth_token}",
+                "Notion-Version": client.API_VERSION,
+                "Content-Type": "application/json",
+            }
+
+            url = f"{client.BASE_URL}databases/{database_id}/query"
+            payload = {"page_size": min(limit, 100)}
+
+            async with httpx.AsyncClient() as http_client:
+                response = await http_client.post(url, json=payload, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+
+            pages_metadata = []
+            for page_data in data.get("results", []):
+                try:
+                    # Extract basic metadata without using the SDK parsing
+                    page_metadata = {
+                        "id": page_data.get("id"),
+                        "object": "page",
+                        "title": self._extract_title_from_raw_data(page_data),
+                        "url": page_data.get("url"),
+                        "created_time": page_data.get("created_time"),
+                        "last_edited_time": page_data.get("last_edited_time"),
+                        "archived": page_data.get("archived", False),
+                        "source": "database_page",
+                    }
+
+                    # Add basic properties if available
+                    if page_data.get("properties"):
+                        page_metadata["custom_properties"] = self._extract_raw_properties(
+                            page_data["properties"]
+                        )
+
+                    pages_metadata.append(page_metadata)
+
+                except Exception as e:
+                    logger.warning(f"Failed to parse page data: {e}")
+                    continue
+
+            return pages_metadata
+
+        except Exception as e:
+            logger.error(f"Failed to get database pages: {e}")
+            return []
+
+    def _extract_title_from_raw_data(self, page_data: Dict[str, Any]) -> str:
+        """Extract title from raw API response data."""
+        try:
+            properties = page_data.get("properties", {})
+
+            # Look for title property
+            for prop_name, prop_value in properties.items():
+                if isinstance(prop_value, dict) and prop_value.get("type") == "title":
+                    title_items = prop_value.get("title", [])
+                    if title_items and len(title_items) > 0:
+                        first_item = title_items[0]
+                        if isinstance(first_item, dict):
+                            return first_item.get("plain_text", "Untitled")
+
+            return "Untitled"
+        except Exception:
+            return "Untitled"
+
+    def _extract_raw_properties(self, properties: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract properties from raw API data."""
+        extracted = {}
+
+        for prop_name, prop_value in properties.items():
+            try:
+                if not isinstance(prop_value, dict):
+                    continue
+
+                prop_type = prop_value.get("type")
+
+                if prop_type == "title":
+                    title_items = prop_value.get("title", [])
+                    if title_items:
+                        extracted[prop_name] = (
+                            title_items[0].get("plain_text", "") if title_items else ""
+                        )
+                elif prop_type == "rich_text":
+                    text_items = prop_value.get("rich_text", [])
+                    extracted[prop_name] = " ".join(
+                        [item.get("plain_text", "") for item in text_items]
+                    )
+                elif prop_type == "select":
+                    select_value = prop_value.get("select")
+                    extracted[prop_name] = select_value.get("name") if select_value else None
+                elif prop_type == "multi_select":
+                    multi_select = prop_value.get("multi_select", [])
+                    extracted[prop_name] = [
+                        item.get("name") for item in multi_select if isinstance(item, dict)
+                    ]
+                elif prop_type == "number":
+                    extracted[prop_name] = prop_value.get("number")
+                elif prop_type == "checkbox":
+                    extracted[prop_name] = prop_value.get("checkbox", False)
+                elif prop_type == "date":
+                    date_value = prop_value.get("date")
+                    if date_value:
+                        extracted[prop_name] = date_value.get("start")
+                elif prop_type in ["created_time", "last_edited_time"]:
+                    extracted[prop_name] = prop_value.get(prop_type)
+                else:
+                    # For other types, store the type info
+                    extracted[prop_name] = f"[{prop_type}]"
+
+            except Exception as e:
+                extracted[prop_name] = f"Error: {str(e)}"
+
+        return extracted
+
+    def _extract_property_value(self, prop_value: Any) -> Any:
+        """Extract readable value from Notion property."""
+        if isinstance(prop_value, dict):
+            prop_type = prop_value.get("type")
+
+            if prop_type == "title":
+                title_items = prop_value.get("title", [])
+                return " ".join([item.get("text", {}).get("content", "") for item in title_items])
+
+            elif prop_type == "rich_text":
+                rich_text_items = prop_value.get("rich_text", [])
+                return " ".join(
+                    [item.get("text", {}).get("content", "") for item in rich_text_items]
+                )
+
+            elif prop_type == "select":
+                select_value = prop_value.get("select")
+                return select_value.get("name") if select_value else None
+
+            elif prop_type == "multi_select":
+                multi_select_values = prop_value.get("multi_select", [])
+                return [item.get("name") for item in multi_select_values]
+
+            elif prop_type == "date":
+                date_value = prop_value.get("date")
+                if date_value:
+                    return {
+                        "start": date_value.get("start"),
+                        "end": date_value.get("end"),
+                        "time_zone": date_value.get("time_zone"),
+                    }
+
+            elif prop_type == "number":
+                return prop_value.get("number")
+
+            elif prop_type == "checkbox":
+                return prop_value.get("checkbox")
+
+            elif prop_type == "url":
+                return prop_value.get("url")
+
+            elif prop_type == "email":
+                return prop_value.get("email")
+
+            elif prop_type == "phone_number":
+                return prop_value.get("phone_number")
+
+            elif prop_type == "status":
+                status_value = prop_value.get("status")
+                return status_value.get("name") if status_value else None
+
+            elif prop_type == "people":
+                people_items = prop_value.get("people", [])
+                return [person.get("name", person.get("id")) for person in people_items]
+
+            else:
+                return str(prop_value)
+
+        return str(prop_value)
+
+    def _sort_documents_metadata(
+        self, documents: List[Dict], sort_by: str, sort_order: str
+    ) -> List[Dict]:
+        """Sort documents by specified criteria."""
+        reverse = sort_order == "desc"
+
+        try:
+            if sort_by == "title":
+                return sorted(documents, key=lambda d: d.get("title", "").lower(), reverse=reverse)
+            elif sort_by == "created_time":
+                return sorted(documents, key=lambda d: d.get("created_time", ""), reverse=reverse)
+            elif sort_by == "last_edited_time":
+                return sorted(
+                    documents, key=lambda d: d.get("last_edited_time", ""), reverse=reverse
+                )
+            else:
+                return documents
+        except Exception as e:
+            logger.warning(f"Failed to sort documents: {e}")
+            return documents
+
+    def _format_metadata_for_narrative(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        """Format metadata listing results as narrative text."""
+        documents = result["documents"]
+        total_docs = result["total_documents"]
+        search_query = result.get("search_query", "")
+
+        if total_docs == 0:
+            narrative = f"I found no Notion documents"
+            if search_query:
+                narrative += f" matching '{search_query}'"
+            narrative += ". Try adjusting your search query or check if the content exists in your workspace."
+        else:
+            narrative = f"I found {total_docs} Notion document{'s' if total_docs != 1 else ''}"
+            if search_query:
+                narrative += f" matching '{search_query}'"
+            narrative += ":\n\n"
+
+            for i, doc in enumerate(documents[:15], 1):  # Show first 15
+                if doc.get("error"):
+                    narrative += f"{i}. ❌ Error: {doc['error']}\n"
+                    continue
+
+                title = doc.get("title", "Untitled")
+                doc_type = doc.get("object", "unknown")
+                narrative += f"{i}. **{title}** ({doc_type})\n"
+
+                # Add timestamps
+                if doc.get("last_edited_time"):
+                    date_str = doc["last_edited_time"][:10]  # Extract date part
+                    narrative += f"   📅 Last edited: {date_str}\n"
+
+                # Add URL
+                if doc.get("url"):
+                    narrative += f"   🔗 {doc['url']}\n"
+
+                # Add content preview if available
+                if doc.get("content_preview"):
+                    narrative += f"   📝 Preview: {doc['content_preview']}\n"
+
+                # Add custom properties preview
+                custom_props = doc.get("custom_properties", {})
+                if custom_props:
+                    prop_summary = []
+                    for prop_name, prop_value in list(custom_props.items())[
+                        :3
+                    ]:  # First 3 properties
+                        if prop_value and str(prop_value).strip():
+                            prop_summary.append(f"{prop_name}: {str(prop_value)[:30]}")
+                    if prop_summary:
+                        narrative += f"   🏷️ Properties: {', '.join(prop_summary)}\n"
+
+                narrative += "\n"
+
+            if total_docs > 15:
+                narrative += f"... and {total_docs - 15} more documents\n"
+
+        return {**result, "ai_narrative": narrative, "format_type": "narrative"}
+
+    def _format_metadata_for_summary(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        """Format metadata listing results as summary."""
+        documents = result["documents"]
+
+        # Count by type
+        pages = len([d for d in documents if d.get("object") == "page"])
+        databases = len([d for d in documents if d.get("object") == "database"])
+        errors = len([d for d in documents if d.get("error")])
+
+        # Analyze properties
+        all_properties = set()
+        for doc in documents:
+            custom_props = doc.get("custom_properties", {})
+            all_properties.update(custom_props.keys())
+
+        # Find recent activity
+        recent_docs = []
+        for doc in documents[:5]:  # Top 5 most recent
+            if not doc.get("error"):
+                recent_docs.append(
+                    {
+                        "title": doc.get("title", "Untitled"),
+                        "type": doc.get("object", "unknown"),
+                        "last_edited": doc.get("last_edited_time", "")[:10]
+                        if doc.get("last_edited_time")
+                        else None,
+                        "has_preview": bool(doc.get("content_preview")),
+                        "property_count": len(doc.get("custom_properties", {})),
+                    }
+                )
+
+        summary = {
+            "query_successful": result["total_documents"] > 0,
+            "total_found": result["total_documents"],
+            "search_query": result.get("search_query"),
+            "breakdown": {"pages": pages, "databases": databases, "errors": errors},
+            "properties_found": list(all_properties)[:10],  # First 10 property types
+            "recent_documents": recent_docs,
+            "sort_criteria": {
+                "sort_by": result.get("sort_by"),
+                "sort_order": result.get("sort_order"),
+            },
+        }
+
+        return {**result, "ai_summary": summary, "format_type": "summary"}
+
+    def _format_for_narrative(self, result: Dict[str, Any], query: str) -> Dict[str, Any]:
+        """Format search results as narrative text for conversational AI."""
+        results = result["results"]
+        total_count = result["total_count"]
+
+        if not results:
+            narrative = f"I found no Notion content matching '{query}'. You might want to try different search terms or check if the content exists in your workspace."
+        else:
+            narrative = f"I found {total_count} Notion items matching '{query}':\n\n"
+
+            for i, item in enumerate(results, 1):
+                narrative += f"{i}. **{item['title']}** ({item['object']})\n"
+                if item.get("url"):
+                    narrative += f"   Link: {item['url']}\n"
+                if item.get("relevance_score"):
+                    narrative += f"   Relevance: {item['relevance_score']}/10\n"
+
+                # Add content preview if available
+                if item.get("content") and len(item["content"]) > 0:
+                    content_preview = str(item["content"][:150]).strip()
+                    if content_preview:
+                        narrative += f"   Preview: {content_preview}...\n"
+                narrative += "\n"
+
+        return {**result, "ai_narrative": narrative, "format_type": "narrative"}
+
+    def _format_for_summary(self, result: Dict[str, Any], query: str) -> Dict[str, Any]:
+        """Format search results as condensed summary for efficient AI processing."""
+        results = result["results"]
+        total_count = result["total_count"]
+
+        # Create condensed summaries
+        summaries = []
+        for item in results[:5]:  # Limit to top 5 for summary
+            summary = {
+                "title": item["title"],
+                "type": item["object"],
+                "relevance": item.get("relevance_score", 0),
+                "url": item.get("url"),
+            }
+
+            # Add key content indicators
+            if item.get("content"):
+                summary["has_content"] = True
+                summary["content_length"] = len(str(item["content"]))
+            else:
+                summary["has_content"] = False
+
+            summaries.append(summary)
+
+        return {
+            **result,
+            "ai_summary": {
+                "query": query,
+                "total_found": total_count,
+                "top_results": summaries,
+                "search_successful": total_count > 0,
+            },
+            "format_type": "summary",
+        }
 
     def get_tool_info(self, tool_name: str) -> Dict[str, Any]:
         """Get detailed information about a specific streamlined tool."""
         tools_map = {
             "notion_search": {
                 "name": "notion_search",
-                "description": "Universal search across all Notion content types",
-                "version": "3.0.0",
+                "description": "Universal search across all Notion content types with AI-optimized formatting",
+                "version": "3.1.0",
                 "available": True,
                 "category": "notion",
+                "optimized_for": ["OpenAI GPT", "Claude", "Gemini"],
+                "features": ["Relevance scoring", "AI-specific formatting", "Content preview"],
                 "consolidates": ["search_notion", "query_notion_database (basic search)"],
                 "usage_examples": [
                     {"access_token": "your-token", "query": "meeting notes", "limit": 5},

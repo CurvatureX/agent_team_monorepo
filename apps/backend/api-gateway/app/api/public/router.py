@@ -4,13 +4,14 @@ Public API Router
 专为外部系统和公开访问设计
 """
 
-from app.api.public import docs, health, nodes, status, validation, webhooks
+from app.api.public import auth, docs, health, nodes, status, validation, webhooks
 from fastapi import APIRouter
 
 # 创建Public API总路由器
 router = APIRouter()
 
 # Include all Public API sub-routes
+router.include_router(auth.router, prefix="", tags=["Public - Authentication"])
 router.include_router(health.router, prefix="", tags=["Public - Health"])
 router.include_router(status.router, prefix="", tags=["Public - Status"])
 router.include_router(docs.router, prefix="", tags=["Public - Documentation"])

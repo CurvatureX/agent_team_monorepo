@@ -164,3 +164,4 @@ class ConnectionType:
     DATABASE = "DATABASE"
     FILE = "FILE"
     HTTP = "HTTP"
+    MCP_TOOLS = "MCP_TOOLS"  # AI nodes ↔ TOOL nodes for MCP function calling

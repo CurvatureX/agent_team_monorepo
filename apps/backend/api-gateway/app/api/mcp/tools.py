@@ -25,7 +25,13 @@ from fastapi.responses import JSONResponse
 
 from shared.models.node_enums import ActionSubtype, NodeType
 
+from .discord_tools import discord_mcp_service
+from .firecrawl_tools import firecrawl_mcp_service
+from .github_tools import github_mcp_service
+from .gmail_tools import gmail_mcp_service
+from .google_calendar_tools import google_calendar_mcp_service
 from .notion_tools import notion_mcp_service
+from .slack_tools import slack_mcp_service
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -40,11 +46,40 @@ def get_service_for_tool(tool_name: str):
         "notion_database",
     }
 
+    google_calendar_prefixes = ["google_calendar_"]
+    google_calendar_exact_matches = {
+        "google_calendar_events",
+        "google_calendar_quick_add",
+        "google_calendar_search",
+        "google_calendar_availability",
+    }
+
+    slack_prefixes = ["slack_"]
+    github_prefixes = ["github_"]
+    gmail_prefixes = ["gmail_"]
+    discord_prefixes = ["discord_"]
+    firecrawl_prefixes = ["firecrawl_"]
+
     if (
         any(tool_name.startswith(prefix) for prefix in notion_prefixes)
         or tool_name in notion_exact_matches
     ):
         return notion_mcp_service
+    elif (
+        any(tool_name.startswith(prefix) for prefix in google_calendar_prefixes)
+        or tool_name in google_calendar_exact_matches
+    ):
+        return google_calendar_mcp_service
+    elif any(tool_name.startswith(prefix) for prefix in slack_prefixes):
+        return slack_mcp_service
+    elif any(tool_name.startswith(prefix) for prefix in github_prefixes):
+        return github_mcp_service
+    elif any(tool_name.startswith(prefix) for prefix in gmail_prefixes):
+        return gmail_mcp_service
+    elif any(tool_name.startswith(prefix) for prefix in discord_prefixes):
+        return discord_mcp_service
+    elif any(tool_name.startswith(prefix) for prefix in firecrawl_prefixes):
+        return firecrawl_mcp_service
 
     # Default to main MCP service for all other tools
     return mcp_service
@@ -263,23 +298,54 @@ async def list_tools(
         # Get tools from all services
         node_tools_response = mcp_service.get_available_tools()
         notion_tools_response = notion_mcp_service.get_available_tools()
+        google_calendar_tools_response = google_calendar_mcp_service.get_available_tools()
+        slack_tools_response = slack_mcp_service.get_available_tools()
+        github_tools_response = github_mcp_service.get_available_tools()
+        gmail_tools_response = gmail_mcp_service.get_available_tools()
+        discord_tools_response = discord_mcp_service.get_available_tools()
+        firecrawl_tools_response = firecrawl_mcp_service.get_available_tools()
 
         # Combine tools from all services
-        all_tools = node_tools_response.tools + notion_tools_response.tools
+        all_tools = (
+            node_tools_response.tools
+            + notion_tools_response.tools
+            + google_calendar_tools_response.tools
+            + slack_tools_response.tools
+            + github_tools_response.tools
+            + gmail_tools_response.tools
+            + discord_tools_response.tools
+            + firecrawl_tools_response.tools
+        )
         total_count = len(all_tools)
         available_count = (
-            node_tools_response.available_count + notion_tools_response.available_count
+            node_tools_response.available_count
+            + notion_tools_response.available_count
+            + google_calendar_tools_response.available_count
+            + slack_tools_response.available_count
+            + github_tools_response.available_count
+            + gmail_tools_response.available_count
+            + discord_tools_response.available_count
+            + firecrawl_tools_response.available_count
         )
 
         # Combine categories
         all_categories = list(
-            set(node_tools_response.categories + notion_tools_response.categories)
+            set(
+                node_tools_response.categories
+                + notion_tools_response.categories
+                + google_calendar_tools_response.categories
+                + slack_tools_response.categories
+                + github_tools_response.categories
+                + gmail_tools_response.categories
+                + discord_tools_response.categories
+                + firecrawl_tools_response.categories
+            )
         )
 
         processing_time = time.time() - start_time
 
         logger.info(
-            f"✅ MCP tools retrieved: {total_count} tools ({node_tools_response.total_count} node + {notion_tools_response.total_count} notion)"
+            f"✅ MCP tools retrieved: {total_count} tools ({node_tools_response.total_count} node + {notion_tools_response.total_count} notion + {google_calendar_tools_response.total_count} google_calendar)"
         )
 
         # Return JSON-RPC 2.0 format per MCP standard
@@ -440,10 +506,36 @@ async def mcp_health(
         # Check health of all services
         node_health = mcp_service.health_check()
         notion_health = notion_mcp_service.health_check()
+        google_calendar_health = google_calendar_mcp_service.health_check()
+        slack_health = slack_mcp_service.health_check()
+        github_health = github_mcp_service.health_check()
+        gmail_health = gmail_mcp_service.health_check()
+        discord_health = discord_mcp_service.health_check()
+        firecrawl_health = firecrawl_mcp_service.health_check()
 
         # Combine health status
-        overall_healthy = node_health.healthy and notion_health.healthy
-        all_tools = node_health.available_tools + notion_health.available_tools
+        overall_healthy = all(
+            [
+                node_health.healthy,
+                notion_health.healthy,
+                google_calendar_health.healthy,
+                slack_health.healthy,
+                github_health.healthy,
+                gmail_health.healthy,
+                discord_health.healthy,
+                firecrawl_health.healthy,
+            ]
+        )
+        all_tools = (
+            node_health.available_tools
+            + notion_health.available_tools
+            + google_calendar_health.available_tools
+            + slack_health.available_tools
+            + github_health.available_tools
+            + gmail_health.available_tools
+            + discord_health.available_tools
+            + firecrawl_health.available_tools
+        )
 
         processing_time = time.time() - start_time
 
@@ -455,7 +547,11 @@ async def mcp_health(
             timestamp=int(time.time()),
             error=None
             if overall_healthy
-            else f"Node service: {node_health.error}, Notion service: {notion_health.error}",
+            else (
+                f"Node: {node_health.error}, Notion: {notion_health.error}, Google Calendar: {google_calendar_health.error}, "
+                f"Slack: {slack_health.error}, GitHub: {github_health.error}, Gmail: {gmail_health.error}, "
+                f"Discord: {discord_health.error}, Firecrawl: {firecrawl_health.error}"
+            ),
             request_id=request_id,
             processing_time_ms=round(processing_time * 1000, 2),
         )
@@ -463,7 +559,7 @@ async def mcp_health(
         status_code = 200 if overall_healthy else 503
 
         logger.info(
-            f"✅ MCP health check completed: {'healthy' if overall_healthy else 'unhealthy'} (Node: {node_health.healthy}, Notion: {notion_health.healthy})"
+            f"✅ MCP health check completed: {'healthy' if overall_healthy else 'unhealthy'} (Node: {node_health.healthy}, Notion: {notion_health.healthy}, Google Calendar: {google_calendar_health.healthy})"
         )
 
         return JSONResponse(status_code=status_code, content=combined_health.model_dump())

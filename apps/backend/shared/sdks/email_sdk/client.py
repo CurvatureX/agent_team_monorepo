@@ -31,13 +31,15 @@ class EmailSDK(BaseSDK):
 
     @property
     def supported_operations(self) -> Dict[str, str]:
-        return {
+        base = {
             "send_email": "Send email message",
             "send_html_email": "Send HTML formatted email",
             "send_template_email": "Send email using template",
             "validate_email": "Validate email address",
             "test_connection": "Test SMTP connection",
         }
+        # MCP alias for gmail
+        return {**base, "gmail_send_email": base["send_email"]}
 
     def get_oauth2_config(self) -> OAuth2Config:
         """Get OAuth2 configuration (for Gmail OAuth)."""
@@ -101,8 +103,11 @@ class EmailSDK(BaseSDK):
                 "validate_email": self._validate_email,
                 "test_connection": self._test_smtp_connection,
             }
-
-            handler = handler_map[operation]
+            # Normalize Gmail MCP alias
+            op = operation
+            if op == "gmail_send_email":
+                op = "send_email"
+            handler = handler_map[op]
             result = await handler(parameters, credentials)
 
             return APIResponse(success=True, data=result, provider="email", operation=operation)

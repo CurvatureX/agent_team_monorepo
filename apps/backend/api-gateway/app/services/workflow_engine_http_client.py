@@ -28,7 +28,8 @@ class WorkflowEngineHTTPClient:
         self.execute_timeout = httpx.Timeout(
             300.0, connect=5.0
         )  # 5 minutes for long-running workflows
-        self.query_timeout = httpx.Timeout(30.0, connect=5.0)  # Longer timeout for queries
+        self.query_timeout = httpx.Timeout(60.0, connect=5.0)  # Longer timeout for queries
+        self.logs_timeout = httpx.Timeout(90.0, connect=5.0)  # Extra long timeout for logs queries
         self.connected = False
         # Connection pool for better performance
         self._client = None
@@ -558,7 +559,7 @@ class WorkflowEngineHTTPClient:
                 f"{self.base_url}/v1/workflows/executions/{execution_id}/logs",
                 headers=headers,
                 params=query_params,
-                timeout=self.query_timeout,
+                timeout=self.logs_timeout,  # Use dedicated logs timeout (90s)
             )
             response.raise_for_status()
             result = response.json()

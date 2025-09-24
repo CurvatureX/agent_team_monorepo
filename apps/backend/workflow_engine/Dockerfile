@@ -1,30 +1,20 @@
-# Multi-stage build for Workflow Engine
-FROM python:3.11-slim AS builder
+# Use python image with build tools already installed
+FROM python:3.11 AS builder
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies for building
-RUN apt-get update && apt-get install -y \
-    gcc \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements and install Python dependencies
+# Copy requirements and install Python dependencies (no need for gcc, it's already in python:3.11)
 COPY workflow_engine/requirements.txt .
 RUN pip install -r requirements.txt
 
-# Production stage
-FROM python:3.11-slim AS production
+# Production stage - use full python:3.11 to avoid apt-get
+FROM python:3.11 AS production
 
 # Set working directory
 WORKDIR /app
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    netcat-openbsd \
-    && rm -rf /var/lib/apt/lists/*
+# No runtime dependencies needed - python:3.11 has everything
 
 # Copy Python environment from builder
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages

@@ -11,9 +11,8 @@ from typing import Any, Dict, List, Optional
 
 # Configure SSL for better compatibility
 import urllib3
-from supabase import Client, create_client
-
 from config import settings
+from supabase import Client, create_client
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -160,24 +159,34 @@ class Database:
         except Exception as e:
             logger.error(f"❌ Failed to update execution status: {e}")
 
-    async def list_workflows(self) -> List[Dict[str, Any]]:
-        """List workflows - return all workflows with proper ordering"""
+    async def list_workflows(
+        self, active_only: bool = False, limit: int = 100, offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        """List workflows with pagination and filtering"""
         try:
             if not self.client:
                 raise Exception("Database client not initialized")
 
-            # Get all workflows, ordered by deployment status (DEPLOYED first) and updated_at
+            # Start building query
+            query = self.client.table("workflows").select("*")
+
+            # Filter active workflows if requested
+            if active_only:
+                query = query.eq("active", True)
+
+            # Apply ordering and pagination
             result = (
-                self.client.table("workflows")
-                .select("*")
-                .order("deployment_status", desc=True)
+                query.order("deployment_status", desc=True)
                 .order("updated_at", desc=True)
-                .limit(1000)
+                .limit(limit)
+                .offset(offset)
                 .execute()
             )
             workflows = result.data or []
 
-            logger.info(f"✅ Retrieved {len(workflows)} workflows")
+            logger.info(
+                f"✅ Retrieved {len(workflows)} workflows (active_only={active_only}, limit={limit}, offset={offset})"
+            )
             return workflows
 
         except Exception as e:

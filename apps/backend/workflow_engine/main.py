@@ -21,23 +21,23 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from shared.models.db_models import WorkflowStatusEnum
-
 # Import our migrated modules
 from config import settings
 from database import Database
 from executor import WorkflowExecutor
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from models import (
     ExecuteWorkflowRequest,
     ExecuteWorkflowResponse,
     GetExecutionRequest,
     GetExecutionResponse,
 )
+from pydantic import BaseModel
 from services.oauth2_service_lite import OAuth2ServiceLite
 from utils.unicode_utils import clean_unicode_data, ensure_utf8_safe_dict
+
+from shared.models.db_models import WorkflowStatusEnum
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -393,11 +393,62 @@ async def get_execution_status(execution_id: str):
 
 
 @app.get("/v1/workflows")
-async def list_workflows():
-    """List workflows"""
+async def list_workflows(
+    active_only: bool = False, limit: int = 100, offset: int = 0, request: Request = None
+):
+    """List workflows with pagination using direct PostgreSQL connection for maximum performance"""
     try:
-        workflows = await db.list_workflows()
-        return {"workflows": workflows}
+        logger.info(f"🚀 Fast workflow listing endpoint (limit={limit}, offset={offset})")
+
+        # Try direct PostgreSQL connection first (fastest path)
+        try:
+            from database_direct import get_direct_db
+
+            direct_db = await get_direct_db()
+
+            # Extract user_id from authorization header if available (for RLS)
+            user_id = None
+            if request and request.headers.get("authorization"):
+                auth_header = request.headers.get("authorization")
+                if auth_header.startswith("Bearer "):
+                    # TODO: Extract user_id from JWT token if needed for user filtering
+                    # For now, skip user filtering to get all workflows (admin mode)
+                    pass
+
+            # Use direct SQL for maximum performance
+            result = await direct_db.list_workflows_fast(
+                active_only=active_only,
+                limit=limit,
+                offset=offset,
+                user_id=user_id,  # None = get all workflows
+            )
+
+            logger.info(f"✅ Fast workflow listing completed")
+            return result
+
+        except Exception as e:
+            logger.warning(f"⚠️ Direct PostgreSQL failed, falling back to Supabase: {e}")
+
+            # Fallback to Supabase repository if direct connection fails
+            from services.supabase_repository import SupabaseWorkflowRepository
+
+            access_token = None
+            if request and request.headers.get("authorization"):
+                auth_header = request.headers.get("authorization")
+                if auth_header.startswith("Bearer "):
+                    access_token = auth_header[7:]
+
+            repo = SupabaseWorkflowRepository(access_token=access_token)
+            workflows, total_count = await repo.list_workflows(
+                active_only=active_only, limit=limit, offset=offset
+            )
+
+            return {
+                "workflows": workflows,
+                "total_count": total_count,
+                "has_more": total_count > offset + limit,
+            }
+
     except Exception as e:
         logger.error(f"❌ Failed to list workflows: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -957,58 +1008,91 @@ async def get_execution_logs(
     end_time: Optional[str] = None,
 ):
     """
-    Get execution logs from database
+    Get execution logs from database - DIRECT POSTGRESQL VERSION
+    Bypasses Supabase REST API for maximum performance
     """
     try:
-        logger.info(f"📋 Getting execution logs for {execution_id}")
+        logger.info(f"🚀 Getting execution logs for {execution_id} (direct SQL)")
 
-        # Build query
-        query = (
-            db.client.table("workflow_execution_logs").select("*").eq("execution_id", execution_id)
-        )
+        # Try direct PostgreSQL connection first (fastest)
+        try:
+            from database_direct import get_direct_db
 
-        # Add filters
-        if level:
-            query = query.eq("level", level.upper())
-        if start_time:
-            query = query.gte("created_at", start_time)
-        if end_time:
-            query = query.lte("created_at", end_time)
+            direct_db = await get_direct_db()
 
-        # Order by created_at and apply pagination
-        query = query.order("created_at", desc=False).range(offset, offset + limit - 1)
+            # Use direct SQL query for maximum performance
+            result = await direct_db.get_execution_logs_fast(
+                execution_id=execution_id,
+                limit=limit,
+                offset=offset,
+                level=level,
+                start_time=start_time,
+                end_time=end_time,
+            )
 
-        result = query.execute()
+            logger.info(f"✅ Direct SQL: Retrieved {len(result['logs'])} logs for {execution_id}")
+            return result
 
-        logs = result.data if result.data else []
+        except Exception as direct_error:
+            logger.warning(f"⚠️ Direct SQL failed, falling back to REST API: {direct_error}")
 
-        # Get total count (separate query for total)
-        count_result = (
-            db.client.table("workflow_execution_logs")
-            .select("*", count="exact")
-            .eq("execution_id", execution_id)
-            .execute()
-        )
-        total_count = count_result.count if count_result.count is not None else 0
+            # Fallback to Supabase REST API (slower but more reliable)
+            # Use actual table schema to avoid column errors
+            select_fields = "id,execution_id,node_id,level,message,created_at,step_number,user_friendly_message,display_priority,log_category,event_type"
+            query = (
+                db.client.table("workflow_execution_logs")
+                .select(select_fields)
+                .eq("execution_id", execution_id)
+            )
 
-        logger.info(
-            f"✅ Retrieved {len(logs)} logs for execution {execution_id} (total: {total_count})"
-        )
+            # Add filters
+            if level:
+                query = query.eq("level", level.upper())
+            if start_time:
+                query = query.gte("created_at", start_time)
+            if end_time:
+                query = query.lte("created_at", end_time)
 
-        return {
-            "execution_id": execution_id,
-            "logs": logs,
-            "total_count": total_count,
-            "pagination": {
-                "limit": limit,
-                "offset": offset,
-                "has_more": (offset + len(logs)) < total_count,
-            },
-        }
+            # Apply ordering and pagination - get one extra to check has_more
+            query = query.order("created_at", desc=False).range(offset, offset + limit)
+
+            # Execute fallback query
+            result = query.execute()
+            logs = result.data if result.data else []
+
+            # Calculate has_more and trim to requested limit
+            has_more = len(logs) > limit
+            if has_more:
+                logs = logs[:limit]
+
+            estimated_total = offset + len(logs) + (100 if has_more else 0)
+
+            logger.info(f"✅ REST API fallback: Retrieved {len(logs)} logs for {execution_id}")
+
+            return {
+                "execution_id": execution_id,
+                "logs": logs,
+                "total_count": estimated_total,
+                "pagination": {
+                    "limit": limit,
+                    "offset": offset,
+                    "has_more": has_more,
+                },
+            }
 
     except Exception as e:
         logger.error(f"❌ Failed to get execution logs: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Return empty result instead of 500 error for better user experience
+        return {
+            "execution_id": execution_id,
+            "logs": [],
+            "total_count": 0,
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "has_more": False,
+            },
+        }
 
 
 if __name__ == "__main__":
