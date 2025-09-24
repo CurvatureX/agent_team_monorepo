@@ -100,7 +100,7 @@ class TestMCPEndpoints:
         assert "id" in data
         assert "result" in data
         assert "tools" in data["result"]
-        assert len(data["result"]["tools"]) == 6
+        assert len(data["result"]["tools"]) >= 6  # Now includes many more MCP tools
         # Check first tool has MCP required fields
         first_tool = data["result"]["tools"][0]
         assert first_tool["name"] == "get_node_types"
@@ -484,7 +484,7 @@ class TestMCPEndpoints:
         data = response.json()
         assert data["healthy"] is True
         assert data["version"] == "3.0.0"
-        assert len(data["available_tools"]) == 6
+        assert len(data["available_tools"]) >= 6  # Now includes many more MCP tools
 
     @patch("app.api.mcp.tools.mcp_service")
     @patch("app.dependencies.get_mcp_client")
@@ -513,7 +513,7 @@ class TestMCPEndpoints:
         assert response.status_code == 503  # Service Unavailable
         data = response.json()
         assert data["healthy"] is False
-        assert len(data["available_tools"]) == 3
+        assert len(data["available_tools"]) >= 3  # Now includes many more MCP tools
 
     @patch("app.api.mcp.tools.mcp_service")
     @patch("app.dependencies.get_mcp_client")

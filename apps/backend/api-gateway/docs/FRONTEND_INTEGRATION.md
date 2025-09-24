@@ -76,14 +76,14 @@ const sendMessage = async (sessionId, message) => {
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        
+
         if (data.type === 'message') {
           // 增量模式：累积拼接delta内容
           fullResponse += data.delta;
-          
+
           // 实时更新UI
           updateChatUI(fullResponse, data.is_complete);
-          
+
           // 检查是否完成
           if (data.is_complete) {
             eventSource.close();
@@ -115,7 +115,7 @@ const sendMessage = async (sessionId, message) => {
 const updateChatUI = (content, isComplete) => {
   const messageElement = document.getElementById('ai-response');
   messageElement.textContent = content;
-  
+
   if (isComplete) {
     messageElement.classList.add('complete');
     // 隐藏loading状态等
@@ -151,26 +151,26 @@ const listenWorkflowProgress = async (sessionId) => {
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        
+
         console.log('Workflow event:', data);
-        
+
         switch (data.type) {
           case 'waiting':
             updateWorkflowUI('等待开始...', data.workflow_id, data.data);
             break;
-            
+
           case 'start':
             updateWorkflowUI('开始生成workflow...', data.workflow_id, data.data);
             break;
-            
+
           case 'draft':
             updateWorkflowUI('生成草稿中...', data.workflow_id, data.data);
             break;
-            
+
           case 'debugging':
             updateWorkflowUI('调试优化中...', data.workflow_id, data.data);
             break;
-            
+
           case 'complete':
             updateWorkflowUI('生成完成!', data.workflow_id, data.data);
             eventSource.close();
@@ -179,7 +179,7 @@ const listenWorkflowProgress = async (sessionId) => {
               data: data.data
             });
             break;
-            
+
           case 'error':
             updateWorkflowUI('生成失败', null, data.data);
             eventSource.close();
@@ -214,7 +214,7 @@ const updateWorkflowUI = (message, workflowId = null, data = null) => {
   if (statusElement) {
     statusElement.textContent = message;
   }
-  
+
   // 更新workflow ID显示
   if (workflowId) {
     const idElement = document.getElementById('workflow-id');
@@ -222,7 +222,7 @@ const updateWorkflowUI = (message, workflowId = null, data = null) => {
       idElement.textContent = `Workflow ID: ${workflowId}`;
     }
   }
-  
+
   // 显示详细数据 (如果有)
   if (data) {
     const dataElement = document.getElementById('workflow-data');
@@ -230,17 +230,17 @@ const updateWorkflowUI = (message, workflowId = null, data = null) => {
       dataElement.textContent = JSON.stringify(data, null, 2);
     }
   }
-  
+
   // 显示当前状态指示器
   const stageIndicator = document.getElementById('workflow-stage');
   if (stageIndicator) {
-    stageIndicator.className = `stage-${message.includes('等待') ? 'waiting' : 
-                                     message.includes('开始') ? 'start' : 
-                                     message.includes('草稿') ? 'draft' : 
-                                     message.includes('调试') ? 'debugging' : 
+    stageIndicator.className = `stage-${message.includes('等待') ? 'waiting' :
+                                     message.includes('开始') ? 'start' :
+                                     message.includes('草稿') ? 'draft' :
+                                     message.includes('调试') ? 'debugging' :
                                      message.includes('完成') ? 'complete' : 'unknown'}`;
   }
-  
+
   console.log(`Workflow: ${message}`, data);
 };
 
@@ -309,32 +309,32 @@ class WorkflowChat {
     url.searchParams.append('user_message', message);
 
     this.currentChatSource = new EventSource(url);
-    
+
     let fullResponse = '';
 
     return new Promise((resolve, reject) => {
       this.currentChatSource.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          
+
           if (data.type === 'message') {
             // 累积增量内容
             fullResponse += data.delta;
-            
+
             // 回调函数更新UI
             if (onUpdate) {
               onUpdate(fullResponse, data.is_complete);
             }
-            
+
             // 完成时解析Promise
             if (data.is_complete) {
               this.currentChatSource.close();
               this.currentChatSource = null;
-              
+
               if (onComplete) {
                 onComplete(fullResponse);
               }
-              
+
               resolve(fullResponse);
             }
           }
@@ -373,21 +373,21 @@ class WorkflowChat {
       this.currentWorkflowSource.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          
+
           // 回调函数更新UI
           if (onUpdate) {
             onUpdate(data);
           }
-          
+
           // 检查是否完成
           if (data.type === 'complete') {
             this.currentWorkflowSource.close();
             this.currentWorkflowSource = null;
-            
+
             if (onComplete) {
               onComplete(data);
             }
-            
+
             resolve({
               workflowId: data.workflow_id,
               data: data.data
@@ -443,7 +443,7 @@ const createWorkflowExample = async () => {
   try {
     // 1. 创建会话
     await chat.initSession('create');
-    
+
     // 2. 同时启动workflow状态监听
     const workflowPromise = chat.listenWorkflowProgress(
       // 状态更新回调
@@ -455,7 +455,7 @@ const createWorkflowExample = async () => {
         console.log('Workflow generation completed:', data);
       }
     );
-    
+
     // 3. 发送消息触发workflow生成
     const chatResponse = await chat.sendMessage(
       '请帮我创建一个电商库存监控的workflow，需要监控BestBuy和Amazon',
@@ -471,15 +471,15 @@ const createWorkflowExample = async () => {
         console.log('Final chat response:', finalContent);
       }
     );
-    
+
     // 4. 等待workflow生成完成
     const workflowResult = await workflowPromise;
-    
+
     console.log('Complete workflow creation:', {
       chatResponse,
       workflowResult
     });
-    
+
   } catch (error) {
     console.error('Workflow creation failed:', error);
   } finally {
@@ -493,19 +493,19 @@ const editWorkflowExample = async (existingWorkflowId) => {
   try {
     // 1. 创建编辑会话
     await chat.initSession('edit', existingWorkflowId);
-    
+
     // 2. 监听workflow更新进度
     chat.listenWorkflowProgress(
       (data) => console.log('Workflow update progress:', data),
       (data) => console.log('Workflow update completed:', data)
     );
-    
+
     // 3. 发送编辑指令
     await chat.sendMessage(
       '请在现有workflow中添加邮件通知功能',
       (content) => console.log('Chat update:', content)
     );
-    
+
   } catch (error) {
     console.error('Workflow edit failed:', error);
   }
@@ -536,14 +536,14 @@ const handleApiError = (error, response) => {
 // SSE连接错误处理
 eventSource.onerror = (event) => {
   console.error('SSE Error:', event);
-  
+
   // 检查连接状态
   if (eventSource.readyState === EventSource.CLOSED) {
     console.log('SSE connection closed');
   } else if (eventSource.readyState === EventSource.CONNECTING) {
     console.log('SSE reconnecting...');
   }
-  
+
   // 实现重连逻辑
   setTimeout(() => {
     if (eventSource.readyState !== EventSource.OPEN) {
@@ -564,7 +564,7 @@ const WorkflowChatComponent = ({ userToken }) => {
   const [messages, setMessages] = useState([]);
   const [currentResponse, setCurrentResponse] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  
+
   // Workflow状态
   const [workflowStatus, setWorkflowStatus] = useState('');
   const [workflowStage, setWorkflowStage] = useState('');
@@ -606,14 +606,14 @@ const WorkflowChatComponent = ({ userToken }) => {
 
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      
+
       setWorkflowStage(data.type);
       setWorkflowStatus(data.data?.message || data.type);
-      
+
       if (data.workflow_id) {
         setWorkflowId(data.workflow_id);
       }
-      
+
       if (data.type === 'complete') {
         setWorkflowData(data.data);
         setIsGeneratingWorkflow(false);
@@ -659,11 +659,11 @@ const WorkflowChatComponent = ({ userToken }) => {
 
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        
+
         if (data.type === 'message') {
           fullResponse += data.delta;
           setCurrentResponse(fullResponse);
-          
+
           if (data.is_complete) {
             eventSource.close();
             setMessages(prev => [...prev, { type: 'assistant', content: fullResponse }]);
@@ -751,11 +751,11 @@ const WorkflowChatComponent = ({ userToken }) => {
           </div>
         )}
       </div>
-      
+
       {/* 输入区域 */}
       <div className="input-area">
-        <input 
-          type="text" 
+        <input
+          type="text"
           placeholder="输入消息 (例如: 请创建一个电商库存监控workflow)..."
           onKeyPress={(e) => {
             if (e.key === 'Enter' && !isLoading && sessionId) {
@@ -770,16 +770,16 @@ const WorkflowChatComponent = ({ userToken }) => {
           {isGeneratingWorkflow && <span className="generating">⚙️ 生成中...</span>}
         </div>
       </div>
-      
+
       {/* 示例按钮 */}
       <div className="example-buttons">
-        <button 
+        <button
           onClick={() => sendMessage('请帮我创建一个电商库存监控的workflow')}
           disabled={!sessionId || isLoading}
         >
           创建库存监控Workflow
         </button>
-        <button 
+        <button
           onClick={() => sendMessage('请创建一个数据分析的workflow')}
           disabled={!sessionId || isLoading}
         >
@@ -942,28 +942,28 @@ export default WorkflowChatComponent;
 // 可以为不同session同时监听多个workflow
 const multiWorkflowManager = {
   connections: new Map(),
-  
+
   startListening(sessionId, onUpdate) {
     if (this.connections.has(sessionId)) {
       this.connections.get(sessionId).close();
     }
-    
+
     const eventSource = new EventSource(`/api/v1/workflow_generation?session_id=${sessionId}`);
     this.connections.set(sessionId, eventSource);
-    
+
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
       onUpdate(sessionId, data);
     };
   },
-  
+
   stopListening(sessionId) {
     if (this.connections.has(sessionId)) {
       this.connections.get(sessionId).close();
       this.connections.delete(sessionId);
     }
   },
-  
+
   stopAll() {
     this.connections.forEach(source => source.close());
     this.connections.clear();
@@ -978,22 +978,22 @@ const createReconnectingEventSource = (url, options = {}) => {
   let reconnectTimer;
   const maxReconnects = options.maxReconnects || 5;
   let reconnectCount = 0;
-  
+
   const connect = () => {
     eventSource = new EventSource(url);
-    
+
     eventSource.onopen = () => {
       reconnectCount = 0; // 重置重连计数
       if (options.onOpen) options.onOpen();
     };
-    
+
     eventSource.onerror = () => {
       eventSource.close();
-      
+
       if (reconnectCount < maxReconnects) {
         reconnectCount++;
         const delay = Math.min(1000 * Math.pow(2, reconnectCount), 30000);
-        
+
         reconnectTimer = setTimeout(() => {
           console.log(`Attempting reconnect ${reconnectCount}/${maxReconnects}`);
           connect();
@@ -1002,14 +1002,14 @@ const createReconnectingEventSource = (url, options = {}) => {
         options.onMaxReconnects();
       }
     };
-    
+
     if (options.onMessage) {
       eventSource.onmessage = options.onMessage;
     }
   };
-  
+
   connect();
-  
+
   return {
     close: () => {
       if (reconnectTimer) clearTimeout(reconnectTimer);

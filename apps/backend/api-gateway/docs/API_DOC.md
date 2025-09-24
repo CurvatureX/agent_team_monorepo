@@ -12,7 +12,7 @@
 创建新会话
 
 **请求**
-action: 
+action:
 - `create` 从头创建新的 workflow
 - `edit` 编辑自己的某个 workflow
 - `copy` copy from a public / template workflow
@@ -89,7 +89,7 @@ data: {"type": "message", "delta": "Your workflow has been successfully created!
       "created_at": "2024-01-20T10:30:00Z"
     },
     {
-      "id": "msg_124", 
+      "id": "msg_124",
       "message_type": "assistant",
       "content": "I'll help you create an email monitoring workflow...",
       "sequence_number": 2,

@@ -109,7 +109,7 @@ class NotionMCPService:
             ),
             MCPTool(
                 name="notion_page",
-                description="Complete page management (get, create, update, retrieve documents with full content)",
+                description="Complete page management (get, create, update, retrieve documents with full content) - AI-optimized for OpenAI, Claude, and Gemini",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -306,7 +306,7 @@ class NotionMCPService:
             ),
             MCPTool(
                 name="notion_database",
-                description="Complete database operations (get schema, query with advanced filtering)",
+                description="Complete database operations (get schema, query with advanced filtering) - AI-optimized for OpenAI, Claude, and Gemini",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -896,8 +896,26 @@ class NotionMCPService:
             raise ValueError(f"Unknown action: {action}")
 
     def _extract_title(self, notion_object) -> str:
-        """Extract title from Notion object."""
+        """Extract title from Notion object or dictionary."""
         try:
+            # Handle dictionary format (for mock data and direct API responses)
+            if isinstance(notion_object, dict):
+                # Check properties in dictionary
+                if "properties" in notion_object and notion_object["properties"]:
+                    props = notion_object["properties"]
+                    for prop_name, prop_value in props.items():
+                        if isinstance(prop_value, dict) and prop_value.get("type") == "title":
+                            if "title" in prop_value and prop_value["title"]:
+                                title_list = prop_value["title"]
+                                if isinstance(title_list, list) and len(title_list) > 0:
+                                    first_item = title_list[0]
+                                    if isinstance(first_item, dict):
+                                        return first_item.get(
+                                            "plain_text",
+                                            first_item.get("text", {}).get("content", "Untitled"),
+                                        )
+                return "Untitled"
+
             # Check direct title attribute first (for databases and some pages)
             if hasattr(notion_object, "title") and notion_object.title:
                 if isinstance(notion_object.title, list) and len(notion_object.title) > 0:

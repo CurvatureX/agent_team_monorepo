@@ -350,10 +350,10 @@ export LOG_FORMAT=simple  # For minimal output
 
 This API Gateway is part of a larger monorepo structure:
 - **Location**: `apps/backend/api-gateway/`
-- **Related Services**: 
+- **Related Services**:
   - `apps/backend/workflow_agent/` (FastAPI service with LangGraph for AI workflow generation)
   - `apps/backend/workflow_engine/` (FastAPI service for workflow execution)
-- **Shared Components**: 
+- **Shared Components**:
   - `apps/backend/shared/models/` (Shared Pydantic models)
   - `apps/backend/shared/prompts/` (Jinja2 templates for AI prompts)
 - **Frontend Demo**: `apps/demo_apps/workflow_generation/` (React/Vite demo)
@@ -402,7 +402,7 @@ When running tests or interactive demos that require authentication:
    # The .env file contains:
    TEST_USER_EMAIL=daming.lu@starmates.ai  # Real account
    TEST_USER_PASSWORD=test.1234!           # Real password
-   
+
    # Use these in tests:
    curl -X POST "${SUPABASE_URL}/auth/v1/token?grant_type=password" \
      -H "apikey: ${SUPABASE_ANON_KEY}" \

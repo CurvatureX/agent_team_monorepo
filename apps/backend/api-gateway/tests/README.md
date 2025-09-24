@@ -42,7 +42,7 @@ Basic unit tests covering:
    SUPABASE_URL=https://your-project.supabase.co
    SUPABASE_ANON_KEY=your_anon_key
    SUPABASE_SECRET_KEY=your_service_key
-   
+
    # Test Credentials
    TEST_USER_EMAIL=test@example.com
    TEST_USER_PASSWORD=testpassword123

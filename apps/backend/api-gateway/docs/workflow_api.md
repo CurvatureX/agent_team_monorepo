@@ -411,4 +411,4 @@ A `Connection` object has the following structure:
 -   **Success Response**: `200 OK`
     -   Returns an `ExecutionHistoryResponse` object containing a list of execution records.
 -   **Error Response**:
-    -   `500 Internal Server Error`: If an unexpected error occurs. 
+    -   `500 Internal Server Error`: If an unexpected error occurs.

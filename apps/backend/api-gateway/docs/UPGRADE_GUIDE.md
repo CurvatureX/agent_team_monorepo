@@ -15,7 +15,7 @@
 async def startup_event():
     # 启动逻辑
 
-@app.on_event("shutdown") 
+@app.on_event("shutdown")
 async def shutdown_event():
     # 关闭逻辑
 
@@ -26,9 +26,9 @@ async def lifespan(app: FastAPI):
     log_info("🚀 Starting API Gateway...")
     init_supabase()
     await workflow_client.connect()
-    
+
     yield
-    
+
     # 关闭逻辑
     await workflow_client.close()
     log_info("👋 API Gateway stopped")
@@ -143,7 +143,7 @@ curl -X POST http://localhost:8000/api/v1/auth/register \
 curl -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "user@example.com", 
+    "email": "user@example.com",
     "password": "secure123"
   }'
 ```
@@ -188,7 +188,7 @@ curl -X POST http://localhost:8000/api/v1/chat \
 
 - [ ] FastAPI应用正常启动（使用新的lifespan）
 - [ ] 用户注册API工作正常
-- [ ] 用户登录API工作正常  
+- [ ] 用户登录API工作正常
 - [ ] JWT令牌验证工作正常
 - [ ] 认证用户可以创建会话
 - [ ] 用户只能访问自己的会话
@@ -221,4 +221,4 @@ curl -X POST http://localhost:8000/api/v1/chat \
    - 验证用户ID匹配
    - 检查会话所有权
 
-升级完成后，你的API Gateway现在支持完整的Supabase认证系统！🎉 
+升级完成后，你的API Gateway现在支持完整的Supabase认证系统！🎉

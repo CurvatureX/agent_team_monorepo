@@ -17,9 +17,26 @@ from httpx import AsyncClient
 # Load environment variables
 load_dotenv("../.env")
 
-# Skip tests in CI environment
-if os.getenv("CI") == "true":
-    pytest.skip("Skipping integration tests in CI environment", allow_module_level=True)
+# Skip tests in CI environment or when external services are unavailable
+if os.getenv("CI") == "true" or os.getenv("SKIP_INTEGRATION_TESTS") == "true":
+    pytest.skip(
+        "Skipping integration tests in CI environment or when explicitly disabled",
+        allow_module_level=True,
+    )
+
+# Test for Redis and database availability
+try:
+    import redis
+
+    redis_client = redis.Redis(host="localhost", port=6379, db=0, socket_timeout=1)
+    redis_client.ping()
+    redis_available = True
+except:
+    redis_available = False
+
+# For pre-commit and automated testing, skip integration tests by default
+if not redis_available:
+    pytest.skip("Skipping integration tests - Redis not available", allow_module_level=True)
 
 
 class TestIntegration:

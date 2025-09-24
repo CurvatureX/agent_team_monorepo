@@ -23,7 +23,7 @@ class TestGoogleCalendarMCPService:
     @pytest.fixture
     def mock_google_calendar_client(self):
         """Create mock Google Calendar client."""
-        with patch("app.api.mcp.google_calendar_tools.GoogleCalendarClient") as mock_client_class:
+        with patch("app.services.google_calendar_client.GoogleCalendarClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value = mock_client
 
@@ -58,8 +58,8 @@ class TestGoogleCalendarMCPService:
         """Test that all Google Calendar tools are available."""
         tools_response = mcp_service.get_available_tools()
 
-        assert tools_response.total_count == 4
-        assert tools_response.available_count == 4
+        assert tools_response.total_count == 5
+        assert tools_response.available_count == 5
         assert "google_calendar" in tools_response.categories
 
         tool_names = [tool.name for tool in tools_response.tools]
@@ -300,8 +300,9 @@ class TestGoogleCalendarMCPService:
         """Test error handling for invalid actions."""
         params = {"access_token": "test_token", "action": "invalid_action"}
 
-        with pytest.raises(ValueError, match="Unknown action"):
-            await mcp_service.invoke_tool("google_calendar_events", params)
+        response = await mcp_service.invoke_tool("google_calendar_events", params)
+        assert response.isError
+        assert "Unknown action" in response.content[0].text
 
     @pytest.mark.asyncio
     async def test_error_handling_missing_event_id(self, mcp_service, mock_google_calendar_client):
@@ -312,8 +313,9 @@ class TestGoogleCalendarMCPService:
             # Missing event_id
         }
 
-        with pytest.raises(ValueError, match="event_id is required"):
-            await mcp_service.invoke_tool("google_calendar_events", params)
+        response = await mcp_service.invoke_tool("google_calendar_events", params)
+        assert response.isError
+        assert "event_id is required" in response.content[0].text
 
     @pytest.mark.asyncio
     async def test_unknown_tool_error(self, mcp_service):
@@ -353,7 +355,7 @@ class TestGoogleCalendarMCPService:
         assert isinstance(health, MCPHealthCheck)
         assert health.healthy is True
         assert health.version == "1.0.0"
-        assert len(health.available_tools) == 4
+        assert len(health.available_tools) == 5
         assert "google_calendar_events" in health.available_tools
         assert health.error is None
 
