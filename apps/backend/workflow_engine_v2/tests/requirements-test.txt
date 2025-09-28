@@ -1,0 +1,47 @@
+# Testing dependencies for workflow_engine_v2
+# Core testing framework
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-mock>=3.11.0
+
+# Coverage reporting
+pytest-cov>=4.1.0
+coverage>=7.2.0
+
+# Parallel test execution
+pytest-xdist>=3.3.0
+
+# HTTP testing
+httpx>=0.24.0
+requests>=2.31.0
+
+# API testing
+fastapi[testing]>=0.100.0
+starlette>=0.27.0
+
+# Mock and fixtures
+responses>=0.23.0
+freezegun>=1.2.0
+
+# Database testing
+pytest-postgresql>=5.0.0
+pytest-redis>=3.0.0
+
+# Async testing utilities
+anyio>=3.7.0
+trio>=0.22.0
+
+# Performance testing
+pytest-benchmark>=4.0.0
+memory-profiler>=0.60.0
+
+# Test data generation
+factory-boy>=3.3.0
+faker>=19.0.0
+
+# Utilities
+pydantic>=2.0.0
+python-dateutil>=2.8.0
+
+# Mocking external services
+aioresponses>=0.7.4

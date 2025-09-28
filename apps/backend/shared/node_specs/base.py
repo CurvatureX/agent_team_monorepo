@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
+from pydantic import BaseModel, Field
+
 
 class ParameterType(Enum):
     """Supported parameter types for node configuration."""
@@ -49,10 +51,11 @@ class DataFormat:
 
 @dataclass
 class InputPortSpec:
-    """Specification for an input port."""
+    """Specification for an input port - Updated to match new workflow spec."""
 
     name: str
     type: str  # ConnectionType (MAIN, AI_TOOL, AI_MEMORY, etc.)
+    data_type: str = "dict"  # Data type: 'str', 'int', 'float', 'bool', 'dict', 'list'
     required: bool = False
     description: str = ""
     max_connections: int = 1  # Maximum connections, -1 for unlimited
@@ -62,10 +65,11 @@ class InputPortSpec:
 
 @dataclass
 class OutputPortSpec:
-    """Specification for an output port."""
+    """Specification for an output port - Updated to match new workflow spec."""
 
     name: str
     type: str  # ConnectionType
+    data_type: str = "dict"  # Data type: 'str', 'int', 'float', 'bool', 'dict', 'list'
     description: str = ""
     max_connections: int = -1  # -1 = unlimited
     data_format: Optional[DataFormat] = None
@@ -134,6 +138,21 @@ class NodeSpec:
         """Get all required input ports."""
         return [p for p in self.input_ports if p.required]
 
+    def validate_spec(self) -> bool:
+        """Validate that the node specification is complete and correct."""
+        # Check required fields
+        if not self.node_type or not self.subtype:
+            return False
+
+        # Validate port IDs are unique
+        input_ids = [port.id for port in self.input_ports]
+        output_ids = [port.id for port in self.output_ports]
+
+        if len(input_ids) != len(set(input_ids)) or len(output_ids) != len(set(output_ids)):
+            return False
+
+        return True
+
 
 @dataclass
 class ConnectionSpec:
@@ -142,7 +161,121 @@ class ConnectionSpec:
     source_port: str
     target_port: str
     connection_type: str  # ConnectionType
+    conversion_function: str  # Required Python function as string
     validation_required: bool = True
+
+
+# ============================================================================
+# CONVERSION FUNCTION SPECIFICATION
+# ============================================================================
+
+
+def validate_conversion_function(func_string: str) -> bool:
+    """
+    Validate that a conversion function string follows the required format.
+
+    Required format:
+    'def convert(input_data: Dict[str, Any]) -> Dict[str, Any]: return transformed_data'
+
+    Args:
+        func_string: Python function as string (REQUIRED, cannot be empty)
+
+    Returns:
+        bool: True if valid, False otherwise
+    """
+    if not func_string or not func_string.strip():
+        return False
+
+    # Check basic structure
+    if not func_string.strip().startswith("def convert("):
+        return False
+
+    if "-> Dict[str, Any]:" not in func_string:
+        return False
+
+    # Try to compile the function
+    try:
+        compile(func_string, "<conversion_function>", "exec")
+        return True
+    except SyntaxError:
+        return False
+
+
+def execute_conversion_function(func_string: str, input_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Execute a conversion function string safely.
+
+    Args:
+        func_string: Python function as string (REQUIRED)
+        input_data: Input data to transform
+
+    Returns:
+        Dict[str, Any]: Transformed data or original data if execution fails
+    """
+    if not func_string or not validate_conversion_function(func_string):
+        # If no valid conversion function provided, this is an error
+        # Log the issue but return original data to prevent workflow failure
+        print(f"ERROR: Invalid or missing conversion function. Using passthrough.")
+        return input_data
+
+    try:
+        # Create a restricted namespace for security
+        namespace = {
+            "Dict": Dict,
+            "Any": Any,
+            "__builtins__": {
+                "len": len,
+                "str": str,
+                "int": int,
+                "float": float,
+                "bool": bool,
+                "list": list,
+                "dict": dict,
+                "range": range,
+                "enumerate": enumerate,
+                "zip": zip,
+                "max": max,
+                "min": min,
+                "sum": sum,
+                "abs": abs,
+                "round": round,
+            },
+        }
+
+        # Execute the function definition
+        exec(func_string, namespace)
+
+        # Get the convert function
+        convert_func = namespace.get("convert")
+        if not convert_func:
+            return input_data
+
+        # Execute the conversion
+        result = convert_func(input_data)
+
+        # Ensure result is a dictionary
+        if isinstance(result, dict):
+            return result
+        else:
+            return {"converted_data": result}
+
+    except Exception as e:
+        # Log the error but return original data to prevent workflow failure
+        print(f"Conversion function execution failed: {e}")
+        return input_data
+
+
+# ============================================================================
+# CONVERSION FUNCTION EXAMPLES
+# ============================================================================
+
+CONVERSION_FUNCTION_EXAMPLES = {
+    "passthrough": """def convert(input_data: Dict[str, Any]) -> Dict[str, Any]: return input_data""",
+    "add_slack_formatting": """def convert(input_data: Dict[str, Any]) -> Dict[str, Any]: return {"text": f"🎭 {input_data.get('output', '')} 🎭", "channel": "#general"}""",
+    "extract_ai_response": """def convert(input_data: Dict[str, Any]) -> Dict[str, Any]: return {"message": input_data.get("output", ""), "timestamp": str(input_data.get("timestamp", ""))}""",
+    "trigger_to_ai_prompt": """def convert(input_data: Dict[str, Any]) -> Dict[str, Any]: return {"user_input": input_data.get("message", "Tell me a joke"), "context": "joke_generation"}""",
+    "format_notification": """def convert(input_data: Dict[str, Any]) -> Dict[str, Any]: return {"title": "Workflow Update", "body": f"Status: {input_data.get('status', 'unknown')}", "priority": "normal"}""",
+}
 
 
 # Connection types that correspond to the existing protocol buffer enums
@@ -165,3 +298,142 @@ class ConnectionType:
     FILE = "FILE"
     HTTP = "HTTP"
     MCP_TOOLS = "MCP_TOOLS"  # AI nodes ↔ TOOL nodes for MCP function calling
+
+
+# Import NodeType for the BaseNodeSpec class
+try:
+    from ..models.node_enums import NodeType
+except ImportError:
+    from ...models.node_enums import NodeType
+
+try:
+    from ..models.workflow_new import Node, Port
+except ImportError:
+    from ...models.workflow_new import Node, Port
+
+
+class BaseNodeSpec(BaseModel):
+    """Base class for all node specifications following the new workflow spec."""
+
+    # Core node identification
+    type: NodeType = Field(..., description="节点大类")
+    subtype: str = Field(..., description="节点细分种类")
+
+    # Node metadata
+    name: str = Field(..., description="节点名称，不可包含空格")
+    description: str = Field(..., description="节点的一句话简介")
+
+    # Configuration and parameters
+    configurations: Dict[str, Any] = Field(default_factory=dict, description="节点配置参数")
+    default_input_params: Dict[str, Any] = Field(default_factory=dict, description="默认运行时输入参数")
+    default_output_params: Dict[str, Any] = Field(default_factory=dict, description="默认运行时输出参数")
+
+    # Port definitions
+    input_ports: List[Port] = Field(default_factory=list, description="输入端口列表")
+    output_ports: List[Port] = Field(default_factory=list, description="输出端口列表")
+
+    # Attached nodes (只适用于AI_AGENT Node)
+    attached_nodes: Optional[List[str]] = Field(
+        default=None, description="附加节点ID列表，只适用于AI_AGENT节点调用TOOL和MEMORY节点"
+    )
+
+    # Optional metadata
+    version: str = Field(default="1.0", description="节点规范版本")
+    tags: List[str] = Field(default_factory=list, description="节点标签")
+
+    # Examples and documentation
+    examples: Optional[List[Dict[str, Any]]] = Field(default=None, description="使用示例")
+
+    def create_node_instance(
+        self,
+        node_id: str,
+        position: Optional[Dict[str, float]] = None,
+        attached_nodes: Optional[List[str]] = None,
+    ) -> Node:
+        """Create a Node instance based on this specification."""
+        # For AI_AGENT nodes, use attached_nodes if provided, otherwise use spec default
+        final_attached_nodes = attached_nodes if attached_nodes is not None else self.attached_nodes
+
+        node_data = {
+            "id": node_id,
+            "name": self.name,
+            "description": self.description,
+            "type": self.type,
+            "subtype": self.subtype,
+            "configurations": self.configurations.copy(),
+            "input_params": self.default_input_params.copy(),
+            "output_params": self.default_output_params.copy(),
+            "input_ports": self.input_ports.copy(),
+            "output_ports": self.output_ports.copy(),
+            "position": position,
+        }
+
+        # Only add attached_nodes if it's not None (AI_AGENT specific)
+        if final_attached_nodes is not None:
+            node_data["attached_nodes"] = final_attached_nodes
+
+        return Node(**node_data)
+
+    def validate_configuration(self, config: Dict[str, Any]) -> bool:
+        """Validate a configuration against this specification."""
+        # Basic validation - can be extended by subclasses
+        required_keys = set()
+        for key, value in self.configurations.items():
+            if isinstance(value, dict) and value.get("required", False):
+                required_keys.add(key)
+
+        return all(key in config for key in required_keys)
+
+
+def create_port(
+    port_id: str,
+    name: str,
+    data_type: str,
+    description: str = "",
+    required: bool = True,
+    max_connections: int = 1,
+) -> Port:
+    """Helper function to create a Port with proper validation."""
+    return Port(
+        id=port_id,
+        name=name,
+        data_type=data_type,
+        required=required,
+        description=description,
+        max_connections=max_connections,
+    )
+
+
+# Common port configurations for reuse
+COMMON_PORTS = {
+    "main_input": create_port("main", "main", "dict", "主输入端口", True, 1),
+    "main_output": create_port("main", "main", "dict", "主输出端口", False, -1),
+    "error_output": create_port("error", "error", "dict", "错误输出端口", False, -1),
+}
+
+
+# Common configuration schemas
+COMMON_CONFIGS = {
+    "timeout": {
+        "type": "integer",
+        "default": 30,
+        "min": 1,
+        "max": 300,
+        "description": "执行超时时间（秒）",
+        "required": False,
+    },
+    "retry_attempts": {
+        "type": "integer",
+        "default": 3,
+        "min": 0,
+        "max": 10,
+        "description": "失败重试次数",
+        "required": False,
+    },
+    "enabled": {
+        "type": "boolean",
+        "default": True,
+        "description": "是否启用此节点",
+        "required": False,
+    },
+}

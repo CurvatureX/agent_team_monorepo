@@ -49,6 +49,7 @@ except ImportError:
     UUID = lambda *args, **kwargs: None
     Enum = lambda *args, **kwargs: None
     DateTime = lambda *args, **kwargs: None
+    Numeric = lambda *args, **kwargs: None
 
     class DummyFunc:
         @staticmethod

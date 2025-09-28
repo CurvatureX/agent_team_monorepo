@@ -4,6 +4,7 @@ Replaces the gRPC client with HTTP/FastAPI calls
 """
 
 import asyncio
+import time
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -20,9 +21,14 @@ class WorkflowEngineHTTPClient:
     """
 
     def __init__(self):
-        self.base_url = (
-            settings.WORKFLOW_ENGINE_URL or f"http://{settings.WORKFLOW_ENGINE_HOST}:8002"
-        )
+        # Support v1 and v2 engines based on settings
+        self.use_v2 = bool(getattr(settings, "WORKFLOW_ENGINE_USE_V2", False))
+        if self.use_v2:
+            self.base_url = settings.workflow_engine_v2_http_url
+            self._api_prefix = "/api/v2"
+        else:
+            self.base_url = settings.workflow_engine_http_url
+            self._api_prefix = "/v1"
         # Separate timeouts for different operations
         self.connect_timeout = httpx.Timeout(5.0, connect=5.0)
         self.execute_timeout = httpx.Timeout(
@@ -83,11 +89,27 @@ class WorkflowEngineHTTPClient:
             if type_filter:
                 params["type_filter"] = type_filter
 
-            log_info(f"📨 HTTP request to {self.base_url}/v1/workflows/node-templates")
+            log_info(
+                f"📨 HTTP request to {self.base_url}{self._api_prefix}/workflows/node-templates"
+            )
 
             client = await self._get_client()
+            # v2 does not expose node-templates; rely on local specs when use_v2
+            if self.use_v2:
+                try:
+                    from shared.services.node_specs_api_service import get_node_specs_api_service
+
+                    specs_service = get_node_specs_api_service()
+                    return specs_service.list_all_node_templates(
+                        category_filter=category_filter,
+                        type_filter=type_filter,
+                        include_system_templates=include_system_templates,
+                    )
+                except Exception as e:
+                    log_error(f"Specs fallback failed: {e}")
+                    return []
             response = await client.get(
-                f"{self.base_url}/v1/workflows/node-templates", params=params
+                f"{self.base_url}{self._api_prefix}/workflows/node-templates", params=params
             )
             response.raise_for_status()
 
@@ -152,9 +174,79 @@ class WorkflowEngineHTTPClient:
                 headers["X-Trace-ID"] = trace_id
 
             client = await self._get_client()
-            response = await client.post(
-                f"{self.base_url}/v1/workflows", json=request_data, headers=headers
-            )
+            if self.use_v2:
+                # Convert to v2 creation payload (using spec-driven server-side instance creation)
+                v2_nodes = []
+                for nd in nodes or []:
+                    it = {
+                        "id": nd.get("id") or nd.get("name"),
+                        "name": nd.get("name"),
+                        "type": nd.get("type"),
+                        "subtype": nd.get("subtype"),
+                        "position": nd.get("position"),
+                        # map parameters -> configurations for v2
+                        "configurations": nd.get("parameters", {}),
+                        # attach list if present in UI payload
+                        "attached_nodes": nd.get("attached_nodes"),
+                    }
+                    v2_nodes.append(it)
+
+                def _convert_connections(conn_dict: Dict[str, Any]) -> List[Dict[str, str]]:
+                    result: List[Dict[str, str]] = []
+                    if not isinstance(conn_dict, dict):
+                        return result
+                    for src, node_conns in conn_dict.items():
+                        ctypes = (
+                            (node_conns or {}).get("connection_types", {})
+                            if isinstance(node_conns, dict)
+                            else {}
+                        )
+                        for from_port, arr in ctypes.items():
+                            conns = (
+                                (arr or {}).get("connections", []) if isinstance(arr, dict) else []
+                            )
+                            for idx, c in enumerate(conns):
+                                if not isinstance(c, dict):
+                                    continue
+                                tgt = c.get("node")
+                                to_port = c.get("type", "main")
+                                if not tgt:
+                                    continue
+                                result.append(
+                                    {
+                                        "id": f"{src}:{from_port}->{tgt}:{to_port}:{idx}",
+                                        "from_node": src,
+                                        "to_node": tgt,
+                                        "from_port": from_port,
+                                        "to_port": to_port,
+                                    }
+                                )
+                    return result
+
+                v2_payload = {
+                    "workflow_id": request_data.get("session_id")
+                    or request_data.get("user_id")
+                    or "wf_" + str(int(time.time() * 1000)),
+                    "name": name,
+                    "created_by": user_id,
+                    "created_time_ms": int(time.time() * 1000),
+                    "nodes": v2_nodes,
+                    "connections": _convert_connections(connections or {}),
+                    "triggers": [
+                        n.get("id") or n.get("name")
+                        for n in v2_nodes
+                        if (n.get("type") == "TRIGGER")
+                    ],
+                }
+                response = await client.post(
+                    f"{self.base_url}{self._api_prefix}/workflows", json=v2_payload, headers=headers
+                )
+            else:
+                response = await client.post(
+                    f"{self.base_url}{self._api_prefix}/workflows",
+                    json=request_data,
+                    headers=headers,
+                )
             response.raise_for_status()
 
             data = response.json()
@@ -185,9 +277,8 @@ class WorkflowEngineHTTPClient:
             # Use query timeout for getting workflows (longer timeout)
             async with httpx.AsyncClient(timeout=self.query_timeout, limits=self._limits) as client:
                 headers = {"Authorization": f"Bearer {access_token}"}
-                response = await client.get(
-                    f"{self.base_url}/v1/workflows/{workflow_id}", headers=headers
-                )
+            path = f"{self._api_prefix}/workflows/{workflow_id}"
+            response = await client.get(f"{self.base_url}{path}", headers=headers)
             response.raise_for_status()
 
             data = response.json()
@@ -258,12 +349,24 @@ class WorkflowEngineHTTPClient:
 
             start_time = time.time()
 
-            response = await client.post(
-                f"{self.base_url}/v1/workflows/{workflow_id}/execute",
-                json=request_data,
-                headers=headers,
-                timeout=timeout,  # Override timeout for this specific request
-            )
+            if self.use_v2:
+                v2_payload = {
+                    "trigger_type": "manual",
+                    "trigger_data": input_data or {},
+                }
+                response = await client.post(
+                    f"{self.base_url}{self._api_prefix}/workflows/{workflow_id}/execute",
+                    json=v2_payload,
+                    headers=headers,
+                    timeout=timeout,
+                )
+            else:
+                response = await client.post(
+                    f"{self.base_url}{self._api_prefix}/workflows/{workflow_id}/execute",
+                    json=request_data,
+                    headers=headers,
+                    timeout=timeout,  # Override timeout for this specific request
+                )
 
             end_time = time.time()
             response_time = end_time - start_time
@@ -314,7 +417,9 @@ class WorkflowEngineHTTPClient:
             log_info(f"📨 HTTP request to get execution status: {execution_id}")
 
             async with httpx.AsyncClient(timeout=self.query_timeout) as client:
-                response = await client.get(f"{self.base_url}/v1/executions/{execution_id}")
+                response = await client.get(
+                    f"{self.base_url}{self._api_prefix}/executions/{execution_id}"
+                )
                 response.raise_for_status()
 
                 data = response.json()
@@ -363,7 +468,7 @@ class WorkflowEngineHTTPClient:
 
             async with httpx.AsyncClient(timeout=self.query_timeout) as client:
                 response = await client.get(
-                    f"{self.base_url}/v1/workflows/{workflow_id}/executions",
+                    f"{self.base_url}{self._api_prefix}/workflows/{workflow_id}/executions",
                     params={"limit": limit},
                 )
                 response.raise_for_status()
@@ -423,11 +528,11 @@ class WorkflowEngineHTTPClient:
             import json
 
             log_info(f"🐛 DEBUG: Update request JSON: {json.dumps(update_data, indent=2)}")
-            log_info(f"🐛 DEBUG: URL: {self.base_url}/v1/workflows/{workflow_id}")
+            log_info(f"🐛 DEBUG: URL: {self.base_url}{self._api_prefix}/workflows/{workflow_id}")
 
             client = await self._get_client()
             response = await client.put(
-                f"{self.base_url}/v1/workflows/{workflow_id}", json=update_data
+                f"{self.base_url}{self._api_prefix}/workflows/{workflow_id}", json=update_data
             )
 
             # Log response details before checking status
@@ -467,7 +572,8 @@ class WorkflowEngineHTTPClient:
 
             async with httpx.AsyncClient(timeout=self.query_timeout) as client:
                 response = await client.delete(
-                    f"{self.base_url}/v1/workflows/{workflow_id}", params={"user_id": user_id}
+                    f"{self.base_url}{self._api_prefix}/workflows/{workflow_id}",
+                    params={"user_id": user_id},
                 )
                 response.raise_for_status()
 
@@ -514,7 +620,7 @@ class WorkflowEngineHTTPClient:
 
             async with httpx.AsyncClient(timeout=self.query_timeout) as client:
                 response = await client.get(
-                    f"{self.base_url}/v1/workflows", params=params, headers=headers
+                    f"{self.base_url}{self._api_prefix}/workflows", params=params, headers=headers
                 )
                 response.raise_for_status()
 
@@ -556,7 +662,7 @@ class WorkflowEngineHTTPClient:
                         query_params[key] = value
 
             response = await client.get(
-                f"{self.base_url}/v1/workflows/executions/{execution_id}/logs",
+                f"{self.base_url}{self._api_prefix}/workflows/executions/{execution_id}/logs",
                 headers=headers,
                 params=query_params,
                 timeout=self.logs_timeout,  # Use dedicated logs timeout (90s)
@@ -600,7 +706,7 @@ class WorkflowEngineHTTPClient:
             # Connect to the streaming endpoint
             async with client.stream(
                 "GET",
-                f"{self.base_url}/v1/executions/{execution_id}/logs/stream",
+                f"{self.base_url}{self._api_prefix}/executions/{execution_id}/logs/stream",
                 headers=headers,
                 timeout=httpx.Timeout(connect=5.0, read=None),  # No read timeout for streaming
             ) as response:

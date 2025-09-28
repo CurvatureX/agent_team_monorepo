@@ -127,6 +127,9 @@ class ExternalActionSubtype(str, Enum):
     TRELLO = "TRELLO"
     NOTION = "NOTION"
 
+    # Web Scraping & Data Extraction
+    FIRECRAWL = "FIRECRAWL"
+
     # Cloud Services
     AWS_ACTION = "AWS_ACTION"
     GCP_ACTION = "GCP_ACTION"
@@ -216,8 +219,6 @@ class HumanLoopSubtype(str, Enum):
     TEAMS_INTERACTION = "TEAMS_INTERACTION"
 
     # App Interactions - with AI response analysis for in-app interactions
-    IN_APP_APPROVAL = "IN_APP_APPROVAL"
-    FORM_SUBMISSION = "FORM_SUBMISSION"
     MANUAL_REVIEW = "MANUAL_REVIEW"
 
 

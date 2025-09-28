@@ -420,7 +420,9 @@ class Workflow(BaseModel):
 ## 执行状态相关枚举
 
 ### ExecutionStatus
+
 参考现有 `shared.models.execution.ExecutionStatus` 并扩展:
+
 ```python
 class ExecutionStatus(str, Enum):
     """工作流执行状态"""
@@ -437,6 +439,7 @@ class ExecutionStatus(str, Enum):
 ```
 
 ### NodeExecutionStatus
+
 ```python
 class NodeExecutionStatus(str, Enum):
     """节点执行状态"""
@@ -450,6 +453,7 @@ class NodeExecutionStatus(str, Enum):
 ```
 
 ### ExecutionEventType
+
 ```python
 class ExecutionEventType(str, Enum):
     """执行事件类型 - 用于WebSocket实时推送"""
@@ -466,6 +470,7 @@ class ExecutionEventType(str, Enum):
 ```
 
 ### LogLevel
+
 ```python
 class LogLevel(str, Enum):
     """日志级别"""
@@ -478,6 +483,7 @@ class LogLevel(str, Enum):
 ## 执行数据结构定义
 
 ### TriggerInfo
+
 ```python
 class TriggerInfo(BaseModel):
     """触发信息"""
@@ -489,6 +495,7 @@ class TriggerInfo(BaseModel):
 ```
 
 ### TokenUsage
+
 ```python
 class TokenUsage(BaseModel):
     """Token使用情况"""
@@ -498,6 +505,7 @@ class TokenUsage(BaseModel):
 ```
 
 ### LogEntry
+
 ```python
 class LogEntry(BaseModel):
     """日志条目"""
@@ -509,6 +517,7 @@ class LogEntry(BaseModel):
 ```
 
 ### ExecutionError
+
 ```python
 class ExecutionError(BaseModel):
     """执行错误信息"""
@@ -521,6 +530,7 @@ class ExecutionError(BaseModel):
 ```
 
 ### NodeError
+
 ```python
 class NodeError(BaseModel):
     """节点错误信息"""
@@ -532,6 +542,7 @@ class NodeError(BaseModel):
 ```
 
 ### NodeExecutionDetails
+
 ```python
 class NodeExecutionDetails(BaseModel):
     """节点执行详情 - 根据节点类型的不同而不同"""
@@ -569,6 +580,7 @@ class NodeExecutionDetails(BaseModel):
 ```
 
 ### NodeExecution
+
 ```python
 class NodeExecution(BaseModel):
     """单个节点执行详情"""
@@ -605,7 +617,9 @@ class NodeExecution(BaseModel):
 ```
 
 ### WorkflowExecution
+
 参考现有 `shared.models.execution.Execution` 并大幅扩展:
+
 ```python
 class WorkflowExecution(BaseModel):
     """工作流执行整体状态"""
@@ -645,9 +659,63 @@ class WorkflowExecution(BaseModel):
     updated_at: Optional[str] = Field(default=None, description="更新时间")
 ```
 
+## AI_AGENT 节点的 attached_nodes 执行流程
+
+attached_nodes 是 AI_AGENT 节点的特殊功能，用于在同一执行上下文中集成 MEMORY 和 TOOL 节点。这些节点**不作为独立的工作流步骤执行**，而是作为支持性功能为 AI 代理提供增强能力。
+
+### 执行流程说明
+
+当 AI_AGENT 节点执行时，按以下顺序处理 attached_nodes：
+
+1. **内存上下文加载**（执行前）
+
+   - 检测 attached_nodes 中的 MEMORY 节点
+   - 从 MEMORY 节点加载相关的对话历史和上下文信息
+   - 将内存上下文添加到 AI 提示中，增强对话连续性
+
+2. **工具发现**（执行前）
+
+   - 检测 attached_nodes 中的 TOOL 节点
+   - 发现可用的 MCP (Model Context Protocol) 工具函数
+   - 将可用工具注册到 AI 提供商，使 AI 能够调用这些工具
+
+3. **AI 响应生成**
+
+   - 使用增强的提示（包含内存上下文）生成响应
+   - AI 可以调用已注册的工具函数
+   - 生成完整的 AI 响应
+
+4. **对话存储**（执行后）
+   - 将用户消息和 AI 响应作为完整的对话交换
+   - 存储到 attached_nodes 中的 MEMORY 节点中
+   - 确保对话历史的持久化
+
+### 重要说明
+
+- **MEMORY 节点**：提供**上下文增强**和**对话持久化**功能，不需要独立执行
+- **TOOL 节点**：提供**工具发现和注册**功能，工具调用由 AI 提供商内部处理
+- **执行顺序**：attached_nodes 的处理完全在 AI_AGENT 节点内部完成，不影响工作流的整体执行顺序
+- **数据流**：attached_nodes 不参与工作流的数据流连接（Connection），它们的输入输出由 AI_AGENT 节点管理
+
+### 配置示例
+
+```json
+{
+  "id": "chat_ai",
+  "type": "AI_AGENT",
+  "subtype": "ANTHROPIC_CLAUDE",
+  "configurations": {
+    "model": "claude-3-5-haiku-20241022",
+    "prompt": "You are a helpful assistant with memory."
+  },
+  "attached_nodes": ["conversation_memory", "mcp_tools"]
+}
+```
+
 ## 实时更新事件结构
 
 ### ExecutionUpdateData
+
 ```python
 class ExecutionUpdateData(BaseModel):
     """执行更新数据"""
@@ -660,6 +728,7 @@ class ExecutionUpdateData(BaseModel):
 ```
 
 ### ExecutionUpdateEvent
+
 ```python
 class ExecutionUpdateEvent(BaseModel):
     """实时更新事件 - 用于WebSocket推送"""
@@ -669,9 +738,10 @@ class ExecutionUpdateEvent(BaseModel):
     data: ExecutionUpdateData = Field(..., description="更新数据")
 ```
 
-## API接口定义
+## API 接口定义
 
 ### WorkflowExecutionSummary
+
 ```python
 class WorkflowExecutionSummary(BaseModel):
     """工作流执行摘要 - 用于列表显示"""
@@ -688,6 +758,7 @@ class WorkflowExecutionSummary(BaseModel):
 ```
 
 ### GetExecutionResponse
+
 ```python
 class GetExecutionResponse(BaseModel):
     """获取执行详情响应"""
@@ -696,6 +767,7 @@ class GetExecutionResponse(BaseModel):
 ```
 
 ### GetExecutionsResponse
+
 ```python
 class GetExecutionsResponse(BaseModel):
     """获取执行列表响应"""
@@ -706,6 +778,7 @@ class GetExecutionsResponse(BaseModel):
 ```
 
 ### SubscriptionResponse
+
 ```python
 class SubscriptionResponse(BaseModel):
     """WebSocket订阅响应"""
@@ -716,6 +789,7 @@ class SubscriptionResponse(BaseModel):
 ```
 
 ### ExecutionActionRequest
+
 ```python
 class ExecutionActionRequest(BaseModel):
     """用户操作请求"""
@@ -724,6 +798,7 @@ class ExecutionActionRequest(BaseModel):
 ```
 
 ### UserInputRequest
+
 ```python
 class UserInputRequest(BaseModel):
     """用户输入请求"""
@@ -733,6 +808,7 @@ class UserInputRequest(BaseModel):
 ```
 
 ### ExecutionActionResponse
+
 ```python
 class ExecutionActionResponse(BaseModel):
     """执行操作响应"""
@@ -744,31 +820,429 @@ class ExecutionActionResponse(BaseModel):
 ## 数据结构特点说明
 
 ### 实时状态追踪
-- `current_node_id` 和 `next_nodes` 让UI能清楚显示当前执行位置
+
+- `current_node_id` 和 `next_nodes` 让 UI 能清楚显示当前执行位置
 - `NodeExecutionStatus` 详细区分节点的各种状态
-- `ExecutionUpdateEvent` 支持WebSocket实时推送更新
+- `ExecutionUpdateEvent` 支持 WebSocket 实时推送更新
 
 ### 详细的输入输出记录
-- `input_data` 和 `output_data` 使用Dict结构，按端口ID组织
+
+- `input_data` 和 `output_data` 使用 Dict 结构，按端口 ID 组织
 - 支持流式输出的部分数据更新 (`partial_output`)
 - 完整记录数据转换过程
 
 ### 丰富的执行上下文
-- `execution_sequence` 记录执行顺序，便于UI显示执行路径
+
+- `execution_sequence` 记录执行顺序，便于 UI 显示执行路径
 - `NodeExecutionDetails` 根据不同节点类型提供特定信息
 - `logs` 和 `metrics` 支持调试和监控
 
 ### 错误处理和重试机制
+
 - 详细的错误信息结构
 - 重试计数和状态跟踪
 - 区分可重试和不可重试的错误
 
 ### 用户交互支持
-- Human-in-the-loop节点的特殊状态处理
+
+- Human-in-the-loop 节点的特殊状态处理
 - 用户输入请求的结构化定义
 - 支持暂停和恢复执行
 
-### UI友好的设计
-- 分离数据模型和UI状态
+### UI 友好的设计
+
+- 分离数据模型和 UI 状态
 - 支持过滤、搜索和多种视图模式
 - 实时连接状态监控
+
+# Human-in-the-Loop (HIL) 节点执行流程
+
+## HIL 节点概述
+
+Human-in-the-Loop (HIL) 节点是工作流系统中的一个特殊节点类型，用于在自动化流程中集成人工决策和输入。HIL 节点具有以下核心特性：
+
+- **工作流暂停**: 当执行到 HIL 节点时，工作流会暂停并等待人工响应
+- **状态持久化**: 工作流的执行状态会完整保存到数据库中
+- **多渠道交互**: 支持 Slack、Email、Webhook、In-App 等多种交互方式
+- **AI 响应分类**: 内置 AI 能力自动判断人工响应是否相关
+- **超时管理**: 支持响应超时和自动处理机制
+
+## HIL 节点配置参数
+
+### 基础配置
+
+```json
+{
+  "interaction_type": "approval", // 交互类型: approval, input, selection, review
+  "channel_type": "slack", // 通信渠道: slack, email, webhook, in_app
+  "timeout_seconds": 3600, // 超时时间 (60秒-24小时)
+  "title": "Workflow Approval Required",
+  "description": "Please approve this workflow execution",
+  "timeout_action": "fail" // 超时行为: fail, continue, default_response
+}
+```
+
+### 交互类型特定配置
+
+```json
+// 审批类型 (approval)
+{
+  "approval_options": ["approve", "reject", "需要修改"]
+}
+
+// 输入类型 (input)
+{
+  "input_fields": [
+    {"name": "budget", "type": "number", "required": true},
+    {"name": "notes", "type": "text", "required": false}
+  ]
+}
+
+// 选择类型 (selection)
+{
+  "selection_options": ["Option A", "Option B", "Option C"],
+  "allow_multiple": false
+}
+
+// 审核类型 (review)
+{
+  "review_criteria": ["质量检查", "合规性审核", "安全评估"]
+}
+```
+
+## HIL 执行流程详解
+
+### 1. HIL 节点启动阶段
+
+```mermaid
+graph TD
+    A[工作流执行到HIL节点] --> B[参数验证]
+    B --> C[提取用户上下文]
+    C --> D[创建HIL交互记录]
+    D --> E[创建工作流暂停记录]
+    E --> F[返回暂停信号]
+    F --> G[工作流执行引擎暂停]
+```
+
+**流程详情:**
+
+1. **参数验证**: 验证 HIL 节点配置的完整性和有效性
+
+   - 检查必需参数 (interaction_type, channel_type, timeout_seconds)
+   - 验证超时时间范围 (60 秒-24 小时)
+   - 验证交互类型特定配置 (如 input 类型需要 input_fields)
+
+2. **用户上下文提取**: 从触发信息和执行上下文中提取用户 ID
+
+   - 优先从触发器信息获取用户 ID
+   - 回退到执行上下文中的用户信息
+   - 如果无法获取用户 ID，返回错误
+
+3. **HIL 交互记录创建**: 在数据库中创建 hil_interactions 记录
+
+   ```sql
+   INSERT INTO hil_interactions (
+     workflow_id, execution_id, node_id, user_id,
+     interaction_type, channel_type, status,
+     request_data, timeout_at, created_at
+   ) VALUES (...)
+   ```
+
+4. **工作流暂停记录**: 创建 workflow_execution_pauses 记录
+
+   ```sql
+   INSERT INTO workflow_execution_pauses (
+     execution_id, node_id, pause_reason,
+     resume_conditions, pause_context, status
+   ) VALUES (...)
+   ```
+
+5. **暂停信号返回**: HIL 节点返回特殊的暂停信号
+   ```json
+   {
+     "_hil_wait": true,
+     "_hil_interaction_id": "uuid",
+     "_hil_timeout_seconds": 3600,
+     "_hil_node_id": "approval_node",
+     "main": {
+       "status": "waiting_for_human",
+       "interaction_id": "uuid",
+       "timeout_at": "2025-01-26T15:00:00Z"
+     }
+   }
+   ```
+
+### 2. 工作流暂停阶段
+
+```mermaid
+graph TD
+    A[工作流引擎检测暂停信号] --> B[保存执行状态到数据库]
+    B --> C[启动超时监控]
+    C --> D[发送交互请求]
+    D --> E[工作流进入PAUSED状态]
+    E --> F[等待人工响应或超时]
+```
+
+**关键实现:**
+
+1. **执行状态持久化**: 工作流引擎保存完整的执行上下文
+
+   - 当前节点执行状态
+   - 输入输出数据快照
+   - 执行序列和下一步节点信息
+   - 临时变量和上下文数据
+
+2. **超时监控启动**: 后台服务开始监控超时
+
+   ```python
+   # HIL Timeout Manager 后台监控
+   async def _timeout_monitoring_loop(self):
+       while self._is_running:
+           await self.process_expired_interactions()
+           await self.send_timeout_warnings()
+           await asyncio.sleep(self.check_interval_minutes * 60)
+   ```
+
+3. **交互请求发送**: 通过配置的渠道发送交互请求
+   - Slack: 发送消息到指定频道或用户
+   - Email: 发送邮件通知
+   - Webhook: 调用外部 Webhook
+   - In-App: 创建应用内通知
+
+### 3. 人工响应处理阶段
+
+```mermaid
+graph TD
+    A[收到Webhook响应] --> B[AI响应分类]
+    B --> C{响应相关?}
+    C -->|是| D[更新HIL交互状态]
+    C -->|否| E[忽略响应]
+    D --> F[触发工作流恢复]
+    F --> G[发送响应确认]
+```
+
+**AI 响应分类流程:**
+
+1. **响应接收**: 系统接收来自各渠道的响应数据
+
+2. **AI 分类分析**: 使用 Google Gemini 进行智能分类
+
+   ```python
+   # 8因子分析提示词
+   classification_prompt = f"""
+   分析因子:
+   1. 内容相关性: 响应内容是否与交互标题/消息相关
+   2. 期望响应模式: 是否匹配预期的批准/拒绝/输入模式
+   3. 渠道一致性: 是否来自预期的通信渠道
+   4. 用户上下文: 响应者是否适合此交互
+   5. 时间合理性: 响应时间是否合理
+   6. 响应质量: 是否为有意义的人工响应
+   7. 线程上下文: 是否正确关联到原始请求
+   8. 动作关键词: 是否包含批准关键词 (approve, yes, reject, no 等)
+   """
+   ```
+
+3. **分类结果处理**:
+   - `relevant` (相关, score >= 0.7): 处理响应并恢复工作流
+   - `filtered` (无关, score <= 0.3): 忽略响应
+   - `uncertain` (不确定, 0.3 < score < 0.7): 记录但不自动处理
+
+### 4. 工作流恢复阶段
+
+```mermaid
+graph TD
+    A[收到有效人工响应] --> B[更新HIL交互状态为completed]
+    B --> C[更新暂停记录为resumed]
+    C --> D[从数据库恢复执行状态]
+    D --> E[构建恢复数据]
+    E --> F[触发工作流引擎继续执行]
+    F --> G[HIL节点输出响应数据]
+```
+
+**恢复流程实现:**
+
+1. **状态更新**: 更新数据库记录状态
+
+   ```sql
+   UPDATE hil_interactions
+   SET status = 'completed', response_data = ?, updated_at = NOW()
+   WHERE id = ?;
+
+   UPDATE workflow_execution_pauses
+   SET status = 'resumed', resume_reason = 'human_response', resumed_at = NOW()
+   WHERE execution_id = ? AND node_id = ?;
+   ```
+
+2. **执行状态恢复**: 工作流引擎恢复执行上下文
+
+   - 恢复节点执行状态
+   - 重建输入输出数据
+   - 恢复临时变量和上下文
+
+3. **HIL 节点输出**: 构建包含人工响应的输出数据
+   ```json
+   {
+     "main": {
+       "status": "completed",
+       "response_type": "approval",
+       "response_data": {
+         "action": "approve",
+         "user_id": "user123",
+         "timestamp": "2025-01-26T14:30:00Z",
+         "notes": "项目看起来不错，批准执行"
+       }
+     }
+   }
+   ```
+
+### 5. 超时处理机制
+
+```mermaid
+graph TD
+    A[后台监控检测到超时] --> B[发送超时警告]
+    B --> C[更新交互状态为timeout]
+    C --> D[根据timeout_action决定处理方式]
+    D --> E{超时动作}
+    E -->|fail| F[工作流失败]
+    E -->|continue| G[使用默认响应继续]
+    E -->|default_response| H[使用配置的默认响应]
+    F --> I[发送超时通知]
+    G --> I
+    H --> I
+```
+
+**超时处理策略:**
+
+1. **警告通知**: 超时前 15 分钟发送警告
+
+   ```python
+   warning_data = {
+       "interaction_id": interaction_id,
+       "workflow_name": "审批工作流",
+       "minutes_remaining": 15,
+       "timeout_at": "2025-01-26T15:00:00Z"
+   }
+   ```
+
+2. **超时动作选择**:
+
+   - `fail`: 工作流执行失败，需要人工干预
+   - `continue`: 工作流继续，使用系统默认响应
+   - `default_response`: 使用节点配置中的默认响应
+
+3. **工作流恢复**: 根据超时动作恢复或终止工作流
+
+## HIL 数据库表结构
+
+### hil_interactions 表
+
+```sql
+CREATE TABLE hil_interactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workflow_id UUID NOT NULL,
+    execution_id UUID NOT NULL,
+    node_id TEXT NOT NULL,
+    user_id UUID NOT NULL,
+    interaction_type hil_interaction_type NOT NULL,
+    channel_type hil_channel_type NOT NULL,
+    status hil_interaction_status DEFAULT 'pending',
+    priority INTEGER DEFAULT 1,
+    request_data JSONB NOT NULL,
+    response_data JSONB,
+    timeout_at TIMESTAMPTZ NOT NULL,
+    warning_sent BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+### workflow_execution_pauses 表
+
+```sql
+CREATE TABLE workflow_execution_pauses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    execution_id UUID NOT NULL,
+    node_id TEXT NOT NULL,
+    pause_reason TEXT NOT NULL,
+    resume_conditions JSONB,
+    pause_context JSONB,
+    status TEXT DEFAULT 'active',
+    paused_at TIMESTAMPTZ DEFAULT NOW(),
+    resumed_at TIMESTAMPTZ,
+    resume_reason TEXT,
+    resume_data JSONB
+);
+```
+
+## HIL 节点在工作流执行状态中的体现
+
+### ExecutionStatus 扩展
+
+```python
+class ExecutionStatus(str, Enum):
+    WAITING_FOR_HUMAN = "WAITING_FOR_HUMAN"  # HIL 专用状态
+    PAUSED = "PAUSED"                        # 工作流暂停状态
+```
+
+### NodeExecutionStatus 扩展
+
+```python
+class NodeExecutionStatus(str, Enum):
+    WAITING_INPUT = "waiting_input"          # HIL 节点等待输入
+```
+
+### HIL 特有的执行详情
+
+```python
+class NodeExecutionDetails(BaseModel):
+    # Human_in_the_loop 特有字段
+    user_prompt: Optional[str] = None        # 给用户的提示
+    user_response: Optional[Any] = None      # 用户的响应
+    waiting_since: Optional[int] = None      # 开始等待的时间
+    interaction_type: Optional[str] = None   # 交互类型
+    channel_type: Optional[str] = None       # 通信渠道
+    timeout_at: Optional[int] = None         # 超时时间
+```
+
+## 前端交互支持
+
+### WebSocket 事件类型
+
+```python
+class ExecutionEventType(str, Enum):
+    USER_INPUT_REQUIRED = "user_input_required"  # 需要用户输入
+    EXECUTION_PAUSED = "execution_paused"        # 执行暂停
+    EXECUTION_RESUMED = "execution_resumed"      # 执行恢复
+```
+
+### 用户输入 API
+
+```python
+class UserInputRequest(BaseModel):
+    execution_id: str
+    node_id: str
+    input_data: Any  # 用户提供的输入数据
+```
+
+## HIL 最佳实践
+
+### 1. 配置建议
+
+- 设置合理的超时时间 (建议 1-4 小时)
+- 为关键决策点使用 `approval` 类型
+- 为需要详细信息的场景使用 `input` 类型
+- 配置适当的超时处理策略
+
+### 2. 错误处理
+
+- 始终验证 HIL 配置参数
+- 提供清晰的错误消息和解决方案
+- 支持重试机制
+
+### 3. 用户体验
+
+- 提供清晰的交互提示
+- 支持多语言本地化
+- 实现实时状态更新
+
+这个 HIL 系统为工作流提供了强大的人机协作能力，确保在需要人工判断的关键环节能够无缝集成人工智慧，同时保持工作流的自动化特性。

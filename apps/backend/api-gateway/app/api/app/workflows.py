@@ -19,6 +19,7 @@ from app.models import (
     DeploymentStatus,
     ExecutionResult,
     ManualTriggerSpec,
+    NewWorkflow,
     NodeTemplateListResponse,
     ResponseModel,
     Workflow,
@@ -33,9 +34,10 @@ from app.services.workflow_scheduler_http_client import get_workflow_scheduler_c
 
 # Node converter no longer needed - using unified models directly
 from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from shared.models.workflow import ExecuteWorkflowRequest
+# Legacy import removed - ExecuteWorkflowRequest not used in this file
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -422,7 +424,7 @@ async def list_all_node_templates(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.post("/", response_model=WorkflowResponse)
+@router.post("/")
 async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Depends()):
     """
     Create a new workflow
@@ -447,8 +449,10 @@ async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Dep
         if request.nodes:
             nodes_list = [node.model_dump() for node in request.nodes]
 
-        # Use connections as-is (no conversion needed - using unified models)
-        connections_dict = request.connections or {}
+        # Use connections as-is - now a list of Connection objects
+        connections_list = (
+            [conn.model_dump() for conn in request.connections] if request.connections else []
+        )
 
         # Convert settings to dict if it's an object
         settings_dict = {}
@@ -467,7 +471,7 @@ async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Dep
             name=request.name,
             description=request.description,
             nodes=nodes_list,
-            connections=connections_dict,
+            connections=connections_list,
             settings=settings_dict,
             static_data=getattr(request, "static_data", None) or {},
             tags=request.tags or [],
@@ -488,49 +492,8 @@ async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Dep
 
         logger.info(f"✅ Workflow created: {workflow_data['id']}")
 
-        # Create workflow object - filter out extra fields from Workflow Engine
-        try:
-            # Log the workflow data structure for debugging
-            logger.info(f"🐛 DEBUG: workflow_data keys: {list(workflow_data.keys())}")
-
-            # Filter to only include fields that WorkflowData expects
-            filtered_data = {
-                key: value
-                for key, value in workflow_data.items()
-                if key
-                in [
-                    "id",
-                    "name",
-                    "description",
-                    "nodes",
-                    "connections",
-                    "settings",
-                    "static_data",
-                    "pin_data",
-                    "tags",
-                    "active",
-                    "created_at",
-                    "updated_at",
-                    "version",
-                    "icon_url",
-                    "deployment_status",
-                    "deployed_at",
-                    "latest_execution_status",
-                    "latest_execution_time",
-                    "latest_execution_id",
-                ]
-            }
-            logger.info(f"🐛 DEBUG: filtered_data keys: {list(filtered_data.keys())}")
-
-            workflow = Workflow(**filtered_data)
-        except Exception as model_error:
-            logger.error(f"❌ Error creating Workflow model: {model_error}")
-            logger.error(f"🐛 DEBUG: workflow_data: {workflow_data}")
-            raise HTTPException(
-                status_code=500, detail=f"Failed to create workflow object: {str(model_error)}"
-            )
-
-        return WorkflowResponse(workflow=workflow, message="Workflow created successfully")
+        # Return result from workflow engine v2 as-is using JSONResponse to bypass validation
+        return JSONResponse(content=result)
 
     except (ValidationError, HTTPException):
         raise
