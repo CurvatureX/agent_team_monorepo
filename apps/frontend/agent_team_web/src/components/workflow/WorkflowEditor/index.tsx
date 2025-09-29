@@ -18,6 +18,7 @@ interface WorkflowEditorProps {
   readOnly?: boolean;
   className?: string;
   onExecute?: (workflowId: string) => void;  // 执行回调
+  onToggleFullscreen?: () => void;  // 全屏切换回调
 }
 
 const WorkflowEditorContent: React.FC<WorkflowEditorProps> = ({
@@ -28,6 +29,7 @@ const WorkflowEditorContent: React.FC<WorkflowEditorProps> = ({
   readOnly = false,
   className,
   onExecute,
+  onToggleFullscreen,
 }) => {
   const { addNode, exportWorkflow } = useWorkflow();
   const { detailsPanelOpen } = useEditorUI();
@@ -114,6 +116,7 @@ const WorkflowEditorContent: React.FC<WorkflowEditorProps> = ({
           isSaving={isSaving}
           readOnly={readOnly}
           onExecute={onExecute}
+          onToggleFullscreen={onToggleFullscreen}
         />
       </div>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, DragEvent, useRef } from 'react';
-import { X, Menu } from 'lucide-react';
+import { X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useNodeTemplates, useEditorUI } from '@/store/hooks';
@@ -213,25 +213,6 @@ export const NodeSidebar: React.FC<NodeSidebarProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Collapsed state - floating button */}
-      {sidebarCollapsed && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.8 }}
-          className="absolute left-4 top-4 z-10"
-        >
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setSidebarCollapsed(false)}
-            className="shadow-lg"
-          >
-            <Menu className="w-4 h-4" />
-          </Button>
-        </motion.div>
-      )}
     </>
   );
 };

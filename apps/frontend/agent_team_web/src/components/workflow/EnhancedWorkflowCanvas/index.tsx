@@ -36,6 +36,7 @@ interface EnhancedWorkflowCanvasProps {
   readOnly?: boolean;
   className?: string;
   onExecute?: (workflowId: string) => void;
+  onToggleFullscreen?: () => void;
 }
 
 // Define node types
@@ -50,6 +51,7 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
   readOnly = false,
   className,
   onExecute,
+  onToggleFullscreen,
 }) => {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { project } = useReactFlow();
@@ -464,14 +466,15 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
           />
         )}
         
-        <CanvasControls 
-          readOnly={readOnly} 
+        <CanvasControls
+          readOnly={readOnly}
           onSave={handleSaveWithCurrentState}
           isSaving={isSaving}
           onExecute={handleExecute}
           onStopExecution={handleStopExecution}
           isExecuting={isExecuting || isPolling}
           executionStatus={executionStatus}
+          onToggleFullscreen={onToggleFullscreen}
         />
         
         {showMinimap && (

@@ -2,17 +2,19 @@
 
 import React from 'react';
 import { Panel, useReactFlow } from 'reactflow';
-import { 
-  ZoomIn, 
-  ZoomOut, 
-  Fullscreen, 
-  Grid3X3, 
+import {
+  ZoomIn,
+  ZoomOut,
+  Fullscreen,
+  Grid3X3,
   Map,
   Lock,
   Save,
   Play,
   Square,
-  RefreshCw
+  RefreshCw,
+  Maximize2,
+  Library
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useEditorUI } from '@/store/hooks';
@@ -27,19 +29,21 @@ interface CanvasControlsProps {
   onStopExecution?: () => void;
   isExecuting?: boolean;
   executionStatus?: 'idle' | 'running' | 'completed' | 'failed';
+  onToggleFullscreen?: () => void;
 }
 
-export const CanvasControls: React.FC<CanvasControlsProps> = ({ 
+export const CanvasControls: React.FC<CanvasControlsProps> = ({
   readOnly = false,
   onSave,
   isSaving = false,
   onExecute,
   onStopExecution,
   isExecuting = false,
-  executionStatus = 'idle'
+  executionStatus = 'idle',
+  onToggleFullscreen
 }) => {
   const { fitView, zoomIn, zoomOut } = useReactFlow();
-  const { showGrid, showMinimap, setShowGrid, setShowMinimap } = useEditorUI();
+  const { showGrid, showMinimap, setShowGrid, setShowMinimap, sidebarCollapsed, setSidebarCollapsed } = useEditorUI();
 
   const ControlButton: React.FC<{
     onClick: () => void;
@@ -99,7 +103,27 @@ export const CanvasControls: React.FC<CanvasControlsProps> = ({
             title={showMinimap ? "Hide Minimap" : "Show Minimap"}
             active={showMinimap}
           />
-          
+
+          {/* Node Template Sidebar toggle */}
+          <ControlButton
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            icon={Library}
+            title={sidebarCollapsed ? "Show Node Library" : "Hide Node Library"}
+            active={!sidebarCollapsed}
+          />
+
+          {/* Fullscreen button */}
+          {onToggleFullscreen && (
+            <>
+              <Separator orientation="vertical" className="h-6 mx-1" />
+              <ControlButton
+                onClick={onToggleFullscreen}
+                icon={Maximize2}
+                title="Toggle Fullscreen"
+              />
+            </>
+          )}
+
           {/* Save button */}
           {!readOnly && onSave && (
             <>
