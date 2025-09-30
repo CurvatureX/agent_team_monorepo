@@ -1,4 +1,5 @@
 import React from "react";
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 
 const Avatar = React.forwardRef<
@@ -18,15 +19,23 @@ Avatar.displayName = "Avatar";
 
 const AvatarImage = React.forwardRef<
   HTMLImageElement,
-  React.ImgHTMLAttributes<HTMLImageElement>
->(({ className, alt = "", ...props }, ref) => (
-  <img
-    ref={ref}
-    alt={alt}
-    className={cn("aspect-square h-full w-full", className)}
-    {...props}
-  />
-));
+  React.ImgHTMLAttributes<HTMLImageElement> & { src?: string }
+>(({ className, alt = "", src, ...props }, _ref) => {
+  if (!src) return null;
+
+  // Filter out incompatible props for Next.js Image
+  const { width: _width, height: _height, loading: _loading, decoding: _decoding, fetchPriority: _fetchPriority, crossOrigin: _crossOrigin, ...restProps } = props;
+
+  return (
+    <Image
+      src={src}
+      alt={alt}
+      fill
+      className={cn("aspect-square object-cover", className)}
+      {...restProps}
+    />
+  );
+});
 AvatarImage.displayName = "AvatarImage";
 
 const AvatarFallback = React.forwardRef<

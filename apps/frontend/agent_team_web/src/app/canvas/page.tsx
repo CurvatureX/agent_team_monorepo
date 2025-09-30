@@ -2,35 +2,17 @@
 
 import React, { useRef } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
+import Image from "next/image";
 import {
   Bot,
   Activity,
   Clock,
   AlertTriangle,
-  Play,
   Pause,
-  TrendingUp,
-  Users,
-  Calendar,
-  RefreshCw,
-  Layers,
   CheckCircle,
   XCircle,
-  Plus,
-  Upload,
-  FileSearch,
-  Settings,
-  Zap,
-  Search,
-  Filter,
-  ChevronDown,
   ChevronRight,
   ChevronLeft,
-  ExternalLink,
-  User,
-  ArrowLeft,
-  ArrowRight,
 } from "lucide-react";
 import { useWorkflowsApi } from "@/lib/api/hooks/useWorkflowsApi";
 import { useAuth } from "@/contexts/auth-context";
@@ -38,29 +20,53 @@ import { cn } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+
+// Type definitions
+interface WorkflowItem {
+  id: string;
+  name: string;
+  description: string;
+  status: string;
+  deploymentStatus: string;
+  lastExecutionStatus: string;
+  lastRunTime: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  executionCount: number;
+  successRate: number;
+  averageDuration: number;
+  trigger: string | null;
+  tags: string[];
+  logoUrl: string | null;
+  active: boolean;
+  version: string;
+}
+
+interface RawWorkflow {
+  id: string;
+  name?: string;
+  description?: string;
+  status?: string;
+  deployment_status?: string;
+  latest_execution_status?: string;
+  latest_execution_time?: number;
+  created_at?: number | string;
+  updated_at?: number | string;
+  execution_count?: number;
+  success_rate?: number;
+  average_duration?: number;
+  trigger?: string | null;
+  tags?: string[];
+  logo_url?: string | null;
+  active?: boolean;
+  version?: string;
+}
 
 // Define deployment status configuration outside component for consistency
 const deploymentStatusConfig = {
@@ -75,8 +81,8 @@ function CanvasPage() {
   const router = useRouter();
   const { session, loading: authLoading } = useAuth();
   const { workflows, isLoading, isError, error, mutate } = useWorkflowsApi();
-  const [searchQuery, setSearchQuery] = React.useState("");
-  const [statusFilter, setStatusFilter] = React.useState("all");
+  const [searchQuery] = React.useState("");
+  const [statusFilter] = React.useState("all");
   const scrollRefs = useRef<Record<string, HTMLElement | null>>({});
   const [scrollStates, setScrollStates] = React.useState<Record<string, { showLeft: boolean; showRight: boolean }>>({});
 
@@ -116,19 +122,19 @@ function CanvasPage() {
   // Transform API data to display format
   const workflowsList = React.useMemo(() => {
     // Handle the API response structure
-    let workflowArray = [];
+    let workflowArray: RawWorkflow[] = [];
 
     if (workflows) {
       if (Array.isArray(workflows)) {
         workflowArray = workflows;
-      } else if (workflows.workflows && Array.isArray(workflows.workflows)) {
-        workflowArray = workflows.workflows;
+      } else if (typeof workflows === 'object' && 'workflows' in workflows && Array.isArray((workflows as { workflows: RawWorkflow[] }).workflows)) {
+        workflowArray = (workflows as { workflows: RawWorkflow[] }).workflows;
       }
     }
 
     if (workflowArray.length === 0) return [];
 
-    let filteredWorkflows = workflowArray.map((workflow: any) => ({
+    let filteredWorkflows = workflowArray.map((workflow: RawWorkflow): WorkflowItem => ({
       id: workflow.id,
       name: workflow.name || "Unnamed Workflow",
       description: workflow.description || "",
@@ -161,7 +167,7 @@ function CanvasPage() {
     // Apply filters
     if (searchQuery) {
       filteredWorkflows = filteredWorkflows.filter(
-        (w: any) =>
+        (w: WorkflowItem) =>
           w.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
           w.description.toLowerCase().includes(searchQuery.toLowerCase())
       );
@@ -169,7 +175,7 @@ function CanvasPage() {
 
     if (statusFilter !== "all") {
       filteredWorkflows = filteredWorkflows.filter(
-        (w: any) => w.deploymentStatus === statusFilter
+        (w: WorkflowItem) => w.deploymentStatus === statusFilter
       );
     }
 
@@ -198,32 +204,6 @@ function CanvasPage() {
     return () => clearTimeout(timer);
   }, [workflows, isLoading]);
 
-  const executionStatusConfig = {
-    DRAFT: { icon: Clock, label: "Never Run", color: "text-gray-500" },
-    PENDING: { icon: Clock, label: "Pending", color: "text-yellow-500" },
-    RUNNING: { icon: Activity, label: "Running", color: "text-orange-500" },
-    SUCCESS: { icon: CheckCircle, label: "Success", color: "text-green-500" },
-    COMPLETED: { icon: CheckCircle, label: "Completed", color: "text-green-500" },
-    ERROR: { icon: AlertTriangle, label: "Error", color: "text-red-500" },
-    FAILED: { icon: XCircle, label: "Failed", color: "text-red-500" },
-    CANCELLED: { icon: Pause, label: "Canceled", color: "text-gray-500" },
-  };
-
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.05,
-      },
-    },
-  };
-
-  const itemVariants = {
-    hidden: { opacity: 0, y: 10 },
-    visible: { opacity: 1, y: 0 },
-  };
-
   const getTimeAgo = (date: Date | null): string => {
     if (!date) return "Never";
     const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
@@ -234,18 +214,6 @@ function CanvasPage() {
     if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
 
     return date.toLocaleDateString();
-  };
-
-  // Helper function to format timestamps for card display
-  const formatTimestamp = (date: Date | null): string => {
-    if (!date) return "Never";
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
   };
 
   // Helper function to get status color
@@ -366,7 +334,7 @@ function CanvasPage() {
 
         {/* Group by Status */}
         {Object.entries(deploymentStatusConfig).map(([status, config]) => {
-          const statusWorkflows = workflowsList.filter((w: any) => w.deploymentStatus === status);
+          const statusWorkflows = workflowsList.filter((w: WorkflowItem) => w.deploymentStatus === status);
 
           if (statusWorkflows.length === 0) return null;
 
@@ -409,7 +377,7 @@ function CanvasPage() {
                   onScroll={(e) => handleScroll(e, status)}
                 >
                   <div className="flex gap-4 pb-4" style={{ width: 'max-content' }}>
-                    {statusWorkflows.map((workflow: any) => {
+                    {statusWorkflows.map((workflow: WorkflowItem) => {
                     const deploymentConfig = deploymentStatusConfig[workflow.deploymentStatus as keyof typeof deploymentStatusConfig] || deploymentStatusConfig.DRAFT;
 
                     return (
@@ -423,10 +391,11 @@ function CanvasPage() {
                             <div className="flex items-center gap-3">
                               <div className="relative h-12 w-12 overflow-hidden rounded-lg bg-muted">
                                 {workflow.logoUrl ? (
-                                  <img
+                                  <Image
                                     src={workflow.logoUrl}
                                     alt={`${workflow.name} logo`}
-                                    className="h-full w-full object-cover"
+                                    fill
+                                    className="object-cover"
                                     loading="lazy"
                                   />
                                 ) : (
@@ -442,7 +411,7 @@ function CanvasPage() {
                                 <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
                                   <Badge
                                     variant="outline"
-                                    className={cn("font-medium text-xs px-1.5 py-0.5", getStatusColor(status))}
+                                    className={cn("font-medium text-[10px] px-1 py-0", getStatusColor(status))}
                                   >
                                     {deploymentConfig.label}
                                   </Badge>
@@ -450,7 +419,7 @@ function CanvasPage() {
                                   {workflow.tags && workflow.tags.length > 0 && (
                                     <>
                                       {workflow.tags.map((tag: string, index: number) => (
-                                        <Badge key={index} variant="secondary" className="text-xs px-1.5 py-0.5">
+                                        <Badge key={index} variant="secondary" className="text-[10px] px-1 py-0">
                                           {tag}
                                         </Badge>
                                       ))}

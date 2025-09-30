@@ -4,7 +4,6 @@ import React, { createContext, useContext, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { PanelLeft } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { usePageTitle } from "@/contexts/page-title-context";
 
 interface LayoutContextType {

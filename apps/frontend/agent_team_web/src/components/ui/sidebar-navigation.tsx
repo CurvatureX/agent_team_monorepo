@@ -7,10 +7,7 @@ import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { useLayout } from "./layout-wrapper";
 import {
-  Home,
   Bot,
-  DollarSign,
-  Bell,
   User,
   Settings,
   LogOut,
@@ -18,18 +15,12 @@ import {
   Sun,
   Menu,
   X,
-  ChevronLeft,
   ChevronUp,
-  Layers,
   FileText,
-  BarChart3,
   Workflow,
-  FolderOpen,
-  Plus,
   Clock,
   Zap,
   PanelLeftClose,
-  PanelLeft,
   Shield,
 } from "lucide-react";
 import {
@@ -42,8 +33,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import Image from "next/image";
 
 interface NavigationItem {
   title: string;

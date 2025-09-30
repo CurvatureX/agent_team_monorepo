@@ -60,12 +60,42 @@ export interface WorkflowEdge {
   target: string;                       // 目标节点ID
   condition?: string | null;            // 边的条件表达式
   label?: string | null;                // 边的标签
-  
+
   // Additional fields for React Flow compatibility
   type?: string;                        // 边的类型（如 'default', 'smoothstep'）
   sourceHandle?: string | null;         // 源节点句柄
   targetHandle?: string | null;         // 目标节点句柄
   data?: Record<string, unknown>;      // 自定义数据
+}
+
+// ============== Connection Types ==============
+
+// 工作流连接节点
+export interface WorkflowConnection {
+  node: string;
+  type?: string;
+  index?: number;
+}
+
+// 连接类型结构
+export interface ConnectionType {
+  connection_types?: {
+    main?: {
+      connections?: WorkflowConnection[];
+    };
+  };
+  main?: WorkflowConnection[][];
+}
+
+// 工作流数据结构（用于API响应处理）
+export interface WorkflowDataStructure {
+  id?: string;
+  name?: string;
+  nodes?: unknown[];
+  edges?: WorkflowEdge[];
+  connections?: Record<string, unknown>;
+  workflow_data?: string | WorkflowDataStructure;
+  [key: string]: unknown;
 }
 
 // ============== Workflow Settings ==============

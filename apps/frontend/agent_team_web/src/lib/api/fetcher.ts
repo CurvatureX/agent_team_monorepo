@@ -32,7 +32,7 @@ export const apiRequest = async (
   url: string,
   token: string,
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
-  data?: any
+  data?: unknown
 ) => {
   const res = await fetch(url, {
     method,
@@ -53,7 +53,7 @@ export const apiRequest = async (
 };
 
 
-export function useAuthSWR<T = any>(
+export function useAuthSWR<T = unknown>(
   url: string | null,
   config?: SWRConfiguration
 ) {

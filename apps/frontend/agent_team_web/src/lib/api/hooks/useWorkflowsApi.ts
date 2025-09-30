@@ -62,7 +62,7 @@ export function useWorkflowActions() {
     return apiRequest(API_PATHS.WORKFLOW(id), token, 'GET');
   }, [token]);
 
-  const createWorkflow = useCallback(async (data: any) => {
+  const createWorkflow = useCallback(async (data: unknown) => {
     if (!token) throw new Error('Not authenticated');
     const result = await apiRequest(API_PATHS.WORKFLOWS, token, 'POST', data);
     // 刷新列表
@@ -72,7 +72,7 @@ export function useWorkflowActions() {
     return result;
   }, [token]);
 
-  const updateWorkflow = useCallback(async (id: string, data: any) => {
+  const updateWorkflow = useCallback(async (id: string, data: unknown) => {
     if (!token) throw new Error('Not authenticated');
     const result = await apiRequest(API_PATHS.WORKFLOW(id), token, 'PUT', data);
     // 刷新该工作流和列表
@@ -92,7 +92,7 @@ export function useWorkflowActions() {
     );
   }, [token]);
 
-  const executeWorkflow = useCallback(async (id: string, data?: any) => {
+  const executeWorkflow = useCallback(async (id: string, data?: unknown) => {
     if (!token) throw new Error('Not authenticated');
     return apiRequest(API_PATHS.WORKFLOW_EXECUTE(id), token, 'POST', data);
   }, [token]);

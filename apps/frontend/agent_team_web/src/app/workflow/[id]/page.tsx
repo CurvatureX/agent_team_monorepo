@@ -6,10 +6,16 @@ import { motion, AnimatePresence } from "framer-motion";
 import { PromptInputBox } from "@/components/ui/ai-prompt-box";
 import { PanelResizer } from "@/components/ui/panel-resizer";
 import { WorkflowEditor } from "@/components/workflow/WorkflowEditor";
-import { User, Bot, Workflow, Maximize2, ArrowLeft, StopCircle, RefreshCw, Activity, ChevronRight } from "lucide-react";
+import { User, Bot, Maximize2, StopCircle, RefreshCw } from "lucide-react";
 import { useResizablePanel } from "@/hooks";
-import { WorkflowData } from "@/types/workflow";
-import { useWorkflowsApi, useWorkflowActions } from "@/lib/api/hooks/useWorkflowsApi";
+import {
+  WorkflowData,
+  WorkflowEdge,
+  WorkflowConnection,
+  ConnectionType,
+  WorkflowDataStructure
+} from "@/types/workflow";
+import { useWorkflowActions } from "@/lib/api/hooks/useWorkflowsApi";
 import { useToast } from "@/hooks/use-toast";
 import { chatService, ChatSSEEvent } from "@/lib/api/chatService";
 import { useLayout } from "@/components/ui/layout-wrapper";
@@ -25,18 +31,6 @@ interface Message {
   timestamp: Date;
 }
 
-interface LocalWorkflowEdge {
-  source: string;
-  target: string;
-  sourceHandle?: string;
-  targetHandle?: string;
-}
-
-interface WorkflowConnection {
-  node: string;
-  type?: string;
-  index?: number;
-}
 
 const WorkflowDetailPage = () => {
   const params = useParams();
@@ -58,7 +52,7 @@ const WorkflowDetailPage = () => {
   const { toast } = useToast();
   const { session } = useAuth();
   const { updateWorkflow, getWorkflow } = useWorkflowActions();
-  const { setIsCollapsed } = useLayout();
+  useLayout();
   const { setCustomTitle } = usePageTitle();
 
   // Use the custom hook for resizable panels
@@ -101,7 +95,7 @@ const WorkflowDetailPage = () => {
 
         console.log('Workflow API response:', response);
 
-        let workflowData = null;
+        let workflowData: WorkflowDataStructure | null = null;
 
         // Handle different response structures
         if (response?.workflow) {
@@ -135,10 +129,11 @@ const WorkflowDetailPage = () => {
           // Convert edges from connections if needed
           if (!workflowData.edges && workflowData.connections) {
             workflowData.edges = [];
-            Object.entries(workflowData.connections).forEach(([sourceId, conn]: [string, any]) => {
-              if (conn?.connection_types?.main?.connections) {
-                conn.connection_types.main.connections.forEach((target: any) => {
-                  workflowData.edges.push({
+            Object.entries(workflowData.connections).forEach(([sourceId, conn]) => {
+              const connection = conn as ConnectionType;
+              if (connection?.connection_types?.main?.connections) {
+                connection.connection_types.main.connections.forEach((target: WorkflowConnection) => {
+                  workflowData.edges!.push({
                     id: `${sourceId}-${target.node}`,
                     source: sourceId,
                     target: target.node,
@@ -146,11 +141,11 @@ const WorkflowDetailPage = () => {
                     targetHandle: 'target'
                   });
                 });
-              } else if (conn?.main) {
+              } else if (connection?.main) {
                 // Alternative structure
-                conn.main.forEach((connectionGroup: any[]) => {
-                  connectionGroup.forEach((target: any) => {
-                    workflowData.edges.push({
+                connection.main.forEach((connectionGroup: WorkflowConnection[]) => {
+                  connectionGroup.forEach((target: WorkflowConnection) => {
+                    workflowData.edges!.push({
                       id: `${sourceId}-${target.node}`,
                       source: sourceId,
                       target: target.node,
@@ -164,7 +159,7 @@ const WorkflowDetailPage = () => {
           }
 
           console.log('Processed workflow data:', workflowData);
-          setCurrentWorkflow(workflowData);
+          setCurrentWorkflow(workflowData as unknown as WorkflowData);
 
           // Set workflow name from response
           const name = response?.workflow?.name || response?.name || workflowData?.name || 'Untitled Workflow';
@@ -185,7 +180,7 @@ const WorkflowDetailPage = () => {
     };
 
     fetchWorkflowDetails();
-  }, [workflowId, getWorkflow, session]);
+  }, [workflowId, getWorkflow, session, toast]);
 
   // Set custom breadcrumb title
   useEffect(() => {
@@ -394,19 +389,20 @@ const WorkflowDetailPage = () => {
       const connections: Record<string, { main: WorkflowConnection[][] }> = {};
       if (workflow.edges) {
         workflow.edges.forEach((edge) => {
-          const localEdge: LocalWorkflowEdge = {
+          const workflowEdge: WorkflowEdge = {
+            id: edge.id || `${edge.source}-${edge.target}`,
             source: edge.source,
             target: edge.target,
             sourceHandle: edge.sourceHandle || undefined,
             targetHandle: edge.targetHandle || undefined
           };
-          if (!connections[localEdge.source]) {
-            connections[localEdge.source] = {
+          if (!connections[workflowEdge.source]) {
+            connections[workflowEdge.source] = {
               main: [[]]
             };
           }
-          connections[localEdge.source].main[0].push({
-            node: localEdge.target,
+          connections[workflowEdge.source].main[0].push({
+            node: workflowEdge.target,
             type: 'main',
             index: 0,
           });

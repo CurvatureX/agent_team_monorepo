@@ -1,5 +1,6 @@
 import type { Node as ReactFlowNode, Edge as ReactFlowEdge, XYPosition } from 'reactflow';
 import type { NodeTemplate } from './node-template';
+import type { WorkflowNode as ApiWorkflowNode } from './workflow';
 
 // Extended node data for our workflow nodes
 export interface WorkflowNodeData {
@@ -7,7 +8,7 @@ export interface WorkflowNodeData {
   template: NodeTemplate;
   parameters: Record<string, unknown>;
   status?: 'idle' | 'running' | 'success' | 'error';
-  originalData?: any; // Store original API node data for export
+  originalData?: ApiWorkflowNode; // Store original API node data for export
 }
 
 // Our custom node type
