@@ -577,7 +577,9 @@ const WorkflowDetailPage = () => {
               <div className="flex items-center gap-2">
                 <Avatar className="w-[20px] h-[20px]">
                   <AvatarImage src="https://dtijyicuvv7hy.cloudfront.net/3.png" alt="Assistant" />
-                  <AvatarFallback>AI</AvatarFallback>
+                  <AvatarFallback className="bg-primary/10 text-primary font-medium text-[8px] flex items-center justify-center">
+                    AI
+                  </AvatarFallback>
                 </Avatar>
                 <h3 className="text-base font-semibold">Workflow Assistant</h3>
               </div>

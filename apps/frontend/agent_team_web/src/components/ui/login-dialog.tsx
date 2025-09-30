@@ -122,7 +122,7 @@ export function LoginDialog({ open, onOpenChange, defaultMode = "signin" }: Logi
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md !top-[40%]">
+      <DialogContent className="sm:max-w-sm !top-[40%]">
         <DialogHeader>
           <DialogTitle className="text-center text-2xl font-semibold flex items-center justify-center gap-2">
             <span>{isSignUp ? "Create Account" : "Sign in to Starmates"}</span>

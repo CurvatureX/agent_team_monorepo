@@ -34,6 +34,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { LoginDialog } from "@/components/ui/login-dialog";
+import { PricingSectionDialog } from "@/components/ui/pricing-section-dialog";
 
 interface NavigationItem {
   title: string;
@@ -57,6 +58,7 @@ export const SidebarNavigation = () => {
   const [mounted, setMounted] = useState(false);
   const [showContent, setShowContent] = useState(!isCollapsed);
   const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false);
+  const [isPricingDialogOpen, setIsPricingDialogOpen] = useState(false);
 
   React.useEffect(() => {
     setMounted(true);
@@ -272,7 +274,7 @@ export const SidebarNavigation = () => {
           {showContent ? (
             <button
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-100 dark:bg-muted hover:bg-gray-200 dark:hover:bg-muted/80 transition-colors"
-              onClick={() => handleNavigation('/pricing')}
+              onClick={() => setIsPricingDialogOpen(true)}
             >
               <div className="w-4 h-4 rounded-full bg-foreground flex items-center justify-center">
                 <ChevronUp className="w-2.5 h-2.5 text-background" />
@@ -282,7 +284,7 @@ export const SidebarNavigation = () => {
           ) : (
             <button
               className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-muted hover:bg-gray-200 dark:hover:bg-muted/80 transition-colors flex items-center justify-center"
-              onClick={() => handleNavigation('/pricing')}
+              onClick={() => setIsPricingDialogOpen(true)}
             >
               <div className="w-4 h-4 rounded-full bg-foreground flex items-center justify-center">
                 <ChevronUp className="w-2.5 h-2.5 text-background" />
@@ -398,6 +400,12 @@ export const SidebarNavigation = () => {
         open={isLoginDialogOpen}
         onOpenChange={setIsLoginDialogOpen}
         defaultMode="signin"
+      />
+
+      {/* Pricing Dialog */}
+      <PricingSectionDialog
+        open={isPricingDialogOpen}
+        onOpenChange={setIsPricingDialogOpen}
       />
     </>
   );
