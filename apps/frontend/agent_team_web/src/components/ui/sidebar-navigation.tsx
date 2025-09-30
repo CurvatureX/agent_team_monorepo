@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { LoginDialog } from "@/components/ui/login-dialog";
 
 interface NavigationItem {
   title: string;
@@ -55,6 +56,7 @@ export const SidebarNavigation = () => {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [showContent, setShowContent] = useState(!isCollapsed);
+  const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false);
 
   React.useEffect(() => {
     setMounted(true);
@@ -183,7 +185,7 @@ export const SidebarNavigation = () => {
             variant="ghost"
             size="sm"
             className={cn("justify-start", isCollapsed && !isHovered && "px-2")}
-            onClick={() => router.push('/login?mode=signin')}
+            onClick={() => setIsLoginDialogOpen(true)}
           >
             {!showContent ? <User className="h-4 w-4" /> : (
               <>
@@ -390,6 +392,13 @@ export const SidebarNavigation = () => {
           onMouseEnter={() => setIsHovered(true)}
         />
       )}
+
+      {/* Login Dialog */}
+      <LoginDialog
+        open={isLoginDialogOpen}
+        onOpenChange={setIsLoginDialogOpen}
+        defaultMode="signin"
+      />
     </>
   );
 };
