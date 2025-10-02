@@ -9,8 +9,7 @@ import time
 import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
-
+from fastapi import APIRouter, HTTPException, Query, Request
 from shared.models.workflow_new import WorkflowDeploymentStatus
 
 # Import shared node specs service
@@ -142,16 +141,25 @@ async def list_workflows(
     tags: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
+    request: Request = None,
 ):
-    """List workflows with filtering"""
+    """List workflows with filtering using Supabase RLS"""
     try:
-        logger.info("📋 [v2] Listing workflows")
-        workflows = workflow_service.list_workflows()
+        # Extract access token for RLS-based filtering
+        access_token = None
+        if request and request.headers.get("authorization"):
+            auth_header = request.headers.get("authorization")
+            if auth_header.startswith("Bearer "):
+                access_token = auth_header[7:]  # Remove "Bearer " prefix
+                logger.info("🔐 [v2] Using JWT token for RLS-based filtering")
+
+        # Use Supabase RLS to filter workflows by user automatically
+        workflows = workflow_service.list_workflows(access_token=access_token)
 
         # Parse tags if provided
         tag_list = tags.split(",") if tags else []
 
-        # Filter workflows
+        # Filter workflows (RLS already handles user filtering)
         filtered_workflows = []
         for workflow in workflows:
             workflow_dict = workflow.model_dump()

@@ -191,15 +191,36 @@ class WorkflowServiceV2:
     def validate(self, wf: Workflow) -> None:
         validate_workflow(wf)
 
-    def list_workflows(self) -> List[Workflow]:
-        """List all active workflows from database."""
-        if not self.supabase:
-            self.logger.error("Supabase client not available")
-            return []
+    def list_workflows(self, access_token: Optional[str] = None) -> List[Workflow]:
+        """
+        List active workflows from database.
 
+        Args:
+            access_token: JWT token for RLS filtering. If provided, uses RLS to filter by user.
+                         If None, uses service role (admin mode - returns all workflows).
+        """
         try:
+            # Create RLS-enabled client if access token is provided
+            if access_token:
+                from shared.models.supabase import create_user_supabase_client
+
+                supabase_client = create_user_supabase_client(access_token)
+                if not supabase_client:
+                    self.logger.error("Failed to create RLS-enabled Supabase client")
+                    return []
+                self.logger.info("🔐 Using RLS-enabled Supabase client for list_workflows")
+            else:
+                # Use service role client (admin mode)
+                if not self.supabase:
+                    self.logger.error("Supabase client not available")
+                    return []
+                supabase_client = self.supabase
+                self.logger.info(
+                    "👑 Using service role Supabase client for list_workflows (admin mode)"
+                )
+
             result = (
-                self.supabase.table("workflows")
+                supabase_client.table("workflows")
                 .select("workflow_data")
                 .eq("active", True)
                 .execute()
@@ -212,6 +233,8 @@ class WorkflowServiceV2:
                         workflows.append(Workflow(**workflow_data))
                     except Exception as e:
                         self.logger.warning(f"Failed to parse workflow data: {e}")
+
+            self.logger.info(f"✅ Listed {len(workflows)} workflows")
             return workflows
         except Exception as e:
             self.logger.error(f"Failed to list workflows: {e}")
