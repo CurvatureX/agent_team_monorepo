@@ -33,7 +33,6 @@ from .execution_new import (
 class WorkflowDeploymentStatus(str, Enum):
     """工作流部署状态"""
 
-    DRAFT = "DRAFT"  # 草稿状态 - 未部署
     PENDING = "pending"  # 等待部署
     DEPLOYED = "deployed"  # 已部署
     FAILED = "failed"  # 部署失败
@@ -41,22 +40,8 @@ class WorkflowDeploymentStatus(str, Enum):
 
 
 # ============================================================================
-# PORT AND CONNECTION MODELS
+# CONNECTION MODELS
 # ============================================================================
-
-
-class Port(BaseModel):
-    """端口定义"""
-
-    id: str = Field(..., description="端口唯一标识符")
-    name: str = Field(..., description="端口名称")
-    data_type: str = Field(
-        ..., description="端口接受的数据类型，如 'str', 'int', 'float', 'bool', 'dict', 'list', 'Any'"
-    )
-    required: bool = Field(default=True, description="是否为必需端口")
-    description: Optional[str] = Field(default=None, description="端口描述")
-    max_connections: int = Field(default=1, description="最大连接数，-1表示无限制")
-    validation_schema: Optional[str] = Field(default=None, description="JSON验证模式")
 
 
 class Connection(BaseModel):
@@ -68,14 +53,7 @@ class Connection(BaseModel):
     output_key: str = Field(
         default="result", description="从源节点的哪个输出获取数据（如 'result', 'true', 'false'）"
     )
-    conversion_function: str = Field(
-        ...,
-        description=(
-            "数据转换函数 - 定义数据如何处理，转换成to_node可接受的数据。\n"
-            "如果不需要转换，使用直通函数：\n"
-            "'def convert(input_data: Dict[str, Any]) -> Dict[str, Any]: return input_data'"
-        ),
-    )
+    conversion_function: Optional[str] = Field(default=None, description="数据转换函数")
 
 
 # ============================================================================
@@ -94,8 +72,6 @@ class Node(BaseModel):
     configurations: Dict[str, Any] = Field(default_factory=dict, description="节点配置参数")
     input_params: Dict[str, Any] = Field(default_factory=dict, description="运行时输入参数")
     output_params: Dict[str, Any] = Field(default_factory=dict, description="运行时输出参数")
-    input_ports: List[Port] = Field(default_factory=list, description="输入端口列表")
-    output_ports: List[Port] = Field(default_factory=list, description="输出端口列表")
     position: Optional[Dict[str, float]] = Field(default=None, description="节点在画布上的位置")
 
     # AI_AGENT specific field - attached nodes for TOOL and MEMORY
@@ -133,7 +109,7 @@ class WorkflowMetadata(BaseModel):
     icon_url: Optional[str] = Field(default=None, description="工作流图标链接")
     description: Optional[str] = Field(default=None, description="工作流描述")
     deployment_status: WorkflowDeploymentStatus = Field(
-        default=WorkflowDeploymentStatus.DRAFT, description="部署状态"
+        default=WorkflowDeploymentStatus.PENDING, description="部署状态"
     )
     last_execution_status: Optional[ExecutionStatus] = Field(default=None, description="上次运行状态")
     last_execution_time: Optional[int] = Field(default=None, description="上次运行时间戳（毫秒）")
@@ -339,17 +315,8 @@ class NodeExecution(BaseModel):
     duration_ms: Optional[int] = Field(default=None, description="执行耗时")
 
     # 输入输出
-    input_data: Dict[str, Any] = Field(default_factory=dict, description="输入数据，Key: input_port_id")
-    output_data: Dict[str, Any] = Field(
-        default_factory=dict,
-        description=(
-            "节点输出数据，按端口命名的字典。\n"
-            "- 顶层键必须是输出端口ID（如 'main', 'true', 'false', 'completed'）。\n"
-            "- 每个端口的值必须是一个对象，字段集合与该节点规范的 output_params 完全一致，"
-            "  即仅包含规范中定义的字段，并使用对应的运行时值。\n"
-            "- 引擎内部控制字段（如定时/等待标记）不会出现在此结构中。"
-        ),
-    )
+    input_data: Dict[str, Any] = Field(default_factory=dict, description="输入数据")
+    output_data: Dict[str, Any] = Field(default_factory=dict, description="输出数据")
 
     # 执行详情
     execution_details: NodeExecutionDetails = Field(

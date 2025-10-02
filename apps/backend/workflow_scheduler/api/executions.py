@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from shared.models.execution_new import ExecutionError, ExecutionStatus
 from shared.models.node_enums import TriggerSubtype
-from shared.models.workflow_new import (
+from shared.models.workflow import (
     WorkflowExecution,
     WorkflowExecutionRequest,
     WorkflowExecutionResponse,

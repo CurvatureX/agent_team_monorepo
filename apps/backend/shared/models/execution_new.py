@@ -184,10 +184,8 @@ class NodeExecution(BaseModel):
     duration_ms: Optional[int] = Field(default=None, description="执行耗时")
 
     # 输入输出
-    input_data: Dict[str, Any] = Field(default_factory=dict, description="输入数据，Key: input_port_id")
-    output_data: Dict[str, Any] = Field(
-        default_factory=dict, description="输出数据，Key: output_port_id"
-    )
+    input_data: Dict[str, Any] = Field(default_factory=dict, description="输入数据")
+    output_data: Dict[str, Any] = Field(default_factory=dict, description="输出数据")
 
     # 执行详情
     execution_details: NodeExecutionDetails = Field(

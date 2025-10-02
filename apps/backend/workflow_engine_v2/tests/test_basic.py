@@ -15,7 +15,7 @@ from shared.models.node_enums import (
     NodeType,
     TriggerSubtype,
 )
-from shared.models.workflow_new import Connection, Workflow, WorkflowMetadata, WorkflowStatistics
+from shared.models.workflow import Connection, Workflow, WorkflowMetadata, WorkflowStatistics
 from workflow_engine_v2 import ExecutionEngine
 from workflow_engine_v2.core.spec import coerce_node_to_v2, get_spec
 

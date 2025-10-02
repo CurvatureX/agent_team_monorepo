@@ -20,7 +20,7 @@ except ImportError:
     print("❌ psycopg2 not installed. Install with: pip install psycopg2-binary")
     sys.exit(1)
 
-from shared.models.workflow_new import WorkflowDeploymentStatus as DeploymentStatus
+from shared.models.workflow import WorkflowDeploymentStatus as DeploymentStatus
 from workflow_scheduler.core.config import settings
 
 

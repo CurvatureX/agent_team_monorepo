@@ -68,7 +68,7 @@ except ImportError:
 
 
 # Import unified deployment status from workflow_new.py
-from .workflow_new import WorkflowDeploymentStatus
+from .workflow import WorkflowDeploymentStatus
 
 
 class TriggerStatusEnum(str, enum.Enum):

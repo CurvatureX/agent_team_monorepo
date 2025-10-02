@@ -12,7 +12,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.db_models import WorkflowDB, WorkflowDeploymentHistory
-from shared.models.workflow_new import WorkflowDeploymentStatus as DeploymentStatus
+from shared.models.workflow import WorkflowDeploymentStatus as DeploymentStatus
 from workflow_scheduler.core.database import get_db_session
 
 logger = logging.getLogger(__name__)

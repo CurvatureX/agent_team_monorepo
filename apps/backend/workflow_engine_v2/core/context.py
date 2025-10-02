@@ -17,7 +17,7 @@ sys.path.insert(0, str(backend_dir))
 
 from shared.models import TriggerInfo
 from shared.models.execution_new import Execution
-from shared.models.workflow_new import Node
+from shared.models.workflow import Node
 
 
 class NodeExecutionContext:
