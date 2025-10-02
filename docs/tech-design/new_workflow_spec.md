@@ -1023,9 +1023,9 @@ graph TD
    ```
 
 3. **分类结果处理**:
-   - `relevant` (相关, score >= 0.7): 处理响应并恢复工作流
-   - `filtered` (无关, score <= 0.3): 忽略响应
-   - `uncertain` (不确定, 0.3 < score < 0.7): 记录但不自动处理
+   - `relevant` (相关, score \>= 0.7): 处理响应并恢复工作流
+   - `filtered` (无关, score \<= 0.3): 忽略响应
+   - `uncertain` (不确定, 0.3 \< score \< 0.7): 记录但不自动处理
 
 ### 4. 工作流恢复阶段
 
