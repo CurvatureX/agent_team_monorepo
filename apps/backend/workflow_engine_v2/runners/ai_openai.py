@@ -19,7 +19,7 @@ import httpx
 
 from shared.models import TriggerInfo
 from shared.models.node_enums import MemorySubtype, NodeType
-from shared.models.workflow_new import Node
+from shared.models.workflow import Node
 
 from .base import NodeRunner
 from .mcp_tool_discovery import (

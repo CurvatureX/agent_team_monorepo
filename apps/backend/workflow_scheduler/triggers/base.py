@@ -9,7 +9,7 @@ import httpx
 
 from shared.models.execution_new import ExecutionStatus
 from shared.models.trigger import TriggerStatus
-from shared.models.workflow_new import WorkflowExecutionResponse
+from shared.models.workflow import WorkflowExecutionResponse
 from workflow_scheduler.core.config import settings
 from workflow_scheduler.core.supabase_client import get_supabase_client
 

@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from shared.models.workflow_new import Workflow, WorkflowDeploymentStatus
+from shared.models.workflow import Workflow, WorkflowDeploymentStatus
 from workflow_scheduler.dependencies import get_deployment_service
 from workflow_scheduler.services.deployment_service import DeploymentService
 

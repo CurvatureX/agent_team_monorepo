@@ -16,7 +16,7 @@ sys.path.insert(0, str(backend_dir))
 # Use absolute imports
 from shared.models import TriggerInfo
 from shared.models.human_in_loop import HILChannelType, HILInteractionType
-from shared.models.workflow_new import Node
+from shared.models.workflow import Node
 from workflow_engine_v2.runners.base import NodeRunner
 from workflow_engine_v2.services.hil_service import HILWorkflowServiceV2
 

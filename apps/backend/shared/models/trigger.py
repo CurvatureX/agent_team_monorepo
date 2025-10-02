@@ -19,7 +19,7 @@ class TriggerStatus(str, Enum):
 
 
 # Import unified deployment status from workflow_new.py
-from .workflow_new import WorkflowDeploymentStatus as DeploymentStatus
+from .workflow import WorkflowDeploymentStatus as DeploymentStatus
 
 
 class TriggerSpec(BaseModel):

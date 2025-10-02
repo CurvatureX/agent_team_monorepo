@@ -23,7 +23,7 @@ sys.path.insert(0, str(backend_dir))
 # Use absolute imports
 from shared.models import TriggerInfo
 from shared.models.node_enums import ActionSubtype, AIAgentSubtype, NodeType
-from shared.models.workflow_new import Connection, Node, NodePort, Workflow, WorkflowMetadata
+from shared.models.workflow import Connection, Node, NodePort, Workflow, WorkflowMetadata
 from workflow_engine_v2.core.engine import ExecutionEngine
 from workflow_engine_v2.services.user_friendly_logger import get_user_friendly_logger
 

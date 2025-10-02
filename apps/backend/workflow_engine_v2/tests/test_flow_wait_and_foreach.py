@@ -8,7 +8,7 @@ sys.path.insert(0, str(backend_dir))
 
 from shared.models import ExecutionStatus, TriggerInfo
 from shared.models.node_enums import ActionSubtype, FlowSubtype, NodeType, TriggerSubtype
-from shared.models.workflow_new import Connection, Workflow, WorkflowMetadata, WorkflowStatistics
+from shared.models.workflow import Connection, Workflow, WorkflowMetadata, WorkflowStatistics
 from workflow_engine_v2 import ExecutionEngine
 from workflow_engine_v2.core.spec import coerce_node_to_v2, get_spec
 

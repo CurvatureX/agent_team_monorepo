@@ -10,7 +10,8 @@ import uuid
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from shared.models.workflow_new import WorkflowDeploymentStatus
+
+from shared.models.workflow import WorkflowDeploymentStatus
 
 # Import shared node specs service
 from shared.services.node_specs_api_service import get_node_specs_api_service

@@ -16,7 +16,7 @@ sys.path.insert(0, str(backend_dir))
 
 from shared.models import TriggerInfo
 from shared.models.node_enums import AIAgentSubtype, MemorySubtype, NodeType
-from shared.models.workflow_new import Node
+from shared.models.workflow import Node
 from workflow_engine_v2.runners.ai import AIAgentRunner
 from workflow_engine_v2.runners.memory import MemoryRunner
 

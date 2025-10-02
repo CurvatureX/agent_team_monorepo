@@ -12,7 +12,7 @@ from uuid import UUID
 
 import asyncpg
 
-from shared.models.workflow_new import WorkflowDeploymentStatus as DeploymentStatus
+from shared.models.workflow import WorkflowDeploymentStatus as DeploymentStatus
 from workflow_scheduler.core.config import settings
 
 logger = logging.getLogger(__name__)

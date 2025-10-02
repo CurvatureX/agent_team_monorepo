@@ -13,7 +13,7 @@ sys.path.insert(0, str(backend_dir))
 
 # Use absolute imports
 from shared.models import TriggerInfo
-from shared.models.workflow_new import Node
+from shared.models.workflow import Node
 from workflow_engine_v2.core.expr import get_path
 from workflow_engine_v2.core.template import _eval_expression, eval_boolean
 from workflow_engine_v2.runners.base import NodeRunner

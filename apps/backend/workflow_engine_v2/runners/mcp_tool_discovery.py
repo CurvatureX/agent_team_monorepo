@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from shared.models.node_enums import ToolSubtype
-from shared.models.workflow_new import Node
+from shared.models.workflow import Node
 
 logger = logging.getLogger(__name__)
 

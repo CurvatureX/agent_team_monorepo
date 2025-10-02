@@ -47,7 +47,7 @@ from shared.models import (
 )
 from shared.models.execution_new import Execution
 from shared.models.node_enums import NodeType
-from shared.models.workflow_new import Workflow
+from shared.models.workflow import Workflow
 from shared.node_specs.base import execute_conversion_function
 from workflow_engine_v2.core.exceptions import EngineError, ExecutionFailure
 from workflow_engine_v2.core.graph import WorkflowGraph

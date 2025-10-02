@@ -54,7 +54,7 @@ def list_specs() -> list[str]:
 
 
 def coerce_node_to_v2(node: Any):
-    from shared.models.workflow_new import Node as V2Node
+    from shared.models.workflow import Node as V2Node
 
     node_dict = node.model_dump() if hasattr(node, "model_dump") else dict(node)
     return V2Node(**node_dict)
@@ -76,7 +76,7 @@ class _StubSpec(BaseModel):
             NodeType,
             TriggerSubtype,
         )
-        from shared.models.workflow_new import Node, Port
+        from shared.models.workflow import Node, Port
 
         ntype = (
             NodeType(self.node_type)

@@ -13,7 +13,7 @@ sys.path.insert(0, str(backend_dir))
 
 # Use absolute imports
 from shared.models import Execution
-from shared.models.workflow_new import Workflow
+from shared.models.workflow import Workflow
 from workflow_engine_v2.core.graph import WorkflowGraph
 
 

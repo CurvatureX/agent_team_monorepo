@@ -20,7 +20,7 @@ from shared.models.db_models import WorkflowDB
 from shared.models.supabase import create_supabase_client
 
 # Use absolute imports
-from shared.models.workflow_new import Workflow, WorkflowMetadata
+from shared.models.workflow import Workflow, WorkflowMetadata
 from workflow_engine_v2.core.spec import coerce_node_to_v2, get_spec
 from workflow_engine_v2.core.validation import validate_workflow
 
@@ -69,7 +69,7 @@ class WorkflowServiceV2:
         )
 
         # Convert user dictionaries to Node objects, preserving their data exactly
-        from shared.models.workflow_new import Connection, Node
+        from shared.models.workflow import Connection, Node
 
         v2_nodes = []
         for n in nodes:
@@ -345,7 +345,7 @@ class WorkflowServiceV2:
         # Add optional columns if they exist in schema (handle missing columns gracefully)
         # Import enums to use instead of hardcoded strings
         from shared.models.execution_new import ExecutionStatus
-        from shared.models.workflow_new import WorkflowDeploymentStatus
+        from shared.models.workflow import WorkflowDeploymentStatus
 
         optional_columns = {
             "deployment_status": WorkflowDeploymentStatus.PENDING.value,  # Always start as pending, change only via deploy API
