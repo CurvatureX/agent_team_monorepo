@@ -66,8 +66,7 @@ class TestValidationServiceV2:
                 id="conn_1",
                 from_node="trigger_1",
                 to_node="action_1",
-                from_port="main",
-                to_port="main",
+                output_key="result",
             )
         ]
 
@@ -173,8 +172,7 @@ class TestValidationServiceV2:
             id="invalid_conn",
             from_node="trigger_1",
             to_node="nonexistent_node",
-            from_port="main",
-            to_port="main",
+            output_key="result",
         )
         valid_workflow.connections.append(invalid_connection)
 

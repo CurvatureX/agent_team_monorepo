@@ -39,13 +39,9 @@ def build_wait_foreach_workflow():
         metadata=meta,
         nodes=[t1, w1, f1, a1],
         connections=[
-            Connection(id="c1", from_node=t1.id, to_node=w1.id, from_port="main", to_port="main"),
-            Connection(
-                id="c2", from_node=w1.id, to_node=f1.id, from_port="completed", to_port="main"
-            ),
-            Connection(
-                id="c3", from_node=f1.id, to_node=a1.id, from_port="iteration", to_port="main"
-            ),
+            Connection(id="c1", from_node=t1.id, to_node=w1.id, output_key="result"),
+            Connection(id="c2", from_node=w1.id, to_node=f1.id, output_key="completed"),
+            Connection(id="c3", from_node=f1.id, to_node=a1.id, output_key="iteration"),
         ],
         triggers=[t1.id],
     )

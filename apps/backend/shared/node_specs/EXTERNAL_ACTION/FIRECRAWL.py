@@ -139,37 +139,7 @@ class FirecrawlActionSpec(BaseNodeSpec):
                     "description": "执行统计（耗时、页面数等）",
                     "required": False,
                 },
-            },
-            # Port definitions
-            input_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "Input data for Firecrawl action",
-                    "required": True,
-                    "max_connections": 1,
-                }
-            ],
-            output_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "Output when Firecrawl action succeeds",
-                    "required": True,
-                    "max_connections": -1,
-                },
-                {
-                    "id": "error",
-                    "name": "error",
-                    "data_type": "dict",
-                    "description": "Output when Firecrawl action fails",
-                    "required": False,
-                    "max_connections": -1,
-                },
-            ],
-            # Examples
+            },  # Examples
             examples=[
                 {
                     "name": "Single Page Content Extraction",
@@ -203,7 +173,7 @@ class FirecrawlActionSpec(BaseNodeSpec):
                         }
                     },
                     "expected_outputs": {
-                        "main": {
+                        "result": {
                             "success": True,
                             "firecrawl_response": {
                                 "success": True,
@@ -288,7 +258,7 @@ class FirecrawlActionSpec(BaseNodeSpec):
                         }
                     },
                     "expected_outputs": {
-                        "main": {
+                        "result": {
                             "success": True,
                             "firecrawl_response": {
                                 "success": True,

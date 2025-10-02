@@ -91,37 +91,65 @@ class DataTransformationActionSpec(BaseNodeSpec):
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters
-            default_input_params={"data": [], "context": {}, "variables": {}},
-            default_output_params={
-                "transformed_data": [],
-                "original_count": 0,
-                "output_count": 0,
-                "transformation_stats": {},
-                "success": False,
-                "error_message": "",
-            },
-            # Port definitions
-            input_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
+            # Parameter schemas
+            input_params={
+                "data": {
+                    "type": "array",
+                    "default": [],
                     "description": "Input data to transform",
                     "required": True,
-                    "max_connections": 1,
-                }
-            ],
-            output_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "Transformed data output",
+                },
+                "context": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Additional context for transformation",
                     "required": False,
-                    "max_connections": -1,
-                }
-            ],
+                },
+                "variables": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Variables for transformation script",
+                    "required": False,
+                },
+            },
+            output_params={
+                "transformed_data": {
+                    "type": "array",
+                    "default": [],
+                    "description": "Transformed output data",
+                    "required": False,
+                },
+                "original_count": {
+                    "type": "integer",
+                    "default": 0,
+                    "description": "Count of original input items",
+                    "required": False,
+                },
+                "output_count": {
+                    "type": "integer",
+                    "default": 0,
+                    "description": "Count of transformed output items",
+                    "required": False,
+                },
+                "transformation_stats": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Statistics about transformation",
+                    "required": False,
+                },
+                "success": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Whether transformation succeeded",
+                    "required": False,
+                },
+                "error_message": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Error message if transformation failed",
+                    "required": False,
+                },
+            },
             # Metadata
             tags=["action", "data", "transformation", "system"],
             # Examples

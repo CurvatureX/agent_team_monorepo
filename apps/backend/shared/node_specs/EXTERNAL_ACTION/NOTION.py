@@ -217,37 +217,7 @@ class NotionActionSpec(BaseNodeSpec):
                     "description": "Execution metadata (timings, retries)",
                     "required": False,
                 },
-            },
-            # Port definitions
-            input_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "Input data for Notion action",
-                    "required": True,
-                    "max_connections": 1,
-                }
-            ],
-            output_ports=[
-                {
-                    "id": "success",
-                    "name": "success",
-                    "data_type": "dict",
-                    "description": "Output when Notion action succeeds",
-                    "required": True,
-                    "max_connections": -1,
-                },
-                {
-                    "id": "error",
-                    "name": "error",
-                    "data_type": "dict",
-                    "description": "Output when Notion action fails",
-                    "required": False,
-                    "max_connections": -1,
-                },
-            ],
-            # Metadata
+            },  # Metadata
             tags=[
                 "external-action",
                 "notion",

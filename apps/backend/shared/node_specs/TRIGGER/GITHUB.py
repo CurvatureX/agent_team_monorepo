@@ -139,19 +139,7 @@ class GitHubTriggerSpec(BaseNodeSpec):
                     "required": False,
                 },
             },
-            # Port definitions
-            input_ports=[],  # Triggers have no input ports
-            output_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "GitHub event output with repository and event data",
-                    "required": False,
-                    "max_connections": -1,
-                }
-            ],
-            # Metadata
+            # Port definitions            # Metadata
             tags=["trigger", "github", "webhook", "repository", "version-control"],
             # Examples
             examples=[

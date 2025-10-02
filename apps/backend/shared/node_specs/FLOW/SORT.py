@@ -82,36 +82,14 @@ class SortFlowSpec(BaseNodeSpec):
                     "description": "Original indices of items prior to sort (if preserved)",
                     "required": False,
                 },
-            },
-            # Port definitions
-            input_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "any",
-                    "description": "Data to be sorted",
-                    "required": True,
-                    "max_connections": 1,
-                },
-            ],
-            output_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "any",
-                    "description": "Sorted data output",
-                    "required": True,
-                    "max_connections": -1,
-                }
-            ],
-            # Examples (simplified)
+            },  # Examples (simplified)
             examples=[
                 {
                     "name": "Sort By Name (ASC)",
                     "description": "Sort array of objects by 'name' ascending",
                     "configurations": {"sort_field": "name", "order": "asc"},
                     "input_example": {
-                        "main": [
+                        "result": [
                             {"name": "Charlie", "age": 30, "score": 85},
                             {"name": "Alice", "age": 25, "score": 92},
                             {"name": "Bob", "age": 35, "score": 78},
@@ -141,7 +119,7 @@ class SortFlowSpec(BaseNodeSpec):
                     "description": "Sort array of objects by 'score' descending",
                     "configurations": {"sort_field": "score", "order": "desc"},
                     "input_example": {
-                        "main": [
+                        "result": [
                             {"name": "Alice", "score": 92},
                             {"name": "Bob", "score": 78},
                             {"name": "Charlie", "score": 85},

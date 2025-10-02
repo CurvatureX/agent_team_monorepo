@@ -171,53 +171,7 @@ class FilterFlowSpec(BaseNodeSpec):
                     "description": "Schema or rule validation errors found during filtering",
                     "required": False,
                 },
-            },
-            # Port definitions
-            input_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "any",
-                    "description": "Data to be filtered",
-                    "required": True,
-                    "max_connections": 1,
-                },
-                {
-                    "id": "filter_config",
-                    "name": "filter_config",
-                    "data_type": "dict",
-                    "description": "Dynamic filter configuration override",
-                    "required": False,
-                    "max_connections": 1,
-                },
-            ],
-            output_ports=[
-                {
-                    "id": "passed",
-                    "name": "passed",
-                    "data_type": "any",
-                    "description": "Data that passed the filter criteria",
-                    "required": True,
-                    "max_connections": -1,
-                },
-                {
-                    "id": "filtered",
-                    "name": "filtered",
-                    "data_type": "any",
-                    "description": "Data that was filtered out (only in partition mode)",
-                    "required": False,
-                    "max_connections": -1,
-                },
-                {
-                    "id": "statistics",
-                    "name": "statistics",
-                    "data_type": "dict",
-                    "description": "Filter operation statistics and metadata",
-                    "required": False,
-                    "max_connections": -1,
-                },
-            ],
-            # Metadata
+            },  # Metadata
             tags=["flow", "filter", "select", "condition", "data-processing"],
             # Examples
             examples=[
@@ -233,7 +187,7 @@ class FilterFlowSpec(BaseNodeSpec):
                         "null_handling": "exclude",
                     },
                     "input_example": {
-                        "main": [
+                        "result": [
                             {"id": 1, "name": "Alice", "status": "active", "age": 30},
                             {"id": 2, "name": "Bob", "status": "inactive", "age": 25},
                             {"id": 3, "name": "Carol", "status": "active", "age": 35},
@@ -276,7 +230,7 @@ class FilterFlowSpec(BaseNodeSpec):
                         "sort_order": "desc",
                     },
                     "input_example": {
-                        "main": [
+                        "result": [
                             {"name": "Alice", "age": 30, "department": "Engineering"},
                             {"name": "Bob", "age": 24, "department": "Engineering"},
                             {"name": "Carol", "age": 35, "department": "Marketing"},
@@ -315,7 +269,7 @@ class FilterFlowSpec(BaseNodeSpec):
                         "sort_order": "desc",
                     },
                     "input_example": {
-                        "main": [
+                        "result": [
                             {"student": "Alice", "score": 85, "subject": "Math"},
                             {"student": "Bob", "score": 65, "subject": "Math"},
                             {"student": "Carol", "score": 92, "subject": "Math"},
@@ -355,7 +309,7 @@ class FilterFlowSpec(BaseNodeSpec):
                         "error_handling": "skip_invalid",
                     },
                     "input_example": {
-                        "main": [
+                        "result": [
                             {
                                 "name": "Alice",
                                 "email": "alice@company.com",

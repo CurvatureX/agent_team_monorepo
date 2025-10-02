@@ -182,37 +182,7 @@ class AnthropicClaudeSpec(BaseNodeSpec):
                     "description": "List of function/tool calls invoked by the model",
                     "required": False,
                 },
-            },
-            # Port definitions
-            input_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "Main input with user prompt and context",
-                    "required": True,
-                    "max_connections": -1,
-                },
-                {
-                    "id": "images",
-                    "name": "images",
-                    "data_type": "array",
-                    "description": "Images for multi-modal processing",
-                    "required": False,
-                    "max_connections": -1,
-                },
-            ],
-            output_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "Claude's response and metadata",
-                    "required": True,
-                    "max_connections": -1,
-                }
-            ],
-            # Examples
+            },  # Examples
             examples=[
                 {
                     "name": "Advanced Code Analysis and Review",

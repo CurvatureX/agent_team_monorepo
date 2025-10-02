@@ -170,19 +170,7 @@ class SlackTriggerSpec(BaseNodeSpec):
                     "required": False,
                 },
             },
-            # Port definitions
-            input_ports=[],  # Triggers have no input ports
-            output_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "Slack event output with message and user data",
-                    "required": False,
-                    "max_connections": -1,
-                }
-            ],
-            # Metadata
+            # Port definitions            # Metadata
             tags=["trigger", "slack", "chat", "workspace", "collaboration"],
             # Examples
             examples=[

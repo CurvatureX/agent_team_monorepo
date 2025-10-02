@@ -23,7 +23,7 @@ from workflow_engine_v2.api.models import (
     LogMilestoneRequest,
     LogMilestoneResponse,
 )
-from workflow_engine_v2.core.modern_engine import ModernExecutionEngine
+from workflow_engine_v2.core.engine import ExecutionEngine
 from workflow_engine_v2.services.workflow import WorkflowServiceV2
 from workflow_engine_v2.services.workflow_status_manager import WorkflowStatusManagerV2
 
@@ -31,8 +31,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["V2 Executions"])
 
-# Global engine instance
-engine = ModernExecutionEngine()
+# Global engine instance with user-friendly logging enabled
+engine = ExecutionEngine(enable_user_friendly_logging=True)
 workflow_service = WorkflowServiceV2()
 
 

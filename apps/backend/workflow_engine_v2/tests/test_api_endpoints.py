@@ -53,9 +53,7 @@ def sample_workflow():
     ]
 
     connections = [
-        Connection(
-            id="conn_1", from_node="trigger_1", to_node="action_1", from_port="main", to_port="main"
-        )
+        Connection(id="conn_1", from_node="trigger_1", to_node="action_1", output_key="result")
     ]
 
     return Workflow(metadata=metadata, nodes=nodes, connections=connections, triggers=["trigger_1"])

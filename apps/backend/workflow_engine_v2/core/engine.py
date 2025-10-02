@@ -145,9 +145,24 @@ def execute_conversion_function_flexible(
 
 
 class ExecutionEngine:
-    """Core v2 workflow execution engine (in-memory)."""
+    """Core v2 workflow execution engine (in-memory).
 
-    def __init__(self, repository: Optional[ExecutionRepository] = None, max_workers: int = 8):
+    Unified execution engine supporting:
+    - Sync and async execution
+    - User-friendly and technical logging
+    - HIL (Human-in-the-Loop) pause/resume
+    - Timers, delays, retries, timeouts
+    - Fan-out execution (LOOP nodes)
+    - Conversion functions
+    - Token tracking and credit accounting
+    """
+
+    def __init__(
+        self,
+        repository: Optional[ExecutionRepository] = None,
+        max_workers: int = 8,
+        enable_user_friendly_logging: bool = False,
+    ):
         self._store = ExecutionStore()
         self._log = get_logging_service()
         self._timers = get_timer_service()
@@ -155,6 +170,17 @@ class ExecutionEngine:
         self._hil = get_hil_classifier()
         self._events = get_event_publisher()
         self._pool = _fut.ThreadPoolExecutor(max_workers=max_workers)
+        self._enable_user_friendly_logging = enable_user_friendly_logging
+        self._user_friendly_logger = None
+        if enable_user_friendly_logging:
+            try:
+                from workflow_engine_v2.services.user_friendly_logger import (
+                    get_user_friendly_logger,
+                )
+
+                self._user_friendly_logger = get_user_friendly_logger()
+            except ImportError:
+                pass
 
     def validate_against_specs(self, workflow: Workflow) -> None:
         # Ensure spec exists for each node (type/subtype)
@@ -163,10 +189,15 @@ class ExecutionEngine:
         # Additional validation for ports and configurations
         validate_workflow(workflow)
 
-    def run(self, workflow: Workflow, trigger: TriggerInfo) -> Execution:
+    def run(
+        self, workflow: Workflow, trigger: TriggerInfo, trace_id: Optional[str] = None
+    ) -> Execution:
+        """Execute workflow synchronously with optional trace ID for debugging."""
         self.validate_against_specs(workflow)
 
         exec_id = str(uuid.uuid4())
+        trace_id = trace_id or str(uuid.uuid4())
+
         workflow_execution = Execution(
             id=exec_id,
             execution_id=exec_id,
@@ -176,6 +207,17 @@ class ExecutionEngine:
             start_time=_now_ms(),
             trigger_info=trigger,
         )
+
+        # User-friendly logging if enabled
+        if self._user_friendly_logger:
+            workflow_name = workflow.metadata.name or "Unnamed Workflow"
+            self._user_friendly_logger.log_workflow_start(
+                execution=workflow_execution,
+                workflow_name=workflow_name,
+                total_nodes=len(workflow.nodes),
+                trigger_info=self._format_trigger_description(trigger),
+            )
+
         self._log.log(workflow_execution, level=LogLevel.INFO, message="Execution started")
         self._events.execution_started(workflow_execution)
         self._repo.save(workflow_execution)
@@ -575,37 +617,49 @@ class ExecutionEngine:
                 pass
 
             # Propagate, including fan-out
+            # BFS: Only propagate if the required output_key exists in the node's outputs
             for (
                 successor_node,
                 output_key,
                 conversion_function,
             ) in graph.successors(current_node_id):
-                # Use output_key instead of from_port/to_port
-                if output_key == "iteration" and isinstance(shaped_outputs.get("iteration"), list):
-                    for item in shaped_outputs["iteration"]:
-                        value = item
+                # Check if output_key exists in node outputs
+                # If output_key is not present, skip this connection (conditional flow)
+                value = shaped_outputs.get(output_key)
+
+                # Special case: "iteration" for fan-out (LOOP nodes)
+                if output_key == "iteration" and isinstance(value, list):
+                    for item in value:
+                        item_value = item
                         # Apply conversion function if provided
                         if conversion_function and isinstance(conversion_function, str):
                             try:
                                 converted_data = execute_conversion_function_flexible(
-                                    conversion_function, {"value": value, "data": value}
+                                    conversion_function, {"value": item_value, "data": item_value}
                                 )
-                                value = converted_data
+                                item_value = converted_data
                             except Exception as e:
                                 print(f"Conversion function failed for iteration: {e}")
                                 # Keep original value on error
                         queue.append(
                             {
                                 "node_id": successor_node,
-                                "override": {"result": value},  # Default to result input
+                                "override": {"result": item_value},  # Default to result input
                                 "parent_activation_id": node_execution.activation_id,
                             }
                         )
                     continue
-                successor_node_inputs = pending_inputs.setdefault(successor_node, {})
-                value = shaped_outputs.get(output_key)
+
+                # If output_key is None, skip this connection entirely (conditional execution)
                 if value is None:
-                    value = shaped_outputs.get("result", shaped_outputs)
+                    # Try fallback to "result" only if output_key was "result"
+                    if output_key == "result":
+                        value = shaped_outputs.get("result", shaped_outputs)
+                    else:
+                        # Output key doesn't exist, skip this connection
+                        continue
+
+                successor_node_inputs = pending_inputs.setdefault(successor_node, {})
 
                 # Apply conversion function if provided
                 if conversion_function and isinstance(conversion_function, str):
@@ -656,10 +710,19 @@ class ExecutionEngine:
             self._repo.save(workflow_execution)
         return workflow_execution
 
-    # Async conversion_functionenience wrapper for non-blocking run
-    async def run_async(self, workflow: Workflow, trigger: TriggerInfo) -> Execution:
+    # Async wrappers for non-blocking execution
+    async def run_async(
+        self, workflow: Workflow, trigger: TriggerInfo, trace_id: Optional[str] = None
+    ) -> Execution:
+        """Execute workflow asynchronously."""
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._pool, self.run, workflow, trigger)
+        return await loop.run_in_executor(self._pool, self.run, workflow, trigger, trace_id)
+
+    async def execute_workflow(
+        self, workflow: Workflow, trigger: TriggerInfo, trace_id: Optional[str] = None
+    ) -> Execution:
+        """Async alias for run_async - for compatibility with ModernExecutionEngine API."""
+        return await self.run_async(workflow, trigger, trace_id)
 
         # Execute nodes in dependency order with readiness checks
         executed: set[str] = set()
@@ -680,7 +743,7 @@ class ExecutionEngine:
                 node_id=current_node_id,
             )
 
-            # Collect inputs merged by to_port; inject context for runners
+            # Collect inputs for node; inject context for runners
             inputs: Dict[str, Any] = pending_inputs.get(current_node_id, {})
             inputs["_ctx"] = ctx
 
@@ -1233,9 +1296,12 @@ class ExecutionEngine:
     # -------- Helpers --------
 
     def _get_initial_ready_nodes(self, graph: WorkflowGraph) -> List[str]:
-        # Triggers are always ready; otherwise in-degree 0 nodes
-        roots = graph.sources()
-        return list(roots)
+        # Only start from explicitly configured trigger nodes
+        # Do NOT start from all in-degree 0 nodes
+        if graph.workflow.triggers:
+            return list(graph.workflow.triggers)
+        # Fallback: if no triggers configured, use in-degree 0 nodes
+        return [node_id for node_id in graph.nodes.keys() if graph.in_degree(node_id) == 0]
 
     def _is_node_ready(
         self, graph: WorkflowGraph, node_id: str, pending_inputs: Dict[str, Dict[str, Any]]
@@ -1251,6 +1317,20 @@ class ExecutionEngine:
         # Check if at least one port has received data
         provided = pending_inputs.get(node_id, {})
         return len(provided) > 0
+
+    def _format_trigger_description(self, trigger: TriggerInfo) -> str:
+        """Format trigger information for user-friendly logging."""
+        trigger_type = getattr(trigger, "trigger_type", "unknown")
+        if trigger_type == "manual":
+            return "Manual trigger"
+        elif trigger_type == "webhook":
+            return "Webhook trigger"
+        elif trigger_type == "schedule":
+            return "Scheduled trigger"
+        elif trigger_type == "email":
+            return "Email trigger"
+        else:
+            return f"{trigger_type.capitalize()} trigger"
 
 
 __all__ = ["ExecutionEngine"]

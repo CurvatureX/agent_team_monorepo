@@ -163,10 +163,7 @@ class NotionMCPToolSpec(BaseNodeSpec):
                     "required": False,
                 },
             },
-            # TOOL nodes have no ports - they are attached to AI_AGENT nodes
-            input_ports=[],
-            output_ports=[],
-            # Tools don't have attached_nodes (only AI_AGENT has this)
+            # TOOL nodes have no ports - they are attached to AI_AGENT nodes            # Tools don't have attached_nodes (only AI_AGENT has this)
             attached_nodes=None,
             # Metadata
             tags=["tool", "mcp", "notion", "database", "pages", "attached"],

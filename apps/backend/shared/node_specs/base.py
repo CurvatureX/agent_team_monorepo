@@ -49,31 +49,7 @@ class DataFormat:
     examples: Optional[List[str]] = None
 
 
-@dataclass
-class InputPortSpec:
-    """Specification for an input port - Updated to match new workflow spec."""
-
-    name: str
-    type: str  # ConnectionType (MAIN, AI_TOOL, AI_MEMORY, etc.)
-    data_type: str = "dict"  # Data type: 'str', 'int', 'float', 'bool', 'dict', 'list'
-    required: bool = False
-    description: str = ""
-    max_connections: int = 1  # Maximum connections, -1 for unlimited
-    data_format: Optional[DataFormat] = None
-    validation_schema: Optional[str] = None  # JSON Schema for validation
-
-
-@dataclass
-class OutputPortSpec:
-    """Specification for an output port - Updated to match new workflow spec."""
-
-    name: str
-    type: str  # ConnectionType
-    data_type: str = "dict"  # Data type: 'str', 'int', 'float', 'bool', 'dict', 'list'
-    description: str = ""
-    max_connections: int = -1  # -1 = unlimited
-    data_format: Optional[DataFormat] = None
-    validation_schema: Optional[str] = None  # JSON Schema for validation
+# Port specifications removed - replaced with output_key based routing
 
 
 @dataclass
@@ -96,8 +72,6 @@ class NodeSpec:
     version: str = "1.0.0"
     description: str = ""
     parameters: List[ParameterDef] = field(default_factory=list)
-    input_ports: List[InputPortSpec] = field(default_factory=list)
-    output_ports: List[OutputPortSpec] = field(default_factory=list)
     examples: Optional[List[Dict[str, Any]]] = None
 
     # Enhanced fields for node_templates compatibility
@@ -116,27 +90,9 @@ class NodeSpec:
                 return param
         return None
 
-    def get_input_port(self, name: str) -> Optional[InputPortSpec]:
-        """Get an input port specification by name."""
-        for port in self.input_ports:
-            if port.name == name:
-                return port
-        return None
-
-    def get_output_port(self, name: str) -> Optional[OutputPortSpec]:
-        """Get an output port specification by name."""
-        for port in self.output_ports:
-            if port.name == name:
-                return port
-        return None
-
     def get_required_parameters(self) -> List[ParameterDef]:
         """Get all required parameters."""
         return [p for p in self.parameters if p.required]
-
-    def get_required_input_ports(self) -> List[InputPortSpec]:
-        """Get all required input ports."""
-        return [p for p in self.input_ports if p.required]
 
     def validate_spec(self) -> bool:
         """Validate that the node specification is complete and correct."""
@@ -144,25 +100,10 @@ class NodeSpec:
         if not self.node_type or not self.subtype:
             return False
 
-        # Validate port IDs are unique
-        input_ids = [port.id for port in self.input_ports]
-        output_ids = [port.id for port in self.output_ports]
-
-        if len(input_ids) != len(set(input_ids)) or len(output_ids) != len(set(output_ids)):
-            return False
-
         return True
 
 
-@dataclass
-class ConnectionSpec:
-    """Connection specification between two ports."""
-
-    source_port: str
-    target_port: str
-    connection_type: str  # ConnectionType
-    conversion_function: str  # Required Python function as string
-    validation_required: bool = True
+# ConnectionSpec removed - use Connection model from workflow_new.py with output_key field
 
 
 # ============================================================================
@@ -307,9 +248,9 @@ except ImportError:
     from ...models.node_enums import NodeType
 
 try:
-    from ..models.workflow_new import Node, Port
+    from ..models.workflow_new import Node
 except ImportError:
-    from ...models.workflow_new import Node, Port
+    from ...models.workflow_new import Node
 
 
 class BaseNodeSpec(BaseModel):
@@ -356,9 +297,7 @@ class BaseNodeSpec(BaseModel):
         default_factory=dict, description="默认运行时输出参数（兼容旧版）"
     )
 
-    # Port definitions
-    input_ports: List[Port] = Field(default_factory=list, description="输入端口列表")
-    output_ports: List[Port] = Field(default_factory=list, description="输出端口列表")
+    # Port definitions removed - replaced with output_key based routing
 
     # Attached nodes (只适用于AI_AGENT Node)
     attached_nodes: Optional[List[str]] = Field(
@@ -414,8 +353,6 @@ class BaseNodeSpec(BaseModel):
             "configurations": runtime_configurations,
             "input_params": runtime_input_defaults,
             "output_params": runtime_output_defaults,
-            "input_ports": self.input_ports.copy(),
-            "output_ports": self.output_ports.copy(),
             "position": position,
         }
 
@@ -436,33 +373,9 @@ class BaseNodeSpec(BaseModel):
         return all(key in config for key in required_keys)
 
 
-# Common port configurations for reuse
-COMMON_PORTS = {
-    "main_input": {
-        "id": "main",
-        "name": "main",
-        "data_type": "dict",
-        "description": "主输入端口",
-        "required": True,
-        "max_connections": 1,
-    },
-    "main_output": {
-        "id": "main",
-        "name": "main",
-        "data_type": "dict",
-        "description": "主输出端口",
-        "required": False,
-        "max_connections": -1,
-    },
-    "error_output": {
-        "id": "error",
-        "name": "error",
-        "data_type": "dict",
-        "description": "错误输出端口",
-        "required": False,
-        "max_connections": -1,
-    },
-}
+# Common port configurations removed - replaced with output_key based routing
+# All nodes use "result" as default input/output key
+# Conditional nodes (IF, SWITCH) use multiple output keys: "true", "false", etc.
 
 
 # Common configuration schemas

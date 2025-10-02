@@ -124,10 +124,7 @@ class GraphMemorySpec(BaseNodeSpec):
                     "required": False,
                 },
             },
-            # Port definitions - Memory nodes don't use traditional ports
-            input_ports=[],
-            output_ports=[],
-            # Metadata
+            # Port definitions - Memory nodes don't use traditional ports            # Metadata
             tags=["memory", "graph", "relationships", "network", "traversal", "analysis"],
             # Examples
             examples=[

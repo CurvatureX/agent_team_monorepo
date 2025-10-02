@@ -105,18 +105,6 @@ class WebhookTriggerSpec(BaseNodeSpec):
                     "required": False,
                 },
             },
-            # Port definitions
-            input_ports=[],  # Triggers have no input ports
-            output_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "Webhook request data including headers, body, and metadata",
-                    "required": False,
-                    "max_connections": -1,
-                }
-            ],
             # Metadata
             tags=["trigger", "webhook", "http", "external"],
             # Examples

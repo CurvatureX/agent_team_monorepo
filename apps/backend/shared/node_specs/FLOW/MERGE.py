@@ -101,45 +101,7 @@ class MergeFlowSpec(BaseNodeSpec):
                     "description": "Mapping of merged segments to source inputs",
                     "required": False,
                 },
-            },
-            # Port definitions
-            input_ports=[
-                {
-                    "id": "input_1",
-                    "name": "input_1",
-                    "data_type": "any",
-                    "description": "First data stream to merge",
-                    "required": True,
-                    "max_connections": 1,
-                },
-                {
-                    "id": "input_2",
-                    "name": "input_2",
-                    "data_type": "any",
-                    "description": "Second data stream to merge",
-                    "required": True,
-                    "max_connections": 1,
-                },
-                {
-                    "id": "input_3",
-                    "name": "input_3",
-                    "data_type": "any",
-                    "description": "Optional third data stream",
-                    "required": False,
-                    "max_connections": 1,
-                },
-            ],
-            output_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "any",
-                    "description": "Combined output from all input streams",
-                    "required": True,
-                    "max_connections": -1,
-                },
-            ],
-            # Examples
+            },  # Examples
             examples=[
                 {
                     "name": "Array Concatenation",
@@ -155,7 +117,7 @@ class MergeFlowSpec(BaseNodeSpec):
                         "input_3": [7, 8, 9],
                     },
                     "expected_outputs": {
-                        "main": {
+                        "result": {
                             "merged_data": [1, 2, 3, 4, 5, 6, 7, 8, 9],
                             "merge_stats": {
                                 "total_inputs": 3,
@@ -191,7 +153,7 @@ class MergeFlowSpec(BaseNodeSpec):
                         ],
                     },
                     "expected_outputs": {
-                        "main": {
+                        "result": {
                             "merged_data": [
                                 {"id": 1, "name": "Alice", "team": "Engineering"},
                                 {"id": 2, "name": "Bob", "team": "Product"},

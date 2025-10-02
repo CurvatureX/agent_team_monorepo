@@ -180,8 +180,7 @@ def workflow_factory():
                 id=f"{workflow_id}_conn_{i}",
                 from_node=prev_node_id,
                 to_node=node.id,
-                from_port="main",
-                to_port="main",
+                output_key="result",
             )
             connections.append(connection)
             prev_node_id = node.id

@@ -73,45 +73,89 @@ class HTTPRequestActionSpec(BaseNodeSpec):
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters
-            default_input_params={
-                "body": {},
-                "url_variables": {},
-                "dynamic_headers": {},
-                "dynamic_query_params": {},
-            },
-            default_output_params={
-                "status_code": 0,
-                "headers": {},
-                "body": "",
-                "json": {},
-                "success": False,
-                "error_message": "",
-                "response_time": 0,
-                "url": "",
-                "redirects": [],
-            },
-            # Port definitions with comprehensive schemas
-            input_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "HTTP request configuration",
-                    "required": True,
-                    "max_connections": 1,
-                }
-            ],
-            output_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "HTTP response data",
+            # Parameter schemas
+            input_params={
+                "body": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Request body data",
                     "required": False,
-                    "max_connections": -1,
-                }
-            ],
+                },
+                "url_variables": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Variables for URL template substitution",
+                    "required": False,
+                },
+                "dynamic_headers": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Additional headers to merge with configuration",
+                    "required": False,
+                },
+                "dynamic_query_params": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Additional query parameters to merge",
+                    "required": False,
+                },
+            },
+            output_params={
+                "status_code": {
+                    "type": "integer",
+                    "default": 0,
+                    "description": "HTTP response status code",
+                    "required": False,
+                },
+                "headers": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Response headers",
+                    "required": False,
+                },
+                "body": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Raw response body",
+                    "required": False,
+                },
+                "json": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Parsed JSON response (if applicable)",
+                    "required": False,
+                },
+                "success": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Whether request succeeded",
+                    "required": False,
+                },
+                "error_message": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Error message if request failed",
+                    "required": False,
+                },
+                "response_time": {
+                    "type": "float",
+                    "default": 0,
+                    "description": "Response time in seconds",
+                    "required": False,
+                },
+                "url": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Final URL after template substitution",
+                    "required": False,
+                },
+                "redirects": {
+                    "type": "array",
+                    "default": [],
+                    "description": "List of redirect URLs followed",
+                    "required": False,
+                },
+            },
             # Metadata
             tags=["action", "http", "api", "system"],
             # Examples

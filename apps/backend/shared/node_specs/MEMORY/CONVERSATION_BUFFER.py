@@ -120,10 +120,7 @@ class ConversationMemorySpec(BaseNodeSpec):
                     "required": False,
                 },
             },
-            # MEMORY nodes have no ports - they are attached to AI_AGENT nodes
-            input_ports=[],
-            output_ports=[],
-            # Memory nodes don't have attached_nodes (only AI_AGENT has this)
+            # MEMORY nodes have no ports - they are attached to AI_AGENT nodes            # Memory nodes don't have attached_nodes (only AI_AGENT has this)
             attached_nodes=None,
             # Examples (simplified to reflect auto-summary on near capacity)
             examples=[

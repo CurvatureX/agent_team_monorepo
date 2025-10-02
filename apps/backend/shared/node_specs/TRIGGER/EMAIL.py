@@ -172,19 +172,7 @@ class EmailTriggerSpec(BaseNodeSpec):
                     "required": False,
                 },
             },
-            # Port definitions
-            input_ports=[],  # Triggers have no input ports
-            output_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "Email event output with message content and attachments",
-                    "required": False,
-                    "max_connections": -1,
-                }
-            ],
-            # Metadata
+            # Port definitions            # Metadata
             tags=["trigger", "email", "imap", "communication", "automation"],
             # Examples
             examples=[

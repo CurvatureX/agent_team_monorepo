@@ -138,27 +138,6 @@ class OpenAIChatGPTSpec(BaseNodeSpec):
                     "required": False,
                 },
             },
-            # Port definitions
-            input_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "Input data for AI processing",
-                    "required": True,
-                    "max_connections": -1,
-                }
-            ],
-            output_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "AI agent response output",
-                    "required": True,
-                    "max_connections": -1,
-                }
-            ],
             tags=["ai", "openai", "chatgpt", "language-model", "function-calling"],
             examples=[
                 {

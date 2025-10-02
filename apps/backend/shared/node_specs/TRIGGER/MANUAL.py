@@ -64,19 +64,7 @@ class ManualTriggerSpec(BaseNodeSpec):
                     "required": False,
                 },
             },
-            # Port definitions using new Port model
-            input_ports=[],  # Triggers have no input ports
-            output_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "Triggered execution output with context",
-                    "required": False,  # Output ports are not required
-                    "max_connections": -1,  # Unlimited output connections
-                }
-            ],
-            # Metadata
+            # Port definitions using new Port model            # Metadata
             tags=["trigger", "manual", "user-initiated"],
             # Examples
             examples=[

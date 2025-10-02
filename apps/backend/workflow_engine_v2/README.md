@@ -45,10 +45,16 @@ python main.py
 
 ### 2. Execute a Workflow
 ```python
-from workflow_engine_v2.core.modern_engine import ModernExecutionEngine
+from workflow_engine_v2.core.engine import ExecutionEngine
 
-engine = ModernExecutionEngine()
+# Create engine with user-friendly logging enabled
+engine = ExecutionEngine(enable_user_friendly_logging=True)
+
+# Execute workflow (async)
 execution = await engine.execute_workflow(workflow, trigger)
+
+# Or execute synchronously
+execution = engine.run(workflow, trigger)
 ```
 
 ### 3. View Logs via API
@@ -138,10 +144,12 @@ FastAPI endpoints that serve logs to the API Gateway
 ### Basic Workflow Execution
 ```python
 import asyncio
-from workflow_engine_v2.core.modern_engine import ModernExecutionEngine
+from workflow_engine_v2.core.engine import ExecutionEngine
 
 async def run_workflow():
-    engine = ModernExecutionEngine()
+    # Create engine with user-friendly logging
+    engine = ExecutionEngine(enable_user_friendly_logging=True)
+
     execution = await engine.execute_workflow(
         workflow=my_workflow,
         trigger=my_trigger,

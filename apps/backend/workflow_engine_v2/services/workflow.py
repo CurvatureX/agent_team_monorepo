@@ -84,8 +84,7 @@ class WorkflowServiceV2:
                 id=c["id"],
                 from_node=c["from_node"],
                 to_node=c["to_node"],
-                from_port=c.get("from_port", "main"),
-                to_port=c.get("to_port", "main"),
+                output_key=c.get("output_key", "result"),
                 conversion_function=c.get("conversion_function"),
             )
             v2_connections.append(conn)

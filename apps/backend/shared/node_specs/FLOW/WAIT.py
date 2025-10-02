@@ -227,77 +227,7 @@ class WaitFlowSpec(BaseNodeSpec):
                     "description": "Data that triggered wait completion, if any",
                     "required": False,
                 },
-            },
-            # Port definitions
-            input_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "any",
-                    "description": "Data to pass through after wait completion",
-                    "required": True,
-                    "max_connections": 1,
-                },
-                {
-                    "id": "wait_config",
-                    "name": "wait_config",
-                    "data_type": "dict",
-                    "description": "Dynamic wait configuration override",
-                    "required": False,
-                    "max_connections": 1,
-                },
-                {
-                    "id": "cancel_signal",
-                    "name": "cancel_signal",
-                    "data_type": "boolean",
-                    "description": "Signal to cancel the wait",
-                    "required": False,
-                    "max_connections": 1,
-                },
-                {
-                    "id": "trigger_event",
-                    "name": "trigger_event",
-                    "data_type": "any",
-                    "description": "External event trigger to complete wait",
-                    "required": False,
-                    "max_connections": 1,
-                },
-            ],
-            output_ports=[
-                {
-                    "id": "completed",
-                    "name": "completed",
-                    "data_type": "any",
-                    "description": "Data output when wait condition is satisfied",
-                    "required": True,
-                    "max_connections": -1,
-                },
-                {
-                    "id": "timeout",
-                    "name": "timeout",
-                    "data_type": "any",
-                    "description": "Data output when wait timeout is reached",
-                    "required": False,
-                    "max_connections": -1,
-                },
-                {
-                    "id": "cancelled",
-                    "name": "cancelled",
-                    "data_type": "any",
-                    "description": "Data output when wait is cancelled",
-                    "required": False,
-                    "max_connections": -1,
-                },
-                {
-                    "id": "failed",
-                    "name": "failed",
-                    "data_type": "any",
-                    "description": "Data output when wait fails due to error",
-                    "required": False,
-                    "max_connections": -1,
-                },
-            ],
-            # Metadata
+            },  # Metadata
             tags=["flow", "wait", "condition", "event", "synchronization", "pause"],
             # Examples
             examples=[
@@ -313,7 +243,7 @@ class WaitFlowSpec(BaseNodeSpec):
                         "pass_through_data": True,
                     },
                     "input_example": {
-                        "main": {
+                        "result": {
                             "job_id": "job_12345",
                             "status": "processing",
                             "confidence_score": 0.65,
@@ -358,7 +288,7 @@ class WaitFlowSpec(BaseNodeSpec):
                         "include_wait_metadata": True,
                     },
                     "input_example": {
-                        "main": {
+                        "result": {
                             "order_id": "ORD-2025-001",
                             "payment_id": "PAY-12345",
                             "amount": 99.99,
@@ -412,7 +342,7 @@ class WaitFlowSpec(BaseNodeSpec):
                         "backoff_multiplier": 1.2,
                     },
                     "input_example": {
-                        "main": {
+                        "result": {
                             "export_job_id": "export_001",
                             "date": "2025-01-20",
                             "requested_format": "csv",
@@ -463,7 +393,7 @@ class WaitFlowSpec(BaseNodeSpec):
                         "exponential_backoff": True,
                     },
                     "input_example": {
-                        "main": {
+                        "result": {
                             "job_id": "background_job_456",
                             "api_token": "token_abc123",
                             "submitted_at": "2025-01-20T14:30:00Z",

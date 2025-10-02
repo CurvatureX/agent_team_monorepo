@@ -244,52 +244,7 @@ class ManualReviewSpec(BaseNodeSpec):
                     "required": False,
                 },
             },
-            # Port definitions - HIL nodes have multiple output paths based on AI analysis
-            input_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "Input data for manual review process",
-                    "required": True,
-                    "max_connections": 1,
-                }
-            ],
-            output_ports=[
-                {
-                    "id": "confirmed",
-                    "name": "confirmed",
-                    "data_type": "dict",
-                    "description": "Output when AI classifies review as approved/passed",
-                    "required": False,
-                    "max_connections": -1,
-                },
-                {
-                    "id": "rejected",
-                    "name": "rejected",
-                    "data_type": "dict",
-                    "description": "Output when AI classifies review as rejected/failed",
-                    "required": False,
-                    "max_connections": -1,
-                },
-                {
-                    "id": "unrelated",
-                    "name": "unrelated",
-                    "data_type": "dict",
-                    "description": "Output when AI classifies review as incomplete/requires revision",
-                    "required": False,
-                    "max_connections": -1,
-                },
-                {
-                    "id": "timeout",
-                    "name": "timeout",
-                    "data_type": "dict",
-                    "description": "Output when no review completed within deadline",
-                    "required": False,
-                    "max_connections": -1,
-                },
-            ],
-            # Metadata
+            # Port definitions - HIL nodes have multiple output paths based on AI analysis            # Metadata
             tags=[
                 "human-in-the-loop",
                 "review",

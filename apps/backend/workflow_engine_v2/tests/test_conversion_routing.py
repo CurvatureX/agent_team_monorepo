@@ -76,8 +76,7 @@ def test_conversion_function_routes_to_main_port():
                 id="c1",
                 from_node=src.id,
                 to_node=dst.id,
-                from_port="result",
-                to_port="result",
+                output_key="result",
                 conversion_function=conv,
             )
         ],
@@ -142,8 +141,7 @@ def test_conversion_function_routes_to_named_port():
                 id="c1",
                 from_node=src.id,
                 to_node=dst.id,
-                from_port="result",
-                to_port="filter_config",
+                output_key="result",
                 conversion_function=conv,
             )
         ],

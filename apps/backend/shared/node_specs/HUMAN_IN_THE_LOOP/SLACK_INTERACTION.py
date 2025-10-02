@@ -167,60 +167,7 @@ class SlackInteractionSpec(BaseNodeSpec):
                     "required": False,
                 },
             },
-            # Port definitions - HIL nodes have multiple output ports based on AI analysis
-            input_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "Input data for human interaction request",
-                    "required": True,
-                    "max_connections": 1,
-                }
-            ],
-            output_ports=[
-                {
-                    "id": "confirmed",
-                    "name": "confirmed",
-                    "data_type": "dict",
-                    "description": "Output when human response is confirmed/approved",
-                    "required": False,
-                    "max_connections": -1,
-                },
-                {
-                    "id": "rejected",
-                    "name": "rejected",
-                    "data_type": "dict",
-                    "description": "Output when human response is rejected/denied",
-                    "required": False,
-                    "max_connections": -1,
-                },
-                {
-                    "id": "unrelated",
-                    "name": "unrelated",
-                    "data_type": "dict",
-                    "description": "Output when human response is unrelated to the request",
-                    "required": False,
-                    "max_connections": -1,
-                },
-                {
-                    "id": "timeout",
-                    "name": "timeout",
-                    "data_type": "dict",
-                    "description": "Output when human interaction times out",
-                    "required": False,
-                    "max_connections": -1,
-                },
-                {
-                    "id": "error",
-                    "name": "error",
-                    "data_type": "dict",
-                    "description": "Error output for failed operations",
-                    "required": False,
-                    "max_connections": -1,
-                },
-            ],
-            # Metadata
+            # Port definitions - HIL nodes have multiple output ports based on AI analysis            # Metadata
             tags=["human-interaction", "slack", "approval", "ai-analysis", "built-in-intelligence"],
             # Examples
             examples=[

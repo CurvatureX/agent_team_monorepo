@@ -163,37 +163,7 @@ class SlackExternalActionSpec(BaseNodeSpec):
                     "description": "Raw response payload from Slack API",
                     "required": False,
                 },
-            },
-            # Port definitions
-            input_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "Message content and Slack operation parameters",
-                    "required": True,
-                    "max_connections": 1,
-                }
-            ],
-            output_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "Slack operation result and response data",
-                    "required": False,
-                    "max_connections": -1,
-                },
-                {
-                    "id": "error",
-                    "name": "error",
-                    "data_type": "dict",
-                    "description": "Error output when Slack operation fails",
-                    "required": False,
-                    "max_connections": -1,
-                },
-            ],
-            # Metadata
+            },  # Metadata
             tags=["slack", "messaging", "collaboration", "external", "oauth"],
             # Examples
             examples=[

@@ -144,27 +144,6 @@ class GoogleGeminiSpec(BaseNodeSpec):
                     "required": False,
                 },
             },
-            # Port definitions
-            input_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "Main input with user prompt and context",
-                    "required": True,
-                    "max_connections": -1,
-                },
-            ],
-            output_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "Gemini's response and metadata",
-                    "required": True,
-                    "max_connections": -1,
-                }
-            ],
             tags=[
                 "ai-agent",
                 "google",

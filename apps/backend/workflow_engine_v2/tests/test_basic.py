@@ -39,15 +39,7 @@ def build_simple_workflow():
     wf = Workflow(
         metadata=meta,
         nodes=[n1, n2],
-        connections=[
-            Connection(
-                id="c1",
-                from_node=n1.id,
-                to_node=n2.id,
-                from_port="main",
-                to_port="main",
-            )
-        ],
+        connections=[Connection(id="c1", from_node=n1.id, to_node=n2.id, output_key="result")],
         triggers=[n1.id],
     )
     return wf
@@ -92,9 +84,7 @@ def test_flow_sort_and_pass_through():
     wf = Workflow(
         metadata=meta,
         nodes=[n1, n2],
-        connections=[
-            Connection(id="c1", from_node=n1.id, to_node=n2.id, from_port="main", to_port="main")
-        ],
+        connections=[Connection(id="c1", from_node=n1.id, to_node=n2.id, output_key="result")],
         triggers=[n1.id],
     )
 
@@ -128,9 +118,7 @@ def test_hil_pause_and_resume():
     wf = Workflow(
         metadata=meta,
         nodes=[n1, n2],
-        connections=[
-            Connection(id="c1", from_node=n1.id, to_node=n2.id, from_port="main", to_port="main")
-        ],
+        connections=[Connection(id="c1", from_node=n1.id, to_node=n2.id, output_key="result")],
         triggers=[n1.id],
     )
 
@@ -165,9 +153,7 @@ def test_wait_pause_and_resume():
     wf = Workflow(
         metadata=meta,
         nodes=[n1, n2],
-        connections=[
-            Connection(id="c1", from_node=n1.id, to_node=n2.id, from_port="main", to_port="main")
-        ],
+        connections=[Connection(id="c1", from_node=n1.id, to_node=n2.id, output_key="result")],
         triggers=[n1.id],
     )
     paused = engine.run(
@@ -205,8 +191,8 @@ def test_delay_resume_due_timer():
         metadata=meta,
         nodes=[n1, n2, n3],
         connections=[
-            Connection(id="c1", from_node=n1.id, to_node=n2.id, from_port="main", to_port="main"),
-            Connection(id="c2", from_node=n2.id, to_node=n3.id, from_port="main", to_port="main"),
+            Connection(id="c1", from_node=n1.id, to_node=n2.id, output_key="result"),
+            Connection(id="c2", from_node=n2.id, to_node=n3.id, output_key="result"),
         ],
         triggers=[n1.id],
     )
@@ -249,8 +235,8 @@ def test_memory_set_and_get():
         metadata=meta,
         nodes=[n1, n2, n3],
         connections=[
-            Connection(id="c1", from_node=n1.id, to_node=n2.id, from_port="main", to_port="main"),
-            Connection(id="c2", from_node=n2.id, to_node=n3.id, from_port="main", to_port="main"),
+            Connection(id="c1", from_node=n1.id, to_node=n2.id, output_key="result"),
+            Connection(id="c2", from_node=n2.id, to_node=n3.id, output_key="result"),
         ],
         triggers=[n1.id],
     )
@@ -292,9 +278,7 @@ def test_loop_range_aggregates_results():
     wf = Workflow(
         metadata=meta,
         nodes=[n1, n2],
-        connections=[
-            Connection(id="c1", from_node=n1.id, to_node=n2.id, from_port="main", to_port="main")
-        ],
+        connections=[Connection(id="c1", from_node=n1.id, to_node=n2.id, output_key="result")],
         triggers=[n1.id],
     )
     res = engine.run(

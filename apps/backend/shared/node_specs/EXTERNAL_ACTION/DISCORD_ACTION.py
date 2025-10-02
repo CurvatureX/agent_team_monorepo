@@ -212,29 +212,7 @@ class DiscordActionSpec(BaseNodeSpec):
                     "description": "Execution metadata (timings, retries)",
                     "required": False,
                 },
-            },
-            # Port definitions
-            input_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "Input data for Discord action",
-                    "required": True,
-                    "max_connections": 1,
-                }
-            ],
-            output_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "Output when Discord action succeeds",
-                    "required": True,
-                    "max_connections": -1,
-                }
-            ],
-            # Examples
+            },  # Examples
             examples=[
                 {
                     "name": "Send Rich Embed Message",
@@ -267,7 +245,7 @@ class DiscordActionSpec(BaseNodeSpec):
                         }
                     },
                     "expected_outputs": {
-                        "main": {
+                        "result": {
                             "success": True,
                             "discord_response": {
                                 "id": "1234567890123456789",
@@ -314,7 +292,7 @@ class DiscordActionSpec(BaseNodeSpec):
                         }
                     },
                     "expected_outputs": {
-                        "main": {
+                        "result": {
                             "success": True,
                             "discord_response": {
                                 "user_id": "555666777888999000",
@@ -362,7 +340,7 @@ class DiscordActionSpec(BaseNodeSpec):
                         }
                     },
                     "expected_outputs": {
-                        "main": {
+                        "result": {
                             "success": True,
                             "discord_response": {
                                 "id": "333444555666777888",
@@ -409,7 +387,7 @@ class DiscordActionSpec(BaseNodeSpec):
                         }
                     },
                     "expected_outputs": {
-                        "main": {
+                        "result": {
                             "success": True,
                             "discord_response": {
                                 "id": "999000111222333444",

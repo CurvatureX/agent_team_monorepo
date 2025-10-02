@@ -66,36 +66,7 @@ class IfFlowSpec(BaseNodeSpec):
                     "required": False,
                 },
             },
-            # Port definitions - IF nodes have multiple output paths
-            input_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "Input data for condition evaluation",
-                    "required": True,
-                    "max_connections": 1,
-                }
-            ],
-            output_ports=[
-                {
-                    "id": "true",
-                    "name": "true",
-                    "data_type": "dict",
-                    "description": "Output when condition evaluates to true",
-                    "required": False,
-                    "max_connections": -1,
-                },
-                {
-                    "id": "false",
-                    "name": "false",
-                    "data_type": "dict",
-                    "description": "Output when condition evaluates to false",
-                    "required": False,
-                    "max_connections": -1,
-                },
-            ],
-            # Metadata
+            # Port definitions - IF nodes have multiple output paths            # Metadata
             tags=["flow", "conditional", "branching", "logic"],
             # Examples (expression-only)
             examples=[

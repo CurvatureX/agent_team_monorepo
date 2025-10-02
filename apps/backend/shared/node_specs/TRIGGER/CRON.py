@@ -85,19 +85,7 @@ class CronTriggerSpec(BaseNodeSpec):
                     "required": False,
                 },
             },
-            # Port definitions
-            input_ports=[],  # Triggers have no input ports
-            output_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "Scheduled execution output with timing information",
-                    "required": False,
-                    "max_connections": -1,
-                }
-            ],
-            # Metadata
+            # Port definitions            # Metadata
             tags=["trigger", "cron", "scheduled", "time-based"],
             # Examples
             examples=[

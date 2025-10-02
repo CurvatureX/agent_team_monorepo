@@ -132,52 +132,7 @@ class DiscordInteractionSpec(BaseNodeSpec):
                     "required": False,
                 },
             },
-            # Port definitions - HIL nodes have multiple output paths based on AI analysis
-            input_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "Input data for human interaction request",
-                    "required": True,
-                    "max_connections": 1,
-                }
-            ],
-            output_ports=[
-                {
-                    "id": "confirmed",
-                    "name": "confirmed",
-                    "data_type": "dict",
-                    "description": "Output when AI classifies Discord response as confirmed/approved",
-                    "required": False,
-                    "max_connections": -1,
-                },
-                {
-                    "id": "rejected",
-                    "name": "rejected",
-                    "data_type": "dict",
-                    "description": "Output when AI classifies Discord response as rejected/declined",
-                    "required": False,
-                    "max_connections": -1,
-                },
-                {
-                    "id": "unrelated",
-                    "name": "unrelated",
-                    "data_type": "dict",
-                    "description": "Output when AI classifies Discord response as unclear/unrelated",
-                    "required": False,
-                    "max_connections": -1,
-                },
-                {
-                    "id": "timeout",
-                    "name": "timeout",
-                    "data_type": "dict",
-                    "description": "Output when no response received within timeout period",
-                    "required": False,
-                    "max_connections": -1,
-                },
-            ],
-            # Metadata
+            # Port definitions - HIL nodes have multiple output paths based on AI analysis            # Metadata
             tags=["human-in-the-loop", "discord", "gaming", "community", "approval", "ai-analysis"],
             # Examples
             examples=[

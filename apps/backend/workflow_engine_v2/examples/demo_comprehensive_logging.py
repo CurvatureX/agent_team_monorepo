@@ -24,7 +24,7 @@ sys.path.insert(0, str(backend_dir))
 from shared.models import TriggerInfo
 from shared.models.node_enums import ActionSubtype, AIAgentSubtype, NodeType
 from shared.models.workflow_new import Connection, Node, NodePort, Workflow, WorkflowMetadata
-from workflow_engine_v2.core.modern_engine import ModernExecutionEngine
+from workflow_engine_v2.core.engine import ExecutionEngine
 from workflow_engine_v2.services.user_friendly_logger import get_user_friendly_logger
 
 
@@ -88,9 +88,9 @@ def create_sample_workflow() -> Workflow:
 
     # Create connections
     connections = [
-        Connection(from_node="trigger_001", from_port="main", to_node="ai_001", to_port="main"),
-        Connection(from_node="ai_001", from_port="main", to_node="action_001", to_port="main"),
-        Connection(from_node="action_001", from_port="main", to_node="hil_001", to_port="main"),
+        Connection(from_node="trigger_001", output_key="result", to_node="ai_001"),
+        Connection(from_node="ai_001", output_key="result", to_node="action_001"),
+        Connection(from_node="action_001", output_key="result", to_node="hil_001"),
     ]
 
     # Create workflow metadata
@@ -124,8 +124,8 @@ async def demonstrate_execution_logging():
     print(f"   - {len(workflow.connections)} connections")
     print()
 
-    # Create execution engine
-    engine = ModernExecutionEngine()
+    # Create execution engine with user-friendly logging enabled
+    engine = ExecutionEngine(enable_user_friendly_logging=True)
 
     print("🚀 Starting workflow execution with comprehensive logging...")
     print()

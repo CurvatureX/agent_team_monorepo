@@ -151,9 +151,9 @@ logs = service.get_execution_logs(
 Extended engine with comprehensive logging:
 
 ```python
-from workflow_engine_v2.core.enhanced_engine import EnhancedExecutionEngine
+from workflow_engine_v2.core.engine import ExecutionEngine
 
-engine = EnhancedExecutionEngine()
+engine = ExecutionEngine(enable_user_friendly_logging=True)
 
 # Run workflow with enhanced logging
 execution = engine.run(workflow, trigger, trace_id="trace123")
@@ -244,11 +244,11 @@ The system supports enhanced log levels:
 ### 1. Basic Logging with Enhanced Engine
 
 ```python
-from workflow_engine_v2.core.enhanced_engine import EnhancedExecutionEngine
+from workflow_engine_v2.core.engine import ExecutionEngine
 from workflow_engine_v2.services.log_formatters import OutputFormat
 
 # Create enhanced engine
-engine = EnhancedExecutionEngine()
+engine = ExecutionEngine(enable_user_friendly_logging=True)
 
 # Execute workflow
 execution = engine.run(workflow, trigger)
@@ -476,10 +476,10 @@ Performance:
 from workflow_engine_v2.core.engine import ExecutionEngine
 
 # New approach
-from workflow_engine_v2.core.enhanced_engine import EnhancedExecutionEngine
+from workflow_engine_v2.core.engine import ExecutionEngine
 
 # Drop-in replacement with enhanced logging
-engine = EnhancedExecutionEngine()
+engine = ExecutionEngine(enable_user_friendly_logging=True)
 execution = engine.run(workflow, trigger)
 ```
 

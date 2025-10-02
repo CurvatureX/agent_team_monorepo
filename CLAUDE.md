@@ -123,10 +123,24 @@ terraform apply
 ### Node-Based Workflow System
 The core workflow execution uses a sophisticated node system:
 
-- **Node Types**: 8 core types (TRIGGER, AI_AGENT, ACTION, EXTERNAL_ACTION, FLOW, HUMAN_LOOP, TOOL, MEMORY)
+- **Node Types**: 8 core types (TRIGGER, AI_AGENT, ACTION, EXTERNAL_ACTION, FLOW, HUMAN_IN_THE_LOOP, TOOL, MEMORY)
 - **Node Specifications**: Centralized specs in `shared/node_specs/` with automatic validation
 - **Factory Pattern**: Dynamic node creation with type registration
 - **Execution Context**: Unified execution environment with parameter validation
+- **Attached Nodes**: AI_AGENT nodes support attached TOOL and MEMORY nodes for enhanced capabilities
+
+#### Node Structure
+Each node contains:
+- **Configurations**: Node-specific parameters defining behavior
+- **Input/Output Params**: Runtime data flow parameters
+- **Attached Nodes**: (AI_AGENT only) Tool and Memory nodes executed in the same context
+- **Position**: Canvas coordinates for UI visualization
+
+#### Workflow Execution Model
+- **Execution Tracking**: Comprehensive WorkflowExecution with node-level execution details
+- **Real-time Updates**: WebSocket-based ExecutionUpdateEvent for live status
+- **State Persistence**: Full execution state saved for pause/resume operations
+- **Error Handling**: Structured error responses with retry capabilities
 
 ### AI Integration Strategy
 - **LangGraph**: Complex stateful AI workflows in Workflow Agent
@@ -336,13 +350,68 @@ redis-cli ping
 psql $SUPABASE_DATABASE_URL -c "SELECT version();"
 ```
 
+## Workflow Execution System
+
+### Execution States
+
+**Workflow-level States** (ExecutionStatus):
+- `NEW`: Initial state
+- `RUNNING`: Active execution
+- `PAUSED`: Temporarily halted (Human-in-the-Loop)
+- `SUCCESS`: Completed successfully
+- `ERROR`: Failed execution
+- `CANCELED`: User-canceled
+- `WAITING_FOR_HUMAN`: Awaiting human input (HIL nodes)
+- `TIMEOUT`: Execution exceeded time limit
+
+**Node-level States** (NodeExecutionStatus):
+- `pending`: Waiting to execute
+- `running`: Currently executing
+- `waiting_input`: Awaiting user input (HIL nodes)
+- `completed`: Successfully finished
+- `failed`: Execution error
+- `skipped`: Bypassed in flow
+- `retrying`: Retry attempt in progress
+
+### Human-in-the-Loop (HIL) Workflow
+
+HIL nodes enable human interaction within automated workflows:
+
+1. **Pause & Wait**: Workflow pauses at HIL node, state persisted to database
+2. **Multi-channel Interaction**: Slack, Email, Webhook, In-App notifications
+3. **AI Response Classification**: Gemini-powered 8-factor analysis determines response relevance
+4. **Timeout Management**: Configurable timeouts (60s-24h) with customizable actions
+5. **Resume Execution**: Workflow resumes with human response as node output
+
+**HIL Interaction Types**:
+- `approval`: Yes/No/Custom approval decisions
+- `input`: Structured data collection
+- `selection`: Multiple choice options
+- `review`: Multi-criteria evaluation
+
+**Database Tables**:
+- `hil_interactions`: Stores interaction requests and responses
+- `workflow_execution_pauses`: Tracks pause/resume state
+
+### Attached Nodes Pattern (AI_AGENT)
+
+AI_AGENT nodes can attach TOOL and MEMORY nodes for enhanced capabilities:
+
+1. **Memory Context Loading** (pre-execution): Load conversation history
+2. **Tool Discovery** (pre-execution): Register MCP tools with AI provider
+3. **AI Response Generation**: Execute with enhanced context and tools
+4. **Conversation Storage** (post-execution): Persist interaction to memory
+
+Attached nodes execute within the AI_AGENT context, not as separate workflow steps.
+
 ## Important Architectural Files
 
 1. **Service Configurations**: Each service has detailed `CLAUDE.md` files
 2. **Node Specifications**: `shared/node_specs/` - Centralized node type definitions
-3. **API Documentation**: `apps/backend/api-gateway/docs/` - OpenAPI specifications
-4. **Infrastructure**: `infra/` - Terraform configurations for AWS deployment
-5. **Database Schema**: `supabase/migrations/` - Database structure and RLS policies
+3. **Workflow Specification**: `docs/tech-design/new_workflow_spec.md` - Complete workflow data models
+4. **API Documentation**: `apps/backend/api-gateway/docs/` - OpenAPI specifications
+5. **Infrastructure**: `infra/` - Terraform configurations for AWS deployment
+6. **Database Schema**: `supabase/migrations/` - Database structure and RLS policies
 
 ## OAuth Integration & External Service Checklist
 

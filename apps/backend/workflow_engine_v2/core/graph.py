@@ -39,8 +39,8 @@ class WorkflowGraph:
 
     def _build(self) -> None:
         for c in self.workflow.connections:
-            # Use output_key if available (new), fallback to from_port (legacy compatibility)
-            output_key = getattr(c, "output_key", None) or getattr(c, "from_port", "result")
+            # Use output_key from connection (default: "result")
+            output_key = getattr(c, "output_key", "result")
 
             self.adjacency_list[c.from_node].append((c.to_node, output_key, c.conversion_function))
             self.reverse_adjacency_list[c.to_node].append(

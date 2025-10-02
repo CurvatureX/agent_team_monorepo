@@ -129,36 +129,7 @@ class LoopFlowSpec(BaseNodeSpec):
                     "required": False,
                 },
             },
-            # Port definitions - Loop nodes have special iteration control ports
-            input_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "dict",
-                    "description": "Input data for loop processing",
-                    "required": True,
-                    "max_connections": 1,
-                }
-            ],
-            output_ports=[
-                {
-                    "id": "iteration",
-                    "name": "iteration",
-                    "data_type": "dict",
-                    "description": "Output for each iteration of the loop",
-                    "required": False,
-                    "max_connections": -1,
-                },
-                {
-                    "id": "completed",
-                    "name": "completed",
-                    "data_type": "dict",
-                    "description": "Output when loop completes normally",
-                    "required": False,
-                    "max_connections": -1,
-                },
-            ],
-            # Examples
+            # Port definitions - Loop nodes have special iteration control ports            # Examples
             examples=[
                 {
                     "name": "Range Loop",

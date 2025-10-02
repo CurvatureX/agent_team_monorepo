@@ -61,45 +61,7 @@ class DelayFlowSpec(BaseNodeSpec):
                     "description": "Details and metrics about the delay performed",
                     "required": False,
                 },
-            },
-            # Port definitions
-            input_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "any",
-                    "description": "Data to pass through after delay",
-                    "required": True,
-                    "max_connections": 1,
-                },
-                {
-                    "id": "delay_config",
-                    "name": "delay_config",
-                    "data_type": "dict",
-                    "description": "Dynamic delay configuration override",
-                    "required": False,
-                    "max_connections": 1,
-                },
-                {
-                    "id": "cancel_signal",
-                    "name": "cancel_signal",
-                    "data_type": "boolean",
-                    "description": "Signal to cancel the delay",
-                    "required": False,
-                    "max_connections": 1,
-                },
-            ],
-            output_ports=[
-                {
-                    "id": "main",
-                    "name": "main",
-                    "data_type": "object",
-                    "description": "Data output after delay completion",
-                    "required": True,
-                    "max_connections": -1,
-                }
-            ],
-            # Metadata
+            },  # Metadata
             tags=["flow", "delay", "timing", "throttle", "rate-limit", "schedule"],
             # Examples (simplified node — only fixed delay behavior shown)
             examples=[
@@ -108,7 +70,7 @@ class DelayFlowSpec(BaseNodeSpec):
                     "description": "Simple fixed delay for workflow throttling",
                     "configurations": {"duration_seconds": 3.0},
                     "input_example": {
-                        "main": {
+                        "result": {
                             "user_id": 12345,
                             "action": "send_notification",
                             "message": "Welcome to our service!",
@@ -135,7 +97,7 @@ class DelayFlowSpec(BaseNodeSpec):
                     "description": "Delay that gets cancelled by an external signal before completion",
                     "configurations": {"duration_seconds": 10.0},
                     "input_example": {
-                        "main": {
+                        "result": {
                             "task_id": "task_001",
                             "operation": "generate_report",
                             "parameters": {"format": "pdf"},
