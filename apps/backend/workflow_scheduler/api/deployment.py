@@ -1,10 +1,11 @@
 import logging
+from datetime import datetime
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from shared.models.trigger import DeploymentResult, DeploymentStatus
+from shared.models.workflow_new import Workflow, WorkflowDeploymentStatus
 from workflow_scheduler.dependencies import get_deployment_service
 from workflow_scheduler.services.deployment_service import DeploymentService
 
@@ -13,15 +14,21 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/deployment", tags=["deployment"])
 
 
-class DeployWorkflowRequest(BaseModel):
-    workflow_spec: Dict
+class DeploymentResult(BaseModel):
+    """Modern deployment result using new data model"""
+
+    deployment_id: str
+    workflow_id: str
+    status: WorkflowDeploymentStatus
+    message: str
+    created_at: datetime
 
 
 class DeploymentStatusResponse(BaseModel):
     deployment_id: str
     workflow_id: str
-    status: DeploymentStatus
-    deployed_at: str
+    status: WorkflowDeploymentStatus
+    deployed_at: Optional[str] = None
     updated_at: str
     trigger_count: int
     trigger_status: Dict[str, str]
@@ -30,16 +37,14 @@ class DeploymentStatusResponse(BaseModel):
 @router.post("/workflows/{workflow_id}/deploy", response_model=DeploymentResult)
 async def deploy_workflow(
     workflow_id: str,
-    request: DeployWorkflowRequest,
     deployment_service: DeploymentService = Depends(get_deployment_service),
 ):
-    """Deploy a workflow with its trigger configuration"""
+    """Deploy a workflow by fetching it from the database"""
     try:
         logger.info(f"Deploying workflow {workflow_id}")
 
-        result = await deployment_service.deploy_workflow(
-            workflow_id=workflow_id, workflow_spec=request.workflow_spec
-        )
+        # Fetch workflow from database and deploy it
+        result = await deployment_service.deploy_workflow_from_database(workflow_id)
 
         return result
 
@@ -72,27 +77,6 @@ async def undeploy_workflow(
     except Exception as e:
         logger.error(f"Error undeploying workflow {workflow_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Undeployment failed: {str(e)}")
-
-
-@router.put("/workflows/{workflow_id}/deploy", response_model=DeploymentResult)
-async def update_deployment(
-    workflow_id: str,
-    request: DeployWorkflowRequest,
-    deployment_service: DeploymentService = Depends(get_deployment_service),
-):
-    """Update an existing deployment with new workflow specification"""
-    try:
-        logger.info(f"Updating deployment for workflow {workflow_id}")
-
-        result = await deployment_service.update_deployment(
-            workflow_id=workflow_id, workflow_spec=request.workflow_spec
-        )
-
-        return result
-
-    except Exception as e:
-        logger.error(f"Error updating deployment for workflow {workflow_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Update failed: {str(e)}")
 
 
 @router.get("/workflows/{workflow_id}/status", response_model=Optional[DeploymentStatusResponse])

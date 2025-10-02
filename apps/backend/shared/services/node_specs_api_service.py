@@ -40,7 +40,7 @@ class NodeSpecsApiService:
 
             templates = []
 
-            for spec in node_spec_registry.list_all_specs():
+            for spec in node_spec_registry.values():
                 # Apply filters
                 if (
                     category_filter
@@ -49,7 +49,7 @@ class NodeSpecsApiService:
                 ):
                     continue
 
-                if type_filter and spec.node_type != type_filter:
+                if type_filter and str(spec.type) != type_filter:
                     continue
 
                 if (
@@ -76,8 +76,16 @@ class NodeSpecsApiService:
             if not node_spec_registry:
                 return None
 
-            for spec in node_spec_registry.list_all_specs():
-                if hasattr(spec, "template_id") and spec.template_id == template_id:
+            for spec in node_spec_registry.values():
+                # Check template_id or generate one to match
+                spec_template_id = getattr(spec, "template_id", None)
+                if not spec_template_id:
+                    node_type_str = (
+                        spec.type.value if hasattr(spec.type, "value") else str(spec.type)
+                    )
+                    spec_template_id = f"{node_type_str.lower()}_{spec.subtype.lower()}"
+
+                if spec_template_id == template_id:
                     template_data = self._convert_spec_to_template(spec)
                     return NodeTemplate.model_validate(template_data)
 
@@ -90,38 +98,37 @@ class NodeSpecsApiService:
     def _convert_spec_to_template(self, spec) -> dict:
         """Convert a node spec to the NodeTemplate format expected by the API."""
 
-        # Extract required parameters
+        # Extract required parameters and defaults from configurations
         required_parameters = []
         default_parameters = {}
 
-        for param in spec.parameters:
-            if param.required:
-                required_parameters.append(param.name)
-            if param.default_value is not None:
-                default_parameters[param.name] = param.default_value
+        configurations = getattr(spec, "configurations", {})
+        for param_name, param_config in configurations.items():
+            if param_config.get("required", False):
+                required_parameters.append(param_name)
+            if "default" in param_config:
+                default_parameters[param_name] = param_config["default"]
 
         # Build parameter schema in JSON Schema format
         parameter_schema = {"type": "object", "properties": {}, "required": required_parameters}
 
-        for param in spec.parameters:
+        for param_name, param_config in configurations.items():
             prop_def = {
-                "type": self._convert_param_type(param.type.value),
-                "description": param.description,
+                "type": self._convert_param_type(param_config.get("type", "string")),
+                "description": param_config.get("description", ""),
             }
 
-            if param.enum_values:
-                prop_def["enum"] = param.enum_values
+            if "enum" in param_config:
+                prop_def["enum"] = param_config["enum"]
 
-            if param.default_value is not None:
-                prop_def["default"] = param.default_value
+            if "default" in param_config:
+                prop_def["default"] = param_config["default"]
 
-            parameter_schema["properties"][param.name] = prop_def
+            parameter_schema["properties"][param_name] = prop_def
 
         # Handle enum values for node_type and subtype
-        node_type_str = (
-            spec.node_type.value if hasattr(spec.node_type, "value") else str(spec.node_type)
-        )
-        subtype_str = spec.subtype.value if hasattr(spec.subtype, "value") else str(spec.subtype)
+        node_type_str = spec.type.value if hasattr(spec.type, "value") else str(spec.type)
+        subtype_str = spec.subtype
 
         # Generate template_id if not provided
         template_id = getattr(spec, "template_id", None)
@@ -131,7 +138,7 @@ class NodeSpecsApiService:
         # Generate display_name if not provided
         display_name = getattr(spec, "display_name", None)
         if not display_name:
-            display_name = subtype_str.replace("_", " ").title()
+            display_name = spec.name or subtype_str.replace("_", " ").title()
 
         # Return template data in the expected format
         return {
@@ -141,7 +148,7 @@ class NodeSpecsApiService:
             "category": getattr(spec, "category", "general"),
             "node_type": node_type_str,
             "node_subtype": subtype_str,
-            "version": spec.version,
+            "version": getattr(spec, "version", "1.0"),
             "is_system_template": getattr(spec, "is_system_template", True),
             "default_parameters": default_parameters,
             "required_parameters": required_parameters,
@@ -171,7 +178,7 @@ class NodeSpecsApiService:
                 return []
 
             categories = set()
-            for spec in node_spec_registry.list_all_specs():
+            for spec in node_spec_registry.values():
                 if hasattr(spec, "category") and spec.category:
                     categories.add(spec.category)
 
@@ -188,8 +195,8 @@ class NodeSpecsApiService:
                 return []
 
             node_types = set()
-            for spec in node_spec_registry.list_all_specs():
-                node_types.add(spec.node_type)
+            for spec in node_spec_registry.values():
+                node_types.add(str(spec.type))
 
             return sorted(list(node_types))
 
@@ -203,7 +210,7 @@ class NodeSpecsApiService:
             if not node_spec_registry:
                 return {"total": 0, "by_category": {}, "by_type": {}}
 
-            specs = node_spec_registry.list_all_specs()
+            specs = list(node_spec_registry.values())
             stats = {
                 "total": len(specs),
                 "by_category": {},
@@ -218,7 +225,7 @@ class NodeSpecsApiService:
                 stats["by_category"][category] = stats["by_category"].get(category, 0) + 1
 
                 # Count by type
-                node_type = spec.node_type
+                node_type = str(spec.type)
                 stats["by_type"][node_type] = stats["by_type"].get(node_type, 0) + 1
 
                 # Count system vs user templates

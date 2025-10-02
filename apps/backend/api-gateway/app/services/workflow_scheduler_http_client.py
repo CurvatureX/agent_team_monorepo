@@ -176,26 +176,18 @@ class WorkflowSchedulerHTTPClient:
     async def deploy_workflow(
         self,
         workflow_id: str,
-        workflow_spec: Dict[str, Any],
         user_id: Optional[str] = None,
         trace_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Deploy a workflow with its trigger configuration"""
+        """Deploy a workflow by fetching it from the database"""
         if not self.connected:
             await self.connect()
 
         try:
-            # Ensure user_id is included in workflow_spec for OAuth resolution
-            enhanced_workflow_spec = workflow_spec.copy()
             if user_id:
-                enhanced_workflow_spec["user_id"] = user_id
                 log_info(f"📨 Deploy workflow request for: {workflow_id} (user: {user_id})")
             else:
                 log_info(f"📨 Deploy workflow request for: {workflow_id}")
-
-            request_data = {
-                "workflow_spec": enhanced_workflow_spec,
-            }
 
             headers = {}
             if trace_id:
@@ -204,7 +196,6 @@ class WorkflowSchedulerHTTPClient:
             client = await self._get_client()
             response = await client.post(
                 f"{self.base_url}/api/v1/deployment/workflows/{workflow_id}/deploy",
-                json=request_data,
                 headers=headers,
             )
             response.raise_for_status()

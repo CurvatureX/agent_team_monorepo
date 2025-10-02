@@ -43,6 +43,12 @@ dependencies = [
     "opentelemetry-instrumentation-psycopg2>=0.42b0",
     "opentelemetry-exporter-otlp>=1.21.0",
     "opentelemetry-exporter-prometheus",
+    # Google API integration dependencies
+    "pytz>=2023.3",
+    "google-api-python-client>=2.100.0",
+    "google-auth>=2.17.0",
+    "google-auth-oauthlib>=1.0.0",
+    "google-auth-httplib2>=0.1.0",
 ]
 
 [project.optional-dependencies]

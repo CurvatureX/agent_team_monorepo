@@ -3,8 +3,10 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List
 
+from shared.models.execution_new import ExecutionStatus
 from shared.models.node_enums import TriggerSubtype
-from shared.models.trigger import ExecutionResult, TriggerStatus
+from shared.models.trigger import TriggerStatus
+from shared.models.workflow_new import WorkflowExecutionResponse
 from workflow_scheduler.core.config import settings
 from workflow_scheduler.triggers.base import BaseTrigger
 
@@ -72,7 +74,7 @@ class WebhookTrigger(BaseTrigger):
         base_url = settings.api_gateway_url.rstrip("/")
         return f"{base_url}{self.webhook_path}"
 
-    async def process_webhook(self, request_data: Dict[str, Any]) -> ExecutionResult:
+    async def process_webhook(self, request_data: Dict[str, Any]) -> WorkflowExecutionResponse:
         """
         Process webhook request and trigger workflow
 
@@ -80,40 +82,44 @@ class WebhookTrigger(BaseTrigger):
             request_data: HTTP request data containing headers, body, etc.
 
         Returns:
-            ExecutionResult with execution details
+            WorkflowExecutionResponse with execution details
         """
         try:
             if not self.enabled:
-                return ExecutionResult(
-                    status="failed",
+                return WorkflowExecutionResponse(
+                    execution_id=f"exec_{self.workflow_id}",
+                    workflow_id=self.workflow_id,
+                    status=ExecutionStatus.ERROR,
                     message="Webhook trigger is disabled",
-                    trigger_data=request_data,
                 )
 
             if self.status != TriggerStatus.ACTIVE:
-                return ExecutionResult(
-                    status="failed",
+                return WorkflowExecutionResponse(
+                    execution_id=f"exec_{self.workflow_id}",
+                    workflow_id=self.workflow_id,
+                    status=ExecutionStatus.ERROR,
                     message=f"Webhook trigger is not active (status: {self.status.value})",
-                    trigger_data=request_data,
                 )
 
             # Validate HTTP method
             method = request_data.get("method", "POST").upper()
             if method not in [m.upper() for m in self.methods]:
-                return ExecutionResult(
-                    status="failed",
+                return WorkflowExecutionResponse(
+                    execution_id=f"exec_{self.workflow_id}",
+                    workflow_id=self.workflow_id,
+                    status=ExecutionStatus.ERROR,
                     message=f"HTTP method {method} not allowed. Allowed methods: {self.methods}",
-                    trigger_data=request_data,
                 )
 
             # Validate authentication if required
             if self.require_auth:
                 auth_result = await self._validate_webhook_auth(request_data)
                 if not auth_result["valid"]:
-                    return ExecutionResult(
-                        status="failed",
+                    return WorkflowExecutionResponse(
+                        execution_id=f"exec_{self.workflow_id}",
+                        workflow_id=self.workflow_id,
+                        status=ExecutionStatus.ERROR,
                         message=f"Authentication failed: {auth_result['error']}",
-                        trigger_data=request_data,
                     )
 
             # Prepare trigger data
@@ -135,7 +141,7 @@ class WebhookTrigger(BaseTrigger):
             # Execute workflow
             result = await self._trigger_workflow(trigger_data)
 
-            if result.status == "started":
+            if result.status == ExecutionStatus.RUNNING:
                 logger.info(
                     f"Webhook trigger executed successfully for workflow {self.workflow_id}: {result.execution_id}"
                 )
@@ -150,7 +156,12 @@ class WebhookTrigger(BaseTrigger):
             error_msg = f"Error processing webhook for workflow {self.workflow_id}: {str(e)}"
             logger.error(error_msg, exc_info=True)
 
-            return ExecutionResult(status="error", message=error_msg, trigger_data=request_data)
+            return WorkflowExecutionResponse(
+                execution_id=f"exec_{self.workflow_id}",
+                workflow_id=self.workflow_id,
+                status=ExecutionStatus.ERROR,
+                message=error_msg,
+            )
 
     async def _validate_webhook_auth(self, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """

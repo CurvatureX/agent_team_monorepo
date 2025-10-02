@@ -34,8 +34,6 @@ const FlowNode: React.FC<NodeProps<FlowNodeData>> = ({
         return <RotateCcw className="h-5 w-5 text-white" />;
       case "FLOW_MERGE":
         return <Merge className="h-5 w-5 text-white" />;
-      case "FLOW_SWITCH":
-        return <Shuffle className="h-5 w-5 text-white" />;
       case "FLOW_WAIT":
         return <Clock className="h-5 w-5 text-white" />;
       default:
@@ -53,8 +51,6 @@ const FlowNode: React.FC<NodeProps<FlowNodeData>> = ({
         return "Loop";
       case "FLOW_MERGE":
         return "Merge";
-      case "FLOW_SWITCH":
-        return "Switch";
       case "FLOW_WAIT":
         return "Wait";
       default:

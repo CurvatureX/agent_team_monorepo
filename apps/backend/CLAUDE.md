@@ -376,6 +376,145 @@ return {"status": "success", "message": "Mock execution completed"}
 
 **Remember**: If functionality isn't implemented, return a clear error explaining what needs to be built - never pretend it works with mock data.
 
+## Workflow Execution Architecture
+
+### Workflow Data Models (Based on new_workflow_spec.md)
+
+**Core Components**:
+1. **Workflow**: Metadata + Nodes + Connections + Triggers
+2. **Node**: id, name, type, subtype, configurations, input/output params, attached_nodes (AI_AGENT only)
+3. **Connection**: Defines directed data flow between nodes with optional conversion functions
+4. **WorkflowExecution**: Complete execution state with node-level tracking
+
+**Key Execution Structures**:
+- **WorkflowExecution**: Tracks overall workflow execution state, triggers, node executions, errors, resource usage
+- **NodeExecution**: Individual node execution details with status, timing, I/O data, execution details
+- **NodeExecutionDetails**: Type-specific execution info (AI model responses, API calls, tool results, HIL interactions)
+
+### Execution States & Flow
+
+**ExecutionStatus** (Workflow-level):
+```python
+NEW → RUNNING → SUCCESS/ERROR/CANCELED
+              ↓
+         PAUSED (HIL) → WAITING_FOR_HUMAN → RUNNING
+              ↓
+         TIMEOUT
+```
+
+**NodeExecutionStatus**:
+```python
+pending → running → completed/failed
+              ↓
+        waiting_input (HIL) → running → completed
+              ↓
+        retrying → running
+```
+
+### Real-time Execution Updates
+
+**ExecutionUpdateEvent** (WebSocket):
+- `execution_started`: Workflow begins
+- `node_started`: Node execution starts
+- `node_output_update`: Streaming output updates
+- `node_completed`/`node_failed`: Node finishes
+- `execution_paused`: HIL pause triggered
+- `user_input_required`: Awaiting human response
+- `execution_resumed`: HIL resume after response
+- `execution_completed`/`execution_failed`: Workflow ends
+
+### Human-in-the-Loop (HIL) Execution Pattern
+
+**5-Phase HIL Flow**:
+
+1. **HIL Node Startup**:
+   - Validate configurations (interaction_type, channel_type, timeout)
+   - Extract user context from trigger/execution
+   - Create `hil_interactions` record
+   - Create `workflow_execution_pauses` record
+   - Return pause signal with `_hil_wait: true`
+
+2. **Workflow Pause**:
+   - Persist complete execution state to database
+   - Start timeout monitoring (background service)
+   - Send interaction request via configured channel
+   - Set workflow status to `PAUSED`
+
+3. **Human Response Processing**:
+   - Receive webhook response from Slack/Email/etc.
+   - AI classification (Gemini 8-factor analysis):
+     - `relevant` (score ≥ 0.7): Process response
+     - `filtered` (score ≤ 0.3): Ignore
+     - `uncertain` (0.3 < score < 0.7): Log only
+   - Update `hil_interactions` status to `completed`
+
+4. **Workflow Resume**:
+   - Update `workflow_execution_pauses` to `resumed`
+   - Restore execution state from database
+   - HIL node outputs human response data
+   - Workflow continues to next nodes
+
+5. **Timeout Handling**:
+   - Warning notification (15min before timeout)
+   - Timeout actions: `fail`, `continue`, `default_response`
+   - Update interaction status to `timeout`
+
+**HIL Configuration Parameters**:
+```python
+{
+    "interaction_type": "approval|input|selection|review",
+    "channel_type": "slack|email|webhook|in_app",
+    "timeout_seconds": 60-86400,  # 60s to 24h
+    "timeout_action": "fail|continue|default_response",
+    "approval_options": [...],     # for approval type
+    "input_fields": [...],         # for input type
+    "selection_options": [...]     # for selection type
+}
+```
+
+### AI_AGENT Attached Nodes Pattern
+
+Attached TOOL and MEMORY nodes enhance AI_AGENT execution:
+
+**Execution Sequence**:
+1. **Pre-execution**:
+   - Load memory context from MEMORY nodes
+   - Discover and register tools from TOOL nodes (MCP)
+   - Enhance AI prompt with context and tools
+
+2. **AI Execution**:
+   - Generate response with augmented capabilities
+   - AI can invoke registered tools internally
+
+3. **Post-execution**:
+   - Store conversation (user msg + AI response) to MEMORY nodes
+   - Persist tool invocation results
+
+**Key Points**:
+- Attached nodes don't appear in workflow execution sequence
+- No separate NodeExecution records for attached nodes
+- Managed entirely within AI_AGENT node context
+- Results stored in `attached_executions` field
+
+### Error Handling & Retry
+
+**Structured Error Response**:
+```python
+{
+    "error_code": "specific_error_identifier",
+    "error_message": "Human-readable description",
+    "error_details": {...},
+    "is_retryable": True/False,
+    "timestamp": epoch_ms
+}
+```
+
+**Retry Mechanism**:
+- `retry_count` and `max_retries` tracked per node
+- `retrying` status during retry attempts
+- Only retryable errors trigger automatic retry
+- Manual retry available via API for failed nodes
+
 ## Testing Strategy
 
 ### Unit Tests
@@ -393,11 +532,14 @@ pytest --cov=workflow_agent tests/workflow_agent/
 
 ### Integration Tests
 ```bash
-# Test gRPC service
-python tests/integration/test_grpc_service.py
+# Test HTTP service endpoints
+python tests/integration/test_http_service.py
 
-# Test end-to-end workflow
+# Test end-to-end workflow execution
 python tests/integration/test_workflow_execution.py
+
+# Test HIL workflow patterns
+python tests/integration/test_hil_workflow.py
 ```
 
 ## Deployment Checklist
@@ -435,6 +577,44 @@ Before deploying to AWS ECS:
 - ✅ **ALWAYS**: Test health check command locally before deployment
 - ✅ **ALWAYS**: Use conservative timing - services need adequate startup time
 - ✅ **ALWAYS**: Include health endpoint in all FastAPI services
+
+## Workflow Metadata & Statistics
+
+### WorkflowMetadata Structure
+```python
+{
+    "id": "uuid",
+    "name": "Workflow name",
+    "icon_url": "https://...",
+    "description": "Workflow purpose",
+    "deployment_status": "PENDING|DEPLOYED|FAILED|UNDEPLOYED",
+    "last_execution_status": "NEW|RUNNING|SUCCESS|ERROR|...",
+    "last_execution_time": 1234567890,  # epoch ms
+    "tags": ["automation", "ai"],
+    "created_time": 1234567890,
+    "parent_workflow": "uuid",  # template source
+    "statistics": {
+        "total_runs": 100,
+        "average_duration_ms": 5000,
+        "total_credits": 1000,
+        "last_success_time": 1234567890
+    },
+    "version": "1.0",
+    "created_by": "user_id",
+    "updated_by": "user_id"
+}
+```
+
+### Connection & Data Flow
+```python
+{
+    "id": "conn_id",
+    "from_node": "source_node_id",
+    "to_node": "target_node_id",
+    "output_key": "result|true|false",  # default: "result"
+    "conversion_function": "optional_transform_code"
+}
+```
 
 ## RAG System Integration
 

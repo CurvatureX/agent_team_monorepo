@@ -12,7 +12,8 @@ from typing import Any, Dict, Optional
 # Add shared path for Slack SDK
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-from shared.models.trigger import ExecutionResult
+from shared.models.execution_new import ExecutionStatus
+from shared.models.workflow_new import WorkflowExecutionResponse
 from shared.sdks.slack_sdk import SlackAPIError, SlackBlockBuilder, SlackWebClient
 from workflow_scheduler.core.config import settings
 
@@ -73,7 +74,7 @@ class NotificationService:
 
     async def send_trigger_notification(
         self, workflow_id: str, trigger_type: str, trigger_data: Dict[str, Any]
-    ) -> ExecutionResult:
+    ) -> WorkflowExecutionResponse:
         """
         Send notification when a workflow is triggered
 
@@ -83,7 +84,7 @@ class NotificationService:
             trigger_data: Data associated with the trigger
 
         Returns:
-            ExecutionResult with notification status
+            WorkflowExecutionResponse with notification status
         """
         try:
             # Log the trigger event
@@ -98,27 +99,33 @@ class NotificationService:
                     logger.info(
                         f"💬 Slack notification sent successfully to {self.target_channel} for workflow {workflow_id}"
                     )
-                    status = "notified_slack"
+                    status = ExecutionStatus.COMPLETED
                     message = f"Slack notification sent for {trigger_type} trigger"
                 else:
                     logger.warning(f"💬 Slack notification failed for workflow {workflow_id}")
-                    status = "notified_log_only"
+                    status = ExecutionStatus.COMPLETED
                     message = f"Slack failed, logged {trigger_type} trigger"
             else:
                 logger.info(f"📝 Logged trigger notification for workflow {workflow_id}")
-                status = "notified_log_only"
+                status = ExecutionStatus.COMPLETED
                 message = f"Logged {trigger_type} trigger (Slack not configured)"
 
-            return ExecutionResult(status=status, message=message, trigger_data=trigger_data)
+            return WorkflowExecutionResponse(
+                execution_id=f"exec_{workflow_id}",
+                workflow_id=workflow_id,
+                status=status,
+                message=message,
+            )
 
         except Exception as e:
             error_msg = f"Failed to send trigger notification: {str(e)}"
             logger.error(error_msg, exc_info=True)
 
-            return ExecutionResult(
-                status="notification_failed",
+            return WorkflowExecutionResponse(
+                execution_id=f"exec_{self.workflow_id}",
+                workflow_id=self.workflow_id,
+                status=ExecutionStatus.ERROR,
                 message=error_msg,
-                trigger_data=trigger_data,
             )
 
     async def _send_slack_notification(

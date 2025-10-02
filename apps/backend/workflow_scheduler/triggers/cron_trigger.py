@@ -7,6 +7,7 @@ import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger as APCronTrigger
 
+from shared.models.execution_new import ExecutionStatus
 from shared.models.node_enums import TriggerSubtype
 from shared.models.trigger import TriggerStatus
 from workflow_scheduler.triggers.base import BaseTrigger
@@ -24,14 +25,6 @@ class CronTrigger(BaseTrigger):
         self.timezone = trigger_config.get("timezone", "UTC")
         self.lock_manager = trigger_config.get("lock_manager")
 
-        # Initialize scheduler
-        self.scheduler: Optional[AsyncIOScheduler] = None
-        self.job_id = f"cron_{self.workflow_id}"
-
-    @property
-    def trigger_type(self) -> str:
-        return TriggerSubtype.CRON.value
-
         if not self.cron_expression:
             raise ValueError("cron_expression is required for CronTrigger")
 
@@ -41,6 +34,10 @@ class CronTrigger(BaseTrigger):
         except pytz.exceptions.UnknownTimeZoneError:
             logger.warning(f"Unknown timezone {self.timezone}, using UTC")
             self.timezone = "UTC"
+
+        # Initialize scheduler
+        self.scheduler: Optional[AsyncIOScheduler] = None
+        self.job_id = f"cron_{self.workflow_id}"
 
     @property
     def trigger_type(self) -> str:
@@ -200,7 +197,7 @@ class CronTrigger(BaseTrigger):
 
             result = await self._trigger_workflow(trigger_data)
 
-            if result.status == "started":
+            if result.status == ExecutionStatus.RUNNING:
                 logger.info(
                     f"Cron trigger executed successfully for workflow {self.workflow_id}: {result.execution_id}"
                 )

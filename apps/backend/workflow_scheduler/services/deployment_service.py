@@ -5,8 +5,8 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
-from shared.models.node_enums import NodeType
-from shared.models.trigger import DeploymentResult, DeploymentStatus, TriggerSpec, TriggerType
+from shared.models.node_enums import IntegrationProvider, NodeType, TriggerSubtype, ValidationResult
+from shared.models.trigger import DeploymentResult, DeploymentStatus, TriggerSpec
 from workflow_scheduler.services.direct_db_service import DirectDBService
 from workflow_scheduler.services.trigger_index_manager import TriggerIndexManager
 
@@ -16,10 +16,11 @@ logger = logging.getLogger(__name__)
 class DeploymentService:
     """Service for managing workflow deployments and trigger configuration"""
 
-    def __init__(self, trigger_manager):
+    def __init__(self, trigger_manager, direct_db_service: Optional[DirectDBService] = None):
         self.trigger_manager = trigger_manager
         self.trigger_index_manager = TriggerIndexManager()
-        self.direct_db_service = DirectDBService()
+        # Use provided instance or create new one (backwards compatibility)
+        self.direct_db_service = direct_db_service or DirectDBService()
         self._deployments: Dict[str, Dict] = {}  # In-memory storage for now
 
     async def deploy_workflow(self, workflow_id: str, workflow_spec: Dict) -> DeploymentResult:
@@ -57,15 +58,17 @@ class DeploymentService:
                 await self._handle_deployment_failure(workflow_id, deployment_id, error_msg)
                 return DeploymentResult(
                     deployment_id=deployment_id,
+                    workflow_id=workflow_id,
                     status=DeploymentStatus.FAILED,
                     message=error_msg,
                 )
 
-            if not validation_result["valid"]:
+            if validation_result["valid"] != ValidationResult.VALID:
                 error_msg = f"Workflow validation failed: {validation_result['error']}"
                 await self._handle_deployment_failure(workflow_id, deployment_id, error_msg)
                 return DeploymentResult(
                     deployment_id=deployment_id,
+                    workflow_id=workflow_id,
                     status=DeploymentStatus.FAILED,
                     message=error_msg,
                 )
@@ -76,6 +79,7 @@ class DeploymentService:
                 await self._handle_deployment_failure(workflow_id, deployment_id, error_msg)
                 return DeploymentResult(
                     deployment_id=deployment_id,
+                    workflow_id=workflow_id,
                     status=DeploymentStatus.FAILED,
                     message=error_msg,
                 )
@@ -85,6 +89,7 @@ class DeploymentService:
                 await self._handle_deployment_failure(workflow_id, deployment_id, error_msg)
                 return DeploymentResult(
                     deployment_id=deployment_id,
+                    workflow_id=workflow_id,
                     status=DeploymentStatus.FAILED,
                     message=error_msg,
                 )
@@ -110,6 +115,7 @@ class DeploymentService:
                 await self._handle_deployment_failure(workflow_id, deployment_id, error_msg)
                 return DeploymentResult(
                     deployment_id=deployment_id,
+                    workflow_id=workflow_id,
                     status=DeploymentStatus.FAILED,
                     message=error_msg,
                 )
@@ -121,29 +127,52 @@ class DeploymentService:
                 await self._handle_deployment_failure(workflow_id, deployment_id, error_msg)
                 return DeploymentResult(
                     deployment_id=deployment_id,
+                    workflow_id=workflow_id,
                     status=DeploymentStatus.FAILED,
                     message=error_msg,
+                )
+
+            # Ensure workflow record exists in database before updating deployment status
+            logger.info(f"Creating/updating workflow record for {workflow_id}")
+            workflow_creation_success = await self.direct_db_service.create_or_update_workflow(
+                workflow_id=workflow_id,
+                workflow_spec=workflow_spec,
+                user_id=workflow_spec.get("metadata", {}).get("created_by"),
+                name=workflow_spec.get("metadata", {}).get("name"),
+            )
+
+            if not workflow_creation_success:
+                logger.warning(
+                    f"Failed to create workflow record for {workflow_id}, but continuing with deployment"
                 )
 
             # Get current workflow status for deployment tracking
             current_status_info = await self.direct_db_service.get_workflow_current_status(
                 workflow_id
             )
+            # Use enum values to avoid case mismatches; default to pending
             current_status = (
-                current_status_info.get("deployment_status", "DRAFT")
+                current_status_info.get("deployment_status", DeploymentStatus.PENDING.value)
                 if current_status_info
-                else "DRAFT"
+                else DeploymentStatus.PENDING.value
             )
             current_version = (
                 current_status_info.get("deployment_version", 0) if current_status_info else 0
             )
 
             # Create deployment history record
+            # Convert lowercase value to uppercase enum name for history table constraints
+            from_status_name = (
+                DeploymentStatus(current_status).name
+                if current_status in {d.value for d in DeploymentStatus}
+                else DeploymentStatus.PENDING.name
+            )
+
             history_success = await self.direct_db_service.create_deployment_history_record(
                 workflow_id=workflow_id,
                 deployment_action="DEPLOY",
-                from_status=current_status,
-                to_status="DEPLOYED",
+                from_status=from_status_name,
+                to_status=DeploymentStatus.DEPLOYED.name,
                 deployment_version=current_version + 1,
                 deployment_config={
                     "deployment_id": deployment_id,
@@ -155,7 +184,7 @@ class DeploymentService:
             # Update workflow deployment status
             deployment_success = await self.direct_db_service.update_workflow_deployment_status(
                 workflow_id=workflow_id,
-                deployment_status="DEPLOYED",
+                deployment_status=DeploymentStatus.DEPLOYED.value,
                 deployed_at=datetime.utcnow(),
                 deployment_config={
                     "deployment_id": deployment_id,
@@ -189,6 +218,7 @@ class DeploymentService:
 
             return DeploymentResult(
                 deployment_id=deployment_id,
+                workflow_id=workflow_id,
                 status=DeploymentStatus.DEPLOYED,
                 message=f"Workflow deployed successfully with {len(trigger_specs)} triggers",
             )
@@ -201,13 +231,13 @@ class DeploymentService:
             try:
                 await self.direct_db_service.update_workflow_deployment_status(
                     workflow_id=workflow_id,
-                    deployment_status="DEPLOYMENT_FAILED",
+                    deployment_status=DeploymentStatus.FAILED.value,
                 )
                 await self.direct_db_service.create_deployment_history_record(
                     workflow_id=workflow_id,
                     deployment_action="DEPLOY_FAILED",
-                    from_status="DRAFT",
-                    to_status="DEPLOYMENT_FAILED",
+                    from_status=DeploymentStatus.PENDING.name,
+                    to_status=DeploymentStatus.FAILED.name,
                     deployment_version=1,
                     error_message=error_msg,
                 )
@@ -219,6 +249,66 @@ class DeploymentService:
 
             return DeploymentResult(
                 deployment_id=deployment_id,
+                workflow_id=workflow_id,
+                status=DeploymentStatus.FAILED,
+                message=error_msg,
+            )
+
+    async def deploy_workflow_from_database(self, workflow_id: str) -> DeploymentResult:
+        """
+        Deploy a workflow by fetching it from the database
+
+        Args:
+            workflow_id: Unique workflow identifier
+
+        Returns:
+            DeploymentResult with deployment status and details
+        """
+        try:
+            logger.info(f"Fetching and deploying workflow {workflow_id} from database")
+
+            # Fetch workflow from database
+            workflow_record = await self.direct_db_service.get_workflow_by_id(workflow_id)
+
+            if not workflow_record:
+                error_msg = f"Workflow {workflow_id} not found in database"
+                logger.error(error_msg)
+                return DeploymentResult(
+                    deployment_id=f"deploy_{uuid.uuid4()}",
+                    workflow_id=workflow_id,
+                    status=DeploymentStatus.FAILED,
+                    message=error_msg,
+                )
+
+            # Extract workflow spec from database record
+            workflow_spec = workflow_record.get("workflow_data", {})
+            if not workflow_spec:
+                error_msg = f"No workflow data found for workflow {workflow_id}"
+                logger.error(error_msg)
+                return DeploymentResult(
+                    deployment_id=f"deploy_{uuid.uuid4()}",
+                    workflow_id=workflow_id,
+                    status=DeploymentStatus.FAILED,
+                    message=error_msg,
+                )
+
+            # Parse JSON if it's a string
+            import json
+
+            if isinstance(workflow_spec, str):
+                workflow_spec = json.loads(workflow_spec)
+
+            logger.info(f"Successfully fetched workflow {workflow_id} from database")
+
+            # Deploy the workflow using the existing method
+            return await self.deploy_workflow(workflow_id, workflow_spec)
+
+        except Exception as e:
+            error_msg = f"Error fetching/deploying workflow {workflow_id} from database: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return DeploymentResult(
+                deployment_id=f"deploy_{uuid.uuid4()}",
+                workflow_id=workflow_id,
                 status=DeploymentStatus.FAILED,
                 message=error_msg,
             )
@@ -241,27 +331,34 @@ class DeploymentService:
                 workflow_id
             )
             current_status = (
-                current_status_info.get("deployment_status", "DEPLOYED")
+                current_status_info.get("deployment_status", DeploymentStatus.DEPLOYED.value)
                 if current_status_info
-                else "DEPLOYED"
+                else DeploymentStatus.DEPLOYED.value
             )
             current_version = (
                 current_status_info.get("deployment_version", 1) if current_status_info else 1
             )
 
             # Create deployment history record
+            # Use uppercase enum names for history table constraints
+            from_status_name = (
+                DeploymentStatus(current_status).name
+                if current_status in {d.value for d in DeploymentStatus}
+                else DeploymentStatus.DEPLOYED.name
+            )
+
             await self.direct_db_service.create_deployment_history_record(
                 workflow_id=workflow_id,
                 deployment_action="UNDEPLOY_STARTED",
-                from_status=current_status,
-                to_status="UNDEPLOYING",
+                from_status=from_status_name,
+                to_status=DeploymentStatus.PENDING.name,  # transitional state
                 deployment_version=current_version,
             )
 
             # Update workflow status to UNDEPLOYING
             await self.direct_db_service.update_workflow_deployment_status(
                 workflow_id=workflow_id,
-                deployment_status="UNDEPLOYING",
+                deployment_status=DeploymentStatus.PENDING.value,  # transitional state
             )
 
             # 1. Unregister triggers from TriggerManager
@@ -276,7 +373,7 @@ class DeploymentService:
                 # Update workflow status to UNDEPLOYED
                 await self.direct_db_service.update_workflow_deployment_status(
                     workflow_id=workflow_id,
-                    deployment_status="UNDEPLOYED",
+                    deployment_status=DeploymentStatus.UNDEPLOYED.value,
                     undeployed_at=datetime.utcnow(),
                 )
 
@@ -284,8 +381,8 @@ class DeploymentService:
                 await self.direct_db_service.create_deployment_history_record(
                     workflow_id=workflow_id,
                     deployment_action="UNDEPLOY_COMPLETED",
-                    from_status="UNDEPLOYING",
-                    to_status="UNDEPLOYED",
+                    from_status=DeploymentStatus.PENDING.name,
+                    to_status=DeploymentStatus.UNDEPLOYED.name,
                     deployment_version=current_version,
                     deployment_config={"undeployed_at": datetime.utcnow().isoformat()},
                 )
@@ -293,15 +390,15 @@ class DeploymentService:
                 # Update workflow status to failed
                 await self.direct_db_service.update_workflow_deployment_status(
                     workflow_id=workflow_id,
-                    deployment_status="DEPLOYMENT_FAILED",
+                    deployment_status=DeploymentStatus.FAILED.value,
                 )
 
                 # Complete deployment history record with error
                 await self.direct_db_service.create_deployment_history_record(
                     workflow_id=workflow_id,
                     deployment_action="UNDEPLOY_FAILED",
-                    from_status="UNDEPLOYING",
-                    to_status="DEPLOYMENT_FAILED",
+                    from_status=DeploymentStatus.PENDING.name,
+                    to_status=DeploymentStatus.FAILED.name,
                     deployment_version=current_version,
                     error_message="Failed to unregister triggers",
                 )
@@ -322,13 +419,13 @@ class DeploymentService:
             try:
                 await self.direct_db_service.update_workflow_deployment_status(
                     workflow_id=workflow_id,
-                    deployment_status="DEPLOYMENT_FAILED",
+                    deployment_status=DeploymentStatus.FAILED.value,
                 )
                 await self.direct_db_service.create_deployment_history_record(
                     workflow_id=workflow_id,
                     deployment_action="UNDEPLOY_FAILED",
-                    from_status="DEPLOYED",
-                    to_status="DEPLOYMENT_FAILED",
+                    from_status=DeploymentStatus.DEPLOYED.value,
+                    to_status=DeploymentStatus.FAILED.value,
                     deployment_version=1,
                     error_message=error_msg,
                 )
@@ -371,6 +468,7 @@ class DeploymentService:
 
             return DeploymentResult(
                 deployment_id=f"update_{uuid.uuid4()}",
+                workflow_id=workflow_id,
                 status=DeploymentStatus.FAILED,
                 message=error_msg,
             )
@@ -394,6 +492,11 @@ class DeploymentService:
 
         # Get indexed trigger information
         indexed_triggers = await self.trigger_index_manager.get_workflow_triggers(workflow_id)
+        if indexed_triggers is None:
+            indexed_triggers = []
+
+        # Handle None case for indexed_triggers
+        indexed_triggers = indexed_triggers or []
 
         return {
             "deployment_id": deployment["deployment_id"],
@@ -545,34 +648,37 @@ class DeploymentService:
         try:
             # Basic structure validation
             if not isinstance(workflow_spec, dict):
-                return {"valid": False, "error": "Workflow spec must be a dictionary"}
+                return {
+                    "valid": ValidationResult.INVALID,
+                    "error": "Workflow spec must be a dictionary",
+                }
 
             # Check for required fields
             if "nodes" not in workflow_spec:
                 return {
-                    "valid": False,
+                    "valid": ValidationResult.INVALID,
                     "error": "Workflow spec must contain 'nodes' field",
                 }
 
             nodes = workflow_spec["nodes"]
             if not isinstance(nodes, list):
-                return {"valid": False, "error": "'nodes' must be a list"}
+                return {"valid": ValidationResult.INVALID, "error": "'nodes' must be a list"}
 
             # Check for at least one trigger node (node_type or type field)
             trigger_nodes = [node for node in nodes if node.get("type") == NodeType.TRIGGER.value]
 
             if not trigger_nodes:
                 return {
-                    "valid": False,
+                    "valid": ValidationResult.INVALID,
                     "error": "Workflow must contain at least one trigger node",
                 }
 
             # Validate trigger node configurations
             for node in trigger_nodes:
                 subtype = node.get("subtype")
-                if not subtype or subtype not in [t.value for t in TriggerType]:
+                if not subtype or subtype not in [t.value for t in TriggerSubtype]:
                     return {
-                        "valid": False,
+                        "valid": ValidationResult.INVALID,
                         "error": f"Invalid trigger subtype: {subtype}",
                     }
 
@@ -580,14 +686,14 @@ class DeploymentService:
                 parameters = node.get("parameters", {})
                 if not isinstance(parameters, dict):
                     return {
-                        "valid": False,
+                        "valid": ValidationResult.INVALID,
                         "error": f"Trigger parameters must be a dictionary for node {node.get('id')}",
                     }
 
-            return {"valid": True, "error": None}
+            return {"valid": ValidationResult.VALID, "error": None}
 
         except Exception as e:
-            return {"valid": False, "error": f"Validation error: {str(e)}"}
+            return {"valid": ValidationResult.ERROR, "error": f"Validation error: {str(e)}"}
 
     async def _extract_trigger_specs(self, workflow_spec: Dict) -> List[TriggerSpec]:
         """
@@ -606,7 +712,11 @@ class DeploymentService:
 
             for node in nodes:
                 if node.get("type") == NodeType.TRIGGER.value:
-                    parameters = node.get("parameters", {}).copy()
+                    # Use configurations instead of parameters for trigger specs
+                    raw_configurations = node.get("configurations", {})
+
+                    # Extract actual values from schema objects
+                    parameters = self._extract_configuration_values(raw_configurations)
 
                     # For GitHub triggers, resolve installation_id from oauth_tokens
                     if node.get("subtype") == "GITHUB":
@@ -618,7 +728,7 @@ class DeploymentService:
 
                     trigger_spec = TriggerSpec(
                         node_type=node.get("type"),
-                        subtype=TriggerType(node["subtype"]),
+                        subtype=TriggerSubtype(node["subtype"]),
                         parameters=parameters,
                         enabled=node.get("enabled", True),
                     )
@@ -630,6 +740,67 @@ class DeploymentService:
         except Exception as e:
             logger.error(f"Failed to extract trigger specs: {e}", exc_info=True)
             return []
+
+    def _extract_configuration_values(self, raw_configurations: Dict) -> Dict[str, Any]:
+        """
+        Extract actual configuration values from schema objects.
+
+        Handles cases where configuration fields contain schema definitions like:
+        {
+            "workspace_id": {
+                "type": "string",
+                "default": "",
+                "required": true,
+                "description": "Slack工作区ID"
+            }
+        }
+
+        And extracts them to actual values using defaults or provided values.
+
+        Args:
+            raw_configurations: Raw configuration dict that may contain schema objects
+
+        Returns:
+            Dict with actual configuration values
+        """
+        extracted_values = {}
+
+        for key, config_value in raw_configurations.items():
+            if isinstance(config_value, dict) and (
+                "type" in config_value or "default" in config_value
+            ):
+                # This looks like a schema object, extract the actual value
+                if "value" in config_value:
+                    # Preferred: use explicit value if provided
+                    extracted_values[key] = config_value["value"]
+                elif "default" in config_value:
+                    # Fallback: use default value from schema
+                    extracted_values[key] = config_value["default"]
+                else:
+                    # Last resort: use empty value based on type
+                    config_type = config_value.get("type", "string")
+                    if config_type == "string":
+                        extracted_values[key] = ""
+                    elif config_type == "boolean":
+                        extracted_values[key] = False
+                    elif config_type == "number" or config_type == "integer":
+                        extracted_values[key] = 0
+                    elif config_type == "array":
+                        extracted_values[key] = []
+                    elif config_type == "object":
+                        extracted_values[key] = {}
+                    else:
+                        extracted_values[key] = None
+
+                logger.debug(
+                    f"Extracted configuration value for {key}: {extracted_values[key]} (from schema)"
+                )
+            else:
+                # This is already an actual value, use it directly
+                extracted_values[key] = config_value
+                logger.debug(f"Using direct configuration value for {key}: {config_value}")
+
+        return extracted_values
 
     def _resolve_github_installation_id(self, parameters: Dict, workflow_spec: Dict):
         """
@@ -662,7 +833,7 @@ class DeploymentService:
                 supabase.table("oauth_tokens")
                 .select("credential_data")
                 .eq("user_id", user_id)
-                .eq("integration_id", "github")
+                .eq("provider", IntegrationProvider.GITHUB.value)
                 .eq("is_active", True)
                 .execute()
             )
@@ -700,10 +871,12 @@ class DeploymentService:
         """
         try:
             # Get workflow owner (user_id) from workflow_spec
-            user_id = workflow_spec.get("user_id")
+            user_id = workflow_spec.get("user_id") or workflow_spec.get("metadata", {}).get(
+                "created_by"
+            )
             if not user_id:
                 logger.warning(
-                    "No user_id found in workflow_spec, cannot resolve Slack configuration"
+                    "No user_id found in workflow_spec or metadata.created_by, cannot resolve Slack configuration"
                 )
                 return
 
@@ -711,7 +884,8 @@ class DeploymentService:
             slack_token, workspace_id = await self._get_user_slack_token_and_workspace(user_id)
             if not slack_token:
                 logger.warning(
-                    f"No Slack OAuth token found for user {user_id}, cannot resolve Slack configuration"
+                    f"No Slack OAuth token found for user {user_id}. "
+                    "User must connect their Slack account in integrations settings."
                 )
                 return
 
@@ -725,10 +899,10 @@ class DeploymentService:
                     f"Ensure user has an active Slack OAuth integration."
                 )
 
-            # Resolve channel names to IDs if channel_filter is specified
-            channel_filter = parameters.get("channel_filter")
+            # Resolve channel names to IDs if channel_filter or channel is specified
+            channel_filter = parameters.get("channel_filter") or parameters.get("channel")
             if not channel_filter:
-                logger.debug("No channel_filter specified for Slack trigger")
+                logger.debug("No channel_filter or channel specified for Slack trigger")
                 return
 
             # If already looks like a channel ID (starts with C), skip resolution
@@ -795,7 +969,7 @@ class DeploymentService:
                 supabase.table("oauth_tokens")
                 .select("access_token, credential_data")
                 .eq("user_id", user_id)
-                .eq("integration_id", "slack")
+                .eq("provider", IntegrationProvider.SLACK.value)
                 .eq("is_active", True)
                 .execute()
             )
@@ -823,6 +997,39 @@ class DeploymentService:
         except Exception as e:
             logger.error(f"Error getting user Slack token and workspace: {e}", exc_info=True)
             return None, None
+
+    async def _get_workspace_info_from_slack_api(self, access_token: str) -> Optional[str]:
+        """
+        Get workspace_id directly from Slack API using the new helper function.
+
+        This method uses the Slack SDK helper function to get workspace information
+        directly from Slack's auth.test endpoint.
+
+        Args:
+            access_token: Slack bot access token
+
+        Returns:
+            str: workspace_id (team_id) or None if failed
+        """
+        try:
+            from shared.sdks.slack_sdk.client import SlackWebClient
+
+            slack_client = SlackWebClient(token=access_token)
+            workspace_info = slack_client.get_workspace_info()
+
+            workspace_id = workspace_info.get("workspace_id")
+            if workspace_id:
+                logger.info(f"✅ Retrieved workspace_id '{workspace_id}' directly from Slack API")
+                logger.info(f"   Team: {workspace_info.get('team_name')}")
+                logger.info(f"   URL: {workspace_info.get('workspace_url')}")
+                return workspace_id
+            else:
+                logger.warning("No workspace_id found in Slack API response")
+                return None
+
+        except Exception as e:
+            logger.error(f"Error getting workspace info from Slack API: {e}")
+            return None
 
     async def _resolve_channel_names_to_ids(
         self, channel_filter: str, slack_token: str
@@ -926,15 +1133,15 @@ class DeploymentService:
             # Update workflow status to failed
             await self.direct_db_service.update_workflow_deployment_status(
                 workflow_id=workflow_id,
-                deployment_status="DEPLOYMENT_FAILED",
+                deployment_status=DeploymentStatus.FAILED.value,
             )
 
             # Create deployment history record with error
             await self.direct_db_service.create_deployment_history_record(
                 workflow_id=workflow_id,
                 deployment_action="DEPLOY",
-                from_status="DRAFT",
-                to_status="DEPLOYMENT_FAILED",
+                from_status=DeploymentStatus.PENDING.value,
+                to_status=DeploymentStatus.FAILED.value,
                 deployment_version=1,
                 error_message=error_msg,
             )

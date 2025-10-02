@@ -12,6 +12,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.db_models import WorkflowDB, WorkflowDeploymentHistory
+from shared.models.workflow_new import WorkflowDeploymentStatus as DeploymentStatus
 from workflow_scheduler.core.database import get_db_session
 
 logger = logging.getLogger(__name__)
@@ -72,10 +73,33 @@ class WorkflowRepository:
                 else:
                     workflow_uuid = workflow_id
 
+                # Normalize deployment status using enum to avoid case mismatches
+                try:
+                    normalized_status = (
+                        DeploymentStatus(deployment_status).value
+                        if isinstance(deployment_status, str)
+                        else str(deployment_status)
+                    )
+                except Exception:
+                    # Fallback: map common legacy statuses
+                    legacy_map = {
+                        "DRAFT": DeploymentStatus.PENDING.value,
+                        "PENDING": DeploymentStatus.PENDING.value,
+                        "DEPLOYING": DeploymentStatus.PENDING.value,
+                        "DEPLOYED": DeploymentStatus.DEPLOYED.value,
+                        "UNDEPLOYING": DeploymentStatus.PENDING.value,
+                        "UNDEPLOYED": DeploymentStatus.UNDEPLOYED.value,
+                        "FAILED": DeploymentStatus.FAILED.value,
+                        "DEPLOYMENT_FAILED": DeploymentStatus.FAILED.value,
+                    }
+                    normalized_status = legacy_map.get(
+                        str(deployment_status).upper(), DeploymentStatus.PENDING.value
+                    )
+
                 # Prepare update data
                 current_time = datetime.now(timezone.utc)
                 update_data = {
-                    "deployment_status": deployment_status,
+                    "deployment_status": normalized_status,
                     "updated_at": int(
                         current_time.timestamp()
                     ),  # Convert to Unix timestamp for bigint field
@@ -123,7 +147,7 @@ class WorkflowRepository:
 
                 if result.rowcount > 0:
                     logger.info(
-                        f"Updated workflow deployment status: {workflow_id} -> {deployment_status}"
+                        f"Updated workflow deployment status: {workflow_id} -> {normalized_status}"
                     )
                     return True
                 else:
@@ -342,16 +366,37 @@ class WorkflowRepository:
                     logger.warning(f"Workflow not found: {workflow_id}")
                     return False
 
-                current_status = getattr(workflow, "deployment_status", None) or "DRAFT"
+                current_status = (
+                    getattr(workflow, "deployment_status", None) or DeploymentStatus.PENDING.value
+                )
                 current_version = getattr(workflow, "deployment_version", None) or 0
 
                 # 2. Create deployment history record
                 new_version = current_version + (1 if increment_version else 0)
+                # Use uppercase enum names for history table consistency
+                try:
+                    from_status_name = (
+                        DeploymentStatus(current_status).name
+                        if current_status in {d.value for d in DeploymentStatus}
+                        else DeploymentStatus.PENDING.name
+                    )
+                except Exception:
+                    from_status_name = DeploymentStatus.PENDING.name
+
+                try:
+                    to_status_name = (
+                        DeploymentStatus(deployment_status).name
+                        if isinstance(deployment_status, str)
+                        else DeploymentStatus(str(deployment_status)).name
+                    )
+                except Exception:
+                    to_status_name = DeploymentStatus.PENDING.name
+
                 history_record = WorkflowDeploymentHistory(
                     workflow_id=workflow_uuid,
                     deployment_action=deployment_action,
-                    from_status=current_status,
-                    to_status=deployment_status,
+                    from_status=from_status_name,
+                    to_status=to_status_name,
                     deployment_version=new_version,
                     deployment_config=deployment_config or {},
                     error_message=error_message,
@@ -372,9 +417,9 @@ class WorkflowRepository:
                     ),  # Convert to Unix timestamp for bigint field
                 }
 
-                if deployment_status == "DEPLOYED":
+                if normalized_status == DeploymentStatus.DEPLOYED.value:
                     update_data["deployed_at"] = current_time
-                elif deployment_status == "UNDEPLOYED":
+                elif normalized_status == DeploymentStatus.UNDEPLOYED.value:
                     update_data["undeployed_at"] = current_time
 
                 if deployment_config:

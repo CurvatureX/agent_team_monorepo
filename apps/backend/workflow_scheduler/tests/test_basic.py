@@ -8,14 +8,14 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from shared.models.node_enums import NodeType
-from shared.models.trigger import TriggerSpec, TriggerType
+from shared.models.node_enums import NodeType, TriggerSubtype
+from shared.models.trigger import TriggerSpec
 from workflow_scheduler.services.deployment_service import DeploymentService
 from workflow_scheduler.services.trigger_manager import TriggerManager
 from workflow_scheduler.triggers.manual_trigger import ManualTrigger
 
 
-class TestTriggerTypes:
+class TestTriggerSubtypes:
     """Test trigger type definitions"""
 
     def test_trigger_types_exist(self):
@@ -29,7 +29,7 @@ class TestTriggerTypes:
             "SLACK",
         }
 
-        actual_types = {t.value for t in TriggerType}
+        actual_types = {t.value for t in TriggerSubtype}
         assert expected_types == actual_types
 
 
@@ -39,13 +39,13 @@ class TestTriggerSpec:
     def test_trigger_spec_creation(self):
         """Test creating a trigger specification"""
         spec = TriggerSpec(
-            subtype=TriggerType.MANUAL,
+            subtype=TriggerSubtype.MANUAL,
             parameters={"require_confirmation": True},
             enabled=True,
         )
 
         assert spec.node_type == NodeType.TRIGGER.value
-        assert spec.subtype == TriggerType.MANUAL
+        assert spec.subtype == TriggerSubtype.MANUAL
         assert spec.parameters == {"require_confirmation": True}
         assert spec.enabled is True
 
@@ -90,13 +90,13 @@ class TestTriggerManager:
     def trigger_manager(self, mock_lock_manager):
         """Create a trigger manager for testing"""
         manager = TriggerManager(mock_lock_manager)
-        manager.register_trigger_class(TriggerType.MANUAL, ManualTrigger)
+        manager.register_trigger_class(TriggerSubtype.MANUAL, ManualTrigger)
         return manager
 
     def test_trigger_manager_creation(self, trigger_manager):
         """Test trigger manager initialization"""
         assert trigger_manager is not None
-        assert TriggerType.MANUAL in trigger_manager._trigger_registry
+        assert TriggerSubtype.MANUAL in trigger_manager._trigger_registry
 
     @pytest.mark.asyncio
     async def test_health_check(self, trigger_manager):
@@ -140,7 +140,7 @@ class TestDeploymentService:
             "nodes": [
                 {
                     "node_type": NodeType.TRIGGER.value,
-                    "subtype": TriggerType.MANUAL.value,
+                    "subtype": TriggerSubtype.MANUAL.value,
                     "parameters": {"require_confirmation": False},
                 }
             ]
@@ -163,7 +163,7 @@ class TestDeploymentService:
             "nodes": [
                 {
                     "node_type": NodeType.TRIGGER.value,
-                    "subtype": TriggerType.MANUAL.value,
+                    "subtype": TriggerSubtype.MANUAL.value,
                     "parameters": {"require_confirmation": True},
                     "enabled": True,
                 },
@@ -174,7 +174,7 @@ class TestDeploymentService:
         specs = deployment_service._extract_trigger_specs(workflow_spec)
 
         assert len(specs) == 1
-        assert specs[0].subtype == TriggerType.MANUAL
+        assert specs[0].subtype == TriggerSubtype.MANUAL
         assert specs[0].parameters == {"require_confirmation": True}
         assert specs[0].enabled is True
 

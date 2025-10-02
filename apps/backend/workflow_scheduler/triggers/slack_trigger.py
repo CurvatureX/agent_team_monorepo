@@ -12,8 +12,10 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
-from shared.models.node_enums import TriggerSubtype
-from shared.models.trigger import ExecutionResult, TriggerStatus
+from shared.models.execution_new import ExecutionStatus
+from shared.models.node_enums import IntegrationProvider, SlackEventType, TriggerSubtype
+from shared.models.trigger import TriggerStatus
+from shared.models.workflow_new import WorkflowExecutionResponse
 from workflow_scheduler.triggers.base import BaseTrigger
 
 logger = logging.getLogger(__name__)
@@ -40,11 +42,18 @@ class SlackTrigger(BaseTrigger):
         # Slack-specific configuration
         self.workspace_id = trigger_config.get("workspace_id")
         self.channel_filter = trigger_config.get("channel_filter")
-        self.event_types = trigger_config.get("event_types", ["message", "app_mention"])
+        # Handle both 'events' and 'event_types' keys for backward compatibility
+        self.event_types = trigger_config.get("event_types") or trigger_config.get(
+            "events", [SlackEventType.MESSAGE.value, SlackEventType.APP_MENTION.value]
+        )
         self.mention_required = trigger_config.get("mention_required", False)
-        self.command_prefix = trigger_config.get("command_prefix", "!")
+        # Don't require command prefix by default - only if explicitly configured
+        self.command_prefix = trigger_config.get("command_prefix", None)
         self.user_filter = trigger_config.get("user_filter")
-        self.ignore_bots = trigger_config.get("ignore_bots", True)
+        # Handle both 'ignore_bots' and 'filter_bot_messages' keys
+        self.ignore_bots = trigger_config.get("ignore_bots") or trigger_config.get(
+            "filter_bot_messages", True
+        )
         self.require_thread = trigger_config.get("require_thread", False)
 
         # Note: Channel filtering now uses channel IDs resolved during deployment
@@ -177,7 +186,7 @@ class SlackTrigger(BaseTrigger):
                 return False
 
             # Command prefix filter (for message events)
-            if event_type == "message" and self.command_prefix:
+            if event_type == SlackEventType.MESSAGE.value and self.command_prefix:
                 message_text = actual_event.get("text", "")
                 if not message_text.strip().startswith(self.command_prefix):
                     logger.info(
@@ -197,7 +206,7 @@ class SlackTrigger(BaseTrigger):
             )
             return False
 
-    async def trigger_from_slack_event(self, event_data: dict) -> ExecutionResult:
+    async def trigger_from_slack_event(self, event_data: dict) -> WorkflowExecutionResponse:
         """
         Trigger the workflow from a Slack event
 
@@ -205,7 +214,7 @@ class SlackTrigger(BaseTrigger):
             event_data: The Slack event data
 
         Returns:
-            ExecutionResult with execution details
+            WorkflowExecutionResponse with execution details
         """
         try:
             # Extract the nested event data
@@ -230,10 +239,11 @@ class SlackTrigger(BaseTrigger):
 
         except Exception as e:
             logger.error(f"Error triggering workflow from Slack event: {e}", exc_info=True)
-            return ExecutionResult(
-                status="error",
+            return WorkflowExecutionResponse(
+                execution_id=f"exec_{self.workflow_id}",
+                workflow_id=self.workflow_id,
+                status=ExecutionStatus.ERROR,
                 message=f"Failed to trigger from Slack event: {str(e)}",
-                trigger_data={"error": str(e)},
             )
 
     async def _get_channel_name(self, channel_id: str) -> Optional[str]:
@@ -330,7 +340,7 @@ class SlackTrigger(BaseTrigger):
                 supabase.table("oauth_tokens")
                 .select("access_token")
                 .eq("user_id", user_id)
-                .eq("integration_id", "slack")
+                .eq("integration_id", IntegrationProvider.SLACK.value)
                 .eq("is_active", True)
                 .execute()
             )
@@ -452,7 +462,7 @@ class SlackTrigger(BaseTrigger):
         """
         try:
             # Check for app_mention event type
-            if event_data.get("type") == "app_mention":
+            if event_data.get("type") == SlackEventType.APP_MENTION.value:
                 return True
 
             # Check for direct mention in message text

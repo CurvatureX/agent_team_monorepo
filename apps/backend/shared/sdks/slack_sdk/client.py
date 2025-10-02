@@ -299,6 +299,38 @@ class SlackWebClient:
         """
         return self._make_request("POST", "auth.test")
 
+    def get_workspace_info(self) -> Dict[str, Any]:
+        """
+        Get workspace information including workspace_id (team_id).
+
+        This is a helper function that extracts key workspace information
+        from the auth.test endpoint response.
+
+        Returns:
+            Dict containing:
+                - workspace_id (team_id): The Slack workspace/team ID
+                - team_name: Name of the workspace/team
+                - workspace_url: URL of the workspace
+                - bot_user_id: Bot user ID
+                - bot_id: Bot ID
+                - user_id: User ID associated with the token
+
+        Raises:
+            SlackAPIError: If the API request fails
+            SlackAuthError: If authentication fails
+        """
+        auth_response = self.auth_test()
+
+        return {
+            "workspace_id": auth_response.get("team_id"),
+            "team_name": auth_response.get("team"),
+            "workspace_url": auth_response.get("url"),
+            "bot_user_id": auth_response.get("user_id"),
+            "bot_id": auth_response.get("bot_id"),
+            "user_id": auth_response.get("user_id"),
+            "is_enterprise_install": auth_response.get("is_enterprise_install", False),
+        }
+
     def close(self):
         """Close the HTTP client."""
         self.client.close()

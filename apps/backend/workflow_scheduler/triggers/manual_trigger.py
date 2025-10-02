@@ -3,8 +3,10 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, Optional
 
+from shared.models.execution_new import ExecutionStatus
 from shared.models.node_enums import TriggerSubtype
-from shared.models.trigger import ExecutionResult, TriggerStatus
+from shared.models.trigger import TriggerStatus
+from shared.models.workflow_new import WorkflowExecutionResponse
 from workflow_scheduler.triggers.base import BaseTrigger
 
 logger = logging.getLogger(__name__)
@@ -58,7 +60,7 @@ class ManualTrigger(BaseTrigger):
 
     async def trigger_manual(
         self, user_id: str, access_token: Optional[str] = None
-    ) -> ExecutionResult:
+    ) -> WorkflowExecutionResponse:
         """
         Manually trigger workflow execution
 
@@ -70,17 +72,19 @@ class ManualTrigger(BaseTrigger):
         """
         try:
             if not self.enabled:
-                return ExecutionResult(
-                    status="failed",
+                return WorkflowExecutionResponse(
+                    execution_id=f"exec_{self.workflow_id}",
+                    workflow_id=self.workflow_id,
+                    status=ExecutionStatus.ERROR,
                     message="Manual trigger is disabled",
-                    trigger_data={"user_id": user_id},
                 )
 
             if self.status != TriggerStatus.ACTIVE:
-                return ExecutionResult(
-                    status="failed",
+                return WorkflowExecutionResponse(
+                    execution_id=f"exec_{self.workflow_id}",
+                    workflow_id=self.workflow_id,
+                    status=ExecutionStatus.ERROR,
                     message=f"Manual trigger is not active (status: {self.status.value})",
-                    trigger_data={"user_id": user_id},
                 )
 
             # Prepare trigger data
@@ -94,7 +98,7 @@ class ManualTrigger(BaseTrigger):
             # Execute workflow
             result = await self._trigger_workflow(trigger_data, access_token=access_token)
 
-            if result.status == "started":
+            if result.status == ExecutionStatus.RUNNING:
                 logger.info(
                     f"Manual trigger executed successfully for workflow {self.workflow_id} by user {user_id}: {result.execution_id}"
                 )
@@ -109,8 +113,11 @@ class ManualTrigger(BaseTrigger):
             error_msg = f"Error in manual trigger for workflow {self.workflow_id}: {str(e)}"
             logger.error(error_msg, exc_info=True)
 
-            return ExecutionResult(
-                status="error", message=error_msg, trigger_data={"user_id": user_id}
+            return WorkflowExecutionResponse(
+                execution_id=f"exec_{self.workflow_id}",
+                workflow_id=self.workflow_id,
+                status="error",
+                message=error_msg,
             )
 
     async def health_check(self) -> Dict[str, Any]:
