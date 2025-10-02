@@ -427,11 +427,16 @@ async def list_all_node_templates(
 @router.post("/")
 async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Depends()):
     """
-    Create a new workflow
-    创建新的工作流
+    Create a new workflow - Updated to handle new node specs format
+    创建新的工作流 - 支持新的节点规格格式
     """
     try:
         logger.info(f"📝 Creating workflow for user {deps.current_user.sub}")
+
+        # Extract workflow info from metadata (new format)
+        workflow_name = request.metadata.get("name", "Untitled Workflow")
+        workflow_description = request.metadata.get("description", "")
+        workflow_tags = request.metadata.get("tags", [])
 
         # Generate random icon_url
         from shared.utils.icon_utils import generate_random_icon_url
@@ -444,37 +449,43 @@ async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Dep
 
         http_client = await get_workflow_engine_client()
 
-        # Pass nodes directly - they should already be in NodeData format from WorkflowCreateRequest
+        # Handle nodes - they're now direct dictionaries from the new format
         nodes_list = []
         if request.nodes:
-            nodes_list = [node.model_dump() for node in request.nodes]
+            # Check if nodes are already dictionaries (new format) or need conversion (old format)
+            for node in request.nodes:
+                if hasattr(node, "model_dump"):
+                    nodes_list.append(node.model_dump())
+                elif isinstance(node, dict):
+                    nodes_list.append(node)
+                else:
+                    nodes_list.append(dict(node))
 
-        # Use connections as-is - now a list of Connection objects
-        connections_list = (
-            [conn.model_dump() for conn in request.connections] if request.connections else []
-        )
+        # Handle connections - they're now direct dictionaries from the new format
+        connections_list = []
+        if request.connections:
+            for conn in request.connections:
+                if hasattr(conn, "model_dump"):
+                    connections_list.append(conn.model_dump())
+                elif isinstance(conn, dict):
+                    connections_list.append(conn)
+                else:
+                    connections_list.append(dict(conn))
 
-        # Convert settings to dict if it's an object
+        # Extract additional metadata
         settings_dict = {}
-        if request.settings:
-            if hasattr(request.settings, "model_dump"):
-                settings_dict = request.settings.model_dump()
-            elif hasattr(request.settings, "dict"):
-                settings_dict = request.settings.dict()
-            elif isinstance(request.settings, dict):
-                settings_dict = request.settings
-            else:
-                settings_dict = {}
+        if "settings" in request.metadata:
+            settings_dict = request.metadata["settings"]
 
         # Create workflow via HTTP
         result = await http_client.create_workflow(
-            name=request.name,
-            description=request.description,
+            name=workflow_name,
+            description=workflow_description,
             nodes=nodes_list,
             connections=connections_list,
             settings=settings_dict,
-            static_data=getattr(request, "static_data", None) or {},
-            tags=request.tags or [],
+            static_data=request.metadata.get("static_data", {}),
+            tags=workflow_tags,
             user_id=deps.current_user.sub,
             trace_id=getattr(deps.request.state, "trace_id", None),
             icon_url=icon_url,
@@ -483,8 +494,8 @@ async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Dep
         # Debug logging to understand response format
         logger.info(f"🐛 DEBUG: Workflow Engine response: {result}")
 
-        # Check for Workflow Engine response format: {"id": "...", "status": "created", "workflow": {...}}
-        if not result.get("workflow", {}).get("id") or result.get("status") != "created":
+        # Check for Workflow Engine response format: {"workflow": {...}}
+        if not result.get("workflow", {}).get("id"):
             logger.error(f"❌ Invalid response format from Workflow Engine: {result}")
             raise HTTPException(status_code=500, detail="Failed to create workflow")
 
@@ -870,10 +881,9 @@ async def deploy_workflow(
         # Get workflow scheduler client
         scheduler_client = await get_workflow_scheduler_client()
 
-        # Deploy workflow via scheduler with updated credentials
+        # Deploy workflow via scheduler (scheduler fetches from database)
         result = await scheduler_client.deploy_workflow(
             workflow_id=workflow_id,
-            workflow_spec=workflow_data_with_credentials,
             user_id=deps.current_user.sub,
             trace_id=getattr(deps.request.state, "trace_id", None),
         )
@@ -1224,7 +1234,7 @@ async def manual_invoke_trigger(
                 "trigger_type": node_subtype,
                 "resolved_parameters": resolved_parameters,
             },
-            "execution_url": f"/api/v1/executions/{execution_result.get('execution_id')}",
+            "execution_url": f"/v2/executions/{execution_result.get('execution_id')}",
         }
 
         logger.info(f"✅ Manual trigger invocation started: {execution_result.get('execution_id')}")

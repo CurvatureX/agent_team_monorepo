@@ -8,7 +8,7 @@ and produces execution context when GitHub events occur.
 from typing import Any, Dict, List
 
 from ...models.node_enums import NodeType, TriggerSubtype
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class GitHubTriggerSpec(BaseNodeSpec):
@@ -74,30 +74,82 @@ class GitHubTriggerSpec(BaseNodeSpec):
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters
-            default_input_params={},  # Triggers have no input
-            default_output_params={
-                "trigger_time": "",
-                "execution_id": "",
-                "event_type": "",
-                "repository": "",
-                "sender": "",
-                "branch": "",
-                "commit_sha": "",
-                "trigger_message": "",
-                "github_payload": {},
+            # Parameter schemas (preferred over legacy defaults)
+            input_params={},  # Triggers have no runtime inputs
+            output_params={
+                "trigger_time": {
+                    "type": "string",
+                    "default": "",
+                    "description": "ISO-8601 time when the webhook was received",
+                    "required": False,
+                },
+                "event_type": {
+                    "type": "string",
+                    "default": "",
+                    "description": "GitHub event type",
+                    "required": False,
+                    "options": [
+                        "push",
+                        "pull_request",
+                        "issues",
+                        "issue_comment",
+                        "pull_request_review",
+                        "release",
+                        "workflow_run",
+                        "repository",
+                        "star",
+                        "watch",
+                        "fork",
+                    ],
+                },
+                "repository": {
+                    "type": "string",
+                    "default": "",
+                    "description": "owner/repo for the event",
+                    "required": False,
+                },
+                "sender": {
+                    "type": "string",
+                    "default": "",
+                    "description": "GitHub username of the sender",
+                    "required": False,
+                },
+                "branch": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Branch name if applicable",
+                    "required": False,
+                },
+                "commit_sha": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Commit SHA if applicable",
+                    "required": False,
+                },
+                "trigger_message": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Human-friendly trigger description",
+                    "required": False,
+                },
+                "github_payload": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Raw GitHub webhook payload",
+                    "required": False,
+                },
             },
             # Port definitions
             input_ports=[],  # Triggers have no input ports
             output_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="dict",
-                    description="GitHub event output with repository and event data",
-                    required=False,
-                    max_connections=-1,
-                )
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "GitHub event output with repository and event data",
+                    "required": False,
+                    "max_connections": -1,
+                }
             ],
             # Metadata
             tags=["trigger", "github", "webhook", "repository", "version-control"],

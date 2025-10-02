@@ -12,7 +12,7 @@ not connected through input/output ports.
 from typing import Any, Dict, List
 
 from ...models.node_enums import MemorySubtype, NodeType
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class KeyValueStoreMemorySpec(BaseNodeSpec):
@@ -24,7 +24,7 @@ class KeyValueStoreMemorySpec(BaseNodeSpec):
             subtype=MemorySubtype.KEY_VALUE_STORE,
             name="Key_Value_Store_Memory",
             description="Key-value store memory for simple data storage and retrieval",
-            # Configuration parameters
+            # Configuration parameters (simplified)
             configurations={
                 "storage_backend": {
                     "type": "string",
@@ -40,22 +40,6 @@ class KeyValueStoreMemorySpec(BaseNodeSpec):
                     "required": False,
                     "sensitive": True,
                 },
-                "max_keys": {
-                    "type": "integer",
-                    "default": 1000,
-                    "min": 1,
-                    "max": 100000,
-                    "description": "最大键数量",
-                    "required": False,
-                },
-                "max_value_size": {
-                    "type": "integer",
-                    "default": 1048576,
-                    "min": 1024,
-                    "max": 10485760,
-                    "description": "最大值大小（字节）",
-                    "required": False,
-                },
                 "default_ttl": {
                     "type": "integer",
                     "default": 0,
@@ -70,50 +54,87 @@ class KeyValueStoreMemorySpec(BaseNodeSpec):
                     "description": "键名前缀",
                     "required": False,
                 },
-                "enable_compression": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "是否启用值压缩",
-                    "required": False,
-                },
-                "serialization_format": {
-                    "type": "string",
-                    "default": "json",
-                    "description": "序列化格式",
-                    "required": False,
-                    "options": ["json", "pickle", "msgpack", "string"],
-                },
-                "persistence_mode": {
-                    "type": "string",
-                    "default": "none",
-                    "description": "持久化模式",
-                    "required": False,
-                    "options": ["none", "sync", "async", "batch"],
-                },
-                "backup_enabled": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "是否启用数据备份",
+                "max_keys": {
+                    "type": "integer",
+                    "default": 1000,
+                    "min": 1,
+                    "max": 100000,
+                    "description": "最大键数量",
                     "required": False,
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters for memory operations
-            default_input_params={
-                "operation": "get",  # get, set, delete, exists, keys, clear
-                "key": "",
-                "value": None,
-                "ttl": 0,
-                "options": {},
+            # Runtime parameters (schema-style)
+            input_params={
+                "operation": {
+                    "type": "string",
+                    "default": "get",
+                    "description": "操作类型",
+                    "required": False,
+                    "options": ["get", "set", "delete", "exists", "keys", "clear"],
+                },
+                "key": {
+                    "type": "string",
+                    "default": "",
+                    "description": "键",
+                    "required": False,
+                },
+                "value": {
+                    "type": "object",
+                    "default": {},
+                    "description": "值（可序列化对象）",
+                    "required": False,
+                },
+                "options": {
+                    "type": "object",
+                    "default": {},
+                    "description": "可选操作参数",
+                    "required": False,
+                },
             },
-            default_output_params={
-                "value": None,
-                "exists": False,
-                "keys": [],
-                "success": False,
-                "error_message": "",
-                "operation_time": 0,
-                "cache_hit": False,
+            output_params={
+                "value": {
+                    "type": "object",
+                    "default": {},
+                    "description": "返回的值（get时）",
+                    "required": False,
+                },
+                "exists": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "键是否存在",
+                    "required": False,
+                },
+                "keys": {
+                    "type": "array",
+                    "default": [],
+                    "description": "匹配的键列表（keys时）",
+                    "required": False,
+                },
+                "success": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "操作是否成功",
+                    "required": False,
+                },
+                "error_message": {
+                    "type": "string",
+                    "default": "",
+                    "description": "错误消息",
+                    "required": False,
+                },
+                "operation_time": {
+                    "type": "number",
+                    "default": 0,
+                    "description": "操作耗时（秒）",
+                    "required": False,
+                },
+                "cache_hit": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "是否命中缓存（如适用）",
+                    "required": False,
+                },
             },
             # MEMORY nodes have no ports - they are attached to AI_AGENT nodes
             input_ports=[],

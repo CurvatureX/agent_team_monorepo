@@ -1,0 +1,316 @@
+"""Enhanced Memory node runner with advanced implementations."""
+
+from __future__ import annotations
+
+import asyncio
+import sys
+from pathlib import Path
+from typing import Any, Dict
+
+# Add backend directory to path for absolute imports
+backend_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(backend_dir))
+
+# Use absolute imports
+from shared.models import TriggerInfo
+from shared.models.node_enums import MemorySubtype
+from shared.models.workflow_new import Node
+
+from workflow_engine_v2.services.memory import InMemoryVectorStore, KeyValueMemory
+from workflow_engine_v2.runners.base import NodeRunner
+
+# Import enhanced memory implementations
+from workflow_engine_v2.runners.memory_implementations import (
+    ConversationBufferMemory,
+    EntityMemory,
+    KeyValueStoreMemory,
+    MemoryOrchestrator,
+    PersistentConversationBufferMemory,
+    PersistentVectorDatabaseMemory,
+    VectorDatabaseMemory,
+)
+
+
+class MemoryRunner(NodeRunner):
+    def __init__(self):
+        """Initialize memory runner with enhanced implementations."""
+        self._memory_instances = {}
+
+    def run(self, node: Node, inputs: Dict[str, Any], trigger: TriggerInfo) -> Dict[str, Any]:
+        ctx = inputs.get("_ctx")
+        store: Dict[str, Any] = ctx.memory_store if ctx else {}
+        subtype = None
+
+        try:
+            subtype = MemorySubtype(str(node.subtype))
+        except Exception:
+            pass
+
+        # Store execution context for persistent memory instances
+        # Extract user_id from multiple possible sources
+        user_id = None
+        if trigger and hasattr(trigger, "user_id"):
+            user_id = trigger.user_id
+        elif (
+            ctx
+            and hasattr(ctx, "execution")
+            and ctx.execution
+            and hasattr(ctx.execution, "user_id")
+        ):
+            user_id = ctx.execution.user_id
+        elif ctx and hasattr(ctx, "workflow") and ctx.workflow and hasattr(ctx.workflow, "user_id"):
+            user_id = ctx.workflow.user_id
+        else:
+            # Fallback to input data
+            user_id = inputs.get("user_id")
+
+        self._execution_context = {
+            "user_id": user_id,
+            "workflow_id": ctx.workflow.workflow_id
+            if ctx and hasattr(ctx, "workflow") and ctx.workflow
+            else inputs.get("workflow_id"),
+            "execution_id": ctx.execution.execution_id
+            if ctx and hasattr(ctx, "execution") and ctx.execution
+            else inputs.get("execution_id"),
+        }
+
+        # Check if advanced memory is requested (default to True for persistent storage)
+        use_advanced = node.configurations.get("use_advanced", True)
+
+        if use_advanced:
+            return self._run_advanced_memory(node, inputs, trigger, subtype)
+        else:
+            return self._run_legacy_memory(node, inputs, trigger, subtype, store)
+
+    def _run_advanced_memory(
+        self, node: Node, inputs: Dict[str, Any], trigger: TriggerInfo, subtype
+    ) -> Dict[str, Any]:
+        """Run advanced memory implementations."""
+        try:
+            # Get memory instance
+            memory_instance = self._get_memory_instance(node, subtype)
+            if not memory_instance:
+                return {"error": {"message": f"Advanced memory not available for {subtype}"}}
+
+            # Prepare operation data
+            operation = node.configurations.get("operation", "get")
+            main_data = inputs.get("main", {})
+
+            # Execute async operation
+            if operation == "store":
+                result = asyncio.run(memory_instance.store(main_data))
+            elif operation == "retrieve":
+                query = main_data if isinstance(main_data, dict) else {"query": main_data}
+                result = asyncio.run(memory_instance.retrieve(query))
+            elif operation == "get_context":
+                query = main_data if isinstance(main_data, dict) else {"query": main_data}
+                result = asyncio.run(memory_instance.get_context(query))
+            else:
+                # Default to retrieve for backwards compatibility
+                query = {"key": node.configurations.get("key", node.id)}
+                result = asyncio.run(memory_instance.retrieve(query))
+
+            shaped = self._shape_output(node, subtype, result)
+            return {"result": shaped}
+
+        except Exception as e:
+            return {"error": {"message": f"Advanced memory error: {str(e)}"}}
+
+    def _get_memory_instance(self, node: Node, subtype):
+        """Get or create memory instance for the node."""
+        memory_key = f"{node.id}_{subtype}"
+
+        if memory_key not in self._memory_instances:
+            config = node.configurations.copy()
+
+            # Check if persistent storage is requested
+            use_persistent = config.get("use_persistent_storage", True)  # Default to persistent
+
+            if use_persistent:
+                # Map subtypes to persistent implementation classes
+                memory_classes = {
+                    MemorySubtype.CONVERSATION_BUFFER: PersistentConversationBufferMemory,
+                    MemorySubtype.VECTOR_DATABASE: PersistentVectorDatabaseMemory,
+                    # Keep in-memory for types not yet implemented persistently
+                    MemorySubtype.KEY_VALUE_STORE: KeyValueStoreMemory,
+                }
+            else:
+                # Map subtypes to in-memory implementation classes (legacy)
+                memory_classes = {
+                    MemorySubtype.KEY_VALUE_STORE: KeyValueStoreMemory,
+                    MemorySubtype.CONVERSATION_BUFFER: ConversationBufferMemory,
+                    MemorySubtype.VECTOR_DATABASE: VectorDatabaseMemory,
+                }
+
+            # Special case for orchestrator
+            if config.get("use_orchestrator"):
+                memory_class = MemoryOrchestrator
+            else:
+                memory_class = memory_classes.get(subtype)
+
+            if memory_class:
+                # For persistent memory, add execution context
+                if use_persistent and hasattr(self, "_execution_context"):
+                    ctx = getattr(self, "_execution_context", {})
+                    user_id = ctx.get("user_id")
+
+                    # Validate user_id for persistent storage
+                    if not user_id:
+                        # Fall back to in-memory implementation if user_id is missing
+                        self.log_execution(
+                            context if hasattr(self, "log_execution") else None,
+                            f"⚠️ No user_id available for persistent storage, falling back to in-memory",
+                            "WARNING",
+                        )
+
+                        # Use in-memory fallback
+                        fallback_classes = {
+                            MemorySubtype.CONVERSATION_BUFFER: ConversationBufferMemory,
+                            MemorySubtype.VECTOR_DATABASE: VectorDatabaseMemory,
+                        }
+                        memory_class = fallback_classes.get(subtype, KeyValueStoreMemory)
+                        use_persistent = False
+                    else:
+                        config["user_id"] = user_id
+                        config["memory_node_id"] = node.id
+
+                try:
+                    instance = memory_class(config)
+                    asyncio.run(instance.initialize())
+                    self._memory_instances[memory_key] = instance
+                except Exception as e:
+                    # If persistent memory fails, fall back to in-memory
+                    if use_persistent:
+                        fallback_classes = {
+                            MemorySubtype.CONVERSATION_BUFFER: ConversationBufferMemory,
+                            MemorySubtype.VECTOR_DATABASE: VectorDatabaseMemory,
+                        }
+                        memory_class = fallback_classes.get(subtype, KeyValueStoreMemory)
+                        instance = memory_class(config)
+                        asyncio.run(instance.initialize())
+                        self._memory_instances[memory_key] = instance
+
+        return self._memory_instances.get(memory_key)
+
+    def _shape_output(self, node: Node, subtype, result: Dict[str, Any]) -> Dict[str, Any]:
+        """Map underlying memory result into spec-aligned output_params shape."""
+        # Start from defaults derived from spec
+        defaults = node.output_params or {}
+        shaped = dict(defaults)
+
+        try:
+            # Common fields
+            if isinstance(result, dict):
+                # For Conversation Buffer
+                if subtype == MemorySubtype.CONVERSATION_BUFFER:
+                    msgs = result.get("messages") or result.get("items") or []
+                    shaped["messages"] = msgs
+                    shaped["total_messages"] = result.get("messages_count") or len(msgs) or 0
+                    shaped["buffer_full"] = result.get("buffer_full", False)
+                    shaped["success"] = bool(result.get("success", True))
+                    # Summary optional fields left as defaults
+
+                # For Vector DB
+                elif subtype == MemorySubtype.VECTOR_DATABASE:
+                    shaped["results"] = result.get("results", [])
+                    shaped["scores"] = result.get("scores", [])
+                    shaped["total_results"] = result.get("total") or result.get("total_results") or len(
+                        shaped["results"]
+                    )
+                    shaped["search_time"] = result.get("search_time") or result.get("elapsed") or 0
+                    shaped["cached"] = bool(result.get("cached", False))
+
+                # For Key-Value Store
+                elif subtype == MemorySubtype.KEY_VALUE_STORE:
+                    shaped["value"] = result.get("value", {})
+                    shaped["exists"] = bool(result.get("exists", False))
+                    shaped["keys"] = result.get("keys", [])
+                    shaped["success"] = bool(result.get("success", True))
+                    shaped["error_message"] = result.get("error") or result.get("message", "")
+                    shaped["operation_time"] = result.get("operation_time") or result.get("elapsed") or 0
+
+                # For Document Store (best-effort mapping)
+                elif subtype == MemorySubtype.DOCUMENT_STORE:
+                    shaped["documents"] = result.get("documents", [])
+                    shaped["total_count"] = result.get("total_count") or len(shaped["documents"]) or 0
+                    shaped["relevance_scores"] = result.get("relevance_scores", [])
+                    shaped["search_metadata"] = result.get("search_metadata", {})
+                    shaped["document_summaries"] = result.get("document_summaries", [])
+                    shaped["filtered_results"] = result.get("filtered_results", [])
+                    shaped["execution_time_ms"] = result.get("execution_time_ms", 0)
+
+                else:
+                    # Other memory types - merge overlapping keys
+                    for k in defaults.keys():
+                        if k in result:
+                            shaped[k] = result[k]
+        except Exception:
+            pass
+
+        return shaped
+
+    def _run_legacy_memory(
+        self,
+        node: Node,
+        inputs: Dict[str, Any],
+        trigger: TriggerInfo,
+        subtype,
+        store: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Run legacy memory implementations for backwards compatibility."""
+        if subtype == MemorySubtype.KEY_VALUE_STORE:
+            kv = KeyValueMemory(store)
+            key = node.configurations.get("key") or node.id
+            op = node.configurations.get("operation", "get")
+            if op == "set":
+                res = kv.set(key, inputs.get("main", inputs))
+                return {"result": self._shape_output(node, subtype, res)}
+            if op == "append":
+                res = kv.append(key, inputs.get("main", inputs))
+                return {"result": self._shape_output(node, subtype, res)}
+            res = kv.get(key)
+            return {"result": self._shape_output(node, subtype, res)}
+
+        if subtype == MemorySubtype.VECTOR_DATABASE:
+            # A simple per-execution vector store under a reserved key
+            vkey = "__vector_store__"
+            if vkey not in store:
+                store[vkey] = InMemoryVectorStore()
+            vs: InMemoryVectorStore = store[vkey]
+            op = node.configurations.get("operation", "query")
+            namespace = node.configurations.get("namespace", "default")
+            if op == "upsert":
+                items = inputs.get("main", inputs)
+                if isinstance(items, list):
+                    vs.upsert(namespace, items)
+                    return {"result": {"upserted": len(items)}}
+                return {"error": {"message": "VECTOR.upsert expects a list of items"}}
+            # default: query
+            q = node.configurations.get("query_text") or (
+                inputs.get("main", {}).get("query")
+                if isinstance(inputs.get("main"), dict)
+                else None
+            )
+            if not q:
+                return {"result": self._shape_output(node, subtype, {"success": False, "error": "Missing query_text"})}
+            top_k = int(node.configurations.get("top_k", 3))
+            res = vs.query(namespace, str(q), top_k=top_k)
+            return {"result": self._shape_output(node, subtype, res)}
+
+        if subtype == MemorySubtype.CONVERSATION_BUFFER:
+            key = node.configurations.get("key", "conversation")
+            buf = store.setdefault(key, [])
+            main = inputs.get("main", {})
+            msg = main.get("message") if isinstance(main, dict) else None
+            role = main.get("role") if isinstance(main, dict) else "user"
+            if msg:
+                buf.append({"role": role, "content": msg})
+            res = {"success": True, "messages": list(buf), "messages_count": len(buf)}
+            return {"result": self._shape_output(node, subtype, res)}
+
+        # Fallback to simple K/V get
+        key = node.configurations.get("key") or node.id
+        return {"result": self._shape_output(node, subtype, {"value": store.get(key), "success": True})}
+
+
+__all__ = ["MemoryRunner"]

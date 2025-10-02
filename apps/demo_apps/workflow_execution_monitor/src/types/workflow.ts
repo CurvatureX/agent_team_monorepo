@@ -15,7 +15,7 @@ export type AIAgentSubtype = 'OPENAI_CHATGPT' | 'ANTHROPIC_CLAUDE' | 'GOOGLE_GEM
 export type ActionSubtype = 'RUN_CODE' | 'DATA_TRANSFORMATION' | 'FILE_OPERATION' | 'HTTP_REQUEST' | 'DATABASE_QUERY';
 export type ExternalActionSubtype = 'API_CALL' | 'SLACK' | 'EMAIL' | 'GITHUB' | 'WEBHOOK' | 'NOTIFICATION';
 export type ToolSubtype = 'MCP_TOOL' | 'HTTP_CLIENT' | 'FILE_PROCESSOR' | 'EMAIL_TOOL' | 'CODE_TOOL';
-export type FlowSubtype = 'IF' | 'SWITCH' | 'LOOP' | 'MERGE' | 'FILTER' | 'WAIT';
+export type FlowSubtype = 'IF' | 'LOOP' | 'MERGE' | 'FILTER' | 'WAIT';
 export type HumanLoopSubtype = 'GMAIL_INTERACTION' | 'SLACK_INTERACTION' | 'IN_APP_APPROVAL' | 'MANUAL_REVIEW';
 export type MemorySubtype = 'CONVERSATION_BUFFER' | 'VECTOR_DATABASE' | 'KEY_VALUE_STORE' | 'DOCUMENT_STORE';
 

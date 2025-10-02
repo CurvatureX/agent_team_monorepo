@@ -1,0 +1,492 @@
+{
+  "nodes": [
+    {
+      "id": "cron_trigger",
+      "name": "DailyMorningReminder",
+      "type": "TRIGGER",
+      "subtype": "CRON",
+      "position": {
+        "x": 100,
+        "y": 100
+      },
+      "description": "Triggers workflow at 9 AM on weekdays for daily check-ins",
+      "input_ports": [],
+      "input_params": {},
+      "output_ports": [
+        {
+          "port_id": "main",
+          "name": "main",
+          "data_type": "dict",
+          "description": "Scheduled execution output with timing information",
+          "required": false,
+          "max_connections": -1
+        }
+      ],
+      "output_params": {
+        "trigger_time": "",
+        "scheduled_time": "",
+        "execution_id": "",
+        "cron_expression": "",
+        "timezone": "",
+        "trigger_message": ""
+      },
+      "attached_nodes": null,
+      "configurations": {
+        "cron_expression": "0 9 * * 1-5",
+        "timezone": "UTC",
+        "max_missed_runs": 3
+      }
+    },
+    {
+      "id": "slack_trigger",
+      "name": "SlackAssistantMention",
+      "type": "TRIGGER",
+      "subtype": "SLACK",
+      "position": {
+        "x": 100,
+        "y": 250
+      },
+      "description": "Triggers when bot is mentioned in #assistant channel",
+      "input_ports": [],
+      "input_params": {},
+      "output_ports": [
+        {
+          "port_id": "main",
+          "name": "main",
+          "data_type": "dict",
+          "description": "Slack event output with message and user data",
+          "required": false,
+          "max_connections": -1
+        }
+      ],
+      "output_params": {
+        "trigger_time": "",
+        "execution_id": "",
+        "event_type": "",
+        "channel_id": "",
+        "channel_name": "",
+        "user_id": "",
+        "user_name": "",
+        "message_text": "",
+        "thread_ts": "",
+        "trigger_message": "",
+        "slack_payload": {}
+      },
+      "attached_nodes": null,
+      "configurations": {
+        "workspace_id": "T1234567890",
+        "events": ["app_mention"],
+        "channels": ["assistant"],
+        "keywords": [],
+        "bot_token": "xoxb-your-bot-token",
+        "signing_secret": "your-signing-secret",
+        "filter_bot_messages": true,
+        "include_thread_replies": true
+      }
+    },
+    {
+      "id": "working_memory",
+      "name": "AssistantMemory",
+      "type": "MEMORY",
+      "subtype": "WORKING_MEMORY",
+      "position": {
+        "x": 400,
+        "y": 50
+      },
+      "description": "Working memory for maintaining context and task history",
+      "input_ports": [],
+      "input_params": {
+        "operation": "store",
+        "key": "",
+        "value": {},
+        "importance": 0.5,
+        "context": {},
+        "ttl_override": null,
+        "tags": []
+      },
+      "output_ports": [],
+      "output_params": {
+        "current_state": {},
+        "recent_items": [],
+        "reasoning_chain": [],
+        "operation_result": {},
+        "memory_stats": {},
+        "context_summary": "",
+        "related_items": []
+      },
+      "attached_nodes": null,
+      "configurations": {
+        "storage_backend": "redis",
+        "ttl_seconds": 86400,
+        "capacity_limit": 200,
+        "eviction_policy": "importance",
+        "namespace": "personal_assistant",
+        "persistence_level": "session",
+        "reasoning_context": true,
+        "auto_organization": true,
+        "compression": false,
+        "access_optimization": "recency"
+      }
+    },
+    {
+      "id": "notion_tool",
+      "name": "NotionQueryTool",
+      "type": "TOOL",
+      "subtype": "NOTION_MCP_TOOL",
+      "position": {
+        "x": 400,
+        "y": 350
+      },
+      "description": "Notion MCP tool for querying projects and tasks",
+      "input_ports": [],
+      "input_params": {
+        "tool_name": "",
+        "function_args": {},
+        "context": {},
+        "call_id": ""
+      },
+      "output_ports": [],
+      "output_params": {
+        "result": null,
+        "success": false,
+        "error_message": "",
+        "execution_time": 0,
+        "cached": false,
+        "notion_object_id": "",
+        "notion_object_type": ""
+      },
+      "attached_nodes": null,
+      "configurations": {
+        "mcp_server_url": "http://localhost:8000/api/v1/mcp",
+        "notion_integration_token": "secret_notion_token_123",
+        "default_database_id": "your-projects-database-id",
+        "available_tools": [
+          "notion_search",
+          "notion_query_database",
+          "notion_get_page",
+          "notion_create_database_item",
+          "notion_update_database_item"
+        ],
+        "page_size_limit": 50,
+        "enable_rich_text": true,
+        "auto_create_missing_props": false
+      }
+    },
+    {
+      "id": "ai_agent",
+      "name": "PersonalAssistantAI",
+      "type": "AI_AGENT",
+      "subtype": "ANTHROPIC_CLAUDE",
+      "position": {
+        "x": 400,
+        "y": 175
+      },
+      "description": "Claude AI agent for personal assistance and task management",
+      "input_ports": [
+        {
+          "port_id": "main",
+          "name": "main",
+          "data_type": "dict",
+          "description": "Main input with user prompt and context",
+          "required": true,
+          "max_connections": -1
+        },
+        {
+          "port_id": "context",
+          "name": "context",
+          "data_type": "dict",
+          "description": "Additional context and variables",
+          "required": false,
+          "max_connections": -1
+        }
+      ],
+      "input_params": {
+        "user_input": "",
+        "context": {},
+        "variables": {},
+        "images": [],
+        "documents": []
+      },
+      "output_ports": [
+        {
+          "port_id": "response",
+          "name": "response",
+          "data_type": "dict",
+          "description": "Claude's response and metadata",
+          "required": true,
+          "max_connections": -1
+        },
+        {
+          "port_id": "structured_data",
+          "name": "structured_data",
+          "data_type": "dict",
+          "description": "Extracted structured data from response",
+          "required": false,
+          "max_connections": -1
+        },
+        {
+          "port_id": "error",
+          "name": "error",
+          "data_type": "dict",
+          "description": "Error information if processing fails",
+          "required": false,
+          "max_connections": -1
+        }
+      ],
+      "output_params": {
+        "response": "",
+        "thinking_process": "",
+        "confidence_score": 0.0,
+        "token_usage": {},
+        "processing_time": 0.0,
+        "function_calls": [],
+        "extracted_data": {},
+        "safety_flags": {},
+        "model_version": "",
+        "request_id": ""
+      },
+      "attached_nodes": ["working_memory", "notion_tool"],
+      "configurations": {
+        "anthropic_api_key": "your-anthropic-api-key",
+        "model": "claude-sonnet-4-20250514",
+        "system_prompt": "You are a personal productivity assistant that helps manage tasks, projects, and daily planning through Notion integration.\n\n## CORE RESPONSIBILITIES:\n1. **Task Management**: Help create, update, prioritize, and track tasks in Notion database\n2. **Project Planning**: Assist with project breakdown, timeline planning, and progress tracking\n3. **Daily Planning**: Provide morning briefings, reminders, and help prioritize daily work\n4. **Smart Suggestions**: Analyze workload and suggest optimizations, deadline adjustments\n5. **Context Awareness**: Remember previous conversations and maintain project context\n\n## AVAILABLE TOOLS:\n- **Notion Query Tool**: Query existing projects/tasks, search for information\n- **Working Memory**: Store and retrieve conversation context, project details, user preferences\n\n## RESPONSE FORMAT:\nYour responses must be structured JSON with these sections:\n\n```json\n{\n  \"user_message\": \"Direct response to user in natural language\",\n  \"notion_actions\": [\n    {\n      \"action_type\": \"create_database_entry|update_database_entry|query_database\",\n      \"database_id\": \"target_database_id\",\n      \"data\": {\"properties_to_set\": \"values\"},\n      \"reason\": \"Why this action is needed\"\n    }\n  ],\n  \"slack_response\": {\n    \"message\": \"Message to send to user in Slack\",\n    \"format\": \"text|blocks\",\n    \"blocks\": [],\n    \"thread_reply\": true/false\n  },\n  \"memory_operations\": [\n    {\n      \"operation\": \"store|retrieve|update\",\n      \"key\": \"memory_key\",\n      \"value\": {},\n      \"importance\": 0.1-1.0,\n      \"tags\": [\"project\", \"task\", \"preference\"]\n    }\n  ],\n  \"priority_analysis\": {\n    \"urgent_items\": [],\n    \"suggestions\": [],\n    \"workload_assessment\": \"low|medium|high|overloaded\"\n  }\n}\n```\n\n## BEHAVIOR GUIDELINES:\n1. **Proactive**: Suggest improvements and optimizations\n2. **Context-Aware**: Reference previous tasks and conversations\n3. **Priority-Focused**: Help users focus on high-impact work\n4. **Detail-Oriented**: Capture all relevant task details (due dates, assignees, priorities)\n5. **Encouraging**: Provide positive reinforcement and motivation\n\n## NOTION DATABASE SCHEMA:\nAssuming your Projects & Tasks database has these properties:\n- **Name** (Title): Task/project name\n- **Status** (Select): Not Started, In Progress, Completed, Blocked\n- **Priority** (Select): Low, Medium, High, Urgent\n- **Due Date** (Date): Deadline\n- **Assignee** (Person): Who's responsible\n- **Project** (Relation): Link to parent project\n- **Tags** (Multi-select): Categories/labels\n- **Description** (Rich Text): Detailed information\n- **Effort** (Number): Estimated hours\n- **Progress** (Number): Completion percentage\n\n## TRIGGER-SPECIFIC BEHAVIOR:\n- **Morning Cron**: Provide daily briefing with today's priorities, overdue items, and schedule\n- **Slack Mention**: Respond conversationally while performing requested actions\n\nAlways maintain a helpful, professional, and encouraging tone while being efficient and actionable.",
+        "user_prompt": "{{user_input}}\n\nContext: {{context}}\n\nCurrent time: {{trigger_time}}\nTrigger type: {{trigger_type}}\n\nPlease help with the above request, following your system prompt guidelines for response format.",
+        "max_tokens": 8192,
+        "temperature": 0.3,
+        "top_p": 0.9,
+        "response_format": "json",
+        "thinking_mode": true,
+        "output_processing": {
+          "parse_json": true,
+          "validate_output": true,
+          "extract_code": false,
+          "output_schema": {
+            "type": "object",
+            "properties": {
+              "user_message": {"type": "string"},
+              "notion_actions": {"type": "array"},
+              "slack_response": {"type": "object"},
+              "memory_operations": {"type": "array"},
+              "priority_analysis": {"type": "object"}
+            },
+            "required": ["user_message", "slack_response"]
+          }
+        }
+      }
+    },
+    {
+      "id": "notion_action",
+      "name": "NotionProjectManager",
+      "type": "EXTERNAL_ACTION",
+      "subtype": "NOTION",
+      "position": {
+        "x": 700,
+        "y": 100
+      },
+      "description": "Manages Notion Projects & Tasks database operations",
+      "input_ports": [
+        {
+          "port_id": "main",
+          "name": "main",
+          "data_type": "dict",
+          "description": "Input data for Notion action",
+          "required": true,
+          "max_connections": 1
+        }
+      ],
+      "input_params": {
+        "data": {},
+        "context": {},
+        "variables": {}
+      },
+      "output_ports": [
+        {
+          "port_id": "success",
+          "name": "success",
+          "data_type": "dict",
+          "description": "Output when Notion action succeeds",
+          "required": true,
+          "max_connections": -1
+        },
+        {
+          "port_id": "error",
+          "name": "error",
+          "data_type": "dict",
+          "description": "Output when Notion action fails",
+          "required": false,
+          "max_connections": -1
+        }
+      ],
+      "output_params": {
+        "success": false,
+        "notion_response": {},
+        "resource_id": "",
+        "resource_url": "",
+        "error_message": "",
+        "rate_limit_info": {},
+        "execution_metadata": {}
+      },
+      "attached_nodes": null,
+      "configurations": {
+        "notion_token": "secret_your_notion_token_here",
+        "action_type": "create_database_entry",
+        "database_config": {
+          "database_id": "your-projects-database-id",
+          "title": "Projects & Tasks",
+          "description": "Personal productivity database",
+          "properties": {},
+          "parent": {}
+        },
+        "page_config": {
+          "parent": {"database_id": "your-projects-database-id"},
+          "properties": {},
+          "children": [],
+          "icon": {},
+          "cover": {}
+        },
+        "query_config": {
+          "filter": {},
+          "sorts": [{"property": "Due Date", "direction": "ascending"}],
+          "start_cursor": "",
+          "page_size": 100
+        },
+        "formatting_options": {
+          "enable_markdown": true,
+          "preserve_formatting": true,
+          "auto_link_detection": true
+        },
+        "retry_config": {
+          "max_retries": 3,
+          "retry_delay": 1,
+          "exponential_backoff": true,
+          "handle_rate_limits": true
+        }
+      }
+    },
+    {
+      "id": "slack_action",
+      "name": "SlackResponder",
+      "type": "EXTERNAL_ACTION",
+      "subtype": "SLACK",
+      "position": {
+        "x": 700,
+        "y": 250
+      },
+      "description": "Sends responses and updates to Slack channels",
+      "input_ports": [
+        {
+          "port_id": "main",
+          "name": "main",
+          "data_type": "dict",
+          "description": "Message content and Slack operation parameters",
+          "required": true,
+          "max_connections": 1
+        }
+      ],
+      "input_params": {
+        "message": "",
+        "blocks": [],
+        "attachments": [],
+        "channel_override": "",
+        "user_mentions": [],
+        "metadata": {}
+      },
+      "output_ports": [
+        {
+          "port_id": "main",
+          "name": "main",
+          "data_type": "dict",
+          "description": "Slack operation result and response data",
+          "required": false,
+          "max_connections": -1
+        },
+        {
+          "port_id": "error",
+          "name": "error",
+          "data_type": "dict",
+          "description": "Error output when Slack operation fails",
+          "required": false,
+          "max_connections": -1
+        }
+      ],
+      "output_params": {
+        "success": false,
+        "message_ts": "",
+        "channel_id": "",
+        "response_data": {},
+        "error_message": "",
+        "api_response": {}
+      },
+      "attached_nodes": null,
+      "configurations": {
+        "action_type": "send_message",
+        "channel": "#assistant",
+        "bot_token": "xoxb-your-bot-token",
+        "use_oauth": true,
+        "message_format": "blocks",
+        "thread_ts": "",
+        "unfurl_links": true,
+        "unfurl_media": false
+      }
+    }
+  ],
+  "metadata": {
+    "id": "personal-assistant-workflow-v2",
+    "name": "Personal Assistant & Task Manager",
+    "tags": ["productivity", "personal", "notion", "slack", "ai-assistant"],
+    "version": "2.0",
+    "icon_url": "🤖",
+    "created_by": "17368e0c-106f-4e69-8520-11ed0df91fb4",
+    "statistics": {
+      "total_runs": 0,
+      "total_credits": 0,
+      "last_success_time": null,
+      "average_duration_ms": 0
+    },
+    "updated_by": null,
+    "description": "Comprehensive personal assistant workflow that manages your TODO list, projects, and daily planning through Notion integration. Provides morning reminders and responds to Slack mentions with intelligent task management.",
+    "created_time": 1738166400000,
+    "parent_workflow": null,
+    "deployment_status": "pending",
+    "last_execution_time": null,
+    "last_execution_status": null
+  },
+  "triggers": [
+    "cron_trigger",
+    "slack_trigger"
+  ],
+  "connections": [
+    {
+      "id": "conn_cron_to_ai",
+      "to_node": "ai_agent",
+      "to_port": "main",
+      "from_node": "cron_trigger",
+      "from_port": "main",
+      "conversion_function": "def convert(input_data: Dict[str, Any]) -> Dict[str, Any]:\n    return {\n        'user_input': f'Good morning! Please provide my daily briefing for {input_data.get(\"trigger_time\", \"today\")}',\n        'context': {\n            'trigger_type': 'morning_reminder',\n            'trigger_time': input_data.get('trigger_time'),\n            'execution_id': input_data.get('execution_id'),\n            'timezone': input_data.get('timezone', 'UTC'),\n            'request_type': 'daily_briefing'\n        }\n    }"
+    },
+    {
+      "id": "conn_slack_to_ai",
+      "to_node": "ai_agent",
+      "to_port": "main",
+      "from_node": "slack_trigger",
+      "from_port": "main",
+      "conversion_function": "def convert(input_data: Dict[str, Any]) -> Dict[str, Any]:\n    return {\n        'user_input': input_data.get('message_text', ''),\n        'context': {\n            'trigger_type': 'slack_mention',\n            'user_id': input_data.get('user_id'),\n            'user_name': input_data.get('user_name'),\n            'channel_id': input_data.get('channel_id'),\n            'channel_name': input_data.get('channel_name'),\n            'thread_ts': input_data.get('thread_ts'),\n            'trigger_time': input_data.get('trigger_time'),\n            'execution_id': input_data.get('execution_id'),\n            'slack_payload': input_data.get('slack_payload', {})\n        }\n    }"
+    },
+    {
+      "id": "conn_ai_to_notion",
+      "to_node": "notion_action",
+      "to_port": "main",
+      "from_node": "ai_agent",
+      "from_port": "structured_data",
+      "conversion_function": "def convert(input_data: Dict[str, Any]) -> Dict[str, Any]:\n    ai_response = input_data.get('extracted_data', {})\n    notion_actions = ai_response.get('notion_actions', [])\n    \n    if not notion_actions:\n        return {'skip_execution': True}\n    \n    # Take the first notion action\n    first_action = notion_actions[0]\n    action_type = first_action.get('action_type', 'create_database_entry')\n    \n    result = {\n        'data': {\n            'action_type': action_type,\n            'database_id': first_action.get('database_id', 'your-projects-database-id'),\n            **first_action.get('data', {})\n        },\n        'context': {\n            'ai_reasoning': first_action.get('reason', ''),\n            'total_actions': len(notion_actions),\n            'source': 'ai_agent_structured_output'\n        }\n    }\n    \n    return result"
+    },
+    {
+      "id": "conn_ai_to_slack",
+      "to_node": "slack_action",
+      "to_port": "main",
+      "from_node": "ai_agent",
+      "from_port": "structured_data",
+      "conversion_function": "def convert(input_data: Dict[str, Any]) -> Dict[str, Any]:\n    ai_response = input_data.get('extracted_data', {})\n    slack_response = ai_response.get('slack_response', {})\n    \n    # Determine channel and thread settings\n    original_context = input_data.get('context', {})\n    channel = original_context.get('channel_id', '#assistant')\n    thread_ts = original_context.get('thread_ts', '') if slack_response.get('thread_reply', False) else ''\n    \n    message_format = slack_response.get('format', 'text')\n    \n    result = {\n        'message': slack_response.get('message', 'Task completed successfully!'),\n        'channel_override': channel,\n        'metadata': {\n            'source': 'ai_assistant',\n            'trigger_type': original_context.get('trigger_type', 'unknown'),\n            'execution_id': original_context.get('execution_id', '')\n        }\n    }\n    \n    # Add blocks if format is blocks\n    if message_format == 'blocks' and slack_response.get('blocks'):\n        result['blocks'] = slack_response.get('blocks', [])\n    \n    # Add thread timestamp if replying to thread\n    if thread_ts:\n        result['thread_ts'] = thread_ts\n    \n    return result"
+    }
+  ]
+}

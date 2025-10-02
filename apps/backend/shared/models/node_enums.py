@@ -174,7 +174,6 @@ class FlowSubtype(str, Enum):
 
     # Conditional Logic
     IF = "IF"
-    SWITCH = "SWITCH"
 
     # Loops
     LOOP = "LOOP"
@@ -226,7 +225,11 @@ class ToolSubtype(str, Enum):
     """Tool Node Subtypes - External tools and utilities"""
 
     # MCP Tools
-    MCP_TOOL = "MCP_TOOL"
+    NOTION_MCP_TOOL = "NOTION_MCP_TOOL"
+    SLACK_MCP_TOOL = "SLACK_MCP_TOOL"
+    DISCORD_MCP_TOOL = "DISCORD_MCP_TOOL"
+    GOOGLE_CALENDAR_MCP_TOOL = "GOOGLE_CALENDAR_MCP_TOOL"
+    FIRECRAWL_MCP_TOOL = "FIRECRAWL_MCP_TOOL"
 
     # Calendar Tools
     GOOGLE_CALENDAR = "GOOGLE_CALENDAR_TOOL"
@@ -268,7 +271,6 @@ class MemorySubtype(str, Enum):
     EPISODIC_MEMORY = "EPISODIC_MEMORY"
     KNOWLEDGE_BASE = "KNOWLEDGE_BASE"
     GRAPH_MEMORY = "GRAPH_MEMORY"
-    WORKING_MEMORY = "WORKING_MEMORY"
 
 
 # Validation mapping - defines which subtypes are valid for each node type
@@ -375,6 +377,49 @@ def resolve_legacy_api_type(legacy_type: str) -> NodeType:
     return API_GATEWAY_COMPATIBILITY.get(legacy_type.lower(), NodeType.ACTION)
 
 
+# ============================================================================
+# WORKFLOW SCHEDULER SPECIFIC ENUMS
+# ============================================================================
+
+
+class IntegrationProvider(str, Enum):
+    """Integration providers for OAuth and external services"""
+
+    GITHUB = "github"
+    SLACK = "slack"
+    NOTION = "notion"
+    GOOGLE_CALENDAR = "google_calendar"
+    DISCORD = "discord"
+    FIRECRAWL = "firecrawl"
+
+
+class SlackEventType(str, Enum):
+    """Slack event types for trigger configuration"""
+
+    MESSAGE = "message"
+    APP_MENTION = "app_mention"
+    REACTION_ADDED = "reaction_added"
+    CHANNEL_MESSAGE = "channel_message"
+
+
+class ValidationResult(str, Enum):
+    """Standard validation result statuses"""
+
+    VALID = "valid"
+    INVALID = "invalid"
+    PENDING = "pending"
+    ERROR = "error"
+
+
+class ServiceName(str, Enum):
+    """Service names in the monorepo"""
+
+    WORKFLOW_SCHEDULER = "workflow_scheduler"
+    WORKFLOW_ENGINE = "workflow_engine"
+    WORKFLOW_AGENT = "workflow_agent"
+    API_GATEWAY = "api_gateway"
+
+
 # Export all enums for easy importing
 __all__ = [
     # Core Node Enums
@@ -391,6 +436,11 @@ __all__ = [
     "OpenAIModel",
     "AnthropicModel",
     "GoogleGeminiModel",
+    # Workflow Scheduler Enums
+    "IntegrationProvider",
+    "SlackEventType",
+    "ValidationResult",
+    "ServiceName",
     # Validation Maps
     "VALID_SUBTYPES",
     "VALID_AI_MODELS",

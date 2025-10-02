@@ -8,7 +8,7 @@ Supports various filter conditions, expressions, and custom filter functions.
 from typing import Any, Dict, List
 
 from ...models.node_enums import FlowSubtype, NodeType
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class FilterFlowSpec(BaseNodeSpec):
@@ -120,63 +120,102 @@ class FilterFlowSpec(BaseNodeSpec):
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters
-            default_input_params={"data": [], "metadata": {}, "context": {}},
-            default_output_params={
-                "filtered_data": [],
-                "excluded_data": [],
-                "filter_stats": {
-                    "total_input": 0,
-                    "items_passed": 0,
-                    "items_filtered": 0,
-                    "filter_time_ms": 0,
+            # Parameter schemas (preferred over legacy defaults)
+            input_params={
+                "data": {
+                    "type": "array",
+                    "default": [],
+                    "description": "Input dataset to be filtered",
+                    "required": True,
                 },
-                "validation_errors": [],
+                "metadata": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Optional metadata passed alongside data",
+                    "required": False,
+                },
+                "context": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Optional context variables",
+                    "required": False,
+                },
+            },
+            output_params={
+                "filtered_data": {
+                    "type": "array",
+                    "default": [],
+                    "description": "Data that passed the filter criteria",
+                    "required": False,
+                },
+                "excluded_data": {
+                    "type": "array",
+                    "default": [],
+                    "description": "Data that was filtered out (in partition mode)",
+                    "required": False,
+                },
+                "filter_stats": {
+                    "type": "object",
+                    "default": {
+                        "total_input": 0,
+                        "items_passed": 0,
+                        "items_filtered": 0,
+                        "filter_time_ms": 0,
+                    },
+                    "description": "Filtering statistics and timing",
+                    "required": False,
+                },
+                "validation_errors": {
+                    "type": "array",
+                    "default": [],
+                    "description": "Schema or rule validation errors found during filtering",
+                    "required": False,
+                },
             },
             # Port definitions
             input_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="any",
-                    description="Data to be filtered",
-                    required=True,
-                    max_connections=1,
-                ),
-                create_port(
-                    port_id="filter_config",
-                    name="filter_config",
-                    data_type="dict",
-                    description="Dynamic filter configuration override",
-                    required=False,
-                    max_connections=1,
-                ),
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "any",
+                    "description": "Data to be filtered",
+                    "required": True,
+                    "max_connections": 1,
+                },
+                {
+                    "id": "filter_config",
+                    "name": "filter_config",
+                    "data_type": "dict",
+                    "description": "Dynamic filter configuration override",
+                    "required": False,
+                    "max_connections": 1,
+                },
             ],
             output_ports=[
-                create_port(
-                    port_id="passed",
-                    name="passed",
-                    data_type="any",
-                    description="Data that passed the filter criteria",
-                    required=True,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="filtered",
-                    name="filtered",
-                    data_type="any",
-                    description="Data that was filtered out (only in partition mode)",
-                    required=False,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="statistics",
-                    name="statistics",
-                    data_type="dict",
-                    description="Filter operation statistics and metadata",
-                    required=False,
-                    max_connections=-1,
-                ),
+                {
+                    "id": "passed",
+                    "name": "passed",
+                    "data_type": "any",
+                    "description": "Data that passed the filter criteria",
+                    "required": True,
+                    "max_connections": -1,
+                },
+                {
+                    "id": "filtered",
+                    "name": "filtered",
+                    "data_type": "any",
+                    "description": "Data that was filtered out (only in partition mode)",
+                    "required": False,
+                    "max_connections": -1,
+                },
+                {
+                    "id": "statistics",
+                    "name": "statistics",
+                    "data_type": "dict",
+                    "description": "Filter operation statistics and metadata",
+                    "required": False,
+                    "max_connections": -1,
+                },
             ],
             # Metadata
             tags=["flow", "filter", "select", "condition", "data-processing"],

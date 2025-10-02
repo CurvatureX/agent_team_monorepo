@@ -73,11 +73,12 @@ async def query_slack_triggers() -> List[Dict[str, Any]]:
     try:
         client = get_supabase_client()
 
-        # Query trigger_index table for active Slack triggers
+        # Query trigger_index table for active Slack triggers using trigger_subtype
         response = (
             client.table("trigger_index")
             .select("workflow_id, trigger_config")
-            .eq("trigger_type", "SLACK")
+            .eq("trigger_type", "TRIGGER")
+            .eq("trigger_subtype", "SLACK")
             .eq("deployment_status", "active")
             .execute()
         )

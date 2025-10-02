@@ -11,7 +11,7 @@ Do NOT add separate AI_AGENT or IF nodes for response handling.
 from typing import Any, Dict, List
 
 from ...models.node_enums import HumanLoopSubtype, NodeType
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class ManualReviewSpec(BaseNodeSpec):
@@ -148,70 +148,146 @@ class ManualReviewSpec(BaseNodeSpec):
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters
-            default_input_params={
-                "context": {},
-                "review_subject": {},
-                "attachments": [],
-                "metadata": {},
+            # Parameter schemas (preferred over legacy defaults)
+            input_params={
+                "context": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Additional context for review",
+                    "required": False,
+                },
+                "review_subject": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Subject/object under review",
+                    "required": True,
+                },
+                "attachments": {
+                    "type": "array",
+                    "default": [],
+                    "description": "Supporting attachments",
+                    "required": False,
+                },
+                "metadata": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Arbitrary metadata",
+                    "required": False,
+                },
             },
-            default_output_params={
-                "review_completed": False,
-                "ai_classification": "",
-                "review_decision": "",
-                "review_score": None,
-                "reviewer_comments": "",
-                "review_timestamp": "",
-                "execution_path": "",
-                "timeout_occurred": False,
-                "reviewer_info": {},
-                "evidence_provided": [],
-                "human_feedback": {},
+            output_params={
+                "review_completed": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Whether the review is completed",
+                    "required": False,
+                },
+                "ai_classification": {
+                    "type": "string",
+                    "default": "",
+                    "description": "AI classification outcome",
+                    "required": False,
+                    "options": ["confirmed", "rejected", "unrelated", "timeout"],
+                },
+                "review_decision": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Final decision from reviewer(s)",
+                    "required": False,
+                },
+                "review_score": {
+                    "type": "number",
+                    "default": None,
+                    "description": "Optional numeric score",
+                    "required": False,
+                },
+                "reviewer_comments": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Reviewer comments",
+                    "required": False,
+                },
+                "review_timestamp": {
+                    "type": "string",
+                    "default": "",
+                    "description": "ISO-8601 timestamp of review completion",
+                    "required": False,
+                },
+                "execution_path": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Downstream execution path determined",
+                    "required": False,
+                },
+                "timeout_occurred": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Whether review timed out",
+                    "required": False,
+                },
+                "reviewer_info": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Information about reviewer(s)",
+                    "required": False,
+                },
+                "evidence_provided": {
+                    "type": "array",
+                    "default": [],
+                    "description": "Evidence supplied during review",
+                    "required": False,
+                },
+                "human_feedback": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Structured human feedback",
+                    "required": False,
+                },
             },
             # Port definitions - HIL nodes have multiple output paths based on AI analysis
             input_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="dict",
-                    description="Input data for manual review process",
-                    required=True,
-                    max_connections=1,
-                )
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "Input data for manual review process",
+                    "required": True,
+                    "max_connections": 1,
+                }
             ],
             output_ports=[
-                create_port(
-                    port_id="confirmed",
-                    name="confirmed",
-                    data_type="dict",
-                    description="Output when AI classifies review as approved/passed",
-                    required=False,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="rejected",
-                    name="rejected",
-                    data_type="dict",
-                    description="Output when AI classifies review as rejected/failed",
-                    required=False,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="unrelated",
-                    name="unrelated",
-                    data_type="dict",
-                    description="Output when AI classifies review as incomplete/requires revision",
-                    required=False,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="timeout",
-                    name="timeout",
-                    data_type="dict",
-                    description="Output when no review completed within deadline",
-                    required=False,
-                    max_connections=-1,
-                ),
+                {
+                    "id": "confirmed",
+                    "name": "confirmed",
+                    "data_type": "dict",
+                    "description": "Output when AI classifies review as approved/passed",
+                    "required": False,
+                    "max_connections": -1,
+                },
+                {
+                    "id": "rejected",
+                    "name": "rejected",
+                    "data_type": "dict",
+                    "description": "Output when AI classifies review as rejected/failed",
+                    "required": False,
+                    "max_connections": -1,
+                },
+                {
+                    "id": "unrelated",
+                    "name": "unrelated",
+                    "data_type": "dict",
+                    "description": "Output when AI classifies review as incomplete/requires revision",
+                    "required": False,
+                    "max_connections": -1,
+                },
+                {
+                    "id": "timeout",
+                    "name": "timeout",
+                    "data_type": "dict",
+                    "description": "Output when no review completed within deadline",
+                    "required": False,
+                    "max_connections": -1,
+                },
             ],
             # Metadata
             tags=[

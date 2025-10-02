@@ -1,0 +1,454 @@
+"""Flow node runners: IF, MERGE, FILTER, SORT, DELAY, WAIT, TIMEOUT, etc."""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+import json
+from typing import Any, Dict
+
+# Add backend directory to path for absolute imports
+backend_dir = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(backend_dir))
+
+# Use absolute imports
+from shared.models import TriggerInfo
+from shared.models.workflow_new import Node
+
+from workflow_engine_v2.core.expr import get_path
+from workflow_engine_v2.core.template import _eval_expression, eval_boolean
+from workflow_engine_v2.services.timers import get_timer_service
+from workflow_engine_v2.runners.base import NodeRunner
+
+
+class IfRunner(NodeRunner):
+    def run(self, node: Node, inputs: Dict[str, Any], trigger: TriggerInfo) -> Dict[str, Any]:
+        data = inputs.get("result", inputs)
+        expr = str(
+            node.configurations.get("condition_expression")
+            or node.configurations.get("expression")
+            or ""
+        )
+        ctx = {"input": data, "config": node.configurations, "inputs": inputs}
+        engine_ctx = inputs.get("_ctx") if isinstance(inputs, dict) else None
+        if engine_ctx:
+            ctx["nodes_id"] = getattr(engine_ctx, "node_outputs", {})
+            ctx["nodes_name"] = getattr(engine_ctx, "node_outputs_by_name", {})
+        result = eval_boolean(expr, ctx) if expr else False
+        payload = {"data": data, "condition_result": bool(result)}
+        return {"true": payload if result else None, "false": payload if not result else None}
+
+
+# SWITCH runner removed in simplified flow set
+
+
+class SplitRunner(NodeRunner):
+    """SPLIT: partition data into multiple outputs based on predicate or keys.
+
+    Config options:
+    - by_key: list of keys to split (dict input)
+    - predicate_paths: dict of port -> dot-path predicate (truthy goes to that port)
+    Defaults to pass-through on 'main' if no config matches.
+    """
+
+    def run(self, node: Node, inputs: Dict[str, Any], trigger: TriggerInfo) -> Dict[str, Any]:
+        cfg = node.configurations or {}
+        data = inputs.get("result", inputs)
+        out: Dict[str, Any] = {}
+        preds = cfg.get("predicate_paths", {}) or {}
+        if isinstance(preds, dict) and preds:
+            for port, path in preds.items():
+                val = get_path(data, str(path)) if isinstance(path, str) else None
+                if val:
+                    out[port] = data
+        elif isinstance(cfg.get("by_key"), list) and isinstance(data, dict):
+            for k in cfg["by_key"]:
+                if k in data:
+                    out[str(k)] = data[k]
+        if not out:
+            out["result"] = data
+        return out
+
+
+class MergeRunner(NodeRunner):
+    def run(self, node: Node, inputs: Dict[str, Any], trigger: TriggerInfo) -> Dict[str, Any]:
+        # Collect all non-internal inputs
+        values = [v for k, v in inputs.items() if not k.startswith("_")]
+        strategy = (node.configurations or {}).get("merge_strategy", "concatenate")
+        handle_duplicates = (node.configurations or {}).get("handle_duplicates", "keep_all")
+        merge_key = (node.configurations or {}).get("merge_key")
+
+        merged_list = []
+        source_mapping = []
+        if strategy == "concatenate":
+            idx = 0
+            for port_name, val in ((k, v) for k, v in inputs.items() if not k.startswith("_")):
+                arr = val if isinstance(val, list) else [val]
+                start = idx
+                merged_list.extend(arr)
+                idx += len(arr)
+                source_mapping.append({"source": port_name, "range": [start, idx - 1]})
+        else:  # union
+            seen = set()
+            def _key(item):
+                if merge_key and isinstance(item, dict):
+                    return item.get(merge_key)
+                return json.dumps(item, sort_keys=True, default=str)
+            for port_name, val in ((k, v) for k, v in inputs.items() if not k.startswith("_")):
+                arr = val if isinstance(val, list) else [val]
+                start = len(merged_list)
+                for item in arr:
+                    key = _key(item)
+                    if handle_duplicates == "remove_duplicates":
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                    merged_list.append(item)
+                end = len(merged_list) - 1
+                if end >= start:
+                    source_mapping.append({"source": port_name, "range": [start, end]})
+
+        out = {
+            "merged_data": merged_list,
+            "merge_stats": {
+                "total_inputs": len(values),
+                "items_merged": len(merged_list),
+                "duplicates_removed": 0 if strategy == "concatenate" else max(0, sum(len(v if isinstance(v, list) else [v]) for v in values) - len(merged_list)),
+            },
+        }
+        if source_mapping:
+            out["source_mapping"] = source_mapping
+        return {"result": out}
+
+
+class FilterRunner(NodeRunner):
+    def run(self, node: Node, inputs: Dict[str, Any], trigger: TriggerInfo) -> Dict[str, Any]:
+        data = inputs.get("result", inputs)
+        cfg = node.configurations or {}
+        expr = cfg.get("predicate_expression") or cfg.get("expression")
+        ctx = {"input": data, "config": cfg, "inputs": inputs}
+        engine_ctx = inputs.get("_ctx") if isinstance(inputs, dict) else None
+        if engine_ctx:
+            ctx["nodes_id"] = getattr(engine_ctx, "node_outputs", {})
+            ctx["nodes_name"] = getattr(engine_ctx, "node_outputs_by_name", {})
+
+        # Normalize to list
+        items = data if isinstance(data, list) else data.get("data") if isinstance(data, dict) else []
+        if not isinstance(items, list):
+            items = [data]
+
+        passed, excluded = [], []
+        if expr:
+            for it in items:
+                local_ctx = dict(ctx)
+                local_ctx["item"] = it
+                keep = bool(_eval_expression(str(expr), local_ctx))
+                (passed if keep else excluded).append(it)
+        else:
+            passed = items
+
+        stats = {
+            "total_input": len(items),
+            "items_passed": len(passed),
+            "items_filtered": len(excluded),
+        }
+        out_obj = {
+            "filtered_data": passed,
+            "excluded_data": excluded,
+            "filter_stats": stats,
+            "validation_errors": [],
+        }
+        # Emit full output_params object on each relevant port
+        result: Dict[str, Any] = {"passed": out_obj}
+        if excluded:
+            result["filtered"] = out_obj
+        result["statistics"] = out_obj
+        return result
+
+
+class SortRunner(NodeRunner):
+    def run(self, node: Node, inputs: Dict[str, Any], trigger: TriggerInfo) -> Dict[str, Any]:
+        data = inputs.get("result", inputs)
+        cfg = node.configurations or {}
+        items = data if isinstance(data, list) else data.get("data") if isinstance(data, dict) else []
+        if not isinstance(items, list):
+            return {"result": {"sorted_data": [], "sort_stats": {"total_items": 0, "items_sorted": 0, "sort_time_ms": 0}}}
+        sort_field = cfg.get("sort_field")
+        order = (cfg.get("order") or "asc").lower()
+        reverse = order == "desc"
+
+        def _key(it):
+            if not sort_field:
+                return it
+            return get_path(it if isinstance(it, (dict, list)) else {"value": it}, str(sort_field))
+
+        try:
+            sorted_items = sorted(items, key=_key, reverse=reverse)
+        except Exception:
+            sorted_items = items
+
+        original_indices = [items.index(x) for x in sorted_items]
+        out = {
+            "sorted_data": sorted_items,
+            "sort_stats": {
+                "total_items": len(items),
+                "items_sorted": len(sorted_items),
+                "sort_time_ms": 0,
+                "comparisons_made": 0,
+            },
+            "original_indices": original_indices,
+        }
+        return {"result": out}
+
+
+class DelayRunner(NodeRunner):
+    """Implements WAIT/DELAY semantics by scheduling a timer and signaling engine to pause."""
+
+    def run(self, node: Node, inputs: Dict[str, Any], trigger: TriggerInfo) -> Dict[str, Any]:
+        # The engine will schedule and pause based on this marker
+        cfg = dict(node.configurations or {})
+        # Allow dynamic override
+        if isinstance(inputs, dict) and isinstance(inputs.get("delay_config"), dict):
+            cfg.update(inputs.get("delay_config"))
+        delay_ms = int(cfg.get("delay_ms") or 0)
+        # Support various config names from spec
+        if delay_ms == 0 and ("delay_seconds" in cfg or "duration_seconds" in cfg):
+            sec = cfg.get("delay_seconds", cfg.get("duration_seconds", 0))
+            try:
+                delay_ms = int(float(sec) * 1000)
+            except Exception:
+                delay_ms = 0
+        data = inputs.get("result", inputs)
+        delay_seconds = max(0, delay_ms) / 1000.0
+        out = {
+            "data": data,
+            "delay_info": {
+                "planned_delay_seconds": delay_seconds,
+                "actual_delay_seconds": 0,
+                "delay_start_time": "",
+                "delay_end_time": "",
+                "delay_type_used": "fixed",
+                "was_cancelled": False,
+            },
+        }
+        # Engine control flag to schedule delay
+        return {"_delay_ms": max(0, delay_ms), "main": out}
+
+
+class WaitRunner(NodeRunner):
+    """Implements WAIT semantics by pausing until external resume.
+
+    Engine will set execution to WAITING; caller should use resume_with_user_input
+    to continue and pass the awaited data.
+    """
+
+    def run(self, node: Node, inputs: Dict[str, Any], trigger: TriggerInfo) -> Dict[str, Any]:
+        # Condition-based wait: if wait_condition evaluates true, pass through; else wait
+        cfg = dict(node.configurations or {})
+        # Dynamic override via wait_config port
+        if isinstance(inputs, dict) and isinstance(inputs.get("wait_config"), dict):
+            cfg.update(inputs.get("wait_config"))
+        data = inputs.get("result", inputs)
+        # Cancel signal short-circuit
+        if isinstance(inputs, dict) and inputs.get("cancel_signal"):
+            out = {
+                "data": data,
+                "wait_result": {
+                    "condition_met": False,
+                    "wait_duration_seconds": 0,
+                    "attempts_made": 0,
+                    "wait_start_time": "",
+                    "wait_end_time": "",
+                    "timeout_occurred": False,
+                    "was_cancelled": True,
+                },
+                "trigger_data": {},
+            }
+            return {"cancelled": out}
+        # External event short-circuit
+        if isinstance(inputs, dict) and inputs.get("trigger_event") is not None:
+            out = {
+                "data": data,
+                "wait_result": {
+                    "condition_met": True,
+                    "wait_duration_seconds": 0,
+                    "attempts_made": 0,
+                    "wait_start_time": "",
+                    "wait_end_time": "",
+                    "timeout_occurred": False,
+                    "was_cancelled": False,
+                },
+                "trigger_data": inputs.get("trigger_event"),
+            }
+            return {"completed": out}
+        cond = cfg.get("wait_condition")
+        if cond:
+            ctx = {"input": data, "config": cfg, "inputs": inputs}
+            engine_ctx = inputs.get("_ctx") if isinstance(inputs, dict) else None
+            if engine_ctx:
+                ctx["nodes_id"] = getattr(engine_ctx, "node_outputs", {})
+                ctx["nodes_name"] = getattr(engine_ctx, "node_outputs_by_name", {})
+            if bool(_eval_expression(str(cond), ctx)):
+                out = {
+                    "data": data,
+                    "wait_result": {
+                        "condition_met": True,
+                        "wait_duration_seconds": 0,
+                        "attempts_made": 0,
+                        "wait_start_time": "",
+                        "wait_end_time": "",
+                        "timeout_occurred": False,
+                        "was_cancelled": False,
+                    },
+                    "trigger_data": {},
+                }
+                return {"completed": out}
+        out = {"_wait": True}
+        timeout_ms = None
+        if "timeout_seconds" in cfg:
+            try:
+                timeout_ms = int(float(cfg.get("timeout_seconds")) * 1000)
+            except Exception:
+                timeout_ms = None
+        if timeout_ms and timeout_ms > 0:
+            out["_wait_timeout_ms"] = timeout_ms
+        return out
+
+
+class TimeoutRunner(NodeRunner):
+    """TIMEOUT flow: transition to timeout after specified period unless bypass condition.
+
+    - If condition_expression/expression evaluates true, pass-through immediately (main->timeout or completed depending on config)
+    - Otherwise, schedule a timeout using engine semantics (engine will treat like WAIT with timeout)
+    """
+
+    def run(self, node: Node, inputs: Dict[str, Any], trigger: TriggerInfo) -> Dict[str, Any]:
+        cfg = node.configurations or {}
+        data = inputs.get("result", inputs)
+        cond = cfg.get("condition_expression") or cfg.get("expression")
+        if cond:
+            ctx = {"input": data, "config": cfg, "inputs": inputs}
+            engine_ctx = inputs.get("_ctx") if isinstance(inputs, dict) else None
+            if engine_ctx:
+                ctx["nodes_id"] = getattr(engine_ctx, "node_outputs", {})
+                ctx["nodes_name"] = getattr(engine_ctx, "node_outputs_by_name", {})
+            if eval_boolean(str(cond), ctx):
+                # immediate timeout path or completed based on config
+                if bool(cfg.get("immediate_timeout", False)):
+                    return {"timeout": data, "main": data}
+                return {"completed": data, "main": data}
+
+        timeout_ms = 0
+        try:
+            if cfg.get("timeout_seconds") is not None:
+                timeout_ms = int(float(cfg.get("timeout_seconds")) * 1000)
+            elif cfg.get("timeout_ms") is not None:
+                timeout_ms = int(cfg.get("timeout_ms"))
+        except Exception:
+            timeout_ms = 0
+        # Use same engine mechanic as WAIT: engine will interpret _wait + _wait_timeout_ms
+        out = {"_wait": True, "_wait_timeout_ms": max(0, timeout_ms), "main": data}
+        return out
+
+
+class LoopRunner(NodeRunner):
+    """Simplified LOOP: supports for_range and for_each (aggregate results).
+
+    Outputs:
+    - iteration: list of per-iteration data
+    - completed: main data with summary stats
+    """
+
+    def run(self, node: Node, inputs: Dict[str, Any], trigger: TriggerInfo) -> Dict[str, Any]:
+        cfg = node.configurations
+        data = inputs.get("result", inputs)
+        results = []
+        loop_type = cfg.get("loop_type", "for_range")
+        max_iter = int(cfg.get("max_iterations", 100))
+        iter_var = cfg.get("iteration_variable", "index")
+
+        if loop_type == "for_each":
+            arr_path = str(cfg.get("array_path", ""))
+            arr = (
+                get_path({"data": data} if not isinstance(data, dict) else data, arr_path)
+                if arr_path
+                else None
+            )
+            if not isinstance(arr, list):
+                arr = []
+            for idx, item in enumerate(arr[:max_iter], start=1):
+                results.append({iter_var: item})
+        elif loop_type == "while":
+            cond = cfg.get("loop_condition") or cfg.get("condition") or ""
+            i = 0
+            while i < max_iter:
+                ctx = {"input": data, "config": cfg, "iteration": i}
+                engine_ctx = inputs.get("_ctx") if isinstance(inputs, dict) else None
+                if engine_ctx:
+                    ctx["nodes_id"] = getattr(engine_ctx, "node_outputs", {})
+                    ctx["nodes_name"] = getattr(engine_ctx, "node_outputs_by_name", {})
+                if cond and not eval_boolean(str(cond), ctx):
+                    break
+                results.append({iter_var: i})
+                i += 1
+        else:
+            start = int(cfg.get("start_value", 0))
+            end = int(cfg.get("end_value", 0))
+            step = int(cfg.get("step_value", 1)) or 1
+            count = 0
+            i = start
+            cmp = (lambda x: x <= end) if step >= 0 else (lambda x: x >= end)
+            while cmp(i) and count < max_iter:
+                results.append({iter_var: i})
+                i += step
+                count += 1
+
+        summary = {
+            "total_iterations": len(results),
+            "successful_iterations": len(results),
+            "failed_iterations": 0,
+            "loop_completed": True,
+        }
+        if isinstance(data, dict):
+            completed = dict(data)
+            completed.update(summary)
+        else:
+            completed = summary
+
+        return {
+            "iteration": results,
+            "completed": completed,
+            "main": completed,
+        }
+
+
+class ForEachRunner(NodeRunner):
+    """Splits a list into individual items for downstream processing.
+
+    Outputs a list under 'items'. Downstream nodes can rely on receiving a list
+    and process items individually or via subsequent LOOP.
+    """
+
+    def run(self, node: Node, inputs: Dict[str, Any], trigger: TriggerInfo) -> Dict[str, Any]:
+        data = inputs.get("result", inputs)
+        if isinstance(data, dict) and "items" in data and isinstance(data["items"], list):
+            items = data["items"]
+        elif isinstance(data, list):
+            items = data
+        else:
+            items = [data]
+        # Emit iteration list to trigger fan-out in engine
+        return {"iteration": items, "main": items}
+
+
+__all__ = [
+    "IfRunner",
+    "MergeRunner",
+    "FilterRunner",
+    "SortRunner",
+    "DelayRunner",
+    "WaitRunner",
+    "LoopRunner",
+    "ForEachRunner",
+    "SplitRunner",
+]

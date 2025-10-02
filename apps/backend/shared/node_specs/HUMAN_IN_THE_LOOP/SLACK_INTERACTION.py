@@ -17,7 +17,7 @@ Key Features:
 from typing import Any, Dict, List
 
 from shared.models.node_enums import HumanLoopSubtype, NodeType
-from shared.node_specs.base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from shared.node_specs.base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class SlackInteractionSpec(BaseNodeSpec):
@@ -87,93 +87,138 @@ class SlackInteractionSpec(BaseNodeSpec):
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters
-            default_input_params={
-                "content": "",
-                "context": {},
-                "variables": {},
-                "user_mention": "",
-                "urgency": "normal",
+            # Parameter schemas (preferred over legacy defaults)
+            input_params={
+                "content": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Content to include in the Slack message",
+                    "required": False,
+                    "multiline": True,
+                },
+                "context": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Additional context for templating",
+                    "required": False,
+                },
+                "variables": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Template variables",
+                    "required": False,
+                },
+                "user_mention": {
+                    "type": "string",
+                    "default": "",
+                    "description": "User to mention (e.g., @john)",
+                    "required": False,
+                },
+                "urgency": {
+                    "type": "string",
+                    "default": "normal",
+                    "description": "Urgency level for the request",
+                    "required": False,
+                    "options": ["low", "normal", "high"],
+                },
             },
-            default_output_params={
-                "confirmed": {
-                    "user_response": "",
-                    "analysis_result": "confirmed",
-                    "confidence": 0.0,
-                    "response_time": 0,
-                    "user_id": "",
-                    "timestamp": "",
+            output_params={
+                "response_received": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Whether a response was received",
+                    "required": False,
                 },
-                "rejected": {
-                    "user_response": "",
-                    "analysis_result": "rejected",
-                    "confidence": 0.0,
-                    "response_time": 0,
-                    "user_id": "",
-                    "timestamp": "",
+                "ai_classification": {
+                    "type": "string",
+                    "default": "",
+                    "description": "AI classification of the response",
+                    "required": False,
+                    "options": ["confirmed", "rejected", "unrelated", "timeout"],
                 },
-                "unrelated": {
-                    "user_response": "",
-                    "analysis_result": "unrelated",
-                    "confidence": 0.0,
-                    "response_time": 0,
-                    "user_id": "",
-                    "timestamp": "",
+                "original_response": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Original user response text",
+                    "required": False,
                 },
-                "timeout": {"analysis_result": "timeout", "wait_duration": 0, "timestamp": ""},
+                "response_timestamp": {
+                    "type": "string",
+                    "default": "",
+                    "description": "ISO-8601 timestamp when response received",
+                    "required": False,
+                },
+                "timeout_occurred": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Whether the interaction timed out",
+                    "required": False,
+                },
+                "human_feedback": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Structured feedback extracted from the response",
+                    "required": False,
+                },
+                "user_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Slack user ID of the responder",
+                    "required": False,
+                },
             },
             # Port definitions - HIL nodes have multiple output ports based on AI analysis
             input_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="dict",
-                    description="Input data for human interaction request",
-                    required=True,
-                    max_connections=1,
-                )
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "Input data for human interaction request",
+                    "required": True,
+                    "max_connections": 1,
+                }
             ],
             output_ports=[
-                create_port(
-                    port_id="confirmed",
-                    name="confirmed",
-                    data_type="dict",
-                    description="Output when human response is confirmed/approved",
-                    required=False,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="rejected",
-                    name="rejected",
-                    data_type="dict",
-                    description="Output when human response is rejected/denied",
-                    required=False,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="unrelated",
-                    name="unrelated",
-                    data_type="dict",
-                    description="Output when human response is unrelated to the request",
-                    required=False,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="timeout",
-                    name="timeout",
-                    data_type="dict",
-                    description="Output when human interaction times out",
-                    required=False,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="error",
-                    name="error",
-                    data_type="dict",
-                    description="Error output for failed operations",
-                    required=False,
-                    max_connections=-1,
-                ),
+                {
+                    "id": "confirmed",
+                    "name": "confirmed",
+                    "data_type": "dict",
+                    "description": "Output when human response is confirmed/approved",
+                    "required": False,
+                    "max_connections": -1,
+                },
+                {
+                    "id": "rejected",
+                    "name": "rejected",
+                    "data_type": "dict",
+                    "description": "Output when human response is rejected/denied",
+                    "required": False,
+                    "max_connections": -1,
+                },
+                {
+                    "id": "unrelated",
+                    "name": "unrelated",
+                    "data_type": "dict",
+                    "description": "Output when human response is unrelated to the request",
+                    "required": False,
+                    "max_connections": -1,
+                },
+                {
+                    "id": "timeout",
+                    "name": "timeout",
+                    "data_type": "dict",
+                    "description": "Output when human interaction times out",
+                    "required": False,
+                    "max_connections": -1,
+                },
+                {
+                    "id": "error",
+                    "name": "error",
+                    "data_type": "dict",
+                    "description": "Error output for failed operations",
+                    "required": False,
+                    "max_connections": -1,
+                },
             ],
             # Metadata
             tags=["human-interaction", "slack", "approval", "ai-analysis", "built-in-intelligence"],

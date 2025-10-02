@@ -123,7 +123,6 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ./shared/proto:/app/shared/proto:ro
       - workflow_agent_logs:/app/logs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
@@ -205,8 +204,7 @@ services:
       OTEL_SERVICE_NAME: "workflow-engine-v2"
       OTEL_RESOURCE_ATTRIBUTES: "service.namespace=agent-team,deployment.environment=development"
     volumes:
-      - ./shared:/app/shared:ro
-      - ./workflow_engine_v2:/app/workflow_engine_v2
+      - workflow_engine_v2_logs:/app/logs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
@@ -310,7 +308,6 @@ services:
       # workflow-engine:
       #   condition: service_healthy
     volumes:
-      - ./shared/proto:/app/shared/proto:ro
       - api_gateway_logs:/app/logs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/public/health"]
@@ -335,6 +332,8 @@ volumes:
   workflow_scheduler_logs:
     driver: local
   api_gateway_logs:
+    driver: local
+  workflow_engine_v2_logs:
     driver: local
 
 # ======================

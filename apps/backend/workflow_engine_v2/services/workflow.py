@@ -10,7 +10,7 @@ import logging
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 # Add backend directory to path for absolute imports
 backend_dir = Path(__file__).parent.parent.parent
@@ -21,9 +21,8 @@ from shared.models.supabase import create_supabase_client
 
 # Use absolute imports
 from shared.models.workflow_new import Workflow, WorkflowMetadata
-
-from ..core.spec import coerce_node_to_v2, get_spec
-from ..core.validation import validate_workflow
+from workflow_engine_v2.core.spec import coerce_node_to_v2, get_spec
+from workflow_engine_v2.core.validation import validate_workflow
 
 
 class WorkflowServiceV2:
@@ -69,42 +68,27 @@ class WorkflowServiceV2:
             icon_url=icon_url,
         )
 
+        # Convert user dictionaries to Node objects, preserving their data exactly
+        from shared.models.workflow_new import Connection, Node
+
         v2_nodes = []
         for n in nodes:
-            node_type = n["type"]
-            node_subtype = n["subtype"]
-            spec = get_spec(node_type, node_subtype)
-            node_id = n.get("id") or n.get("name")
-            instance = spec.create_node_instance(
-                node_id=node_id, position=n.get("position"), attached_nodes=n.get("attached_nodes")
-            )
-            # overlay custom configurations if provided
-            if n.get("configurations"):
-                instance.configurations.update(n["configurations"])
-            # map legacy 'parameters' to configurations as well
-            if n.get("parameters"):
-                try:
-                    instance.configurations.update(n["parameters"])  # type: ignore[arg-type]
-                except Exception:
-                    pass
-            if n.get("input_params"):
-                instance.input_params.update(n["input_params"])
-            if n.get("output_params"):
-                instance.output_params.update(n["output_params"])
-            v2_nodes.append(coerce_node_to_v2(instance))
+            # Create Node object from user dict - Pydantic will handle conversion
+            node = Node(**n)
+            v2_nodes.append(node)
 
         v2_connections = []
         for c in connections:
-            v2_connections.append(
-                {
-                    "id": c["id"],
-                    "from_node": c["from_node"],
-                    "to_node": c["to_node"],
-                    "from_port": c.get("from_port", "main"),
-                    "to_port": c.get("to_port", "main"),
-                    "conversion_function": c.get("conversion_function"),
-                }
+            # Create Connection object from user dict
+            conn = Connection(
+                id=c["id"],
+                from_node=c["from_node"],
+                to_node=c["to_node"],
+                from_port=c.get("from_port", "main"),
+                to_port=c.get("to_port", "main"),
+                conversion_function=c.get("conversion_function"),
             )
+            v2_connections.append(conn)
 
         wf = Workflow(
             metadata=meta,
@@ -113,7 +97,7 @@ class WorkflowServiceV2:
             triggers=triggers or [],
         )
 
-        # Validate before storing
+        # Validate workflow with dictionary-based nodes
         validate_workflow(wf)
 
         # Save directly to database
@@ -140,7 +124,7 @@ class WorkflowServiceV2:
         try:
             result = (
                 self.supabase.table("workflows")
-                .select("workflow_data")
+                .select("workflow_data, user_id")
                 .eq("id", workflow_id)
                 .eq("active", True)
                 .execute()
@@ -148,10 +132,61 @@ class WorkflowServiceV2:
             if result.data:
                 workflow_data = result.data[0].get("workflow_data")
                 if workflow_data:
+                    # Debug: Log the actual workflow data structure
+                    self.logger.info(f"🔍 Raw workflow_data structure: {workflow_data}")
+
+                    # Fix missing fields in workflow_data for Pydantic validation
+                    if "metadata" in workflow_data:
+                        metadata = workflow_data["metadata"]
+                        # Ensure required fields exist with proper types
+                        if "created_time" not in metadata:
+                            metadata["created_time"] = metadata.get("created_time_ms", 0)
+                        if "created_by" not in metadata:
+                            metadata["created_by"] = metadata.get("created_by", "unknown")
+                        if "version" in metadata and isinstance(metadata["version"], int):
+                            metadata["version"] = str(metadata["version"])
+                        workflow_data["metadata"] = metadata
+
                     return Workflow(**workflow_data)
             return None
         except Exception as e:
             self.logger.error(f"Failed to get workflow {workflow_id}: {e}")
+            return None
+
+    def get_workflow_with_user_id(self, workflow_id: str) -> Optional[Tuple[Workflow, str]]:
+        """Get workflow from database by ID along with user_id."""
+        if not self.supabase:
+            self.logger.error("Supabase client not available")
+            return None
+
+        try:
+            result = (
+                self.supabase.table("workflows")
+                .select("workflow_data, user_id")
+                .eq("id", workflow_id)
+                .eq("active", True)
+                .execute()
+            )
+            if result.data:
+                workflow_data = result.data[0].get("workflow_data")
+                user_id = result.data[0].get("user_id")
+                if workflow_data and user_id:
+                    # Fix missing fields in workflow_data for Pydantic validation
+                    if "metadata" in workflow_data:
+                        metadata = workflow_data["metadata"]
+                        # Ensure required fields exist with proper types
+                        if "created_time" not in metadata:
+                            metadata["created_time"] = metadata.get("created_time_ms", 0)
+                        if "created_by" not in metadata:
+                            metadata["created_by"] = metadata.get("created_by", "unknown")
+                        if "version" in metadata and isinstance(metadata["version"], int):
+                            metadata["version"] = str(metadata["version"])
+                        workflow_data["metadata"] = metadata
+
+                    return (Workflow(**workflow_data), user_id)
+            return None
+        except Exception as e:
+            self.logger.error(f"Failed to get workflow {workflow_id} with user_id: {e}")
             return None
 
     def validate(self, wf: Workflow) -> None:
@@ -288,10 +323,10 @@ class WorkflowServiceV2:
         # Add optional columns if they exist in schema (handle missing columns gracefully)
         # Import enums to use instead of hardcoded strings
         from shared.models.execution_new import ExecutionStatus
-        from shared.models.trigger import DeploymentStatus
+        from shared.models.workflow_new import WorkflowDeploymentStatus
 
         optional_columns = {
-            "deployment_status": DeploymentStatus.PENDING.value,  # Always start as pending, change only via deploy API
+            "deployment_status": WorkflowDeploymentStatus.PENDING.value,  # Always start as pending, change only via deploy API
             "latest_execution_status": ExecutionStatus.NEW.value,  # Always start as NEW
             "latest_execution_time": None,  # No execution yet
             "latest_execution_id": None,

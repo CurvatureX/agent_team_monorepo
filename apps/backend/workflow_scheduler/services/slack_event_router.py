@@ -9,7 +9,7 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
-from shared.models.trigger import ExecutionResult
+from shared.models.workflow_new import WorkflowExecutionResponse
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +99,7 @@ class SlackEventRouter:
         except Exception as e:
             logger.error(f"❌ Failed to unregister SlackTrigger: {e}", exc_info=True)
 
-    async def route_event(self, event_data: dict) -> List[ExecutionResult]:
+    async def route_event(self, event_data: dict) -> List[WorkflowExecutionResponse]:
         """
         Route a Slack event to all matching triggers
 
@@ -107,7 +107,7 @@ class SlackEventRouter:
             event_data: The Slack event data
 
         Returns:
-            List[ExecutionResult]: Results from all triggered workflows
+            List[WorkflowExecutionResponse]: Results from all triggered workflows
         """
         workspace_id = event_data.get("team_id", "")
         event_type = event_data.get("type", "")
@@ -140,11 +140,12 @@ class SlackEventRouter:
 
         except Exception as e:
             logger.error(f"❌ Error routing Slack event: {e}", exc_info=True)
-            # Create error result
-            error_result = ExecutionResult(
+            # Create error result with required fields
+            error_result = WorkflowExecutionResponse(
+                execution_id="",
+                workflow_id="",
                 status="router_error",
                 message=f"Slack event routing failed: {str(e)}",
-                trigger_data={"event_type": event_type, "workspace_id": workspace_id},
             )
             results.append(error_result)
 
@@ -152,7 +153,7 @@ class SlackEventRouter:
 
     async def _process_triggers(
         self, triggers: List, event_data: dict, trigger_scope: str
-    ) -> List[ExecutionResult]:
+    ) -> List[WorkflowExecutionResponse]:
         """
         Process a list of triggers for the given event
 
@@ -162,7 +163,7 @@ class SlackEventRouter:
             trigger_scope: Description of trigger scope (for logging)
 
         Returns:
-            List[ExecutionResult]: Results from triggered workflows
+            List[WorkflowExecutionResponse]: Results from triggered workflows
         """
         results = []
 
@@ -188,16 +189,12 @@ class SlackEventRouter:
                     exc_info=True,
                 )
 
-                # Create error result for this specific trigger
-                error_result = ExecutionResult(
+                # Create error result for this specific trigger with required fields
+                error_result = WorkflowExecutionResponse(
+                    execution_id=f"exec_{trigger.workflow_id}",
+                    workflow_id=str(trigger.workflow_id),
                     status="trigger_error",
                     message=f"Trigger processing failed: {str(e)}",
-                    trigger_data={
-                        "workflow_id": trigger.workflow_id,
-                        "error": str(e),
-                        "event_type": event_data.get("type", ""),
-                        "workspace_id": event_data.get("team_id", ""),
-                    },
                 )
                 results.append(error_result)
 

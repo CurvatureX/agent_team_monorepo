@@ -12,7 +12,7 @@ not connected through input/output ports.
 from typing import Any, Dict, List
 
 from ...models.node_enums import NodeType, ToolSubtype
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class GoogleCalendarMCPToolSpec(BaseNodeSpec):
@@ -21,7 +21,7 @@ class GoogleCalendarMCPToolSpec(BaseNodeSpec):
     def __init__(self):
         super().__init__(
             type=NodeType.TOOL,
-            subtype=ToolSubtype.MCP_TOOL,
+            subtype=ToolSubtype.GOOGLE_CALENDAR_MCP_TOOL,
             name="Google_Calendar_MCP_Tool",
             description="Google Calendar MCP tool for event management and scheduling through MCP protocol",
             # Configuration parameters
@@ -91,21 +91,76 @@ class GoogleCalendarMCPToolSpec(BaseNodeSpec):
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters for tool execution
-            default_input_params={
-                "tool_name": "",
-                "function_args": {},
-                "context": {},
-                "call_id": "",
+            # Schema-style runtime parameters for tool execution
+            input_params={
+                "tool_name": {
+                    "type": "string",
+                    "default": "",
+                    "description": "MCP tool function name to invoke",
+                    "required": True,
+                },
+                "function_args": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Arguments for the selected tool function",
+                    "required": False,
+                },
+                "context": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Optional context to pass along with the tool call",
+                    "required": False,
+                },
+                "call_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Optional correlation ID for tracing",
+                    "required": False,
+                },
             },
-            default_output_params={
-                "result": None,
-                "success": False,
-                "error_message": "",
-                "execution_time": 0,
-                "cached": False,
-                "calendar_id": "",
-                "event_id": "",
+            output_params={
+                "result": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Result payload returned by the MCP tool",
+                    "required": False,
+                },
+                "success": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Whether the MCP tool invocation succeeded",
+                    "required": False,
+                },
+                "error_message": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Error details if invocation failed",
+                    "required": False,
+                },
+                "execution_time": {
+                    "type": "number",
+                    "default": 0.0,
+                    "description": "Execution time in seconds",
+                    "required": False,
+                },
+                "cached": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Whether the result was served from cache",
+                    "required": False,
+                },
+                "calendar_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Calendar ID involved in the operation",
+                    "required": False,
+                },
+                "event_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Event ID created or referenced by the operation",
+                    "required": False,
+                },
             },
             # TOOL nodes have no ports - they are attached to AI_AGENT nodes
             input_ports=[],

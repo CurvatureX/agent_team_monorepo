@@ -16,10 +16,9 @@ sys.path.insert(0, str(backend_dir))
 from shared.models import TriggerInfo
 from shared.models.execution_new import Execution
 from shared.models.workflow_new import Workflow
-
-from ..core.engine import ExecutionEngine
-from .file_repository import FileExecutionRepository
-from .supabase_repository_v2 import SupabaseExecutionRepository
+from workflow_engine_v2.core.engine import ExecutionEngine
+from workflow_engine_v2.services.file_repository import FileExecutionRepository
+from workflow_engine_v2.services.supabase_repository_v2 import SupabaseExecutionRepository
 
 
 class ExecutionServiceV2:

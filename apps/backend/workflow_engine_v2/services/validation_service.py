@@ -225,9 +225,13 @@ class ValidationServiceV2:
         try:
             flow_subtype = FlowSubtype(node.subtype)
             if flow_subtype == FlowSubtype.IF:
-                condition = node.configurations.get("condition")
+                condition = node.configurations.get(
+                    "condition_expression"
+                ) or node.configurations.get("expression")
                 if not condition:
-                    self.errors.append(f"FLOW IF node {node.id} requires 'condition' configuration")
+                    self.errors.append(
+                        f"FLOW IF node {node.id} requires 'condition_expression' configuration"
+                    )
 
             elif flow_subtype == FlowSubtype.FOR_EACH:
                 items_source = node.configurations.get("items_source")

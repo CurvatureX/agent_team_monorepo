@@ -109,15 +109,37 @@ class PersistentMemoryBase(MemoryBase):
                             query = query.eq(key, value)
                 result = query.update(data).execute()
             elif operation == "delete":
+                # Apply filters before delete - process all filters first
                 if filters:
+                    # Separate comparison filters from equality filters
+                    # Process equality filters first with .eq() which maintains query builder
                     for key, value in filters.items():
-                        if "->" in key or "->>" in key:
-                            query = query.filter(key, "eq", value)
-                        else:
+                        if not isinstance(value, str):
+                            # Non-string values are always equality
                             query = query.eq(key, value)
+                        elif not any(value.startswith(op) for op in ["lt.", "gt.", "lte.", "gte."]):
+                            # String values without comparison operators are equality
+                            if "->" in key or "->>" in key:
+                                # JSONB queries use filter
+                                query = query.filter(key, "eq", value)
+                            else:
+                                query = query.eq(key, value)
+
+                    # Then process comparison filters with .filter() method
+                    for key, value in filters.items():
+                        if isinstance(value, str):
+                            if value.startswith("lt."):
+                                query = query.filter(key, "lt", value[3:])
+                            elif value.startswith("gt."):
+                                query = query.filter(key, "gt", value[3:])
+                            elif value.startswith("lte."):
+                                query = query.filter(key, "lte", value[4:])
+                            elif value.startswith("gte."):
+                                query = query.filter(key, "gte", value[4:])
+
                 result = query.delete().execute()
             elif operation == "upsert":
-                result = query.upsert(data, on_conflict="user_id,memory_node_id,key").execute()
+                result = query.upsert(data, on_conflict="user_id,memory_node_id,data_key").execute()
             else:
                 raise ValueError(f"Unsupported operation: {operation}")
 
@@ -187,25 +209,36 @@ class PersistentMemoryBase(MemoryBase):
     async def _cleanup_expired_data(self, table: str) -> int:
         """Clean up expired data from the specified table."""
         try:
+            if not self.supabase:
+                await self._setup()
+
             current_time = datetime.utcnow().isoformat()
 
-            result = await self._execute_query(
-                table=table,
-                operation="delete",
-                filters={
-                    "user_id": self.user_id,
-                    "memory_node_id": self.memory_node_id,
-                    "expires_at": f"lt.{current_time}",  # Less than current time
-                },
-            )
+            # First, query to find expired entries
+            query = self.supabase.table(table).select("id")
+            query = query.eq("user_id", self.user_id)
+            query = query.eq("memory_node_id", self.memory_node_id)
+            query = query.filter("expires_at", "lt", current_time)
 
-            if result["success"]:
-                cleaned_count = result["count"]
-                if cleaned_count > 0:
-                    self.logger.info(f"Cleaned {cleaned_count} expired entries from {table}")
-                return cleaned_count
+            expired_result = query.execute()
 
-            return 0
+            if not expired_result.data:
+                return 0
+
+            # Extract IDs of expired entries
+            expired_ids = [row["id"] for row in expired_result.data]
+
+            # Delete expired entries by ID
+            delete_query = self.supabase.table(table).delete()
+            delete_query = delete_query.in_("id", expired_ids)
+            result = delete_query.execute()
+
+            cleaned_count = len(expired_ids)
+
+            if cleaned_count > 0:
+                self.logger.info(f"Cleaned {cleaned_count} expired entries from {table}")
+
+            return cleaned_count
 
         except Exception as e:
             self.logger.warning(f"Failed to cleanup expired data from {table}: {str(e)}")

@@ -45,52 +45,17 @@ def validate_workflow(workflow: Workflow) -> None:
         except Exception as e:
             errors.append(f"Spec not found for {ntype}.{n.subtype} (node {n.id})")
 
-    # Validate connections: ports must exist
-    in_conn_counts: Dict[str, Dict[str, int]] = {}
-    out_conn_counts: Dict[str, Dict[str, int]] = {}
+    # Validate connections: nodes must exist
     for c in workflow.connections:
         if c.from_node not in node_map or c.to_node not in node_map:
             errors.append(f"Connection references unknown nodes: {c.from_node}->{c.to_node}")
             continue
-        src = node_map[c.from_node]
-        dst = node_map[c.to_node]
-        if not any(p.id == c.from_port for p in src.output_ports):
-            errors.append(f"Source port '{c.from_port}' not found on node {src.id}")
-        if not any(p.id == c.to_port for p in dst.input_ports):
-            errors.append(f"Target port '{c.to_port}' not found on node {dst.id}")
-        # Count input/output connections for max_connections enforcement
-        in_counts = in_conn_counts.setdefault(dst.id, {})
-        in_counts[c.to_port] = in_counts.get(c.to_port, 0) + 1
-        out_counts = out_conn_counts.setdefault(src.id, {})
-        out_counts[c.from_port] = out_counts.get(c.from_port, 0) + 1
 
     if errors:
         raise WorkflowValidationError("; ".join(errors))
 
-    # Enforce max_connections on ports
-    errs2: List[str] = []
-    for node in workflow.nodes:
-        # Inputs
-        for port in node.input_ports:
-            maxc = getattr(port, "max_connections", 1)
-            if maxc > 0:
-                count = in_conn_counts.get(node.id, {}).get(port.id, 0)
-                if count > maxc:
-                    errs2.append(
-                        f"Input port '{port.id}' on node {node.id} exceeds max_connections ({count}>{maxc})"
-                    )
-        # Outputs
-        for port in node.output_ports:
-            maxc = getattr(port, "max_connections", -1)
-            if maxc > 0:
-                count = out_conn_counts.get(node.id, {}).get(port.id, 0)
-                if count > maxc:
-                    errs2.append(
-                        f"Output port '{port.id}' on node {node.id} exceeds max_connections ({count}>{maxc})"
-                    )
-
-    if errs2:
-        raise WorkflowValidationError("; ".join(errs2))
+    # Port validation removed - ports concept deprecated in favor of output_key
+    # All connection routing now handled via output_key field
 
     # Validate triggers: must exist and be TRIGGER nodes
     if workflow.triggers:

@@ -17,11 +17,9 @@ sys.path.insert(0, str(backend_dir))
 
 from .base import MemoryBase
 from .conversation_buffer import ConversationBufferMemory
-from .conversation_summary import ConversationSummaryMemory
 from .entity_memory import EntityMemory
 from .key_value_store import KeyValueStoreMemory
 from .vector_database import VectorDatabaseMemory
-from .working_memory import WorkingMemory
 
 
 class MemoryOrchestrator(MemoryBase):
@@ -31,17 +29,16 @@ class MemoryOrchestrator(MemoryBase):
         super().__init__(config)
         self.memory_instances = {}
         self.enabled_memories = config.get(
-            "enabled_memories", ["key_value_store", "conversation_buffer", "working_memory"]
+            "enabled_memories", ["key_value_store", "conversation_buffer"]
         )
 
         # Memory type mappings
+        # Note: conversation_summary is now merged into conversation_buffer with auto_summarize
         self.memory_classes = {
             "key_value_store": KeyValueStoreMemory,
             "conversation_buffer": ConversationBufferMemory,
-            "conversation_summary": ConversationSummaryMemory,
             "entity_memory": EntityMemory,
             "vector_database": VectorDatabaseMemory,
-            "working_memory": WorkingMemory,
         }
 
     async def _setup(self) -> None:
@@ -163,7 +160,7 @@ class MemoryOrchestrator(MemoryBase):
 
         # Conversation data
         if "message" in data or "role" in data:
-            targets.extend(["conversation_buffer", "conversation_summary"])
+            targets.append("conversation_buffer")
 
         # Entity data
         if "entity_name" in data or "entity_info" in data:
@@ -194,7 +191,7 @@ class MemoryOrchestrator(MemoryBase):
 
         # Conversation queries
         if "role" in query or "since_timestamp" in query:
-            targets.extend(["conversation_buffer", "conversation_summary"])
+            targets.append("conversation_buffer")
 
         # Entity queries
         if "entity_name" in query:

@@ -8,7 +8,7 @@ and produces webhook request data when an HTTP request is received.
 from typing import Any, Dict, List
 
 from ...models.node_enums import NodeType, TriggerSubtype
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class WebhookTriggerSpec(BaseNodeSpec):
@@ -58,28 +58,64 @@ class WebhookTriggerSpec(BaseNodeSpec):
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters
-            default_input_params={},  # Triggers have no input
-            default_output_params={
-                "headers": {},
-                "body": {},
-                "query_params": {},
-                "method": "",
-                "path": "",
-                "timestamp": "",
-                "client_ip": "",
+            # Parameter schemas (preferred over legacy defaults)
+            input_params={},  # Triggers have no runtime inputs
+            output_params={
+                "headers": {
+                    "type": "object",
+                    "default": {},
+                    "description": "HTTP headers received",
+                    "required": False,
+                },
+                "body": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Parsed request body (JSON if applicable)",
+                    "required": False,
+                },
+                "query_params": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Query parameters",
+                    "required": False,
+                },
+                "method": {
+                    "type": "string",
+                    "default": "",
+                    "description": "HTTP method",
+                    "required": False,
+                    "options": ["GET", "POST", "PUT", "PATCH", "DELETE"],
+                },
+                "path": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Request path",
+                    "required": False,
+                },
+                "timestamp": {
+                    "type": "string",
+                    "default": "",
+                    "description": "ISO-8601 time when webhook was received",
+                    "required": False,
+                },
+                "client_ip": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Client IP address",
+                    "required": False,
+                },
             },
             # Port definitions
             input_ports=[],  # Triggers have no input ports
             output_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="dict",
-                    description="Webhook request data including headers, body, and metadata",
-                    required=False,
-                    max_connections=-1,
-                )
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "Webhook request data including headers, body, and metadata",
+                    "required": False,
+                    "max_connections": -1,
+                }
             ],
             # Metadata
             tags=["trigger", "webhook", "http", "external"],

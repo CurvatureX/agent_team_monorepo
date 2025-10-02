@@ -8,7 +8,7 @@ page creation, content updates, and workspace automation.
 from typing import Any, Dict, List
 
 from ...models.node_enums import ExternalActionSubtype, NodeType
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class NotionActionSpec(BaseNodeSpec):
@@ -153,45 +153,99 @@ class NotionActionSpec(BaseNodeSpec):
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters
-            default_input_params={"data": {}, "context": {}, "variables": {}},
-            default_output_params={
-                "success": False,
-                "notion_response": {},
-                "resource_id": "",
-                "resource_url": "",
-                "error_message": "",
-                "rate_limit_info": {},
-                "execution_metadata": {},
+            # Parameter schemas (preferred over legacy defaults)
+            input_params={
+                "data": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Primary input payload",
+                    "required": False,
+                },
+                "context": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Context for templating or logic",
+                    "required": False,
+                },
+                "variables": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Template variables",
+                    "required": False,
+                },
+            },
+            output_params={
+                "success": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Whether Notion API operation succeeded",
+                    "required": False,
+                },
+                "notion_response": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Parsed Notion API response",
+                    "required": False,
+                },
+                "resource_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Created/affected resource ID",
+                    "required": False,
+                },
+                "resource_url": {
+                    "type": "string",
+                    "default": "",
+                    "description": "URL to the resource",
+                    "required": False,
+                },
+                "error_message": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Error message if operation failed",
+                    "required": False,
+                },
+                "rate_limit_info": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Notion rate limit information",
+                    "required": False,
+                },
+                "execution_metadata": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Execution metadata (timings, retries)",
+                    "required": False,
+                },
             },
             # Port definitions
             input_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="dict",
-                    description="Input data for Notion action",
-                    required=True,
-                    max_connections=1,
-                )
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "Input data for Notion action",
+                    "required": True,
+                    "max_connections": 1,
+                }
             ],
             output_ports=[
-                create_port(
-                    port_id="success",
-                    name="success",
-                    data_type="dict",
-                    description="Output when Notion action succeeds",
-                    required=True,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="error",
-                    name="error",
-                    data_type="dict",
-                    description="Output when Notion action fails",
-                    required=False,
-                    max_connections=-1,
-                ),
+                {
+                    "id": "success",
+                    "name": "success",
+                    "data_type": "dict",
+                    "description": "Output when Notion action succeeds",
+                    "required": True,
+                    "max_connections": -1,
+                },
+                {
+                    "id": "error",
+                    "name": "error",
+                    "data_type": "dict",
+                    "description": "Output when Notion action fails",
+                    "required": False,
+                    "max_connections": -1,
+                },
             ],
             # Metadata
             tags=[

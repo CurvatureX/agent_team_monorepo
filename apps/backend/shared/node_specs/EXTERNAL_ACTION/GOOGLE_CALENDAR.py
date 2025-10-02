@@ -8,7 +8,7 @@ event management, scheduling, meeting coordination, and calendar automation.
 from typing import Any, Dict, List
 
 from ...models.node_enums import ExternalActionSubtype, NodeType
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class GoogleCalendarActionSpec(BaseNodeSpec):
@@ -201,52 +201,141 @@ class GoogleCalendarActionSpec(BaseNodeSpec):
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters
-            default_input_params={"data": {}, "context": {}, "variables": {}},
-            default_output_params={
-                "success": False,
-                "google_response": {},
-                "event": {},
-                "events": [],
-                "calendars": [],
-                "next_page_token": "",
-                "next_sync_token": "",
-                "html_link": "",
-                "event_id": "",
-                "event_url": "",
-                "calendar_url": "",
-                "meeting_link": "",
-                "error_message": "",
-                "execution_metadata": {},
+            # Parameter schemas (preferred over legacy defaults)
+            input_params={
+                "data": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Primary input payload",
+                    "required": False,
+                },
+                "context": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Context for templating or logic",
+                    "required": False,
+                },
+                "variables": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Template variables",
+                    "required": False,
+                },
+            },
+            output_params={
+                "success": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Whether Google Calendar API operation succeeded",
+                    "required": False,
+                },
+                "google_response": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Parsed Google API response",
+                    "required": False,
+                },
+                "event": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Single event object when applicable",
+                    "required": False,
+                },
+                "events": {
+                    "type": "array",
+                    "default": [],
+                    "description": "List of events when listing",
+                    "required": False,
+                },
+                "calendars": {
+                    "type": "array",
+                    "default": [],
+                    "description": "List of calendars when listing",
+                    "required": False,
+                },
+                "next_page_token": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Pagination token for next page",
+                    "required": False,
+                },
+                "next_sync_token": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Sync token for incremental sync",
+                    "required": False,
+                },
+                "html_link": {
+                    "type": "string",
+                    "default": "",
+                    "description": "HTML link for the event",
+                    "required": False,
+                },
+                "event_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Event ID",
+                    "required": False,
+                },
+                "event_url": {
+                    "type": "string",
+                    "default": "",
+                    "description": "API URL for the event",
+                    "required": False,
+                },
+                "calendar_url": {
+                    "type": "string",
+                    "default": "",
+                    "description": "API URL for the calendar",
+                    "required": False,
+                },
+                "meeting_link": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Generated meeting link (if any)",
+                    "required": False,
+                },
+                "error_message": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Error message if operation failed",
+                    "required": False,
+                },
+                "execution_metadata": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Execution metadata (timings, retries)",
+                    "required": False,
+                },
             },
             # Port definitions
             input_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="dict",
-                    description="Input data for Google Calendar action",
-                    required=True,
-                    max_connections=1,
-                )
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "Input data for Google Calendar action",
+                    "required": True,
+                    "max_connections": 1,
+                }
             ],
             output_ports=[
-                create_port(
-                    port_id="success",
-                    name="success",
-                    data_type="dict",
-                    description="Output when Google Calendar action succeeds",
-                    required=True,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="error",
-                    name="error",
-                    data_type="dict",
-                    description="Output when Google Calendar action fails",
-                    required=False,
-                    max_connections=-1,
-                ),
+                {
+                    "id": "success",
+                    "name": "success",
+                    "data_type": "dict",
+                    "description": "Output when Google Calendar action succeeds",
+                    "required": True,
+                    "max_connections": -1,
+                },
+                {
+                    "id": "error",
+                    "name": "error",
+                    "data_type": "dict",
+                    "description": "Output when Google Calendar action fails",
+                    "required": False,
+                    "max_connections": -1,
+                },
             ],
             # Metadata
             tags=[

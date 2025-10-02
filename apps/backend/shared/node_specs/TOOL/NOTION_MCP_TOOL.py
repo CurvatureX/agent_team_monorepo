@@ -12,7 +12,7 @@ not connected through input/output ports.
 from typing import Any, Dict, List
 
 from ...models.node_enums import NodeType, ToolSubtype
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class NotionMCPToolSpec(BaseNodeSpec):
@@ -21,7 +21,7 @@ class NotionMCPToolSpec(BaseNodeSpec):
     def __init__(self):
         super().__init__(
             type=NodeType.TOOL,
-            subtype=ToolSubtype.MCP_TOOL,
+            subtype=ToolSubtype.NOTION_MCP_TOOL,
             name="Notion_MCP_Tool",
             description="Notion MCP tool for database and page operations through MCP protocol",
             # Configuration parameters
@@ -92,21 +92,76 @@ class NotionMCPToolSpec(BaseNodeSpec):
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters for tool execution
-            default_input_params={
-                "tool_name": "",
-                "function_args": {},
-                "context": {},
-                "call_id": "",
+            # Schema-style runtime parameters for tool execution
+            input_params={
+                "tool_name": {
+                    "type": "string",
+                    "default": "",
+                    "description": "MCP tool function name to invoke",
+                    "required": True,
+                },
+                "function_args": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Arguments for the selected tool function",
+                    "required": False,
+                },
+                "context": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Optional context to pass along with the tool call",
+                    "required": False,
+                },
+                "call_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Optional correlation ID for tracing",
+                    "required": False,
+                },
             },
-            default_output_params={
-                "result": None,
-                "success": False,
-                "error_message": "",
-                "execution_time": 0,
-                "cached": False,
-                "notion_object_id": "",
-                "notion_object_type": "",
+            output_params={
+                "result": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Result payload returned by the MCP tool",
+                    "required": False,
+                },
+                "success": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Whether the MCP tool invocation succeeded",
+                    "required": False,
+                },
+                "error_message": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Error details if invocation failed",
+                    "required": False,
+                },
+                "execution_time": {
+                    "type": "number",
+                    "default": 0.0,
+                    "description": "Execution time in seconds",
+                    "required": False,
+                },
+                "cached": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Whether the result was served from cache",
+                    "required": False,
+                },
+                "notion_object_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "The Notion object ID created or retrieved",
+                    "required": False,
+                },
+                "notion_object_type": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Type of the Notion object (page, database, etc.)",
+                    "required": False,
+                },
             },
             # TOOL nodes have no ports - they are attached to AI_AGENT nodes
             input_ports=[],

@@ -13,19 +13,16 @@ Node 定义一个可执行的一个操作。参数包含：
     - configurations: Node本身的参数，用于定义这个Node的行为
     - input_params: 在运行的时候，输入到Node的入参
     - output_params：在运行的时候，输出的出参
-    - input_ports: 可以连接到这个Node的端口，Input Parameters从这里传入Node
-    - output_ports: 可以向外连接的端口，Output Parameters从这里输出
     - attached_nodes: （Optional）只适用于AI_AGENT Node，可以在同一个执行节点调用TOOL Node和MEMORY Node
 
 Connection:
-Connection 定义一个 Node 和 Node 的有向连接，可以清楚地定义从某个 Node 的某个 Output Port 到某个 Node 的 Input Port，以及数据转化的 function。参数包含：
+Connection 定义一个 Node 和 Node 的有向连接，以及数据转化的 function。参数包含：
 
     - id：连接的ID
-    - from_node：源Node的Name
-    - to_node: 目标Node的Name
-    - from_port: 源Node的Output Port ID
-    - to_port: 目标Node的Input Port ID
-    - conversion_function: 定义数据如何处理，转到成to_node可接受的数据
+    - from_node：源Node的ID
+    - to_node: 目标Node的ID
+    - output_key: 从源节点的哪个输出获取数据（例如：'result', 'true', 'false'），默认为'result'
+    - conversion_function: 定义数据如何处理，转换成to_node可接受的数据
 
 Metadata:
 定义 Workflow 本身的配置
@@ -196,7 +193,6 @@ class FlowSubtype(str, Enum):
     """流程控制节点子类型"""
     # 条件逻辑
     IF = "IF"
-    SWITCH = "SWITCH"
 
     # 循环
     LOOP = "LOOP"
@@ -297,30 +293,15 @@ class MemorySubtype(str, Enum):
 
 # 数据结构定义
 
-## Port
-
-```python
-class Port(BaseModel):
-    """端口定义"""
-    id: str = Field(..., description="端口唯一标识符")
-    name: str = Field(..., description="端口名称")
-    data_type: str = Field(..., description="端口接受的数据类型，如 'str', 'int', 'float', 'bool', 'dict', 'list', 'Any'")
-    required: bool = Field(default=True, description="是否为必需端口")
-    description: Optional[str] = Field(default=None, description="端口描述")
-    max_connections: int = Field(default=1, description="最大连接数，-1表示无限制")
-    validation_schema: Optional[str] = Field(default=None, description="JSON验证模式")
-```
-
 ## Connection
 
 ```python
 class Connection(BaseModel):
     """连接定义"""
     id: str = Field(..., description="连接的唯一标识符")
-    from_node: str = Field(..., description="源节点的名称")
-    to_node: str = Field(..., description="目标节点的名称")
-    from_port: str = Field(..., description="源节点的输出端口ID")
-    to_port: str = Field(..., description="目标节点的输入端口ID")
+    from_node: str = Field(..., description="源节点的ID")
+    to_node: str = Field(..., description="目标节点的ID")
+    output_key: str = Field(default="result", description="从源节点的哪个输出获取数据（如 'result', 'true', 'false'）")
     conversion_function: Optional[str] = Field(default=None, description="数据转换函数")
 ```
 
@@ -337,8 +318,7 @@ class Node(BaseModel):
     configurations: Dict[str, Any] = Field(default_factory=dict, description="节点配置参数")
     input_params: Dict[str, Any] = Field(default_factory=dict, description="运行时输入参数")
     output_params: Dict[str, Any] = Field(default_factory=dict, description="运行时输出参数")
-    input_ports: List[Port] = Field(default_factory=list, description="输入端口列表")
-    output_ports: List[Port] = Field(default_factory=list, description="输出端口列表")
+    attached_nodes: Optional[List[str]] = Field(default=None, description="附加节点ID列表(仅AI_AGENT使用)")
     position: Optional[Dict[str, float]] = Field(default=None, description="节点在画布上的位置")
 
     @field_validator("name")
@@ -596,8 +576,8 @@ class NodeExecution(BaseModel):
     duration_ms: Optional[int] = Field(default=None, description="执行耗时")
 
     # 输入输出
-    input_data: Dict[str, Any] = Field(default_factory=dict, description="输入数据，Key: input_port_id")
-    output_data: Dict[str, Any] = Field(default_factory=dict, description="输出数据，Key: output_port_id")
+    input_data: Dict[str, Any] = Field(default_factory=dict, description="输入数据")
+    output_data: Dict[str, Any] = Field(default_factory=dict, description="输出数据")
 
     # 执行详情
     execution_details: NodeExecutionDetails = Field(default_factory=NodeExecutionDetails, description="节点特定的执行详情")
@@ -827,7 +807,7 @@ class ExecutionActionResponse(BaseModel):
 
 ### 详细的输入输出记录
 
-- `input_data` 和 `output_data` 使用 Dict 结构，按端口 ID 组织
+- `input_data` 和 `output_data` 使用 Dict 结构存储节点的输入输出数据
 - 支持流式输出的部分数据更新 (`partial_output`)
 - 完整记录数据转换过程
 

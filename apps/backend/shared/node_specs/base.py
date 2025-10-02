@@ -313,7 +313,19 @@ except ImportError:
 
 
 class BaseNodeSpec(BaseModel):
-    """Base class for all node specifications following the new workflow spec."""
+    """Base class for all node specifications following the new workflow spec.
+
+    Note on params fields:
+    - input_params/output_params: schema-style parameter definitions (like configurations)
+      Each param is a dict with at least: type, default, description, required,
+      and optional options for enums.
+    - default_input_params/default_output_params: legacy defaults used by many
+      existing node specs. Kept for backward compatibility.
+
+    When creating a node instance, runtime input/output params are derived from
+    input_params/output_params defaults if provided, otherwise from the legacy
+    default_* dictionaries.
+    """
 
     # Core node identification
     type: NodeType = Field(..., description="节点大类")
@@ -325,8 +337,24 @@ class BaseNodeSpec(BaseModel):
 
     # Configuration and parameters
     configurations: Dict[str, Any] = Field(default_factory=dict, description="节点配置参数")
-    default_input_params: Dict[str, Any] = Field(default_factory=dict, description="默认运行时输入参数")
-    default_output_params: Dict[str, Any] = Field(default_factory=dict, description="默认运行时输出参数")
+
+    # New schema-style param definitions (preferred)
+    input_params: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="输入参数定义（同configurations格式，包含type/default/description/required等）",
+    )
+    output_params: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="输出参数定义（同configurations格式，包含type/default/description/required等）",
+    )
+
+    # Legacy runtime default params (backward compatibility)
+    default_input_params: Dict[str, Any] = Field(
+        default_factory=dict, description="默认运行时输入参数（兼容旧版）"
+    )
+    default_output_params: Dict[str, Any] = Field(
+        default_factory=dict, description="默认运行时输出参数（兼容旧版）"
+    )
 
     # Port definitions
     input_ports: List[Port] = Field(default_factory=list, description="输入端口列表")
@@ -354,15 +382,38 @@ class BaseNodeSpec(BaseModel):
         # For AI_AGENT nodes, use attached_nodes if provided, otherwise use spec default
         final_attached_nodes = attached_nodes if attached_nodes is not None else self.attached_nodes
 
+        # Derive runtime params from schema definitions if available; otherwise use legacy defaults
+        def _derive_defaults_from_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
+            try:
+                return {
+                    key: (spec.get("default") if isinstance(spec, dict) else None)
+                    for key, spec in (schema or {}).items()
+                }
+            except Exception:
+                return {}
+
+        runtime_input_defaults = (
+            self.default_input_params.copy()
+            if self.default_input_params
+            else _derive_defaults_from_schema(self.input_params)
+        )
+        runtime_output_defaults = (
+            self.default_output_params.copy()
+            if self.default_output_params
+            else _derive_defaults_from_schema(self.output_params)
+        )
+        # Extract default values from configuration schemas
+        runtime_configurations = _derive_defaults_from_schema(self.configurations)
+
         node_data = {
             "id": node_id,
             "name": self.name,
             "description": self.description,
             "type": self.type,
             "subtype": self.subtype,
-            "configurations": self.configurations.copy(),
-            "input_params": self.default_input_params.copy(),
-            "output_params": self.default_output_params.copy(),
+            "configurations": runtime_configurations,
+            "input_params": runtime_input_defaults,
+            "output_params": runtime_output_defaults,
             "input_ports": self.input_ports.copy(),
             "output_ports": self.output_ports.copy(),
             "position": position,
@@ -385,30 +436,32 @@ class BaseNodeSpec(BaseModel):
         return all(key in config for key in required_keys)
 
 
-def create_port(
-    port_id: str,
-    name: str,
-    data_type: str,
-    description: str = "",
-    required: bool = True,
-    max_connections: int = 1,
-) -> Port:
-    """Helper function to create a Port with proper validation."""
-    return Port(
-        id=port_id,
-        name=name,
-        data_type=data_type,
-        required=required,
-        description=description,
-        max_connections=max_connections,
-    )
-
-
 # Common port configurations for reuse
 COMMON_PORTS = {
-    "main_input": create_port("main", "main", "dict", "主输入端口", True, 1),
-    "main_output": create_port("main", "main", "dict", "主输出端口", False, -1),
-    "error_output": create_port("error", "error", "dict", "错误输出端口", False, -1),
+    "main_input": {
+        "id": "main",
+        "name": "main",
+        "data_type": "dict",
+        "description": "主输入端口",
+        "required": True,
+        "max_connections": 1,
+    },
+    "main_output": {
+        "id": "main",
+        "name": "main",
+        "data_type": "dict",
+        "description": "主输出端口",
+        "required": False,
+        "max_connections": -1,
+    },
+    "error_output": {
+        "id": "error",
+        "name": "error",
+        "data_type": "dict",
+        "description": "错误输出端口",
+        "required": False,
+        "max_connections": -1,
+    },
 }
 
 

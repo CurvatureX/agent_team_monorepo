@@ -85,29 +85,43 @@ async def get_user_integrations(deps: AuthenticatedDeps = Depends()):
                 detail="Database connection unavailable",
             )
 
-        # Query oauth_tokens with integration details via JOIN
-        result = (
-            supabase_admin.table("oauth_tokens")
-            .select(
+        # Query oauth_tokens with integration details via JOIN (fallback if integrations table missing)
+        try:
+            result = (
+                supabase_admin.table("oauth_tokens")
+                .select(
+                    """
+                id,
+                integration_id,
+                provider,
+                is_active,
+                created_at,
+                updated_at,
+                credential_data,
+                integrations!oauth_tokens_integration_id_fkey (
+                    integration_type,
+                    name,
+                    description,
+                    configuration
+                )
                 """
-            id,
-            integration_id,
-            provider,
-            is_active,
-            created_at,
-            updated_at,
-            credential_data,
-            integrations!oauth_tokens_integration_id_fkey (
-                integration_type,
-                name,
-                description,
-                configuration
+                )
+                .eq("user_id", user_id)
+                .execute()
             )
-            """
+        except Exception as e:
+            logger.warning(
+                f"⚠️ Failed to join with integrations table, falling back to simple query: {e}"
             )
-            .eq("user_id", user_id)
-            .execute()
-        )
+            # Fallback to simple oauth_tokens query without join
+            result = (
+                supabase_admin.table("oauth_tokens")
+                .select(
+                    "id, integration_id, provider, is_active, created_at, updated_at, credential_data"
+                )
+                .eq("user_id", user_id)
+                .execute()
+            )
 
         integrations = []
         for token_data in result.data or []:
@@ -119,14 +133,20 @@ async def get_user_integrations(deps: AuthenticatedDeps = Depends()):
                     id=token_data["id"],
                     integration_id=token_data["integration_id"],
                     provider=token_data["provider"],
-                    integration_type=integration_info.get("integration_type", "unknown"),
-                    name=integration_info.get("name", f"{token_data['provider']} Integration"),
-                    description=integration_info.get("description"),
+                    integration_type=integration_info.get(
+                        "integration_type", token_data["provider"]
+                    ),
+                    name=integration_info.get(
+                        "name", f"{token_data['provider'].title()} Integration"
+                    ),
+                    description=integration_info.get(
+                        "description", f"OAuth integration for {token_data['provider']}"
+                    ),
                     is_active=token_data["is_active"],
                     created_at=token_data["created_at"],
                     updated_at=token_data["updated_at"],
                     credential_data=token_data.get("credential_data"),
-                    configuration=integration_info.get("configuration"),
+                    configuration=integration_info.get("configuration", {}),
                 )
             )
 
@@ -321,14 +341,20 @@ async def get_user_integrations_by_provider(provider: str, deps: AuthenticatedDe
                     id=token_data["id"],
                     integration_id=token_data["integration_id"],
                     provider=token_data["provider"],
-                    integration_type=integration_info.get("integration_type", "unknown"),
-                    name=integration_info.get("name", f"{token_data['provider']} Integration"),
-                    description=integration_info.get("description"),
+                    integration_type=integration_info.get(
+                        "integration_type", token_data["provider"]
+                    ),
+                    name=integration_info.get(
+                        "name", f"{token_data['provider'].title()} Integration"
+                    ),
+                    description=integration_info.get(
+                        "description", f"OAuth integration for {token_data['provider']}"
+                    ),
                     is_active=token_data["is_active"],
                     created_at=token_data["created_at"],
                     updated_at=token_data["updated_at"],
                     credential_data=token_data.get("credential_data"),
-                    configuration=integration_info.get("configuration"),
+                    configuration=integration_info.get("configuration", {}),
                 )
             )
 

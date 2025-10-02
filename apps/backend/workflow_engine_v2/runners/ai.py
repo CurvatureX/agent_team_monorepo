@@ -16,11 +16,10 @@ sys.path.insert(0, str(backend_dir))
 from shared.models import TriggerInfo
 from shared.models.node_enums import MemorySubtype, NodeType
 from shared.models.workflow_new import Node
-
-from ..services.ai_providers import get_ai_provider
-from .base import NodeRunner
-from .memory import MemoryRunner
-from .tool import ToolRunner
+from workflow_engine_v2.runners.base import NodeRunner
+from workflow_engine_v2.runners.memory import MemoryRunner
+from workflow_engine_v2.runners.tool import ToolRunner
+from workflow_engine_v2.services.ai_providers import get_ai_provider
 
 logger = logging.getLogger(__name__)
 
@@ -36,18 +35,37 @@ class AIAgentRunner(NodeRunner):
         """Execute AI agent with memory-aware conversation and tool integration."""
         ctx = inputs.get("_ctx")
 
-        # Extract user message from inputs
-        main_input = inputs.get("main", {})
+        # Extract user message from inputs, then fallback to trigger data if needed
+        main_input = inputs.get("result", {})
         user_message = self._extract_user_message(main_input)
+        if (not isinstance(user_message, str)) or (not user_message.strip()):
+            user_message = self._extract_message_from_trigger(trigger)
 
+        provider_name = self._determine_provider(node)
+        try:
+            resolved_model = self._resolve_model_name(node, provider_name)
+        except Exception:
+            resolved_model = "(unconfigured)"
+
+        # Concise, useful info-level log
         logger.info(
-            f"🤖 AI Agent executing: {node.name} (model: {node.configurations.get('model', node.subtype)})"
+            f"🤖 AI Agent executing: {node.name} | provider={provider_name}, model={resolved_model}"
         )
-        logger.info(f"🔍 DEBUG main_input type: {type(main_input)}, value: {main_input}")
-        logger.info(f"🔍 DEBUG user_message type: {type(user_message)}, value: {user_message}")
-        logger.info(
-            f"👤 User message: {user_message[:100]}{'...' if len(user_message) > 100 else ''}"
+        # Move noisy diagnostics to debug level
+        logger.debug(f"🔍 main_input type={type(main_input)} value={main_input}")
+        logger.debug(f"🔍 user_message type={type(user_message)} len={len(user_message)}")
+        logger.debug(
+            f"👤 User message preview: {user_message[:100]}{'...' if len(user_message) > 100 else ''}"
         )
+
+        # If user_message is empty, fail the node execution (required input)
+        if not isinstance(user_message, str) or not user_message.strip():
+            logger.error(
+                "❌ AI Agent requires a non-empty user message (keys: message/user_message/user_input/input/query/text/content)"
+            )
+            raise ValueError(
+                "AI Agent requires a non-empty user message in 'main' (e.g., main.message or main.user_input)."
+            )
 
         # 1. BEFORE AI execution: Detect and load memory context
         memory_nodes = self._detect_attached_nodes(node, ctx, NodeType.MEMORY)
@@ -55,7 +73,7 @@ class AIAgentRunner(NodeRunner):
             "system_prompt", ""
         )
 
-        logger.info(f"🔍 DEBUG enhanced_prompt: '{enhanced_prompt}'")
+        logger.debug(f"🔍 system/enhanced_prompt len={len(enhanced_prompt)}")
         conversation_history = ""
 
         if memory_nodes and user_message:
@@ -86,16 +104,20 @@ class AIAgentRunner(NodeRunner):
         output = self._prepare_base_output(inputs, node)
         ai_response = ""
 
-        provider_name = self._determine_provider(node)
-
         if enhanced_prompt and user_message:
             logger.info(f"🚀 Generating AI response with provider: {provider_name}")
 
             try:
                 provider = get_ai_provider(provider_name)
+                logger.debug(
+                    f"🔍 Got provider: {type(provider).__name__} for provider_name={provider_name}"
+                )
+
+                # Use model from node configuration directly - must be a real model string
+                api_model_name = self._resolve_model_name(node, provider_name)
 
                 # Prepare generation parameters with tools if available
-                generation_params = {"model": output["model"], **node.configurations}
+                generation_params = {"model": api_model_name, **node.configurations}
 
                 if available_tools:
                     generation_params["available_functions"] = available_tools
@@ -115,6 +137,10 @@ class AIAgentRunner(NodeRunner):
                 logger.error(f"❌ AI generation failed: {str(e)}")
                 output["provider_error"] = str(e)
                 ai_response = f"I apologize, but I encountered an error: {str(e)}"
+        else:
+            # If we get here, user_message is non-empty (guarded above). Only handle missing prompt.
+            if not enhanced_prompt:
+                logger.info("⏭️ No prompt/system prompt configured; skipping AI generation")
 
         # 4. AFTER AI execution: Store conversation in memory nodes
         if memory_nodes and user_message and ai_response:
@@ -132,7 +158,7 @@ class AIAgentRunner(NodeRunner):
 
         # Add standardized output field for conversion functions
         output["output"] = ai_response
-        return {"main": output}
+        return {"result": output}
 
     def _extract_user_message(self, main_input: Dict[str, Any]) -> str:
         """Extract user message from various input formats."""
@@ -199,8 +225,8 @@ class AIAgentRunner(NodeRunner):
                 # Execute memory retrieval
                 memory_result = self._memory_runner.run(memory_node_copy, retrieve_inputs, trigger)
 
-                if memory_result.get("main", {}).get("success"):
-                    history_data = memory_result["main"].get("context", "")
+                if memory_result.get("result", {}).get("success"):
+                    history_data = memory_result["result"].get("context", "")
                     if history_data:
                         conversation_history += (
                             f"\n--- Memory from {memory_node.name or memory_node.id} ---\n"
@@ -241,13 +267,13 @@ Please respond based on the conversation history above and the current user mess
         for tool_node in tool_nodes:
             try:
                 # Create tool discovery operation
-                tool_inputs = {"main": {"operation": "list_functions"}, "_ctx": ctx}
+                tool_inputs = {"result": {"operation": "list_functions"}, "_ctx": ctx}
 
                 # Execute tool discovery
                 tool_result = self._tool_runner.run(tool_node, tool_inputs, trigger)
 
-                if tool_result.get("main"):
-                    tools_data = tool_result["main"]
+                if tool_result.get("result"):
+                    tools_data = tool_result["result"]
 
                     # Extract function definitions
                     if "functions" in tools_data:
@@ -289,11 +315,8 @@ Please respond based on the conversation history above and the current user mess
                     await self._store_vector_conversation(
                         memory_node, ctx, trigger, user_message, ai_response, ai_node
                     )
-                else:
-                    # Store as generic conversation data
-                    await self._store_generic_conversation(
-                        memory_node, ctx, trigger, user_message, ai_response, ai_node
-                    )
+                # Note: WORKING_MEMORY requires explicit key-value pairs and is not suitable
+                # for automatic conversation storage. Skip other memory types.
 
                 logger.debug(f"💾 Stored conversation in memory node {memory_node.id}")
 
@@ -370,7 +393,9 @@ Please respond based on the conversation history above and the current user mess
                 "metadata": {
                     "user_message": user_message,
                     "ai_response": ai_response,
-                    "ai_model": ai_node.configurations.get("model", ai_node.subtype),
+                    "ai_model": self._resolve_model_name(
+                        ai_node, self._determine_provider(ai_node)
+                    ),
                     "timestamp": trigger.timestamp if trigger else None,
                 },
             },
@@ -388,44 +413,16 @@ Please respond based on the conversation history above and the current user mess
 
         self._memory_runner.run(memory_node_copy, vector_inputs, trigger)
 
-    async def _store_generic_conversation(
-        self,
-        memory_node: Node,
-        ctx: Any,
-        trigger: TriggerInfo,
-        user_message: str,
-        ai_response: str,
-        ai_node: Node,
-    ) -> None:
-        """Store conversation in generic memory format."""
-        conversation_data = {
-            "conversation_exchange": {
-                "user_message": user_message,
-                "ai_response": ai_response,
-                "timestamp": trigger.timestamp if trigger else None,
-                "ai_model": ai_node.configurations.get("model", ai_node.subtype),
-                "ai_provider": self._determine_provider(ai_node),
-            }
-        }
-
-        generic_inputs = {"main": conversation_data, "_ctx": ctx}
-
-        memory_node_copy = Node(
-            id=memory_node.id,
-            name=memory_node.name,
-            description=memory_node.description,
-            type=memory_node.type,
-            subtype=memory_node.subtype,
-            configurations={**memory_node.configurations, "operation": "store"},
-        )
-
-        self._memory_runner.run(memory_node_copy, generic_inputs, trigger)
-
     def _prepare_base_output(self, inputs: Dict[str, Any], node: Node) -> Dict[str, Any]:
         """Prepare base output structure."""
+        try:
+            model_for_output = self._resolve_model_name(node, self._determine_provider(node))
+        except Exception:
+            model_for_output = "(unconfigured)"
+
         return {
-            "input": inputs.get("main", inputs),
-            "model": node.configurations.get("model") or node.subtype,
+            "input": inputs.get("result", inputs),
+            "model": model_for_output,
             "attached": {},
             "memory_enhanced": False,
             "tools_available": False,
@@ -480,6 +477,109 @@ Please respond based on the conversation history above and the current user mess
             chunk_size = int(output.get("stream_chunk_size", 64) or 64)
             chunks = [resp[i : i + chunk_size] for i in range(0, len(resp), chunk_size)]
             output["_stream_chunks"] = chunks
+
+    def _resolve_model_name(self, node: Node, provider_name: str) -> str:
+        """Resolve the actual model string from node configuration or spec.
+
+        - Accepts string values directly (preferred).
+        - If configuration contains a schema dict, prefer 'value', then 'default',
+          then single-item 'options'.
+        - If not present in configuration, falls back to the node spec's 'model'
+          default or first option.
+        - Does not fall back to provider defaults; raises if unresolved.
+        """
+        raw = node.configurations.get("model")
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+        if isinstance(raw, dict):
+            # Prefer an explicit selection if present
+            if isinstance(raw.get("value"), str) and raw.get("value").strip():
+                return raw.get("value").strip()
+            # Fallback to schema default
+            if isinstance(raw.get("default"), str) and raw.get("default").strip():
+                return raw.get("default").strip()
+            # If options exist and exactly one, use it
+            opts = raw.get("options")
+            if isinstance(opts, list) and len(opts) == 1 and isinstance(opts[0], str):
+                return opts[0]
+        # Try to read default from node spec (the real node template)
+        try:
+            from ..core.spec import get_spec
+
+            spec = get_spec(node.type, node.subtype)
+            if spec and isinstance(spec.configurations, dict):
+                spec_model = spec.configurations.get("model")
+                if isinstance(spec_model, dict):
+                    if (
+                        isinstance(spec_model.get("default"), str)
+                        and spec_model.get("default").strip()
+                    ):
+                        return spec_model.get("default").strip()
+                    spec_opts = spec_model.get("options")
+                    if isinstance(spec_opts, list) and spec_opts and isinstance(spec_opts[0], str):
+                        return spec_opts[0]
+        except Exception:
+            pass
+
+        # No provider fallback: enforce explicit or spec-based model
+        raise ValueError(
+            f"Model not specified for node '{node.name}'. Set configurations['model'] to a valid model."
+        )
+
+    def _extract_message_from_trigger(self, trigger: TriggerInfo) -> str:
+        """Fallback: extract user message from TriggerInfo.trigger_data (e.g., Slack event)."""
+        try:
+            if not trigger or not getattr(trigger, "trigger_data", None):
+                return ""
+            data = trigger.trigger_data or {}
+
+            # Common direct fields
+            for key in [
+                "message",
+                "user_message",
+                "user_input",
+                "input",
+                "query",
+                "text",
+                "content",
+            ]:
+                val = data.get(key)
+                if isinstance(val, str) and val.strip():
+                    return val.strip()
+
+            # Slack Events: possibly nested under event
+            event = data.get("event")
+            if isinstance(event, dict):
+                text = event.get("text")
+                if isinstance(text, str) and text.strip():
+                    return text.strip()
+
+            # Sometimes 'event_data' may be a serialized dict string
+            event_raw = data.get("event_data")
+            if isinstance(event_raw, dict):
+                text = (
+                    event_raw.get("event", {}).get("text")
+                    if isinstance(event_raw.get("event"), dict)
+                    else None
+                )
+                if isinstance(text, str) and text.strip():
+                    return text.strip()
+            elif isinstance(event_raw, str) and event_raw:
+                try:
+                    import ast
+
+                    parsed = ast.literal_eval(event_raw)
+                    if isinstance(parsed, dict):
+                        ev = parsed.get("event")
+                        if isinstance(ev, dict):
+                            text = ev.get("text")
+                            if isinstance(text, str) and text.strip():
+                                return text.strip()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return ""
 
 
 __all__ = ["AIAgentRunner"]

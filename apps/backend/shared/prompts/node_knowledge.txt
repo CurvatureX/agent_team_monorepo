@@ -106,7 +106,6 @@ Subtypes:
 - FLOW_FILTER: Applies specified conditions to filter elements in a collection, passing only those that meet criteria to subsequent nodes.
 - FLOW_LOOP: Repeatedly executes a connected node for each item in a collection or until a specified condition is met, processing data iteratively and passing results back to the workflow.
 - FLOW_MERGE: Combines multiple incoming flows or data streams into a single unified path, synchronizing parallel branches.
-- FLOW_SWITCH: Directs workflow execution down one of several paths based on a key or selector value, functioning like a multi-way branch or switch-case.
 - FLOW_WAIT: Waits for a specified amount of time or event, can connect with a Trigger node.
 
 Node Type: HUMAN_IN_THE_LOOP_NODE
@@ -119,14 +118,17 @@ Subtypes:
 - HUMAN_APP: Interfaces with a human in our mobile app.
 
 Node Type: TOOL_NODE
-Description: A utility node that provides a MCP tool to AI Node.
-Subtypes:
-- TOOL_GOOGLE_CALENDAR_MCP: Manages calendar operations through MCP.
-- TOOL_NOTION_MCP: Integrates Notion functionality via MCP.
-- TOOL_CALENDAR: General calendar utilities.
-- TOOL_EMAIL: Email utility tools.
-- TOOL_HTTP: Sends or receives data over HTTP.
-- TOOL_CODE_EXECUTION: Executes code as a utility function.
+Description: A utility node that exposes MCP tools to AI agents. TOOL nodes are attached to AI_AGENT via attached_nodes (no input/output ports) and are invoked from the AI node.
+Subtypes (current):
+- GOOGLE_CALENDAR_MCP_TOOL: Google Calendar via MCP
+- NOTION_MCP_TOOL: Notion via MCP
+- SLACK_MCP_TOOL: Slack via MCP
+- DISCORD_MCP_TOOL: Discord via MCP
+- FIRECRAWL_MCP_TOOL: Web scraping via MCP
+
+Parameter Schema (runtime):
+- input_params: { tool_name: string (required), function_args: object, context: object, call_id: string }
+- output_params: { result: object, success: boolean, error_message: string, execution_time: number, cached: boolean, plus tool-specific fields }
 
 Node Type: MEMORY_NODE
 Description: A node that stores or retrieves memory for AI Node.

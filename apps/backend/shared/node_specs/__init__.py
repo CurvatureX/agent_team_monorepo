@@ -38,7 +38,6 @@ from .base import (
     OutputPortSpec,
     ParameterDef,
     ParameterType,
-    create_port,
 )
 from .TRIGGER.CRON import CRON_TRIGGER_SPEC
 from .TRIGGER.EMAIL import EMAIL_TRIGGER_SPEC
@@ -96,7 +95,6 @@ from .FLOW.IF import IF_FLOW_SPEC
 from .FLOW.LOOP import LOOP_FLOW_SPEC
 from .FLOW.MERGE import MERGE_FLOW_SPEC
 from .FLOW.SORT import SORT_FLOW_SPEC
-from .FLOW.SWITCH import SWITCH_FLOW_SPEC
 from .FLOW.WAIT import WAIT_FLOW_SPEC
 
 # Human-in-the-loop specs
@@ -177,7 +175,6 @@ NODE_SPECS_REGISTRY = {
     # FLOW specifications
     "FLOW.IF": IF_FLOW_SPEC,
     "FLOW.LOOP": LOOP_FLOW_SPEC,
-    "FLOW.SWITCH": SWITCH_FLOW_SPEC,
     "FLOW.MERGE": MERGE_FLOW_SPEC,
     "FLOW.FILTER": FILTER_FLOW_SPEC,
     "FLOW.SORT": SORT_FLOW_SPEC,
@@ -284,7 +281,6 @@ __all__ = [
     "ConnectionType",
     "ConnectionSpec",
     "BaseNodeSpec",
-    "create_port",
     "COMMON_CONFIGS",
     "COMMON_PORTS",
     # Specifications
@@ -308,7 +304,6 @@ __all__ = [
     "DATA_TRANSFORMATION_ACTION_SPEC",
     "IF_FLOW_SPEC",
     "LOOP_FLOW_SPEC",
-    "SWITCH_FLOW_SPEC",
     "MERGE_FLOW_SPEC",
     "FILTER_FLOW_SPEC",
     "SORT_FLOW_SPEC",

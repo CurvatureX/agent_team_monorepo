@@ -5,6 +5,7 @@ Replaces the gRPC client with HTTP/FastAPI calls
 
 import asyncio
 import time
+import uuid
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -181,21 +182,49 @@ class WorkflowEngineHTTPClient:
                     it = {
                         "id": nd.get("id") or nd.get("name"),
                         "name": nd.get("name"),
+                        "description": nd.get("description", ""),  # Required field
                         "type": nd.get("type"),
                         "subtype": nd.get("subtype"),
                         "position": nd.get("position"),
                         # map parameters -> configurations for v2
-                        "configurations": nd.get("parameters", {}),
+                        # Support both 'configurations' (new format) and 'parameters' (legacy format)
+                        "configurations": nd.get("configurations") or nd.get("parameters", {}),
+                        # Support both formats for input/output params and ports
+                        "input_params": nd.get("input_params", {}),
+                        "output_params": nd.get("output_params", {}),
+                        "input_ports": nd.get("input_ports", []),
+                        "output_ports": nd.get("output_ports", []),
                         # attach list if present in UI payload
                         "attached_nodes": nd.get("attached_nodes"),
                     }
                     v2_nodes.append(it)
 
-                def _convert_connections(conn_dict: Dict[str, Any]) -> List[Dict[str, str]]:
+                def _convert_connections(conn_input: Any) -> List[Dict[str, str]]:
+                    """Convert connections to v2 format - handles both list and dict formats"""
                     result: List[Dict[str, str]] = []
-                    if not isinstance(conn_dict, dict):
+
+                    # If connections is already a list (new format), pass through with validation
+                    if isinstance(conn_input, list):
+                        for conn in conn_input:
+                            if isinstance(conn, dict) and "from_node" in conn and "to_node" in conn:
+                                result.append(
+                                    {
+                                        "id": conn.get(
+                                            "id", f"{conn['from_node']}->{conn['to_node']}"
+                                        ),
+                                        "from_node": conn["from_node"],
+                                        "to_node": conn["to_node"],
+                                        "from_port": conn.get("from_port", "main"),
+                                        "to_port": conn.get("to_port", "main"),
+                                        "conversion_function": conn.get("conversion_function"),
+                                    }
+                                )
                         return result
-                    for src, node_conns in conn_dict.items():
+
+                    # Legacy dict format (n8n-style)
+                    if not isinstance(conn_input, dict):
+                        return result
+                    for src, node_conns in conn_input.items():
                         ctypes = (
                             (node_conns or {}).get("connection_types", {})
                             if isinstance(node_conns, dict)
@@ -224,14 +253,14 @@ class WorkflowEngineHTTPClient:
                     return result
 
                 v2_payload = {
-                    "workflow_id": request_data.get("session_id")
-                    or request_data.get("user_id")
-                    or "wf_" + str(int(time.time() * 1000)),
+                    "workflow_id": str(uuid.uuid4()),  # Always generate a fresh UUID
                     "name": name,
                     "created_by": user_id,
                     "created_time_ms": int(time.time() * 1000),
                     "nodes": v2_nodes,
-                    "connections": _convert_connections(connections or {}),
+                    "connections": _convert_connections(
+                        connections or []
+                    ),  # Pass empty list, not dict
                     "triggers": [
                         n.get("id") or n.get("name")
                         for n in v2_nodes
@@ -274,16 +303,16 @@ class WorkflowEngineHTTPClient:
         try:
             log_info(f"📨 HTTP request to get workflow: {workflow_id}")
 
-            # Use query timeout for getting workflows (longer timeout)
-            async with httpx.AsyncClient(timeout=self.query_timeout, limits=self._limits) as client:
-                headers = {"Authorization": f"Bearer {access_token}"}
+            # Use individual client with proper timeout
+            headers = {"Authorization": f"Bearer {access_token}"}
             path = f"{self._api_prefix}/workflows/{workflow_id}"
-            response = await client.get(f"{self.base_url}{path}", headers=headers)
-            response.raise_for_status()
 
-            data = response.json()
-            log_info(f"✅ Retrieved workflow: {workflow_id}")
-            return data
+            async with httpx.AsyncClient(timeout=self.query_timeout) as client:
+                response = await client.get(f"{self.base_url}{path}", headers=headers)
+                response.raise_for_status()
+                data = response.json()
+                log_info(f"✅ Retrieved workflow: {workflow_id}")
+                return data
 
         except httpx.HTTPStatusError as e:
             log_error(f"❌ HTTP error getting workflow: {e.response.status_code}")
@@ -442,7 +471,7 @@ class WorkflowEngineHTTPClient:
             log_info(f"📨 HTTP request to cancel execution: {execution_id}")
 
             async with httpx.AsyncClient(timeout=self.query_timeout) as client:
-                response = await client.post(f"{self.base_url}/v1/executions/{execution_id}/cancel")
+                response = await client.post(f"{self.base_url}/v2/executions/{execution_id}/cancel")
                 response.raise_for_status()
 
                 data = response.json()
@@ -623,7 +652,6 @@ class WorkflowEngineHTTPClient:
                     f"{self.base_url}{self._api_prefix}/workflows", params=params, headers=headers
                 )
                 response.raise_for_status()
-
                 data = response.json()
                 log_info(f"✅ Listed workflows using RLS")
                 return data

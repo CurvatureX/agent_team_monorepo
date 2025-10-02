@@ -153,7 +153,7 @@ enum NodeSubtype {
   FLOW_FILTER = 41;
   FLOW_LOOP = 42;
   FLOW_MERGE = 43;
-  FLOW_SWITCH = 44;
+  // 44 reserved (SWITCH removed)
   FLOW_WAIT = 45;
 
   // 人机交互子类型

@@ -12,7 +12,7 @@ not connected through input/output ports.
 from typing import Any, Dict, List
 
 from ...models.node_enums import MemorySubtype, NodeType
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class VectorDatabaseMemorySpec(BaseNodeSpec):
@@ -24,7 +24,7 @@ class VectorDatabaseMemorySpec(BaseNodeSpec):
             subtype=MemorySubtype.VECTOR_DATABASE,
             name="Vector_Database_Memory",
             description="Vector database memory for semantic search and embeddings-based context retrieval",
-            # Configuration parameters
+            # Configuration parameters (simplified)
             configurations={
                 "database_provider": {
                     "type": "string",
@@ -63,7 +63,6 @@ class VectorDatabaseMemorySpec(BaseNodeSpec):
                     "default": 1536,
                     "description": "向量维度",
                     "required": True,
-                    "options": [384, 512, 768, 1024, 1536, 3072],
                 },
                 "similarity_threshold": {
                     "type": "float",
@@ -81,49 +80,80 @@ class VectorDatabaseMemorySpec(BaseNodeSpec):
                     "description": "最大返回结果数",
                     "required": False,
                 },
-                "search_type": {
+                **COMMON_CONFIGS,
+            },
+            # Runtime parameters (schema-style)
+            input_params={
+                "operation": {
                     "type": "string",
-                    "default": "similarity",
-                    "description": "搜索类型",
+                    "default": "search",
+                    "description": "向量库操作",
                     "required": False,
-                    "options": ["similarity", "mmr", "similarity_score_threshold"],
+                    "options": ["search", "store", "update", "delete"],
                 },
-                "metadata_filters": {
+                "query": {
+                    "type": "string",
+                    "default": "",
+                    "description": "查询文本（search时）",
+                    "required": False,
+                    "multiline": True,
+                },
+                "context": {
+                    "type": "object",
+                    "default": {},
+                    "description": "上下文元数据（可参与过滤）",
+                    "required": False,
+                },
+                "filters": {
                     "type": "object",
                     "default": {},
                     "description": "元数据过滤条件",
                     "required": False,
                 },
-                "enable_caching": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "是否启用查询缓存",
+                "items": {
+                    "type": "array",
+                    "default": [],
+                    "description": "待写入/更新的项（含id/content/metadata）",
                     "required": False,
                 },
-                "cache_ttl_seconds": {
+                "ids": {
+                    "type": "array",
+                    "default": [],
+                    "description": "待删除或更新的项ID",
+                    "required": False,
+                },
+            },
+            output_params={
+                "results": {
+                    "type": "array",
+                    "default": [],
+                    "description": "搜索结果（文本片段或文档）",
+                    "required": False,
+                },
+                "scores": {
+                    "type": "array",
+                    "default": [],
+                    "description": "相似度分数",
+                    "required": False,
+                },
+                "total_results": {
                     "type": "integer",
-                    "default": 300,
-                    "min": 0,
-                    "max": 3600,
-                    "description": "缓存生存时间（秒）",
+                    "default": 0,
+                    "description": "返回结果数量",
                     "required": False,
                 },
-                **COMMON_CONFIGS,
-            },
-            # Default runtime parameters for memory operations
-            default_input_params={
-                "query": "",
-                "context": {},
-                "filters": {},
-                "operation": "search",  # search, store, update, delete
-            },
-            default_output_params={
-                "results": [],
-                "scores": [],
-                "metadata": [],
-                "total_results": 0,
-                "search_time": 0,
-                "cached": False,
+                "search_time": {
+                    "type": "number",
+                    "default": 0,
+                    "description": "搜索耗时（秒）",
+                    "required": False,
+                },
+                "cached": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "是否命中缓存（如实现）",
+                    "required": False,
+                },
             },
             # MEMORY nodes have no ports - they are attached to AI_AGENT nodes
             input_ports=[],

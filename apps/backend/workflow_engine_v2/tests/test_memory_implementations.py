@@ -16,14 +16,10 @@ sys.path.insert(0, str(backend_dir))
 from workflow_engine_v2.runners.memory_implementations.conversation_buffer import (
     ConversationBufferMemory,
 )
-from workflow_engine_v2.runners.memory_implementations.conversation_summary import (
-    ConversationSummaryMemory,
-)
 from workflow_engine_v2.runners.memory_implementations.entity_memory import EntityMemory
 from workflow_engine_v2.runners.memory_implementations.key_value_store import KeyValueStoreMemory
-from workflow_engine_v2.runners.memory_implementations.memory_orchestrator import MemoryOrchestrator
+from workflow_engine_v2.runners.memory_implementations.orchestrator import MemoryOrchestrator
 from workflow_engine_v2.runners.memory_implementations.vector_database import VectorDatabaseMemory
-from workflow_engine_v2.runners.memory_implementations.working_memory import WorkingMemory
 
 
 class TestKeyValueStoreMemory:
@@ -158,47 +154,60 @@ class TestConversationBufferMemory:
         assert result["messages"][-1]["content"] == "Message 4"
 
 
-class TestConversationSummaryMemory:
-    """Test conversation summary memory implementation."""
+class TestConversationBufferAutoSummary:
+    """Test conversation buffer auto-summary feature."""
 
     @pytest.fixture
-    def summary_memory(self):
-        return ConversationSummaryMemory()
-
-    @pytest.mark.asyncio
-    async def test_store_with_summary(self, summary_memory):
-        """Test storing conversation with summary generation."""
-        with patch.object(summary_memory, "_generate_summary") as mock_summary:
-            mock_summary.return_value = "User greeted the assistant"
-
-            data = {
-                "conversation_id": "conv_summary",
-                "message": {"role": "user", "content": "Hello there!"},
-                "metadata": {"timestamp": datetime.utcnow().isoformat()},
+    def auto_summary_memory(self):
+        # Configure with auto-summary enabled and small thresholds for testing
+        return ConversationBufferMemory(
+            config={
+                "max_messages": 10,
+                "auto_summarize": True,
+                "summarize_count": 3,
             }
-
-            result = await summary_memory.store(data)
-            assert result["status"] == "success"
-            assert "summary_generated" in result
+        )
 
     @pytest.mark.asyncio
-    async def test_retrieve_with_summary(self, summary_memory):
-        """Test retrieving conversation with summary."""
-        # Mock summary generation
-        with patch.object(summary_memory, "_generate_summary", return_value="Conversation summary"):
-            # Store messages
-            await summary_memory.store(
+    async def test_auto_summary_triggered(self, auto_summary_memory):
+        """Test auto-summary is triggered when buffer is nearly full."""
+        await auto_summary_memory.initialize()
+
+        # Store messages up to nearly full (within 5 of max_messages)
+        for i in range(6):
+            result = await auto_summary_memory.store(
                 {
-                    "conversation_id": "conv_with_summary",
-                    "message": {"role": "user", "content": "Hello"},
-                    "metadata": {"timestamp": datetime.utcnow().isoformat()},
+                    "message": f"Message {i}",
+                    "role": "user",
+                }
+            )
+            assert result["success"] is True
+
+        # Summary should be created when we're within 5 messages of the limit
+        result = await auto_summary_memory.retrieve({})
+        assert result["success"] is True
+        assert result["summary"] != ""  # Summary should be generated
+
+    @pytest.mark.asyncio
+    async def test_summary_in_context(self, auto_summary_memory):
+        """Test that summary appears in context retrieval."""
+        await auto_summary_memory.initialize()
+
+        # Store enough messages to trigger summary
+        for i in range(6):
+            await auto_summary_memory.store(
+                {
+                    "message": f"Message {i}",
+                    "role": "user",
                 }
             )
 
-            result = await summary_memory.retrieve({"conversation_id": "conv_with_summary"})
-            assert result["status"] == "success"
-            assert "summary" in result
-            assert len(result["recent_messages"]) > 0
+        # Get context
+        result = await auto_summary_memory.get_context({})
+        assert result["success"] is True
+        assert result["has_summary"] is True
+        assert "[Summary of earlier conversation]" in result["context"]
+        assert len(result.get("messages", [])) > 0
 
 
 class TestEntityMemory:

@@ -22,8 +22,6 @@ async def health_check_endpoint(request: Request, settings: Settings = Depends(g
     """Health check endpoint - 公开健康检查接口"""
     start_time = time.time()
 
-    logger.info("🏥 Public health check requested")
-
     try:
         # 使用核心健康检查
         health_info = await health_check()

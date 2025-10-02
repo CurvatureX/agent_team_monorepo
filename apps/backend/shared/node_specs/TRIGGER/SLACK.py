@@ -7,8 +7,8 @@ and produces execution context when Slack events occur.
 
 from typing import Any, Dict, List
 
-from ...models.node_enums import NodeType, TriggerSubtype
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from shared.models.node_enums import NodeType, TriggerSubtype
+from shared.node_specs.base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class SlackTriggerSpec(BaseNodeSpec):
@@ -87,32 +87,100 @@ class SlackTriggerSpec(BaseNodeSpec):
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters
-            default_input_params={},  # Triggers have no input
-            default_output_params={
-                "trigger_time": "",
-                "execution_id": "",
-                "event_type": "",
-                "channel_id": "",
-                "channel_name": "",
-                "user_id": "",
-                "user_name": "",
-                "message_text": "",
-                "thread_ts": "",
-                "trigger_message": "",
-                "slack_payload": {},
+            # Parameter schemas (preferred over legacy defaults)
+            input_params={},  # Triggers have no runtime inputs
+            output_params={
+                "trigger_time": {
+                    "type": "string",
+                    "default": "",
+                    "description": "ISO-8601 time when the event triggered",
+                    "required": False,
+                },
+                "execution_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Execution identifier for correlation",
+                    "required": False,
+                },
+                "event_type": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Slack event type",
+                    "required": False,
+                    "options": [
+                        "message",
+                        "app_mention",
+                        "reaction_added",
+                        "reaction_removed",
+                        "channel_created",
+                        "channel_deleted",
+                        "member_joined_channel",
+                        "member_left_channel",
+                        "user_change",
+                        "team_join",
+                        "file_shared",
+                    ],
+                },
+                "channel_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Channel ID where the event occurred",
+                    "required": False,
+                },
+                "channel_name": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Channel name where the event occurred",
+                    "required": False,
+                },
+                "user_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Slack user ID of the actor",
+                    "required": False,
+                },
+                "user_name": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Slack username of the actor",
+                    "required": False,
+                },
+                "message_text": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Message text for message-based events",
+                    "required": False,
+                },
+                "thread_ts": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Thread timestamp if applicable",
+                    "required": False,
+                },
+                "trigger_message": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Human-friendly trigger message",
+                    "required": False,
+                },
+                "slack_payload": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Raw Slack event payload",
+                    "required": False,
+                },
             },
             # Port definitions
             input_ports=[],  # Triggers have no input ports
             output_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="dict",
-                    description="Slack event output with message and user data",
-                    required=False,
-                    max_connections=-1,
-                )
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "Slack event output with message and user data",
+                    "required": False,
+                    "max_connections": -1,
+                }
             ],
             # Metadata
             tags=["trigger", "slack", "chat", "workspace", "collaboration"],

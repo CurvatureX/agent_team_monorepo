@@ -21,7 +21,7 @@ from .execution_new import ExecutionEventType
 from .execution_new import (
     ExecutionStatus as WorkflowExecutionStatus,  # Alias for backward compatibility
 )
-from .execution_new import LogLevel, NodeExecutionStatus
+from .execution_new import LogLevel, NodeExecutionStatus, TriggerInfo
 
 # ============================================================================
 # ENUMS - Status and Type Definitions
@@ -60,10 +60,13 @@ class Connection(BaseModel):
     """连接定义"""
 
     id: str = Field(..., description="连接的唯一标识符")
-    from_node: str = Field(..., description="源节点的名称")
-    to_node: str = Field(..., description="目标节点的名称")
-    from_port: str = Field(..., description="源节点的输出端口ID")
-    to_port: str = Field(..., description="目标节点的输入端口ID")
+    from_node: str = Field(..., description="源节点的ID")
+    to_node: str = Field(..., description="目标节点的ID")
+    from_port: str = Field(..., description="源节点的输出端口ID (deprecated, use output_key)")
+    to_port: str = Field(..., description="目标节点的输入端口ID (deprecated)")
+    output_key: str = Field(
+        default="result", description="从源节点的哪个输出获取数据（如 'result', 'true', 'false'）。用于区分条件分支和多输出节点。"
+    )
     conversion_function: str = Field(
         ...,
         description="""数据转换函数 - 必须是严格定义的Python匿名函数，格式为：
@@ -162,16 +165,13 @@ class WorkflowMetadata(BaseModel):
 
 
 class CreateWorkflowRequest(BaseModel):
-    """创建工作流请求模型"""
+    """创建工作流请求模型 - Updated to match new node specs format"""
 
-    user_id: str = Field(..., description="用户ID")
-    name: str = Field(..., description="工作流名称")
-    description: Optional[str] = Field(default=None, description="工作流描述")
-    nodes: List[Dict[str, Any]] = Field(default_factory=list, description="节点列表")
+    # New format - matches comprehensive_personal_assistant_workflow.json
+    nodes: List[Dict[str, Any]] = Field(..., description="节点列表")
+    metadata: Dict[str, Any] = Field(..., description="工作流元数据，包含name, description等")
+    triggers: List[str] = Field(..., description="触发器节点ID列表")
     connections: List[Dict[str, Any]] = Field(default_factory=list, description="连接列表")
-    triggers: List[str] = Field(default_factory=list, description="触发器节点ID列表")
-    tags: List[str] = Field(default_factory=list, description="标签列表")
-    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="额外元数据")
 
 
 class UpdateWorkflowRequest(BaseModel):
@@ -199,6 +199,8 @@ class WorkflowExecutionRequest(BaseModel):
     inputs: Dict[str, Any] = Field(default_factory=dict, description="执行时的输入参数")
     settings: Optional[Dict[str, Any]] = Field(default=None, description="执行时的特殊设置")
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="执行元数据")
+    start_from_node: Optional[str] = Field(default=None, description="从指定节点开始执行")
+    skip_trigger_validation: bool = Field(default=False, description="是否跳过触发器验证")
 
 
 class WorkflowExecutionResponse(BaseModel):
@@ -259,16 +261,6 @@ WorkflowData = Workflow
 # ============================================================================
 # EXECUTION MODELS
 # ============================================================================
-
-
-class TriggerInfo(BaseModel):
-    """触发信息"""
-
-    trigger_type: str = Field(..., description="触发类型")
-    trigger_data: Dict[str, Any] = Field(default_factory=dict, description="触发数据")
-    user_id: Optional[str] = Field(default=None, description="触发用户")
-    external_request_id: Optional[str] = Field(default=None, description="外部请求ID")
-    timestamp: int = Field(..., description="触发时间戳")
 
 
 class TokenUsage(BaseModel):
@@ -362,7 +354,14 @@ class NodeExecution(BaseModel):
     # 输入输出
     input_data: Dict[str, Any] = Field(default_factory=dict, description="输入数据，Key: input_port_id")
     output_data: Dict[str, Any] = Field(
-        default_factory=dict, description="输出数据，Key: output_port_id"
+        default_factory=dict,
+        description=(
+            "节点输出数据，按端口命名的字典。\n"
+            "- 顶层键必须是输出端口ID（如 'main', 'true', 'false', 'completed'）。\n"
+            "- 每个端口的值必须是一个对象，字段集合与该节点规范的 output_params 完全一致，"
+            "  即仅包含规范中定义的字段，并使用对应的运行时值。\n"
+            "- 引擎内部控制字段（如定时/等待标记）不会出现在此结构中。"
+        ),
     )
 
     # 执行详情

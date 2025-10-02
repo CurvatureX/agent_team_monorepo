@@ -183,7 +183,6 @@ __all__ = [
     "WorkflowExecution",
     "WorkflowDB",
     "WorkflowExecutionLog",
-    "DeploymentStatusEnum",
     "TriggerStatusEnum",
     "WorkflowStatusEnum",
 ]

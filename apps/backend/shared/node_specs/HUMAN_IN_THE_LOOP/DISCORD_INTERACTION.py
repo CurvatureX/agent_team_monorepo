@@ -11,7 +11,7 @@ Do NOT add separate AI_AGENT or IF nodes for response handling.
 from typing import Any, Dict, List
 
 from ...models.node_enums import HumanLoopSubtype, NodeType
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class DiscordInteractionSpec(BaseNodeSpec):
@@ -23,15 +23,8 @@ class DiscordInteractionSpec(BaseNodeSpec):
             subtype=HumanLoopSubtype.DISCORD_INTERACTION,
             name="Discord_Interaction",
             description="Discord-based human interaction with AI-powered response analysis and classification",
-            # Configuration parameters
+            # Configuration parameters (simplified)
             configurations={
-                "discord_bot_token": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Discord机器人令牌",
-                    "required": True,
-                    "sensitive": True,
-                },
                 "server_id": {
                     "type": "string",
                     "default": "",
@@ -43,18 +36,6 @@ class DiscordInteractionSpec(BaseNodeSpec):
                     "default": "",
                     "description": "Discord频道ID",
                     "required": True,
-                },
-                "target_users": {
-                    "type": "array",
-                    "default": [],
-                    "description": "目标用户ID列表（空为所有用户）",
-                    "required": False,
-                },
-                "target_roles": {
-                    "type": "array",
-                    "default": [],
-                    "description": "目标角色ID列表",
-                    "required": False,
                 },
                 "message_template": {
                     "type": "string",
@@ -71,119 +52,130 @@ class DiscordInteractionSpec(BaseNodeSpec):
                     "description": "响应超时时间（秒）",
                     "required": False,
                 },
-                "ai_analysis_model": {
-                    "type": "string",
-                    "default": "claude-3-5-haiku-20241022",
-                    "description": "AI响应分析模型",
-                    "required": False,
-                    "options": [
-                        "gpt-4",
-                        "gpt-3.5-turbo",
-                        "claude-3-5-haiku-20241022",
-                        "claude-sonnet-4-20250514",
-                    ],
-                },
-                "response_analysis_prompt": {
-                    "type": "string",
-                    "default": "Analyze this Discord message and classify it as: CONFIRMED (user agrees/approves), REJECTED (user declines/disapproves), or UNRELATED (unclear/off-topic response). Only respond with one word: CONFIRMED, REJECTED, or UNRELATED.",
-                    "description": "AI响应分析提示词",
-                    "required": False,
-                    "multiline": True,
-                },
-                "reaction_buttons": {
-                    "type": "array",
-                    "default": ["✅", "❌", "❓"],
-                    "description": "反应按钮表情符号",
-                    "required": False,
-                },
-                "enable_thread_responses": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "是否启用线程回复",
-                    "required": False,
-                },
-                "require_specific_response": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "是否要求特定响应格式",
-                    "required": False,
-                },
-                "allowed_response_patterns": {
-                    "type": "array",
-                    "default": [],
-                    "description": "允许的响应模式（正则表达式）",
-                    "required": False,
-                },
-                "confirmation_messages": {
-                    "type": "object",
-                    "default": {
-                        "confirmed": "✅ **Confirmed** - Your approval has been recorded. Thank you!",
-                        "rejected": "❌ **Rejected** - Your decision has been noted. Thank you!",
-                        "unrelated": "❓ **Unclear Response** - Please provide a clear approval or rejection.",
-                        "timeout": "⏰ **Timeout** - No response received within the specified timeframe.",
-                    },
-                    "description": "不同分类的确认消息",
-                    "required": False,
-                },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters
-            default_input_params={"context": {}, "variables": {}, "user_data": {}},
-            default_output_params={
-                "response_received": False,
-                "ai_classification": "",
-                "original_response": "",
-                "response_timestamp": "",
-                "execution_path": "",
-                "timeout_occurred": False,
-                "discord_message_id": "",
-                "responding_user": {},
-                "human_feedback": {},
+            # Parameter schemas (preferred over legacy defaults)
+            input_params={
+                "context": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Additional context for templating",
+                    "required": False,
+                },
+                "variables": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Template variables",
+                    "required": False,
+                },
+                "user_data": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Arbitrary user data to include",
+                    "required": False,
+                },
+            },
+            output_params={
+                "response_received": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Whether a response was received",
+                    "required": False,
+                },
+                "ai_classification": {
+                    "type": "string",
+                    "default": "",
+                    "description": "AI classification of the response",
+                    "required": False,
+                    "options": ["confirmed", "rejected", "unrelated", "timeout"],
+                },
+                "original_response": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Original user response text",
+                    "required": False,
+                },
+                "response_timestamp": {
+                    "type": "string",
+                    "default": "",
+                    "description": "ISO-8601 timestamp when response received",
+                    "required": False,
+                },
+                "execution_path": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Downstream execution path determined",
+                    "required": False,
+                },
+                "timeout_occurred": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Whether the interaction timed out",
+                    "required": False,
+                },
+                "discord_message_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Discord message ID of the interaction",
+                    "required": False,
+                },
+                "responding_user": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Information about the responder",
+                    "required": False,
+                },
+                "human_feedback": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Structured feedback extracted from the response",
+                    "required": False,
+                },
             },
             # Port definitions - HIL nodes have multiple output paths based on AI analysis
             input_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="dict",
-                    description="Input data for human interaction request",
-                    required=True,
-                    max_connections=1,
-                )
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "Input data for human interaction request",
+                    "required": True,
+                    "max_connections": 1,
+                }
             ],
             output_ports=[
-                create_port(
-                    port_id="confirmed",
-                    name="confirmed",
-                    data_type="dict",
-                    description="Output when AI classifies Discord response as confirmed/approved",
-                    required=False,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="rejected",
-                    name="rejected",
-                    data_type="dict",
-                    description="Output when AI classifies Discord response as rejected/declined",
-                    required=False,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="unrelated",
-                    name="unrelated",
-                    data_type="dict",
-                    description="Output when AI classifies Discord response as unclear/unrelated",
-                    required=False,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="timeout",
-                    name="timeout",
-                    data_type="dict",
-                    description="Output when no response received within timeout period",
-                    required=False,
-                    max_connections=-1,
-                ),
+                {
+                    "id": "confirmed",
+                    "name": "confirmed",
+                    "data_type": "dict",
+                    "description": "Output when AI classifies Discord response as confirmed/approved",
+                    "required": False,
+                    "max_connections": -1,
+                },
+                {
+                    "id": "rejected",
+                    "name": "rejected",
+                    "data_type": "dict",
+                    "description": "Output when AI classifies Discord response as rejected/declined",
+                    "required": False,
+                    "max_connections": -1,
+                },
+                {
+                    "id": "unrelated",
+                    "name": "unrelated",
+                    "data_type": "dict",
+                    "description": "Output when AI classifies Discord response as unclear/unrelated",
+                    "required": False,
+                    "max_connections": -1,
+                },
+                {
+                    "id": "timeout",
+                    "name": "timeout",
+                    "data_type": "dict",
+                    "description": "Output when no response received within timeout period",
+                    "required": False,
+                    "max_connections": -1,
+                },
             ],
             # Metadata
             tags=["human-in-the-loop", "discord", "gaming", "community", "approval", "ai-analysis"],
@@ -196,11 +188,8 @@ class DiscordInteractionSpec(BaseNodeSpec):
                         "discord_bot_token": "discord_bot_token_123",
                         "server_id": "123456789012345678",
                         "channel_id": "987654321098765432",
-                        "target_roles": ["moderator", "admin"],
-                        "message_template": "🎮 **Tournament Approval Request** 🎮\\n\\n**Event:** {{tournament_name}}\\n**Date:** {{tournament_date}}\\n**Prize Pool:** ${{prize_amount}}\\n**Expected Participants:** {{participant_count}}\\n\\n**Details:**\\n{{tournament_details}}\\n\\n**Moderators, please react with:**\\n✅ to approve\\n❌ to reject\\n❓ for questions\\n\\n**Or reply with your decision and comments.**",
+                        "message_template": "🎮 **Tournament Approval Request** 🎮\\n\\n**Event:** {{tournament_name}}\\n**Date:** {{tournament_date}}\\n**Prize Pool:** ${{prize_amount}}\\n**Expected Participants:** {{participant_count}}\\n\\n**Details:**\\n{{tournament_details}}\\n\\nPlease reply with ✅ to approve or ❌ to reject.",
                         "response_timeout": 7200,
-                        "reaction_buttons": ["✅", "❌", "❓"],
-                        "enable_thread_responses": True,
                     },
                     "input_example": {
                         "context": {

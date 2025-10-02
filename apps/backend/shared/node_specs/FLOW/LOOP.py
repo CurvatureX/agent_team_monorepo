@@ -8,7 +8,7 @@ Executes contained nodes repeatedly based on loop conditions and iteration logic
 from typing import Any, Dict, List
 
 from ...models.node_enums import FlowSubtype, NodeType
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class LoopFlowSpec(BaseNodeSpec):
@@ -27,7 +27,7 @@ class LoopFlowSpec(BaseNodeSpec):
                     "default": "for_range",
                     "description": "循环类型",
                     "required": True,
-                    "options": ["for_range", "for_each", "while", "until", "infinite"],
+                    "options": ["for_range", "for_each", "while"],
                 },
                 "loop_condition": {
                     "type": "string",
@@ -46,12 +46,6 @@ class LoopFlowSpec(BaseNodeSpec):
                     "type": "integer",
                     "default": 10,
                     "description": "结束值 (for_range)",
-                    "required": False,
-                },
-                "step_value": {
-                    "type": "integer",
-                    "default": 1,
-                    "description": "步长值 (for_range)",
                     "required": False,
                 },
                 "max_iterations": {
@@ -88,64 +82,82 @@ class LoopFlowSpec(BaseNodeSpec):
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters
-            default_input_params={"data": {}, "context": {}, "loop_data": []},
-            default_output_params={
-                "final_result": {},
-                "iteration_results": [],
-                "total_iterations": 0,
-                "successful_iterations": 0,
-                "failed_iterations": 0,
-                "loop_completed": False,
-                "break_reason": "",
+            # Parameter schemas (preferred over legacy defaults)
+            input_params={
+                "data": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Primary input data for loop body",
+                    "required": True,
+                },
+                "context": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Optional context variables",
+                    "required": False,
+                },
+                "loop_data": {
+                    "type": "array",
+                    "default": [],
+                    "description": "Array to iterate over (for_each mode)",
+                    "required": False,
+                },
+            },
+            output_params={
+                "final_result": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Aggregated result after loop completion",
+                    "required": False,
+                },
+                "iteration_results": {
+                    "type": "array",
+                    "default": [],
+                    "description": "Per-iteration outputs collected when enabled",
+                    "required": False,
+                },
+                "successful_iterations": {
+                    "type": "integer",
+                    "default": 0,
+                    "description": "Number of successful iterations",
+                    "required": False,
+                },
+                "failed_iterations": {
+                    "type": "integer",
+                    "default": 0,
+                    "description": "Number of iterations that failed",
+                    "required": False,
+                },
             },
             # Port definitions - Loop nodes have special iteration control ports
             input_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="dict",
-                    description="Input data for loop processing",
-                    required=True,
-                    max_connections=1,
-                )
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "Input data for loop processing",
+                    "required": True,
+                    "max_connections": 1,
+                }
             ],
             output_ports=[
-                create_port(
-                    port_id="iteration",
-                    name="iteration",
-                    data_type="dict",
-                    description="Output for each iteration of the loop",
-                    required=False,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="completed",
-                    name="completed",
-                    data_type="dict",
-                    description="Output when loop completes normally",
-                    required=False,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="break",
-                    name="break",
-                    data_type="dict",
-                    description="Output when loop breaks due to condition",
-                    required=False,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="error",
-                    name="error",
-                    data_type="dict",
-                    description="Error output when loop fails",
-                    required=False,
-                    max_connections=-1,
-                ),
+                {
+                    "id": "iteration",
+                    "name": "iteration",
+                    "data_type": "dict",
+                    "description": "Output for each iteration of the loop",
+                    "required": False,
+                    "max_connections": -1,
+                },
+                {
+                    "id": "completed",
+                    "name": "completed",
+                    "data_type": "dict",
+                    "description": "Output when loop completes normally",
+                    "required": False,
+                    "max_connections": -1,
+                },
             ],
-            # Metadata
-            tags=["flow", "loop", "iteration", "control"],
             # Examples
             examples=[
                 {
@@ -155,7 +167,6 @@ class LoopFlowSpec(BaseNodeSpec):
                         "loop_type": "for_range",
                         "start_value": 1,
                         "end_value": 5,
-                        "step_value": 1,
                         "iteration_variable": "counter",
                     },
                     "input_example": {"data": {"base_message": "Processing item"}},
@@ -169,9 +180,8 @@ class LoopFlowSpec(BaseNodeSpec):
                                 {"counter": 4, "message": "Processing item 4"},
                                 {"counter": 5, "message": "Processing item 5"},
                             ],
-                            "total_iterations": 5,
                             "successful_iterations": 5,
-                            "loop_completed": True,
+                            "failed_iterations": 0,
                         }
                     },
                 },
@@ -190,13 +200,12 @@ class LoopFlowSpec(BaseNodeSpec):
                                 {"id": 1, "name": "Alice", "status": "active"},
                                 {"id": 2, "name": "Bob", "status": "inactive"},
                                 {"id": 3, "name": "Charlie", "status": "active"},
-                            ],
-                            "operation": "process_user",
+                            ]
                         }
                     },
                     "expected_outputs": {
                         "completed": {
-                            "final_result": {"operation": "process_user", "processed_count": 3},
+                            "final_result": {"processed_count": 3},
                             "iteration_results": [
                                 {
                                     "user": {"id": 1, "name": "Alice", "status": "active"},
@@ -211,9 +220,8 @@ class LoopFlowSpec(BaseNodeSpec):
                                     "processed": True,
                                 },
                             ],
-                            "total_iterations": 3,
                             "successful_iterations": 3,
-                            "loop_completed": True,
+                            "failed_iterations": 0,
                         }
                     },
                 },
@@ -230,7 +238,7 @@ class LoopFlowSpec(BaseNodeSpec):
                         "data": {"retry_count": 0, "success": False, "task": "api_call"}
                     },
                     "expected_outputs": {
-                        "break": {
+                        "completed": {
                             "final_result": {
                                 "retry_count": 3,
                                 "success": False,
@@ -242,10 +250,8 @@ class LoopFlowSpec(BaseNodeSpec):
                                 {"attempt": 2, "retry_count": 2, "success": False},
                                 {"attempt": 3, "retry_count": 3, "success": False},
                             ],
-                            "total_iterations": 3,
                             "successful_iterations": 3,
-                            "loop_completed": False,
-                            "break_reason": "condition_false",
+                            "failed_iterations": 0,
                         }
                     },
                 },

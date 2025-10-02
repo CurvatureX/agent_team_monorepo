@@ -8,7 +8,7 @@ and produces execution context when emails are received.
 from typing import Any, Dict, List
 
 from ...models.node_enums import NodeType, TriggerSubtype
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class EmailTriggerSpec(BaseNodeSpec):
@@ -96,33 +96,93 @@ class EmailTriggerSpec(BaseNodeSpec):
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters
-            default_input_params={},  # Triggers have no input
-            default_output_params={
-                "trigger_time": "",
-                "execution_id": "",
-                "email_id": "",
-                "sender": "",
-                "recipient": "",
-                "subject": "",
-                "body_text": "",
-                "body_html": "",
-                "attachments": [],
-                "received_date": "",
-                "trigger_message": "",
-                "email_headers": {},
+            # Parameter schemas (preferred over legacy defaults)
+            input_params={},  # Triggers have no runtime inputs
+            output_params={
+                "trigger_time": {
+                    "type": "string",
+                    "default": "",
+                    "description": "ISO-8601 trigger time",
+                    "required": False,
+                },
+                "execution_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Execution identifier",
+                    "required": False,
+                },
+                "email_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Provider-specific email ID",
+                    "required": False,
+                },
+                "sender": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Sender email address",
+                    "required": False,
+                },
+                "recipient": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Recipient email address",
+                    "required": False,
+                },
+                "subject": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Email subject",
+                    "required": False,
+                },
+                "body_text": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Plain text body",
+                    "required": False,
+                },
+                "body_html": {
+                    "type": "string",
+                    "default": "",
+                    "description": "HTML body",
+                    "required": False,
+                },
+                "attachments": {
+                    "type": "array",
+                    "default": [],
+                    "description": "List of attachments with metadata",
+                    "required": False,
+                },
+                "received_date": {
+                    "type": "string",
+                    "default": "",
+                    "description": "ISO-8601 received time",
+                    "required": False,
+                },
+                "trigger_message": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Human-friendly description",
+                    "required": False,
+                },
+                "email_headers": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Email header key-values",
+                    "required": False,
+                },
             },
             # Port definitions
             input_ports=[],  # Triggers have no input ports
             output_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="dict",
-                    description="Email event output with message content and attachments",
-                    required=False,
-                    max_connections=-1,
-                )
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "Email event output with message content and attachments",
+                    "required": False,
+                    "max_connections": -1,
+                }
             ],
             # Metadata
             tags=["trigger", "email", "imap", "communication", "automation"],

@@ -22,37 +22,39 @@ class WorkflowGraph:
     """Directed graph built from Workflow.connections.
 
     - Nodes are identified by node.id
-    - Edges are (from_node -> to_node) annotated with (from_port, to_port)
+    - Edges are (from_node -> to_node) annotated with (output_key, conversion_function)
     """
 
     def __init__(self, workflow: Workflow):
         self.workflow = workflow
         self.nodes = {n.id: n for n in workflow.nodes}
-        # Edge tuple: (to_node, from_port, to_port, conversion_function)
-        self.adjacency_list: Dict[str, List[Tuple[str, str, str, Optional[str]]]] = defaultdict(
+        # Edge tuple: (to_node, output_key, conversion_function)
+        # output_key: which output from source node to use (e.g., 'main', 'true', 'false')
+        self.adjacency_list: Dict[str, List[Tuple[str, str, Optional[str]]]] = defaultdict(list)
+        self.reverse_adjacency_list: Dict[str, List[Tuple[str, str, Optional[str]]]] = defaultdict(
             list
         )
-        self.reverse_adjacency_list: Dict[
-            str, List[Tuple[str, str, str, Optional[str]]]
-        ] = defaultdict(list)
         self._in_degree: Dict[str, int] = {node_id: 0 for node_id in self.nodes.keys()}
         self._build()
 
     def _build(self) -> None:
         for c in self.workflow.connections:
-            self.adjacency_list[c.from_node].append(
-                (c.to_node, c.from_port, c.to_port, c.conversion_function)
-            )
+            # Use output_key if available (new), fallback to from_port (legacy compatibility)
+            output_key = getattr(c, "output_key", None) or getattr(c, "from_port", "result")
+
+            self.adjacency_list[c.from_node].append((c.to_node, output_key, c.conversion_function))
             self.reverse_adjacency_list[c.to_node].append(
-                (c.from_node, c.from_port, c.to_port, c.conversion_function)
+                (c.from_node, output_key, c.conversion_function)
             )
             if c.to_node in self._in_degree:
                 self._in_degree[c.to_node] += 1
 
-    def predecessors(self, node_id: str) -> List[Tuple[str, str, str, Optional[str]]]:
+    def predecessors(self, node_id: str) -> List[Tuple[str, str, Optional[str]]]:
+        """Get predecessor nodes: [(from_node, output_key, conversion_function), ...]"""
         return self.reverse_adjacency_list.get(node_id, [])
 
-    def successors(self, node_id: str) -> List[Tuple[str, str, str, Optional[str]]]:
+    def successors(self, node_id: str) -> List[Tuple[str, str, Optional[str]]]:
+        """Get successor nodes: [(to_node, output_key, conversion_function), ...]"""
         return self.adjacency_list.get(node_id, [])
 
     def in_degree(self, node_id: str) -> int:
@@ -76,9 +78,7 @@ class WorkflowGraph:
         while queue:
             current_node = queue.popleft()
             order.append(current_node)
-            for successor, _from_port, _to_port, _conversion in self.adjacency_list.get(
-                current_node, []
-            ):
+            for successor, _output_key, _conversion in self.adjacency_list.get(current_node, []):
                 in_degree_map[successor] -= 1
                 if in_degree_map[successor] == 0:
                     queue.append(successor)
@@ -94,7 +94,7 @@ class WorkflowGraph:
             if current in seen:
                 continue
             seen.add(current)
-            for successor, _from_port, _to_port in self.adjacency_list.get(current, []):
+            for successor, _output_key, _conv in self.adjacency_list.get(current, []):
                 if successor not in seen:
                     queue.append(successor)
         return seen

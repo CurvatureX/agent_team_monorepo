@@ -129,6 +129,11 @@ class Settings(BaseSettings):
         description="Slack OAuth redirect URI",
         validation_alias=AliasChoices("SLACK_REDIRECT_URI", "slack_redirect_uri"),
     )
+    SLACK_SIGNING_SECRET: str = Field(
+        default="",
+        description="Slack signing secret for webhook verification",
+        validation_alias=AliasChoices("SLACK_SIGNING_SECRET", "slack_signing_secret"),
+    )
 
     # Google OAuth Configuration (for Calendar integration)
     google_client_id: str = Field(

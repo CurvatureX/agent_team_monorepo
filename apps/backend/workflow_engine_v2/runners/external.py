@@ -15,16 +15,17 @@ sys.path.insert(0, str(backend_dir))
 from shared.models import ExecutionStatus, TriggerInfo
 from shared.models.node_enums import ExternalActionSubtype
 from shared.models.workflow_new import Node
-
-from ..core.context import NodeExecutionContext
-from ..services.http_client import HTTPClient
-from .base import NodeRunner
-from .external_actions.github_external_action import GitHubExternalAction
-from .external_actions.google_calendar_external_action import GoogleCalendarExternalAction
-from .external_actions.notion_external_action import NotionExternalAction
+from workflow_engine_v2.core.context import NodeExecutionContext
+from workflow_engine_v2.runners.base import NodeRunner
+from workflow_engine_v2.runners.external_actions.github_external_action import GitHubExternalAction
+from workflow_engine_v2.runners.external_actions.google_calendar_external_action import (
+    GoogleCalendarExternalAction,
+)
+from workflow_engine_v2.runners.external_actions.notion_external_action import NotionExternalAction
 
 # Import dedicated external action handlers
-from .external_actions.slack_external_action import SlackExternalAction
+from workflow_engine_v2.runners.external_actions.slack_external_action import SlackExternalAction
+from workflow_engine_v2.services.http_client import HTTPClient
 
 
 class ExternalActionRunner(NodeRunner):
@@ -42,85 +43,139 @@ class ExternalActionRunner(NodeRunner):
             esub = None
 
         # Create execution context
-        # Extract user_id from trigger information
-        user_id = getattr(trigger, "user_id", None) if trigger else None
+        # Extract user_id from trigger information - check both attribute and dict access
+        user_id = None
+        if trigger:
+            # Try direct attribute access for TriggerInfo model
+            user_id = getattr(trigger, "user_id", None)
+            # If user_id is still None, try dict-style access for backward compatibility
+            if user_id is None and hasattr(trigger, "__dict__"):
+                user_id = trigger.__dict__.get("user_id")
+            # Also check if trigger_data contains user_id
+            if user_id is None and hasattr(trigger, "trigger_data") and trigger.trigger_data:
+                user_id = trigger.trigger_data.get("user_id")
 
         # Add debug logging
         import logging
 
         logger = logging.getLogger(__name__)
         logger.info(f"🔍 EXTERNAL ACTION DEBUG: trigger={trigger}")
-        logger.info(f"🔍 EXTERNAL ACTION DEBUG: user_id={user_id}")
+        logger.info(
+            f"🔍 EXTERNAL ACTION DEBUG: trigger.user_id={getattr(trigger, 'user_id', 'NO_ATTR') if trigger else 'NO_TRIGGER'}"
+        )
+        logger.info(f"🔍 EXTERNAL ACTION DEBUG: extracted user_id={user_id}")
 
         metadata = {"user_id": user_id} if user_id else {}
 
         context = NodeExecutionContext(
             node=node,
-            input_data=inputs.get("main", {}) if isinstance(inputs.get("main"), dict) else {},
+            input_data=inputs.get("result", {}) if isinstance(inputs.get("result"), dict) else {},
             trigger=trigger,
             metadata=metadata,
         )
 
         # Get action_type from configurations - required for external actions
-        action_type = node.configurations.get("action_type")
+        action_type_config = node.configurations.get("action_type")
+
+        # Extract actual value from configuration (handle both dict and string)
+        if isinstance(action_type_config, dict):
+            action_type = action_type_config.get("default") or action_type_config.get("value")
+        elif isinstance(action_type_config, str):
+            action_type = action_type_config
+        else:
+            action_type = None
 
         # Route to dedicated handlers for OAuth-based integrations
         if esub == ExternalActionSubtype.SLACK:
             if not action_type:
                 return {"error": {"message": "Missing required parameter: action_type"}}
             return self._run_async_handler(
-                self.slack_handler.handle_operation(context, action_type)
+                node, esub, self.slack_handler.handle_operation(context, action_type)
             )
 
         elif esub == ExternalActionSubtype.GITHUB:
             if not action_type:
                 return {"error": {"message": "Missing required parameter: action_type"}}
             return self._run_async_handler(
-                self.github_handler.handle_operation(context, action_type)
+                node, esub, self.github_handler.handle_operation(context, action_type)
             )
 
         elif esub == ExternalActionSubtype.GOOGLE_CALENDAR:
             if not action_type:
                 return {"error": {"message": "Missing required parameter: action_type"}}
             return self._run_async_handler(
-                self.google_handler.handle_operation(context, action_type)
+                node, esub, self.google_handler.handle_operation(context, action_type)
             )
 
         elif esub == ExternalActionSubtype.NOTION:
             if not action_type:
                 return {"error": {"message": "Missing required parameter: action_type"}}
             return self._run_async_handler(
-                self.notion_handler.handle_operation(context, action_type)
+                node, esub, self.notion_handler.handle_operation(context, action_type)
             )
 
         # Fallback to original implementations for backward compatibility
         return self._run_legacy_action(node, inputs, trigger, esub)
 
-    def _run_async_handler(self, coro) -> Dict[str, Any]:
+    def _run_async_handler(self, node: Node, esub, coro) -> Dict[str, Any]:
         """Run async handler and convert result to dict format."""
         try:
             # Run the async handler
             result = asyncio.run(coro)
 
-            if result.status == ExecutionStatus.SUCCESS:
-                return result.output_data
-            else:
-                return {
-                    "error": {
-                        "message": result.error_message,
-                        "details": result.error_details,
-                        "status": result.status.value,
+            # Shape to spec-defined output params
+            def _shape(payload: Dict[str, Any]) -> Dict[str, Any]:
+                defaults = node.output_params or {}
+                shaped = dict(defaults)
+                # subtype-specific synonym mapping
+                synonyms = {}
+                if esub == ExternalActionSubtype.SLACK:
+                    synonyms = {
+                        "message_timestamp": "message_ts",
+                        "message_details": "response_data",
+                        "slack_api_response": "api_response",
                     }
-                }
+                mapped = {}
+                for k, v in payload.items():
+                    mapped_key = synonyms.get(k, k)
+                    mapped[mapped_key] = v
+                for k in defaults.keys():
+                    if k in mapped:
+                        shaped[k] = mapped[k]
+                if "success" in shaped and "success" not in mapped:
+                    shaped["success"] = True
+                if "error_message" in shaped and "error_message" not in mapped:
+                    shaped["error_message"] = ""
+                return shaped
+
+            if result.status == ExecutionStatus.SUCCESS:
+                raw = result.output_data or {}
+                main_payload = raw.get("result", raw) if isinstance(raw, dict) else {}
+                main_payload = main_payload if isinstance(main_payload, dict) else {}
+                return {"result": _shape(main_payload)}
+            else:
+                defaults = node.output_params or {}
+                shaped_err = dict(defaults)
+                if "success" in shaped_err:
+                    shaped_err["success"] = False
+                if "error_message" in shaped_err:
+                    shaped_err["error_message"] = result.error_message or "External action failed"
+                return {"result": shaped_err}
         except Exception as e:
-            return {"error": {"message": f"External action failed: {str(e)}"}}
+            defaults = node.output_params or {}
+            shaped_err = dict(defaults)
+            if "success" in shaped_err:
+                shaped_err["success"] = False
+            if "error_message" in shaped_err:
+                shaped_err["error_message"] = f"External action failed: {str(e)}"
+            return {"result": shaped_err}
 
     def _run_legacy_action(
         self, node: Node, inputs: Dict[str, Any], trigger: TriggerInfo, esub
     ) -> Dict[str, Any]:
         """Run legacy external action implementations for backward compatibility."""
         cfg = node.configurations or {}
-        payload = inputs.get("main", {}) if isinstance(inputs.get("main"), dict) else {}
+        payload = inputs.get("result", {}) if isinstance(inputs.get("result"), dict) else {}
 
         # Email external action - send via webhook or API
         if esub == ExternalActionSubtype.EMAIL:

@@ -67,14 +67,8 @@ except ImportError:
     Session = type("Session", (), {})
 
 
-# Enums for workflow_scheduler models
-class DeploymentStatusEnum(str, enum.Enum):
-    """Deployment status enumeration"""
-
-    PENDING = "pending"
-    DEPLOYED = "deployed"
-    FAILED = "failed"
-    UNDEPLOYED = "undeployed"
+# Import unified deployment status from workflow_new.py
+from .workflow_new import WorkflowDeploymentStatus
 
 
 class TriggerStatusEnum(str, enum.Enum):
@@ -360,7 +354,10 @@ class WorkflowDeployment(Base, BaseModel):
 
     # Deployment metadata
     status = Column(
-        Enum(DeploymentStatusEnum), nullable=False, default=DeploymentStatusEnum.PENDING, index=True
+        Enum(WorkflowDeploymentStatus),
+        nullable=False,
+        default=WorkflowDeploymentStatus.PENDING,
+        index=True,
     )
     workflow_spec = Column(JSON, nullable=False, default=dict)
     trigger_specs = Column(JSON, nullable=False, default=dict)
@@ -381,7 +378,7 @@ class WorkflowDeployment(Base, BaseModel):
     @property
     def is_active(self) -> bool:
         """Check if deployment is currently active"""
-        return self.status == DeploymentStatusEnum.DEPLOYED
+        return self.status == WorkflowDeploymentStatus.DEPLOYED
 
 
 class TriggerExecution(Base, BaseModel):
@@ -742,7 +739,6 @@ __all__ = [
     "Base",
     "BaseModel",
     # Enums
-    "DeploymentStatusEnum",
     "TriggerStatusEnum",
     "TriggerTypeEnum",
     "WorkflowStatusEnum",

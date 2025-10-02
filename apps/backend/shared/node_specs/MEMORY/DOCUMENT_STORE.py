@@ -11,7 +11,7 @@ not connected through input/output ports.
 from typing import Any, Dict, List
 
 from ...models.node_enums import MemorySubtype, NodeType
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class DocumentStoreMemorySpec(BaseNodeSpec):
@@ -25,18 +25,29 @@ class DocumentStoreMemorySpec(BaseNodeSpec):
             description="Store and search documents with full-text capabilities for LLM context retrieval",
             # Configuration parameters
             configurations={
-                "storage_backend": {
-                    "type": "string",
-                    "default": "elasticsearch",
-                    "description": "Document storage backend for full-text search",
-                    "required": False,
-                    "options": ["elasticsearch", "mongodb", "postgresql", "supabase"],
-                },
                 "collection_name": {
                     "type": "string",
                     "default": "documents",
                     "description": "Document collection or index name",
                     "required": True,
+                },
+                "auto_capture_from_ai": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "当作为AI_AGENT的附加内存时，自动将AI输出写入文档存储（使用title/content输入或自动生成标题）",
+                    "required": False,
+                },
+                "title_auto": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "若未提供title，则从content自动生成标题（取第一行/句并截断）",
+                    "required": False,
+                },
+                "title_max_length": {
+                    "type": "integer",
+                    "default": 80,
+                    "description": "自动标题的最大长度",
+                    "required": False,
                 },
                 "full_text_search": {
                     "type": "boolean",
@@ -71,7 +82,7 @@ class DocumentStoreMemorySpec(BaseNodeSpec):
                 },
                 "supported_formats": {
                     "type": "array",
-                    "default": ["txt", "md", "pdf", "docx", "html"],
+                    "default": ["txt", "md"],
                     "description": "Document formats to support",
                     "required": False,
                 },
@@ -90,25 +101,126 @@ class DocumentStoreMemorySpec(BaseNodeSpec):
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters
-            default_input_params={
-                "operation": "search",
-                "document_id": "",
-                "content": "",
-                "metadata": {},
-                "query": "",
-                "filters": {},
-                "file_path": "",
-                "file_type": "",
+            # Schema-style runtime parameters
+            input_params={
+                "operation": {
+                    "type": "string",
+                    "default": "search",
+                    "description": "文档操作类型",
+                    "required": False,
+                    "options": ["store", "search", "update", "delete"],
+                },
+                "document_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "文档ID（可选，未提供时由系统生成）",
+                    "required": False,
+                },
+                "title": {
+                    "type": "string",
+                    "default": "",
+                    "description": "文档标题（可选，如启用自动标题则可不填）",
+                    "required": False,
+                },
+                "content": {
+                    "type": "string",
+                    "default": "",
+                    "description": "文档正文内容（由AI节点输出自动填充）",
+                    "required": False,
+                    "multiline": True,
+                },
+                "tags": {
+                    "type": "array",
+                    "default": [],
+                    "description": "文档标签",
+                    "required": False,
+                },
+                "metadata": {
+                    "type": "object",
+                    "default": {},
+                    "description": "文档元数据（如作者、来源、业务字段等）",
+                    "required": False,
+                },
+                "query": {
+                    "type": "string",
+                    "default": "",
+                    "description": "搜索查询字符串",
+                    "required": False,
+                },
+                "filters": {
+                    "type": "object",
+                    "default": {},
+                    "description": "搜索过滤条件",
+                    "required": False,
+                },
+                "file_path": {
+                    "type": "string",
+                    "default": "",
+                    "description": "原始文件路径（可选）",
+                    "required": False,
+                },
+                "file_type": {
+                    "type": "string",
+                    "default": "",
+                    "description": "原始文件类型（可选）",
+                    "required": False,
+                },
+                "source_node": {
+                    "type": "string",
+                    "default": "",
+                    "description": "来源AI节点ID或名称（可选）",
+                    "required": False,
+                },
+                "created_at": {
+                    "type": "string",
+                    "default": "",
+                    "description": "文档创建时间（ISO 8601，可选）",
+                    "required": False,
+                },
             },
-            default_output_params={
-                "documents": [],
-                "total_count": 0,
-                "relevance_scores": [],
-                "search_metadata": {},
-                "document_summaries": [],
-                "filtered_results": [],
-                "execution_time_ms": 0,
+            output_params={
+                "documents": {
+                    "type": "array",
+                    "default": [],
+                    "description": "文档结果集（搜索或存储后的返回）",
+                    "required": False,
+                },
+                "total_count": {
+                    "type": "integer",
+                    "default": 0,
+                    "description": "匹配或影响的文档数量",
+                    "required": False,
+                },
+                "relevance_scores": {
+                    "type": "array",
+                    "default": [],
+                    "description": "相关性分数（仅搜索）",
+                    "required": False,
+                },
+                "search_metadata": {
+                    "type": "object",
+                    "default": {},
+                    "description": "搜索或索引的元数据（耗时、算法、过滤等）",
+                    "required": False,
+                },
+                "document_summaries": {
+                    "type": "array",
+                    "default": [],
+                    "description": "文档摘要或分段概述（可选）",
+                    "required": False,
+                },
+                "filtered_results": {
+                    "type": "array",
+                    "default": [],
+                    "description": "根据过滤条件返回的结果（可选）",
+                    "required": False,
+                },
+                "execution_time_ms": {
+                    "type": "integer",
+                    "default": 0,
+                    "description": "操作耗时（毫秒）",
+                    "required": False,
+                },
             },
             # Port definitions - Memory nodes don't use traditional ports
             input_ports=[],
@@ -182,6 +294,38 @@ class DocumentStoreMemorySpec(BaseNodeSpec):
                             "Comprehensive guide covering ML project best practices including data preprocessing and deployment",
                             "Technical guide focusing on validation techniques for building robust ML models",
                         ],
+                    },
+                },
+                {
+                    "name": "Auto Capture AI Output",
+                    "description": "AI_AGENT附加此内存节点后，自动将AI输出的title/content写入文档存储",
+                    "configurations": {
+                        "storage_backend": "supabase",
+                        "collection_name": "ai_outputs",
+                        "auto_capture_from_ai": True,
+                        "title_auto": True,
+                        "title_max_length": 80,
+                    },
+                    "input_example": {
+                        "operation": "store",
+                        "title": "Weekly Status Summary",
+                        "content": "This week we completed the authentication revamp, fixed three critical bugs, and improved test coverage to 85%...",
+                        "tags": ["status", "weekly"],
+                        "metadata": {"author": "ai_agent", "project": "platform"},
+                        "source_node": "OpenAI_ChatGPT",
+                        "created_at": "2025-01-28T12:00:00Z",
+                    },
+                    "expected_outputs": {
+                        "documents": [
+                            {
+                                "document_id": "auto_gen_12345",
+                                "title": "Weekly Status Summary",
+                                "stored": True,
+                                "collection": "ai_outputs",
+                            }
+                        ],
+                        "total_count": 1,
+                        "search_metadata": {"indexing_time_ms": 25},
                     },
                 },
                 {

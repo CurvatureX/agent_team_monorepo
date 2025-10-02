@@ -8,7 +8,7 @@ and produces execution context when manually invoked.
 from typing import Any, Dict, List
 
 from ...models.node_enums import NodeType, TriggerSubtype
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class ManualTriggerSpec(BaseNodeSpec):
@@ -36,25 +36,45 @@ class ManualTriggerSpec(BaseNodeSpec):
                 },
                 **COMMON_CONFIGS,  # Include common configurations
             },
-            # Default runtime parameters
-            default_input_params={},  # Triggers have no input
-            default_output_params={
-                "trigger_time": "",
-                "execution_id": "",
-                "user_id": "",
-                "trigger_message": "",
+            # Parameter schemas (preferred over legacy defaults)
+            input_params={},  # Triggers have no runtime inputs
+            output_params={
+                "trigger_time": {
+                    "type": "string",
+                    "default": "",
+                    "description": "ISO-8601 time when user triggered execution",
+                    "required": False,
+                },
+                "execution_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Execution identifier for correlation",
+                    "required": False,
+                },
+                "user_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "ID of the user who triggered",
+                    "required": False,
+                },
+                "trigger_message": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Human-friendly trigger message",
+                    "required": False,
+                },
             },
             # Port definitions using new Port model
             input_ports=[],  # Triggers have no input ports
             output_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="dict",
-                    description="Triggered execution output with context",
-                    required=False,  # Output ports are not required
-                    max_connections=-1,  # Unlimited output connections
-                )
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "Triggered execution output with context",
+                    "required": False,  # Output ports are not required
+                    "max_connections": -1,  # Unlimited output connections
+                }
             ],
             # Metadata
             tags=["trigger", "manual", "user-initiated"],

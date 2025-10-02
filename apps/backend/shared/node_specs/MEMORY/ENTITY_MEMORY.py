@@ -10,8 +10,8 @@ not connected through input/output ports.
 
 from typing import Any, Dict, List
 
-from ...models.node_enums import MemorySubtype, NodeType, OpenAIModel
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ...models.node_enums import MemorySubtype, NodeType
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class EntityMemorySpec(BaseNodeSpec):
@@ -23,87 +23,69 @@ class EntityMemorySpec(BaseNodeSpec):
             subtype=MemorySubtype.ENTITY_MEMORY,
             name="Entity_Memory",
             description="Extract, store and track entities mentioned in conversations for context enhancement",
-            # Configuration parameters
+            # Configuration parameters (simplified)
             configurations={
                 "entity_types": {
                     "type": "array",
                     "default": ["person", "organization", "location", "product", "concept"],
-                    "description": "Types of entities to extract and track",
-                    "required": False,
-                },
-                "extraction_model": {
-                    "type": "string",
-                    "default": OpenAIModel.GPT_5_NANO.value,
-                    "description": "Model to use for entity extraction",
-                    "required": False,
-                },
-                "storage_backend": {
-                    "type": "string",
-                    "default": "postgresql",
-                    "description": "Storage backend for entity data",
-                    "required": False,
-                    "options": ["postgresql", "elasticsearch", "neo4j"],
-                },
-                "relationship_tracking": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Whether to track relationships between entities",
-                    "required": False,
-                },
-                "importance_scoring": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Whether to calculate entity importance scores",
+                    "description": "需要抽取和跟踪的实体类型",
                     "required": False,
                 },
                 "confidence_threshold": {
                     "type": "float",
                     "default": 0.7,
-                    "description": "Minimum confidence score for entity extraction (0.0-1.0)",
+                    "description": "实体抽取的最小置信度阈值（0.0-1.0）",
                     "required": False,
                 },
-                "entity_linking": {
+                "relationship_tracking": {
                     "type": "boolean",
                     "default": True,
-                    "description": "Enable linking entities to external knowledge bases",
+                    "description": "是否跟踪实体之间的关系",
                     "required": False,
-                },
-                "temporal_tracking": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Track when entities are mentioned over time",
-                    "required": False,
-                },
-                "context_window": {
-                    "type": "integer",
-                    "default": 5,
-                    "description": "Number of surrounding sentences for context extraction",
-                    "required": False,
-                },
-                "update_frequency": {
-                    "type": "string",
-                    "default": "real_time",
-                    "description": "How often to update entity information",
-                    "required": False,
-                    "options": ["real_time", "batch", "scheduled"],
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters
-            default_input_params={
-                "content": "",
-                "context": {},
-                "existing_entities": [],
-                "session_metadata": {},
+            # Runtime parameters (schema-style)
+            input_params={
+                "content": {
+                    "type": "string",
+                    "default": "",
+                    "description": "原始文本内容（来自AI节点上下文或用户输入）",
+                    "required": False,
+                    "multiline": True,
+                },
+                "existing_entities": {
+                    "type": "array",
+                    "default": [],
+                    "description": "已有实体（用于增量更新或去重）",
+                    "required": False,
+                },
+                "session_metadata": {
+                    "type": "object",
+                    "default": {},
+                    "description": "会话相关元数据（工单、项目、标签等）",
+                    "required": False,
+                },
             },
-            default_output_params={
-                "entities": [],
-                "relationships": [],
-                "entity_summary": "",
-                "confidence_scores": {},
-                "temporal_mentions": [],
-                "knowledge_links": {},
-                "context_enrichment": {},
+            output_params={
+                "entities": {
+                    "type": "array",
+                    "default": [],
+                    "description": "抽取得到的实体列表（含名称、类型、置信度、属性等）",
+                    "required": False,
+                },
+                "relationships": {
+                    "type": "array",
+                    "default": [],
+                    "description": "实体之间的关系（可选）",
+                    "required": False,
+                },
+                "entity_summary": {
+                    "type": "string",
+                    "default": "",
+                    "description": "实体和关系的简要总结",
+                    "required": False,
+                },
             },
             # Port definitions - Memory nodes don't use traditional ports
             input_ports=[],
@@ -355,96 +337,6 @@ class EntityMemorySpec(BaseNodeSpec):
                                 "source": "tech_knowledge_base",
                                 "additional_info": "Latest TensorFlow version with enhanced GPU support",
                             }
-                        },
-                    },
-                },
-                {
-                    "name": "Research Entity Extraction",
-                    "description": "Extract and track research-related entities from academic discussions",
-                    "configurations": {
-                        "entity_types": [
-                            "concept",
-                            "researcher",
-                            "publication",
-                            "methodology",
-                            "dataset",
-                        ],
-                        "extraction_model": OpenAIModel.GPT_5.value,
-                        "confidence_threshold": 0.85,
-                        "entity_linking": True,
-                        "temporal_tracking": True,
-                        "storage_backend": "elasticsearch",
-                    },
-                    "input_example": {
-                        "content": "Recent work by Dr. Andrew Chen on transformer architectures shows promising results. His paper on attention mechanisms, published in NIPS 2024, demonstrates improved performance on the Common Crawl dataset using novel positional encoding techniques.",
-                        "context": {
-                            "conversation_type": "research_discussion",
-                            "domain": "machine_learning",
-                            "academic_context": True,
-                        },
-                    },
-                    "expected_outputs": {
-                        "entities": [
-                            {
-                                "name": "Dr. Andrew Chen",
-                                "type": "researcher",
-                                "confidence": 0.96,
-                                "attributes": {
-                                    "title": "Dr.",
-                                    "research_area": "transformer_architectures",
-                                },
-                                "importance_score": 0.92,
-                            },
-                            {
-                                "name": "transformer architectures",
-                                "type": "concept",
-                                "confidence": 0.94,
-                                "attributes": {
-                                    "domain": "machine_learning",
-                                    "category": "neural_network_architecture",
-                                },
-                                "importance_score": 0.89,
-                            },
-                            {
-                                "name": "attention mechanisms",
-                                "type": "concept",
-                                "confidence": 0.97,
-                                "attributes": {
-                                    "domain": "deep_learning",
-                                    "category": "neural_mechanism",
-                                },
-                                "importance_score": 0.87,
-                            },
-                            {
-                                "name": "NIPS 2024",
-                                "type": "publication",
-                                "confidence": 0.99,
-                                "attributes": {
-                                    "conference": "NIPS",
-                                    "year": "2024",
-                                    "type": "conference_venue",
-                                },
-                                "importance_score": 0.85,
-                            },
-                            {
-                                "name": "Common Crawl dataset",
-                                "type": "dataset",
-                                "confidence": 0.98,
-                                "attributes": {"type": "web_crawl_dataset", "scale": "large_scale"},
-                                "importance_score": 0.76,
-                            },
-                        ],
-                        "knowledge_links": {
-                            "NIPS 2024": {
-                                "external_id": "nips_2024_conference",
-                                "source": "academic_database",
-                                "additional_info": "Neural Information Processing Systems Conference 2024",
-                            },
-                            "Common Crawl dataset": {
-                                "external_id": "common_crawl",
-                                "source": "dataset_registry",
-                                "additional_info": "Large-scale web crawl dataset for NLP research",
-                            },
                         },
                     },
                 },

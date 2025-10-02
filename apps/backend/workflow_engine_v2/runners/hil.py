@@ -17,9 +17,8 @@ sys.path.insert(0, str(backend_dir))
 from shared.models import TriggerInfo
 from shared.models.human_in_loop import HILChannelType, HILInteractionType
 from shared.models.workflow_new import Node
-
-from ..services.hil_service import HILWorkflowServiceV2
-from .base import NodeRunner
+from workflow_engine_v2.runners.base import NodeRunner
+from workflow_engine_v2.services.hil_service import HILWorkflowServiceV2
 
 logger = logging.getLogger(__name__)
 

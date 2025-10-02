@@ -9,8 +9,11 @@ from typing import Any, Dict, List, Optional
 import httpx
 import jwt
 from github import Github, GithubIntegration
-from shared.models.node_enums import TriggerSubtype
-from shared.models.trigger import ExecutionResult, TriggerStatus
+
+from shared.models.execution_new import ExecutionStatus
+from shared.models.node_enums import IntegrationProvider, TriggerSubtype
+from shared.models.trigger import TriggerStatus
+from shared.models.workflow_new import WorkflowExecutionResponse
 from workflow_scheduler.core.config import settings
 from workflow_scheduler.core.supabase_client import get_supabase_client
 from workflow_scheduler.triggers.base import BaseTrigger
@@ -154,7 +157,7 @@ class GitHubTrigger(BaseTrigger):
 
     async def process_github_event(
         self, event_type: str, payload: Dict[str, Any]
-    ) -> Optional[ExecutionResult]:
+    ) -> Optional[WorkflowExecutionResponse]:
         """
         Process GitHub webhook event
 
@@ -163,7 +166,7 @@ class GitHubTrigger(BaseTrigger):
             payload: GitHub webhook payload
 
         Returns:
-            ExecutionResult if workflow was triggered, None if filtered out
+            WorkflowExecutionResponse if workflow was triggered, None if filtered out
         """
         try:
             if not self.enabled:
@@ -204,7 +207,7 @@ class GitHubTrigger(BaseTrigger):
             # Trigger workflow
             result = await self._trigger_workflow(enhanced_data)
 
-            if result.status == "started":
+            if result.status == ExecutionStatus.RUNNING:
                 logger.info(
                     f"GitHub trigger executed successfully for workflow {self.workflow_id}: {result.execution_id}"
                 )
@@ -219,10 +222,11 @@ class GitHubTrigger(BaseTrigger):
             error_msg = f"Error processing GitHub event for workflow {self.workflow_id}: {str(e)}"
             logger.error(error_msg, exc_info=True)
 
-            return ExecutionResult(
-                status="error",
+            return WorkflowExecutionResponse(
+                execution_id=f"exec_{self.workflow_id}",
+                workflow_id=self.workflow_id,
+                status=ExecutionStatus.ERROR,
                 message=error_msg,
-                trigger_data={"event_type": event_type, "repository": self.repository},
             )
 
     async def _matches_advanced_filters(self, event_type: str, payload: Dict[str, Any]) -> bool:

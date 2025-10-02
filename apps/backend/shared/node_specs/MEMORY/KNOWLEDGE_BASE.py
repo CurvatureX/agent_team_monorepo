@@ -10,8 +10,8 @@ not connected through input/output ports.
 
 from typing import Any, Dict, List
 
-from ...models.node_enums import MemorySubtype, NodeType, OpenAIModel
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ...models.node_enums import MemorySubtype, NodeType
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class KnowledgeBaseMemorySpec(BaseNodeSpec):
@@ -23,89 +23,95 @@ class KnowledgeBaseMemorySpec(BaseNodeSpec):
             subtype=MemorySubtype.KNOWLEDGE_BASE,
             name="Knowledge_Base_Memory",
             description="Store and query structured knowledge facts and rules for factual context",
-            # Configuration parameters
+            # Configuration parameters (simplified)
             configurations={
                 "storage_backend": {
                     "type": "string",
                     "default": "neo4j",
-                    "description": "Storage backend for knowledge representation",
+                    "description": "知识存储后端",
                     "required": False,
                     "options": ["neo4j", "postgresql", "arangodb", "rdf_triple_store"],
-                },
-                "fact_extraction_model": {
-                    "type": "string",
-                    "default": OpenAIModel.GPT_5.value,
-                    "description": "Model for extracting structured facts",
-                    "required": False,
                 },
                 "confidence_threshold": {
                     "type": "float",
                     "default": 0.8,
-                    "description": "Minimum confidence score for fact storage (0.0-1.0)",
+                    "description": "事实入库的最小置信度（0.0-1.0）",
                     "required": False,
                 },
                 "fact_validation": {
                     "type": "boolean",
                     "default": True,
-                    "description": "Whether to validate facts against existing knowledge",
-                    "required": False,
-                },
-                "rule_inference": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Whether to enable rule-based inference",
+                    "description": "是否在写入前进行事实校验",
                     "required": False,
                 },
                 "knowledge_domains": {
                     "type": "array",
                     "default": ["general", "technical", "business"],
-                    "description": "Knowledge domains to organize facts",
-                    "required": False,
-                },
-                "fact_update_strategy": {
-                    "type": "string",
-                    "default": "versioned",
-                    "description": "How to handle fact updates and conflicts",
-                    "required": False,
-                    "options": ["versioned", "overwrite", "merge", "conflict_detection"],
-                },
-                "reasoning_depth": {
-                    "type": "integer",
-                    "default": 2,
-                    "description": "Maximum depth for inference reasoning",
-                    "required": False,
-                },
-                "fact_linking": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Enable linking related facts and concepts",
-                    "required": False,
-                },
-                "temporal_facts": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Support time-sensitive facts with validity periods",
+                    "description": "事实所属域（用于组织与检索）",
                     "required": False,
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters
-            default_input_params={
-                "content": "",
-                "query": "",
-                "fact_type": "",
-                "domain": "",
-                "operation": "query",
-                "validation_required": True,
+            # Runtime parameters (schema-style)
+            input_params={
+                "operation": {
+                    "type": "string",
+                    "default": "query",
+                    "description": "知识库操作",
+                    "required": False,
+                    "options": ["store", "query", "update", "delete"],
+                },
+                "content": {
+                    "type": "string",
+                    "default": "",
+                    "description": "原始文本内容（可从中抽取结构化事实）",
+                    "required": False,
+                    "multiline": True,
+                },
+                "facts": {
+                    "type": "array",
+                    "default": [],
+                    "description": "已结构化的事实（subject/predicate/object 等）",
+                    "required": False,
+                },
+                "query": {
+                    "type": "string",
+                    "default": "",
+                    "description": "检索查询字符串",
+                    "required": False,
+                },
+                "domain": {
+                    "type": "string",
+                    "default": "",
+                    "description": "限定域（可选）",
+                    "required": False,
+                },
+                "validation_required": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "是否需要事实校验",
+                    "required": False,
+                },
             },
-            default_output_params={
-                "facts": [],
-                "rules": [],
-                "inferences": [],
-                "knowledge_summary": "",
-                "confidence_scores": {},
-                "related_concepts": [],
-                "reasoning_chain": [],
+            output_params={
+                "facts": {
+                    "type": "array",
+                    "default": [],
+                    "description": "事实列表（查询或写入后返回）",
+                    "required": False,
+                },
+                "knowledge_summary": {
+                    "type": "string",
+                    "default": "",
+                    "description": "知识摘要或说明",
+                    "required": False,
+                },
+                "related_concepts": {
+                    "type": "array",
+                    "default": [],
+                    "description": "相关概念或实体（可选）",
+                    "required": False,
+                },
             },
             # Port definitions - Memory nodes don't use traditional ports
             input_ports=[],

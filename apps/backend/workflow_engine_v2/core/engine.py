@@ -249,22 +249,30 @@ class ExecutionEngine:
             inputs["_ctx"] = execution_context
 
             # Simple retry loop
-            max_retries = int(node.configurations.get("retry_attempts", 0) or 0)
+            # Helper to extract value from config (may be schema dict or direct value)
+            def _get_config_value(key: str, default):
+                val = node.configurations.get(key, default)
+                if isinstance(val, dict) and "default" in val:
+                    return val.get("default", default)
+                return val if val is not None else default
+
+            max_retries = int(_get_config_value("retry_attempts", 0) or 0)
             attempt = 0
             last_exc: Exception | None = None
             start_exec = _now_ms()
-            backoff = float(node.configurations.get("retry_backoff_seconds", 0) or 0)
-            backoff_factor = float(node.configurations.get("retry_backoff_factor", 1.0) or 1.0)
+            backoff = float(_get_config_value("retry_backoff_seconds", 0) or 0)
+            backoff_factor = float(_get_config_value("retry_backoff_factor", 1.0) or 1.0)
             while attempt <= max_retries:
                 try:
                     runner = default_runner_for(node)
                     # Timeout handling
                     exec_timeout = None
                     try:
-                        if node.configurations.get("timeout_seconds") is not None:
-                            exec_timeout = float(node.configurations.get("timeout_seconds"))
-                        elif node.configurations.get("timeout") is not None:
-                            exec_timeout = float(node.configurations.get("timeout"))
+                        timeout_val = _get_config_value("timeout_seconds", None)
+                        if timeout_val is None:
+                            timeout_val = _get_config_value("timeout", None)
+                        if timeout_val is not None:
+                            exec_timeout = float(timeout_val)
                     except Exception:
                         exec_timeout = None
                     if exec_timeout and exec_timeout > 0:
@@ -358,7 +366,7 @@ class ExecutionEngine:
                         "hil_timeout_seconds": outputs.get("_hil_timeout_seconds"),
                         "hil_node_id": outputs.get("_hil_node_id"),
                         "pause_context": {
-                            "node_output": outputs.get("main", {}),
+                            "node_output": outputs.get("result", {}),
                             "execution_context": {
                                 "execution_id": workflow_execution.execution_id,
                                 "workflow_id": workflow_execution.workflow_id,
@@ -372,7 +380,7 @@ class ExecutionEngine:
                         "type": "human_response",
                         "interaction_id": outputs.get("_hil_interaction_id"),
                         "required_fields": ["response_data", "response_type"],
-                        "timeout_action": outputs.get("main", {}).get("timeout_action", "fail"),
+                        "timeout_action": outputs.get("result", {}).get("timeout_action", "fail"),
                     }
 
                     # Store pause record in database if we have Supabase client
@@ -463,7 +471,38 @@ class ExecutionEngine:
                         )
             except Exception:
                 pass
-            node_execution.output_data = outputs
+            # Sanitize outputs for storage/propagation: only port fields (no control keys starting with '_')
+            sanitized_outputs = (
+                {k: v for k, v in outputs.items() if isinstance(k, str) and not k.startswith("_")}
+                if isinstance(outputs, dict)
+                else {}
+            )
+
+            # Enforce that each port payload exactly matches node.output_params keys
+            def _shape_payload(payload: Any) -> Dict[str, Any]:
+                allowed_defaults = node.output_params or {}
+                if not isinstance(allowed_defaults, dict):
+                    return payload if isinstance(payload, dict) else {}
+                shaped: Dict[str, Any] = {}
+                if isinstance(payload, dict):
+                    for k, default_val in allowed_defaults.items():
+                        shaped[k] = payload.get(k, default_val)
+                else:
+                    # Place primitive payload into 'data' if defined, otherwise use defaults
+                    if "data" in allowed_defaults:
+                        shaped = {
+                            k: (payload if k == "data" else v) for k, v in allowed_defaults.items()
+                        }
+                    else:
+                        shaped = dict(allowed_defaults)
+                return shaped
+
+            shaped_outputs = {
+                port: _shape_payload(payload) for port, payload in sanitized_outputs.items()
+            }
+            # Keep raw outputs for conversion functions
+            raw_outputs = sanitized_outputs
+            node_execution.output_data = shaped_outputs
             node_execution.input_data = inputs
             node_execution.status = NodeExecutionStatus.COMPLETED
             node_execution.end_time = _now_ms()
@@ -516,14 +555,14 @@ class ExecutionEngine:
                 message=f"Node {node.name} completed",
                 node_id=current_node_id,
             )
-            self._events.node_output_update(workflow_execution, current_node_id, ne)
-            self._events.node_completed(workflow_execution, current_node_id, ne)
-            self._repo.save(we)
+            self._events.node_output_update(workflow_execution, current_node_id, node_execution)
+            self._events.node_completed(workflow_execution, current_node_id, node_execution)
+            self._repo.save(workflow_execution)
             # Update node outputs context (by id and by name)
-            execution_context.node_outputs[current_node_id] = outputs
+            execution_context.node_outputs[current_node_id] = shaped_outputs
             try:
                 node_name = node.name
-                execution_context.node_outputs_by_name[node_name] = outputs
+                execution_context.node_outputs_by_name[node_name] = shaped_outputs
             except Exception:
                 pass
 
@@ -537,13 +576,13 @@ class ExecutionEngine:
 
             # Propagate, including fan-out
             for (
-                successor_nodeessor_node,
-                from_port,
-                to_port,
+                successor_node,
+                output_key,
                 conversion_function,
             ) in graph.successors(current_node_id):
-                if from_port == "iteration" and isinstance(outputs.get("iteration"), list):
-                    for item in outputs["iteration"]:
+                # Use output_key instead of from_port/to_port
+                if output_key == "iteration" and isinstance(shaped_outputs.get("iteration"), list):
+                    for item in shaped_outputs["iteration"]:
                         value = item
                         # Apply conversion function if provided
                         if conversion_function and isinstance(conversion_function, str):
@@ -557,38 +596,46 @@ class ExecutionEngine:
                                 # Keep original value on error
                         queue.append(
                             {
-                                "node_id": successor_nodeessor_node,
-                                "override": {to_port: value},
+                                "node_id": successor_node,
+                                "override": {"result": value},  # Default to result input
                                 "parent_activation_id": node_execution.activation_id,
                             }
                         )
                     continue
-                successor_node_inputs = pending_inputs.setdefault(successor_nodeessor_node, {})
-                value = outputs.get(from_port)
+                successor_node_inputs = pending_inputs.setdefault(successor_node, {})
+                value = shaped_outputs.get(output_key)
                 if value is None:
-                    value = outputs.get("main", outputs)
+                    value = shaped_outputs.get("result", shaped_outputs)
 
                 # Apply conversion function if provided
                 if conversion_function and isinstance(conversion_function, str):
                     try:
+                        # Use raw output for conversion function (not shaped)
+                        raw_value = raw_outputs.get(output_key)
+                        if raw_value is None:
+                            raw_value = raw_outputs.get("result", raw_outputs)
+
                         converted_data = execute_conversion_function_flexible(
-                            conversion_function, {"value": value, "data": value, "output": value}
+                            conversion_function,
+                            {"value": raw_value, "data": raw_value, "output": raw_value},
                         )
                         value = converted_data
                     except Exception as e:
                         print(f"Conversion function failed: {e}")
                         # Keep original value on error
-                if to_port in successor_node_inputs:
-                    existing = successor_node_inputs[to_port]
+                # Input to successor node (use "main" as default input key)
+                input_key = "result"
+                if input_key in successor_node_inputs:
+                    existing = successor_node_inputs[input_key]
                     if isinstance(existing, list):
                         existing.append(value)
-                        successor_node_inputs[to_port] = existing
+                        successor_node_inputs[input_key] = existing
                     else:
-                        successor_node_inputs[to_port] = [existing, value]
+                        successor_node_inputs[input_key] = [existing, value]
                 else:
-                    successor_node_inputs[to_port] = value
-                if self._is_node_ready(graph, successor_nodeessor_node, pending_inputs):
-                    queue.append({"node_id": successor_nodeessor_node, "override": None})
+                    successor_node_inputs[input_key] = value
+                if self._is_node_ready(graph, successor_node, pending_inputs):
+                    queue.append({"node_id": successor_node, "override": None})
 
             workflow_execution.execution_sequence.append(current_node_id)
             if not is_fanout_run:
@@ -603,10 +650,10 @@ class ExecutionEngine:
             self._log.log(
                 workflow_execution,
                 level=LogLevel.INFO,
-                message="Execution completed successor_nodeessfully",
+                message="Execution completed successfully",
             )
-            self._events.execution_completed(we)
-            self._repo.save(we)
+            self._events.execution_completed(workflow_execution)
+            self._repo.save(workflow_execution)
         return workflow_execution
 
     # Async conversion_functionenience wrapper for non-blocking run
@@ -704,15 +751,14 @@ class ExecutionEngine:
 
                 # Propagate according to graph connections
                 for (
-                    successor_nodeessor_node,
-                    from_port,
-                    to_port,
+                    successor_node,
+                    output_key,
                     conversion_function,
                 ) in graph.successors(current_node_id):
-                    successor_node_inputs = pending_inputs.setdefault(successor_nodeessor_node, {})
-                    value = outputs.get(from_port)
+                    successor_node_inputs = pending_inputs.setdefault(successor_node, {})
+                    value = outputs.get(output_key)
                     if value is None:
-                        value = outputs.get("main", outputs)
+                        value = outputs.get("result", outputs)
 
                     # Apply conversion function if provided
                     if conversion_function and isinstance(conversion_function, str):
@@ -726,22 +772,23 @@ class ExecutionEngine:
                             print(f"Conversion function failed: {e}")
                             # Keep original value on error
 
-                    # Merge values if multiple upstream connections target same to_port
-                    if to_port in successor_node_inputs:
-                        existing = successor_node_inputs[to_port]
+                    # Input to successor node (use "main" as default input key)
+                    input_key = "result"
+                    if input_key in successor_node_inputs:
+                        existing = successor_node_inputs[input_key]
                         if isinstance(existing, list):
                             existing.append(value)
-                            successor_node_inputs[to_port] = existing
+                            successor_node_inputs[input_key] = existing
                         else:
-                            successor_node_inputs[to_port] = [existing, value]
+                            successor_node_inputs[input_key] = [existing, value]
                     else:
-                        successor_node_inputs[to_port] = value
+                        successor_node_inputs[input_key] = value
 
                 workflow_execution.execution_sequence.append(current_node_id)
                 executed.add(current_node_id)
                 # Enqueue successors that are now ready
-                for successor_nodeessor_node, _, _ in graph.successors(current_node_id):
-                    if self._is_node_ready(graph, successor_nodeessor_node, pending_inputs):
+                for successor_node, _, _ in graph.successors(current_node_id):
+                    if self._is_node_ready(graph, successor_node, pending_inputs):
                         ready.append(successor_node)
 
             except Exception:
@@ -781,8 +828,8 @@ class ExecutionEngine:
 
     def resume_with_user_input(self, execution_id: str, node_id: str, input_data: Any) -> Execution:
         """Resume an execution waiting on HIL node with provided user input."""
-        ctx = self._store.get(execution_id)
-        we = execution_context.execution
+        execution_context = self._store.get(execution_id)
+        workflow_execution = execution_context.execution
         pending_inputs = execution_context.pending_inputs
 
         if workflow_execution.current_node_id != node_id:
@@ -790,7 +837,7 @@ class ExecutionEngine:
 
         # Build outputs; special handling for HIL classification
         node = execution_context.graph.nodes[node_id]
-        outputs = {"main": input_data}
+        outputs = {"result": input_data}
         ntype = node.type if isinstance(node.type, NodeType) else NodeType(str(node.type))
         if ntype == NodeType.HUMAN_IN_THE_LOOP:
             text = (
@@ -800,8 +847,8 @@ class ExecutionEngine:
             )
             label = self._hil.classify(str(text))
             port = "confirmed" if label == "approved" else label
-            outputs = {port: input_data, "main": input_data}
-        ne = workflow_execution.node_executions[node_id]
+            outputs = {port: input_data, "result": input_data}
+        node_execution = workflow_execution.node_executions[node_id]
         node_execution.output_data = outputs
         node_execution.status = NodeExecutionStatus.COMPLETED
         node_execution.end_time = _now_ms()
@@ -827,13 +874,12 @@ class ExecutionEngine:
             pass
         # Propagate to successors
         for (
-            successor_nodeessor_node,
-            from_port,
-            to_port,
+            successor_node,
+            output_key,
             conversion_function,
         ) in execution_context.graph.successors(node_id):
-            successor_node_inputs = pending_inputs.setdefault(successor_nodeessor_node, {})
-            value = outputs.get(from_port) or outputs.get("main", outputs)
+            successor_node_inputs = pending_inputs.setdefault(successor_node, {})
+            value = outputs.get(output_key) or outputs.get("result", outputs)
 
             # Apply conversion function if provided
             if conversion_function and isinstance(conversion_function, str):
@@ -845,15 +891,17 @@ class ExecutionEngine:
                 except Exception as e:
                     print(f"Conversion function failed: {e}")
                     # Keep original value on error
-            if to_port in successor_node_inputs:
-                existing = successor_node_inputs[to_port]
+            # Input to successor node (use "main" as default input key)
+            input_key = "result"
+            if input_key in successor_node_inputs:
+                existing = successor_node_inputs[input_key]
                 if isinstance(existing, list):
                     existing.append(value)
-                    successor_node_inputs[to_port] = existing
+                    successor_node_inputs[input_key] = existing
                 else:
-                    successor_node_inputs[to_port] = [existing, value]
+                    successor_node_inputs[input_key] = [existing, value]
             else:
-                successor_node_inputs[to_port] = value
+                successor_node_inputs[input_key] = value
 
         # Clear waiting state
         workflow_execution.current_node_id = None
@@ -863,10 +911,8 @@ class ExecutionEngine:
         # Continue scheduling from successors
         ready = [
             successor_node
-            for successor_nodeessor_node, *_ in execution_context.graph.successors(node_id)
-            if self._is_node_ready(
-                execution_context.graph, successor_nodeessor_node, pending_inputs
-            )
+            for successor_node, *_ in execution_context.graph.successors(node_id)
+            if self._is_node_ready(execution_context.graph, successor_node, pending_inputs)
         ]
         executed = set(workflow_execution.execution_sequence)
         while ready:
@@ -902,20 +948,21 @@ class ExecutionEngine:
                     else None
                 )
 
-                for successor_node2, from_port2, to_port2 in execution_context.graph.successors(
+                for successor_node2, output_key2, _conversion in execution_context.graph.successors(
                     current_node_id
                 ):
                     successor_node_inputs2 = pending_inputs.setdefault(successor_node2, {})
-                    value2 = outputs.get(from_port2) or outputs.get("main", outputs)
-                    if to_port2 in successor_node_inputs2:
-                        existing2 = successor_node_inputs2[to_port2]
+                    value2 = outputs.get(output_key2) or outputs.get("result", outputs)
+                    input_key2 = "result"
+                    if input_key2 in successor_node_inputs2:
+                        existing2 = successor_node_inputs2[input_key2]
                         if isinstance(existing2, list):
                             existing2.append(value2)
-                            successor_node_inputs2[to_port2] = existing2
+                            successor_node_inputs2[input_key2] = existing2
                         else:
-                            successor_node_inputs2[to_port2] = [existing2, value2]
+                            successor_node_inputs2[input_key2] = [existing2, value2]
                     else:
-                        successor_node_inputs2[to_port2] = value2
+                        successor_node_inputs2[input_key2] = value2
                 executed.add(current_node_id)
                 for successor_node2, _, _ in execution_context.graph.successors(current_node_id):
                     if self._is_node_ready(
@@ -1009,8 +1056,8 @@ class ExecutionEngine:
 
         ne = workflow_execution.node_executions[node_id]
         inputs = pending_inputs.get(node_id, {})
-        base = inputs.get("main", inputs)
-        outputs = {port: base, "main": base}
+        base = inputs.get("result", inputs)
+        outputs = {port: base, "result": base}
         node_execution.output_data = outputs
         node_execution.status = NodeExecutionStatus.COMPLETED
         node_execution.end_time = _now_ms()
@@ -1030,34 +1077,32 @@ class ExecutionEngine:
 
         for (
             successor_node,
-            from_port,
-            to_port,
+            output_key,
             conversion_function,
         ) in execution_context.graph.successors(node_id):
             successor_node_inputs = pending_inputs.setdefault(successor_node, {})
-            value = outputs.get(from_port) or outputs.get("main", outputs)
+            value = outputs.get(output_key) or outputs.get("result", outputs)
             # Apply conversion function if provided
             if conversion_function:
                 value = execute_conversion_function_flexible(conversion_function, value)
-            if to_port in successor_node_inputs:
-                existing = successor_node_inputs[to_port]
+            input_key = "result"
+            if input_key in successor_node_inputs:
+                existing = successor_node_inputs[input_key]
                 if isinstance(existing, list):
                     existing.append(value)
-                    successor_node_inputs[to_port] = existing
+                    successor_node_inputs[input_key] = existing
                 else:
-                    successor_node_inputs[to_port] = [existing, value]
+                    successor_node_inputs[input_key] = [existing, value]
             else:
-                successor_node_inputs[to_port] = value
+                successor_node_inputs[input_key] = value
 
         workflow_execution.current_node_id = None
         workflow_execution.status = ExecutionStatus.RUNNING
 
         ready = [
             successor_node
-            for successor_nodeessor_node, *_ in execution_context.graph.successors(node_id)
-            if self._is_node_ready(
-                execution_context.graph, successor_nodeessor_node, pending_inputs
-            )
+            for successor_node, *_ in execution_context.graph.successors(node_id)
+            if self._is_node_ready(execution_context.graph, successor_node, pending_inputs)
         ]
         executed = set(workflow_execution.execution_sequence)
         while ready:
@@ -1116,24 +1161,24 @@ class ExecutionEngine:
                 )
                 for (
                     successor_node2,
-                    from_port2,
-                    to_port2,
+                    output_key2,
                     conversion_function2,
                 ) in execution_context.graph.successors(current_node_id):
                     successor_node_inputs2 = pending_inputs.setdefault(successor_node2, {})
-                    value2 = outputs2.get(from_port2) or outputs2.get("main", outputs2)
+                    value2 = outputs2.get(output_key2) or outputs2.get("result", outputs2)
                     # Apply conversion function if provided
                     if conversion_function2:
                         value2 = execute_conversion_function_flexible(conversion_function2, value2)
-                    if to_port2 in successor_node_inputs2:
-                        existing2 = successor_node_inputs2[to_port2]
+                    input_key2 = "result"
+                    if input_key2 in successor_node_inputs2:
+                        existing2 = successor_node_inputs2[input_key2]
                         if isinstance(existing2, list):
                             existing2.append(value2)
-                            successor_node_inputs2[to_port2] = existing2
+                            successor_node_inputs2[input_key2] = existing2
                         else:
-                            successor_node_inputs2[to_port2] = [existing2, value2]
+                            successor_node_inputs2[input_key2] = [existing2, value2]
                     else:
-                        successor_node_inputs2[to_port2] = value2
+                        successor_node_inputs2[input_key2] = value2
                 executed.add(current_node_id)
                 for successor_node2, _, _ in execution_context.graph.successors(current_node_id):
                     if self._is_node_ready(
@@ -1195,12 +1240,17 @@ class ExecutionEngine:
     def _is_node_ready(
         self, graph: WorkflowGraph, node_id: str, pending_inputs: Dict[str, Dict[str, Any]]
     ) -> bool:
-        node = graph.nodes[node_id]
-        required_ports = [p.id for p in node.input_ports if getattr(p, "required", True)]
-        if not required_ports:
+        # A node is ready when at least one incoming connection has provided data
+        # Get all predecessor nodes
+        predecessors = list(graph.predecessors(node_id))
+
+        # If no predecessors, node is ready (e.g., trigger nodes)
+        if not predecessors:
             return True
+
+        # Check if at least one port has received data
         provided = pending_inputs.get(node_id, {})
-        return all(rp in provided for rp in required_ports)
+        return len(provided) > 0
 
 
 __all__ = ["ExecutionEngine"]

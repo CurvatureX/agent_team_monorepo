@@ -9,16 +9,19 @@ from pathlib import Path
 backend_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from shared.models.node_enums import ActionSubtype, FlowSubtype, NodeType
+from shared.models.node_enums import ActionSubtype, AIAgentSubtype, FlowSubtype, NodeType
 
 # Use absolute imports
 from shared.models.workflow_new import Node
 
 from .action import DataTransformationRunner, HttpRequestRunner
 from .ai import AIAgentRunner
+from .ai_anthropic import AnthropicClaudeRunner
+from .ai_gemini import GoogleGeminiRunner
+from .ai_openai import OpenAIChatGPTRunner
 from .base import PassthroughRunner, TriggerRunner
 from .external import ExternalActionRunner
-from .flow import DelayRunner, FilterRunner, IfRunner, MergeRunner, SortRunner, SwitchRunner
+from .flow import DelayRunner, FilterRunner, IfRunner, MergeRunner, SortRunner
 from .hil import HILRunner
 from .memory import MemoryRunner
 from .tool import ToolRunner
@@ -40,8 +43,6 @@ def default_runner_for(node: Node):
             fsub = None
         if fsub == FlowSubtype.IF:
             return IfRunner()
-        if fsub == FlowSubtype.SWITCH:
-            return SwitchRunner()
         if fsub == FlowSubtype.MERGE:
             return MergeRunner()
         if fsub == FlowSubtype.SPLIT:
@@ -86,6 +87,20 @@ def default_runner_for(node: Node):
     if ntype == NodeType.TOOL:
         return ToolRunner()
     if ntype == NodeType.AI_AGENT:
+        # Route to dedicated runner based on AI provider subtype
+        try:
+            ai_subtype = AIAgentSubtype(subtype)
+        except Exception:
+            ai_subtype = None
+
+        if ai_subtype == AIAgentSubtype.ANTHROPIC_CLAUDE:
+            return AnthropicClaudeRunner()
+        elif ai_subtype == AIAgentSubtype.OPENAI_CHATGPT:
+            return OpenAIChatGPTRunner()
+        elif ai_subtype == AIAgentSubtype.GOOGLE_GEMINI:
+            return GoogleGeminiRunner()
+
+        # Fallback to generic AIAgentRunner for unknown subtypes
         return AIAgentRunner()
     if ntype == NodeType.HUMAN_IN_THE_LOOP:
         return HILRunner()

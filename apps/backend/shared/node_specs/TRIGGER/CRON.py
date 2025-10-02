@@ -7,8 +7,8 @@ and produces execution context based on cron schedule.
 
 from typing import Any, Dict, List
 
-from ...models.node_enums import NodeType, TriggerSubtype
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from shared.models.node_enums import NodeType, TriggerSubtype
+from shared.node_specs.base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class CronTriggerSpec(BaseNodeSpec):
@@ -45,27 +45,57 @@ class CronTriggerSpec(BaseNodeSpec):
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters
-            default_input_params={},  # Triggers have no input
-            default_output_params={
-                "trigger_time": "",
-                "scheduled_time": "",
-                "execution_id": "",
-                "cron_expression": "",
-                "timezone": "",
-                "trigger_message": "",
+            # Parameter schemas (preferred over legacy defaults)
+            input_params={},  # Triggers have no runtime inputs
+            output_params={
+                "trigger_time": {
+                    "type": "string",
+                    "default": "",
+                    "description": "ISO-8601 time when the cron fired",
+                    "required": False,
+                },
+                "scheduled_time": {
+                    "type": "string",
+                    "default": "",
+                    "description": "ISO-8601 scheduled time per cron",
+                    "required": False,
+                },
+                "execution_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Execution identifier for correlation",
+                    "required": False,
+                },
+                "cron_expression": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Cron expression used",
+                    "required": False,
+                },
+                "timezone": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Timezone used for evaluation",
+                    "required": False,
+                },
+                "trigger_message": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Human-friendly trigger message",
+                    "required": False,
+                },
             },
             # Port definitions
             input_ports=[],  # Triggers have no input ports
             output_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="dict",
-                    description="Scheduled execution output with timing information",
-                    required=False,
-                    max_connections=-1,
-                )
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "Scheduled execution output with timing information",
+                    "required": False,
+                    "max_connections": -1,
+                }
             ],
             # Metadata
             tags=["trigger", "cron", "scheduled", "time-based"],

@@ -125,7 +125,6 @@ Provide specific feedback with line numbers and improvement suggestions.
 | **FILTER** | Data filtering           | Include/exclude based on criteria |
 | **LOOP**   | Iteration and repetition | ForEach, While, Until loops       |
 | **MERGE**  | Data stream combination  | Union, intersection, join         |
-| **SWITCH** | Multi-way routing        | Case-based routing                |
 | **WAIT**   | Delays and pausing       | Time delays, condition waiting    |
 
 ## 🚀 Quick Start

@@ -8,7 +8,7 @@ managing channels, roles, and server interactions through Discord API.
 from typing import Any, Dict, List
 
 from ...models.node_enums import ExternalActionSubtype, NodeType
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class DiscordActionSpec(BaseNodeSpec):
@@ -22,13 +22,6 @@ class DiscordActionSpec(BaseNodeSpec):
             description="Perform Discord bot operations including messaging, channel management, and server interactions",
             # Configuration parameters
             configurations={
-                "discord_bot_token": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Discord机器人令牌",
-                    "required": True,
-                    "sensitive": True,
-                },
                 "action_type": {
                     "type": "string",
                     "default": "send_message",
@@ -155,48 +148,92 @@ class DiscordActionSpec(BaseNodeSpec):
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters
-            default_input_params={"data": {}, "context": {}, "variables": {}},
-            default_output_params={
-                "success": False,
-                "discord_response": {},
-                "message_id": "",
-                "channel_id": "",
-                "error_message": "",
-                "rate_limit_info": {},
-                "execution_metadata": {},
+            # Parameter schemas (preferred over legacy defaults)
+            input_params={
+                "data": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Primary input payload",
+                    "required": False,
+                },
+                "context": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Context for templating or logic",
+                    "required": False,
+                },
+                "variables": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Template variables",
+                    "required": False,
+                },
+            },
+            output_params={
+                "success": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Whether Discord API operation succeeded",
+                    "required": False,
+                },
+                "discord_response": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Parsed Discord API response",
+                    "required": False,
+                },
+                "message_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Message ID (if sent)",
+                    "required": False,
+                },
+                "channel_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Channel ID the message was sent to",
+                    "required": False,
+                },
+                "error_message": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Error message if operation failed",
+                    "required": False,
+                },
+                "rate_limit_info": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Rate limit info if available",
+                    "required": False,
+                },
+                "execution_metadata": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Execution metadata (timings, retries)",
+                    "required": False,
+                },
             },
             # Port definitions
             input_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="dict",
-                    description="Input data for Discord action",
-                    required=True,
-                    max_connections=1,
-                )
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "Input data for Discord action",
+                    "required": True,
+                    "max_connections": 1,
+                }
             ],
             output_ports=[
-                create_port(
-                    port_id="success",
-                    name="success",
-                    data_type="dict",
-                    description="Output when Discord action succeeds",
-                    required=True,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="error",
-                    name="error",
-                    data_type="dict",
-                    description="Output when Discord action fails",
-                    required=False,
-                    max_connections=-1,
-                ),
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "Output when Discord action succeeds",
+                    "required": True,
+                    "max_connections": -1,
+                }
             ],
-            # Metadata
-            tags=["external-action", "discord", "messaging", "bot", "community", "gaming"],
             # Examples
             examples=[
                 {
@@ -230,7 +267,7 @@ class DiscordActionSpec(BaseNodeSpec):
                         }
                     },
                     "expected_outputs": {
-                        "success": {
+                        "main": {
                             "success": True,
                             "discord_response": {
                                 "id": "1234567890123456789",
@@ -277,7 +314,7 @@ class DiscordActionSpec(BaseNodeSpec):
                         }
                     },
                     "expected_outputs": {
-                        "success": {
+                        "main": {
                             "success": True,
                             "discord_response": {
                                 "user_id": "555666777888999000",
@@ -325,7 +362,7 @@ class DiscordActionSpec(BaseNodeSpec):
                         }
                     },
                     "expected_outputs": {
-                        "success": {
+                        "main": {
                             "success": True,
                             "discord_response": {
                                 "id": "333444555666777888",
@@ -372,7 +409,7 @@ class DiscordActionSpec(BaseNodeSpec):
                         }
                     },
                     "expected_outputs": {
-                        "success": {
+                        "main": {
                             "success": True,
                             "discord_response": {
                                 "id": "999000111222333444",

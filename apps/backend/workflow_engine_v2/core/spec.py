@@ -16,7 +16,7 @@ class SpecNotFoundError(KeyError):
 def _import_spec_registry():
     """Import shared spec registry if available; returns callables or (None, None)."""
     try:
-        from shared.node_specs.nodes import get_node_spec, list_available_specs  # type: ignore
+        from shared.node_specs import get_node_spec, list_available_specs  # type: ignore
 
         return get_node_spec, list_available_specs
     except Exception:
@@ -122,6 +122,7 @@ def _fallback_spec(node_type: str, subtype: str) -> BaseModel | None:
     supported = {
         (NodeType.TRIGGER.value, TriggerSubtype.WEBHOOK.value),
         (NodeType.TRIGGER.value, TriggerSubtype.MANUAL.value),
+        (NodeType.TRIGGER.value, TriggerSubtype.CRON.value),
         (NodeType.AI_AGENT.value, AIAgentSubtype.OPENAI_CHATGPT.value),
         (NodeType.AI_AGENT.value, AIAgentSubtype.ANTHROPIC_CLAUDE.value),
         (NodeType.EXTERNAL_ACTION.value, ExternalActionSubtype.SLACK.value),
@@ -135,6 +136,11 @@ def _fallback_spec(node_type: str, subtype: str) -> BaseModel | None:
         (NodeType.FLOW.value, FlowSubtype.FOR_EACH.value),
         (NodeType.HUMAN_IN_THE_LOOP.value, HumanLoopSubtype.SLACK_INTERACTION.value),
         (NodeType.MEMORY.value, MemorySubtype.KEY_VALUE_STORE.value),
+        (NodeType.TOOL.value, "NOTION_MCP_TOOL"),
+        (NodeType.TOOL.value, "SLACK_MCP_TOOL"),
+        (NodeType.TOOL.value, "DISCORD_MCP_TOOL"),
+        (NodeType.TOOL.value, "GOOGLE_CALENDAR_MCP_TOOL"),
+        (NodeType.TOOL.value, "FIRECRAWL_MCP_TOOL"),
     }
     if (node_type, subtype) in supported:
         return _StubSpec(node_type=node_type, subtype=subtype)

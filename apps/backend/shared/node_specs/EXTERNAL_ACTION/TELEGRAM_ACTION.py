@@ -8,7 +8,7 @@ managing chats, inline keyboards, and bot interactions through Telegram Bot API.
 from typing import Any, Dict, List
 
 from ...models.node_enums import ExternalActionSubtype, NodeType
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class TelegramActionSpec(BaseNodeSpec):
@@ -167,45 +167,99 @@ class TelegramActionSpec(BaseNodeSpec):
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters
-            default_input_params={"data": {}, "context": {}, "variables": {}},
-            default_output_params={
-                "success": False,
-                "telegram_response": {},
-                "message_id": "",
-                "chat_id": "",
-                "error_message": "",
-                "rate_limit_info": {},
-                "execution_metadata": {},
+            # Parameter schemas (preferred over legacy defaults)
+            input_params={
+                "data": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Primary input payload",
+                    "required": False,
+                },
+                "context": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Context for templating or logic",
+                    "required": False,
+                },
+                "variables": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Template variables",
+                    "required": False,
+                },
+            },
+            output_params={
+                "success": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Whether Telegram API operation succeeded",
+                    "required": False,
+                },
+                "telegram_response": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Parsed Telegram API response",
+                    "required": False,
+                },
+                "message_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Message ID (if sent)",
+                    "required": False,
+                },
+                "chat_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Chat ID the message was sent to",
+                    "required": False,
+                },
+                "error_message": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Error message if operation failed",
+                    "required": False,
+                },
+                "rate_limit_info": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Telegram rate limit info if available",
+                    "required": False,
+                },
+                "execution_metadata": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Execution metadata (timings, retries)",
+                    "required": False,
+                },
             },
             # Port definitions
             input_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="dict",
-                    description="Input data for Telegram action",
-                    required=True,
-                    max_connections=1,
-                )
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "Input data for Telegram action",
+                    "required": True,
+                    "max_connections": 1,
+                }
             ],
             output_ports=[
-                create_port(
-                    port_id="success",
-                    name="success",
-                    data_type="dict",
-                    description="Output when Telegram action succeeds",
-                    required=True,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="error",
-                    name="error",
-                    data_type="dict",
-                    description="Output when Telegram action fails",
-                    required=False,
-                    max_connections=-1,
-                ),
+                {
+                    "id": "success",
+                    "name": "success",
+                    "data_type": "dict",
+                    "description": "Output when Telegram action succeeds",
+                    "required": True,
+                    "max_connections": -1,
+                },
+                {
+                    "id": "error",
+                    "name": "error",
+                    "data_type": "dict",
+                    "description": "Output when Telegram action fails",
+                    "required": False,
+                    "max_connections": -1,
+                },
             ],
             # Metadata
             tags=["external-action", "telegram", "messaging", "bot", "communication"],

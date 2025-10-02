@@ -12,6 +12,7 @@ from uuid import UUID
 
 import asyncpg
 
+from shared.models.workflow_new import WorkflowDeploymentStatus as DeploymentStatus
 from workflow_scheduler.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,46 @@ class DirectDBService:
         self.database_url = settings.database_url
         self.pool: Optional[asyncpg.Pool] = None
         self._pool_initialized = False
+
+    @staticmethod
+    def _normalize_deployment_status(status: Optional[str]) -> str:
+        """
+        Normalize incoming deployment status values to align with the
+        database constraint on workflows.deployment_status.
+
+        Allowed values (per latest migration): 'pending', 'deployed', 'failed', 'undeployed'.
+        Map legacy/uppercase values to the allowed set to avoid constraint violations.
+        """
+        if not status:
+            return "pending"
+
+        s = str(status).strip()
+        # Try enum by name or value
+        try:
+            return DeploymentStatus[s.upper()].value
+        except Exception:
+            pass
+        try:
+            return DeploymentStatus(s).value
+        except Exception:
+            pass
+
+        # Legacy mappings for transitional states
+        mapping = {
+            "DRAFT": DeploymentStatus.PENDING.value,
+            "DEPLOYING": DeploymentStatus.PENDING.value,
+            "UNDEPLOYING": DeploymentStatus.PENDING.value,
+            "DEPRECATED": DeploymentStatus.UNDEPLOYED.value,
+            "DEPLOYMENT_FAILED": DeploymentStatus.FAILED.value,
+        }
+
+        return mapping.get(s.upper(), DeploymentStatus.PENDING.value)
+
+    async def initialize(self):
+        """Initialize the database connection pool - call once on service startup"""
+        if not self._pool_initialized:
+            await self._initialize_pool()
+            logger.info("🔌 DirectDBService initialized successfully")
 
     async def _initialize_pool(self):
         """Initialize connection pool if not already done"""
@@ -91,8 +132,9 @@ class DirectDBService:
 
     async def _get_connection(self):
         """Get a database connection from pool with fallback to direct connection"""
-        # Ensure pool is initialized
-        await self._initialize_pool()
+        # Initialize pool if not already done (fallback for backwards compatibility)
+        if not self._pool_initialized:
+            await self._initialize_pool()
 
         if self.pool:
             # Use pool connection (preferred)
@@ -118,9 +160,6 @@ class DirectDBService:
     ) -> bool:
         """Update workflow deployment status using raw SQL"""
         try:
-            # Ensure pool is initialized
-            await self._initialize_pool()
-
             # Use pool connection with context manager
             async with self.pool.acquire() as conn:
                 # Validate workflow_id format
@@ -136,17 +175,43 @@ class DirectDBService:
                 # Get current version if we need to increment it
                 current_version = 1
                 if increment_version:
-                    current_version_result = await conn.fetchval(
-                        "SELECT deployment_version FROM workflows WHERE id = $1",
-                        workflow_uuid,
-                    )
-                    current_version = (current_version_result or 0) + 1
+                    try:
+                        current_version_result = await conn.fetchval(
+                            "SELECT deployment_version FROM workflows WHERE id = $1",
+                            workflow_uuid,
+                        )
+                        current_version = (current_version_result or 0) + 1
+                    except Exception as e:
+                        if 'column "deployment_version" does not exist' in str(e):
+                            logger.warning("deployment_version column missing, adding it now...")
+                            try:
+                                await conn.execute(
+                                    "ALTER TABLE workflows ADD COLUMN deployment_version INTEGER NOT NULL DEFAULT 1"
+                                )
+                                logger.info("✅ Added deployment_version column successfully")
+                                # Now try again to get the version
+                                current_version_result = await conn.fetchval(
+                                    "SELECT deployment_version FROM workflows WHERE id = $1",
+                                    workflow_uuid,
+                                )
+                                current_version = (current_version_result or 0) + 1
+                            except Exception as add_error:
+                                logger.error(
+                                    f"Failed to add deployment_version column: {add_error}"
+                                )
+                                current_version = 1
+                        else:
+                            logger.error(f"Error getting deployment_version: {e}")
+                            current_version = 1
+
+                # Normalize status to satisfy DB constraint
+                normalized_status = self._normalize_deployment_status(deployment_status)
 
                 # Build the UPDATE query dynamically
                 set_clauses = ["deployment_status = $2", "updated_at = $3"]
                 params = [
                     workflow_uuid,
-                    deployment_status,
+                    normalized_status,
                     int(datetime.now(timezone.utc).timestamp()),  # Unix timestamp for bigint field
                 ]
                 param_index = 4
@@ -182,7 +247,7 @@ class DirectDBService:
 
                 if affected_rows > 0:
                     logger.info(
-                        f"✅ Updated workflow deployment status: {workflow_id} -> {deployment_status}"
+                        f"✅ Updated workflow deployment status: {workflow_id} -> {normalized_status}"
                     )
                     return True
                 else:
@@ -210,9 +275,6 @@ class DirectDBService:
     ) -> bool:
         """Create a deployment history record using raw SQL"""
         try:
-            # Ensure pool is initialized
-            await self._initialize_pool()
-
             # Use pool connection with context manager
             async with self.pool.acquire() as conn:
                 # Validate workflow_id format
@@ -274,9 +336,6 @@ class DirectDBService:
     async def get_workflow_current_status(self, workflow_id: str) -> Optional[Dict]:
         """Get current workflow deployment status"""
         try:
-            # Ensure pool is initialized
-            await self._initialize_pool()
-
             # Use pool connection with context manager
             async with self.pool.acquire() as conn:
                 # Validate workflow_id format
@@ -305,6 +364,133 @@ class DirectDBService:
 
         except Exception as e:
             logger.error(f"Error getting workflow status {workflow_id}: {e}", exc_info=True)
+            return None
+
+    async def create_or_update_workflow(
+        self,
+        workflow_id: str,
+        workflow_spec: Dict,
+        user_id: Optional[str] = None,
+        name: Optional[str] = None,
+    ) -> bool:
+        """Create or update a workflow record in the database"""
+        try:
+            # Use pool connection with context manager
+            async with self.pool.acquire() as conn:
+                # Validate workflow_id format
+                if isinstance(workflow_id, str):
+                    try:
+                        workflow_uuid = UUID(workflow_id)
+                    except ValueError:
+                        logger.warning(f"Invalid workflow_id format: {workflow_id}")
+                        return False
+                else:
+                    workflow_uuid = workflow_id
+
+                # Extract metadata from workflow_spec
+                metadata = workflow_spec.get("metadata", {})
+                workflow_name = name or metadata.get("name", "Untitled Workflow")
+                workflow_user_id = user_id or metadata.get("created_by")
+
+                # Convert user_id to UUID if it's a string
+                user_uuid = None
+                if workflow_user_id:
+                    try:
+                        user_uuid = (
+                            UUID(workflow_user_id)
+                            if isinstance(workflow_user_id, str)
+                            else workflow_user_id
+                        )
+                    except ValueError:
+                        logger.warning(f"Invalid user_id format: {workflow_user_id}")
+                        user_uuid = None
+
+                # Use UPSERT to create or update the workflow record
+                upsert_query = """
+                    INSERT INTO workflows (
+                        id,
+                        user_id,
+                        name,
+                        workflow_data,
+                        deployment_status,
+                        deployment_version,
+                        deployment_config,
+                        created_at,
+                        updated_at
+                    ) VALUES (
+                        $1, $2, $3, $4, $5, $6, $7, $8, $9
+                    )
+                    ON CONFLICT (id)
+                    DO UPDATE SET
+                        name = EXCLUDED.name,
+                        workflow_data = EXCLUDED.workflow_data,
+                        updated_at = EXCLUDED.updated_at
+                    RETURNING id
+                """
+
+                import json
+
+                now_timestamp = int(datetime.now(timezone.utc).timestamp())
+
+                result = await conn.fetchval(
+                    upsert_query,
+                    workflow_uuid,
+                    user_uuid,
+                    workflow_name,
+                    json.dumps(workflow_spec),
+                    DeploymentStatus.PENDING.value,  # Default deployment status
+                    1,  # Default deployment version
+                    json.dumps({}),  # Default deployment config
+                    now_timestamp,
+                    now_timestamp,
+                )
+
+                if result:
+                    logger.info(f"✅ Created/updated workflow record: {workflow_id}")
+                    return True
+                else:
+                    logger.warning(f"❌ Failed to create/update workflow record: {workflow_id}")
+                    return False
+
+        except Exception as e:
+            logger.error(
+                f"❌ Error creating/updating workflow {workflow_id}: {e}",
+                exc_info=True,
+            )
+            return False
+
+    async def get_workflow_by_id(self, workflow_id: str) -> Optional[Dict]:
+        """Get a workflow record from the database by ID"""
+        try:
+            # Use pool connection with context manager
+            async with self.pool.acquire() as conn:
+                # Validate workflow_id format
+                if isinstance(workflow_id, str):
+                    try:
+                        workflow_uuid = UUID(workflow_id)
+                    except ValueError:
+                        logger.warning(f"Invalid workflow_id format: {workflow_id}")
+                        return None
+                else:
+                    workflow_uuid = workflow_id
+
+                query = """
+                    SELECT id, user_id, name, workflow_data, deployment_status,
+                           deployment_version, deployment_config, created_at, updated_at
+                    FROM workflows
+                    WHERE id = $1
+                """
+
+                row = await conn.fetchrow(query, workflow_uuid)
+
+                if row:
+                    return dict(row)
+                else:
+                    logger.warning(f"Workflow not found: {workflow_id}")
+                    return None
+
+        except Exception as e:
+            logger.error(f"Error getting workflow {workflow_id}: {e}", exc_info=True)
             return None
 
     async def test_connection(self) -> bool:

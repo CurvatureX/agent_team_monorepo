@@ -106,7 +106,6 @@ Workflow control flow
 - `FLOW_FILTER` - Data filtering
 - `FLOW_LOOP` - Iteration
 - `FLOW_MERGE` - Data merging
-- `FLOW_SWITCH` - Multi-way branching
 - `FLOW_WAIT` - Delays/waiting
 
 ### 👥 **Human-in-the-Loop Nodes**

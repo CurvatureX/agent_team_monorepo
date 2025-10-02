@@ -71,8 +71,16 @@ class OpenAIProvider(AIProvider):
             ],
         }
         timeout = float(params.get("timeout_seconds", 30))
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.debug(f"🔍 OpenAI request URL={self._base}/chat/completions")
+        logger.debug(f"🔍 OpenAI headers (redacted)")
+        logger.debug(f"🔍 OpenAI body: {body}")
+
         with httpx.Client(timeout=timeout) as client:
             resp = client.post(f"{self._base}/chat/completions", headers=headers, json=body)
+            logger.debug(f"🔍 OpenAI response status: {resp.status_code}")
             resp.raise_for_status()
             data = resp.json()
             content = ""

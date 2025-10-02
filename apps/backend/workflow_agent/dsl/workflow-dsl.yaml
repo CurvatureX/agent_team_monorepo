@@ -100,7 +100,6 @@ node_types:
       - FLOW_FILTER
       - FLOW_LOOP
       - FLOW_MERGE
-      - FLOW_SWITCH
       - FLOW_WAIT
 
   HUMAN_IN_THE_LOOP_NODE:

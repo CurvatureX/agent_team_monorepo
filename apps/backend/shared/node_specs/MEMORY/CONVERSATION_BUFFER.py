@@ -1,29 +1,37 @@
 """
-CONVERSATION_BUFFER Memory Node Specification
+Conversation Memory Node Specification
 
-Conversation buffer memory for storing and retrieving chat history and context.
-This memory node is attached to AI_AGENT nodes and provides conversation
-continuity and context management.
+Single conversation buffer memory with built‑in auto‑summary capability.
+When auto_summarize is enabled and the buffer is nearly full (within 5
+messages of max_messages), the node summarizes the oldest summarize_count
+messages into the summary and frees space in the buffer.
 
 Note: MEMORY nodes are attached to AI_AGENT nodes via attached_nodes,
 not connected through input/output ports.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
-from ...models.node_enums import MemorySubtype, NodeType
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from shared.models.node_enums import MemorySubtype, NodeType
+from shared.node_specs.base import COMMON_CONFIGS, BaseNodeSpec
 
 
-class ConversationBufferMemorySpec(BaseNodeSpec):
-    """Conversation buffer memory specification for AI_AGENT attached memory."""
+class ConversationMemorySpec(BaseNodeSpec):
+    """Conversation buffer with simple, built‑in summarization policy."""
 
-    def __init__(self):
+    def __init__(self, *, subtype: MemorySubtype, name: Optional[str] = None):
         super().__init__(
             type=NodeType.MEMORY,
-            subtype=MemorySubtype.CONVERSATION_BUFFER,
-            name="Conversation_Buffer_Memory",
-            description="Conversation buffer memory for chat history and context management",
+            subtype=subtype,
+            name=name
+            or (
+                "Conversation_Buffer_Memory"
+                if subtype == MemorySubtype.CONVERSATION_BUFFER
+                else "Conversation_Summary_Memory"
+            ),
+            description=(
+                "Conversation buffer with auto‑summary when nearly full for efficient context management"
+            ),
             # Configuration parameters
             configurations={
                 "max_messages": {
@@ -34,95 +42,98 @@ class ConversationBufferMemorySpec(BaseNodeSpec):
                     "description": "最大消息存储数量",
                     "required": False,
                 },
-                "max_tokens": {
-                    "type": "integer",
-                    "default": 4000,
-                    "min": 100,
-                    "max": 32000,
-                    "description": "最大token存储数量",
-                    "required": False,
-                },
-                "buffer_strategy": {
-                    "type": "string",
-                    "default": "sliding_window",
-                    "description": "缓冲区策略",
-                    "required": True,
-                    "options": ["sliding_window", "summarize_old", "fixed_size", "token_limit"],
-                },
-                "message_roles": {
-                    "type": "array",
-                    "default": ["user", "assistant", "system"],
-                    "description": "允许的消息角色类型",
-                    "required": False,
-                },
-                "include_metadata": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "是否包含消息元数据",
-                    "required": False,
-                },
                 "auto_summarize": {
                     "type": "boolean",
-                    "default": False,
-                    "description": "是否自动总结旧消息",
+                    "default": True,
+                    "description": "是否在接近容量时自动总结旧消息",
                     "required": False,
                 },
-                "summary_threshold": {
+                "summarize_count": {
                     "type": "integer",
-                    "default": 80,
-                    "min": 10,
-                    "max": 100,
-                    "description": "触发总结的消息数量百分比",
-                    "required": False,
-                },
-                "persist_to_disk": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "是否持久化到磁盘",
-                    "required": False,
-                },
-                "conversation_id": {
-                    "type": "string",
-                    "default": "",
-                    "description": "会话标识符",
+                    "default": 10,
+                    "min": 1,
+                    "description": "接近容量时汇总的最旧消息数量",
                     "required": False,
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters for memory operations
-            default_input_params={
-                "message": "",
-                "role": "user",
-                "metadata": {},
-                "operation": "add",  # add, get, clear, summarize
+            # Parameter schemas for memory operations and summarization
+            input_params={
+                # Buffer-style ops
+                "message": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Single message to add to the buffer",
+                    "required": False,
+                },
+                "role": {
+                    "type": "string",
+                    "default": "user",
+                    "description": "Role of the message author",
+                    "required": False,
+                    "options": ["user", "assistant", "system"],
+                },
+                "metadata": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Optional metadata to store with message",
+                    "required": False,
+                },
             },
-            default_output_params={
-                "messages": [],
-                "total_messages": 0,
-                "total_tokens": 0,
-                "buffer_full": False,
-                "summary": "",
-                "success": False,
+            output_params={
+                # Buffer outputs
+                "messages": {
+                    "type": "array",
+                    "default": [],
+                    "description": "Messages currently in buffer",
+                    "required": False,
+                },
+                "total_messages": {
+                    "type": "integer",
+                    "default": 0,
+                    "description": "Total number of messages stored",
+                    "required": False,
+                },
+                "buffer_full": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Whether buffer hit configured limits",
+                    "required": False,
+                },
+                "success": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Whether the operation succeeded",
+                    "required": False,
+                },
+                # Summary outputs
+                "summary": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Generated conversation summary",
+                    "required": False,
+                },
+                "summary_metadata": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Metadata about the summary",
+                    "required": False,
+                },
             },
             # MEMORY nodes have no ports - they are attached to AI_AGENT nodes
             input_ports=[],
             output_ports=[],
             # Memory nodes don't have attached_nodes (only AI_AGENT has this)
             attached_nodes=None,
-            # Metadata
-            tags=["memory", "conversation", "chat", "buffer", "attached"],
-            # Examples
+            # Examples (simplified to reflect auto-summary on near capacity)
             examples=[
                 {
                     "name": "Customer Support Chat Memory",
                     "description": "Store customer support conversation history with context",
                     "configurations": {
                         "max_messages": 30,
-                        "max_tokens": 3000,
-                        "buffer_strategy": "sliding_window",
-                        "message_roles": ["user", "assistant", "system"],
-                        "include_metadata": True,
-                        "conversation_id": "support_{{session_id}}",
+                        "auto_summarize": True,
+                        "summarize_count": 5,
                     },
                     "usage_example": {
                         "attached_to": "customer_support_ai",
@@ -168,7 +179,6 @@ class ConversationBufferMemorySpec(BaseNodeSpec):
                                 },
                             ],
                             "total_messages": 2,
-                            "total_tokens": 45,
                             "buffer_full": False,
                             "success": True,
                         },
@@ -179,11 +189,8 @@ class ConversationBufferMemorySpec(BaseNodeSpec):
                     "description": "Manage long conversations with automatic summarization",
                     "configurations": {
                         "max_messages": 20,
-                        "max_tokens": 2000,
-                        "buffer_strategy": "summarize_old",
                         "auto_summarize": True,
-                        "summary_threshold": 75,
-                        "persist_to_disk": True,
+                        "summarize_count": 5,
                     },
                     "usage_example": {
                         "attached_to": "consultation_ai",
@@ -196,7 +203,6 @@ class ConversationBufferMemorySpec(BaseNodeSpec):
                                 }
                             ],
                             "total_messages": 15,
-                            "total_tokens": 1800,
                             "buffer_full": False,
                             "summary": "User discussed project requirements, budget constraints, and timeline expectations. Key decisions made: React frontend, PostgreSQL database, 3-month timeline.",
                             "success": True,
@@ -208,10 +214,8 @@ class ConversationBufferMemorySpec(BaseNodeSpec):
                     "description": "Store team collaboration messages with role-based filtering",
                     "configurations": {
                         "max_messages": 100,
-                        "buffer_strategy": "sliding_window",
-                        "message_roles": ["user", "assistant", "team_member", "moderator"],
-                        "include_metadata": True,
-                        "conversation_id": "team_{{team_id}}",
+                        "auto_summarize": True,
+                        "summarize_count": 10,
                     },
                     "usage_example": {
                         "attached_to": "team_collaboration_ai",
@@ -254,5 +258,7 @@ class ConversationBufferMemorySpec(BaseNodeSpec):
         )
 
 
-# Export the specification instance
-CONVERSATION_BUFFER_MEMORY_SPEC = ConversationBufferMemorySpec()
+# Export single Conversation Buffer spec with built-in summarization capability
+CONVERSATION_BUFFER_MEMORY_SPEC = ConversationMemorySpec(
+    subtype=MemorySubtype.CONVERSATION_BUFFER, name="Conversation_Buffer_Memory"
+)

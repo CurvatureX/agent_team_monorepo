@@ -8,7 +8,7 @@ for API calls, webhook requests, and HTTP-based integrations.
 from typing import Any, Dict, List
 
 from shared.models.node_enums import ActionSubtype, NodeType
-from shared.node_specs.base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from shared.node_specs.base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class HTTPRequestActionSpec(BaseNodeSpec):
@@ -93,32 +93,24 @@ class HTTPRequestActionSpec(BaseNodeSpec):
             },
             # Port definitions with comprehensive schemas
             input_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="dict",
-                    description="HTTP request configuration",
-                    required=True,
-                    max_connections=1,
-                )
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "HTTP request configuration",
+                    "required": True,
+                    "max_connections": 1,
+                }
             ],
             output_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="dict",
-                    description="HTTP response data",
-                    required=False,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="error",
-                    name="error",
-                    data_type="dict",
-                    description="Error output for failed operations",
-                    required=False,
-                    max_connections=-1,
-                ),
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "HTTP response data",
+                    "required": False,
+                    "max_connections": -1,
+                }
             ],
             # Metadata
             tags=["action", "http", "api", "system"],

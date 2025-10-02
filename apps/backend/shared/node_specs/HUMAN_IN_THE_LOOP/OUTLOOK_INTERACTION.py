@@ -11,7 +11,7 @@ Do NOT add separate AI_AGENT or IF nodes for response handling.
 from typing import Any, Dict, List
 
 from ...models.node_enums import HumanLoopSubtype, NodeType
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class OutlookInteractionSpec(BaseNodeSpec):
@@ -144,62 +144,122 @@ class OutlookInteractionSpec(BaseNodeSpec):
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters
-            default_input_params={"context": {}, "variables": {}, "user_data": {}},
-            default_output_params={
-                "response_received": False,
-                "ai_classification": "",
-                "original_response": "",
-                "response_timestamp": "",
-                "execution_path": "",
-                "timeout_occurred": False,
-                "email_metadata": {},
-                "human_feedback": {},
+            # Parameter schemas (preferred over legacy defaults)
+            input_params={
+                "context": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Additional context for templating",
+                    "required": False,
+                },
+                "variables": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Template variables",
+                    "required": False,
+                },
+                "user_data": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Arbitrary user data to include",
+                    "required": False,
+                },
+            },
+            output_params={
+                "response_received": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Whether a response was received",
+                    "required": False,
+                },
+                "ai_classification": {
+                    "type": "string",
+                    "default": "",
+                    "description": "AI classification of the response",
+                    "required": False,
+                    "options": ["confirmed", "rejected", "unrelated", "timeout"],
+                },
+                "original_response": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Original user response text",
+                    "required": False,
+                },
+                "response_timestamp": {
+                    "type": "string",
+                    "default": "",
+                    "description": "ISO-8601 timestamp when response received",
+                    "required": False,
+                },
+                "execution_path": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Downstream execution path determined",
+                    "required": False,
+                },
+                "timeout_occurred": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Whether the interaction timed out",
+                    "required": False,
+                },
+                "email_metadata": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Email metadata including headers",
+                    "required": False,
+                },
+                "human_feedback": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Structured feedback extracted from the response",
+                    "required": False,
+                },
             },
             # Port definitions - HIL nodes have multiple output paths based on AI analysis
             input_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="dict",
-                    description="Input data for human interaction request",
-                    required=True,
-                    max_connections=1,
-                )
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "Input data for human interaction request",
+                    "required": True,
+                    "max_connections": 1,
+                }
             ],
             output_ports=[
-                create_port(
-                    port_id="confirmed",
-                    name="confirmed",
-                    data_type="dict",
-                    description="Output when AI classifies email response as confirmed/approved",
-                    required=False,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="rejected",
-                    name="rejected",
-                    data_type="dict",
-                    description="Output when AI classifies email response as rejected/declined",
-                    required=False,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="unrelated",
-                    name="unrelated",
-                    data_type="dict",
-                    description="Output when AI classifies email response as unclear/unrelated",
-                    required=False,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="timeout",
-                    name="timeout",
-                    data_type="dict",
-                    description="Output when no response received within timeout period",
-                    required=False,
-                    max_connections=-1,
-                ),
+                {
+                    "id": "confirmed",
+                    "name": "confirmed",
+                    "data_type": "dict",
+                    "description": "Output when AI classifies email response as confirmed/approved",
+                    "required": False,
+                    "max_connections": -1,
+                },
+                {
+                    "id": "rejected",
+                    "name": "rejected",
+                    "data_type": "dict",
+                    "description": "Output when AI classifies email response as rejected/declined",
+                    "required": False,
+                    "max_connections": -1,
+                },
+                {
+                    "id": "unrelated",
+                    "name": "unrelated",
+                    "data_type": "dict",
+                    "description": "Output when AI classifies email response as unclear/unrelated",
+                    "required": False,
+                    "max_connections": -1,
+                },
+                {
+                    "id": "timeout",
+                    "name": "timeout",
+                    "data_type": "dict",
+                    "description": "Output when no response received within timeout period",
+                    "required": False,
+                    "max_connections": -1,
+                },
             ],
             # Metadata
             tags=["human-in-the-loop", "outlook", "email", "approval", "ai-analysis", "office365"],

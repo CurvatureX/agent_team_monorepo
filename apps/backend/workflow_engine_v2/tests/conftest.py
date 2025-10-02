@@ -109,7 +109,7 @@ def sample_execution_context():
 @pytest.fixture
 def sample_node_execution_result():
     """Create a sample node execution result."""
-    from workflow_engine_v2.core.models import ExecutionStatus, NodeExecutionResult
+    from shared.models import ExecutionStatus, NodeExecutionResult
 
     return NodeExecutionResult(
         status=ExecutionStatus.SUCCESS,

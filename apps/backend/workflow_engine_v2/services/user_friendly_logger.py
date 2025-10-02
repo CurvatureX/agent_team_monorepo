@@ -97,12 +97,16 @@ class UserFriendlyLogEntry:
     data: Optional[Dict[str, Any]] = None
 
     def to_supabase_row(self) -> Dict[str, Any]:
-        """Convert to Supabase table row format"""
+        """Convert to Supabase table row format using direct enum values."""
+        level_value = self.level.value
+        if level_value == "WARN":
+            level_value = "WARNING"
+
         return {
             "execution_id": self.execution_id,
             "created_at": self.created_at,
             "log_category": LogCategory.BUSINESS.value,
-            "level": self.level.value,
+            "level": level_value,
             "event_type": self.event_type.value,
             "message": self.message,
             "user_friendly_message": self.user_friendly_message,
@@ -497,11 +501,11 @@ class UserFriendlyLogger:
             ("EXTERNAL_ACTION", "GITHUB"): "GitHub action",
             ("EXTERNAL_ACTION", "AIRTABLE"): "Airtable action",
             ("FLOW", "IF"): "Conditional logic",
-            ("FLOW", "SWITCH"): "Switch logic",
+            # ("FLOW", "SWITCH"): "Switch logic",  # SWITCH removed
             ("FLOW", "LOOP"): "Loop logic",
             ("HUMAN_IN_THE_LOOP", "SLACK_INTERACTION"): "Slack approval",
             ("HUMAN_IN_THE_LOOP", "EMAIL_INTERACTION"): "Email approval",
-            ("TOOL", "MCP_TOOL"): "Tool execution",
+            ("TOOL", "NOTION_MCP_TOOL"): "Notion tool execution",
             ("MEMORY", "VECTOR_STORE"): "Vector memory",
         }
 

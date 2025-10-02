@@ -8,7 +8,7 @@ URL crawling, content extraction, structured data parsing, and website monitorin
 from typing import Any, Dict, List
 
 from ...models.node_enums import ExternalActionSubtype, NodeType
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class FirecrawlActionSpec(BaseNodeSpec):
@@ -20,7 +20,7 @@ class FirecrawlActionSpec(BaseNodeSpec):
             subtype=ExternalActionSubtype.FIRECRAWL,
             name="Firecrawl_Action",
             description="Perform web scraping and data extraction using Firecrawl API for content crawling and structured data parsing",
-            # Configuration parameters
+            # Configuration parameters (simplified)
             configurations={
                 "firecrawl_api_key": {
                     "type": "string",
@@ -34,198 +34,140 @@ class FirecrawlActionSpec(BaseNodeSpec):
                     "default": "scrape",
                     "description": "Firecrawl操作类型",
                     "required": True,
-                    "options": [
-                        "scrape",  # Single page scraping
-                        "crawl",  # Multi-page crawling
-                        "search",  # Web search with scraping
-                        "extract",  # Structured data extraction
-                        "monitor",  # Website change monitoring
-                        "screenshot",  # Take webpage screenshot
-                        "pdf_extract",  # Extract text from PDF
-                        "batch_scrape",  # Batch process multiple URLs
-                        "sitemap_crawl",  # Crawl based on sitemap
-                        "link_discovery",  # Discover and extract links
-                    ],
+                    "options": ["scrape", "crawl", "extract", "screenshot"],
                 },
-                "url": {"type": "string", "default": "", "description": "目标URL", "required": False},
+                **COMMON_CONFIGS,
+            },
+            # Parameter schemas (simplified)
+            input_params={
+                "url": {
+                    "type": "string",
+                    "default": "",
+                    "description": "目标URL（scrape/extract/screenshot）",
+                    "required": False,
+                },
                 "urls": {
                     "type": "array",
                     "default": [],
-                    "description": "批量URL列表",
+                    "description": "批量URL（crawl）",
                     "required": False,
                 },
-                "scrape_config": {
-                    "type": "object",
-                    "default": {
-                        "formats": ["markdown", "html"],
-                        "includeTags": [],
-                        "excludeTags": ["script", "style"],
-                        "onlyMainContent": True,
-                        "waitFor": 0,
-                        "timeout": 30000,
-                        "headers": {},
-                    },
-                    "description": "抓取配置",
+                "include_selectors": {
+                    "type": "array",
+                    "default": [],
+                    "description": "包含的CSS选择器（可选）",
                     "required": False,
                 },
-                "crawl_config": {
-                    "type": "object",
-                    "default": {
-                        "maxDepth": 2,
-                        "limit": 100,
-                        "allowBacklinks": False,
-                        "allowExternalLinks": False,
-                        "includes": [],
-                        "excludes": [],
-                        "maxConcurrency": 5,
-                        "delay": 1000,
-                    },
-                    "description": "爬虫配置",
+                "exclude_selectors": {
+                    "type": "array",
+                    "default": ["script", "style"],
+                    "description": "排除的CSS选择器（可选）",
                     "required": False,
                 },
-                "extraction_config": {
-                    "type": "object",
-                    "default": {
-                        "schema": {},
-                        "systemPrompt": "",
-                        "userPrompt": "",
-                        "extractorType": "llm",
-                        "mode": "llm-extraction",
-                    },
-                    "description": "数据提取配置",
-                    "required": False,
-                },
-                "search_config": {
-                    "type": "object",
-                    "default": {
-                        "query": "",
-                        "searchEngine": "google",
-                        "country": "us",
-                        "language": "en",
-                        "location": "",
-                        "numResults": 10,
-                        "freshness": "anytime",
-                    },
-                    "description": "搜索配置",
-                    "required": False,
-                },
-                "monitor_config": {
-                    "type": "object",
-                    "default": {
-                        "webhookUrl": "",
-                        "monitorType": "change",
-                        "checkInterval": 3600,
-                        "threshold": 0.1,
-                        "includeSnapshot": False,
-                    },
-                    "description": "监控配置",
-                    "required": False,
-                },
-                "screenshot_config": {
-                    "type": "object",
-                    "default": {
-                        "fullPage": True,
-                        "mobile": False,
-                        "darkMode": False,
-                        "quality": 80,
-                        "format": "png",
-                        "waitTime": 3000,
-                    },
-                    "description": "截图配置",
-                    "required": False,
-                },
-                "output_format": {
+                "format": {
                     "type": "string",
                     "default": "markdown",
                     "description": "输出格式",
                     "required": False,
-                    "options": ["markdown", "html", "text", "json", "structured"],
+                    "options": ["markdown", "html", "text", "json"],
                 },
-                "filter_config": {
-                    "type": "object",
-                    "default": {
-                        "minLength": 0,
-                        "maxLength": -1,
-                        "contentFilter": "",
-                        "languageFilter": "",
-                        "duplicateFilter": True,
-                    },
-                    "description": "内容过滤配置",
+                "max_depth": {
+                    "type": "integer",
+                    "default": 2,
+                    "description": "爬取深度（crawl）",
                     "required": False,
                 },
-                "rate_limit_config": {
-                    "type": "object",
-                    "default": {
-                        "requestsPerMinute": 60,
-                        "burstLimit": 10,
-                        "respectRobotsTxt": True,
-                        "userAgent": "FirecrawlBot/1.0",
-                    },
-                    "description": "速率限制配置",
+                "limit": {
+                    "type": "integer",
+                    "default": 50,
+                    "description": "最大页面数（crawl）",
                     "required": False,
                 },
-                "retry_config": {
+                "schema": {
                     "type": "object",
-                    "default": {
-                        "maxRetries": 3,
-                        "retryDelay": 2000,
-                        "exponentialBackoff": True,
-                        "retryOn": ["timeout", "5xx", "network_error"],
-                    },
-                    "description": "重试配置",
+                    "default": {},
+                    "description": "结构化提取Schema（extract）",
                     "required": False,
                 },
-                **COMMON_CONFIGS,
+                "headers": {
+                    "type": "object",
+                    "default": {},
+                    "description": "自定义HTTP头（可选）",
+                    "required": False,
+                },
+                "screenshot": {
+                    "type": "object",
+                    "default": {"fullPage": True, "quality": 80, "format": "png"},
+                    "description": "截图参数（screenshot）",
+                    "required": False,
+                },
             },
-            # Default runtime parameters
-            default_input_params={"data": {}, "context": {}, "variables": {}},
-            default_output_params={
-                "success": False,
-                "firecrawl_response": {},
-                "content": "",
-                "extracted_data": {},
-                "metadata": {},
-                "urls_processed": [],
-                "error_message": "",
-                "execution_stats": {},
+            output_params={
+                "success": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "操作是否成功",
+                    "required": False,
+                },
+                "content": {
+                    "type": "string",
+                    "default": "",
+                    "description": "提取到的内容（markdown/html/text）",
+                    "required": False,
+                },
+                "data": {
+                    "type": "object",
+                    "default": {},
+                    "description": "结构化数据（extract）",
+                    "required": False,
+                },
+                "urls_processed": {
+                    "type": "array",
+                    "default": [],
+                    "description": "处理的URL列表",
+                    "required": False,
+                },
+                "error_message": {
+                    "type": "string",
+                    "default": "",
+                    "description": "错误信息（失败时）",
+                    "required": False,
+                },
+                "stats": {
+                    "type": "object",
+                    "default": {},
+                    "description": "执行统计（耗时、页面数等）",
+                    "required": False,
+                },
             },
             # Port definitions
             input_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="dict",
-                    description="Input data for Firecrawl action",
-                    required=True,
-                    max_connections=1,
-                )
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "Input data for Firecrawl action",
+                    "required": True,
+                    "max_connections": 1,
+                }
             ],
             output_ports=[
-                create_port(
-                    port_id="success",
-                    name="success",
-                    data_type="dict",
-                    description="Output when Firecrawl action succeeds",
-                    required=True,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="error",
-                    name="error",
-                    data_type="dict",
-                    description="Output when Firecrawl action fails",
-                    required=False,
-                    max_connections=-1,
-                ),
-            ],
-            # Metadata
-            tags=[
-                "external-action",
-                "firecrawl",
-                "web-scraping",
-                "data-extraction",
-                "crawling",
-                "monitoring",
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "Output when Firecrawl action succeeds",
+                    "required": True,
+                    "max_connections": -1,
+                },
+                {
+                    "id": "error",
+                    "name": "error",
+                    "data_type": "dict",
+                    "description": "Output when Firecrawl action fails",
+                    "required": False,
+                    "max_connections": -1,
+                },
             ],
             # Examples
             examples=[
@@ -261,7 +203,7 @@ class FirecrawlActionSpec(BaseNodeSpec):
                         }
                     },
                     "expected_outputs": {
-                        "success": {
+                        "main": {
                             "success": True,
                             "firecrawl_response": {
                                 "success": True,
@@ -346,7 +288,7 @@ class FirecrawlActionSpec(BaseNodeSpec):
                         }
                     },
                     "expected_outputs": {
-                        "success": {
+                        "main": {
                             "success": True,
                             "firecrawl_response": {
                                 "success": True,
@@ -395,183 +337,6 @@ class FirecrawlActionSpec(BaseNodeSpec):
                                 "pages_processed": 2,
                                 "products_extracted": 1,
                                 "max_depth_reached": 2,
-                            },
-                        }
-                    },
-                },
-                {
-                    "name": "Web Search with Content Extraction",
-                    "description": "Perform web search and extract content from top results",
-                    "configurations": {
-                        "api_key": "fc-your_api_key_here",
-                        "action_type": "firecrawl_search",
-                        "search_config": {
-                            "query": "{{search_query}}",
-                            "searchEngine": "google",
-                            "country": "{{country_code}}",
-                            "language": "{{language_code}}",
-                            "numResults": 10,
-                            "freshness": "{{time_filter}}",
-                        },
-                        "scrape_config": {
-                            "formats": ["markdown"],
-                            "onlyMainContent": True,
-                            "waitFor": 1000,
-                            "timeout": 20000,
-                        },
-                        "extraction_config": {
-                            "systemPrompt": "Extract key information including main points, statistics, and conclusions",
-                            "extractorType": "llm",
-                        },
-                        "filter_config": {"minLength": 200, "duplicateFilter": True},
-                    },
-                    "input_example": {
-                        "data": {
-                            "search_query": "climate change impact 2025 report",
-                            "country_code": "us",
-                            "language_code": "en",
-                            "time_filter": "month",
-                            "max_results": 5,
-                        }
-                    },
-                    "expected_outputs": {
-                        "success": {
-                            "success": True,
-                            "firecrawl_response": {
-                                "success": True,
-                                "data": [
-                                    {
-                                        "url": "https://climate-research.org/report-2025",
-                                        "title": "Climate Impact Report 2025",
-                                        "content": "# Climate Impact Report 2025\n\nKey findings show accelerating trends...",
-                                        "metadata": {
-                                            "description": "Comprehensive analysis of climate change impacts",
-                                            "publishedTime": "2025-01-15T00:00:00Z",
-                                        },
-                                        "extractedData": {
-                                            "key_findings": [
-                                                "Global temperature increase of 1.2°C since pre-industrial times",
-                                                "Sea level rise of 23cm in past century",
-                                            ],
-                                            "statistics": {
-                                                "temperature_change": "1.2°C",
-                                                "sea_level_rise": "23cm",
-                                            },
-                                        },
-                                    }
-                                ],
-                            },
-                            "extracted_data": {
-                                "search_results": [
-                                    {
-                                        "title": "Climate Impact Report 2025",
-                                        "url": "https://climate-research.org/report-2025",
-                                        "key_findings": [
-                                            "Global temperature increase of 1.2°C since pre-industrial times",
-                                            "Sea level rise of 23cm in past century",
-                                        ],
-                                    }
-                                ],
-                                "total_results": 1,
-                                "search_query": "climate change impact 2025 report",
-                            },
-                            "urls_processed": ["https://climate-research.org/report-2025"],
-                            "execution_stats": {
-                                "action_type": "firecrawl_search",
-                                "processing_time_ms": 12000,
-                                "search_results_found": 10,
-                                "pages_scraped": 1,
-                                "content_extracted": True,
-                            },
-                        }
-                    },
-                },
-                {
-                    "name": "Batch URL Processing",
-                    "description": "Process multiple URLs in batch with parallel extraction",
-                    "configurations": {
-                        "api_key": "fc-your_api_key_here",
-                        "action_type": "firecrawl_batch_scrape",
-                        "urls": "{{url_list}}",
-                        "scrape_config": {
-                            "formats": ["markdown"],
-                            "onlyMainContent": True,
-                            "timeout": 25000,
-                        },
-                        "extraction_config": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "title": {"type": "string"},
-                                    "summary": {"type": "string"},
-                                    "publish_date": {"type": "string"},
-                                    "author": {"type": "string"},
-                                    "tags": {"type": "array", "items": {"type": "string"}},
-                                },
-                            }
-                        },
-                        "rate_limit_config": {"requestsPerMinute": 20, "burstLimit": 5},
-                        "retry_config": {"maxRetries": 2, "retryDelay": 3000},
-                    },
-                    "input_example": {
-                        "data": {
-                            "url_list": [
-                                "https://blog1.example.com/article-1",
-                                "https://blog2.example.com/article-2",
-                                "https://news.example.com/breaking-news",
-                                "https://research.example.com/study-results",
-                            ],
-                            "batch_id": "batch_001",
-                            "processing_priority": "high",
-                        }
-                    },
-                    "expected_outputs": {
-                        "success": {
-                            "success": True,
-                            "firecrawl_response": {
-                                "success": True,
-                                "results": [
-                                    {
-                                        "url": "https://blog1.example.com/article-1",
-                                        "status": "success",
-                                        "extractedData": {
-                                            "title": "Innovation in AI Development",
-                                            "summary": "Latest trends in artificial intelligence...",
-                                            "publish_date": "2025-01-18",
-                                            "author": "Jane Smith",
-                                            "tags": ["AI", "technology", "innovation"],
-                                        },
-                                    }
-                                ],
-                            },
-                            "extracted_data": {
-                                "batch_results": [
-                                    {
-                                        "url": "https://blog1.example.com/article-1",
-                                        "status": "success",
-                                        "title": "Innovation in AI Development",
-                                        "summary": "Latest trends in artificial intelligence...",
-                                        "author": "Jane Smith",
-                                        "tags": ["AI", "technology", "innovation"],
-                                    }
-                                ],
-                                "success_count": 1,
-                                "failure_count": 0,
-                                "batch_id": "batch_001",
-                            },
-                            "urls_processed": [
-                                "https://blog1.example.com/article-1",
-                                "https://blog2.example.com/article-2",
-                                "https://news.example.com/breaking-news",
-                                "https://research.example.com/study-results",
-                            ],
-                            "execution_stats": {
-                                "action_type": "firecrawl_batch_scrape",
-                                "processing_time_ms": 8500,
-                                "total_urls": 4,
-                                "successful_extractions": 4,
-                                "failed_extractions": 0,
-                                "parallel_processing": True,
                             },
                         }
                     },

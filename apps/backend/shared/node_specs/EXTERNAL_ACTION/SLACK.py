@@ -8,7 +8,7 @@ Supports OAuth authentication and various Slack API operations.
 from typing import Any, Dict, List
 
 from ...models.node_enums import ExternalActionSubtype, NodeType
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class SlackExternalActionSpec(BaseNodeSpec):
@@ -86,51 +86,112 @@ class SlackExternalActionSpec(BaseNodeSpec):
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters
-            default_input_params={
-                "message": "",
-                "blocks": [],
-                "attachments": [],
-                "channel_override": "",
-                "user_mentions": [],
-                "metadata": {},
+            # Parameter schemas (preferred over legacy defaults)
+            input_params={
+                "message": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Message text to send",
+                    "required": False,
+                    "multiline": True,
+                },
+                "blocks": {
+                    "type": "array",
+                    "default": [],
+                    "description": "Slack block kit elements for rich messages",
+                    "required": False,
+                },
+                "attachments": {
+                    "type": "array",
+                    "default": [],
+                    "description": "Legacy attachments array",
+                    "required": False,
+                },
+                "channel_override": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Optional override for target channel",
+                    "required": False,
+                },
+                "user_mentions": {
+                    "type": "array",
+                    "default": [],
+                    "description": "List of user IDs to mention",
+                    "required": False,
+                },
+                "metadata": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Arbitrary metadata to include with message",
+                    "required": False,
+                },
             },
-            default_output_params={
-                "success": False,
-                "message_ts": "",
-                "channel_id": "",
-                "response_data": {},
-                "error_message": "",
-                "api_response": {},
+            output_params={
+                "success": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Whether Slack API operation succeeded",
+                    "required": False,
+                },
+                "message_ts": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Slack message timestamp",
+                    "required": False,
+                },
+                "channel_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Channel ID where the message was sent",
+                    "required": False,
+                },
+                "response_data": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Parsed response payload from Slack API",
+                    "required": False,
+                },
+                "error_message": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Error message if operation failed",
+                    "required": False,
+                },
+                "api_response": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Raw response payload from Slack API",
+                    "required": False,
+                },
             },
             # Port definitions
             input_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="dict",
-                    description="Message content and Slack operation parameters",
-                    required=True,
-                    max_connections=1,
-                )
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "Message content and Slack operation parameters",
+                    "required": True,
+                    "max_connections": 1,
+                }
             ],
             output_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="dict",
-                    description="Slack operation result and response data",
-                    required=False,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="error",
-                    name="error",
-                    data_type="dict",
-                    description="Error output when Slack operation fails",
-                    required=False,
-                    max_connections=-1,
-                ),
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "Slack operation result and response data",
+                    "required": False,
+                    "max_connections": -1,
+                },
+                {
+                    "id": "error",
+                    "name": "error",
+                    "data_type": "dict",
+                    "description": "Error output when Slack operation fails",
+                    "required": False,
+                    "max_connections": -1,
+                },
             ],
             # Metadata
             tags=["slack", "messaging", "collaboration", "external", "oauth"],

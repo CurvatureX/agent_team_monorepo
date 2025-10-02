@@ -76,7 +76,17 @@ class SlackExternalAction(BaseExternalAction):
         target_channel_from_input = context.input_data.get("channel") or context.input_data.get(
             "channel_name"
         )
-        target_channel_from_config = context.node.configurations.get("channel")
+        channel_config = context.node.configurations.get("channel")
+
+        # Extract actual value from configuration (handle both dict and string)
+        if isinstance(channel_config, dict):
+            target_channel_from_config = channel_config.get("default") or channel_config.get(
+                "value"
+            )
+        elif isinstance(channel_config, str):
+            target_channel_from_config = channel_config
+        else:
+            target_channel_from_config = None
 
         # Log channel resolution sources for debugging
         self.log_execution(
@@ -87,8 +97,13 @@ class SlackExternalAction(BaseExternalAction):
         slack_target_channel = target_channel_from_config or target_channel_from_input or "#general"
 
         # Format channel name properly (ensure # prefix or channel ID format)
-        if not slack_target_channel.startswith("#") and not slack_target_channel.startswith("C"):
-            slack_target_channel = f"#{slack_target_channel}"
+        if isinstance(slack_target_channel, str):
+            if not slack_target_channel.startswith("#") and not slack_target_channel.startswith(
+                "C"
+            ):
+                slack_target_channel = f"#{slack_target_channel}"
+        else:
+            slack_target_channel = "#general"
 
         self.log_execution(
             context,

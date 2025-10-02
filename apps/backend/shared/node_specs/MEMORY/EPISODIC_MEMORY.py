@@ -11,7 +11,7 @@ not connected through input/output ports.
 from typing import Any, Dict, List
 
 from ...models.node_enums import MemorySubtype, NodeType
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class EpisodicMemorySpec(BaseNodeSpec):
@@ -23,92 +23,111 @@ class EpisodicMemorySpec(BaseNodeSpec):
             subtype=MemorySubtype.EPISODIC_MEMORY,
             name="Episodic_Memory",
             description="Store and retrieve timestamped events and experiences for temporal context",
-            # Configuration parameters
+            # Configuration parameters (simplified)
             configurations={
                 "storage_backend": {
                     "type": "string",
                     "default": "timescaledb",
-                    "description": "Storage backend optimized for time-series data",
+                    "description": "时序数据存储后端",
                     "required": False,
-                    "options": ["timescaledb", "postgresql", "elasticsearch", "influxdb"],
+                    "options": ["timescaledb", "postgresql", "elasticsearch"],
                 },
                 "importance_threshold": {
                     "type": "float",
                     "default": 0.5,
-                    "description": "Minimum importance score for event storage (0.0-1.0)",
+                    "description": "事件入库的最小重要性分数（0.0-1.0）",
                     "required": False,
                 },
                 "retention_period": {
                     "type": "string",
                     "default": "30 days",
-                    "description": "How long to retain episodic memories",
-                    "required": False,
-                },
-                "event_embedding": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Whether to generate embeddings for semantic event search",
+                    "description": "事件保留时长",
                     "required": False,
                 },
                 "temporal_context_window": {
                     "type": "string",
                     "default": "7 days",
-                    "description": "Time window for retrieving relevant episodic context",
+                    "description": "检索相关时间上下文的窗口",
                     "required": False,
-                },
-                "event_categorization": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Automatically categorize events by type",
-                    "required": False,
-                },
-                "pattern_detection": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Enable temporal pattern detection in events",
-                    "required": False,
-                },
-                "outcome_tracking": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Track outcomes and consequences of events",
-                    "required": False,
-                },
-                "context_linking": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Link related events and build context chains",
-                    "required": False,
-                },
-                "compression_strategy": {
-                    "type": "string",
-                    "default": "importance_based",
-                    "description": "How to compress old episodic memories",
-                    "required": False,
-                    "options": ["importance_based", "time_based", "frequency_based", "none"],
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters
-            default_input_params={
-                "actor": "",
-                "action": "",
-                "object": {},
-                "context": {},
-                "outcome": {},
-                "importance": 0.5,
-                "timestamp": "",
-                "event_type": "",
-                "query_params": {},
+            # Runtime parameters (schema-style)
+            input_params={
+                "actor": {
+                    "type": "string",
+                    "default": "",
+                    "description": "行动主体",
+                    "required": False,
+                },
+                "action": {
+                    "type": "string",
+                    "default": "",
+                    "description": "行为/动作",
+                    "required": False,
+                },
+                "object": {
+                    "type": "object",
+                    "default": {},
+                    "description": "作用对象（可选）",
+                    "required": False,
+                },
+                "context": {
+                    "type": "object",
+                    "default": {},
+                    "description": "上下文信息",
+                    "required": False,
+                },
+                "outcome": {
+                    "type": "object",
+                    "default": {},
+                    "description": "结果/后果（可选）",
+                    "required": False,
+                },
+                "importance": {
+                    "type": "number",
+                    "default": 0.5,
+                    "description": "事件重要性分数",
+                    "required": False,
+                },
+                "timestamp": {
+                    "type": "string",
+                    "default": "",
+                    "description": "事件时间（ISO 8601）",
+                    "required": False,
+                },
+                "event_type": {
+                    "type": "string",
+                    "default": "",
+                    "description": "事件类型（可选）",
+                    "required": False,
+                },
+                "query_params": {
+                    "type": "object",
+                    "default": {},
+                    "description": "查询参数（检索用）",
+                    "required": False,
+                },
             },
-            default_output_params={
-                "episodes": [],
-                "temporal_patterns": {},
-                "context_summary": "",
-                "related_events": [],
-                "behavioral_insights": {},
-                "timeline": [],
-                "pattern_analysis": {},
+            output_params={
+                "episodes": {
+                    "type": "array",
+                    "default": [],
+                    "description": "匹配或新存储的事件列表",
+                    "required": False,
+                },
+                "timeline": {
+                    "type": "array",
+                    "default": [],
+                    "description": "按时间排序的事件时间线",
+                    "required": False,
+                },
+                "context_summary": {
+                    "type": "string",
+                    "default": "",
+                    "description": "上下文摘要",
+                    "required": False,
+                },
             },
             # Port definitions - Memory nodes don't use traditional ports
             input_ports=[],
@@ -124,9 +143,6 @@ class EpisodicMemorySpec(BaseNodeSpec):
                         "storage_backend": "timescaledb",
                         "importance_threshold": 0.6,
                         "temporal_context_window": "14 days",
-                        "event_categorization": True,
-                        "pattern_detection": True,
-                        "outcome_tracking": True,
                         "retention_period": "90 days",
                     },
                     "input_example": {
@@ -212,10 +228,6 @@ class EpisodicMemorySpec(BaseNodeSpec):
                         "storage_backend": "postgresql",
                         "importance_threshold": 0.7,
                         "temporal_context_window": "21 days",
-                        "pattern_detection": True,
-                        "outcome_tracking": True,
-                        "context_linking": True,
-                        "compression_strategy": "importance_based",
                     },
                     "input_example": {
                         "actor": "product_manager_alice",

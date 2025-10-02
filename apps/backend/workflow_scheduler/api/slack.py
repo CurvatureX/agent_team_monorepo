@@ -33,7 +33,8 @@ def verify_slack_signature(body: bytes, timestamp: str, signature: str) -> bool:
     Returns:
         bool: True if signature is valid
     """
-    if not settings.SLACK_SIGNING_SECRET:
+    # Skip verification if SLACK_SIGNING_SECRET is not configured or empty
+    if not settings.SLACK_SIGNING_SECRET or settings.SLACK_SIGNING_SECRET.strip() == "":
         logger.warning("SLACK_SIGNING_SECRET not configured, skipping signature verification")
         return True
 
@@ -58,10 +59,15 @@ def verify_slack_signature(body: bytes, timestamp: str, signature: str) -> bool:
         )
 
         # Compare signatures
-        return hmac.compare_digest(my_signature, signature)
+        result = hmac.compare_digest(my_signature, signature)
+        if not result:
+            logger.warning(
+                f"Signature mismatch - expected: {my_signature[:20]}..., got: {signature[:20]}..."
+            )
+        return result
 
     except Exception as e:
-        logger.error(f"Error verifying Slack signature: {e}")
+        logger.error(f"Error verifying Slack signature: {e}", exc_info=True)
         return False
 
 
@@ -103,16 +109,13 @@ async def handle_slack_events(
             event_data = payload.get("event", {})
             team_id = payload.get("team_id")
 
-            # Add team_id to event data for workspace filtering
-            event_data["team_id"] = team_id
-
             logger.info(
                 f"📨 Received Slack event: {event_data.get('type', 'unknown')} from team {team_id}"
             )
 
-            # Route event to matching triggers
+            # Route event to matching triggers - pass the whole payload with nested structure
             slack_router = await SlackEventRouter.get_instance()
-            results = await slack_router.route_event(event_data)
+            results = await slack_router.route_event(payload)
 
             # Log results
             successful_triggers = len(

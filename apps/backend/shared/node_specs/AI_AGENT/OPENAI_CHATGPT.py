@@ -8,31 +8,31 @@ Supports function calling via attached TOOL nodes and memory context via MEMORY 
 from typing import Any, Dict, List
 
 from shared.models.node_enums import AIAgentSubtype, NodeType, OpenAIModel
-from shared.node_specs.base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from shared.node_specs.base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class OpenAIChatGPTSpec(BaseNodeSpec):
-    """OpenAI ChatGPT AI agent specification following the new workflow architecture."""
+    """OpenAI ChatGPT AI agent specification aligned with OpenAI API."""
 
     def __init__(self):
         super().__init__(
             type=NodeType.AI_AGENT,
             subtype=AIAgentSubtype.OPENAI_CHATGPT,
             name="OpenAI_ChatGPT",
-            description="OpenAI ChatGPT AI agent with customizable behavior via system prompt",
-            # Configuration parameters
+            description="OpenAI ChatGPT AI agent with customizable behavior via system prompt.",
+            # Configuration parameters (OpenAI-native only)
             configurations={
                 "model": {
                     "type": "string",
-                    "default": OpenAIModel.GPT_5.value,
-                    "description": "OpenAI模型版本",
+                    "default": OpenAIModel.GPT_5_NANO.value,
+                    "description": "OpenAI model version",
                     "required": True,
                     "options": [model.value for model in OpenAIModel],
                 },
                 "system_prompt": {
                     "type": "string",
                     "default": "You are a helpful AI assistant. Analyze the input and provide a clear, accurate response.",
-                    "description": "系统提示词，定义AI的行为和角色",
+                    "description": "System prompt defining AI behavior and role",
                     "required": True,
                     "multiline": True,
                 },
@@ -41,15 +41,13 @@ class OpenAIChatGPTSpec(BaseNodeSpec):
                     "default": 0.7,
                     "min": 0.0,
                     "max": 2.0,
-                    "description": "控制输出随机性（0-2）",
+                    "description": "Controls randomness of outputs",
                     "required": False,
                 },
                 "max_tokens": {
                     "type": "integer",
-                    "default": 2048,
-                    "min": 1,
-                    "max": 8192,
-                    "description": "最大输出token数",
+                    "default": 8192,
+                    "description": "Maximum number of tokens in response",
                     "required": False,
                 },
                 "top_p": {
@@ -57,7 +55,7 @@ class OpenAIChatGPTSpec(BaseNodeSpec):
                     "default": 1.0,
                     "min": 0.0,
                     "max": 1.0,
-                    "description": "核采样参数",
+                    "description": "Nucleus sampling probability",
                     "required": False,
                 },
                 "frequency_penalty": {
@@ -65,7 +63,7 @@ class OpenAIChatGPTSpec(BaseNodeSpec):
                     "default": 0.0,
                     "min": -2.0,
                     "max": 2.0,
-                    "description": "频率惩罚参数",
+                    "description": "Penalize repeated tokens",
                     "required": False,
                 },
                 "presence_penalty": {
@@ -73,126 +71,121 @@ class OpenAIChatGPTSpec(BaseNodeSpec):
                     "default": 0.0,
                     "min": -2.0,
                     "max": 2.0,
-                    "description": "存在惩罚参数",
+                    "description": "Encourage new topics",
                     "required": False,
                 },
                 "response_format": {
                     "type": "string",
                     "default": "text",
-                    "description": "期望的响应格式",
+                    "description": "Desired response format",
                     "required": False,
-                    "options": ["text", "json", "structured"],
+                    "options": ["text", "json", "schema"],
                 },
-                "enable_function_calling": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "启用通过连接的TOOL节点进行MCP函数调用",
-                    "required": False,
-                },
-                "max_function_calls": {
-                    "type": "integer",
-                    "default": 5,
-                    "min": 1,
-                    "max": 20,
-                    "description": "每次AI执行的最大函数调用次数",
-                    "required": False,
-                },
+                # Shared configs (timeouts, retries, logging, etc.)
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters
-            default_input_params={"message": "", "context": {}, "variables": {}},
-            default_output_params={
-                "content": "",
-                "metadata": {},
-                "format_type": "",
-                "source_node": "",
-                "timestamp": "",
-                "token_usage": {},
-                "function_calls": [],
+            # Parameter schemas
+            input_params={
+                "user_prompt": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Primary user message or prompt input",
+                    "required": True,
+                }
             },
-            # Port definitions with comprehensive schemas
+            output_params={
+                "content": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Model response content",
+                    "required": False,
+                },
+                "metadata": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Additional metadata returned with the response",
+                    "required": False,
+                },
+                "format_type": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Actual response format for the content",
+                    "required": False,
+                    "options": ["text", "json", "schema"],
+                },
+                "source_node": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Source node identifier for tracing",
+                    "required": False,
+                },
+                "timestamp": {
+                    "type": "string",
+                    "default": "",
+                    "description": "ISO-8601 timestamp when the response was generated",
+                    "required": False,
+                },
+                "token_usage": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Token usage statistics (input/output/total)",
+                    "required": False,
+                },
+                "function_calls": {
+                    "type": "array",
+                    "default": [],
+                    "description": "List of function/tool calls invoked by the model",
+                    "required": False,
+                },
+            },
+            # Port definitions
             input_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="dict",
-                    description="Input data for AI processing",
-                    required=True,
-                    max_connections=1,
-                )
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "Input data for AI processing",
+                    "required": True,
+                    "max_connections": -1,
+                }
             ],
             output_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="dict",
-                    description="AI agent response output",
-                    required=False,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="error",
-                    name="error",
-                    data_type="dict",
-                    description="Error output for failed operations",
-                    required=False,
-                    max_connections=-1,
-                ),
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "AI agent response output",
+                    "required": True,
+                    "max_connections": -1,
+                }
             ],
-            # Attached nodes - TOOL and MEMORY nodes are attached, not connected via ports
-            attached_nodes=[],  # Will be populated when creating node instances
-            # Metadata
             tags=["ai", "openai", "chatgpt", "language-model", "function-calling"],
-            # Examples
             examples=[
                 {
-                    "name": "Text Analysis Agent",
-                    "description": "Analyze sentiment and extract key insights from text",
+                    "name": "Sentiment & Insight Extraction",
+                    "description": "Analyze customer feedback for sentiment, key themes, and recommendations.",
                     "configurations": {
-                        "model": OpenAIModel.GPT_5.value,
-                        "system_prompt": "You are a text analysis expert. Analyze the given text for sentiment, key themes, and actionable insights. Provide a structured response with sentiment score, main topics, and recommendations.",
+                        "model": OpenAIModel.GPT_5_NANO.value,
+                        "system_prompt": (
+                            "You are a text analysis expert. Analyze the text for sentiment, "
+                            "themes, and actionable insights. Output JSON with fields: "
+                            "'sentiment', 'score', 'themes', 'recommendations'."
+                        ),
                         "temperature": 0.3,
                         "response_format": "json",
                     },
                     "input_example": {
-                        "message": "Customer feedback about our new product features",
+                        "message": "The new UI looks great, but it's still a bit slow to load.",
                         "context": {"product": "mobile_app"},
-                        "variables": {
-                            "feedback_text": "The new UI is confusing but the performance improvements are great!"
-                        },
                     },
                     "expected_output": {
-                        "content": '{"sentiment": "mixed", "score": 0.6, "themes": ["UI design", "performance"], "recommendations": ["Improve UI clarity", "Highlight performance gains"]}',
-                        "metadata": {"model": "gpt-5", "tokens": 156},
+                        "content": '{"sentiment": "mixed", "score": 0.65, "themes": ["UI design", "performance"], "recommendations": ["Optimize loading speed"]}',
+                        "metadata": {"model": "gpt-5", "tokens": 124},
                         "format_type": "json",
-                        "source_node": "text_analysis_ai",
-                        "timestamp": "2025-01-28T10:30:00Z",
+                        "source_node": "sentiment_analysis_ai",
+                        "timestamp": "2025-01-28T12:00:00Z",
                     },
-                },
-                {
-                    "name": "Code Review Assistant",
-                    "description": "Review code changes and provide feedback",
-                    "configurations": {
-                        "model": OpenAIModel.GPT_5.value,
-                        "system_prompt": "You are a senior software engineer conducting code reviews. Focus on code quality, security, performance, and best practices. Provide constructive feedback.",
-                        "temperature": 0.2,
-                        "enable_function_calling": True,
-                    },
-                    "input_example": {
-                        "message": "Please review this Python function",
-                        "context": {"language": "python", "project": "api_service"},
-                        "variables": {
-                            "code": "def process_data(data):\\n    return [x*2 for x in data if x > 0]"
-                        },
-                    },
-                    "expected_output": {
-                        "content": "The function looks good overall. Consider adding type hints and docstring for better maintainability. The list comprehension is efficient.",
-                        "metadata": {"model": "gpt-5", "tokens": 89},
-                        "format_type": "text",
-                        "source_node": "code_review_ai",
-                        "timestamp": "2025-01-28T11:15:00Z",
-                    },
-                },
+                }
             ],
         )
 

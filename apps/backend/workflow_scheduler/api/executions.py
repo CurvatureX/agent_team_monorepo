@@ -8,7 +8,13 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from shared.models.trigger import ExecutionResult, TriggerType
+from shared.models.execution_new import ExecutionError, ExecutionStatus
+from shared.models.node_enums import TriggerSubtype
+from shared.models.workflow_new import (
+    WorkflowExecution,
+    WorkflowExecutionRequest,
+    WorkflowExecutionResponse,
+)
 from workflow_scheduler.core.config import settings
 from workflow_scheduler.core.supabase_client import get_supabase_client
 from workflow_scheduler.dependencies import get_trigger_manager
@@ -33,6 +39,7 @@ class TriggerExecutionResponse(BaseModel):
     execution_id: Optional[str] = None
     message: str
     error: Optional[str] = None
+    status: Optional[ExecutionStatus] = None  # Add execution status from new model
 
 
 async def _get_workflow_owner_id(workflow_id: str) -> Optional[str]:
@@ -190,6 +197,7 @@ async def trigger_workflow_execution(
                 success=True,
                 execution_id=result.get("execution_id"),
                 message=result.get("message", "Workflow execution triggered successfully"),
+                status=ExecutionStatus.PENDING,  # Set initial status for new executions
             )
         else:
             raise HTTPException(

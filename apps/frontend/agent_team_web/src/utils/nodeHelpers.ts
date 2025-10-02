@@ -51,7 +51,6 @@ const NODE_SUBTYPE_ICONS: Record<string, LucideIcon> = {
   FLOW_FILTER: Filter,
   FLOW_LOOP: Repeat,
   FLOW_MERGE: Merge,
-  FLOW_SWITCH: GitBranch,
   FLOW_WAIT: PauseCircle,
 
   // Default fallback to parent type

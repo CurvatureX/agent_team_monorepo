@@ -20,6 +20,7 @@ except ImportError:
     print("❌ psycopg2 not installed. Install with: pip install psycopg2-binary")
     sys.exit(1)
 
+from shared.models.workflow_new import WorkflowDeploymentStatus as DeploymentStatus
 from workflow_scheduler.core.config import settings
 
 
@@ -30,6 +31,29 @@ def get_db_connection():
 
     # Create connection with psycopg2 (synchronous, no prepared statements by default)
     return psycopg2.connect(url, cursor_factory=psycopg2.extras.RealDictCursor)
+
+
+def _normalize_status(status: str) -> str:
+    """Return lowercase enum value for workflows table from various inputs."""
+    s = str(status).strip()
+    # Try to interpret as enum by name first (e.g., 'DEPLOYED')
+    try:
+        return DeploymentStatus[s.upper()].value
+    except Exception:
+        pass
+    # Try by value (already lowercase strings)
+    try:
+        return DeploymentStatus(s).value
+    except Exception:
+        pass
+    # Legacy mappings
+    legacy_map = {
+        "DRAFT": DeploymentStatus.PENDING.value,
+        "DEPLOYING": DeploymentStatus.PENDING.value,
+        "UNDEPLOYING": DeploymentStatus.PENDING.value,
+        "DEPLOYMENT_FAILED": DeploymentStatus.FAILED.value,
+    }
+    return legacy_map.get(s.upper(), DeploymentStatus.PENDING.value)
 
 
 def update_workflow_deployment_status(workflow_id: str, status: str = "DEPLOYED"):
@@ -58,14 +82,16 @@ def update_workflow_deployment_status(workflow_id: str, status: str = "DEPLOYED"
                     WHERE id = %s
                 """
 
+                normalized = _normalize_status(status)
+
                 cur.execute(
                     update_query,
-                    (status, current_time, current_timestamp, workflow_uuid),
+                    (normalized, current_time, current_timestamp, workflow_uuid),
                 )
                 affected_rows = cur.rowcount
 
                 if affected_rows > 0:
-                    print(f"✅ Updated workflow {workflow_id} status to {status}")
+                    print(f"✅ Updated workflow {workflow_id} status to {normalized}")
 
                     # Create deployment history record
                     history_query = """
@@ -80,8 +106,10 @@ def update_workflow_deployment_status(workflow_id: str, status: str = "DEPLOYED"
                         (
                             workflow_uuid,
                             "DEPLOY",
-                            "DRAFT",
-                            status,
+                            DeploymentStatus.PENDING.name,
+                            DeploymentStatus[normalized.upper()].name
+                            if normalized.upper() in DeploymentStatus.__members__
+                            else DeploymentStatus.PENDING.name,
                             cur.execute(
                                 "SELECT deployment_version FROM workflows WHERE id = %s",
                                 (workflow_uuid,),

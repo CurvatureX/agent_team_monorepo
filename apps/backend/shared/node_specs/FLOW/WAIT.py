@@ -8,7 +8,7 @@ Supports various wait strategies including event-based, condition-based, and tim
 from typing import Any, Dict, List
 
 from ...models.node_enums import FlowSubtype, NodeType
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class WaitFlowSpec(BaseNodeSpec):
@@ -179,89 +179,123 @@ class WaitFlowSpec(BaseNodeSpec):
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters
-            default_input_params={"data": {}, "context": {}, "variables": {}},
-            default_output_params={
-                "data": {},
-                "wait_result": {
-                    "condition_met": False,
-                    "wait_duration_seconds": 0,
-                    "attempts_made": 0,
-                    "wait_start_time": "",
-                    "wait_end_time": "",
-                    "timeout_occurred": False,
-                    "was_cancelled": False,
+            # Parameter schemas (preferred over legacy defaults)
+            input_params={
+                "data": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Payload to pass through after wait completes",
+                    "required": True,
                 },
-                "trigger_data": {},
+                "context": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Optional context variables",
+                    "required": False,
+                },
+                "variables": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Template/runtime variables",
+                    "required": False,
+                },
+            },
+            output_params={
+                "data": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Payload after wait completion",
+                    "required": False,
+                },
+                "wait_result": {
+                    "type": "object",
+                    "default": {
+                        "condition_met": False,
+                        "wait_duration_seconds": 0,
+                        "attempts_made": 0,
+                        "wait_start_time": "",
+                        "wait_end_time": "",
+                        "timeout_occurred": False,
+                        "was_cancelled": False,
+                    },
+                    "description": "Details about the waiting process and outcome",
+                    "required": False,
+                },
+                "trigger_data": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Data that triggered wait completion, if any",
+                    "required": False,
+                },
             },
             # Port definitions
             input_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="any",
-                    description="Data to pass through after wait completion",
-                    required=True,
-                    max_connections=1,
-                ),
-                create_port(
-                    port_id="wait_config",
-                    name="wait_config",
-                    data_type="dict",
-                    description="Dynamic wait configuration override",
-                    required=False,
-                    max_connections=1,
-                ),
-                create_port(
-                    port_id="cancel_signal",
-                    name="cancel_signal",
-                    data_type="boolean",
-                    description="Signal to cancel the wait",
-                    required=False,
-                    max_connections=1,
-                ),
-                create_port(
-                    port_id="trigger_event",
-                    name="trigger_event",
-                    data_type="any",
-                    description="External event trigger to complete wait",
-                    required=False,
-                    max_connections=1,
-                ),
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "any",
+                    "description": "Data to pass through after wait completion",
+                    "required": True,
+                    "max_connections": 1,
+                },
+                {
+                    "id": "wait_config",
+                    "name": "wait_config",
+                    "data_type": "dict",
+                    "description": "Dynamic wait configuration override",
+                    "required": False,
+                    "max_connections": 1,
+                },
+                {
+                    "id": "cancel_signal",
+                    "name": "cancel_signal",
+                    "data_type": "boolean",
+                    "description": "Signal to cancel the wait",
+                    "required": False,
+                    "max_connections": 1,
+                },
+                {
+                    "id": "trigger_event",
+                    "name": "trigger_event",
+                    "data_type": "any",
+                    "description": "External event trigger to complete wait",
+                    "required": False,
+                    "max_connections": 1,
+                },
             ],
             output_ports=[
-                create_port(
-                    port_id="completed",
-                    name="completed",
-                    data_type="any",
-                    description="Data output when wait condition is satisfied",
-                    required=True,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="timeout",
-                    name="timeout",
-                    data_type="any",
-                    description="Data output when wait timeout is reached",
-                    required=False,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="cancelled",
-                    name="cancelled",
-                    data_type="any",
-                    description="Data output when wait is cancelled",
-                    required=False,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="failed",
-                    name="failed",
-                    data_type="any",
-                    description="Data output when wait fails due to error",
-                    required=False,
-                    max_connections=-1,
-                ),
+                {
+                    "id": "completed",
+                    "name": "completed",
+                    "data_type": "any",
+                    "description": "Data output when wait condition is satisfied",
+                    "required": True,
+                    "max_connections": -1,
+                },
+                {
+                    "id": "timeout",
+                    "name": "timeout",
+                    "data_type": "any",
+                    "description": "Data output when wait timeout is reached",
+                    "required": False,
+                    "max_connections": -1,
+                },
+                {
+                    "id": "cancelled",
+                    "name": "cancelled",
+                    "data_type": "any",
+                    "description": "Data output when wait is cancelled",
+                    "required": False,
+                    "max_connections": -1,
+                },
+                {
+                    "id": "failed",
+                    "name": "failed",
+                    "data_type": "any",
+                    "description": "Data output when wait fails due to error",
+                    "required": False,
+                    "max_connections": -1,
+                },
             ],
             # Metadata
             tags=["flow", "wait", "condition", "event", "synchronization", "pause"],

@@ -178,10 +178,16 @@ class NotionExternalAction(BaseExternalAction):
         )
 
         # Create page payload
+        # Remove dashes from UUID to check if it's a valid database/page ID
+        clean_id = parent_id.replace("-", "")
+        # Notion UUIDs are 32 hex characters (with or without dashes)
+        is_valid_uuid = len(clean_id) == 32 and all(
+            c in "0123456789abcdef" for c in clean_id.lower()
+        )
+
+        # Default to database_id if it's a valid UUID (most common case for workflow automation)
         payload = {
-            "parent": {"database_id": parent_id}
-            if len(parent_id) == 32
-            else {"page_id": parent_id},
+            "parent": {"database_id": parent_id} if is_valid_uuid else {"page_id": parent_id},
             "properties": {"title": {"title": [{"text": {"content": title}}]}},
             "children": [
                 {

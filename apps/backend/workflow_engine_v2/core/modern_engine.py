@@ -28,8 +28,8 @@ backend_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(backend_dir))
 
 # Use absolute imports
-from shared.models import ExecutionStatus, TriggerInfo
-from shared.models.execution_new import Execution
+from shared.models import ExecutionStatus
+from shared.models.execution_new import Execution, TriggerInfo
 from shared.models.node_enums import NodeType
 from shared.models.workflow_new import Node, Workflow
 from workflow_engine_v2.core.exceptions import EngineError, ExecutionFailure
@@ -86,16 +86,9 @@ class ModernExecutionEngine:
             trigger_info=trigger,
         )
 
-        # Initialize user-friendly logging
+        # Prepare for user-friendly logging (log actual total after graph filter)
         workflow_name = workflow.metadata.name or "Unnamed Workflow"
         trigger_description = self._get_trigger_description(trigger)
-
-        self.logger.log_workflow_start(
-            execution=execution,
-            workflow_name=workflow_name,
-            total_nodes=len(workflow.nodes),
-            trigger_info=trigger_description,
-        )
 
         start_time = time.time()
 
@@ -105,19 +98,57 @@ class ModernExecutionEngine:
 
             # Build execution graph
             graph = WorkflowGraph(workflow)
-            execution_order = graph.topo_order()  # Raises on cycle
+
+            # Determine entry nodes based on invoked trigger type
+            entry_nodes: List[str] = []
+            try:
+                invoked_type = (
+                    trigger.trigger_type if hasattr(trigger, "trigger_type") else None
+                ) or ""
+                invoked_type = str(invoked_type).upper()
+                if invoked_type:
+                    from shared.models.node_enums import NodeType as _NodeType
+
+                    for n in workflow.nodes:
+                        ntype = str(n.type).upper()
+                        nsub = str(n.subtype).upper() if n.subtype else ""
+                        if ntype == _NodeType.TRIGGER.value and nsub == invoked_type:
+                            entry_nodes.append(n.id)
+            except Exception:
+                entry_nodes = []
+
+            # Compute execution order and restrict to nodes reachable from entry nodes if provided
+            full_order = graph.topo_order()  # Raises on cycle
+            if entry_nodes:
+                allowed = set(graph.reachable_from(entry_nodes)) | set(entry_nodes)
+                execution_order = [nid for nid in full_order if nid in allowed]
+            else:
+                execution_order = full_order
 
             # Add graph debugging
             import logging
 
             logger = logging.getLogger(__name__)
-            logger.info(f"🔗 WORKFLOW CONNECTIONS: {len(workflow.connections)}")
+            logger.debug(f"🔗 WORKFLOW CONNECTIONS: {len(workflow.connections)}")
             for conn in workflow.connections:
-                logger.info(
+                logger.debug(
                     f"   📎 {conn.from_node}:{conn.from_port} → {conn.to_node}:{conn.to_port}"
                 )
-            logger.info(f"📊 EXECUTION ORDER: {execution_order}")
-            logger.info(f"🎯 TOTAL NODES TO EXECUTE: {len(execution_order)}")
+            logger.debug(f"📊 EXECUTION ORDER: {execution_order}")
+            logger.debug(f"🎯 TOTAL NODES TO EXECUTE: {len(execution_order)}")
+            if entry_nodes and len(execution_order) <= len(entry_nodes):
+                logger.warning(
+                    f"No downstream nodes reachable from trigger(s) {entry_nodes}. "
+                    f"Verify workflow.connections have edges from these trigger node IDs to next nodes."
+                )
+
+            # Initialize user-friendly logging with accurate step count
+            self.logger.log_workflow_start(
+                execution=execution,
+                workflow_name=workflow_name,
+                total_nodes=len(execution_order),
+                trigger_info=trigger_description,
+            )
 
             # Execute workflow
             results = await self._execute_nodes(
@@ -197,11 +228,11 @@ class ModernExecutionEngine:
 
         for node_id in execution_order:
             node = graph.nodes[node_id]
-            logger.info(f"🔄 PROCESSING NODE: {node_id}")
+            logger.debug(f"🔄 PROCESSING NODE: {node_id}")
 
             # Check if node is ready (all dependencies completed)
             dependencies_ready = self._are_dependencies_ready(node_id, graph, results)
-            logger.info(f"   ✅ Dependencies ready: {dependencies_ready}")
+            logger.debug(f"   ✅ Dependencies ready: {dependencies_ready}")
             if not dependencies_ready:
                 # Should not happen with proper topological ordering
                 logger.warning(f"   ⚠️ SKIPPING {node_id} - dependencies not ready")
@@ -285,13 +316,41 @@ class ModernExecutionEngine:
                 "trace_id": getattr(execution, "trace_id", None),
             }
 
-            # Add detailed execution logging
+            # Add detailed execution logging with clear formatting
+            import json
             import logging
 
             logger = logging.getLogger(__name__)
-            logger.info(f"🎯 EXECUTING NODE: {node.id} ({node.type}.{node.subtype})")
-            logger.info(f"📥 INPUT DATA: {input_data}")
-            logger.info(f"🏃 RUNNER TYPE: {type(runner).__name__}")
+
+            # Format node name clearly
+            node_name = node.name or node.id
+            logger.info(f"\n{'='*80}")
+            logger.info(f"[{node_name}] Starting execution")
+            logger.info(f"  Type: {node.type}.{node.subtype}")
+            logger.info(f"  Node ID: {node.id}")
+
+            # Log inputs clearly
+            if input_data:
+                logger.info(f"\n[{node_name}] 📥 INPUTS:")
+                for port_name, port_data in input_data.items():
+                    if isinstance(port_data, dict):
+                        logger.info(f"  • {port_name}:")
+                        for key, value in list(port_data.items())[:5]:  # Show first 5 items
+                            value_str = (
+                                json.dumps(value)[:200]
+                                if not isinstance(value, (str, int, float, bool))
+                                else str(value)
+                            )
+                            logger.info(f"    - {key}: {value_str}")
+                        if len(port_data) > 5:
+                            logger.info(f"    ... and {len(port_data) - 5} more fields")
+                    else:
+                        value_str = str(port_data)[:200]
+                        logger.info(f"  • {port_name}: {value_str}")
+            else:
+                logger.info(f"\n[{node_name}] 📥 INPUTS: (none)")
+
+            logger.info(f"\n[{node_name}] 🏃 Executing with {type(runner).__name__}...")
 
             if hasattr(runner, "run_async"):
                 result_data = await runner.run_async(node=node, inputs=input_data, context=context)
@@ -306,14 +365,46 @@ class ModernExecutionEngine:
             duration_ms = (time.time() - start_time) * 1000
             outputs = result_data.get("outputs", {}) if isinstance(result_data, dict) else {}
 
-            # If no outputs at root level, check for main output port (common pattern)
-            if not outputs and isinstance(result_data, dict) and "main" in result_data:
-                outputs = {"main": result_data["main"]}
+            # If no outputs at root level, check for result output port (common pattern)
+            if not outputs and isinstance(result_data, dict) and "result" in result_data:
+                outputs = {"result": result_data["result"]}
 
-            # Log execution results
-            logger.info(f"📤 RAW RESULT: {result_data}")
-            logger.info(f"📤 PROCESSED OUTPUTS: {outputs}")
-            logger.info(f"⏱️ DURATION: {duration_ms:.2f}ms")
+            # Log outputs clearly
+            logger.info(f"\n[{node_name}] 📤 OUTPUTS:")
+            if outputs:
+                for port_name, port_data in outputs.items():
+                    if isinstance(port_data, dict):
+                        logger.info(f"  • {port_name}:")
+                        for key, value in list(port_data.items())[:5]:  # Show first 5 items
+                            value_str = (
+                                json.dumps(value)[:200]
+                                if not isinstance(value, (str, int, float, bool))
+                                else str(value)
+                            )
+                            logger.info(f"    - {key}: {value_str}")
+                        if len(port_data) > 5:
+                            logger.info(f"    ... and {len(port_data) - 5} more fields")
+                    else:
+                        value_str = str(port_data)[:200]
+                        logger.info(f"  • {port_name}: {value_str}")
+            else:
+                logger.info(f"  (no outputs)")
+
+            # Check for errors in result
+            if isinstance(result_data, dict) and "error" in result_data:
+                logger.warning(f"\n[{node_name}] ⚠️  ERROR in result:")
+                error_info = result_data["error"]
+                if isinstance(error_info, dict):
+                    logger.warning(f"  Message: {error_info.get('message', 'Unknown error')}")
+                    if "details" in error_info:
+                        logger.warning(
+                            f"  Details: {json.dumps(error_info['details'], indent=2)[:300]}"
+                        )
+                else:
+                    logger.warning(f"  {error_info}")
+
+            logger.info(f"\n[{node_name}] ✅ Completed in {duration_ms:.2f}ms")
+            logger.info(f"{'='*80}\n")
             output_summary = self._create_parameter_summary(outputs, "output")
 
             # Handle special node types
@@ -343,14 +434,16 @@ class ModernExecutionEngine:
 
             # Add detailed error logging for debugging
             import logging
-
-            logger = logging.getLogger(__name__)
-            logger.error(
-                f"🔍 NODE EXECUTION ERROR: {node.id} ({node.type}.{node.subtype}) - {error_message}"
-            )
             import traceback
 
-            logger.error(f"🔍 TRACEBACK: {traceback.format_exc()}")
+            logger = logging.getLogger(__name__)
+            node_name = node.name or node.id
+
+            logger.error(f"\n[{node_name}] ❌ EXECUTION FAILED")
+            logger.error(f"  Error: {error_message}")
+            logger.error(f"  Duration: {duration_ms:.2f}ms")
+            logger.error(f"  Traceback:\n{traceback.format_exc()}")
+            logger.error(f"{'='*80}\n")
 
             self.logger.log_node_complete(
                 execution_id=execution.execution_id,
@@ -495,38 +588,51 @@ class ModernExecutionEngine:
         results: Dict[str, NodeResult],
         input_data: Dict[str, Any],
     ):
-        """Populate node inputs from predecessor outputs"""
+        """Populate node inputs from predecessor outputs using output_key"""
         # Find connections that target this node
         for connection in graph.workflow.connections:
             if connection.to_node == node.id:
                 source_result = results.get(connection.from_node)
                 if source_result and source_result.success:
-                    source_output = source_result.outputs.get(connection.from_port, {})
+                    # Use output_key if available (new), fallback to from_port (legacy compatibility)
+                    output_key = getattr(connection, "output_key", None) or getattr(
+                        connection, "from_port", "main"
+                    )
+                    source_output = source_result.outputs.get(output_key, {})
 
                     # Apply data transformation if present
                     if connection.conversion_function:
                         try:
-                            from .transformers import parse_legacy_conversion_function, transformer
+                            # Execute conversion function directly
+                            exec_globals = {}
+                            exec(connection.conversion_function, exec_globals)
 
-                            # Parse legacy conversion function into safe transformation config
-                            transform_config = parse_legacy_conversion_function(
-                                connection.conversion_function
+                            # Find the conversion function (try common names)
+                            convert_func = (
+                                exec_globals.get("convert")
+                                or exec_globals.get("convert_trigger_to_ai")
+                                or exec_globals.get("convert_ai_to_slack")
                             )
 
-                            # Apply safe transformation
-                            converted_data = transformer.transform(source_output, transform_config)
-                            input_data[connection.to_port] = converted_data
+                            if convert_func:
+                                converted_data = convert_func(source_output)
+                                input_data[connection.to_port] = converted_data
+                            else:
+                                # No conversion function found, pass through
+                                input_data[connection.to_port] = source_output
 
                             # Add debug logging
                             import logging
 
                             logger = logging.getLogger(__name__)
-                            logger.info(
+                            logger.debug(
                                 f"🔄 TRANSFORMATION: {connection.from_node}:{connection.from_port} → {connection.to_node}:{connection.to_port}"
                             )
-                            logger.info(f"   📥 INPUT: {source_output}")
-                            logger.info(f"   🔧 CONFIG: {transform_config}")
-                            logger.info(f"   📤 CONVERTED: {converted_data}")
+                            logger.debug(f"   📥 INPUT: {source_output}")
+                            logger.debug(
+                                f"   🔧 FUNCTION: {connection.conversion_function[:100]}..."
+                            )
+                            logger.debug(f"   📤 CONVERTED: {converted_data}")
 
                         except Exception as e:
                             # Log transformation error but continue with raw data
@@ -545,12 +651,22 @@ class ModernExecutionEngine:
         outputs: Dict[str, Any],
         pending_inputs: Dict[str, Dict[str, Any]],
     ):
-        """Propagate node outputs to downstream nodes"""
+        """Propagate node outputs to downstream nodes using output_key"""
         for connection in graph.workflow.connections:
             if connection.from_node == node.id:
-                output_data = outputs.get(connection.from_port, {})
+                # Use output_key if available (new), fallback to from_port (legacy compatibility)
+                output_key = getattr(connection, "output_key", None) or getattr(
+                    connection, "from_port", "main"
+                )
+
+                # Get output data from the specified key
+                output_data = outputs.get(output_key, {})
+
+                # For input key, use to_port if available for backward compatibility, otherwise default to 'main'
+                input_key = getattr(connection, "to_port", "main")
+
                 if connection.to_node in pending_inputs:
-                    pending_inputs[connection.to_node][connection.to_port] = output_data
+                    pending_inputs[connection.to_node][input_key] = output_data
 
     def _should_stop_on_failure(self, node: Node, workflow: Workflow) -> bool:
         """Determine if workflow should stop when this node fails"""

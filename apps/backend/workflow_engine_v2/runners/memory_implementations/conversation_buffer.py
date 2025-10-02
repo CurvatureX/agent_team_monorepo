@@ -1,7 +1,10 @@
 """
 Conversation Buffer Memory implementation for workflow_engine_v2.
 
-Maintains a buffer of recent conversation messages with size limits.
+Single conversation buffer memory with built-in auto-summary capability.
+When auto_summarize is enabled and the buffer is nearly full (within 5
+messages of max_messages), the node summarizes the oldest summarize_count
+messages into the summary and frees space in the buffer.
 """
 
 from __future__ import annotations
@@ -20,25 +23,31 @@ from .base import MemoryBase
 
 
 class ConversationBufferMemory(MemoryBase):
-    """Conversation buffer memory implementation."""
+    """Conversation buffer memory with built-in auto-summarization capability."""
 
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
-        self.max_messages = config.get("max_messages", 100)
-        self.max_tokens = config.get("max_tokens", 4000)
+        self.max_messages = config.get("max_messages", 50)
+        self.auto_summarize = config.get("auto_summarize", True)
+        self.summarize_count = config.get("summarize_count", 10)
         self.conversation_id = config.get("conversation_id", "default")
 
         # Use deque for efficient append/pop operations
         self.messages = deque(maxlen=self.max_messages)
 
+        # Summary storage
+        self.summary = ""
+        self.summary_metadata = {}
+
     async def _setup(self) -> None:
         """Setup the conversation buffer."""
         self.logger.info(
-            f"Conversation Buffer: max_messages={self.max_messages}, max_tokens={self.max_tokens}"
+            f"Conversation Buffer: max_messages={self.max_messages}, "
+            f"auto_summarize={self.auto_summarize}, summarize_count={self.summarize_count}"
         )
 
     async def store(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Store a conversation message."""
+        """Store a conversation message and trigger auto-summarization if needed."""
         try:
             message = data.get("message", "")
             role = data.get("role", "user")  # user, assistant, system
@@ -47,25 +56,31 @@ class ConversationBufferMemory(MemoryBase):
             if not message:
                 return {"success": False, "error": "Missing 'message' in data"}
 
+            # Check if we need to auto-summarize before adding new message
+            buffer_full = False
+            if self.auto_summarize and len(self.messages) >= (self.max_messages - 5):
+                await self._create_auto_summary()
+                buffer_full = True
+
             # Create message entry
             entry = {
                 "role": role,
-                "message": message,
+                "content": message,  # Changed from 'message' to 'content' to match spec
                 "timestamp": timestamp,
                 "metadata": data.get("metadata", {}),
-                "token_count": len(message.split()) * 1.3,  # Rough token estimate
             }
 
-            # Add to buffer (deque automatically handles max_messages limit)
+            # Add to buffer
             self.messages.append(entry)
-
-            # Trim buffer if token limit exceeded
-            await self._trim_to_token_limit()
 
             self.logger.debug(f"Stored message ({role}): {message[:50]}...")
             return {
                 "success": True,
-                "messages_count": len(self.messages),
+                "messages": list(self.messages),
+                "total_messages": len(self.messages),
+                "buffer_full": buffer_full,
+                "summary": self.summary,
+                "summary_metadata": self.summary_metadata,
                 "timestamp": timestamp,
             }
 
@@ -74,7 +89,7 @@ class ConversationBufferMemory(MemoryBase):
             return {"success": False, "error": str(e)}
 
     async def retrieve(self, query: Dict[str, Any]) -> Dict[str, Any]:
-        """Retrieve conversation messages."""
+        """Retrieve conversation messages with summary."""
         try:
             limit = query.get("limit", len(self.messages))
             role_filter = query.get("role")  # Optional role filter
@@ -103,8 +118,10 @@ class ConversationBufferMemory(MemoryBase):
             return {
                 "success": True,
                 "messages": messages,
-                "count": len(messages),
-                "total_in_buffer": len(self.messages),
+                "total_messages": len(self.messages),
+                "buffer_full": len(self.messages) >= self.max_messages,
+                "summary": self.summary,
+                "summary_metadata": self.summary_metadata,
             }
 
         except Exception as e:
@@ -112,11 +129,10 @@ class ConversationBufferMemory(MemoryBase):
             return {"success": False, "error": str(e)}
 
     async def get_context(self, query: Dict[str, Any]) -> Dict[str, Any]:
-        """Get formatted context for LLM."""
+        """Get formatted context for LLM, including summary if available."""
         try:
             max_messages = query.get("max_messages", 20)
             include_system = query.get("include_system", True)
-            format_style = query.get("format", "conversation")  # conversation, summary, compact
 
             # Get recent messages
             recent_messages = list(self.messages)[-max_messages:]
@@ -124,103 +140,115 @@ class ConversationBufferMemory(MemoryBase):
             if not include_system:
                 recent_messages = [msg for msg in recent_messages if msg["role"] != "system"]
 
-            if not recent_messages:
-                return {
-                    "success": True,
-                    "context": "No conversation history available.",
-                    "message_count": 0,
-                }
+            # Build context with summary if available
+            context_parts = []
+            if self.summary:
+                context_parts.append(f"[Summary of earlier conversation]: {self.summary}")
+                context_parts.append("")
 
-            # Format based on style
-            if format_style == "conversation":
-                context = self._format_as_conversation(recent_messages)
-            elif format_style == "summary":
-                context = self._format_as_summary(recent_messages)
-            else:  # compact
-                context = self._format_as_compact(recent_messages)
+            if recent_messages:
+                context_parts.append("Recent messages:")
+                for msg in recent_messages:
+                    role = msg["role"]
+                    content = msg.get("content", msg.get("message", ""))  # Support both formats
+                    context_parts.append(f"{role}: {content}")
+            else:
+                context_parts.append("No recent messages.")
+
+            context = "\n".join(context_parts)
 
             return {
                 "success": True,
                 "context": context,
+                "messages": recent_messages,
                 "message_count": len(recent_messages),
-                "format": format_style,
+                "has_summary": bool(self.summary),
+                "summary": self.summary,
             }
 
         except Exception as e:
             self.logger.error(f"Error getting conversation context: {e}")
             return {"success": False, "error": str(e)}
 
-    def _format_as_conversation(self, messages: List[Dict[str, Any]]) -> str:
-        """Format messages as a conversation."""
-        lines = ["Recent Conversation:"]
-        for msg in messages:
-            role = msg["role"].title()
-            message = msg["message"]
-            timestamp = msg["timestamp"][:19]  # Remove microseconds
-            lines.append(f"{role} ({timestamp}): {message}")
+    async def _create_auto_summary(self) -> None:
+        """
+        Create a summary of the oldest messages and remove them from the buffer.
+        This is called when the buffer is nearly full (within 5 messages of max_messages).
+        """
+        try:
+            if len(self.messages) < self.summarize_count:
+                return
 
-        return "\n".join(lines)
+            # Get the oldest messages to summarize
+            messages_to_summarize = list(self.messages)[: self.summarize_count]
 
-    def _format_as_summary(self, messages: List[Dict[str, Any]]) -> str:
-        """Format messages as a summary."""
-        if not messages:
-            return "No conversation history."
+            # Create simple heuristic summary (in production, would use AI)
+            user_messages = [msg for msg in messages_to_summarize if msg["role"] == "user"]
+            assistant_messages = [
+                msg for msg in messages_to_summarize if msg["role"] == "assistant"
+            ]
 
-        user_messages = [msg for msg in messages if msg["role"] == "user"]
-        assistant_messages = [msg for msg in messages if msg["role"] == "assistant"]
+            summary_content = (
+                f"Summary of {len(messages_to_summarize)} earlier messages: "
+                f"{len(user_messages)} from user, {len(assistant_messages)} responses. "
+                f"Topics discussed: {self._extract_topics(messages_to_summarize)}"
+            )
 
-        summary_lines = [
-            f"Conversation Summary:",
-            f"- Total messages: {len(messages)}",
-            f"- User messages: {len(user_messages)}",
-            f"- Assistant responses: {len(assistant_messages)}",
-        ]
+            # Update or append to existing summary
+            if self.summary:
+                self.summary = f"{self.summary}\n\n{summary_content}"
+            else:
+                self.summary = summary_content
 
-        # Add recent key exchanges
-        if len(messages) > 0:
-            summary_lines.append("\nRecent exchange:")
-            for msg in messages[-4:]:  # Last 4 messages
-                role = msg["role"].title()
-                preview = msg["message"][:100]
-                if len(msg["message"]) > 100:
-                    preview += "..."
-                summary_lines.append(f"{role}: {preview}")
+            # Update summary metadata
+            self.summary_metadata = {
+                "message_count": len(messages_to_summarize),
+                "created_at": datetime.utcnow().isoformat(),
+                "time_range": {
+                    "start": messages_to_summarize[0]["timestamp"],
+                    "end": messages_to_summarize[-1]["timestamp"],
+                },
+            }
 
-        return "\n".join(summary_lines)
+            # Remove the summarized messages from the buffer
+            for _ in range(self.summarize_count):
+                if self.messages:
+                    self.messages.popleft()
 
-    def _format_as_compact(self, messages: List[Dict[str, Any]]) -> str:
-        """Format messages in compact format."""
-        if not messages:
-            return "No conversation history."
+            self.logger.info(
+                f"Created auto-summary of {len(messages_to_summarize)} messages, "
+                f"freed {self.summarize_count} slots in buffer"
+            )
 
-        lines = []
-        for msg in messages:
-            role_short = msg["role"][0].upper()  # U, A, S for user, assistant, system
-            message = msg["message"][:150]
-            if len(msg["message"]) > 150:
-                message += "..."
-            lines.append(f"{role_short}: {message}")
+        except Exception as e:
+            self.logger.error(f"Error creating auto-summary: {e}")
 
-        return " | ".join(lines)
+    def _extract_topics(self, messages: List[Dict[str, Any]]) -> str:
+        """Extract main topics from messages (simple implementation)."""
+        try:
+            all_text = " ".join([msg.get("content", msg.get("message", "")) for msg in messages])
+            words = all_text.lower().split()
 
-    async def _trim_to_token_limit(self) -> None:
-        """Trim buffer to stay within token limit."""
-        if not self.max_tokens:
-            return
+            # Simple word frequency analysis
+            word_count = {}
+            for word in words:
+                if len(word) > 3:  # Only meaningful words
+                    word_count[word] = word_count.get(word, 0) + 1
 
-        total_tokens = sum(entry.get("token_count", 0) for entry in self.messages)
+            # Get top words
+            top_words = sorted(word_count.items(), key=lambda x: x[1], reverse=True)[:3]
+            return ", ".join([word for word, count in top_words]) if top_words else "general"
 
-        while total_tokens > self.max_tokens and len(self.messages) > 1:
-            # Remove oldest message
-            removed = self.messages.popleft()
-            total_tokens -= removed.get("token_count", 0)
-            self.logger.debug("Trimmed oldest message due to token limit")
+        except Exception:
+            return "general conversation"
 
     async def clear(self) -> Dict[str, Any]:
-        """Clear the conversation buffer."""
+        """Clear the conversation buffer and summary."""
         try:
             message_count = len(self.messages)
             self.messages.clear()
+            self.summary = ""
+            self.summary_metadata = {}
 
             self.logger.info(f"Cleared conversation buffer: {message_count} messages removed")
             return {
@@ -234,28 +262,27 @@ class ConversationBufferMemory(MemoryBase):
             return {"success": False, "error": str(e)}
 
     async def get_statistics(self) -> Dict[str, Any]:
-        """Get buffer statistics."""
+        """Get buffer statistics including summary info."""
         try:
             if not self.messages:
                 return {
                     "success": True,
                     "statistics": {
                         "message_count": 0,
-                        "total_tokens": 0,
                         "by_role": {},
                         "oldest_message": None,
                         "newest_message": None,
+                        "has_summary": bool(self.summary),
+                        "summary_metadata": self.summary_metadata,
                     },
                 }
 
             # Count by role
             role_counts = {}
-            total_tokens = 0
 
             for entry in self.messages:
                 role = entry["role"]
                 role_counts[role] = role_counts.get(role, 0) + 1
-                total_tokens += entry.get("token_count", 0)
 
             oldest = self.messages[0]["timestamp"] if self.messages else None
             newest = self.messages[-1]["timestamp"] if self.messages else None
@@ -264,11 +291,12 @@ class ConversationBufferMemory(MemoryBase):
                 "success": True,
                 "statistics": {
                     "message_count": len(self.messages),
-                    "total_tokens": total_tokens,
                     "by_role": role_counts,
                     "oldest_message": oldest,
                     "newest_message": newest,
                     "buffer_utilization": len(self.messages) / self.max_messages,
+                    "has_summary": bool(self.summary),
+                    "summary_metadata": self.summary_metadata,
                 },
             }
 

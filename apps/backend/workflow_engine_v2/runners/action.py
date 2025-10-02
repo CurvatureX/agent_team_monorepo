@@ -15,11 +15,10 @@ import re
 # Use absolute imports
 from shared.models import TriggerInfo
 from shared.models.workflow_new import Node
-
-from ..core.expr import get_path
-from ..core.template import render_structure
-from ..services.http_client import HTTPClient
-from .base import NodeRunner
+from workflow_engine_v2.core.expr import get_path
+from workflow_engine_v2.core.template import render_structure
+from workflow_engine_v2.runners.base import NodeRunner
+from workflow_engine_v2.services.http_client import HTTPClient
 
 
 class HttpRequestRunner(NodeRunner):
@@ -34,7 +33,7 @@ class HttpRequestRunner(NodeRunner):
         verify_ssl = bool(cfg.get("verify_ssl", True))
         timeout = float(cfg.get("timeout", cfg.get("timeout_seconds", 30)))
 
-        dyn = inputs.get("main", {}) if isinstance(inputs.get("main"), dict) else {}
+        dyn = inputs.get("result", {}) if isinstance(inputs.get("result"), dict) else {}
         dyn_headers = dyn.get("dynamic_headers", {}) or cfg.get("dynamic_headers", {}) or {}
         dyn_params = (
             dyn.get("dynamic_query_params", {}) or cfg.get("dynamic_query_params", {}) or {}
@@ -131,7 +130,7 @@ class DataTransformationRunner(NodeRunner):
     def run(self, node: Node, inputs: Dict[str, Any], trigger: TriggerInfo) -> Dict[str, Any]:
         cfg = node.configurations or {}
         transform_type = cfg.get("transform_type") or cfg.get("transformation_type", "mapping")
-        src = inputs.get("main", inputs)
+        src = inputs.get("result", inputs)
         if transform_type == "mapping":
             mapping = cfg.get("mapping_rules") or cfg.get("field_mappings") or {}
             out = {}
@@ -140,19 +139,19 @@ class DataTransformationRunner(NodeRunner):
                     out[target] = get_path(src, path)
                 else:
                     out[target] = None
-            return {"main": out}
+            return {"result": out}
         if transform_type in ("jsonpath", "path"):
             path = cfg.get("transform_script") or cfg.get("jsonpath") or cfg.get("path")
             if isinstance(path, str):
-                return {"main": get_path(src, path)}
-            return {"main": src}
+                return {"result": get_path(src, path)}
+            return {"result": src}
         if transform_type == "template_map":
             # template_map: {key: "Hello {{ input.user }}"}
             tmpl_map = cfg.get("template_map", {}) or {}
             ctx = {"input": src, "config": cfg}
-            return {"main": render_structure(tmpl_map, ctx)}
+            return {"result": render_structure(tmpl_map, ctx)}
         # Default pass-through
-        return {"main": src}
+        return {"result": src}
 
 
 __all__ = ["HttpRequestRunner", "DataTransformationRunner"]

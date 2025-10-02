@@ -11,7 +11,7 @@ not connected through input/output ports.
 from typing import Any, Dict, List
 
 from ...models.node_enums import MemorySubtype, NodeType
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class GraphMemorySpec(BaseNodeSpec):
@@ -23,88 +23,106 @@ class GraphMemorySpec(BaseNodeSpec):
             subtype=MemorySubtype.GRAPH_MEMORY,
             name="Graph_Memory",
             description="Store and query graph-structured relationships for complex contextual understanding",
-            # Configuration parameters
+            # Configuration parameters (simplified)
             configurations={
                 "graph_database": {
                     "type": "string",
                     "default": "neo4j",
-                    "description": "Graph database backend for relationship storage",
+                    "description": "图数据库后端",
                     "required": False,
                     "options": ["neo4j", "arangodb", "tigergraph", "amazon_neptune"],
                 },
+                "node_types": {
+                    "type": "array",
+                    "default": ["concept", "entity", "event", "topic"],
+                    "description": "节点类型",
+                    "required": False,
+                },
                 "relationship_types": {
                     "type": "array",
-                    "default": ["related_to", "part_of", "causes", "depends_on", "similar_to"],
-                    "description": "Types of relationships to track",
+                    "default": ["related_to", "part_of", "depends_on", "similar_to"],
+                    "description": "关系类型",
                     "required": False,
                 },
                 "traversal_depth": {
                     "type": "integer",
                     "default": 2,
-                    "description": "Maximum depth for graph traversals",
-                    "required": False,
-                },
-                "node_types": {
-                    "type": "array",
-                    "default": ["concept", "entity", "event", "topic"],
-                    "description": "Types of nodes to create in the graph",
-                    "required": False,
-                },
-                "weight_relationships": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Whether to assign weights to relationships",
+                    "description": "遍历最大深度",
                     "required": False,
                 },
                 "relationship_strength_threshold": {
                     "type": "float",
                     "default": 0.3,
-                    "description": "Minimum strength for relationship storage (0.0-1.0)",
-                    "required": False,
-                },
-                "graph_analysis": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Enable graph analysis algorithms (centrality, clustering)",
-                    "required": False,
-                },
-                "temporal_relationships": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Support time-based relationship evolution",
-                    "required": False,
-                },
-                "auto_relationship_inference": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Automatically infer implicit relationships",
-                    "required": False,
-                },
-                "graph_pruning": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "Remove weak or outdated relationships",
+                    "description": "关系写入阈值（0.0-1.0）",
                     "required": False,
                 },
                 **COMMON_CONFIGS,
             },
-            # Default runtime parameters
-            default_input_params={
-                "nodes": [],
-                "relationships": [],
-                "query": {},
-                "start_node": "",
-                "operation": "query",
-                "filters": {},
+            # Runtime parameters (schema-style)
+            input_params={
+                "operation": {
+                    "type": "string",
+                    "default": "query",
+                    "description": "图操作",
+                    "required": False,
+                    "options": ["add", "add_and_query", "query"],
+                },
+                "nodes": {
+                    "type": "array",
+                    "default": [],
+                    "description": "要添加或查询的节点列表",
+                    "required": False,
+                },
+                "relationships": {
+                    "type": "array",
+                    "default": [],
+                    "description": "关系列表（source/target/type/weight/properties）",
+                    "required": False,
+                },
+                "query": {
+                    "type": "object",
+                    "default": {},
+                    "description": "查询条件（子图、路径、邻居等）",
+                    "required": False,
+                },
+                "start_node": {
+                    "type": "string",
+                    "default": "",
+                    "description": "遍历或路径查询的起始节点",
+                    "required": False,
+                },
+                "filters": {
+                    "type": "object",
+                    "default": {},
+                    "description": "过滤条件（关系类型、权重阈值、深度等）",
+                    "required": False,
+                },
             },
-            default_output_params={
-                "paths": [],
-                "connected_nodes": [],
-                "relationship_summary": "",
-                "graph_metrics": {},
-                "subgraphs": [],
-                "centrality_scores": {},
-                "community_clusters": [],
+            output_params={
+                "paths": {
+                    "type": "array",
+                    "default": [],
+                    "description": "匹配到的路径集合",
+                    "required": False,
+                },
+                "connected_nodes": {
+                    "type": "array",
+                    "default": [],
+                    "description": "相连节点与连接信息",
+                    "required": False,
+                },
+                "relationship_summary": {
+                    "type": "string",
+                    "default": "",
+                    "description": "关系摘要",
+                    "required": False,
+                },
+                "graph_metrics": {
+                    "type": "object",
+                    "default": {},
+                    "description": "图指标（节点/关系计数、密度等）",
+                    "required": False,
+                },
             },
             # Port definitions - Memory nodes don't use traditional ports
             input_ports=[],

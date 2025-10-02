@@ -10,9 +10,11 @@ from pydantic import BaseModel
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.models.execution_new import ExecutionStatus
 from shared.models.node_enums import TriggerSubtype
-from shared.models.trigger import ExecutionResult, TriggerType
+from shared.models.trigger import TriggerSpec
 from shared.models.trigger_index import TriggerIndex
+from shared.models.workflow_new import Workflow, WorkflowExecutionResponse
 from workflow_scheduler.core.config import settings
 from workflow_scheduler.core.database import async_session_factory
 from workflow_scheduler.core.supabase_client import get_supabase_client, query_github_triggers
@@ -81,7 +83,7 @@ def get_jwt_token(request: Request) -> Optional[str]:
     return None
 
 
-@router.post("/workflows/{workflow_id}/manual", response_model=ExecutionResult)
+@router.post("/workflows/{workflow_id}/manual", response_model=WorkflowExecutionResponse)
 async def trigger_manual(
     workflow_id: str,
     request_obj: Request,
@@ -118,7 +120,7 @@ async def trigger_manual(
         raise HTTPException(status_code=500, detail=f"Manual trigger failed: {str(e)}")
 
 
-@router.post("/workflows/{workflow_id}/webhook", response_model=ExecutionResult)
+@router.post("/workflows/{workflow_id}/webhook", response_model=WorkflowExecutionResponse)
 async def process_webhook(
     workflow_id: str,
     request: Request,
@@ -229,7 +231,7 @@ async def handle_github_events(
                 # Execute workflow directly via workflow engine
                 result = await _execute_workflow_directly(
                     workflow_id=workflow_id,
-                    trigger_type="GITHUB",
+                    trigger_type=TriggerSubtype.GITHUB.value,
                     trigger_data={
                         "event_type": event_type,
                         "payload": payload,
@@ -265,7 +267,7 @@ async def handle_github_events(
                     {
                         "workflow_id": workflow_id,
                         "execution_id": None,
-                        "status": "error",
+                        "status": ExecutionStatus.ERROR.value,
                         "message": f"Execution failed: {str(e)}",
                     }
                 )
@@ -382,7 +384,7 @@ async def handle_github_trigger(
                     {
                         "workflow_id": workflow_id,
                         "execution_id": None,
-                        "status": "error",
+                        "status": ExecutionStatus.ERROR.value,
                         "message": f"Processing failed: {str(e)}",
                     }
                 )
@@ -538,7 +540,7 @@ async def get_trigger_types():
                         "GITHUB": "GitHub webhook trigger for repository events",
                     }.get(trigger_type.name, f"{trigger_type.value} trigger"),
                 }
-                for trigger_type in TriggerType
+                for trigger_type in TriggerSubtype
             ]
         }
 
@@ -665,7 +667,7 @@ async def handle_slack_events(
                     {
                         "workflow_id": workflow_id,
                         "execution_id": None,
-                        "status": "error",
+                        "status": ExecutionStatus.ERROR.value,
                         "message": f"Processing failed: {str(e)}",
                     }
                 )
@@ -773,7 +775,7 @@ async def get_health_status(
 
 async def _execute_workflow_directly(
     workflow_id: str, trigger_type: str, trigger_data: Dict[str, Any]
-) -> ExecutionResult:
+) -> WorkflowExecutionResponse:
     """
     Send Slack notification instead of executing workflow (for testing)
     This allows us to verify the GitHub webhook processing works end-to-end
@@ -832,11 +834,11 @@ async def _execute_workflow_directly(
             f"✅ Slack notification sent for workflow {workflow_id} (GitHub {event_type} event)"
         )
 
-        return ExecutionResult(
+        return WorkflowExecutionResponse(
             execution_id=execution_id,
-            status="started",
+            workflow_id=workflow_id,
+            status=ExecutionStatus.RUNNING,
             message="GitHub webhook processed successfully - Slack notification sent",
-            trigger_data=trigger_data,
         )
 
     except Exception as e:
@@ -846,9 +848,9 @@ async def _execute_workflow_directly(
             exc_info=True,
         )
 
-        return ExecutionResult(
+        return WorkflowExecutionResponse(
             execution_id=execution_id,
-            status="error",
+            workflow_id=workflow_id,
+            status=ExecutionStatus.ERROR,
             message=error_msg,
-            trigger_data=trigger_data,
         )

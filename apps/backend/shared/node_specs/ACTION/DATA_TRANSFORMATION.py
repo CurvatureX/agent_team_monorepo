@@ -8,7 +8,7 @@ This is a core system action for data processing within workflows.
 from typing import Any, Dict, List
 
 from ...models.node_enums import ActionSubtype, NodeType
-from ..base import COMMON_CONFIGS, BaseNodeSpec, create_port
+from ..base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class DataTransformationActionSpec(BaseNodeSpec):
@@ -103,32 +103,24 @@ class DataTransformationActionSpec(BaseNodeSpec):
             },
             # Port definitions
             input_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="dict",
-                    description="Input data to transform",
-                    required=True,
-                    max_connections=1,
-                )
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "Input data to transform",
+                    "required": True,
+                    "max_connections": 1,
+                }
             ],
             output_ports=[
-                create_port(
-                    port_id="main",
-                    name="main",
-                    data_type="dict",
-                    description="Transformed data output",
-                    required=False,
-                    max_connections=-1,
-                ),
-                create_port(
-                    port_id="error",
-                    name="error",
-                    data_type="dict",
-                    description="Error output when transformation fails",
-                    required=False,
-                    max_connections=-1,
-                ),
+                {
+                    "id": "main",
+                    "name": "main",
+                    "data_type": "dict",
+                    "description": "Transformed data output",
+                    "required": False,
+                    "max_connections": -1,
+                }
             ],
             # Metadata
             tags=["action", "data", "transformation", "system"],

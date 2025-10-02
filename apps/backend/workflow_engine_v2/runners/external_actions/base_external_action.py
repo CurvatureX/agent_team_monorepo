@@ -16,6 +16,7 @@ backend_dir = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(backend_dir))
 
 from shared.models import ExecutionStatus, NodeExecutionResult
+from shared.models.execution_new import LogLevel
 from workflow_engine_v2.core.context import NodeExecutionContext
 from workflow_engine_v2.services.oauth2_service import OAuth2ServiceV2
 
@@ -38,7 +39,9 @@ class BaseExternalAction(ABC):
             return await self.handle_operation(context, operation)
 
         except Exception as e:
-            self.log_execution(context, f"External action execution failed: {str(e)}", "ERROR")
+            self.log_execution(
+                context, f"External action execution failed: {str(e)}", LogLevel.ERROR.value
+            )
             return self.create_error_result(
                 f"External action execution failed: {str(e)}",
                 context.node.configurations.get("action_type", "unknown"),
@@ -67,7 +70,7 @@ class BaseExternalAction(ABC):
                 self.log_execution(
                     context,
                     f"❌ Cannot get {self.integration_name} token: user_id not found",
-                    "ERROR",
+                    LogLevel.ERROR.value,
                 )
                 return None
 
@@ -83,13 +86,15 @@ class BaseExternalAction(ABC):
                 self.log_execution(
                     context,
                     f"❌ No valid {self.integration_name} token found for user {user_id}",
-                    "ERROR",
+                    LogLevel.ERROR.value,
                 )
                 return None
 
         except Exception as e:
             self.log_execution(
-                context, f"❌ Error retrieving {self.integration_name} token: {str(e)}", "ERROR"
+                context,
+                f"❌ Error retrieving {self.integration_name} token: {str(e)}",
+                LogLevel.ERROR.value,
             )
             return None
 
@@ -97,7 +102,7 @@ class BaseExternalAction(ABC):
         """Log execution message with context."""
         log_message = f"[{self.integration_name.upper()}] {message}"
 
-        if level == "ERROR":
+        if level == LogLevel.ERROR.value:
             self.logger.error(log_message)
         elif level == "WARNING":
             self.logger.warning(log_message)
