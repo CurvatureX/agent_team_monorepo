@@ -465,7 +465,7 @@ async def test_complex_data_pipeline(app_client, patch_workflow_definition, in_m
     quality_check = node(
         "n5",
         NodeType.TOOL.value,
-        ToolSubtype.MCP_TOOL.value,
+        ToolSubtype.HTTP_CLIENT.value,
         {
             "tool_type": "utility",
             "utility_type": "hash",

@@ -44,7 +44,6 @@ from .workflow_new import (  # Enums; Core models; API models; WebSocket events
     UserInputRequest,
     Workflow,
     WorkflowDeploymentStatus,
-    WorkflowExecutionStatus,
     WorkflowExecutionSummary,
     WorkflowMetadata,
     WorkflowStatistics,
@@ -54,7 +53,7 @@ from .workflow_new import (  # Enums; Core models; API models; WebSocket events
 __all__ = [
     # Workflow enums
     "WorkflowDeploymentStatus",
-    "WorkflowExecutionStatus",
+    "ExecutionStatus",  # Use ExecutionStatus instead of WorkflowExecutionStatus
     # Core workflow models
     "Port",
     "Connection",

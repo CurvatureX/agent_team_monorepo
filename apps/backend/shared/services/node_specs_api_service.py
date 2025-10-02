@@ -40,7 +40,8 @@ class NodeSpecsApiService:
 
             templates = []
 
-            for spec in node_spec_registry.values():
+            # Use list_all_specs() method instead of .values()
+            for spec in node_spec_registry.list_all_specs():
                 # Apply filters
                 if (
                     category_filter
@@ -76,7 +77,8 @@ class NodeSpecsApiService:
             if not node_spec_registry:
                 return None
 
-            for spec in node_spec_registry.values():
+            # Use list_all_specs() method instead of .values()
+            for spec in node_spec_registry.list_all_specs():
                 # Check template_id or generate one to match
                 spec_template_id = getattr(spec, "template_id", None)
                 if not spec_template_id:
@@ -178,7 +180,8 @@ class NodeSpecsApiService:
                 return []
 
             categories = set()
-            for spec in node_spec_registry.values():
+            # Use list_all_specs() method instead of .values()
+            for spec in node_spec_registry.list_all_specs():
                 if hasattr(spec, "category") and spec.category:
                     categories.add(spec.category)
 
@@ -195,7 +198,8 @@ class NodeSpecsApiService:
                 return []
 
             node_types = set()
-            for spec in node_spec_registry.values():
+            # Use list_all_specs() method instead of .values()
+            for spec in node_spec_registry.list_all_specs():
                 node_types.add(str(spec.type))
 
             return sorted(list(node_types))
@@ -210,7 +214,8 @@ class NodeSpecsApiService:
             if not node_spec_registry:
                 return {"total": 0, "by_category": {}, "by_type": {}}
 
-            specs = list(node_spec_registry.values())
+            # Use list_all_specs() method instead of .values()
+            specs = node_spec_registry.list_all_specs()
             stats = {
                 "total": len(specs),
                 "by_category": {},
