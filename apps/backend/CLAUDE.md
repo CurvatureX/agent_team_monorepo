@@ -578,6 +578,56 @@ Before deploying to AWS ECS:
 - ✅ **ALWAYS**: Use conservative timing - services need adequate startup time
 - ✅ **ALWAYS**: Include health endpoint in all FastAPI services
 
+## Documentation & Docusaurus
+
+### Docusaurus MDX Escaping Rules
+
+When writing technical documentation in Docusaurus (MDX format), comparison operators must be escaped to prevent MDX from interpreting them as JSX/HTML tags.
+
+**Common Issue**: MDX treats `<`, `>`, `<=`, `>=` as HTML tag syntax, causing compilation errors like:
+```
+Error: MDX compilation failed for file "/path/to/file.md"
+Cause: Unexpected character `=` (U+003D) before name, expected a character that can start a name
+```
+
+**Root Cause**: MDX parser sees `<=` or `>=` and attempts to parse it as an HTML/JSX tag opening, then fails when it encounters unexpected characters.
+
+**Solution**: Escape comparison operators with backslashes in prose text:
+
+```markdown
+✅ Correct:
+- `relevant` (相关, score \>= 0.7): Process response
+- `filtered` (无关, score \<= 0.3): Ignore
+- `uncertain` (不确定, 0.3 \< score \< 0.7): Log only
+
+❌ Incorrect (causes build failures):
+- score >= 0.7
+- score <= 0.3
+- 0.3 < score < 0.7
+```
+
+**When to Escape**:
+- Comparison operators in prose text (lists, paragraphs, headings)
+- Operators in markdown outside of code blocks
+- Mathematical expressions in documentation
+
+**When NOT to Escape**:
+- Inside triple-backtick code fences (```python, ```javascript, etc.)
+- Inside inline code: `` `if score >= 0.7:` ``
+- In actual JSX/HTML elements (intentional tags)
+
+**Testing Locally**:
+```bash
+cd apps/internal-tools/docusaurus-doc
+npm run build  # Builds static site, catches MDX errors
+npm run serve  # Preview production build
+```
+
+**Common Files Affected**:
+- Technical specifications with comparison operators
+- API documentation with threshold values
+- Algorithm descriptions with conditional logic
+
 ## Workflow Metadata & Statistics
 
 ### WorkflowMetadata Structure
