@@ -164,7 +164,7 @@ export function apiWorkflowToEditor(
     Object.entries(apiWorkflow.connections).forEach(([sourceNodeId, connectionData]) => {
       // Check if this is n8n format with main connections
       if (connectionData && typeof connectionData === 'object') {
-        const conn = connectionData as { main?: unknown[][]; connection_types?: any };
+        const conn = connectionData as { main?: unknown[][]; connection_types?: Record<string, unknown> };
 
         // Handle n8n format: { main: [[{ node: "targetId", type: "main", index: 0 }]] }
         if (conn.main && Array.isArray(conn.main)) {

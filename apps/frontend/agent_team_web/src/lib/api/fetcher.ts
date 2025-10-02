@@ -27,12 +27,12 @@ export const fetcher = async ([url, token]: FetcherArgs) => {
   return res.json();
 };
 
-// POST/PUT/DELETE 等操作的通用函数
+// HTTP 操作的通用函数
 export const apiRequest = async (
   url: string,
   token: string,
-  method: 'POST' | 'PUT' | 'DELETE' | 'PATCH',
-  data?: any
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
+  data?: unknown
 ) => {
   const res = await fetch(url, {
     method,
@@ -40,7 +40,7 @@ export const apiRequest = async (
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: data ? JSON.stringify(data) : undefined,
+    body: method !== 'GET' && data ? JSON.stringify(data) : undefined,
   });
 
   if (!res.ok) {
@@ -53,7 +53,7 @@ export const apiRequest = async (
 };
 
 
-export function useAuthSWR<T = any>(
+export function useAuthSWR<T = unknown>(
   url: string | null,
   config?: SWRConfiguration
 ) {

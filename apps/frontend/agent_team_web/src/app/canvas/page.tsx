@@ -1,773 +1,513 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { PromptInputBox } from "@/components/ui/ai-prompt-box";
-import { PanelResizer } from "@/components/ui/panel-resizer";
-import AssistantList from "@/components/ui/assistant-list";
-import { WorkflowEditor } from "@/components/workflow/WorkflowEditor";
-import { User, Bot, Workflow, Maximize2, ArrowLeft, StopCircle, RefreshCw } from "lucide-react";
-import { useResizablePanel } from "@/hooks";
-import { assistants as mockAssistants, Assistant } from "@/lib/assistant-data";
-import { WorkflowData } from "@/types/workflow";
-import { useWorkflowsApi, useWorkflowActions } from "@/lib/api/hooks/useWorkflowsApi";
-import { useToast } from "@/hooks/use-toast";
-import { chatService, ChatSSEEvent } from "@/lib/api/chatService";
+import React, { useRef } from "react";
+import { useRouter } from "next/navigation";
+import Image from "next/image";
+import {
+  Bot,
+  Activity,
+  Clock,
+  AlertTriangle,
+  Pause,
+  CheckCircle,
+  XCircle,
+  ChevronRight,
+  ChevronLeft,
+} from "lucide-react";
+import { useWorkflowsApi } from "@/lib/api/hooks/useWorkflowsApi";
+import { useAuth } from "@/contexts/auth-context";
+import { cn } from "@/lib/utils";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
-interface Message {
+// Type definitions
+interface WorkflowItem {
   id: string;
-  content: string;
-  sender: 'user' | 'assistant';
-  timestamp: Date;
+  name: string;
+  description: string;
+  status: string;
+  deploymentStatus: string;
+  lastExecutionStatus: string;
+  lastRunTime: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  executionCount: number;
+  successRate: number;
+  averageDuration: number;
+  trigger: string | null;
+  tags: string[];
+  logoUrl: string | null;
+  active: boolean;
+  version: string;
 }
 
-interface ApiWorkflow {
-  id?: string;
+interface RawWorkflow {
+  id: string;
   name?: string;
   description?: string;
-  subtype?: string;
-  tags?: string[] | string;
+  status?: string;
+  deployment_status?: string;
+  latest_execution_status?: string;
+  latest_execution_time?: number;
+  created_at?: number | string;
+  updated_at?: number | string;
+  execution_count?: number;
+  success_rate?: number;
+  average_duration?: number;
+  trigger?: string | null;
+  tags?: string[];
+  logo_url?: string | null;
+  active?: boolean;
+  version?: string;
 }
 
-interface LocalWorkflowEdge {
-  source: string;
-  target: string;
-  sourceHandle?: string;
-  targetHandle?: string;
-}
+// Define deployment status configuration outside component for consistency
+const deploymentStatusConfig = {
+  DRAFT: { icon: Clock, label: "Draft", color: "text-gray-500", bg: "bg-gray-50", variant: "outline" as const },
+  PENDING: { icon: Activity, label: "Deploying", color: "text-blue-500", bg: "bg-blue-50", variant: "secondary" as const },
+  DEPLOYED: { icon: CheckCircle, label: "Deployed", color: "text-green-500", bg: "bg-green-50", variant: "default" as const },
+  FAILED: { icon: XCircle, label: "Failed", color: "text-red-500", bg: "bg-red-50", variant: "destructive" as const },
+  UNDEPLOYED: { icon: Pause, label: "Undeployed", color: "text-gray-500", bg: "bg-gray-50", variant: "outline" as const },
+};
 
-interface WorkflowConnection {
-  node: string;
-  type?: string;
-  index?: number;
-}
+function CanvasPage() {
+  const router = useRouter();
+  const { session, loading: authLoading } = useAuth();
+  const { workflows, isLoading, isError, error, mutate } = useWorkflowsApi();
+  const [searchQuery] = React.useState("");
+  const [statusFilter] = React.useState("all");
+  const scrollRefs = useRef<Record<string, HTMLElement | null>>({});
+  const [scrollStates, setScrollStates] = React.useState<Record<string, { showLeft: boolean; showRight: boolean }>>({});
 
-const CanvasPage = () => {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowData | null>(null);
-  const [isWorkflowExpanded, setIsWorkflowExpanded] = useState(false);
-  const [isSavingWorkflow, setIsSavingWorkflow] = useState(false);
-  const [streamCancelFn, setStreamCancelFn] = useState<(() => void) | null>(null);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const chatContainerRef = useRef<HTMLDivElement>(null);
-
-  const { toast } = useToast();
-  const { updateWorkflow } = useWorkflowActions();
-
-  // Auto-scroll to bottom when new messages arrive
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const handleRefresh = () => {
+    mutate();
   };
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  // Handle scroll events to show/hide navigation buttons
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>, status: string) => {
+    const element = e.currentTarget;
+    const showLeft = element.scrollLeft > 0;
+    const showRight = element.scrollLeft < element.scrollWidth - element.clientWidth - 10;
 
-  // Use the custom hook for resizable panels
-  const { width: rightPanelWidth, isResizing, resizerProps, overlayProps } = useResizablePanel({
-    initialWidth: 384,
-    minWidth: 300,
-    maxWidthRatio: 0.6
-  });
+    setScrollStates(prev => ({
+      ...prev,
+      [status]: { showLeft, showRight }
+    }));
+  };
 
-  // Fetch workflows from API
-  const { workflows: apiWorkflows, isLoading: isLoadingWorkflows, error } = useWorkflowsApi();
-
-  // Debug logging
-  useEffect(() => {
-    if (apiWorkflows) {
-      console.log('API Workflows loaded:', apiWorkflows);
+  // Scroll left function
+  const scrollLeft = (status: string) => {
+    const element = scrollRefs.current[status];
+    if (element) {
+      element.scrollBy({ left: -1000, behavior: 'smooth' });
     }
-    if (error) {
-      console.error('API Workflows error:', error);
+  };
+
+  // Scroll right function
+  const scrollRight = (status: string) => {
+    const element = scrollRefs.current[status];
+    if (element) {
+      element.scrollBy({ left: 1000, behavior: 'smooth' });
     }
-  }, [apiWorkflows, error]);
+  };
 
-  // Map API workflows to Assistant format and merge with mock data
-  const assistants = useMemo(() => {
-    // Check if apiWorkflows has the expected structure
-    let workflowsArray: ApiWorkflow[] = [];
 
-    if (apiWorkflows) {
-      // If apiWorkflows is an object with a 'workflows' property (like the API response)
-      if (typeof apiWorkflows === 'object' && !Array.isArray(apiWorkflows) && 'workflows' in apiWorkflows) {
-        const workflowResponse = apiWorkflows as { workflows: ApiWorkflow[] };
-        workflowsArray = workflowResponse.workflows;
+  // Transform API data to display format
+  const workflowsList = React.useMemo(() => {
+    // Handle the API response structure
+    let workflowArray: RawWorkflow[] = [];
+
+    if (workflows) {
+      if (Array.isArray(workflows)) {
+        workflowArray = workflows;
+      } else if (typeof workflows === 'object' && 'workflows' in workflows && Array.isArray((workflows as { workflows: RawWorkflow[] }).workflows)) {
+        workflowArray = (workflows as { workflows: RawWorkflow[] }).workflows;
       }
-      // If apiWorkflows is already an array
-      else if (Array.isArray(apiWorkflows)) {
-        workflowsArray = apiWorkflows;
-      }
-
-      console.log('Workflows data structure:', apiWorkflows);
-      console.log('Extracted workflows array:', workflowsArray);
     }
 
-    const apiAssistants: Assistant[] = workflowsArray.map((workflow: ApiWorkflow, index: number) => ({
-      id: `api-workflow-${index}`,
-      name: workflow.name || `Workflow ${index + 1}`,
-      title: workflow.subtype || 'Custom Workflow',
-      description: workflow.description || 'No description available',
-      skills: workflow.tags ? (Array.isArray(workflow.tags) ? workflow.tags : workflow.tags.split(',').map((tag: string) => tag.trim())) : [],
-      imagePath: '/assistant/AlfieKnowledgeBaseQueryAssistantIcon.png', // Default image
-      workflow: workflow as WorkflowData
+    if (workflowArray.length === 0) return [];
+
+    let filteredWorkflows = workflowArray.map((workflow: RawWorkflow): WorkflowItem => ({
+      id: workflow.id,
+      name: workflow.name || "Unnamed Workflow",
+      description: workflow.description || "",
+      status: workflow.status || "DRAFT",
+      deploymentStatus: workflow.deployment_status || "DRAFT",
+      lastExecutionStatus: workflow.latest_execution_status || "DRAFT",
+      lastRunTime: workflow.latest_execution_time
+        ? new Date(workflow.latest_execution_time * 1000)
+        : null,
+      createdAt: workflow.created_at
+        ? (typeof workflow.created_at === 'number'
+          ? new Date(workflow.created_at * 1000)
+          : new Date(workflow.created_at))
+        : new Date(),
+      updatedAt: workflow.updated_at
+        ? (typeof workflow.updated_at === 'number'
+          ? new Date(workflow.updated_at * 1000)
+          : new Date(workflow.updated_at))
+        : new Date(),
+      executionCount: workflow.execution_count || 0,
+      successRate: workflow.success_rate || 0,
+      averageDuration: workflow.average_duration || 0,
+      trigger: workflow.trigger || null,
+      tags: workflow.tags || [],
+      logoUrl: workflow.logo_url || null,
+      active: workflow.active !== undefined ? workflow.active : true,
+      version: workflow.version || "1.0.0",
     }));
 
-    // Merge API workflows with mock assistants
-    return [...apiAssistants, ...mockAssistants];
-  }, [apiWorkflows]);
-
-  // Load chat history on mount and ensure session exists
-  useEffect(() => {
-    const initializeChat = async () => {
-      try {
-        // First ensure we have a session
-        console.log('Initializing chat session...');
-        const sessionId = await chatService.createNewSession();
-        console.log('Chat session initialized:', sessionId);
-
-        // Then try to load history
-        const history = await chatService.getChatHistory();
-        if (history.messages && history.messages.length > 0) {
-          const formattedMessages: Message[] = history.messages.map((msg) => ({
-            id: msg.id,
-            content: msg.content,
-            sender: msg.role === 'user' ? 'user' : 'assistant',
-            timestamp: new Date(msg.created_at)
-          }));
-          setMessages(formattedMessages);
-        }
-      } catch (error) {
-        console.log('Error initializing chat:', error);
-      }
-    };
-
-    initializeChat();
-
-    // Check for initial message from ai-prompt page
-    const initialMessage = sessionStorage.getItem('initialMessage');
-    if (initialMessage) {
-      sessionStorage.removeItem('initialMessage');
-      // Send initial message after component mounts
-      setTimeout(() => {
-        handleSendMessage(initialMessage);
-      }, 100);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Handle worker selection from AssistantList
-  useEffect(() => {
-    const handleAssistantSelect = (event: Event) => {
-      const customEvent = event as CustomEvent<{ assistantId: string }>;
-      const assistantId = customEvent.detail.assistantId;
-
-      // Find the worker's workflow
-      const assistant = assistants.find((a: Assistant) => a.id === assistantId);
-      console.log('Selected worker:', assistant);
-
-      if (assistant?.workflow) {
-        console.log('Setting workflow ---:', assistant.workflow);
-        setCurrentWorkflow(assistant.workflow);
-      } else {
-        setCurrentWorkflow(null);
-      }
-    };
-
-    window.addEventListener('assistant-selected', handleAssistantSelect);
-    return () => {
-      window.removeEventListener('assistant-selected', handleAssistantSelect);
-    };
-  }, [assistants]);
-
-  const handleSendMessage = useCallback(async (message: string, files?: File[]) => {
-    console.log('handleSendMessage called with:', message);
-    if (!message.trim()) return;
-
-    // Cancel any ongoing stream
-    if (streamCancelFn) {
-      console.log('Cancelling previous stream');
-      streamCancelFn();
-      setStreamCancelFn(null);
-    }
-
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      content: message,
-      sender: 'user',
-      timestamp: new Date()
-    };
-
-    console.log('Adding user message to UI');
-    setMessages(prev => [...prev, userMessage]);
-    setIsLoading(true);
-    setIsStreaming(true);
-
-    // Handle file uploads if any
-    if (files && files.length > 0) {
-      console.log('Processing uploaded files:', files);
-    }
-
-    // Prepare AI message placeholder
-    const currentAiMessageId = (Date.now() + 1).toString();
-    let accumulatedContent = '';
-    let hasReceivedContent = false;
-
-    console.log('About to call chatService.sendChatMessage');
-    try {
-      // Send message to chat API with streaming
-      const cancelFn = await chatService.sendChatMessage(
-        message,
-        (event: ChatSSEEvent) => {
-          console.log('Received SSE event:', event);
-          hasReceivedContent = true;
-
-          // Handle different message types from the SSE stream
-          if (event.type === 'message') {
-            // Check if it's a text message from assistant
-            if (event.data?.text) {
-              accumulatedContent += event.data.text;
-
-              // Update or create AI message
-              setMessages(prev => {
-                const existingIndex = prev.findIndex(m => m.id === currentAiMessageId);
-                const aiMessage: Message = {
-                  id: currentAiMessageId,
-                  content: accumulatedContent,
-                  sender: 'assistant',
-                  timestamp: new Date()
-                };
-
-                if (existingIndex !== -1) {
-                  const updated = [...prev];
-                  updated[existingIndex] = aiMessage;
-                  return updated;
-                } else {
-                  return [...prev, aiMessage];
-                }
-              });
-            }
-            // Handle status/processing messages (these are transient, we can optionally show them)
-            else if (event.data?.message && event.data?.status === 'processing') {
-              // Optionally show processing status as a temporary message
-              console.log('Processing status:', event.data.message);
-            }
-            // Handle role-based messages (when data contains text and role)
-            else if (event.data?.role === 'assistant') {
-              // This is for messages that come with a role field
-              const messageText = event.data.text || event.data.message || '';
-              if (messageText) {
-                accumulatedContent = messageText; // Replace accumulated content
-
-                setMessages(prev => {
-                  const existingIndex = prev.findIndex(m => m.id === currentAiMessageId);
-                  const aiMessage: Message = {
-                    id: currentAiMessageId,
-                    content: accumulatedContent,
-                    sender: 'assistant',
-                    timestamp: new Date()
-                  };
-
-                  if (existingIndex !== -1) {
-                    const updated = [...prev];
-                    updated[existingIndex] = aiMessage;
-                    return updated;
-                  } else {
-                    return [...prev, aiMessage];
-                  }
-                });
-              }
-            }
-          } else if (event.type === 'workflow' && event.data) {
-            // Handle workflow generation if the AI creates one
-            if (event.data.workflow) {
-              console.log('Received workflow:', event.data.workflow);
-              setCurrentWorkflow(event.data.workflow);
-
-              // Also show a message about workflow creation if there's text
-              if (event.data.text) {
-                const workflowMessage = event.data.text;
-                setMessages(prev => {
-                  const existingIndex = prev.findIndex(m => m.id === currentAiMessageId);
-                  const aiMessage: Message = {
-                    id: currentAiMessageId,
-                    content: workflowMessage,
-                    sender: 'assistant',
-                    timestamp: new Date()
-                  };
-
-                  if (existingIndex !== -1) {
-                    const updated = [...prev];
-                    updated[existingIndex] = aiMessage;
-                    return updated;
-                  } else {
-                    return [...prev, aiMessage];
-                  }
-                });
-              }
-            }
-          } else if (event.type === 'status_change') {
-            // Log status changes for debugging but don't show them as messages
-            console.log('Workflow status change:', event.data);
-          } else if (event.type === 'error') {
-            toast({
-              title: "Error",
-              description: event.data?.message || "An error occurred while processing your message",
-              variant: "destructive",
-            });
-          }
-        },
-        (error) => {
-          console.error('Chat API error:', error);
-
-          // If no content was received, show a fallback message
-          if (!hasReceivedContent) {
-            const fallbackMessage: Message = {
-              id: currentAiMessageId,
-              content: "I'm sorry, I couldn't connect to the AI service. Please check if the backend service is running.",
-              sender: 'assistant',
-              timestamp: new Date()
-            };
-            setMessages(prev => [...prev, fallbackMessage]);
-          }
-
-          toast({
-            title: "Connection Error",
-            description: "Failed to connect to AI service. Make sure the backend is running.",
-            variant: "destructive",
-          });
-          setIsLoading(false);
-          setIsStreaming(false);
-        },
-        () => {
-          console.log('Stream completed, received content:', hasReceivedContent);
-          setIsLoading(false);
-          setIsStreaming(false);
-          setStreamCancelFn(null);
-        }
+    // Apply filters
+    if (searchQuery) {
+      filteredWorkflows = filteredWorkflows.filter(
+        (w: WorkflowItem) =>
+          w.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          w.description.toLowerCase().includes(searchQuery.toLowerCase())
       );
-
-      setStreamCancelFn(() => cancelFn);
-    } catch (error) {
-      console.error('Failed to send message:', error);
-
-      // Show error message
-      const errorMessage: Message = {
-        id: currentAiMessageId,
-        content: "I'm having trouble connecting to the AI service. Please make sure the backend server is running.",
-        sender: 'assistant',
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, errorMessage]);
-
-      setIsLoading(false);
-      setIsStreaming(false);
-    }
-  }, [toast, streamCancelFn]);
-
-  // Handle stop streaming
-  const handleStopStreaming = useCallback(() => {
-    if (streamCancelFn) {
-      streamCancelFn();
-      setStreamCancelFn(null);
-      setIsStreaming(false);
-      setIsLoading(false);
-    }
-  }, [streamCancelFn]);
-
-  // Handle retry last message
-  const handleRetryLastMessage = useCallback(() => {
-    const lastUserMessage = [...messages].reverse().find(m => m.sender === 'user');
-    if (lastUserMessage) {
-      // Remove last AI message if it exists
-      setMessages(prev => {
-        const lastAiIndex = prev.map((m, i) => m.sender === 'assistant' ? i : -1)
-          .filter(i => i !== -1)
-          .pop();
-        if (lastAiIndex !== undefined && lastAiIndex > -1) {
-          return prev.slice(0, lastAiIndex);
-        }
-        return prev;
-      });
-      // Resend the message
-      handleSendMessage(lastUserMessage.content);
-    }
-  }, [messages, handleSendMessage]);
-
-  const handleWorkflowChange = useCallback((updatedWorkflow: WorkflowData) => {
-    setCurrentWorkflow(updatedWorkflow);
-    console.log('Workflow updated:', updatedWorkflow);
-  }, []);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (streamCancelFn) {
-        streamCancelFn();
-      }
-      // Don't clear session to preserve chat history
-    };
-  }, [streamCancelFn]);
-
-  // Handle saving workflow to API
-  const handleSaveWorkflow = useCallback(async (workflowToSave?: WorkflowData) => {
-    // Use the provided workflow or fall back to currentWorkflow
-    const workflow = workflowToSave || currentWorkflow;
-
-    if (!workflow || !workflow.id) {
-      toast({
-        title: "Error",
-        description: "No workflow to save",
-        variant: "destructive",
-      });
-      return;
     }
 
-    setIsSavingWorkflow(true);
+    if (statusFilter !== "all") {
+      filteredWorkflows = filteredWorkflows.filter(
+        (w: WorkflowItem) => w.deploymentStatus === statusFilter
+      );
+    }
 
-    try {
-      // Convert edges to connections format (n8n style)
-      const connections: Record<string, { main: WorkflowConnection[][] }> = {};
-      if (workflow.edges) {
-        workflow.edges.forEach((edge) => {
-          const localEdge: LocalWorkflowEdge = {
-            source: edge.source,
-            target: edge.target,
-            sourceHandle: edge.sourceHandle || undefined,
-            targetHandle: edge.targetHandle || undefined
+    return filteredWorkflows;
+  }, [workflows, searchQuery, statusFilter]);
+
+  // Initialize scroll states after data loads
+  React.useEffect(() => {
+    if (!workflows || isLoading) return;
+
+    // Use setTimeout to ensure DOM is ready
+    const timer = setTimeout(() => {
+      const initialStates: Record<string, { showLeft: boolean; showRight: boolean }> = {};
+      Object.keys(deploymentStatusConfig).forEach(status => {
+        const element = scrollRefs.current[status];
+        if (element) {
+          initialStates[status] = {
+            showLeft: false,
+            showRight: element.scrollWidth > element.clientWidth
           };
-          if (!connections[localEdge.source]) {
-            connections[localEdge.source] = {
-              main: [[]]
-            };
-          }
-          connections[localEdge.source].main[0].push({
-            node: localEdge.target,
-            type: 'main',
-            index: 0,
-          });
-        });
-      }
-
-      // Prepare the update data according to API spec
-      const updateData = {
-        name: workflow.name,
-        description: workflow.description,
-        nodes: workflow.nodes || [],
-        connections: connections,
-        settings: workflow.settings,
-        tags: workflow.tags || [],
-      };
-
-      console.log('Saving workflow to API:', {
-        id: workflow.id,
-        nodesCount: updateData.nodes.length,
-        connections: connections,
+        }
       });
+      setScrollStates(initialStates);
+    }, 100);
 
-      await updateWorkflow(workflow.id, updateData);
+    return () => clearTimeout(timer);
+  }, [workflows, isLoading]);
 
-      // Update currentWorkflow with the saved data
-      if (workflowToSave) {
-        setCurrentWorkflow(workflowToSave);
-      }
+  const getTimeAgo = (date: Date | null): string => {
+    if (!date) return "Never";
+    const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
 
-      toast({
-        title: "Success",
-        description: "Workflow saved successfully",
-      });
-    } catch (error) {
-      console.error('Failed to save workflow:', error);
-      toast({
-        title: "Error",
-        description: "Failed to save workflow. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSavingWorkflow(false);
+    if (seconds < 60) return "just now";
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
+
+    return date.toLocaleDateString();
+  };
+
+  // Helper function to get status color
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "DEPLOYED":
+        return "text-green-600 bg-green-50 border-green-200 dark:text-green-400 dark:bg-green-950 dark:border-green-800";
+      case "UNDEPLOYED":
+        return "text-orange-600 bg-orange-50 border-orange-200 dark:text-orange-400 dark:bg-orange-950 dark:border-orange-800";
+      case "PENDING":
+        return "text-blue-600 bg-blue-50 border-blue-200 dark:text-blue-400 dark:bg-blue-950 dark:border-blue-800";
+      case "FAILED":
+        return "text-red-600 bg-red-50 border-red-200 dark:text-red-400 dark:bg-red-950 dark:border-red-800";
+      case "DRAFT":
+        return "text-gray-600 bg-gray-50 border-gray-200 dark:text-gray-400 dark:bg-gray-950 dark:border-gray-800";
+      default:
+        return "text-gray-600 bg-gray-50 border-gray-200 dark:text-gray-400 dark:bg-gray-950 dark:border-gray-800";
     }
-  }, [currentWorkflow, updateWorkflow, toast]);
+  };
 
-  const leftPanelWidth = `calc(100% - ${rightPanelWidth}px)`;
+  // Skeleton Loading Component
+  const SkeletonCard = () => (
+    <Card className="flex-shrink-0 w-96 h-72 overflow-hidden rounded-2xl border bg-card text-card-foreground shadow-sm relative">
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="h-12 w-12 rounded-lg bg-gray-200 dark:bg-gray-700 animate-pulse" />
+            <div className="flex-1">
+              <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-2" />
+              <div className="flex items-center gap-1.5">
+                <div className="h-6 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                <div className="h-6 w-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4 pb-8">
+        <div>
+          <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse mb-1.5" />
+          <div className="space-y-1">
+            <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+            <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded animate-pulse w-3/4" />
+          </div>
+        </div>
+      </CardContent>
+      <div className="absolute bottom-3 left-0 right-0 px-4 py-1 flex justify-between items-center">
+        <div className="h-3 w-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+        <div className="h-3 w-20 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+      </div>
+    </Card>
+  );
+
+  // Loading state with skeleton
+  if (authLoading || (isLoading && workflowsList.length === 0)) {
+    return (
+      <div className="h-full">
+        <div className="px-6 pt-16 pb-6">
+          {/* Skeleton for each status group */}
+          {Object.entries(deploymentStatusConfig).map(([status, config]) => (
+            <div key={status} className="mb-8">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <config.icon className={`w-4 h-4 ${config.color}`} />
+                  <div className="h-4 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                  <div className="h-5 w-6 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                </div>
+                <div className="h-4 w-16 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+              </div>
+
+              <div className="overflow-x-auto">
+                <div className="flex gap-4 pb-4" style={{ width: 'max-content' }}>
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <SkeletonCard key={i} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Not authenticated
+  if (!session) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <Bot className="w-12 h-12 mx-auto mb-4 text-primary" />
+            <CardTitle>Authentication Required</CardTitle>
+            <CardDescription>
+              Please sign in to access your workflows
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    );
+  }
+
+  // Error state
+  if (isError && !isLoading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <AlertTriangle className="w-8 h-8 mx-auto mb-4 text-destructive" />
+          <p className="text-destructive mb-2">{error?.message || "Failed to load workflows"}</p>
+          <Button onClick={handleRefresh}>Retry</Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="bg-background transition-colors duration-300">
-      {/* Background Gradient Overlay */}
-      {/* <div className="fixed inset-0 bg-[radial-gradient(125%_125%_at_50%_101%,rgba(245,87,2,0.1)_10.5%,rgba(245,120,2,0.08)_16%,rgba(245,140,2,0.06)_17.5%,rgba(245,170,100,0.04)_25%,rgba(238,174,202,0.02)_40%,rgba(202,179,214,0.01)_65%,rgba(148,201,233,0.005)_100%)] dark:bg-[radial-gradient(125%_125%_at_50%_101%,rgba(245,87,2,0.05)_10.5%,rgba(245,120,2,0.04)_16%,rgba(245,140,2,0.03)_17.5%,rgba(245,170,100,0.02)_25%,rgba(238,174,202,0.01)_40%,rgba(202,179,214,0.005)_65%,rgba(148,201,233,0.002)_100%)] pointer-events-none" /> */}
+    <div className="h-full">
+      <div className="px-6 pt-16 pb-6">
 
-      {/* Main Content */}
-      <motion.div
-        className="flex fixed inset-0 pt-[80px]"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.4, delay: 0.1 }}
-      >
-        {/* Left Side - Canvas Area */}
-        <motion.div
-          className="pb-6 px-6 h-full"
-          style={{ width: leftPanelWidth }}
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-        >
-          {currentWorkflow ? (
-            <div className="h-full flex flex-col gap-4">
-              {/* Workflow Header */}
-              <motion.div
-                className="flex items-center justify-between"
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3 }}
-              >
+        {/* Group by Status */}
+        {Object.entries(deploymentStatusConfig).map(([status, config]) => {
+          const statusWorkflows = workflowsList.filter((w: WorkflowItem) => w.deploymentStatus === status);
+
+          if (statusWorkflows.length === 0) return null;
+
+          return (
+            <div key={status} className="mb-8">
+              <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => setCurrentWorkflow(null)}
-                    className="p-2 hover:bg-accent rounded-lg transition-colors mr-2"
-                    title="Back to Workers"
-                  >
-                    <ArrowLeft className="w-4 h-4" />
-                  </motion.button>
-                  <Workflow className="w-5 h-5 text-primary" />
-                  <h3 className="text-lg font-semibold">
-                    {currentWorkflow.name || 'Untitled'}&apos;s Workflow
-                  </h3>
+                  <config.icon className={cn("w-4 h-4", config.color)} />
+                  <h2 className="text-sm font-medium">{config.label}</h2>
+                  <Badge variant="outline" className="text-xs">
+                    {statusWorkflows.length}
+                  </Badge>
                 </div>
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => setIsWorkflowExpanded(!isWorkflowExpanded)}
-                  className="p-2 hover:bg-accent rounded-lg transition-colors"
+                <button className="text-sm text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
+                  View all
+                  <ChevronRight className="h-3 w-3" />
+                </button>
+              </div>
+
+              {/* Horizontal Scrolling Cards with Navigation */}
+              <div className="relative">
+                {/* Left Edge Shadow */}
+                {scrollStates[status]?.showLeft && (
+                  <div className="absolute left-0 top-0 bottom-0 w-20 pointer-events-none z-10 bg-gradient-to-r from-[#F8F8F8] dark:from-background to-transparent" />
+                )}
+
+                {/* Right Edge Shadow */}
+                {scrollStates[status]?.showRight && (
+                  <div className="absolute right-0 top-0 bottom-0 w-20 pointer-events-none z-10 bg-gradient-to-l from-[#F8F8F8] dark:from-background to-transparent" />
+                )}
+
+                {/* Scroll Container */}
+                <div
+                  className="overflow-x-auto scroll-smooth"
+                  ref={el => {
+                    // Store ref for this status group
+                    if (!scrollRefs.current) scrollRefs.current = {};
+                    scrollRefs.current[status] = el;
+                  }}
+                  onScroll={(e) => handleScroll(e, status)}
                 >
-                  <Maximize2 className="w-4 h-4" />
-                </motion.button>
-              </motion.div>
+                  <div className="flex gap-4 pb-4" style={{ width: 'max-content' }}>
+                    {statusWorkflows.map((workflow: WorkflowItem) => {
+                    const deploymentConfig = deploymentStatusConfig[workflow.deploymentStatus as keyof typeof deploymentStatusConfig] || deploymentStatusConfig.DRAFT;
 
-              {/* Workflow Editor */}
-              <div className="flex-1 bg-muted/20 rounded-lg border border-border overflow-hidden">
-                <WorkflowEditor
-                  initialWorkflow={currentWorkflow}
-                  onSave={handleWorkflowChange}
-                  onApiSave={handleSaveWorkflow}
-                  isSaving={isSavingWorkflow}
-                  readOnly={false}
-                  className="h-full"
-                />
-              </div>
-            </div>
-          ) : isLoadingWorkflows ? (
-            <div className="h-full flex items-center justify-center">
-              <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-                <p className="text-muted-foreground">Loading workflows...</p>
-              </div>
-            </div>
-          ) : (
-            <AssistantList assistants={assistants} />
-          )}
-        </motion.div>
+                    return (
+                      <Card
+                        key={workflow.id}
+                        className="flex-shrink-0 w-96 h-72 overflow-hidden rounded-2xl border bg-card text-card-foreground shadow-sm transition-shadow duration-300 hover:shadow-md relative cursor-pointer"
+                        onClick={() => router.push(`/workflow/${workflow.id}`)}
+                      >
+                        <CardHeader className="pb-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                              <div className="relative h-12 w-12 overflow-hidden rounded-lg bg-muted">
+                                {workflow.logoUrl ? (
+                                  <Image
+                                    src={workflow.logoUrl}
+                                    alt={`${workflow.name} logo`}
+                                    fill
+                                    className="object-cover"
+                                    loading="lazy"
+                                  />
+                                ) : (
+                                  <div className="h-full w-full flex items-center justify-center bg-primary/10">
+                                    <Bot className="w-6 h-6 text-primary" />
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex-1">
+                                <h3 className="text-sm font-semibold leading-tight text-foreground">
+                                  {workflow.name}
+                                </h3>
+                                <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                                  <Badge
+                                    variant="outline"
+                                    className={cn("font-medium text-[10px] px-1 py-0", getStatusColor(status))}
+                                  >
+                                    {deploymentConfig.label}
+                                  </Badge>
+                                  {/* Tags inline with status */}
+                                  {workflow.tags && workflow.tags.length > 0 && (
+                                    <>
+                                      {workflow.tags.map((tag: string, index: number) => (
+                                        <Badge key={index} variant="secondary" className="text-[10px] px-1 py-0">
+                                          {tag}
+                                        </Badge>
+                                      ))}
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </CardHeader>
 
-        {/* Resize Handle */}
-        <PanelResizer isResizing={isResizing} resizerProps={resizerProps} overlayProps={overlayProps} />
+                        <CardContent className="space-y-4 pb-8">
+                          <div>
+                            <h4 className="text-xs font-medium text-foreground mb-1.5">Description</h4>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <p className="text-xs leading-relaxed text-muted-foreground line-clamp-3">
+                                    {workflow.description || "No description available"}
+                                  </p>
+                                </TooltipTrigger>
+                                {workflow.description && workflow.description.length > 100 && (
+                                  <TooltipContent className="max-w-xs">
+                                    <p className="text-sm">{workflow.description}</p>
+                                  </TooltipContent>
+                                )}
+                              </Tooltip>
+                            </TooltipProvider>
+                          </div>
+                        </CardContent>
 
-        {/* Right Side - Chat Area */}
-        <motion.div
-          className="flex flex-col bg-background/95 backdrop-blur-sm h-full border-l border-t border-border/30 rounded-tl-lg"
-          style={{ width: `${rightPanelWidth}px` }}
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.6, delay: 0.3 }}
-        >
-          {/* Chat Header */}
-          <div className="p-4 border-b border-border/30">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Bot className="w-5 h-5 text-primary" />
-                <h3 className="text-lg font-semibold">Worker Manager</h3>
-              </div>
-
-              {/* <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => {
-                  // Generate a new workflow
-                  const newWorkflow = generateWorkflowFromDescription('Start with AI analysis, then process data, and finally store results');
-                  setCurrentWorkflow(newWorkflow);
-                }}
-                className="flex items-center gap-1 px-3 py-1.5 rounded-md bg-primary/10 text-primary text-sm hover:bg-primary/20 transition-colors"
-              >
-                <Workflow className="w-4 h-4" />
-                <span>Create Workflow</span>
-              </motion.button> */}
-            </div>
-          </div>
-
-          {/* Chat Messages */}
-          <div ref={chatContainerRef} className="flex-1 p-4 overflow-y-auto pt-2">
-            <div className="space-y-4">
-              <AnimatePresence>
-                {messages.map((message) => (
-                  <motion.div
-                    key={message.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    transition={{ duration: 0.3 }}
-                    className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div
-                      className={`max-w-[80%] p-3 rounded-2xl ${
-                        message.sender === 'user'
-                          ? 'bg-primary text-primary-foreground ml-4'
-                          : 'bg-muted text-muted-foreground mr-4'
-                      }`}
-                    >
-                      <div className="flex items-start gap-2">
-                        {message.sender === 'assistant' && (
-                          <Bot className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                        )}
-                        {message.sender === 'user' && (
-                          <User className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                        )}
-                        <div>
-                          <p className="text-sm">{message.content}</p>
-                          <p className="text-xs opacity-70 mt-1">
-                            {message.timestamp.toLocaleTimeString()}
-                          </p>
+                        {/* Fixed bottom row with version and timestamp at very bottom of card */}
+                        <div className="absolute bottom-3 left-0 right-0 px-4 py-1 flex justify-between items-center text-xs text-muted-foreground">
+                          <span>v{workflow.version}</span>
+                          <span>Updated: {getTimeAgo(workflow.updatedAt)}</span>
                         </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-
-              <div ref={messagesEndRef} />
-
-              {isLoading && !isStreaming && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="flex justify-start"
-                >
-                  <div className="bg-muted text-muted-foreground p-3 rounded-2xl mr-4">
-                    <div className="flex items-center gap-2">
-                      <Bot className="w-4 h-4" />
-                      <div className="flex gap-1">
-                        <div className="w-2 h-2 bg-current rounded-full animate-bounce" />
-                        <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
-                        <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-                      </div>
-                    </div>
+                      </Card>
+                    );
+                  })}
                   </div>
-                </motion.div>
-              )}
-            </div>
-          </div>
+                </div>
 
-          {/* Action Buttons */}
-          {(isStreaming || messages.length > 0) && (
-            <div className="px-4 py-2 border-t border-border/30 flex items-center gap-2">
-              {isStreaming && (
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={handleStopStreaming}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors text-sm"
-                >
-                  <StopCircle className="w-4 h-4" />
-                  <span>Stop</span>
-                </motion.button>
-              )}
-              {!isLoading && messages.length > 0 && (
-                <>
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={handleRetryLastMessage}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-muted hover:bg-accent transition-colors text-sm"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                    <span>Retry</span>
-                  </motion.button>
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => {
-                      setMessages([]);
-                      chatService.clearSession();
+                {/* Navigation Buttons */}
+                {scrollStates[status]?.showLeft && (
+                  <button
+                    className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-white dark:bg-gray-900 rounded-full flex items-center justify-center hover:scale-105 transition-transform z-20"
+                    style={{
+                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08)'
                     }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-muted hover:bg-accent transition-colors text-sm ml-auto"
+                    onClick={() => scrollLeft(status)}
                   >
-                    <span>Clear Chat</span>
-                  </motion.button>
-                </>
-              )}
-            </div>
-          )}
+                    <ChevronLeft className="h-4 w-4 text-gray-700 dark:text-gray-200" />
+                  </button>
+                )}
 
-          {/* Input Area */}
-          <motion.div
-            className="p-4 bg-background/95 backdrop-blur-sm flex-shrink-0"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.4 }}
-          >
-            <PromptInputBox
-              onSend={handleSendMessage}
-              isLoading={isLoading}
-              placeholder="Continue conversation..."
-              className="shadow-sm"
-            />
-          </motion.div>
-        </motion.div>
-      </motion.div>
-
-      {/* Expanded Workflow View */}
-      <AnimatePresence>
-        {isWorkflowExpanded && currentWorkflow && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-background z-50 flex flex-col"
-          >
-            {/* Fullscreen Header */}
-            <div className="flex items-center justify-between p-4 border-b border-border">
-              <div className="flex items-center gap-2">
-                <Workflow className="w-5 h-5 text-primary" />
-                <h3 className="text-lg font-semibold">
-                  {currentWorkflow.name || 'Untitled'}&apos;s Workflow
-                </h3>
+                {scrollStates[status]?.showRight && (
+                  <button
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-white dark:bg-gray-900 rounded-full flex items-center justify-center hover:scale-105 transition-transform z-20"
+                    style={{
+                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08)'
+                    }}
+                    onClick={() => scrollRight(status)}
+                  >
+                    <ChevronRight className="h-4 w-4 text-gray-700 dark:text-gray-200" />
+                  </button>
+                )}
               </div>
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => setIsWorkflowExpanded(false)}
-                className="p-2 hover:bg-accent rounded-lg transition-colors"
-                title="Exit Fullscreen"
-              >
-                <Maximize2 className="w-4 h-4" />
-              </motion.button>
             </div>
-            {/* Workflow Editor */}
-            <div className="flex-1">
-              <WorkflowEditor
-                initialWorkflow={currentWorkflow}
-                onSave={handleWorkflowChange}
-                onApiSave={handleSaveWorkflow}
-                isSaving={isSavingWorkflow}
-                readOnly={false}
-                className="h-full"
-              />
-            </div>
-          </motion.div>
+          );
+        })}
+
+        {/* Empty State */}
+        {workflowsList.length === 0 && (
+          <div className="mb-8">
+            <Card className="p-8">
+              <div className="text-center">
+                <Bot className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                <p className="text-lg font-medium mb-2">No assistants yet</p>
+                <p className="text-sm text-muted-foreground">
+                  Create your first assistant to get started
+                </p>
+              </div>
+            </Card>
+          </div>
         )}
-      </AnimatePresence>
+      </div>
     </div>
   );
-};
+}
 
 export default CanvasPage;
