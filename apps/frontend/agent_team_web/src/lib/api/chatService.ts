@@ -33,7 +33,7 @@ export interface ChatSSEEvent {
     role?: 'assistant' | 'user';
     previous_stage?: string;
     current_stage?: string;
-    stage_state?: any;
+    stage_state?: Record<string, unknown>;
     node_name?: string;
     [key: string]: unknown;
   };
