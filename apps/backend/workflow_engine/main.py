@@ -21,23 +21,23 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from shared.models.db_models import WorkflowStatusEnum
+
 # Import our migrated modules
 from config import settings
 from database import Database
 from executor import WorkflowExecutor
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
 from models import (
     ExecuteWorkflowRequest,
     ExecuteWorkflowResponse,
     GetExecutionRequest,
     GetExecutionResponse,
 )
-from pydantic import BaseModel
 from services.oauth2_service_lite import OAuth2ServiceLite
 from utils.unicode_utils import clean_unicode_data, ensure_utf8_safe_dict
-
-from shared.models.db_models import WorkflowStatusEnum
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -411,9 +411,28 @@ async def list_workflows(
             if request and request.headers.get("authorization"):
                 auth_header = request.headers.get("authorization")
                 if auth_header.startswith("Bearer "):
-                    # TODO: Extract user_id from JWT token if needed for user filtering
-                    # For now, skip user filtering to get all workflows (admin mode)
-                    pass
+                    # Extract user_id from JWT token for user filtering
+                    try:
+                        import base64
+                        import json
+
+                        token = auth_header[7:]  # Remove "Bearer " prefix
+                        # Decode JWT payload without verification (just to extract user_id)
+                        # JWT format: header.payload.signature
+                        parts = token.split(".")
+                        if len(parts) == 3:
+                            # Decode payload (second part)
+                            payload_encoded = parts[1]
+                            # Add padding if needed
+                            padding = 4 - len(payload_encoded) % 4
+                            if padding != 4:
+                                payload_encoded += "=" * padding
+                            payload = json.loads(base64.urlsafe_b64decode(payload_encoded))
+                            # Supabase JWT has 'sub' field as user_id
+                            user_id = payload.get("sub")
+                            logger.info(f"🔐 Extracted user_id from JWT: {user_id}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Failed to extract user_id from JWT: {e}")
 
             # Use direct SQL for maximum performance
             result = await direct_db.list_workflows_fast(
