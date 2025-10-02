@@ -6,6 +6,7 @@ Data Models for API Gateway
 # 从shared模型导入所有需要的模型
 try:
     # 尝试直接导入（当PYTHONPATH设置正确时）
+    from shared.models import WorkflowData  # Keep legacy alias for backward compatibility
     from shared.models import (
         AuthClient,
         AuthResult,
@@ -47,8 +48,6 @@ try:
         StatusChangeEventData,
     )
     from shared.models import UpdateWorkflowRequest as WorkflowUpdate
-    from shared.models import WorkflowData
-    from shared.models import WorkflowData as Workflow
     from shared.models import (
         WorkflowEventData,
         WorkflowExecutionRequest,
@@ -63,6 +62,7 @@ try:
         TriggerStatus,
         TriggerType,
     )
+    from shared.models.workflow_new import Workflow as NewWorkflow
 except ImportError:
     # 如果直接导入失败，尝试添加路径后导入
     import sys
@@ -72,6 +72,7 @@ except ImportError:
     backend_dir = Path(__file__).parent.parent.parent.parent
     sys.path.insert(0, str(backend_dir))
 
+    from shared.models import WorkflowData  # Keep legacy alias for backward compatibility
     from shared.models import (
         AuthClient,
         AuthResult,
@@ -113,8 +114,6 @@ except ImportError:
         StatusChangeEventData,
     )
     from shared.models import UpdateWorkflowRequest as WorkflowUpdate
-    from shared.models import WorkflowData
-    from shared.models import WorkflowData as Workflow
     from shared.models import (
         WorkflowEventData,
         WorkflowExecutionRequest,
@@ -129,10 +128,12 @@ except ImportError:
         TriggerStatus,
         TriggerType,
     )
+    from shared.models.workflow_new import Workflow as NewWorkflow
 
 # 向后兼容别名
 HealthResponse = HealthCheckModel
 ErrorResponse = ErrorModel
+Workflow = NewWorkflow  # Provide Workflow as an alias for NewWorkflow
 
 __all__ = [
     # Base models

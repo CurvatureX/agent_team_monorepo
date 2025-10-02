@@ -272,7 +272,6 @@ A `Connection` object has the following structure:
   - `FLOW_FILTER`
   - `FLOW_LOOP`
   - `FLOW_MERGE`
-  - `FLOW_SWITCH`
   - `FLOW_WAIT`
 - **Human in the Loop Subtypes**
   - `HUMAN_GMAIL`

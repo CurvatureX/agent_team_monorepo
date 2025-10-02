@@ -182,8 +182,8 @@ class TestFlowNode:
     async def test_conditional_flow_false_path(self):
         """Test IF condition evaluating to false"""
 
-    async def test_switch_case_flow(self):
-        """Test SWITCH/CASE flow control"""
+    async def test_multi_branch_if_flow(self):
+        """Test multi-branch flow using chained IF nodes (SWITCH removed)"""
 
     async def test_for_each_loop_array(self):
         """Test FOR_EACH loop over array data"""
@@ -312,10 +312,10 @@ class TestBranchingWorkflows:
         Verify: Correct branch taken based on condition
         """
 
-    async def test_switch_case_multiple_branches(self):
+    async def test_multi_branching_with_if_chain(self):
         """
-        Test: TRIGGER → FLOW(SWITCH) → [Multiple branches]
-        Verify: Correct case executed based on switch value
+        Test: TRIGGER → FLOW(IF) chained → [Multiple branches]
+        Verify: Correct branch executed based on evaluated conditions
         """
 
     async def test_parallel_execution_merge(self):

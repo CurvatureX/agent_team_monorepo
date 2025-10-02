@@ -1,9 +1,12 @@
 import asyncio
+import json
 import logging
 from typing import Any, Dict, List, Optional
 
+from shared.models.execution_new import ExecutionStatus
 from shared.models.node_enums import TriggerSubtype
-from shared.models.trigger import ExecutionResult, TriggerSpec, TriggerStatus, TriggerType
+from shared.models.trigger import TriggerSpec, TriggerStatus
+from shared.models.workflow_new import WorkflowExecutionResponse
 from workflow_scheduler.services.event_router import EventRouter
 from workflow_scheduler.services.lock_manager import DistributedLockManager
 from workflow_scheduler.services.notification_service import NotificationService
@@ -15,17 +18,122 @@ logger = logging.getLogger(__name__)
 class TriggerManager:
     """Central manager for all trigger types and their lifecycle"""
 
-    def __init__(self, lock_manager: DistributedLockManager):
+    def __init__(self, lock_manager: DistributedLockManager, direct_db_service=None):
         self.lock_manager = lock_manager
         self.event_router = EventRouter()
         self.notification_service = NotificationService()
+        self.direct_db_service = direct_db_service
         self._triggers: Dict[str, List[BaseTrigger]] = {}  # workflow_id -> list of triggers
-        self._trigger_registry: Dict[TriggerType, type] = {}
+        self._trigger_registry: Dict[TriggerSubtype, type] = {}
 
-    def register_trigger_class(self, trigger_type: TriggerType, trigger_class: type) -> None:
+    def register_trigger_class(self, trigger_type: TriggerSubtype, trigger_class: type) -> None:
         """Register a trigger class for a specific trigger type"""
         self._trigger_registry[trigger_type] = trigger_class
         logger.info(f"Registered trigger class for type: {trigger_type.value}")
+
+    async def restore_active_triggers(self) -> Dict[str, Any]:
+        """
+        Restore all active triggers from the trigger_index table on startup
+
+        Returns:
+            Dict with restoration statistics
+        """
+        if not self.direct_db_service:
+            logger.error("Cannot restore triggers: direct_db_service not available")
+            return {"success": False, "error": "No database service"}
+
+        try:
+            logger.info("🔄 Restoring active triggers from trigger_index...")
+
+            # Query trigger_index for all active triggers using direct connection
+            query = """
+                SELECT workflow_id, trigger_type, trigger_subtype, trigger_config, index_key
+                FROM trigger_index
+                WHERE deployment_status = 'active'
+                ORDER BY workflow_id, trigger_subtype
+            """
+
+            # Execute query using the connection pool
+            conn_context = await self.direct_db_service._get_connection()
+            async with conn_context as connection:
+                rows = await connection.fetch(query)
+
+            if not rows:
+                logger.info("No active triggers found in trigger_index")
+                return {"success": True, "restored_count": 0, "workflows": []}
+
+            # Group triggers by workflow_id
+            workflows_triggers = {}
+            for row in rows:
+                workflow_id = row["workflow_id"]
+                trigger_subtype_str = row["trigger_subtype"]
+                trigger_config_raw = row["trigger_config"]
+
+                # Parse trigger_config if it's a string
+                if isinstance(trigger_config_raw, str):
+                    try:
+                        trigger_config = json.loads(trigger_config_raw)
+                    except json.JSONDecodeError:
+                        logger.warning(
+                            f"Failed to parse trigger_config for workflow {workflow_id}, skipping"
+                        )
+                        continue
+                else:
+                    trigger_config = trigger_config_raw
+
+                if workflow_id not in workflows_triggers:
+                    workflows_triggers[workflow_id] = []
+
+                # Convert trigger_subtype string to enum
+                try:
+                    trigger_subtype = TriggerSubtype(trigger_subtype_str)
+                except ValueError:
+                    logger.warning(f"Unknown trigger subtype: {trigger_subtype_str}, skipping")
+                    continue
+
+                # Create TriggerSpec
+                spec = TriggerSpec(
+                    type="TRIGGER",
+                    subtype=trigger_subtype,
+                    enabled=trigger_config.get("enabled", True),
+                    parameters=trigger_config,
+                )
+
+                workflows_triggers[workflow_id].append(spec)
+
+            # Register triggers for each workflow
+            restored_count = 0
+            failed_count = 0
+            restored_workflows = []
+
+            for workflow_id, trigger_specs in workflows_triggers.items():
+                logger.info(f"Restoring {len(trigger_specs)} triggers for workflow {workflow_id}")
+                success = await self.register_triggers(workflow_id, trigger_specs)
+
+                if success:
+                    restored_count += len(trigger_specs)
+                    restored_workflows.append(workflow_id)
+                    logger.info(f"✅ Restored triggers for workflow {workflow_id}")
+                else:
+                    failed_count += len(trigger_specs)
+                    logger.error(f"❌ Failed to restore triggers for workflow {workflow_id}")
+
+            logger.info(
+                f"✅ Trigger restoration complete: {restored_count} triggers restored, "
+                f"{failed_count} failed across {len(restored_workflows)} workflows"
+            )
+
+            return {
+                "success": True,
+                "restored_count": restored_count,
+                "failed_count": failed_count,
+                "workflows": restored_workflows,
+                "total_workflows": len(workflows_triggers),
+            }
+
+        except Exception as e:
+            logger.error(f"❌ Failed to restore active triggers: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
 
     async def register_triggers(self, workflow_id: str, trigger_specs: List[TriggerSpec]) -> bool:
         """
@@ -167,7 +275,7 @@ class TriggerManager:
 
     async def trigger_manual(
         self, workflow_id: str, user_id: str, access_token: Optional[str] = None
-    ) -> ExecutionResult:
+    ) -> WorkflowExecutionResponse:
         """
         Manually trigger a workflow execution
 
@@ -185,10 +293,11 @@ class TriggerManager:
             ]
 
             if not manual_triggers:
-                return ExecutionResult(
+                return WorkflowExecutionResponse(
+                    execution_id=f"exec_{workflow_id}",
+                    workflow_id=workflow_id,
                     status="failed",
                     message="No active manual trigger found for workflow",
-                    trigger_data={"workflow_id": workflow_id, "user_id": user_id},
                 )
 
             # Use the first manual trigger
@@ -206,15 +315,16 @@ class TriggerManager:
 
         except Exception as e:
             logger.error(f"Manual trigger failed for workflow {workflow_id}: {e}", exc_info=True)
-            return ExecutionResult(
-                status="error",
+            return WorkflowExecutionResponse(
+                execution_id=f"exec_{workflow_id}",
+                workflow_id=workflow_id,
+                status=ExecutionStatus.ERROR,
                 message=f"Manual trigger error: {str(e)}",
-                trigger_data={"workflow_id": workflow_id, "user_id": user_id},
             )
 
     async def process_webhook(
         self, workflow_id: str, request_data: Dict[str, Any]
-    ) -> ExecutionResult:
+    ) -> WorkflowExecutionResponse:
         """
         Process webhook trigger for a workflow
 
@@ -232,10 +342,11 @@ class TriggerManager:
             ]
 
             if not webhook_triggers:
-                return ExecutionResult(
+                return WorkflowExecutionResponse(
+                    execution_id=f"exec_{workflow_id}",
+                    workflow_id=workflow_id,
                     status="failed",
                     message="No active webhook trigger found for workflow",
-                    trigger_data={"workflow_id": workflow_id},
                 )
 
             # Use the first webhook trigger
@@ -250,10 +361,11 @@ class TriggerManager:
 
         except Exception as e:
             logger.error(f"Webhook trigger failed for workflow {workflow_id}: {e}", exc_info=True)
-            return ExecutionResult(
-                status="error",
+            return WorkflowExecutionResponse(
+                execution_id=f"exec_{workflow_id}",
+                workflow_id=workflow_id,
+                status=ExecutionStatus.ERROR,
                 message=f"Webhook trigger error: {str(e)}",
-                trigger_data={"workflow_id": workflow_id},
             )
 
     async def health_check(self) -> Dict[str, Any]:

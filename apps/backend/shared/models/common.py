@@ -207,3 +207,48 @@ class ServiceHealthCheck(BaseModel):
             }
         }
     )
+
+
+# ============================================================================
+# NODE TEMPLATE MODELS
+# ============================================================================
+
+
+class NodeTemplate(BaseModel):
+    """Node template model for API responses"""
+
+    id: str = Field(..., description="模板唯一标识符")
+    name: str = Field(..., description="模板显示名称")
+    description: Optional[str] = Field(None, description="模板描述")
+    category: Optional[str] = Field(None, description="模板分类")
+    node_type: str = Field(..., description="节点类型")
+    node_subtype: str = Field(..., description="节点子类型")
+    version: str = Field(default="1.0.0", description="模板版本")
+    is_system_template: bool = Field(default=True, description="是否为系统模板")
+
+    # JSON fields
+    default_parameters: Dict[str, Any] = Field(default_factory=dict, description="默认参数")
+    required_parameters: List[str] = Field(default_factory=list, description="必需参数列表")
+    parameter_schema: Dict[str, Any] = Field(default_factory=dict, description="参数JSON Schema")
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": "ai_agent_openai_chatgpt",
+                "name": "OpenAI ChatGPT",
+                "description": "OpenAI GPT模型AI代理",
+                "category": "ai_agent",
+                "node_type": "AI_AGENT",
+                "node_subtype": "OPENAI_CHATGPT",
+                "version": "1.0.0",
+                "is_system_template": True,
+                "default_parameters": {"model_version": "gpt-4o-mini", "temperature": 0.7},
+                "required_parameters": ["system_prompt"],
+                "parameter_schema": {
+                    "type": "object",
+                    "properties": {"system_prompt": {"type": "string", "description": "系统提示词"}},
+                    "required": ["system_prompt"],
+                },
+            }
+        }
+    )

@@ -4,11 +4,11 @@ in the 'shared' directory. By importing and exposing all models here,
 we can simplify imports in other parts of the application.
 
 Instead of writing:
-from shared.models.workflow import WorkflowData
-from shared.models.agent import WorkflowGenerationRequest
+from shared.models.workflow_new import Workflow
+from shared.models.execution_new import Execution
 
 You can simply write:
-from shared.models import WorkflowData, WorkflowGenerationRequest
+from shared.models import Workflow, Execution
 
 This approach offers several advantages:
 1.  **Simplified Imports**: Reduces the verbosity and complexity of import statements.
@@ -19,27 +19,33 @@ This approach offers several advantages:
     interface of this module.
 """
 
-from .agent import *
+# Import current models only - legacy models removed
 from .auth import *
 from .chat import *
-
-# Import all models from the respective files
 from .common import *
 from .conversation import *
-from .db_models import *
-from .execution import *
+from .execution_new import *  # Current execution models
 from .external_actions import *
 from .human_in_loop import *
 from .mcp import *
-from .node import *
-from .node_enums import *  # Import authoritative node enums
+from .node_enums import *  # Authoritative node type definitions
 from .session import *
+from .supabase import *
 from .trigger import *
-from .workflow import *
+from .workflow_complete import *  # Consolidated API
+from .workflow_new import *  # Current workflow models
+
+# SQLAlchemy-dependent models (import only when SQLAlchemy is available)
+try:
+    from .db_models import *
+    from .trigger_index import *
+except ImportError:
+    # SQLAlchemy not available, skip database models
+    pass
 
 # Use __all__ to explicitly define the public API of this module
 __all__ = [
-    # common.py - 基础模型
+    # common.py - Base models
     "BaseModel",
     "TimestampedModel",
     "IDModel",
@@ -55,33 +61,8 @@ __all__ = [
     "PaginatedResponseModel",
     "ServiceStatus",
     "ServiceHealthCheck",
-    # Workflow models
-    # workflow.py
-    "PositionData",
-    "RetryPolicyData",
-    "NodeData",
-    "ConnectionData",
-    "ConnectionArrayData",
-    "NodeConnectionsData",
-    "ConnectionsMapData",
-    "WorkflowSettingsData",
-    "WorkflowData",
-    "CreateWorkflowRequest",
-    "CreateWorkflowResponse",
-    "GetWorkflowRequest",
-    "GetWorkflowResponse",
-    "UpdateWorkflowRequest",
-    "UpdateWorkflowResponse",
-    "DeleteWorkflowRequest",
-    "DeleteWorkflowResponse",
-    "ListWorkflowsRequest",
-    "ListWorkflowsResponse",
-    "ExecuteWorkflowRequest",
-    "ExecuteWorkflowResponse",
-    # API Gateway工作流模型
-    "WorkflowStatus",
-    "WorkflowType",
-    # Authoritative Node Enums (from node_enums.py - single source of truth)
+    "NodeTemplate",
+    # node_enums.py - Authoritative node type definitions
     "NodeType",
     "TriggerSubtype",
     "AIAgentSubtype",
@@ -96,25 +77,51 @@ __all__ = [
     "is_valid_node_subtype_combination",
     "get_all_node_types",
     "get_all_subtypes",
-    "WorkflowEdge",
-    "WorkflowCreateRequest",
-    "WorkflowUpdateRequest",
-    "WorkflowExecutionRecord",
-    "WorkflowResponse",
-    "WorkflowListResponse",
+    # workflow_new.py - Current workflow models
+    "WorkflowDeploymentStatus",
+    "Port",
+    "Connection",
+    "Node",
+    "WorkflowStatistics",
+    "WorkflowMetadata",
+    "CreateWorkflowRequest",
+    "UpdateWorkflowRequest",
+    "NodeTemplateListResponse",
     "WorkflowExecutionRequest",
     "WorkflowExecutionResponse",
-    "NodeTemplate",
-    "NodeTemplateListResponse",
-    # Single Node Execution models
-    "ExecuteSingleNodeRequest",
-    "SingleNodeExecutionResponse",
-    # Conversation models (ProcessConversation interface)
-    "WorkflowContext",
-    "ConversationRequest",
-    "ConversationResponse",
-    "ResponseType",
-    "ErrorContent",
+    "WorkflowResponse",
+    "Workflow",
+    "WorkflowData",
+    # execution_new.py - Current execution models
+    "ExecutionStatus",
+    "NodeExecutionStatus",
+    "ExecutionEventType",
+    "LogLevel",
+    "TriggerInfo",
+    "TokenUsage",
+    "LogEntry",
+    "ExecutionError",
+    "NodeError",
+    "NodeExecutionDetails",
+    "NodeExecution",
+    "Execution",
+    "ExecutionUpdateData",
+    "ExecutionUpdateEvent",
+    "ExecutionSummary",
+    "GetExecutionResponse",
+    "GetExecutionsResponse",
+    "ExecutionActionRequest",
+    "UserInputRequest",
+    "ExecutionActionResponse",
+    "SubscriptionResponse",
+    # trigger.py - Trigger and deployment models
+    "TriggerStatus",
+    "DeploymentStatus",
+    "TriggerSpec",
+    "CronTriggerSpec",
+    "ManualTriggerSpec",
+    "WebhookTriggerSpec",
+    "EmailTriggerSpec",
     # Authentication models
     "AuthUser",
     "AuthClient",
@@ -138,6 +145,12 @@ __all__ = [
     "DebugEventData",
     "ChatStreamResponse",
     "ChatHistory",
+    # Conversation models
+    "WorkflowContext",
+    "ConversationRequest",
+    "ConversationResponse",
+    "ResponseType",
+    "ErrorContent",
     # MCP models
     "MCPTool",
     "MCPInvokeRequest",
@@ -146,64 +159,30 @@ __all__ = [
     "MCPToolsResponse",
     "MCPHealthCheck",
     "MCPErrorResponse",
-    # agent.py
-    "WorkflowGenerationRequest",
-    "WorkflowGenerationResponse",
-    "WorkflowRefinementRequest",
-    "WorkflowRefinementResponse",
-    "WorkflowValidationRequest",
-    "WorkflowValidationResponse",
-    # execution.py
-    "ExecutionStatus",
-    "ExecutionLog",
-    "Execution",
-    # trigger.py
-    "TriggerType",
-    "Trigger",
-    # node.py
-    "NodeTemplate",
-    # db_models.py - SQLAlchemy数据库模型
-    "Base",
-    "WorkflowExecution",
-    "WorkflowDB",
-    "NodeTemplateDB",
-    # external_actions.py - External action node models
+    # External action models
     "NotionActionType",
-    "NotionSearchFilter",
-    "NotionPageContent",
-    "NotionBlockOperation",
-    "NotionDatabaseQuery",
-    "NotionExternalActionParams",
-    "NotionExternalActionResult",
     "GitHubActionType",
+    "NotionExternalActionParams",
     "GitHubExternalActionParams",
     "SlackExternalActionParams",
     "EmailExternalActionParams",
     "ExternalActionInputData",
     "ExternalActionOutputData",
-    # human_in_loop.py - Human-in-the-Loop node models
+    # Human-in-the-loop models
     "HILInteractionType",
     "HILChannelType",
     "HILPriority",
     "HILStatus",
     "HILApprovalRequest",
-    "HILInputField",
     "HILInputRequest",
-    "HILSelectionOption",
     "HILSelectionRequest",
-    "HILChannelConfig",
-    "HILInputData",
-    "HILResponder",
-    "HILApprovalResponse",
-    "HILInputResponse",
-    "HILSelectionResponse",
     "HILResponseData",
     "HILOutputData",
-    "HILTimeoutData",
-    "HILErrorData",
-    "HILFilteredData",
-    "HILIncomingResponseData",
-    "HILOutput",
-    "HILRequest",
-    "HILResponse",
+    # Database models (SQLAlchemy)
+    "Base",
+    "WorkflowExecution",
+    "WorkflowDB",
+    "WorkflowExecutionLog",
+    "TriggerStatusEnum",
+    "WorkflowStatusEnum",
 ]

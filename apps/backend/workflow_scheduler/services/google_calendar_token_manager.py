@@ -137,7 +137,6 @@ class GoogleCalendarTokenManager:
             result = (
                 supabase.table("oauth_tokens")
                 .select("*")
-                .eq("integration_id", "google_calendar")
                 .eq("provider", "google")
                 .eq("is_active", True)
                 .not_.is_("refresh_token", "null")  # Must have refresh token
@@ -343,7 +342,7 @@ class GoogleCalendarTokenManager:
                 supabase.table("oauth_tokens")
                 .select("*")
                 .eq("user_id", user_id)
-                .eq("integration_id", "google_calendar")
+                .eq("provider", "google")
                 .eq("is_active", True)
                 .execute()
             )
@@ -386,7 +385,7 @@ class GoogleCalendarTokenManager:
             total_result = (
                 supabase.table("oauth_tokens")
                 .select("id", count="exact")
-                .eq("integration_id", "google_calendar")
+                .eq("provider", "google")
                 .eq("is_active", True)
                 .execute()
             )
@@ -394,7 +393,7 @@ class GoogleCalendarTokenManager:
             active_result = (
                 supabase.table("oauth_tokens")
                 .select("id", count="exact")
-                .eq("integration_id", "google_calendar")
+                .eq("provider", "google")
                 .eq("is_active", True)
                 .not_.is_("refresh_token", "null")
                 .execute()
@@ -407,7 +406,7 @@ class GoogleCalendarTokenManager:
             expiring_result = (
                 supabase.table("oauth_tokens")
                 .select("id", count="exact")
-                .eq("integration_id", "google_calendar")
+                .eq("provider", "google")
                 .eq("is_active", True)
                 .not_.is_("refresh_token", "null")
                 .lt("expires_at", threshold_time.isoformat())

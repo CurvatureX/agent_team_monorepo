@@ -7,7 +7,9 @@ from typing import Any, Dict, Optional
 
 import httpx
 
-from shared.models.trigger import ExecutionResult, TriggerStatus
+from shared.models.execution_new import ExecutionStatus
+from shared.models.trigger import TriggerStatus
+from shared.models.workflow_new import WorkflowExecutionResponse
 from workflow_scheduler.core.config import settings
 from workflow_scheduler.core.supabase_client import get_supabase_client
 
@@ -20,7 +22,8 @@ class BaseTrigger(ABC):
     """Base class for all trigger types"""
 
     def __init__(self, workflow_id: str, trigger_config: Dict[str, Any]):
-        self.workflow_id = workflow_id
+        # Coerce workflow_id to string to avoid UUID-type leakage into responses
+        self.workflow_id = str(workflow_id)
         self.config = trigger_config
         self.enabled = trigger_config.get("enabled", True)
         self.status = TriggerStatus.PENDING
@@ -49,7 +52,7 @@ class BaseTrigger(ABC):
 
     async def _trigger_workflow(
         self, trigger_data: Optional[Dict[str, Any]] = None, access_token: Optional[str] = None
-    ) -> ExecutionResult:
+    ) -> WorkflowExecutionResponse:
         """
         Trigger workflow execution by calling workflow_engine HTTP API
         """
@@ -57,10 +60,11 @@ class BaseTrigger(ABC):
             logger.warning(
                 f"Trigger {self.trigger_type} for workflow {self.workflow_id} is disabled"
             )
-            return ExecutionResult(
-                status="skipped",
+            return WorkflowExecutionResponse(
+                execution_id=f"exec_{self.workflow_id}",
+                workflow_id=self.workflow_id,
+                status=ExecutionStatus.SKIPPED,
                 message="Trigger is disabled",
-                trigger_data=trigger_data or {},
             )
 
         # Smart trigger detection: Check if this should resume a paused workflow
@@ -82,11 +86,11 @@ class BaseTrigger(ABC):
             error_msg = f"Error triggering workflow: {str(e)}"
             logger.error(error_msg, exc_info=True)
 
-            return ExecutionResult(
+            return WorkflowExecutionResponse(
+                workflow_id=self.workflow_id,
                 execution_id=execution_id,
-                status="error",
+                status=ExecutionStatus.ERROR,
                 message=error_msg,
-                trigger_data=trigger_data or {},
             )
 
     async def _get_workflow_owner_id(self, workflow_id: str) -> Optional[str]:
@@ -118,7 +122,7 @@ class BaseTrigger(ABC):
         execution_id: str,
         trigger_data: Optional[Dict[str, Any]] = None,
         access_token: Optional[str] = None,
-    ) -> ExecutionResult:
+    ) -> WorkflowExecutionResponse:
         """
         Execute workflow by calling workflow_engine HTTP API
         """
@@ -142,11 +146,11 @@ class BaseTrigger(ABC):
             workflow_owner_id = await self._get_workflow_owner_id(str(self.workflow_id))
             if not workflow_owner_id:
                 logger.error(f"Could not determine workflow owner for {self.workflow_id}")
-                return ExecutionResult(
+                return WorkflowExecutionResponse(
+                    workflow_id=self.workflow_id,
                     execution_id=execution_id,
-                    status="error",
+                    status=ExecutionStatus.ERROR,
                     message="Could not determine workflow owner",
-                    trigger_data=trigger_data or {},
                 )
 
             # Prepare execution payload matching ExecuteWorkflowRequest format
@@ -182,33 +186,33 @@ class BaseTrigger(ABC):
                     f"✅ Workflow {self.workflow_id} execution started successfully: {actual_execution_id}"
                 )
 
-                return ExecutionResult(
+                return WorkflowExecutionResponse(
+                    workflow_id=self.workflow_id,
                     execution_id=actual_execution_id,
-                    status="started",
+                    status=ExecutionStatus.RUNNING,
                     message="Workflow execution started successfully",
-                    trigger_data=trigger_data or {},
                 )
             else:
                 error_msg = (
                     f"Workflow execution failed: HTTP {response.status_code} - {response.text}"
                 )
                 logger.error(error_msg)
-                return ExecutionResult(
+                return WorkflowExecutionResponse(
+                    workflow_id=self.workflow_id,
                     execution_id=execution_id,
-                    status="error",
+                    status=ExecutionStatus.ERROR,
                     message=error_msg,
-                    trigger_data=trigger_data or {},
                 )
 
         except Exception as e:
             error_msg = f"Error calling workflow engine: {str(e)}"
             logger.error(error_msg, exc_info=True)
 
-            return ExecutionResult(
+            return WorkflowExecutionResponse(
+                workflow_id=self.workflow_id,
                 execution_id=execution_id,
-                status="error",
+                status=ExecutionStatus.ERROR,
                 message=error_msg,
-                trigger_data=trigger_data or {},
             )
 
     async def _execute_workflow_async(
@@ -290,7 +294,9 @@ class BaseTrigger(ABC):
 
                     # Filter for paused executions
                     paused_executions = [
-                        exec_data for exec_data in executions if exec_data.get("status") == "PAUSED"
+                        exec_data
+                        for exec_data in executions
+                        if exec_data.get("status") == ExecutionStatus.PAUSED.value
                     ]
 
                     if paused_executions:
@@ -329,7 +335,7 @@ class BaseTrigger(ABC):
 
     async def _resume_paused_workflow(
         self, execution_id: str, trigger_data: Optional[Dict[str, Any]] = None
-    ) -> ExecutionResult:
+    ) -> WorkflowExecutionResponse:
         """
         Resume a paused workflow with trigger data as resume data.
         """
@@ -353,30 +359,30 @@ class BaseTrigger(ABC):
                 result_data = response.json()
                 logger.info(f"✅ Successfully resumed workflow execution {execution_id}")
 
-                return ExecutionResult(
+                return WorkflowExecutionResponse(
+                    workflow_id=self.workflow_id,
                     execution_id=execution_id,
-                    status="resumed",
+                    status=ExecutionStatus.RUNNING,
                     message=f"Resumed paused workflow: {result_data.get('message', 'Success')}",
-                    trigger_data=trigger_data or {},
                 )
             else:
                 error_msg = f"Resume failed: HTTP {response.status_code} - {response.text}"
                 logger.error(error_msg)
-                return ExecutionResult(
+                return WorkflowExecutionResponse(
+                    workflow_id=self.workflow_id,
                     execution_id=execution_id,
-                    status="error",
+                    status=ExecutionStatus.ERROR,
                     message=error_msg,
-                    trigger_data=trigger_data or {},
                 )
 
         except Exception as e:
             error_msg = f"Error resuming workflow: {str(e)}"
             logger.error(error_msg, exc_info=True)
-            return ExecutionResult(
+            return WorkflowExecutionResponse(
+                workflow_id=self.workflow_id,
                 execution_id=execution_id,
-                status="error",
+                status=ExecutionStatus.ERROR,
                 message=error_msg,
-                trigger_data=trigger_data or {},
             )
 
     async def health_check(self) -> Dict[str, Any]:

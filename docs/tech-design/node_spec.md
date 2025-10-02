@@ -1219,7 +1219,7 @@ function generateNodeConfigForm(spec: NodeSpec) {
 | **TRIGGER_NODE**           | MANUAL, WEBHOOK, CRON, CHAT, EMAIL, FORM, CALENDAR                                                       | ✅ 已实现     | 事件触发器                     |
 | **AI_AGENT_NODE**          | GEMINI_NODE, OPENAI_NODE, CLAUDE_NODE                                                                    | 🚀 **已革新** | **基于供应商的提示词驱动节点** |
 | **ACTION_NODE**            | RUN_CODE, HTTP_REQUEST, PARSE_IMAGE, WEB_SEARCH, DATABASE_OPERATION, FILE_OPERATION, DATA_TRANSFORMATION | ✅ 已实现     | 操作执行节点                   |
-| **FLOW_NODE**              | IF, FILTER, LOOP, MERGE, SWITCH, WAIT                                                                    | ✅ 已实现     | 流程控制节点                   |
+| **FLOW_NODE**              | IF, FILTER, LOOP, MERGE, WAIT                                                                            | ✅ 已实现     | 流程控制节点（SWITCH 已移除） |
 | **TOOL_NODE**              | GOOGLE_CALENDAR_MCP, NOTION_MCP, CALENDAR, EMAIL, HTTP, CODE_EXECUTION                                   | ⚠️ 计划中     | 工具集成节点                   |
 | **MEMORY_NODE**            | SIMPLE, BUFFER, KNOWLEDGE, VECTOR_STORE, DOCUMENT, EMBEDDING                                             | ⚠️ 计划中     | 记忆存储节点                   |
 | **HUMAN_IN_THE_LOOP_NODE** | GMAIL, SLACK, DISCORD, TELEGRAM, APP                                                                     | ⚠️ 计划中     | 人机交互节点                   |

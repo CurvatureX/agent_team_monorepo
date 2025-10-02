@@ -243,10 +243,10 @@ examples:
 
         - name: "final_decision"
           type: FLOW_NODE
-          subtype: FLOW_SWITCH
+          subtype: FLOW_IF
           role: "Handle human decision"
           parameters:
-            cases: ["approved", "rejected", "needs_revision"]
+            condition: "approval_status == 'approved'"
 
         - name: "notification_sender"
           type: EXTERNAL_ACTION_NODE

@@ -5,8 +5,8 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
+from shared.models.execution_new import ExecutionStatus
 from shared.models.node_enums import TriggerSubtype
-from shared.models.trigger import ExecutionResult
 from workflow_scheduler.dependencies import get_trigger_manager
 from workflow_scheduler.services.trigger_manager import TriggerManager
 
@@ -161,7 +161,7 @@ async def handle_github_trigger(
                     {
                         "workflow_id": workflow_id,
                         "execution_id": None,
-                        "status": "error",
+                        "status": ExecutionStatus.ERROR.value,
                         "message": f"Processing failed: {str(e)}",
                     }
                 )

@@ -38,7 +38,7 @@ except ImportError:
             await self.app(scope, receive, send)
 
 
-from shared.models.trigger import TriggerType
+from shared.models.node_enums import TriggerSubtype
 from workflow_scheduler.api import (
     auth,
     deployment,
@@ -55,6 +55,7 @@ from workflow_scheduler.dependencies import (
     set_global_services,
 )
 from workflow_scheduler.services.deployment_service import DeploymentService
+from workflow_scheduler.services.direct_db_service import DirectDBService
 from workflow_scheduler.services.google_calendar_token_manager import (
     cleanup_google_calendar_token_manager,
     initialize_google_calendar_token_manager,
@@ -97,6 +98,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     lock_manager = None
     trigger_manager = None
     deployment_service = None
+    direct_db_service = None
     google_calendar_token_manager = None
 
     logger.info("Starting workflow_scheduler service")
@@ -107,19 +109,36 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         lock_manager = DistributedLockManager()
         await lock_manager.initialize()
 
-        # Initialize trigger manager
-        trigger_manager = TriggerManager(lock_manager)
+        # Initialize direct database service
+        direct_db_service = DirectDBService()
+        await direct_db_service.initialize()
+
+        # Initialize trigger manager with direct_db_service
+        trigger_manager = TriggerManager(lock_manager, direct_db_service)
 
         # Register trigger classes
-        trigger_manager.register_trigger_class(TriggerType.CRON, CronTrigger)
-        trigger_manager.register_trigger_class(TriggerType.MANUAL, ManualTrigger)
-        trigger_manager.register_trigger_class(TriggerType.WEBHOOK, WebhookTrigger)
-        trigger_manager.register_trigger_class(TriggerType.EMAIL, EmailTrigger)
-        trigger_manager.register_trigger_class(TriggerType.GITHUB, GitHubTrigger)
-        trigger_manager.register_trigger_class(TriggerType.SLACK, SlackTrigger)
+        trigger_manager.register_trigger_class(TriggerSubtype.CRON, CronTrigger)
+        trigger_manager.register_trigger_class(TriggerSubtype.MANUAL, ManualTrigger)
+        trigger_manager.register_trigger_class(TriggerSubtype.WEBHOOK, WebhookTrigger)
+        trigger_manager.register_trigger_class(TriggerSubtype.EMAIL, EmailTrigger)
+        trigger_manager.register_trigger_class(TriggerSubtype.GITHUB, GitHubTrigger)
+        trigger_manager.register_trigger_class(TriggerSubtype.SLACK, SlackTrigger)
 
-        # Initialize deployment service
-        deployment_service = DeploymentService(trigger_manager)
+        # Restore active triggers from database
+        logger.info("Restoring active triggers from trigger_index...")
+        restore_result = await trigger_manager.restore_active_triggers()
+        if restore_result.get("success"):
+            logger.info(
+                f"✅ Restored {restore_result.get('restored_count', 0)} triggers "
+                f"for {len(restore_result.get('workflows', []))} workflows"
+            )
+        else:
+            logger.warning(
+                f"⚠️ Trigger restoration failed: {restore_result.get('error', 'unknown')}"
+            )
+
+        # Initialize deployment service with shared database service
+        deployment_service = DeploymentService(trigger_manager, direct_db_service)
 
         # Initialize Google Calendar token manager for background token refresh
         try:
@@ -156,6 +175,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         if lock_manager:
             await lock_manager.cleanup()
+
+        # Cleanup database service
+        if direct_db_service:
+            await direct_db_service.close_pool()
 
         logger.info("workflow_scheduler service shutdown complete")
 

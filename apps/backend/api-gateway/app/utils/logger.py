@@ -22,8 +22,14 @@ def setup_logger(name: str = "api-gateway", level: Optional[str] = None) -> logg
     # Create logger
     logger = logging.getLogger(name)
 
-    # Avoid duplicate handlers
-    if logger.handlers:
+    # Avoid duplicate handlers by checking for our specific handler
+    our_handler_found = False
+    for handler in logger.handlers:
+        if isinstance(handler, logging.StreamHandler) and handler.stream.name == "<stdout>":
+            our_handler_found = True
+            break
+
+    if our_handler_found:
         return logger
 
     # Get level and format from config if not provided
@@ -97,8 +103,8 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
         Configured logger instance
     """
     if name is not None:
-        # Return named logger (compatible with new core system)
-        return logging.getLogger(name)
+        # Return properly configured named logger
+        return setup_logger(name)
 
     # Backward compatibility: return global logger
     global _logger

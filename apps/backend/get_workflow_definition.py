@@ -4,16 +4,35 @@ Get workflow definition to understand what nodes should execute
 """
 import json
 import os
+import sys
 
 import requests
 
-# Configuration
-SUPABASE_URL = "https://mkrczzgjeduruwxpanbj.supabase.co"
-SUPABASE_ANON_KEY = "sb_publishable_GDldaQkfc6tfJ2aEOx_H3w_rq2Tc5G3"
-TEST_USER_EMAIL = "daming.lu@starmates.ai"
-TEST_USER_PASSWORD = "test.1234!"
-WORKFLOW_ENGINE_URL = "http://localhost:8002"
-WORKFLOW_ID = "e30c8316-c4fc-41ee-b3b8-36958d5ccdfc"
+# Configuration from environment variables
+SUPABASE_URL = os.getenv("SUPABASE_URL", "https://mkrczzgjeduruwxpanbj.supabase.co")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "sb_publishable_GDldaQkfc6tfJ2aEOx_H3w_rq2Tc5G3")
+TEST_USER_EMAIL = os.getenv("TEST_USER_EMAIL", "daming.lu@starmates.ai")
+TEST_USER_PASSWORD = os.getenv("TEST_USER_PASSWORD", "test.1234!")
+WORKFLOW_ENGINE_URL = os.getenv("WORKFLOW_ENGINE_URL", "http://localhost:8002")
+WORKFLOW_ID = os.getenv("WORKFLOW_ID", "e30c8316-c4fc-41ee-b3b8-36958d5ccdfc")
+
+# Validate required environment variables
+required_env_vars = {
+    "SUPABASE_URL": SUPABASE_URL,
+    "SUPABASE_ANON_KEY": SUPABASE_ANON_KEY,
+    "TEST_USER_EMAIL": TEST_USER_EMAIL,
+    "TEST_USER_PASSWORD": TEST_USER_PASSWORD,
+    "WORKFLOW_ENGINE_URL": WORKFLOW_ENGINE_URL,
+    "WORKFLOW_ID": WORKFLOW_ID,
+}
+
+missing_vars = [var for var, value in required_env_vars.items() if not value]
+if missing_vars:
+    print(f"❌ Missing required environment variables: {', '.join(missing_vars)}")
+    print("\nUsage: Set the following environment variables:")
+    for var in missing_vars:
+        print(f"  export {var}=<your_value>")
+    sys.exit(1)
 
 
 def get_jwt_token():

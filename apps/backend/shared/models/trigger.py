@@ -18,11 +18,8 @@ class TriggerStatus(str, Enum):
     STOPPED = "stopped"
 
 
-class DeploymentStatus(str, Enum):
-    PENDING = "pending"
-    DEPLOYED = "deployed"
-    FAILED = "failed"
-    UNDEPLOYED = "undeployed"
+# Import unified deployment status from workflow_new.py
+from .workflow_new import WorkflowDeploymentStatus as DeploymentStatus
 
 
 class TriggerSpec(BaseModel):
@@ -81,6 +78,7 @@ class SlackTriggerSpec(BaseModel):
 
 class DeploymentResult(BaseModel):
     deployment_id: str
+    workflow_id: Optional[str] = None  # Add optional workflow_id field for API compatibility
     status: DeploymentStatus
     message: str
     created_at: datetime = Field(default_factory=datetime.utcnow)

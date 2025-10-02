@@ -10,7 +10,8 @@ import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from shared.models.trigger import TriggerSpec, TriggerType
+from shared.models.node_enums import TriggerSubtype
+from shared.models.trigger import TriggerSpec
 from workflow_scheduler.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -120,7 +121,30 @@ class TriggerIndexManager:
                 logger.error("Supabase client not available")
                 return False
 
-            logger.info(f"Updating trigger status for workflow {workflow_id} to {status}")
+            # Normalize status to match trigger_index constraint (active, inactive, pending, failed)
+            try:
+                from shared.models.trigger import TriggerStatus as TS
+
+                if isinstance(status, TS):
+                    status_val = status.value
+                else:
+                    # Try to parse as enum name or value
+                    status_val = str(status).strip().lower()
+                    if status_val.upper() in TS.__members__:
+                        status_val = TS[status_val.upper()].value
+                # Map to allowed set
+                mapping = {
+                    "paused": "inactive",
+                    "stopped": "inactive",
+                    "error": "failed",
+                }
+                normalized_status = mapping.get(status_val, status_val)
+            except Exception:
+                normalized_status = str(status).strip().lower()
+
+            logger.info(
+                f"Updating trigger status for workflow {workflow_id} to {normalized_status}"
+            )
 
             # Handle workflow_id - it might not be a valid UUID
             try:
@@ -132,7 +156,7 @@ class TriggerIndexManager:
 
             # Update all triggers for this workflow using Supabase
             update_data = {
-                "deployment_status": status,
+                "deployment_status": normalized_status,
                 "updated_at": datetime.utcnow().isoformat(),
             }
 
@@ -177,7 +201,11 @@ class TriggerIndexManager:
                 client.table("trigger_index").select("*").eq("workflow_id", workflow_id).execute()
             )
 
-            trigger_info = []
+            trigger_info: List[Dict[str, Any]] = []
+
+            # If no data, return an empty list (not None)
+            if not response.data:
+                return trigger_info
 
             for trigger_record in response.data:
                 trigger_info.append(
@@ -193,7 +221,7 @@ class TriggerIndexManager:
                     }
                 )
 
-                return trigger_info
+            return trigger_info
 
         except Exception as e:
             logger.error(f"Error getting triggers for workflow {workflow_id}: {e}", exc_info=True)
@@ -470,15 +498,15 @@ class TriggerIndexManager:
             if existing_trigger:
                 # Calculate index_key for the update
                 index_key = ""
-                if spec.subtype == TriggerType.CRON:
+                if spec.subtype == TriggerSubtype.CRON:
                     index_key = spec.parameters.get("cron_expression", "")
-                elif spec.subtype == TriggerType.WEBHOOK:
+                elif spec.subtype == TriggerSubtype.WEBHOOK:
                     index_key = spec.parameters.get("webhook_path", f"/webhook/{workflow_id}")
-                elif spec.subtype == TriggerType.EMAIL:
+                elif spec.subtype == TriggerSubtype.EMAIL:
                     index_key = spec.parameters.get("email_filter", "")
-                elif spec.subtype == TriggerType.GITHUB:
+                elif spec.subtype == TriggerSubtype.GITHUB:
                     index_key = spec.parameters.get("repository", "")
-                elif spec.subtype == TriggerType.SLACK:
+                elif spec.subtype == TriggerSubtype.SLACK:
                     # Update workspace_id from auto-resolved OAuth token
                     workspace_id = spec.parameters.get("workspace_id") or spec.parameters.get(
                         "team_id"
@@ -531,15 +559,15 @@ class TriggerIndexManager:
 
             # Calculate index_key for fast matching based on trigger type
             index_key = ""
-            if spec.subtype == TriggerType.CRON:
+            if spec.subtype == TriggerSubtype.CRON:
                 index_key = spec.parameters.get("cron_expression", "")
-            elif spec.subtype == TriggerType.WEBHOOK:
+            elif spec.subtype == TriggerSubtype.WEBHOOK:
                 index_key = spec.parameters.get("webhook_path", f"/webhook/{workflow_id}")
-            elif spec.subtype == TriggerType.EMAIL:
+            elif spec.subtype == TriggerSubtype.EMAIL:
                 index_key = spec.parameters.get("email_filter", "")
-            elif spec.subtype == TriggerType.GITHUB:
+            elif spec.subtype == TriggerSubtype.GITHUB:
                 index_key = spec.parameters.get("repository", "")
-            elif spec.subtype == TriggerType.SLACK:
+            elif spec.subtype == TriggerSubtype.SLACK:
                 # Use workspace_id as primary index key for Slack triggers
                 # workspace_id should always be auto-resolved from user's OAuth token during deployment
                 workspace_id = spec.parameters.get("workspace_id") or spec.parameters.get("team_id")
@@ -560,7 +588,8 @@ class TriggerIndexManager:
             # Prepare trigger data for insertion
             trigger_data = {
                 "workflow_id": workflow_uuid,
-                "trigger_type": spec.subtype.value,
+                "trigger_type": spec.node_type,  # This should be "TRIGGER"
+                "trigger_subtype": spec.subtype.value,  # This should be "CRON", "SLACK", etc.
                 "trigger_config": spec.parameters,
                 "deployment_status": deployment_status,
                 "created_at": now,

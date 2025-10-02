@@ -12,7 +12,6 @@ from .entity_memory import EntityMemory
 from .key_value_store import KeyValueStoreMemory
 from .orchestrator import ContextPriority, ContextRequest, MemoryOrchestrator, MemoryType
 from .vector_database import VectorDatabaseMemory
-from .working_memory import WorkingMemory
 
 __all__ = [
     "MemoryBase",
@@ -25,5 +24,4 @@ __all__ = [
     "MemoryOrchestrator",
     "MemoryType",
     "VectorDatabaseMemory",
-    "WorkingMemory",
 ]

@@ -1,0 +1,6 @@
+# HUMAN_IN_THE_LOOP node specifications
+from .SLACK_INTERACTION import SLACK_INTERACTION_SPEC
+
+__all__ = [
+    "SLACK_INTERACTION_SPEC",
+]

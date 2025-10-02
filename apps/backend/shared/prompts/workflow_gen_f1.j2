@@ -33,7 +33,7 @@ To help you intelligently map requirements to node types, here's what each type 
 ⚡ **ACTION** - Self-contained workflow actions
 🔄 **FLOW** - Controls workflow execution flow
 👤 **HUMAN_IN_THE_LOOP** - Requires human interaction to continue
-🛠️ **TOOL** - Utility tools for AI agents (MCP integration)
+🛠️ **TOOL** - Utility tools for AI agents (MCP integration; attached to AI_AGENT, no ports; invoke with input_params.tool_name + function_args)
 💾 **MEMORY** - Storage and retrieval for AI agents
 
 Step 2: Discover Components (MANDATORY)
@@ -52,7 +52,7 @@ Step 2: Discover Components (MANDATORY)
 3. **Get Detailed Specifications**: Call get_node_details() for ALL nodes you plan to use - THIS IS MANDATORY
    📝 **CORRECT FORMAT**: {"node_type": "TRIGGER", "subtype": "GITHUB"} ✅
    ❌ **WRONG FORMAT**: {"node_type": "TRIGGER_NODE", "subtype": "GITHUB"} ❌
-4. **Use Exact Specifications & Smart Parameter Filling**: 
+4. **Use Exact Specifications & Smart Parameter Filling**:
    - ⚠️ **PARAMETER NAMES MUST MATCH EXACTLY**: If MCP says "cron_expression", DO NOT use "expression"
    - ⚠️ **PARAMETER VALUES MUST MATCH TYPE FROM MCP**:
      * If MCP says type is "integer" → use integer: 123 (NOT "123")
@@ -60,7 +60,7 @@ Step 2: Discover Components (MANDATORY)
      * If MCP says type is "string" → use string: "value"
      * If MCP says type is "float" → use number: 0.7 (NOT "0.7")
      * If MCP says type is "json" → use object/array: [] or {}
-   
+
    - 🎯 **CRITICAL PARAMETER FILLING STRATEGY**:
      * **MUST FILL ALL REQUIRED PARAMETERS**: Every parameter with "required": true MUST be included
      * **CHECK MCP RESPONSE CAREFULLY**: The MCP response shows which parameters are required
@@ -95,7 +95,7 @@ Step 2: Discover Components (MANDATORY)
    - Did you fill ALL required parameters? ✓
    - Did you use mock values (NOT template variables)? ✓
    - Did you use correct types (integer/string/boolean)? ✓
-   
+
    ⚠️ **COMMON MISTAKES TO AVOID**:
    - Using "pull_request_number" when MCP says "issue_number" ❌
    - Using "comment_body" when MCP says "body" ❌
@@ -180,7 +180,7 @@ Appropriate settings and error policies
 - **Input/Output Mapping**: Ensure data flows logically between connected nodes
 - **State Persistence**: Use MEMORY types to store workflow state, user preferences, task data
 - **Context Passing**: Design workflows so downstream nodes receive necessary context from upstream nodes
-- **Conditional Routing**: Use FLOW types (IF, SWITCH) to create decision points based on data
+- **Conditional Routing**: Use FLOW type IF to create decision points based on data
 Step 5: Validate and Document
 Before presenting the workflow:
 Verify all node IDs are unique
@@ -256,7 +256,7 @@ FINAL RESPONSE MUST BE JSON ONLY:
 - All required parameters have non-null values from MCP specifications
 - **CRITICAL: PARAMETER TYPES MUST MATCH MCP SPECIFICATION**:
   * Boolean parameters: Use boolean true/false (NO quotes)
-  * Integer parameters: Use integer 30 (NO quotes) 
+  * Integer parameters: Use integer 30 (NO quotes)
   * Float parameters: Use number 0.7 (NO quotes)
   * String parameters: Use string "value" (WITH quotes)
   * **Dynamic values (issue_number, pr_number)**: Use template strings like "{{payload.number}}"

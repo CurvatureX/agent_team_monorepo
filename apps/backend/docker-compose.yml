@@ -111,8 +111,8 @@ services:
       PYTHONUNBUFFERED: "1"
       REDIS_URL: "redis://redis:6379/0"
       SERVICE_NAME: "workflow-agent"
-      # Workflow Engine URL for debug node integration
-      WORKFLOW_ENGINE_URL: "http://workflow-engine:8002"
+      # Workflow Engine URL for debug node integration (pointing to v2)
+      WORKFLOW_ENGINE_URL: "http://workflow-engine-v2:8002"
       # OpenTelemetry configuration
       OTEL_SDK_DISABLED: "true"
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
@@ -123,7 +123,6 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ./shared/proto:/app/shared/proto:ro
       - workflow_agent_logs:/app/logs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
@@ -135,46 +134,83 @@ services:
     networks:
       - agent-team-network
 
-  # Workflow Engine - Workflow execution engine (FastAPI service on port 8002)
-  workflow-engine:
+  # Workflow Engine - DEPRECATED - Use workflow-engine-v2 instead
+  # workflow-engine:
+  #   dns:
+  #     - 8.8.8.8 # Google DNS (reliable worldwide)
+  #     - 1.1.1.1 # Cloudflare DNS (fast backup)
+  #     - 208.67.222.222 # OpenDNS (additional fallback)
+  #   build:
+  #     context: .
+  #     dockerfile: ./workflow_engine/Dockerfile
+  #     shm_size: "8g"
+  #     network: host
+  #   container_name: agent-team-workflow-engine
+  #   ports:
+  #     - "8002:8002"
+  #   env_file:
+  #     - ./.env
+  #   environment:
+  #     # Override specific settings
+  #     PYTHONPATH: "/app"
+  #     PYTHONUNBUFFERED: "1"
+  #     REDIS_URL: "redis://redis:6379/0"
+  #     SERVICE_NAME: "workflow-engine"
+  #     # OpenTelemetry configuration
+  #     OTEL_SDK_DISABLED: "true"
+  #     OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+  #     OTEL_EXPORTER_OTLP_INSECURE: "true"
+  #     OTEL_SERVICE_NAME: "workflow-engine"
+  #     OTEL_RESOURCE_ATTRIBUTES: "service.namespace=agent-team,deployment.environment=development"
+  #   depends_on:
+  #     redis:
+  #       condition: service_healthy
+  #   volumes:
+  #     - ./shared:/app/shared:ro
+  #     - workflow_engine_logs:/app/logs
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 45s # FastAPI starts faster than gRPC
+  #   restart: unless-stopped
+  #   networks:
+  #     - agent-team-network
+
+  # Workflow Engine v2 - Modern engine with comprehensive logging (FastAPI service on port 8002)
+  workflow-engine-v2:
     dns:
-      - 8.8.8.8 # Google DNS (reliable worldwide)
-      - 1.1.1.1 # Cloudflare DNS (fast backup)
-      - 208.67.222.222 # OpenDNS (additional fallback)
+      - 8.8.8.8
+      - 1.1.1.1
+      - 208.67.222.222
     build:
       context: .
-      dockerfile: ./workflow_engine/Dockerfile
+      dockerfile: ./workflow_engine_v2/Dockerfile
       shm_size: "8g"
       network: host
-    container_name: agent-team-workflow-engine
+    container_name: agent-team-workflow-engine-v2
     ports:
       - "8002:8002"
     env_file:
       - ./.env
     environment:
-      # Override specific settings
       PYTHONPATH: "/app"
       PYTHONUNBUFFERED: "1"
-      REDIS_URL: "redis://redis:6379/0"
-      SERVICE_NAME: "workflow-engine"
-      # OpenTelemetry configuration
+      SERVICE_NAME: "workflow-engine-v2"
       OTEL_SDK_DISABLED: "true"
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
       OTEL_EXPORTER_OTLP_INSECURE: "true"
-      OTEL_SERVICE_NAME: "workflow-engine"
+      OTEL_SERVICE_NAME: "workflow-engine-v2"
       OTEL_RESOURCE_ATTRIBUTES: "service.namespace=agent-team,deployment.environment=development"
-    depends_on:
-      redis:
-        condition: service_healthy
     volumes:
-      - ./shared:/app/shared:ro
-      - workflow_engine_logs:/app/logs
+      - workflow_engine_v2_logs:/app/logs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 45s # FastAPI starts faster than gRPC
+      start_period: 30s
     restart: unless-stopped
     networks:
       - agent-team-network
@@ -201,8 +237,8 @@ services:
       PYTHONUNBUFFERED: "1"
       redis_url: "redis://redis:6379/1" # Use different Redis DB
       SERVICE_NAME: "workflow-scheduler"
-      # Service URLs for internal communication
-      WORKFLOW_ENGINE_URL: "http://workflow-engine:8002"
+      # Service URLs for internal communication (pointing to v2)
+      WORKFLOW_ENGINE_URL: "http://workflow-engine-v2:8002"
       API_GATEWAY_URL: "http://api-gateway:8000"
     depends_on:
       redis:
@@ -243,10 +279,15 @@ services:
     env_file:
       - ./.env
     environment:
-      # HTTP client configuration (replacing gRPC)
-      - WORKFLOW_ENGINE_HOST=workflow-engine
-      - WORKFLOW_ENGINE_URL=http://workflow-engine:8002
+      # HTTP client configuration (pointing to workflow-engine-v2)
+      - WORKFLOW_ENGINE_HOST=workflow-engine-v2
+      - WORKFLOW_ENGINE_URL=http://workflow-engine-v2:8002
       - WORKFLOW_ENGINE_PORT=8002
+      # Use v2 engine (always true now)
+      - WORKFLOW_ENGINE_USE_V2=true
+      - WORKFLOW_ENGINE_V2_HOST=workflow-engine-v2
+      - WORKFLOW_ENGINE_V2_HTTP_PORT=8002
+      - WORKFLOW_ENGINE_V2_URL=http://workflow-engine-v2:8002
       - WORKFLOW_AGENT_HOST=workflow-agent
       - WORKFLOW_AGENT_PORT=8001
       - WORKFLOW_SCHEDULER_HOST=workflow-scheduler
@@ -267,7 +308,6 @@ services:
       # workflow-engine:
       #   condition: service_healthy
     volumes:
-      - ./shared/proto:/app/shared/proto:ro
       - api_gateway_logs:/app/logs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/public/health"]
@@ -292,6 +332,8 @@ volumes:
   workflow_scheduler_logs:
     driver: local
   api_gateway_logs:
+    driver: local
+  workflow_engine_v2_logs:
     driver: local
 
 # ======================

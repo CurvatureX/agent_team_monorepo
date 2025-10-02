@@ -207,19 +207,11 @@ class NodeKnowledgeService:
                 if query_lower in spec.description.lower():
                     score += 10
 
-                # Search in parameter names and descriptions
-                for param in spec.parameters:
-                    if query_lower in param.name.lower():
-                        score += 5
-                    if query_lower in param.description.lower():
-                        score += 3
+                # Search in parameter names and descriptions (handle both formats)
+                score += self._search_in_parameters(spec, query_lower)
 
                 # Search in port names and descriptions
-                for port in spec.input_ports + spec.output_ports:
-                    if query_lower in port.name.lower():
-                        score += 3
-                    if query_lower in port.description.lower():
-                        score += 2
+                score += self._search_in_ports(spec, query_lower)
 
                 if score > 0:
                     matches.append((spec, score))
@@ -235,10 +227,15 @@ class NodeKnowledgeService:
                     result = self._serialize_node_spec(spec, True, True)
                     result["relevance_score"] = score
                 else:
+                    # Handle both BaseNodeSpec (new format) and NodeSpec (old format)
+                    node_type = getattr(spec, "node_type", None) or getattr(spec, "type", None)
+                    if hasattr(node_type, "value"):  # Handle enum values
+                        node_type = node_type.value
+
                     result = {
-                        "node_type": spec.node_type,
-                        "subtype": spec.subtype,
-                        "description": spec.description,
+                        "node_type": str(node_type) if node_type else "unknown",
+                        "subtype": getattr(spec, "subtype", "unknown"),
+                        "description": getattr(spec, "description", ""),
                         "relevance_score": score,
                     }
                 results.append(result)
@@ -263,58 +260,23 @@ class NodeKnowledgeService:
             Serialized node specification
         """
         try:
+            # Handle both BaseNodeSpec (new format) and NodeSpec (old format)
+            node_type = getattr(spec, "node_type", None) or getattr(spec, "type", None)
+            if hasattr(node_type, "value"):  # Handle enum values
+                node_type = node_type.value
+
             result = {
-                "node_type": spec.node_type,
-                "subtype": spec.subtype,
-                "version": spec.version,
-                "description": spec.description,
-                "parameters": [
-                    {
-                        "name": p.name,
-                        "type": p.type.value if hasattr(p.type, "value") else str(p.type),
-                        "required": p.required,
-                        "default_value": p.default_value,
-                        "description": p.description,
-                        "enum_values": p.enum_values,
-                        "validation_pattern": p.validation_pattern,
-                    }
-                    for p in spec.parameters
-                ],
-                "input_ports": [
-                    {
-                        "name": port.name,
-                        "type": port.type,
-                        "required": port.required,
-                        "description": port.description,
-                        "max_connections": port.max_connections,
-                        "data_format": {
-                            "mime_type": port.data_format.mime_type,
-                            "schema": port.data_format.schema,
-                            "examples": port.data_format.examples,
-                        }
-                        if port.data_format and include_schemas
-                        else None,
-                        "validation_schema": port.validation_schema if include_schemas else None,
-                    }
-                    for port in spec.input_ports
-                ],
-                "output_ports": [
-                    {
-                        "name": port.name,
-                        "type": port.type,
-                        "description": port.description,
-                        "max_connections": port.max_connections,
-                        "data_format": {
-                            "mime_type": port.data_format.mime_type,
-                            "schema": port.data_format.schema,
-                            "examples": port.data_format.examples,
-                        }
-                        if port.data_format and include_schemas
-                        else None,
-                        "validation_schema": port.validation_schema if include_schemas else None,
-                    }
-                    for port in spec.output_ports
-                ],
+                "node_type": str(node_type) if node_type else "unknown",
+                "subtype": getattr(spec, "subtype", "unknown"),
+                "version": getattr(spec, "version", "1.0.0"),
+                "description": getattr(spec, "description", ""),
+                "parameters": self._serialize_parameters(spec),
+                "input_ports": self._serialize_ports(
+                    getattr(spec, "input_ports", []), include_schemas
+                ),
+                "output_ports": self._serialize_ports(
+                    getattr(spec, "output_ports", []), include_schemas
+                ),
             }
 
             if include_examples and spec.examples:
@@ -327,3 +289,121 @@ class NodeKnowledgeService:
                 "subtype": getattr(spec, "subtype", "unknown"),
                 "error": f"Error serializing spec: {str(e)}",
             }
+
+    def _serialize_parameters(self, spec) -> List[Dict[str, Any]]:
+        """Serialize parameters handling both old and new formats."""
+        try:
+            # Try old format first (ParameterDef objects)
+            if hasattr(spec, "parameters") and spec.parameters is not None:
+                return [
+                    {
+                        "name": p.name,
+                        "type": p.type.value if hasattr(p.type, "value") else str(p.type),
+                        "required": getattr(p, "required", False),
+                        "default_value": getattr(p, "default_value", None),
+                        "description": getattr(p, "description", ""),
+                        "enum_values": getattr(p, "enum_values", None),
+                        "validation_pattern": getattr(p, "validation_pattern", None),
+                    }
+                    for p in spec.parameters
+                ]
+
+            # Try new format (configurations dict)
+            elif hasattr(spec, "configurations") and spec.configurations:
+                return [
+                    {
+                        "name": name,
+                        "type": config.get("type", "string"),
+                        "required": config.get("required", False),
+                        "default_value": config.get("default", None),
+                        "description": config.get("description", ""),
+                        "enum_values": config.get("enum_values", None),
+                        "validation_pattern": config.get("validation_pattern", None),
+                    }
+                    for name, config in spec.configurations.items()
+                ]
+
+            return []
+        except Exception as e:
+            print(f"Error serializing parameters: {e}")
+            raise  # Re-raise the exception so the main method can catch it
+
+    def _serialize_ports(self, ports, include_schemas: bool) -> List[Dict[str, Any]]:
+        """Serialize ports handling both old and new formats."""
+        try:
+            serialized_ports = []
+            for port in ports:
+                port_data = {
+                    "name": getattr(port, "name", "unknown"),
+                    "type": getattr(port, "type", getattr(port, "connection_type", "unknown")),
+                    "required": getattr(port, "required", False),
+                    "description": getattr(port, "description", ""),
+                    "max_connections": getattr(port, "max_connections", 1),
+                }
+
+                # Always include data_format and validation_schema fields
+                if include_schemas:
+                    data_format = getattr(port, "data_format", None)
+                    if data_format:
+                        port_data["data_format"] = {
+                            "mime_type": getattr(data_format, "mime_type", "application/json"),
+                            "schema": getattr(data_format, "schema", None),
+                            "examples": getattr(data_format, "examples", None),
+                        }
+                    else:
+                        port_data["data_format"] = None
+                    port_data["validation_schema"] = getattr(port, "validation_schema", None)
+                else:
+                    # When schemas are excluded, set these fields to None
+                    port_data["data_format"] = None
+                    port_data["validation_schema"] = None
+
+                serialized_ports.append(port_data)
+
+            return serialized_ports
+        except Exception as e:
+            print(f"Error serializing ports: {e}")
+            raise  # Re-raise the exception so the main method can catch it
+
+    def _search_in_parameters(self, spec, query_lower: str) -> int:
+        """Search in parameters handling both old and new formats."""
+        score = 0
+        try:
+            # Try old format first (ParameterDef objects)
+            if hasattr(spec, "parameters") and spec.parameters is not None:
+                for param in spec.parameters:
+                    if hasattr(param, "name") and query_lower in param.name.lower():
+                        score += 5
+                    if hasattr(param, "description") and query_lower in param.description.lower():
+                        score += 3
+
+            # Try new format (configurations dict)
+            elif hasattr(spec, "configurations") and spec.configurations:
+                for name, config in spec.configurations.items():
+                    if query_lower in name.lower():
+                        score += 5
+                    if isinstance(config, dict) and "description" in config:
+                        if query_lower in config["description"].lower():
+                            score += 3
+
+        except Exception:
+            pass  # Don't fail search if parameter access fails
+        return score
+
+    def _search_in_ports(self, spec, query_lower: str) -> int:
+        """Search in ports handling both old and new formats."""
+        score = 0
+        try:
+            input_ports = getattr(spec, "input_ports", [])
+            output_ports = getattr(spec, "output_ports", [])
+            all_ports = input_ports + output_ports
+
+            for port in all_ports:
+                if hasattr(port, "name") and query_lower in port.name.lower():
+                    score += 3
+                if hasattr(port, "description") and query_lower in port.description.lower():
+                    score += 2
+
+        except Exception:
+            pass  # Don't fail search if port access fails
+        return score

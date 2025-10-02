@@ -15,8 +15,8 @@ from sqlalchemy.orm import sessionmaker
 
 from shared.models.db_models import get_database_engine
 from shared.models.node_enums import TriggerSubtype
-from shared.models.trigger import ExecutionResult
 from shared.models.trigger_index import GitHubWebhookEvent, TriggerIndex
+from shared.models.workflow_new import WorkflowExecutionResponse
 from workflow_scheduler.core.config import settings
 
 logger = logging.getLogger(__name__)

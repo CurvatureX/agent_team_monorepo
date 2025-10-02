@@ -10,8 +10,10 @@ from typing import Any, Dict, List, Optional
 
 import aioimaplib
 
+from shared.models.execution_new import ExecutionStatus
 from shared.models.node_enums import TriggerSubtype
-from shared.models.trigger import ExecutionResult, TriggerStatus
+from shared.models.trigger import TriggerStatus
+from shared.models.workflow_new import WorkflowExecutionResponse
 from workflow_scheduler.core.config import settings
 from workflow_scheduler.triggers.base import BaseTrigger
 
@@ -237,7 +239,7 @@ class EmailTrigger(BaseTrigger):
             # Trigger workflow
             result = await self._trigger_workflow(trigger_data)
 
-            if result.status == "started":
+            if result.status == ExecutionStatus.RUNNING:
                 logger.info(
                     f"Email trigger executed successfully for workflow {self.workflow_id}: {result.execution_id}"
                 )

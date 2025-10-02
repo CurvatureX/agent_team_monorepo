@@ -849,15 +849,9 @@ GitHub triggers respond to repository events via webhooks.
     {
       "id": "pr_action_router",
       "type": "FLOW",
-      "subtype": "SWITCH",
+      "subtype": "IF",
       "parameters": {
-        "switch_field": "trigger_data.action",
-        "cases": {
-          "opened": "pr_opened",
-          "closed": "pr_closed",
-          "synchronize": "pr_updated"
-        },
-        "default_case": "unknown_action"
+        "expression": "trigger_data.action == 'opened'"
       },
       "position": {"x": 300, "y": 100}
     },
