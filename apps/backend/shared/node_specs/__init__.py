@@ -26,19 +26,7 @@ Example:
 
 # AI Agent specs
 from .AI_AGENT.OPENAI_CHATGPT import OPENAI_CHATGPT_SPEC
-from .base import (
-    COMMON_CONFIGS,
-    COMMON_PORTS,
-    BaseNodeSpec,
-    ConnectionSpec,
-    ConnectionType,
-    DataFormat,
-    InputPortSpec,
-    NodeSpec,
-    OutputPortSpec,
-    ParameterDef,
-    ParameterType,
-)
+from .base import COMMON_CONFIGS, BaseNodeSpec, DataFormat, NodeSpec, ParameterDef, ParameterType
 from .TRIGGER.CRON import CRON_TRIGGER_SPEC
 from .TRIGGER.EMAIL import EMAIL_TRIGGER_SPEC
 from .TRIGGER.GITHUB import GITHUB_TRIGGER_SPEC
@@ -275,14 +263,9 @@ __all__ = [
     "NodeSpec",
     "ParameterDef",
     "ParameterType",
-    "InputPortSpec",
-    "OutputPortSpec",
     "DataFormat",
-    "ConnectionType",
-    "ConnectionSpec",
     "BaseNodeSpec",
     "COMMON_CONFIGS",
-    "COMMON_PORTS",
     # Specifications
     "MANUAL_TRIGGER_SPEC",
     "WEBHOOK_TRIGGER_SPEC",
