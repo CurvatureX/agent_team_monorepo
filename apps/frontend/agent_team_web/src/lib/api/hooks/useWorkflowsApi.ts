@@ -3,6 +3,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { API_PATHS } from '../config';
 import { useAuthSWR, apiRequest } from '../fetcher';
 import { useCallback } from 'react';
+import { WorkflowListResponse } from '@/types/workflow';
 
 // 获取工作流列表
 export function useWorkflowsApi(params?: {
@@ -18,14 +19,16 @@ export function useWorkflowsApi(params?: {
           .map(([k, v]) => [k, String(v)])
       ).toString()
     : '';
-  
-  const { data, error, isLoading, mutate } = useAuthSWR(
+
+  const { data, error, isLoading, mutate } = useAuthSWR<WorkflowListResponse>(
     API_PATHS.WORKFLOWS + queryString,
     { revalidateOnFocus: false }
   );
 
   return {
-    workflows: data || [],
+    workflows: data?.workflows || [],
+    totalCount: data?.total_count || 0,
+    hasMore: data?.has_more || false,
     isLoading,
     isError: !!error,
     error,
@@ -41,7 +44,8 @@ export function useWorkflowApi(workflowId: string | null) {
   );
 
   return {
-    workflow: data,
+    workflow: data?.workflow,
+    found: data?.found,
     isLoading,
     isError: !!error,
     error,
@@ -59,7 +63,9 @@ export function useWorkflowActions() {
       console.warn('Not authenticated - cannot fetch workflow');
       return null;
     }
-    return apiRequest(API_PATHS.WORKFLOW(id), token, 'GET');
+    const result = await apiRequest(API_PATHS.WORKFLOW(id), token, 'GET');
+    // API now returns { found, workflow, message }
+    return result?.workflow || result;
   }, [token]);
 
   const createWorkflow = useCallback(async (data: unknown) => {
@@ -69,7 +75,8 @@ export function useWorkflowActions() {
     globalMutate((key) =>
       Array.isArray(key) && key[0]?.includes('/workflows/')
     );
-    return result;
+    // API returns { workflow, message }
+    return result?.workflow || result;
   }, [token]);
 
   const updateWorkflow = useCallback(async (id: string, data: unknown) => {
@@ -80,7 +87,8 @@ export function useWorkflowActions() {
     globalMutate((key) =>
       Array.isArray(key) && key[0]?.includes('/workflows/')
     );
-    return result;
+    // API returns { workflow, message }
+    return result?.workflow || result;
   }, [token]);
 
   const deleteWorkflow = useCallback(async (id: string) => {

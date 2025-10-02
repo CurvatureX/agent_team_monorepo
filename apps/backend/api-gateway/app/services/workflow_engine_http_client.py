@@ -22,14 +22,9 @@ class WorkflowEngineHTTPClient:
     """
 
     def __init__(self):
-        # Support v1 and v2 engines based on settings
-        self.use_v2 = bool(getattr(settings, "WORKFLOW_ENGINE_USE_V2", False))
-        if self.use_v2:
-            self.base_url = settings.workflow_engine_v2_http_url
-            self._api_prefix = "/api/v2"
-        else:
-            self.base_url = settings.workflow_engine_http_url
-            self._api_prefix = "/v1"
+        # Always use Workflow Engine V2 (V1 is deprecated and removed)
+        self.base_url = settings.workflow_engine_http_url  # Port 8002 runs Workflow Engine V2
+        self._api_prefix = "/v2"  # V2 API prefix
         # Separate timeouts for different operations
         self.connect_timeout = httpx.Timeout(5.0, connect=5.0)
         self.execute_timeout = httpx.Timeout(

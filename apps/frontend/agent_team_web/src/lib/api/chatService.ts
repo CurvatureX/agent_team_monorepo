@@ -61,7 +61,7 @@ class ChatService {
       if (session?.access_token) {
         return session.access_token;
       }
-      
+
       // Try to refresh the session if no token
       const { data: { session: refreshedSession } } = await this.supabase.auth.refreshSession();
       return refreshedSession?.access_token || null;
@@ -80,11 +80,11 @@ class ChatService {
       const headers: HeadersInit = {
         'Content-Type': 'application/json',
       };
-      
+
       if (authToken) {
         headers['Authorization'] = `Bearer ${authToken}`;
       }
-      
+
       console.log('Creating new session...');
       const response = await fetch(`${this.baseUrl}/v1/app/sessions`, {
         method: 'POST',
@@ -104,12 +104,14 @@ class ChatService {
 
       const data = await response.json();
       console.log('Session created:', data);
-      
+
+      // Backend returns { session: { id, ... }, message?: string }
       // Extract session ID from response
       if (data.session?.id) {
         this.sessionId = data.session.id;
         return data.session.id;
       } else if (data.id) {
+        // Fallback for direct session object (legacy)
         this.sessionId = data.id;
         return data.id;
       } else {
@@ -135,7 +137,7 @@ class ChatService {
     }
     return this.sessionId!;
   }
-  
+
   /**
    * Force create a new session
    */
@@ -148,7 +150,7 @@ class ChatService {
    * Send a chat message using SSE (Server-Sent Events) for streaming response
    */
   async sendChatMessage(
-    message: string, 
+    message: string,
     onMessage: (event: ChatSSEEvent) => void,
     onError?: (error: Error) => void,
     onComplete?: () => void,
@@ -156,7 +158,7 @@ class ChatService {
     // workflowId?: string
   ): Promise<() => void> {
     const sessionId = await this.getSessionId();
-    
+
     const requestBody: ChatRequest = {
       session_id: sessionId,
       user_message: message
@@ -164,23 +166,23 @@ class ChatService {
 
     console.log('Sending chat request to:', `${this.baseUrl}/v1/app/chat/stream`);
     console.log('Request body:', requestBody);
-    
+
     try {
       // Get auth token from Supabase
       const authToken = await this.getAuthToken();
       console.log('Auth token found:', authToken ? 'Yes' : 'No');
-      
+
       const headers: HeadersInit = {
         'Content-Type': 'application/json',
       };
-      
+
       if (authToken) {
         headers['Authorization'] = `Bearer ${authToken}`;
         console.log('Authorization header set');
       } else {
         console.warn('No auth token found, request may fail');
       }
-      
+
       const response = await fetch(`${this.baseUrl}/v1/app/chat/stream`, {
         method: 'POST',
         headers,
@@ -207,7 +209,7 @@ class ChatService {
         try {
           while (true) {
             const { done, value } = await reader.read();
-            
+
             if (done) {
               if (onComplete) onComplete();
               break;
@@ -224,11 +226,11 @@ class ChatService {
                   if (onComplete) onComplete();
                   return;
                 }
-                
+
                 try {
                   const event: ChatSSEEvent = JSON.parse(data);
                   onMessage(event);
-                  
+
                   // Check if this is the final message
                   if (event.is_final) {
                     if (onComplete) onComplete();
@@ -267,17 +269,17 @@ class ChatService {
    */
   async getChatHistory(sessionId?: string, limit: number = 50, offset: number = 0): Promise<ChatHistory> {
     const sid = sessionId || await this.getSessionId();
-    
+
     try {
       const authToken = await this.getAuthToken();
       const headers: HeadersInit = {
         'Content-Type': 'application/json',
       };
-      
+
       if (authToken) {
         headers['Authorization'] = `Bearer ${authToken}`;
       }
-      
+
       const response = await fetch(
         `${this.baseUrl}/v1/app/chat/${sid}/history?limit=${limit}&offset=${offset}`,
         {
@@ -312,7 +314,7 @@ class ChatService {
   async sendSimpleMessage(message: string): Promise<string> {
     return new Promise(async (resolve, reject) => {
       let fullResponse = '';
-      
+
       await this.sendChatMessage(
         message,
         (event) => {
