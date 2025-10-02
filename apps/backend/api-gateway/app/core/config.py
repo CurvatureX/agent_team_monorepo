@@ -118,13 +118,7 @@ class ServiceSettings(BaseSettings):
     WORKFLOW_AGENT_HTTP_PORT: int = Field(default=8001, description="工作流代理HTTP端口")
     WORKFLOW_ENGINE_HTTP_PORT: int = Field(default=8002, description="工作流引擎HTTP端口")
     WORKFLOW_SCHEDULER_HTTP_PORT: int = Field(default=8003, description="工作流调度器HTTP端口")
-    # v2 Engine configuration
-    WORKFLOW_ENGINE_USE_V2: bool = Field(default=False, description="使用v2工作流引擎")
-    WORKFLOW_ENGINE_V2_HOST: str = Field(default="workflow-engine-v2", description="v2 工作流引擎主机")
-    WORKFLOW_ENGINE_V2_URL: Optional[str] = Field(
-        default=None, description="v2 工作流引擎HTTP URL (优先于HOST:PORT)"
-    )
-    WORKFLOW_ENGINE_V2_HTTP_PORT: int = Field(default=8004, description="v2 工作流引擎HTTP端口")
+    # Note: Workflow Engine V2 is the only version - V1 is deprecated and removed
     # HTTP client is the only option now - gRPC removed
 
     @property
@@ -136,17 +130,10 @@ class ServiceSettings(BaseSettings):
 
     @property
     def workflow_engine_http_url(self) -> str:
-        """获取工作流引擎的 HTTP URL"""
+        """获取工作流引擎的 HTTP URL (Workflow Engine V2)"""
         if self.WORKFLOW_ENGINE_URL:
             return self.WORKFLOW_ENGINE_URL
         return f"http://{self.WORKFLOW_ENGINE_HOST}:{self.WORKFLOW_ENGINE_HTTP_PORT}"
-
-    @property
-    def workflow_engine_v2_http_url(self) -> str:
-        """获取 v2 工作流引擎的 HTTP URL"""
-        if self.WORKFLOW_ENGINE_V2_URL:
-            return self.WORKFLOW_ENGINE_V2_URL
-        return f"http://{self.WORKFLOW_ENGINE_V2_HOST}:{self.WORKFLOW_ENGINE_V2_HTTP_PORT}"
 
     @property
     def workflow_scheduler_http_url(self) -> str:
