@@ -7,11 +7,14 @@ Modern workflow CRUD operations with enhanced features.
 import logging
 import time
 import uuid
-from typing import Optional
+from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from shared.models.workflow_new import WorkflowDeploymentStatus
+
+# Import shared node specs service
+from shared.services.node_specs_api_service import get_node_specs_api_service
 from workflow_engine_v2.api.models import (
     CreateWorkflowRequest,
     CreateWorkflowResponse,
@@ -26,6 +29,9 @@ router = APIRouter(prefix="/workflows", tags=["V2 Workflows"])
 
 # Global workflow service instance
 workflow_service = WorkflowServiceV2()
+
+# Global node specs service instance
+node_specs_service = get_node_specs_api_service()
 
 
 @router.post("", response_model=CreateWorkflowResponse)
@@ -75,6 +81,41 @@ async def create_workflow(request: CreateWorkflowRequest):
     except Exception as e:
         logger.error(f"❌ [v2] Error creating workflow: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to create workflow: {str(e)}")
+
+
+@router.get("/node-templates")
+async def list_node_templates(
+    category_filter: Optional[str] = Query(None, alias="category"),
+    type_filter: Optional[str] = Query(None, alias="node_type"),
+    include_system_templates: bool = Query(True, alias="include_system"),
+):
+    """
+    List all available node templates from node specs.
+
+    This endpoint provides compatibility with the old workflow_engine v1 API
+    but uses the modern node_specs system for retrieving templates.
+    """
+    try:
+        logger.info(
+            f"📋 [v2] Listing node templates (category={category_filter}, type={type_filter})"
+        )
+
+        # Use the shared node specs service to get templates
+        templates = node_specs_service.list_all_node_templates(
+            category_filter=category_filter,
+            type_filter=type_filter,
+            include_system_templates=include_system_templates,
+        )
+
+        # Convert to dict format for API response
+        template_dicts = [template.model_dump() for template in templates]
+
+        logger.info(f"✅ [v2] Retrieved {len(template_dicts)} node templates")
+        return {"node_templates": template_dicts, "total_count": len(template_dicts)}
+
+    except Exception as e:
+        logger.error(f"❌ [v2] Error listing node templates: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to list node templates: {str(e)}")
 
 
 @router.get("/{workflow_id}", response_model=GetWorkflowResponse)

@@ -92,7 +92,7 @@ async def test_user_friendly_log_messages(app_client, patch_workflow_definition,
     tool_node = node(
         "n1",
         NodeType.TOOL.value,
-        ToolSubtype.MCP_TOOL.value,
+        ToolSubtype.HTTP_CLIENT.value,
         {"tool_type": "utility", "utility_type": "timestamp", "operation": "generate"},
     )
     wf = single_node_workflow(tool_node)
@@ -322,7 +322,7 @@ async def test_log_chronological_order(app_client, patch_workflow_definition, in
     step1 = node(
         "n2",
         NodeType.TOOL.value,
-        ToolSubtype.MCP_TOOL.value,
+        ToolSubtype.HTTP_CLIENT.value,
         {"tool_type": "utility", "utility_type": "timestamp"},
     )
     step2 = node(
@@ -334,7 +334,7 @@ async def test_log_chronological_order(app_client, patch_workflow_definition, in
     step3 = node(
         "n4",
         NodeType.TOOL.value,
-        ToolSubtype.MCP_TOOL.value,
+        ToolSubtype.HTTP_CLIENT.value,
         {"tool_type": "utility", "utility_type": "uuid"},
     )
 

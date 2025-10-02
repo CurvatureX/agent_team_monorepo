@@ -251,7 +251,7 @@ async def test_parallel_execution_merge(app_client, patch_workflow_definition, i
     process_c = node(
         "n5",
         NodeType.TOOL.value,
-        ToolSubtype.MCP_TOOL.value,
+        ToolSubtype.HTTP_CLIENT.value,
         {"tool_type": "utility", "utility_type": "timestamp", "operation": "generate"},
     )
 
@@ -461,7 +461,7 @@ async def test_fan_out_fan_in_pattern(app_client, patch_workflow_definition, in_
     data_analyzer = node(
         "n4",
         NodeType.TOOL.value,
-        ToolSubtype.MCP_TOOL.value,
+        ToolSubtype.HTTP_CLIENT.value,
         {
             "tool_type": "utility",
             "utility_type": "hash",

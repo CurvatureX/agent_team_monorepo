@@ -16,7 +16,7 @@ async def test_mcp_tool_execution_mock(app_client, patch_workflow_definition, in
     tool_node = node(
         "n1",
         ntype=NodeType.TOOL.value,
-        subtype=ToolSubtype.MCP_TOOL.value,
+        subtype=ToolSubtype.HTTP_CLIENT.value,
         parameters={
             "tool_type": "mcp",
             "operation": "execute",
@@ -56,7 +56,7 @@ async def test_utility_tool_timestamp(app_client, patch_workflow_definition, in_
     tool_node = node(
         "n1",
         ntype=NodeType.TOOL.value,
-        subtype=ToolSubtype.MCP_TOOL.value,
+        subtype=ToolSubtype.HTTP_CLIENT.value,
         parameters={"tool_type": "utility", "operation": "generate", "utility_type": "timestamp"},
     )
     wf = single_node_workflow(tool_node)
@@ -91,7 +91,7 @@ async def test_utility_tool_uuid_generation(app_client, patch_workflow_definitio
     tool_node = node(
         "n1",
         ntype=NodeType.TOOL.value,
-        subtype=ToolSubtype.MCP_TOOL.value,
+        subtype=ToolSubtype.HTTP_CLIENT.value,
         parameters={"tool_type": "utility", "operation": "generate", "utility_type": "uuid"},
     )
     wf = single_node_workflow(tool_node)
@@ -126,7 +126,7 @@ async def test_utility_tool_hash_functions(app_client, patch_workflow_definition
     tool_node = node(
         "n1",
         ntype=NodeType.TOOL.value,
-        subtype=ToolSubtype.MCP_TOOL.value,
+        subtype=ToolSubtype.HTTP_CLIENT.value,
         parameters={
             "tool_type": "utility",
             "operation": "hash",
@@ -168,7 +168,7 @@ async def test_file_operations_read_write(app_client, patch_workflow_definition,
     tool_node = node(
         "n1",
         ntype=NodeType.TOOL.value,
-        subtype=ToolSubtype.MCP_TOOL.value,
+        subtype=ToolSubtype.FILE_PROCESSOR.value,
         parameters={
             "tool_type": "file",
             "operation": "write",
@@ -208,7 +208,7 @@ async def test_api_tool_http_requests(app_client, patch_workflow_definition, in_
     tool_node = node(
         "n1",
         ntype=NodeType.TOOL.value,
-        subtype=ToolSubtype.MCP_TOOL.value,
+        subtype=ToolSubtype.HTTP_CLIENT.value,
         parameters={
             "tool_type": "api",
             "operation": "request",
@@ -250,7 +250,7 @@ async def test_tool_parameter_validation(app_client, patch_workflow_definition):
     tool_node = node(
         "n1",
         ntype=NodeType.TOOL.value,
-        subtype=ToolSubtype.MCP_TOOL.value,
+        subtype=ToolSubtype.HTTP_CLIENT.value,
         parameters={
             "tool_type": "api",
             "operation": "request",
@@ -283,7 +283,7 @@ async def test_generic_tool_execution(app_client, patch_workflow_definition, in_
     tool_node = node(
         "n1",
         ntype=NodeType.TOOL.value,
-        subtype=ToolSubtype.MCP_TOOL.value,
+        subtype=ToolSubtype.HTTP_CLIENT.value,
         parameters={
             "tool_type": "custom_tool",
             "operation": "process",
@@ -324,7 +324,7 @@ async def test_utility_tool_format_operations(
     tool_node = node(
         "n1",
         ntype=NodeType.TOOL.value,
-        subtype=ToolSubtype.MCP_TOOL.value,
+        subtype=ToolSubtype.HTTP_CLIENT.value,
         parameters={
             "tool_type": "utility",
             "operation": "format",

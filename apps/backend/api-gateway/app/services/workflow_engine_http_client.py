@@ -95,20 +95,6 @@ class WorkflowEngineHTTPClient:
             )
 
             client = await self._get_client()
-            # v2 does not expose node-templates; rely on local specs when use_v2
-            if self.use_v2:
-                try:
-                    from shared.services.node_specs_api_service import get_node_specs_api_service
-
-                    specs_service = get_node_specs_api_service()
-                    return specs_service.list_all_node_templates(
-                        category_filter=category_filter,
-                        type_filter=type_filter,
-                        include_system_templates=include_system_templates,
-                    )
-                except Exception as e:
-                    log_error(f"Specs fallback failed: {e}")
-                    return []
             response = await client.get(
                 f"{self.base_url}{self._api_prefix}/workflows/node-templates", params=params
             )

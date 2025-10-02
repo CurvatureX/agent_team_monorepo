@@ -17,11 +17,13 @@ from pydantic import BaseModel, Field, field_validator
 from .common import NodeTemplate
 
 # Import execution-related enums from execution_new.py (single source of truth)
-from .execution_new import ExecutionEventType
 from .execution_new import (
-    ExecutionStatus as WorkflowExecutionStatus,  # Alias for backward compatibility
+    ExecutionEventType,
+    ExecutionStatus,
+    LogLevel,
+    NodeExecutionStatus,
+    TriggerInfo,
 )
-from .execution_new import LogLevel, NodeExecutionStatus, TriggerInfo
 
 # ============================================================================
 # ENUMS - Status and Type Definitions
@@ -31,10 +33,11 @@ from .execution_new import LogLevel, NodeExecutionStatus, TriggerInfo
 class WorkflowDeploymentStatus(str, Enum):
     """工作流部署状态"""
 
-    PENDING = "pending"
-    DEPLOYED = "deployed"
-    FAILED = "failed"
-    UNDEPLOYED = "undeployed"
+    DRAFT = "DRAFT"  # 草稿状态 - 未部署
+    PENDING = "pending"  # 等待部署
+    DEPLOYED = "deployed"  # 已部署
+    FAILED = "failed"  # 部署失败
+    UNDEPLOYED = "undeployed"  # 已取消部署
 
 
 # ============================================================================
@@ -57,35 +60,21 @@ class Port(BaseModel):
 
 
 class Connection(BaseModel):
-    """连接定义"""
+    """连接定义 - 符合 new_workflow_spec.md 规范"""
 
     id: str = Field(..., description="连接的唯一标识符")
     from_node: str = Field(..., description="源节点的ID")
     to_node: str = Field(..., description="目标节点的ID")
-    from_port: str = Field(..., description="源节点的输出端口ID (deprecated, use output_key)")
-    to_port: str = Field(..., description="目标节点的输入端口ID (deprecated)")
     output_key: str = Field(
-        default="result", description="从源节点的哪个输出获取数据（如 'result', 'true', 'false'）。用于区分条件分支和多输出节点。"
+        default="result", description="从源节点的哪个输出获取数据（如 'result', 'true', 'false'）"
     )
     conversion_function: str = Field(
         ...,
-        description="""数据转换函数 - 必须是严格定义的Python匿名函数，格式为：
-        'def convert(input_data: Dict[str, Any]) -> Dict[str, Any]: return transformed_data'
-
-        这是必需字段！即使不需要转换，也必须提供直通函数：
-        'def convert(input_data: Dict[str, Any]) -> Dict[str, Any]: return input_data'
-
-        示例:
-        - 直通: 'def convert(input_data: Dict[str, Any]) -> Dict[str, Any]: return input_data'
-        - Slack格式化: 'def convert(input_data: Dict[str, Any]) -> Dict[str, Any]: return {"text": input_data.get("output", ""), "channel": "#general"}'
-        - 添加表情: 'def convert(input_data: Dict[str, Any]) -> Dict[str, Any]: return {"message": f"🎭 {input_data.get("content", "")} 🎭"}'
-
-        函数必须：
-        1. 名为 'convert'
-        2. 接受一个参数 input_data: Dict[str, Any]
-        3. 返回 Dict[str, Any]
-        4. 使用纯Python语法，无导入，无外部依赖
-        """,
+        description=(
+            "数据转换函数 - 定义数据如何处理，转换成to_node可接受的数据。\n"
+            "如果不需要转换，使用直通函数：\n"
+            "'def convert(input_data: Dict[str, Any]) -> Dict[str, Any]: return input_data'"
+        ),
     )
 
 
@@ -144,11 +133,9 @@ class WorkflowMetadata(BaseModel):
     icon_url: Optional[str] = Field(default=None, description="工作流图标链接")
     description: Optional[str] = Field(default=None, description="工作流描述")
     deployment_status: WorkflowDeploymentStatus = Field(
-        default=WorkflowDeploymentStatus.PENDING, description="部署状态"
+        default=WorkflowDeploymentStatus.DRAFT, description="部署状态"
     )
-    last_execution_status: Optional[WorkflowExecutionStatus] = Field(
-        default=None, description="上次运行状态"
-    )
+    last_execution_status: Optional[ExecutionStatus] = Field(default=None, description="上次运行状态")
     last_execution_time: Optional[int] = Field(default=None, description="上次运行时间戳（毫秒）")
     tags: List[str] = Field(default_factory=list, description="标签列表")
     created_time: int = Field(..., description="创建时间戳（毫秒）")
@@ -394,7 +381,7 @@ class WorkflowExecution(BaseModel):
     workflow_version: str = Field(default="1.0", description="Workflow版本号")
 
     # 执行状态
-    status: WorkflowExecutionStatus = Field(..., description="整体执行状态")
+    status: ExecutionStatus = Field(..., description="整体执行状态")
     start_time: Optional[int] = Field(default=None, description="开始执行时间")
     end_time: Optional[int] = Field(default=None, description="结束时间")
     duration_ms: Optional[int] = Field(default=None, description="总耗时")
@@ -436,7 +423,7 @@ class ExecutionUpdateData(BaseModel):
     node_id: Optional[str] = Field(default=None, description="节点ID")
     node_execution: Optional[NodeExecution] = Field(default=None, description="节点执行信息")
     partial_output: Optional[Dict[str, Any]] = Field(default=None, description="流式输出的部分数据")
-    execution_status: Optional[WorkflowExecutionStatus] = Field(default=None, description="执行状态")
+    execution_status: Optional[ExecutionStatus] = Field(default=None, description="执行状态")
     error: Optional[Union[ExecutionError, NodeError]] = Field(default=None, description="错误信息")
     user_input_request: Optional[Dict[str, Any]] = Field(default=None, description="用户输入请求")
 
@@ -461,7 +448,7 @@ class WorkflowExecutionSummary(BaseModel):
     execution_id: str = Field(..., description="执行ID")
     workflow_id: str = Field(..., description="工作流ID")
     workflow_name: str = Field(..., description="工作流名称")
-    status: WorkflowExecutionStatus = Field(..., description="执行状态")
+    status: ExecutionStatus = Field(..., description="执行状态")
     start_time: Optional[int] = Field(default=None, description="开始时间")
     end_time: Optional[int] = Field(default=None, description="结束时间")
     duration_ms: Optional[int] = Field(default=None, description="执行耗时")
@@ -515,7 +502,7 @@ class ExecutionActionResponse(BaseModel):
 
     success: bool = Field(..., description="操作是否成功")
     message: str = Field(..., description="响应消息")
-    execution_status: Optional[WorkflowExecutionStatus] = Field(default=None, description="执行状态")
+    execution_status: Optional[ExecutionStatus] = Field(default=None, description="执行状态")
 
 
 # Fix forward reference for NodeExecution.attached_executions
