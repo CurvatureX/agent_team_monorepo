@@ -196,9 +196,7 @@ class WorkflowEngineHTTPClient:
                         else {}
                     )
                     for from_port, arr in ctypes.items():
-                        conns = (
-                            (arr or {}).get("connections", []) if isinstance(arr, dict) else []
-                        )
+                        conns = (arr or {}).get("connections", []) if isinstance(arr, dict) else []
                         for idx, c in enumerate(conns):
                             if not isinstance(c, dict):
                                 continue
@@ -225,9 +223,7 @@ class WorkflowEngineHTTPClient:
                 "nodes": v2_nodes,
                 "connections": _convert_connections(connections or []),
                 "triggers": [
-                    n.get("id") or n.get("name")
-                    for n in v2_nodes
-                    if (n.get("type") == "TRIGGER")
+                    n.get("id") or n.get("name") for n in v2_nodes if (n.get("type") == "TRIGGER")
                 ],
             }
 
@@ -482,6 +478,7 @@ class WorkflowEngineHTTPClient:
         description: Optional[str] = None,
         nodes: Optional[List[Dict[str, Any]]] = None,
         connections: Optional[Dict[str, Any]] = None,
+        triggers: Optional[List[str]] = None,
         settings: Optional[Dict[str, Any]] = None,
         static_data: Optional[Dict[str, str]] = None,
         tags: Optional[List[str]] = None,
@@ -502,6 +499,8 @@ class WorkflowEngineHTTPClient:
                 update_data["nodes"] = nodes
             if connections is not None:
                 update_data["connections"] = connections
+            if triggers is not None:
+                update_data["triggers"] = triggers
             if settings is not None:
                 update_data["settings"] = settings
             if static_data is not None:
