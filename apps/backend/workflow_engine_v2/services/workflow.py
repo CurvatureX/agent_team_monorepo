@@ -149,13 +149,13 @@ class WorkflowServiceV2:
                             ):
                                 metadata["deployment_status"] = metadata[
                                     "deployment_status"
-                                ].lower()
+                                ].upper()
                             if "latest_execution_status" in metadata and isinstance(
                                 metadata["latest_execution_status"], str
                             ):
                                 metadata["latest_execution_status"] = metadata[
                                     "latest_execution_status"
-                                ].lower()
+                                ].upper()
                         except Exception:
                             # Gracefully ignore normalization issues
                             pass
@@ -202,13 +202,13 @@ class WorkflowServiceV2:
                             ):
                                 metadata["deployment_status"] = metadata[
                                     "deployment_status"
-                                ].lower()
+                                ].upper()
                             if "latest_execution_status" in metadata and isinstance(
                                 metadata["latest_execution_status"], str
                             ):
                                 metadata["latest_execution_status"] = metadata[
                                     "latest_execution_status"
-                                ].lower()
+                                ].upper()
                         except Exception:
                             pass
                         if "version" in metadata and isinstance(metadata["version"], int):
