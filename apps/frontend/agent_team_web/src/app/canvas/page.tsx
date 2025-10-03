@@ -26,6 +26,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { WorkflowDeploymentStatus } from "@/types/workflow-enums";
 
 // Type definitions
 interface WorkflowItem {
@@ -69,12 +70,12 @@ interface RawWorkflow {
 }
 
 // Define deployment status configuration outside component for consistency
-// Aligned with backend WorkflowDeploymentStatus enum (pending, deployed, failed, undeployed)
+// Aligned with backend WorkflowDeploymentStatus enum
 const deploymentStatusConfig = {
-  pending: { icon: Activity, label: "Pending", color: "text-blue-500", bg: "bg-blue-50", variant: "secondary" as const },
-  deployed: { icon: CheckCircle, label: "Deployed", color: "text-green-500", bg: "bg-green-50", variant: "default" as const },
-  failed: { icon: XCircle, label: "Failed", color: "text-red-500", bg: "bg-red-50", variant: "destructive" as const },
-  undeployed: { icon: Pause, label: "Undeployed", color: "text-gray-500", bg: "bg-gray-50", variant: "outline" as const },
+  UNDEPLOYED: { icon: Pause, label: "Undeployed", color: "text-gray-500", bg: "bg-gray-50", variant: "outline" as const },
+  DEPLOYING: { icon: Activity, label: "Deploying", color: "text-blue-500", bg: "bg-blue-50", variant: "secondary" as const },
+  DEPLOYED: { icon: CheckCircle, label: "Deployed", color: "text-green-500", bg: "bg-green-50", variant: "default" as const },
+  DEPLOYMENT_FAILED: { icon: XCircle, label: "Failed", color: "text-red-500", bg: "bg-red-50", variant: "destructive" as const },
 };
 
 function CanvasPage() {
@@ -139,7 +140,7 @@ function CanvasPage() {
       name: workflow.name || "Unnamed Workflow",
       description: workflow.description || "",
       status: workflow.status || "pending",
-      deploymentStatus: workflow.deployment_status || "pending",
+      deploymentStatus: workflow.deployment_status || WorkflowDeploymentStatus.Undeployed,
       lastExecutionStatus: workflow.latest_execution_status || "pending",
       lastRunTime: workflow.latest_execution_time
         ? (typeof workflow.latest_execution_time === 'number'
@@ -378,7 +379,7 @@ function CanvasPage() {
                 >
                   <div className="flex gap-4 pb-4" style={{ width: 'max-content' }}>
                     {statusWorkflows.map((workflow: WorkflowItem) => {
-                    const deploymentConfig = deploymentStatusConfig[workflow.deploymentStatus as keyof typeof deploymentStatusConfig] || deploymentStatusConfig.pending;
+                    const deploymentConfig = deploymentStatusConfig[workflow.deploymentStatus as keyof typeof deploymentStatusConfig] || deploymentStatusConfig.UNDEPLOYED;
 
                     return (
                       <Card

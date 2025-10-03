@@ -69,8 +69,8 @@ async def create_workflow(request: CreateWorkflowRequest):
                 "active": True,
                 "created_at": created_time_ms,
                 "updated_at": created_time_ms,
-                "deployment_status": WorkflowDeploymentStatus.PENDING.value,
-                "latest_execution_status": None,
+                "deployment_status": WorkflowDeploymentStatus.UNDEPLOYED.value,
+                "latest_execution_status": ExecutionStatus.IDLE.value,
                 "latest_execution_time": None,
                 "latest_execution_id": None,
             }
@@ -182,7 +182,7 @@ async def list_workflows(
                     "name": workflow_dict["metadata"]["name"],
                     "description": workflow_dict["metadata"].get("description"),
                     "deployment_status": workflow_dict["metadata"].get(
-                        "deployment_status", "pending"
+                        "deployment_status", WorkflowDeploymentStatus.UNDEPLOYED.value
                     ),
                     "created_at": workflow_dict["metadata"]["created_time"],
                     "updated_at": workflow_dict["metadata"]["created_time"],

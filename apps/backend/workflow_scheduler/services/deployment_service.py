@@ -7,6 +7,9 @@ import httpx
 
 from shared.models.node_enums import IntegrationProvider, NodeType, TriggerSubtype, ValidationResult
 from shared.models.trigger import DeploymentResult, DeploymentStatus, TriggerSpec
+
+# Note: DeploymentStatus is actually WorkflowDeploymentStatus imported from shared.models.workflow
+# Valid values: UNDEPLOYED, DEPLOYING, DEPLOYED, DEPLOYMENT_FAILED
 from workflow_scheduler.services.direct_db_service import DirectDBService
 from workflow_scheduler.services.trigger_index_manager import TriggerIndexManager
 
@@ -59,7 +62,7 @@ class DeploymentService:
                 return DeploymentResult(
                     deployment_id=deployment_id,
                     workflow_id=workflow_id,
-                    status=DeploymentStatus.FAILED,
+                    status=DeploymentStatus.DEPLOYMENT_FAILED,
                     message=error_msg,
                 )
 
@@ -69,7 +72,7 @@ class DeploymentService:
                 return DeploymentResult(
                     deployment_id=deployment_id,
                     workflow_id=workflow_id,
-                    status=DeploymentStatus.FAILED,
+                    status=DeploymentStatus.DEPLOYMENT_FAILED,
                     message=error_msg,
                 )
 
@@ -80,7 +83,7 @@ class DeploymentService:
                 return DeploymentResult(
                     deployment_id=deployment_id,
                     workflow_id=workflow_id,
-                    status=DeploymentStatus.FAILED,
+                    status=DeploymentStatus.DEPLOYMENT_FAILED,
                     message=error_msg,
                 )
 
@@ -90,7 +93,7 @@ class DeploymentService:
                 return DeploymentResult(
                     deployment_id=deployment_id,
                     workflow_id=workflow_id,
-                    status=DeploymentStatus.FAILED,
+                    status=DeploymentStatus.DEPLOYMENT_FAILED,
                     message=error_msg,
                 )
 
@@ -116,7 +119,7 @@ class DeploymentService:
                 return DeploymentResult(
                     deployment_id=deployment_id,
                     workflow_id=workflow_id,
-                    status=DeploymentStatus.FAILED,
+                    status=DeploymentStatus.DEPLOYMENT_FAILED,
                     message=error_msg,
                 )
 
@@ -128,7 +131,7 @@ class DeploymentService:
                 return DeploymentResult(
                     deployment_id=deployment_id,
                     workflow_id=workflow_id,
-                    status=DeploymentStatus.FAILED,
+                    status=DeploymentStatus.DEPLOYMENT_FAILED,
                     message=error_msg,
                 )
 
@@ -152,9 +155,9 @@ class DeploymentService:
             )
             # Use enum values to avoid case mismatches; default to pending
             current_status = (
-                current_status_info.get("deployment_status", DeploymentStatus.PENDING.value)
+                current_status_info.get("deployment_status", DeploymentStatus.DEPLOYING.value)
                 if current_status_info
-                else DeploymentStatus.PENDING.value
+                else DeploymentStatus.DEPLOYING.value
             )
             current_version = (
                 current_status_info.get("deployment_version", 0) if current_status_info else 0
@@ -165,7 +168,7 @@ class DeploymentService:
             from_status_name = (
                 DeploymentStatus(current_status).name
                 if current_status in {d.value for d in DeploymentStatus}
-                else DeploymentStatus.PENDING.name
+                else DeploymentStatus.DEPLOYING.name
             )
 
             history_success = await self.direct_db_service.create_deployment_history_record(
@@ -231,13 +234,13 @@ class DeploymentService:
             try:
                 await self.direct_db_service.update_workflow_deployment_status(
                     workflow_id=workflow_id,
-                    deployment_status=DeploymentStatus.FAILED.value,
+                    deployment_status=DeploymentStatus.DEPLOYMENT_FAILED.value,
                 )
                 await self.direct_db_service.create_deployment_history_record(
                     workflow_id=workflow_id,
                     deployment_action="DEPLOY_FAILED",
-                    from_status=DeploymentStatus.PENDING.name,
-                    to_status=DeploymentStatus.FAILED.name,
+                    from_status=DeploymentStatus.DEPLOYING.name,
+                    to_status=DeploymentStatus.DEPLOYMENT_FAILED.name,
                     deployment_version=1,
                     error_message=error_msg,
                 )
@@ -250,7 +253,7 @@ class DeploymentService:
             return DeploymentResult(
                 deployment_id=deployment_id,
                 workflow_id=workflow_id,
-                status=DeploymentStatus.FAILED,
+                status=DeploymentStatus.DEPLOYMENT_FAILED,
                 message=error_msg,
             )
 
@@ -276,7 +279,7 @@ class DeploymentService:
                 return DeploymentResult(
                     deployment_id=f"deploy_{uuid.uuid4()}",
                     workflow_id=workflow_id,
-                    status=DeploymentStatus.FAILED,
+                    status=DeploymentStatus.DEPLOYMENT_FAILED,
                     message=error_msg,
                 )
 
@@ -288,7 +291,7 @@ class DeploymentService:
                 return DeploymentResult(
                     deployment_id=f"deploy_{uuid.uuid4()}",
                     workflow_id=workflow_id,
-                    status=DeploymentStatus.FAILED,
+                    status=DeploymentStatus.DEPLOYMENT_FAILED,
                     message=error_msg,
                 )
 
@@ -309,7 +312,7 @@ class DeploymentService:
             return DeploymentResult(
                 deployment_id=f"deploy_{uuid.uuid4()}",
                 workflow_id=workflow_id,
-                status=DeploymentStatus.FAILED,
+                status=DeploymentStatus.DEPLOYMENT_FAILED,
                 message=error_msg,
             )
 
@@ -351,14 +354,14 @@ class DeploymentService:
                 workflow_id=workflow_id,
                 deployment_action="UNDEPLOY_STARTED",
                 from_status=from_status_name,
-                to_status=DeploymentStatus.PENDING.name,  # transitional state
+                to_status=DeploymentStatus.DEPLOYING.name,  # transitional state
                 deployment_version=current_version,
             )
 
             # Update workflow status to UNDEPLOYING
             await self.direct_db_service.update_workflow_deployment_status(
                 workflow_id=workflow_id,
-                deployment_status=DeploymentStatus.PENDING.value,  # transitional state
+                deployment_status=DeploymentStatus.DEPLOYING.value,  # transitional state
             )
 
             # 1. Unregister triggers from TriggerManager
@@ -381,7 +384,7 @@ class DeploymentService:
                 await self.direct_db_service.create_deployment_history_record(
                     workflow_id=workflow_id,
                     deployment_action="UNDEPLOY_COMPLETED",
-                    from_status=DeploymentStatus.PENDING.name,
+                    from_status=DeploymentStatus.DEPLOYING.name,
                     to_status=DeploymentStatus.UNDEPLOYED.name,
                     deployment_version=current_version,
                     deployment_config={"undeployed_at": datetime.utcnow().isoformat()},
@@ -390,15 +393,15 @@ class DeploymentService:
                 # Update workflow status to failed
                 await self.direct_db_service.update_workflow_deployment_status(
                     workflow_id=workflow_id,
-                    deployment_status=DeploymentStatus.FAILED.value,
+                    deployment_status=DeploymentStatus.DEPLOYMENT_FAILED.value,
                 )
 
                 # Complete deployment history record with error
                 await self.direct_db_service.create_deployment_history_record(
                     workflow_id=workflow_id,
                     deployment_action="UNDEPLOY_FAILED",
-                    from_status=DeploymentStatus.PENDING.name,
-                    to_status=DeploymentStatus.FAILED.name,
+                    from_status=DeploymentStatus.DEPLOYING.name,
+                    to_status=DeploymentStatus.DEPLOYMENT_FAILED.name,
                     deployment_version=current_version,
                     error_message="Failed to unregister triggers",
                 )
@@ -419,13 +422,13 @@ class DeploymentService:
             try:
                 await self.direct_db_service.update_workflow_deployment_status(
                     workflow_id=workflow_id,
-                    deployment_status=DeploymentStatus.FAILED.value,
+                    deployment_status=DeploymentStatus.DEPLOYMENT_FAILED.value,
                 )
                 await self.direct_db_service.create_deployment_history_record(
                     workflow_id=workflow_id,
                     deployment_action="UNDEPLOY_FAILED",
                     from_status=DeploymentStatus.DEPLOYED.value,
-                    to_status=DeploymentStatus.FAILED.value,
+                    to_status=DeploymentStatus.DEPLOYMENT_FAILED.value,
                     deployment_version=1,
                     error_message=error_msg,
                 )
@@ -469,7 +472,7 @@ class DeploymentService:
             return DeploymentResult(
                 deployment_id=f"update_{uuid.uuid4()}",
                 workflow_id=workflow_id,
-                status=DeploymentStatus.FAILED,
+                status=DeploymentStatus.DEPLOYMENT_FAILED,
                 message=error_msg,
             )
 
@@ -1133,15 +1136,15 @@ class DeploymentService:
             # Update workflow status to failed
             await self.direct_db_service.update_workflow_deployment_status(
                 workflow_id=workflow_id,
-                deployment_status=DeploymentStatus.FAILED.value,
+                deployment_status=DeploymentStatus.DEPLOYMENT_FAILED.value,
             )
 
             # Create deployment history record with error
             await self.direct_db_service.create_deployment_history_record(
                 workflow_id=workflow_id,
                 deployment_action="DEPLOY",
-                from_status=DeploymentStatus.PENDING.value,
-                to_status=DeploymentStatus.FAILED.value,
+                from_status=DeploymentStatus.DEPLOYING.value,
+                to_status=DeploymentStatus.DEPLOYMENT_FAILED.value,
                 deployment_version=1,
                 error_message=error_msg,
             )

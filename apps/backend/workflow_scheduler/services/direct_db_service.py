@@ -32,34 +32,24 @@ class DirectDBService:
         Normalize incoming deployment status values to align with the
         database constraint on workflows.deployment_status.
 
-        Allowed values (per latest migration): 'pending', 'deployed', 'failed', 'undeployed'.
-        Map legacy/uppercase values to the allowed set to avoid constraint violations.
+        Allowed values: 'UNDEPLOYED', 'DEPLOYING', 'DEPLOYED', 'DEPLOYMENT_FAILED'
         """
         if not status:
-            return "pending"
+            return DeploymentStatus.UNDEPLOYED.value
 
         s = str(status).strip()
         # Try enum by name or value
         try:
             return DeploymentStatus[s.upper()].value
-        except Exception:
+        except KeyError:
             pass
         try:
             return DeploymentStatus(s).value
-        except Exception:
+        except ValueError:
             pass
 
-        # Legacy mappings for transitional states
-        mapping = {
-            "IDLE": DeploymentStatus.PENDING.value,
-            "DRAFT": DeploymentStatus.PENDING.value,  # Legacy support
-            "DEPLOYING": DeploymentStatus.PENDING.value,
-            "UNDEPLOYING": DeploymentStatus.PENDING.value,
-            "DEPRECATED": DeploymentStatus.UNDEPLOYED.value,
-            "DEPLOYMENT_FAILED": DeploymentStatus.FAILED.value,
-        }
-
-        return mapping.get(s.upper(), DeploymentStatus.PENDING.value)
+        # Default to UNDEPLOYED if invalid status provided
+        return DeploymentStatus.UNDEPLOYED.value
 
     async def initialize(self):
         """Initialize the database connection pool - call once on service startup"""

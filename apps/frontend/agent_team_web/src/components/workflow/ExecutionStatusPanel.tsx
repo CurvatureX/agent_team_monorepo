@@ -46,6 +46,7 @@ export const ExecutionStatusPanel: React.FC<ExecutionStatusPanelProps> = ({
         return <XCircle className="w-4 h-4 text-red-500" />;
       case ExecutionStatusEnum.Running:
         return <Activity className="w-4 h-4 text-blue-500 animate-pulse" />;
+      case ExecutionStatusEnum.Idle:
       case ExecutionStatusEnum.Pending:
       case ExecutionStatusEnum.New:
       case ExecutionStatusEnum.Waiting:
@@ -72,6 +73,7 @@ export const ExecutionStatusPanel: React.FC<ExecutionStatusPanelProps> = ({
         return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
       case ExecutionStatusEnum.Running:
         return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
+      case ExecutionStatusEnum.Idle:
       case ExecutionStatusEnum.Pending:
       case ExecutionStatusEnum.New:
       case ExecutionStatusEnum.Waiting:
