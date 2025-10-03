@@ -28,6 +28,9 @@ class WorkflowValidationError(ValueError):
 
 
 def validate_workflow(workflow: Workflow) -> None:
+    import logging
+
+    logger = logging.getLogger(__name__)
     errors: List[str] = []
 
     # Validate nodes
@@ -42,7 +45,14 @@ def validate_workflow(workflow: Workflow) -> None:
                 ok = spec.validate_configuration(n.configurations)
                 if not ok:
                     errors.append(f"Invalid configuration for node {n.id} ({ntype}.{n.subtype})")
+            else:
+                # Spec loaded but doesn't have validate_configuration (stub spec)
+                logger.warning(
+                    f"⚠️ Spec for {ntype}.{n.subtype} (node {n.id}) doesn't have validate_configuration - "
+                    f"using stub spec (validation skipped)"
+                )
         except Exception as e:
+            logger.error(f"❌ Failed to get spec for {ntype}.{n.subtype} (node {n.id}): {e}")
             errors.append(f"Spec not found for {ntype}.{n.subtype} (node {n.id})")
 
     # Validate connections: nodes must exist
