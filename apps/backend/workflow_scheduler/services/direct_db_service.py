@@ -81,7 +81,12 @@ class DirectDBService:
                 logger.info("✅ Database connection pool initialized successfully")
                 self._pool_initialized = True
                 return
-            except (OSError, socket.gaierror, asyncpg.ConnectionError, asyncpg.InterfaceError) as e:
+            except (
+                OSError,
+                socket.gaierror,
+                asyncpg.ConnectionError,
+                asyncpg.InterfaceError,
+            ) as e:
                 error_str = str(e).lower()
                 # Classify network vs other errors like workflow engine
                 if any(

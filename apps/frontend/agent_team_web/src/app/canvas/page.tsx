@@ -17,7 +17,13 @@ import {
 import { useWorkflowsApi } from "@/lib/api/hooks/useWorkflowsApi";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -72,10 +78,34 @@ interface RawWorkflow {
 // Define deployment status configuration outside component for consistency
 // Aligned with backend WorkflowDeploymentStatus enum
 const deploymentStatusConfig = {
-  UNDEPLOYED: { icon: Pause, label: "Undeployed", color: "text-gray-500", bg: "bg-gray-50", variant: "outline" as const },
-  DEPLOYING: { icon: Activity, label: "Deploying", color: "text-blue-500", bg: "bg-blue-50", variant: "secondary" as const },
-  DEPLOYED: { icon: CheckCircle, label: "Deployed", color: "text-green-500", bg: "bg-green-50", variant: "default" as const },
-  DEPLOYMENT_FAILED: { icon: XCircle, label: "Failed", color: "text-red-500", bg: "bg-red-50", variant: "destructive" as const },
+  UNDEPLOYED: {
+    icon: Pause,
+    label: "Undeployed",
+    color: "text-gray-500",
+    bg: "bg-gray-50",
+    variant: "outline" as const,
+  },
+  DEPLOYING: {
+    icon: Activity,
+    label: "Deploying",
+    color: "text-blue-500",
+    bg: "bg-blue-50",
+    variant: "secondary" as const,
+  },
+  DEPLOYED: {
+    icon: CheckCircle,
+    label: "Deployed",
+    color: "text-green-500",
+    bg: "bg-green-50",
+    variant: "default" as const,
+  },
+  DEPLOYMENT_FAILED: {
+    icon: XCircle,
+    label: "Failed",
+    color: "text-red-500",
+    bg: "bg-red-50",
+    variant: "destructive" as const,
+  },
 };
 
 function CanvasPage() {
@@ -85,7 +115,9 @@ function CanvasPage() {
   const [searchQuery] = React.useState("");
   const [statusFilter] = React.useState("all");
   const scrollRefs = useRef<Record<string, HTMLElement | null>>({});
-  const [scrollStates, setScrollStates] = React.useState<Record<string, { showLeft: boolean; showRight: boolean }>>({});
+  const [scrollStates, setScrollStates] = React.useState<
+    Record<string, { showLeft: boolean; showRight: boolean }>
+  >({});
 
   const handleRefresh = () => {
     mutate();
@@ -95,11 +127,12 @@ function CanvasPage() {
   const handleScroll = (e: React.UIEvent<HTMLDivElement>, status: string) => {
     const element = e.currentTarget;
     const showLeft = element.scrollLeft > 0;
-    const showRight = element.scrollLeft < element.scrollWidth - element.clientWidth - 10;
+    const showRight =
+      element.scrollLeft < element.scrollWidth - element.clientWidth - 10;
 
-    setScrollStates(prev => ({
+    setScrollStates((prev) => ({
       ...prev,
-      [status]: { showLeft, showRight }
+      [status]: { showLeft, showRight },
     }));
   };
 
@@ -107,7 +140,7 @@ function CanvasPage() {
   const scrollLeft = (status: string) => {
     const element = scrollRefs.current[status];
     if (element) {
-      element.scrollBy({ left: -1000, behavior: 'smooth' });
+      element.scrollBy({ left: -1000, behavior: "smooth" });
     }
   };
 
@@ -115,10 +148,9 @@ function CanvasPage() {
   const scrollRight = (status: string) => {
     const element = scrollRefs.current[status];
     if (element) {
-      element.scrollBy({ left: 1000, behavior: 'smooth' });
+      element.scrollBy({ left: 1000, behavior: "smooth" });
     }
   };
-
 
   // Transform API data to display format
   const workflowsList = React.useMemo(() => {
@@ -128,44 +160,51 @@ function CanvasPage() {
     if (workflows) {
       if (Array.isArray(workflows)) {
         workflowArray = workflows;
-      } else if (typeof workflows === 'object' && 'workflows' in workflows && Array.isArray((workflows as { workflows: RawWorkflow[] }).workflows)) {
+      } else if (
+        typeof workflows === "object" &&
+        "workflows" in workflows &&
+        Array.isArray((workflows as { workflows: RawWorkflow[] }).workflows)
+      ) {
         workflowArray = (workflows as { workflows: RawWorkflow[] }).workflows;
       }
     }
 
     if (workflowArray.length === 0) return [];
 
-    let filteredWorkflows = workflowArray.map((workflow: RawWorkflow): WorkflowItem => ({
-      id: workflow.id,
-      name: workflow.name || "Unnamed Workflow",
-      description: workflow.description || "",
-      status: workflow.status || "pending",
-      deploymentStatus: workflow.deployment_status || WorkflowDeploymentStatus.Undeployed,
-      lastExecutionStatus: workflow.latest_execution_status || "pending",
-      lastRunTime: workflow.latest_execution_time
-        ? (typeof workflow.latest_execution_time === 'number'
-          ? new Date(workflow.latest_execution_time * 1000)
-          : new Date(workflow.latest_execution_time))
-        : null,
-      createdAt: workflow.created_at
-        ? (typeof workflow.created_at === 'number'
-          ? new Date(workflow.created_at * 1000)
-          : new Date(workflow.created_at))
-        : new Date(),
-      updatedAt: workflow.updated_at
-        ? (typeof workflow.updated_at === 'number'
-          ? new Date(workflow.updated_at * 1000)
-          : new Date(workflow.updated_at))
-        : new Date(),
-      executionCount: workflow.execution_count || 0,
-      successRate: workflow.success_rate || 0,
-      averageDuration: workflow.average_duration || 0,
-      trigger: workflow.trigger || null,
-      tags: workflow.tags || [],
-      logoUrl: workflow.logo_url || null,
-      active: workflow.active !== undefined ? workflow.active : true,
-      version: workflow.version || "1.0.0",
-    }));
+    let filteredWorkflows = workflowArray.map(
+      (workflow: RawWorkflow): WorkflowItem => ({
+        id: workflow.id,
+        name: workflow.name || "Unnamed Workflow",
+        description: workflow.description || "",
+        status: workflow.status || "pending",
+        deploymentStatus:
+          workflow.deployment_status || WorkflowDeploymentStatus.Undeployed,
+        lastExecutionStatus: workflow.latest_execution_status || "pending",
+        lastRunTime: workflow.latest_execution_time
+          ? typeof workflow.latest_execution_time === "number"
+            ? new Date(workflow.latest_execution_time * 1000)
+            : new Date(workflow.latest_execution_time)
+          : null,
+        createdAt: workflow.created_at
+          ? typeof workflow.created_at === "number"
+            ? new Date(workflow.created_at * 1000)
+            : new Date(workflow.created_at)
+          : new Date(),
+        updatedAt: workflow.updated_at
+          ? typeof workflow.updated_at === "number"
+            ? new Date(workflow.updated_at * 1000)
+            : new Date(workflow.updated_at)
+          : new Date(),
+        executionCount: workflow.execution_count || 0,
+        successRate: workflow.success_rate || 0,
+        averageDuration: workflow.average_duration || 0,
+        trigger: workflow.trigger || null,
+        tags: workflow.tags || [],
+        logoUrl: workflow.logo_url || null,
+        active: workflow.active !== undefined ? workflow.active : true,
+        version: workflow.version || "1.0.0",
+      })
+    );
 
     // Apply filters
     if (searchQuery) {
@@ -191,13 +230,16 @@ function CanvasPage() {
 
     // Use setTimeout to ensure DOM is ready
     const timer = setTimeout(() => {
-      const initialStates: Record<string, { showLeft: boolean; showRight: boolean }> = {};
-      Object.keys(deploymentStatusConfig).forEach(status => {
+      const initialStates: Record<
+        string,
+        { showLeft: boolean; showRight: boolean }
+      > = {};
+      Object.keys(deploymentStatusConfig).forEach((status) => {
         const element = scrollRefs.current[status];
         if (element) {
           initialStates[status] = {
             showLeft: false,
-            showRight: element.scrollWidth > element.clientWidth
+            showRight: element.scrollWidth > element.clientWidth,
           };
         }
       });
@@ -286,7 +328,10 @@ function CanvasPage() {
               </div>
 
               <div className="overflow-x-auto">
-                <div className="flex gap-4 pb-4" style={{ width: 'max-content' }}>
+                <div
+                  className="flex gap-4 pb-4"
+                  style={{ width: "max-content" }}
+                >
                   {[1, 2, 3, 4, 5].map((i) => (
                     <SkeletonCard key={i} />
                   ))}
@@ -322,7 +367,9 @@ function CanvasPage() {
       <div className="h-full flex items-center justify-center">
         <div className="text-center">
           <AlertTriangle className="w-8 h-8 mx-auto mb-4 text-destructive" />
-          <p className="text-destructive mb-2">{error?.message || "Failed to load workflows"}</p>
+          <p className="text-destructive mb-2">
+            {error?.message || "Failed to load workflows"}
+          </p>
           <Button onClick={handleRefresh}>Retry</Button>
         </div>
       </div>
@@ -332,10 +379,11 @@ function CanvasPage() {
   return (
     <div className="h-full">
       <div className="px-6 pt-16 pb-6">
-
         {/* Group by Status */}
         {Object.entries(deploymentStatusConfig).map(([status, config]) => {
-          const statusWorkflows = workflowsList.filter((w: WorkflowItem) => w.deploymentStatus === status);
+          const statusWorkflows = workflowsList.filter(
+            (w: WorkflowItem) => w.deploymentStatus === status
+          );
 
           if (statusWorkflows.length === 0) return null;
 
@@ -370,96 +418,122 @@ function CanvasPage() {
                 {/* Scroll Container */}
                 <div
                   className="overflow-x-auto scroll-smooth"
-                  ref={el => {
+                  ref={(el) => {
                     // Store ref for this status group
                     if (!scrollRefs.current) scrollRefs.current = {};
                     scrollRefs.current[status] = el;
                   }}
                   onScroll={(e) => handleScroll(e, status)}
                 >
-                  <div className="flex gap-4 pb-4" style={{ width: 'max-content' }}>
+                  <div
+                    className="flex gap-4 pb-4"
+                    style={{ width: "max-content" }}
+                  >
                     {statusWorkflows.map((workflow: WorkflowItem) => {
-                    const deploymentConfig = deploymentStatusConfig[workflow.deploymentStatus as keyof typeof deploymentStatusConfig] || deploymentStatusConfig.UNDEPLOYED;
+                      const deploymentConfig =
+                        deploymentStatusConfig[
+                          workflow.deploymentStatus as keyof typeof deploymentStatusConfig
+                        ] || deploymentStatusConfig.UNDEPLOYED;
 
-                    return (
-                      <Card
-                        key={workflow.id}
-                        className="flex-shrink-0 w-96 h-72 overflow-hidden rounded-2xl border bg-card text-card-foreground shadow-sm transition-shadow duration-300 hover:shadow-md relative cursor-pointer"
-                        onClick={() => router.push(`/workflow/${workflow.id}`)}
-                      >
-                        <CardHeader className="pb-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex items-center gap-3">
-                              <div className="relative h-12 w-12 overflow-hidden rounded-lg bg-muted">
-                                {workflow.logoUrl ? (
-                                  <Image
-                                    src={workflow.logoUrl}
-                                    alt={`${workflow.name} logo`}
-                                    fill
-                                    className="object-cover"
-                                    loading="lazy"
-                                  />
-                                ) : (
-                                  <div className="h-full w-full flex items-center justify-center bg-primary/10">
-                                    <Bot className="w-6 h-6 text-primary" />
-                                  </div>
-                                )}
-                              </div>
-                              <div className="flex-1">
-                                <h3 className="text-sm font-semibold leading-tight text-foreground">
-                                  {workflow.name}
-                                </h3>
-                                <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
-                                  <Badge
-                                    variant="outline"
-                                    className={cn("font-medium text-[10px] px-1 py-0", getStatusColor(status))}
-                                  >
-                                    {deploymentConfig.label}
-                                  </Badge>
-                                  {/* Tags inline with status */}
-                                  {workflow.tags && workflow.tags.length > 0 && (
-                                    <>
-                                      {workflow.tags.map((tag: string, index: number) => (
-                                        <Badge key={index} variant="secondary" className="text-[10px] px-1 py-0">
-                                          {tag}
-                                        </Badge>
-                                      ))}
-                                    </>
+                      return (
+                        <Card
+                          key={workflow.id}
+                          className="flex-shrink-0 w-96 h-72 overflow-hidden rounded-2xl border bg-card text-card-foreground shadow-sm transition-shadow duration-300 hover:shadow-md relative cursor-pointer"
+                          onClick={() =>
+                            router.push(`/workflow/${workflow.id}`)
+                          }
+                        >
+                          <CardHeader className="pb-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-center gap-3">
+                                <div className="relative h-12 w-12 overflow-hidden rounded-lg bg-muted">
+                                  {workflow.logoUrl ? (
+                                    <Image
+                                      src={workflow.logoUrl}
+                                      alt={`${workflow.name} logo`}
+                                      fill
+                                      className="object-cover"
+                                      loading="lazy"
+                                    />
+                                  ) : (
+                                    <div className="h-full w-full flex items-center justify-center bg-primary/10">
+                                      <Bot className="w-6 h-6 text-primary" />
+                                    </div>
                                   )}
+                                </div>
+                                <div className="flex-1">
+                                  <h3 className="text-sm font-semibold leading-tight text-foreground">
+                                    {workflow.name}
+                                  </h3>
+                                  <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+                                    <Badge
+                                      variant="outline"
+                                      className={cn(
+                                        "font-medium text-[10px] px-1 py-0",
+                                        getStatusColor(status)
+                                      )}
+                                    >
+                                      {deploymentConfig.label}
+                                    </Badge>
+                                    {/* Tags inline with status */}
+                                    {workflow.tags &&
+                                      workflow.tags.length > 0 && (
+                                        <>
+                                          {workflow.tags.map(
+                                            (tag: string, index: number) => (
+                                              <Badge
+                                                key={index}
+                                                variant="secondary"
+                                                className="text-[10px] px-1 py-0"
+                                              >
+                                                {tag}
+                                              </Badge>
+                                            )
+                                          )}
+                                        </>
+                                      )}
+                                  </div>
                                 </div>
                               </div>
                             </div>
-                          </div>
-                        </CardHeader>
+                          </CardHeader>
 
-                        <CardContent className="space-y-4 pb-8">
-                          <div>
-                            <h4 className="text-xs font-medium text-foreground mb-1.5">Description</h4>
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <p className="text-xs leading-relaxed text-muted-foreground line-clamp-3">
-                                    {workflow.description || "No description available"}
-                                  </p>
-                                </TooltipTrigger>
-                                {workflow.description && workflow.description.length > 100 && (
-                                  <TooltipContent className="max-w-xs">
-                                    <p className="text-sm">{workflow.description}</p>
-                                  </TooltipContent>
-                                )}
-                              </Tooltip>
-                            </TooltipProvider>
-                          </div>
-                        </CardContent>
+                          <CardContent className="space-y-4 pb-8">
+                            <div>
+                              <h4 className="text-xs font-medium text-foreground mb-1.5">
+                                Description
+                              </h4>
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <p className="text-xs leading-relaxed text-muted-foreground line-clamp-3">
+                                      {workflow.description ||
+                                        "No description available"}
+                                    </p>
+                                  </TooltipTrigger>
+                                  {workflow.description &&
+                                    workflow.description.length > 100 && (
+                                      <TooltipContent className="max-w-xs">
+                                        <p className="text-sm">
+                                          {workflow.description}
+                                        </p>
+                                      </TooltipContent>
+                                    )}
+                                </Tooltip>
+                              </TooltipProvider>
+                            </div>
+                          </CardContent>
 
-                        {/* Fixed bottom row with version and timestamp at very bottom of card */}
-                        <div className="absolute bottom-3 left-0 right-0 px-4 py-1 flex justify-between items-center text-xs text-muted-foreground">
-                          <span>v{workflow.version}</span>
-                          <span>Updated: {getTimeAgo(workflow.updatedAt)}</span>
-                        </div>
-                      </Card>
-                    );
-                  })}
+                          {/* Fixed bottom row with version and timestamp at very bottom of card */}
+                          <div className="absolute bottom-3 left-0 right-0 px-4 py-1 flex justify-between items-center text-xs text-muted-foreground">
+                            <span>v{workflow.version}</span>
+                            <span>
+                              Updated: {getTimeAgo(workflow.updatedAt)}
+                            </span>
+                          </div>
+                        </Card>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -468,7 +542,8 @@ function CanvasPage() {
                   <button
                     className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-white dark:bg-gray-900 rounded-full flex items-center justify-center hover:scale-105 transition-transform z-20"
                     style={{
-                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08)'
+                      boxShadow:
+                        "0 2px 8px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08)",
                     }}
                     onClick={() => scrollLeft(status)}
                   >
@@ -480,7 +555,8 @@ function CanvasPage() {
                   <button
                     className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-white dark:bg-gray-900 rounded-full flex items-center justify-center hover:scale-105 transition-transform z-20"
                     style={{
-                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08)'
+                      boxShadow:
+                        "0 2px 8px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08)",
                     }}
                     onClick={() => scrollRight(status)}
                   >

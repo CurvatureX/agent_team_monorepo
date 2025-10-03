@@ -193,7 +193,7 @@ class WorkflowRepository:
                     error_message=error_message,
                     deployment_logs=deployment_logs or {},
                     started_at=datetime.now(timezone.utc),
-                    completed_at=datetime.now(timezone.utc) if error_message is None else None,
+                    completed_at=(datetime.now(timezone.utc) if error_message is None else None),
                 )
 
                 session.add(history_record)
@@ -390,7 +390,7 @@ class WorkflowRepository:
                     error_message=error_message,
                     deployment_logs=deployment_logs or {},
                     started_at=datetime.now(timezone.utc),
-                    completed_at=datetime.now(timezone.utc) if error_message is None else None,
+                    completed_at=(datetime.now(timezone.utc) if error_message is None else None),
                 )
 
                 session.add(history_record)
