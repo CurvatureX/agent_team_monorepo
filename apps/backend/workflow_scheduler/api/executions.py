@@ -108,10 +108,10 @@ async def _trigger_workflow_engine(
         if trace_id:
             headers["X-Trace-ID"] = trace_id
 
-        # Call workflow engine
+        # Call workflow engine (v2 API)
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
-                f"{settings.workflow_engine_url}/v1/workflows/{workflow_id}/execute",
+                f"{settings.workflow_engine_url}/v2/workflows/{workflow_id}/execute",
                 json=execution_request,
                 headers=headers,
             )
