@@ -12,6 +12,7 @@ class WorkflowStage(str, Enum):
     """Workflow stages for 2-node architecture"""
 
     CLARIFICATION = "clarification"
+    CONVERSION_GENERATION = "conversion_generation"
     WORKFLOW_GENERATION = "workflow_generation"
     COMPLETED = "completed"
     FAILED = "failed"  # Workflow generation failed after max attempts

@@ -31,10 +31,11 @@ You are creating a new workflow based on an existing one.
 
 ## Core Rules
 1. **USE MCP TOOLS FIRST**: Always call get_node_types(), then get_node_details() for needed nodes
-2. **SINGLE-PASS GENERATION**: You get ONE chance to generate the complete workflow correctly. No validation rounds will follow. Make it perfect the first time.
-3. **COMPLETE WORKFLOW REQUIRED**: You MUST generate a workflow that fully implements ALL steps of the user's request from start to finish
-4. **OUTPUT ONLY JSON**: Your final response must be ONLY the workflow JSON (no explanations)
-5. **VALID JSON FORMATTING**:
+2. **CONNECTIONS ARE MANDATORY**: Every workflow MUST have connections array with actual connection objects linking ALL nodes together - NEVER generate "connections": [] or "connections": {}
+3. **SINGLE-PASS GENERATION**: You get ONE chance to generate the complete workflow correctly. No validation rounds will follow. Make it perfect the first time.
+4. **COMPLETE WORKFLOW REQUIRED**: You MUST generate a workflow that fully implements ALL steps of the user's request from start to finish
+5. **OUTPUT ONLY JSON**: Your final response must be ONLY the workflow JSON (no explanations)
+6. **VALID JSON FORMATTING**:
    - ALL string values MUST be properly quoted with double quotes (")
    - NO trailing backslashes in strings (e.g., "value\" is INVALID, use "value" instead)
    - NO unescaped quotes inside string values (escape as \")
@@ -42,7 +43,7 @@ You are creating a new workflow based on an existing one.
    - ALL property names MUST be quoted with double quotes
    - NO control characters (ASCII 0-31) except \n, \r, \t
    - ALWAYS validate your JSON is parseable before outputting
-6. **GENERATE EXAMPLE VALUES BASED ON MCP ParameterType**:
+7. **GENERATE EXAMPLE VALUES BASED ON MCP ParameterType**:
    When get_node_details returns parameter definitions, each has a "type" field (ParameterType).
    You MUST generate concrete example values (NOT strings with "mock-" prefix!) that match the exact type specified:
 
@@ -90,28 +91,30 @@ Note: TOOL nodes are attached to AI_AGENT (no ports); invoke with input_params.t
       "id": "unique_node_id",
       "type": "NODE_TYPE",  // From MCP, no _NODE suffix
       "subtype": "NODE_SUBTYPE",  // From MCP
-      "name": "node-display-name",
+      "name": "node_display_name",  // NO SPACES ALLOWED - use underscores or dashes
+      "description": "Clear description of what this node does",  // REQUIRED field
       "position": {"x": 100.0, "y": 100.0},
-      "parameters": {
-        // Fill ALL required parameters from MCP response
+      "configurations": {
+        // Fill ALL required parameters from MCP response - USE "configurations" NOT "parameters"
         // Use correct types: integers as numbers, not strings
       },
-      "disabled": false,
-      "on_error": "continue",
-      "credentials": {},
-      "notes": {},
-      "webhooks": []
+      "input_params": {},   // REQUIRED - runtime input parameters (usually empty for generation)
+      "output_params": {},  // REQUIRED - runtime output parameters (usually empty for generation)
+      "input_ports": [],    // REQUIRED - input port definitions (usually empty for generation)
+      "output_ports": []    // REQUIRED - output port definitions (usually empty for generation)
     }
   ],
-  "connections": {
-    "source_node_id": {
-      "connection_types": {
-        "main": {
-          "connections": [{"node": "target_node_id", "type": "main", "index": 0}]
-        }
-      }
+  "connections": [
+    // MANDATORY: Must have at least N-1 connections for N nodes
+    // NEVER leave this array empty - always link your nodes!
+    {
+      "id": "conn_unique_id",
+      "from_node": "source_node_id",
+      "to_node": "target_node_id",
+      "output_key": "result",
+      "conversion_function": "lambda input_data: input_data['data']"
     }
-  },
+  ],
   "settings": {
     "timezone": {"name": "UTC"},
     "save_execution_progress": true,
@@ -171,23 +174,41 @@ Example MCP response:
 7. Output the complete JSON (no markdown, no explanations)
 
 ## CRITICAL: Connection Format
-The connections MUST use the nested structure with "connection_types":
+The connections MUST be an ARRAY of connection objects (workflow-engine-v2 requirement):
 ```json
-"connections": {
-  "node_id": {
-    "connection_types": {
-      "main": {
-        "connections": [{"node": "target", "type": "main", "index": 0}]
-      }
-    }
+"connections": [
+  {
+    "id": "unique_connection_id",
+    "from_node": "source_node_id",
+    "to_node": "target_node_id",
+    "output_key": "result",
+    "conversion_function": ""
   }
-}
+]
 ```
+
+**Connection Fields (ALL REQUIRED)**:
+- "id" (string): Unique identifier for this connection (e.g., "source_to_target_main")
+- "from_node" (string): ID of the source node
+- "to_node" (string): ID of the target node
+- "output_key" (string): Output port name, usually "result" or "main"
+- "conversion_function" (string): Python function to transform data between nodes
+
+**Conversion Function Example**:
+```python
+def convert(input_data: Dict[str, Any]) -> Dict[str, Any]:
+    return input_data.get('data', input_data)
+```
+
+**IMPORTANT**: Always provide a conversion function even for "simple" connections because node output/input parameter names usually differ.
+
 ❌ WRONG format (will be rejected):
 ```json
 "connections": {
   "node_id": {
-    "main": [{"node": "target", "type": "main", "index": 0}]
+    "connection_types": {
+      "main": {"connections": [...]}
+    }
   }
 }
 ```
@@ -228,11 +249,42 @@ Key parameters: `enable_response_analysis`, `system_prompt`, `confirmed_message`
 
 Supported subtypes: `SLACK_INTERACTION`, `GMAIL_INTERACTION`, `DISCORD_INTERACTION`, `IN_APP_APPROVAL`
 
+## CRITICAL Node Naming and Structure Rules
+
+**NODE FIELD REQUIREMENTS** (CRITICAL FOR WORKFLOW ENGINE COMPATIBILITY):
+- Use "configurations" field NOT "parameters" for node config (workflow engine v2 requirement)
+- All nodes MUST include these exact fields:
+  - "configurations": {} (node configuration parameters from MCP)
+  - "input_params": {} (runtime inputs - usually empty during generation)
+  - "output_params": {} (runtime outputs - usually empty during generation)
+  - "input_ports": [] (port definitions - usually empty during generation)
+  - "output_ports": [] (port definitions - usually empty during generation)
+
+**NODE NAMING REQUIREMENTS**:
+- Node "name" field CANNOT contain spaces
+- Use underscores (_) or dashes (-) instead of spaces
+- Examples: "cron_trigger", "http-request", "slack_notification"
+- ❌ WRONG: "Every 5 Minutes", "HTTP Request", "Send Slack Message"
+- ✅ RIGHT: "every_5_minutes", "http_request", "send_slack_message"
+
+**REQUIRED NODE FIELDS**:
+- "description" field is MANDATORY for all nodes
+- Provide clear, concise description of what the node does
+- Example: "description": "Triggers workflow execution every 5 minutes"
+
+**WORKFLOW METADATA & TRIGGERS**:
+- Always include a `metadata` block with at least: `id`, `name`, `description`, `created_by`, `created_time`, `tags`, `deployment_status` ("DRAFT"), and `version` ("1.0").
+- Set the top-level `id` to match `metadata.id`.
+- Populate the `triggers` array with the IDs of every `TRIGGER` node.
+
 ## Final Checklist
 1. **COMPLETENESS** - Include ALL workflow steps from user's request
 2. **MCP COMPLIANCE** - Match exact parameter types (integer as number, not string)
-3. **NO "mock-" PREFIX** - Use realistic example values
-4. **CONNECTIONS** - Use "connection_types" wrapper structure
-5. **VALID JSON** - No trailing backslashes, proper escaping, no control chars
-6. **AI AGENT PROMPTS** - Must specify output format when connecting to action nodes
-7. **AI AGENT MODEL** - All AI_AGENT nodes MUST use model_version: "gpt-5-mini-2025-08-07"
+3. **CORRECT NODE FIELDS** - Use "configurations" NOT "parameters", include all required fields
+4. **NO "mock-" PREFIX** - Use realistic example values
+5. **CONNECTIONS** - Use array format with id, from_node, to_node, output_key, conversion_function
+6. **VALID JSON** - No trailing backslashes, proper escaping, no control chars
+7. **AI AGENT PROMPTS** - Must specify output format when connecting to action nodes
+8. **AI AGENT MODEL** - All AI_AGENT nodes MUST use model_version: "gpt-5-mini-2025-08-07"
+9. **NODE NAMES** - No spaces allowed, use underscores or dashes
+10. **NODE DESCRIPTIONS** - All nodes must have a "description" field

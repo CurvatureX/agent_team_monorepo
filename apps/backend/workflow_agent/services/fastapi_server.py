@@ -290,6 +290,9 @@ class WorkflowAgentServicer:
 
                             # 在WORKFLOW_GENERATION节点完成后发送消息和工作流响应
                             if (
+                                node_name == "conversion_generation"
+                                and current_stage == WorkflowStage.WORKFLOW_GENERATION
+                            ) or (
                                 node_name == "workflow_generation"
                                 and current_stage == WorkflowStage.WORKFLOW_GENERATION
                             ):
