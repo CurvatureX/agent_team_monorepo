@@ -290,7 +290,14 @@ class BaseTrigger(ABC):
                 response = await client.get(engine_url)
 
                 if response.status_code == 200:
-                    executions = response.json()
+                    response_data = response.json()
+
+                    # v2 API returns {"workflows": [...]} not a direct list
+                    executions = (
+                        response_data.get("workflows", [])
+                        if isinstance(response_data, dict)
+                        else response_data
+                    )
 
                     # Filter for paused executions
                     paused_executions = [
