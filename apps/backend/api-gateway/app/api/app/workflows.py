@@ -744,7 +744,11 @@ async def execute_workflow(
             async_execution=True,
         )
 
-        execution_payload = engine_response.get("execution", {}) if isinstance(engine_response, dict) else {}
+        execution_payload = (
+            engine_response.get("execution") if isinstance(engine_response, dict) else None
+        )
+        if not isinstance(execution_payload, dict):
+            execution_payload = {}
         execution_id = (
             engine_response.get("execution_id")
             or execution_payload.get("execution_id")
