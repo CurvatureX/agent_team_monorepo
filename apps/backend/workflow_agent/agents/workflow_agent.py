@@ -31,6 +31,7 @@ class WorkflowAgent:
         # Add the 2 core nodes
         workflow.add_node("clarification", self.nodes.clarification_node)
         workflow.add_node("workflow_generation", self.nodes.workflow_generation_node)
+        workflow.add_node("conversion_generation", self.nodes.conversion_generation_node)
 
         # Set clarification as entry point directly
         workflow.set_entry_point("clarification")
@@ -50,7 +51,16 @@ class WorkflowAgent:
             "workflow_generation",
             self.nodes.should_continue,
             {
-                "END": END,  # Workflow generation completes the flow
+                "conversion_generation": "conversion_generation",
+                "END": END,
+            },
+        )
+
+        workflow.add_conditional_edges(
+            "conversion_generation",
+            self.nodes.should_continue,
+            {
+                "END": END,
             },
         )
 

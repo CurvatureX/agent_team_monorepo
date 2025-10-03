@@ -265,19 +265,40 @@ class NodeKnowledgeService:
             if hasattr(node_type, "value"):  # Handle enum values
                 node_type = node_type.value
 
+            configurations = self._serialize_configuration_map(getattr(spec, "configurations", {}))
+            input_param_schema = self._serialize_schema_map(getattr(spec, "input_params", {}))
+            output_param_schema = self._serialize_schema_map(getattr(spec, "output_params", {}))
+
             result = {
                 "node_type": str(node_type) if node_type else "unknown",
                 "subtype": getattr(spec, "subtype", "unknown"),
                 "version": getattr(spec, "version", "1.0.0"),
                 "description": getattr(spec, "description", ""),
                 "parameters": self._serialize_parameters(spec),
+                "configurations": configurations,
+                "input_params_schema": input_param_schema,
+                "output_params_schema": output_param_schema,
+                "default_configurations": self._derive_runtime_defaults(configurations),
+                "default_input_params": self._derive_runtime_defaults(
+                    input_param_schema,
+                    getattr(spec, "default_input_params", None),
+                ),
+                "default_output_params": self._derive_runtime_defaults(
+                    output_param_schema,
+                    getattr(spec, "default_output_params", None),
+                ),
                 "input_ports": self._serialize_ports(
                     getattr(spec, "input_ports", []), include_schemas
                 ),
                 "output_ports": self._serialize_ports(
                     getattr(spec, "output_ports", []), include_schemas
                 ),
+                "tags": getattr(spec, "tags", []),
             }
+
+            attached_nodes = getattr(spec, "attached_nodes", None)
+            if attached_nodes is not None:
+                result["attached_nodes"] = attached_nodes
 
             if include_examples and spec.examples:
                 result["examples"] = spec.examples
@@ -364,6 +385,96 @@ class NodeKnowledgeService:
         except Exception as e:
             print(f"Error serializing ports: {e}")
             raise  # Re-raise the exception so the main method can catch it
+
+    def _serialize_configuration_map(self, configurations: Dict[str, Any]) -> Dict[str, Any]:
+        """Ensure configuration schema dictionaries are JSON serializable."""
+
+        serialized: Dict[str, Any] = {}
+        for key, value in (configurations or {}).items():
+            if isinstance(value, dict):
+                serialized[key] = {
+                    "type": value.get("type", "string"),
+                    "default": value.get("default"),
+                    "description": value.get("description", ""),
+                    "required": value.get("required", False),
+                    "min": value.get("min"),
+                    "max": value.get("max"),
+                    "options": value.get("options"),
+                    "enum_values": value.get("enum_values"),
+                    "validation_pattern": value.get("validation_pattern"),
+                }
+            else:
+                serialized[key] = {"type": "string", "default": value, "required": False}
+        return serialized
+
+    def _serialize_schema_map(self, schema: Dict[str, Any]) -> Dict[str, Any]:
+        """Serialize input/output parameter schemas."""
+
+        serialized: Dict[str, Any] = {}
+        for key, value in (schema or {}).items():
+            if isinstance(value, dict):
+                serialized[key] = {
+                    "type": value.get("type", "string"),
+                    "default": value.get("default"),
+                    "description": value.get("description", ""),
+                    "required": value.get("required", False),
+                    "options": value.get("options"),
+                    "enum_values": value.get("enum_values"),
+                    "validation_pattern": value.get("validation_pattern"),
+                }
+            else:
+                serialized[key] = {"type": "string", "default": value, "required": False}
+        return serialized
+
+    def _derive_runtime_defaults(
+        self,
+        schema: Dict[str, Any],
+        explicit_defaults: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Derive runtime default values from schema definitions."""
+
+        if explicit_defaults:
+            return explicit_defaults
+
+        defaults: Dict[str, Any] = {}
+        for key, definition in (schema or {}).items():
+            if not isinstance(definition, dict):
+                defaults[key] = definition
+                continue
+
+            if "default" in definition and definition["default"] is not None:
+                defaults[key] = definition["default"]
+            elif definition.get("enum_values"):
+                defaults[key] = definition["enum_values"][0]
+            else:
+                defaults[key] = self._example_for_type(definition.get("type"))
+
+        return defaults
+
+    @staticmethod
+    def _example_for_type(type_name: Optional[str]) -> Any:
+        """Return a simple example value for a given type name."""
+
+        type_map = {
+            "integer": 0,
+            "float": 0.0,
+            "number": 0,
+            "boolean": False,
+            "json": {},
+            "object": {},
+            "dict": {},
+            "array": [],
+            "list": [],
+        }
+
+        if not type_name:
+            return ""
+
+        normalized = str(type_name).lower()
+        if normalized in type_map:
+            return type_map[normalized]
+
+        return ""
 
     def _search_in_parameters(self, spec, query_lower: str) -> int:
         """Search in parameters handling both old and new formats."""

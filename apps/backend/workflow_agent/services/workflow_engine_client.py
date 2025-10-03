@@ -76,7 +76,7 @@ class WorkflowEngineClient:
                             logger.info(f"Node type kept as-is: {node_type}")
 
                     # Ensure credentials is a dict, not None
-                    if "credentials" not in node or node.get("credentials") is None:
+                    if node.get("credentials") is None:
                         node["credentials"] = {}
 
                     # Fix retry_policy if needed
@@ -142,6 +142,22 @@ class WorkflowEngineClient:
                                 # Some fields expect JSON strings, not objects
                                 node["parameters"][key] = json.dumps(value)
 
+                    if node.get("configurations") is None:
+                        logger.warning(
+                            f"Node {node.get('id', 'unknown')} missing 'configurations'; defaulting to empty settings"
+                        )
+                        node["configurations"] = {}
+
+                    # Ensure required Node model fields are present (fallback for template compliance)
+                    if node.get("input_params") is None:
+                        node["input_params"] = {}
+                    if node.get("output_params") is None:
+                        node["output_params"] = {}
+                    if node.get("input_ports") is None:
+                        node["input_ports"] = []
+                    if node.get("output_ports") is None:
+                        node["output_ports"] = []
+
                 # Fix settings if needed
                 settings = workflow_copy.get("settings", {})
                 if settings:
@@ -150,21 +166,57 @@ class WorkflowEngineClient:
                         if settings["timeout"] < 60:
                             settings["timeout"] = 60
 
+                connections_list = workflow_copy.get("connections")
+                if connections_list is None:
+                    connections_list = []
+
+                if not isinstance(connections_list, list):
+                    logger.error(
+                        f"Invalid connections format from workflow generation; expected list, got {type(connections_list)}"
+                    )
+                    connections_list = []
+
                 # Prepare the request data according to CreateWorkflowRequest model
                 request_data = {
                     "name": workflow_copy.get("name", "Automated Workflow"),
                     "description": workflow_copy.get("description", ""),
                     "nodes": nodes,  # Use the modified nodes
-                    "connections": workflow_copy.get("connections", {}),
+                    "connections": connections_list,  # Use converted list format
                     "settings": settings if settings else None,
                     "static_data": workflow_copy.get("static_data", {}),
                     "tags": workflow_copy.get("tags", ["debug", "test"]),
                     "user_id": user_id,
+                    "created_by": user_id,  # Add required created_by field
                 }
 
                 # Add session_id if provided
                 if session_id:
                     request_data["session_id"] = session_id
+
+                metadata = workflow_copy.get("metadata")
+                if metadata:
+                    metadata = dict(metadata)
+                    metadata.pop("status", None)
+                    metadata.pop("deployment_status", None)
+                    request_data["metadata"] = metadata
+
+                    # Surface name/description from metadata when top-level values are missing
+                    if not workflow_copy.get("name"):
+                        meta_name = metadata.get("name") or metadata.get("workflow_name")
+                        if meta_name:
+                            workflow_copy["name"] = meta_name
+                    if not workflow_copy.get("description"):
+                        meta_desc = metadata.get("description")
+                        if meta_desc is not None:
+                            workflow_copy["description"] = meta_desc
+
+                # Ensure request uses latest name/description values after fallbacks
+                request_data["name"] = workflow_copy.get("name", request_data["name"])
+                request_data["description"] = workflow_copy.get("description", request_data["description"])
+
+                triggers = workflow_copy.get("triggers")
+                if triggers:
+                    request_data["triggers"] = triggers
 
                 logger.info(
                     f"Creating workflow in engine - Total nodes: {len(request_data.get('nodes', []))}"
@@ -174,7 +226,7 @@ class WorkflowEngineClient:
                 )
 
                 response = await client.post(
-                    f"{self.base_url}/v1/workflows",
+                    f"{self.base_url}/v2/workflows",
                     json=request_data,
                     headers={"Content-Type": "application/json"},
                 )
@@ -236,7 +288,7 @@ class WorkflowEngineClient:
                 logger.info(f"📦 Execute Request Data: {json.dumps(request_data, indent=2)}")
 
                 response = await client.post(
-                    f"{self.base_url}/v1/workflows/{workflow_id}/execute",
+                    f"{self.base_url}/v2/workflows/{workflow_id}/execute",
                     json=request_data,
                     headers={"Content-Type": "application/json"},
                 )
@@ -281,7 +333,7 @@ class WorkflowEngineClient:
                 logger.info(f"Fetching workflow: {workflow_id} for user: {user_id}")
                 
                 response = await client.get(
-                    f"{self.base_url}/v1/workflows/{workflow_id}",
+                    f"{self.base_url}/v2/workflows/{workflow_id}",
                     params={"user_id": user_id},
                     headers={"Content-Type": "application/json"},
                 )
@@ -331,7 +383,7 @@ class WorkflowEngineClient:
         """
         async with AsyncClient(timeout=self.timeout) as client:
             try:
-                response = await client.get(f"{self.base_url}/v1/executions/{execution_id}")
+                response = await client.get(f"{self.base_url}/v2/executions/{execution_id}")
 
                 if response.status_code == 200:
                     return response.json()
