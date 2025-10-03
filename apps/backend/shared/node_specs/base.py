@@ -248,9 +248,9 @@ except ImportError:
     from ...models.node_enums import NodeType
 
 try:
-    from ..models.workflow_new import Node
+    from ..models.workflow import Node
 except ImportError:
-    from ...models.workflow_new import Node
+    from ...models.workflow import Node
 
 
 class BaseNodeSpec(BaseModel):

@@ -20,7 +20,7 @@ from shared.models.db_models import WorkflowDB
 from shared.models.supabase import create_supabase_client
 
 # Use absolute imports
-from shared.models.workflow_new import Workflow, WorkflowMetadata
+from shared.models.workflow import Workflow, WorkflowMetadata
 from workflow_engine_v2.core.spec import coerce_node_to_v2, get_spec
 from workflow_engine_v2.core.validation import validate_workflow
 
@@ -69,7 +69,7 @@ class WorkflowServiceV2:
         )
 
         # Convert user dictionaries to Node objects, preserving their data exactly
-        from shared.models.workflow_new import Connection, Node
+        from shared.models.workflow import Connection, Node
 
         v2_nodes = []
         for n in nodes:
@@ -191,15 +191,36 @@ class WorkflowServiceV2:
     def validate(self, wf: Workflow) -> None:
         validate_workflow(wf)
 
-    def list_workflows(self) -> List[Workflow]:
-        """List all active workflows from database."""
-        if not self.supabase:
-            self.logger.error("Supabase client not available")
-            return []
+    def list_workflows(self, access_token: Optional[str] = None) -> List[Workflow]:
+        """
+        List active workflows from database.
 
+        Args:
+            access_token: JWT token for RLS filtering. If provided, uses RLS to filter by user.
+                         If None, uses service role (admin mode - returns all workflows).
+        """
         try:
+            # Create RLS-enabled client if access token is provided
+            if access_token:
+                from shared.models.supabase import create_user_supabase_client
+
+                supabase_client = create_user_supabase_client(access_token)
+                if not supabase_client:
+                    self.logger.error("Failed to create RLS-enabled Supabase client")
+                    return []
+                self.logger.info("🔐 Using RLS-enabled Supabase client for list_workflows")
+            else:
+                # Use service role client (admin mode)
+                if not self.supabase:
+                    self.logger.error("Supabase client not available")
+                    return []
+                supabase_client = self.supabase
+                self.logger.info(
+                    "👑 Using service role Supabase client for list_workflows (admin mode)"
+                )
+
             result = (
-                self.supabase.table("workflows")
+                supabase_client.table("workflows")
                 .select("workflow_data")
                 .eq("active", True)
                 .execute()
@@ -212,6 +233,8 @@ class WorkflowServiceV2:
                         workflows.append(Workflow(**workflow_data))
                     except Exception as e:
                         self.logger.warning(f"Failed to parse workflow data: {e}")
+
+            self.logger.info(f"✅ Listed {len(workflows)} workflows")
             return workflows
         except Exception as e:
             self.logger.error(f"Failed to list workflows: {e}")
@@ -322,11 +345,11 @@ class WorkflowServiceV2:
         # Add optional columns if they exist in schema (handle missing columns gracefully)
         # Import enums to use instead of hardcoded strings
         from shared.models.execution_new import ExecutionStatus
-        from shared.models.workflow_new import WorkflowDeploymentStatus
+        from shared.models.workflow import WorkflowDeploymentStatus
 
         optional_columns = {
-            "deployment_status": WorkflowDeploymentStatus.PENDING.value,
-            "latest_execution_status": ExecutionStatus.NEW.value,  # Always start as NEW
+            "deployment_status": WorkflowDeploymentStatus.UNDEPLOYED.value,  # Default state (never deployed)
+            "latest_execution_status": ExecutionStatus.IDLE.value,  # Always start as IDLE (never executed)
             "latest_execution_time": None,  # No execution yet
             "latest_execution_id": None,
             "icon_url": workflow.metadata.icon_url,

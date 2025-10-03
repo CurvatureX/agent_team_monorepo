@@ -14,7 +14,7 @@ backend_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(backend_dir))
 
 # Use absolute imports
-from shared.models.workflow_new import Connection, Workflow
+from shared.models.workflow import Connection, Workflow
 from workflow_engine_v2.core.exceptions import CycleError
 
 

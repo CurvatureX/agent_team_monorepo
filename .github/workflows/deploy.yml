@@ -52,7 +52,7 @@ jobs:
       - name: Install dependencies and test Workflow Engine
         working-directory: apps/backend
         run: |
-          uv run -m pytest workflow_engine/tests/ -v --rootdir=. || echo "Tests not found, skipping"
+          uv run -m pytest workflow_engine_v2/tests/ -v --rootdir=. || echo "Tests not found, skipping"
 
       - name: Install dependencies and test Workflow Scheduler
         working-directory: apps/backend
@@ -84,7 +84,7 @@ jobs:
             repository: agent-team/workflow-agent
           - name: workflow-engine
             context: apps/backend
-            dockerfile: apps/backend/workflow_engine/Dockerfile
+            dockerfile: apps/backend/workflow_engine_v2/Dockerfile
             repository: agent-team/workflow-engine
           - name: workflow-scheduler
             context: apps/backend
@@ -160,7 +160,7 @@ jobs:
           TF_VAR_image_tag: ${{ github.sha }}
           TF_VAR_supabase_url: ${{ vars.SUPABASE_URL }}
           TF_VAR_supabase_secret_key: ${{ secrets.SUPABASE_SECRET_KEY }}
-          TF_VAR_supabase_anon_key: ${{ secrets.SUPABASE_ANON_KEY }}
+          TF_VAR_supabase_pub_key: ${{ secrets.SUPABASE_PUB_KEY }}
           TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           TF_VAR_openai_model: ${{ secrets.OPENAI_MODEL }}
           TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -214,7 +214,7 @@ jobs:
           TF_VAR_image_tag: ${{ github.sha }}
           TF_VAR_supabase_url: ${{ vars.SUPABASE_URL }}
           TF_VAR_supabase_secret_key: ${{ secrets.SUPABASE_SECRET_KEY }}
-          TF_VAR_supabase_anon_key: ${{ secrets.SUPABASE_ANON_KEY }}
+          TF_VAR_supabase_pub_key: ${{ secrets.SUPABASE_PUB_KEY }}
           TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           TF_VAR_openai_model: ${{ secrets.OPENAI_MODEL }}
           TF_VAR_anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}

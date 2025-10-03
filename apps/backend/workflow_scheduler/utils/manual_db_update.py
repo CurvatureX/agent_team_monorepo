@@ -20,7 +20,7 @@ except ImportError:
     print("❌ psycopg2 not installed. Install with: pip install psycopg2-binary")
     sys.exit(1)
 
-from shared.models.workflow_new import WorkflowDeploymentStatus as DeploymentStatus
+from shared.models.workflow import WorkflowDeploymentStatus as DeploymentStatus
 from workflow_scheduler.core.config import settings
 
 
@@ -48,7 +48,8 @@ def _normalize_status(status: str) -> str:
         pass
     # Legacy mappings
     legacy_map = {
-        "DRAFT": DeploymentStatus.PENDING.value,
+        "IDLE": DeploymentStatus.PENDING.value,
+        "DRAFT": DeploymentStatus.PENDING.value,  # Legacy support
         "DEPLOYING": DeploymentStatus.PENDING.value,
         "UNDEPLOYING": DeploymentStatus.PENDING.value,
         "DEPLOYMENT_FAILED": DeploymentStatus.FAILED.value,

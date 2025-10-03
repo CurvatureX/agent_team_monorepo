@@ -14,7 +14,7 @@ sys.path.insert(0, str(backend_dir))
 # Use absolute imports
 from shared.models import TriggerInfo
 from shared.models.node_enums import NodeType
-from shared.models.workflow_new import Node
+from shared.models.workflow import Node
 
 
 class NodeRunner(ABC):

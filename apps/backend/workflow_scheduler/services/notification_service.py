@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
 from shared.models.execution_new import ExecutionStatus
-from shared.models.workflow_new import WorkflowExecutionResponse
+from shared.models.workflow import WorkflowExecutionResponse
 from shared.sdks.slack_sdk import SlackAPIError, SlackBlockBuilder, SlackWebClient
 from workflow_scheduler.core.config import settings
 

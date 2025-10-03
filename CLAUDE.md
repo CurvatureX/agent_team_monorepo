@@ -505,6 +505,48 @@ Attached nodes execute within the AI_AGENT context, not as separate workflow ste
 - **Workflow Agent**: May need credentials for AI-driven OAuth operations
 - **Workflow Engine**: Usually doesn't need OAuth credentials directly
 
+## Documentation & Docusaurus
+
+### Docusaurus MDX Escaping Rules
+
+When writing technical documentation in Docusaurus (MDX format), comparison operators must be escaped to prevent MDX from interpreting them as JSX/HTML tags.
+
+**Common Issue**: MDX treats `<`, `>`, `<=`, `>=` as HTML tag syntax, causing compilation errors like:
+```
+Error: MDX compilation failed
+Unexpected character `=` (U+003D) before name, expected a character that can start a name
+```
+
+**Solution**: Escape comparison operators with backslashes:
+
+```markdown
+✅ Correct:
+- score \>= 0.7
+- score \<= 0.3
+- 0.3 \< score \< 0.7
+
+❌ Incorrect (causes build failures):
+- score >= 0.7
+- score <= 0.3
+- 0.3 < score < 0.7
+```
+
+**When to Escape**:
+- Comparison operators in prose text (lists, paragraphs)
+- Operators in inline code blocks when followed by spaces
+- Mathematical expressions outside code fences
+
+**When NOT to Escape**:
+- Inside triple-backtick code blocks (```python, ```bash, etc.)
+- Inside inline backticks for actual code: `` `if x < y:` ``
+- In actual JSX/HTML elements (intentional tags)
+
+**Docusaurus Build Command**:
+```bash
+cd apps/internal-tools/docusaurus-doc
+npm run build  # Test locally before deployment
+```
+
 ## Migration History
 
 ### Major Architectural Changes

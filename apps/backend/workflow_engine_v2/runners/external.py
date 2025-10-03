@@ -14,7 +14,7 @@ sys.path.insert(0, str(backend_dir))
 # Use absolute imports
 from shared.models import ExecutionStatus, TriggerInfo
 from shared.models.node_enums import ExternalActionSubtype
-from shared.models.workflow_new import Node
+from shared.models.workflow import Node
 from workflow_engine_v2.core.context import NodeExecutionContext
 from workflow_engine_v2.runners.base import NodeRunner
 from workflow_engine_v2.runners.external_actions.github_external_action import GitHubExternalAction

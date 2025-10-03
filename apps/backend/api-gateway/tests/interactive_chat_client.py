@@ -34,7 +34,7 @@ class InteractiveChatClient:
         self.test_email = os.getenv("TEST_USER_EMAIL")
         self.test_password = os.getenv("TEST_USER_PASSWORD")
         self.supabase_url = os.getenv("SUPABASE_URL")
-        self.supabase_anon_key = os.getenv("SUPABASE_ANON_KEY")
+        self.supabase_public_key = os.getenv("SUPABASE_PUB_KEY")
         self.access_token = None
         self.session_id = None
 
@@ -55,7 +55,7 @@ class InteractiveChatClient:
 
         auth_url = f"{self.supabase_url}/auth/v1/token?grant_type=password"
         headers = {
-            "apikey": self.supabase_anon_key,
+            "apikey": self.supabase_public_key,
             "Content-Type": "application/json",
         }
         data = {
@@ -284,10 +284,10 @@ def main():
 
     # Check if required environment variables are set
     if not all(
-        [client.test_email, client.test_password, client.supabase_url, client.supabase_anon_key]
+        [client.test_email, client.test_password, client.supabase_url, client.supabase_public_key]
     ):
         print("❌ Missing required environment variables. Please check your .env file.")
-        print("   Required: TEST_USER_EMAIL, TEST_USER_PASSWORD, SUPABASE_URL, SUPABASE_ANON_KEY")
+        print("   Required: TEST_USER_EMAIL, TEST_USER_PASSWORD, SUPABASE_URL, SUPABASE_PUB_KEY")
         return
 
     try:

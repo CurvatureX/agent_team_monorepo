@@ -14,7 +14,7 @@ from shared.models.execution_new import ExecutionStatus
 from shared.models.node_enums import TriggerSubtype
 from shared.models.trigger import TriggerSpec
 from shared.models.trigger_index import TriggerIndex
-from shared.models.workflow_new import Workflow, WorkflowExecutionResponse
+from shared.models.workflow import Workflow, WorkflowExecutionResponse
 from workflow_scheduler.core.config import settings
 from workflow_scheduler.core.database import async_session_factory
 from workflow_scheduler.core.supabase_client import get_supabase_client, query_github_triggers

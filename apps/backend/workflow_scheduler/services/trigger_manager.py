@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 from shared.models.execution_new import ExecutionStatus
 from shared.models.node_enums import TriggerSubtype
 from shared.models.trigger import TriggerSpec, TriggerStatus
-from shared.models.workflow_new import WorkflowExecutionResponse
+from shared.models.workflow import WorkflowExecutionResponse
 from workflow_scheduler.services.event_router import EventRouter
 from workflow_scheduler.services.lock_manager import DistributedLockManager
 from workflow_scheduler.services.notification_service import NotificationService

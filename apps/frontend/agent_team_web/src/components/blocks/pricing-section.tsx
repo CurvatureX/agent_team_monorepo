@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ArrowRight, Check } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { PricingDialog } from "@/components/ui/pricing-dialog"
 
 interface Feature {
   name: string
@@ -32,6 +33,8 @@ interface PricingSectionProps {
 
 function PricingSection({ tiers, className }: PricingSectionProps) {
   const [isYearly, setIsYearly] = useState(false)
+  const [selectedTier, setSelectedTier] = useState<PricingTier | null>(null)
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
 
   const buttonStyles = {
     default: cn(
@@ -96,8 +99,12 @@ function PricingSection({ tiers, className }: PricingSectionProps) {
           {tiers.map((tier) => (
             <div
               key={tier.name}
+              onClick={() => {
+                setSelectedTier(tier)
+                setIsDialogOpen(true)
+              }}
               className={cn(
-                "relative group backdrop-blur-sm",
+                "relative group backdrop-blur-sm cursor-pointer",
                 "rounded-3xl transition-all duration-300",
                 "flex flex-col",
                 tier.highlight
@@ -107,7 +114,7 @@ function PricingSection({ tiers, className }: PricingSectionProps) {
                 tier.highlight
                   ? "border-zinc-400/50 dark:border-zinc-400/20 shadow-xl"
                   : "border-zinc-200 dark:border-zinc-700 shadow-md",
-                "hover:translate-y-0 hover:shadow-lg",
+                "hover:translate-y-0 hover:shadow-lg hover:scale-[1.02]",
               )}
             >
               {tier.badge && tier.highlight && (
@@ -201,6 +208,14 @@ function PricingSection({ tiers, className }: PricingSectionProps) {
           ))}
         </div>
       </div>
+
+      {/* Pricing Dialog */}
+      <PricingDialog
+        open={isDialogOpen}
+        onOpenChange={setIsDialogOpen}
+        tier={selectedTier}
+        isYearly={isYearly}
+      />
     </section>
   )
 }

@@ -411,9 +411,28 @@ async def list_workflows(
             if request and request.headers.get("authorization"):
                 auth_header = request.headers.get("authorization")
                 if auth_header.startswith("Bearer "):
-                    # TODO: Extract user_id from JWT token if needed for user filtering
-                    # For now, skip user filtering to get all workflows (admin mode)
-                    pass
+                    # Extract user_id from JWT token for user filtering
+                    try:
+                        import base64
+                        import json
+
+                        token = auth_header[7:]  # Remove "Bearer " prefix
+                        # Decode JWT payload without verification (just to extract user_id)
+                        # JWT format: header.payload.signature
+                        parts = token.split(".")
+                        if len(parts) == 3:
+                            # Decode payload (second part)
+                            payload_encoded = parts[1]
+                            # Add padding if needed
+                            padding = 4 - len(payload_encoded) % 4
+                            if padding != 4:
+                                payload_encoded += "=" * padding
+                            payload = json.loads(base64.urlsafe_b64decode(payload_encoded))
+                            # Supabase JWT has 'sub' field as user_id
+                            user_id = payload.get("sub")
+                            logger.info(f"🔐 Extracted user_id from JWT: {user_id}")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Failed to extract user_id from JWT: {e}")
 
             # Use direct SQL for maximum performance
             result = await direct_db.list_workflows_fast(
@@ -506,7 +525,7 @@ async def create_workflow(workflow_data: dict):
                 "active": workflow_data.get("active", True),
                 "tags": workflow_data.get("tags", []),
                 "version": workflow_data.get("version", 1),
-                "deployment_status": WorkflowStatusEnum.DRAFT.value,
+                "deployment_status": WorkflowStatusEnum.IDLE.value,
                 "created_at": now,
                 "updated_at": now,
                 "workflow_data": {

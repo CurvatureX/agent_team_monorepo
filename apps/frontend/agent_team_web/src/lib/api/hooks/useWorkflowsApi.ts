@@ -2,6 +2,8 @@ import { mutate as globalMutate } from 'swr';
 import { useAuth } from '@/contexts/auth-context';
 import { API_PATHS } from '../config';
 import { useAuthSWR, apiRequest } from '../fetcher';
+import { useCallback } from 'react';
+import { WorkflowListResponse, WorkflowResponse } from '@/types/workflow';
 
 // 获取工作流列表
 export function useWorkflowsApi(params?: {
@@ -17,14 +19,16 @@ export function useWorkflowsApi(params?: {
           .map(([k, v]) => [k, String(v)])
       ).toString()
     : '';
-  
-  const { data, error, isLoading, mutate } = useAuthSWR(
+
+  const { data, error, isLoading, mutate } = useAuthSWR<WorkflowListResponse>(
     API_PATHS.WORKFLOWS + queryString,
     { revalidateOnFocus: false }
   );
 
   return {
-    workflows: data || [],
+    workflows: data?.workflows || [],
+    totalCount: data?.total_count || 0,
+    hasMore: data?.has_more || false,
     isLoading,
     isError: !!error,
     error,
@@ -34,13 +38,14 @@ export function useWorkflowsApi(params?: {
 
 // 获取单个工作流
 export function useWorkflowApi(workflowId: string | null) {
-  const { data, error, isLoading, mutate } = useAuthSWR(
+  const { data, error, isLoading, mutate } = useAuthSWR<WorkflowResponse>(
     workflowId ? API_PATHS.WORKFLOW(workflowId) : null,
     { revalidateOnFocus: false }
   );
 
   return {
-    workflow: data,
+    workflow: data?.workflow,
+    found: data?.found,
     isLoading,
     isError: !!error,
     error,
@@ -51,53 +56,66 @@ export function useWorkflowApi(workflowId: string | null) {
 // 工作流操作 (创建、更新、删除等)
 export function useWorkflowActions() {
   const { session } = useAuth();
-  
-  if (!session?.access_token) {
-    return {
-      createWorkflow: async () => { throw new Error('Not authenticated'); },
-      updateWorkflow: async () => { throw new Error('Not authenticated'); },
-      deleteWorkflow: async () => { throw new Error('Not authenticated'); },
-      executeWorkflow: async () => { throw new Error('Not authenticated'); },
-      deployWorkflow: async () => { throw new Error('Not authenticated'); },
-    };
-  }
-  
-  const token = session.access_token;
+  const token = session?.access_token;
+
+  const getWorkflow = useCallback(async (id: string) => {
+    if (!token) {
+      console.warn('Not authenticated - cannot fetch workflow');
+      return null;
+    }
+    const result = await apiRequest(API_PATHS.WORKFLOW(id), token, 'GET');
+    // API now returns { found, workflow, message }
+    return result?.workflow || result;
+  }, [token]);
+
+  const createWorkflow = useCallback(async (data: unknown) => {
+    if (!token) throw new Error('Not authenticated');
+    const result = await apiRequest(API_PATHS.WORKFLOWS, token, 'POST', data);
+    // 刷新列表
+    globalMutate((key) =>
+      Array.isArray(key) && key[0]?.includes('/workflows/')
+    );
+    // API returns { workflow, message }
+    return result?.workflow || result;
+  }, [token]);
+
+  const updateWorkflow = useCallback(async (id: string, data: unknown) => {
+    if (!token) throw new Error('Not authenticated');
+    const result = await apiRequest(API_PATHS.WORKFLOW(id), token, 'PUT', data);
+    // 刷新该工作流和列表
+    globalMutate([API_PATHS.WORKFLOW(id), token]);
+    globalMutate((key) =>
+      Array.isArray(key) && key[0]?.includes('/workflows/')
+    );
+    // API returns { workflow, message }
+    return result?.workflow || result;
+  }, [token]);
+
+  const deleteWorkflow = useCallback(async (id: string) => {
+    if (!token) throw new Error('Not authenticated');
+    await apiRequest(API_PATHS.WORKFLOW(id), token, 'DELETE');
+    // 刷新列表
+    globalMutate((key) =>
+      Array.isArray(key) && key[0]?.includes('/workflows/')
+    );
+  }, [token]);
+
+  const executeWorkflow = useCallback(async (id: string, data?: unknown) => {
+    if (!token) throw new Error('Not authenticated');
+    return apiRequest(API_PATHS.WORKFLOW_EXECUTE(id), token, 'POST', data);
+  }, [token]);
+
+  const deployWorkflow = useCallback(async (id: string) => {
+    if (!token) throw new Error('Not authenticated');
+    return apiRequest(API_PATHS.WORKFLOW_DEPLOY(id), token, 'POST');
+  }, [token]);
 
   return {
-    createWorkflow: async (data: any) => {
-      const result = await apiRequest(API_PATHS.WORKFLOWS, token, 'POST', data);
-      // 刷新列表
-      globalMutate((key) => 
-        Array.isArray(key) && key[0]?.includes('/workflows/')
-      );
-      return result;
-    },
-    
-    updateWorkflow: async (id: string, data: any) => {
-      const result = await apiRequest(API_PATHS.WORKFLOW(id), token, 'PUT', data);
-      // 刷新该工作流和列表
-      globalMutate([API_PATHS.WORKFLOW(id), token]);
-      globalMutate((key) => 
-        Array.isArray(key) && key[0]?.includes('/workflows/')
-      );
-      return result;
-    },
-    
-    deleteWorkflow: async (id: string) => {
-      await apiRequest(API_PATHS.WORKFLOW(id), token, 'DELETE');
-      // 刷新列表
-      globalMutate((key) => 
-        Array.isArray(key) && key[0]?.includes('/workflows/')
-      );
-    },
-    
-    executeWorkflow: async (id: string, data?: any) => {
-      return apiRequest(API_PATHS.WORKFLOW_EXECUTE(id), token, 'POST', data);
-    },
-    
-    deployWorkflow: async (id: string) => {
-      return apiRequest(API_PATHS.WORKFLOW_DEPLOY(id), token, 'POST');
-    },
+    getWorkflow,
+    createWorkflow,
+    updateWorkflow,
+    deleteWorkflow,
+    executeWorkflow,
+    deployWorkflow,
   };
 }

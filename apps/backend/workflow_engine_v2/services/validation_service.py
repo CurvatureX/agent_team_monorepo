@@ -22,7 +22,7 @@ from shared.models.node_enums import (
     MemorySubtype,
     NodeType,
 )
-from shared.models.workflow_new import Connection, Node, Workflow
+from shared.models.workflow import Connection, Node, Workflow
 
 
 class ValidationServiceV2:

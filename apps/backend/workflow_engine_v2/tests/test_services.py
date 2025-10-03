@@ -22,7 +22,7 @@ from shared.models.node_enums import (
     NodeType,
     TriggerSubtype,
 )
-from shared.models.workflow_new import Connection, Node, Workflow, WorkflowMetadata
+from shared.models.workflow import Connection, Node, Workflow, WorkflowMetadata
 from workflow_engine_v2.services.supabase_repository_v2 import SupabaseExecutionRepositoryV2
 from workflow_engine_v2.services.unified_log_service import UnifiedLogServiceV2
 from workflow_engine_v2.services.validation_service import ValidationServiceV2

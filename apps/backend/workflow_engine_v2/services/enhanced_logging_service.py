@@ -46,7 +46,7 @@ from shared.models import (
     NodeExecutionStatus,
     TriggerInfo,
 )
-from shared.models.workflow_new import Node
+from shared.models.workflow import Node
 from workflow_engine_v2.services.events import get_event_bus
 from workflow_engine_v2.services.execution_logger import (
     ExecutionLogger,

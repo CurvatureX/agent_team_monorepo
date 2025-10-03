@@ -16,7 +16,7 @@ sys.path.insert(0, str(backend_dir))
 from fastapi.testclient import TestClient
 
 from shared.models.node_enums import NodeType, TriggerSubtype
-from shared.models.workflow_new import Connection, Node, Workflow, WorkflowMetadata
+from shared.models.workflow import Connection, Node, Workflow, WorkflowMetadata
 from workflow_engine_v2.app.main import app
 from workflow_engine_v2.services.oauth2_service import TokenResponse
 

@@ -18,6 +18,7 @@ import type {
   WorkflowEdge as EditorWorkflowEdge
 } from '@/types/workflow-editor';
 import type { NodeTemplate } from '@/types/node-template';
+import { NodeType, NodeSubtypeAliasToCanonical, NodeSubtypeCanonicalToAlias } from '@/types/workflow-enums';
 
 /**
  * Convert API workflow node to editor workflow node
@@ -58,10 +59,14 @@ export function editorNodeToApiNode(editorNode: EditorWorkflowNode): ApiWorkflow
   const { data } = editorNode;
   const template = data.template;
 
+  // Map alias (template subtype) to canonical backend subtype if mapping exists
+  const typeKey = template.node_type as keyof typeof NodeSubtypeAliasToCanonical;
+  const canonicalSubtype = NodeSubtypeAliasToCanonical[typeKey]?.[template.node_subtype] || template.node_subtype;
+
   return {
     id: editorNode.id,
     type: template.node_type,
-    subtype: template.node_subtype,
+    subtype: canonicalSubtype,
     name: data.label,
     description: template.description,
     position: editorNode.position,
@@ -139,11 +144,22 @@ export function apiWorkflowToEditor(
   const nodes: EditorWorkflowNode[] = [];
   apiWorkflow.nodes.forEach((apiNode) => {
     // Try to find template with different key formats
-    const template =
+    let template =
       templateMap.get(`${apiNode.type}_${apiNode.subtype}`) ||
       templateMap.get(`${apiNode.type}:${apiNode.subtype}`) ||
       templateMap.get(apiNode.type as string) ||
       templateMap.get(apiNode.id);
+
+    // If not found, try canonical->alias mapping for subtype
+    if (!template && apiNode.type && apiNode.subtype) {
+      const typeKey = String(apiNode.type) as keyof typeof NodeSubtypeCanonicalToAlias;
+      const aliasSubtype = NodeSubtypeCanonicalToAlias[typeKey]?.[String(apiNode.subtype)];
+      if (aliasSubtype) {
+        template =
+          templateMap.get(`${apiNode.type}_${aliasSubtype}`) ||
+          templateMap.get(`${apiNode.type}:${aliasSubtype}`);
+      }
+    }
 
     const editorNode = apiNodeToEditorNode(apiNode, template);
     if (editorNode) {
@@ -164,7 +180,7 @@ export function apiWorkflowToEditor(
     Object.entries(apiWorkflow.connections).forEach(([sourceNodeId, connectionData]) => {
       // Check if this is n8n format with main connections
       if (connectionData && typeof connectionData === 'object') {
-        const conn = connectionData as { main?: unknown[][]; connection_types?: any };
+        const conn = connectionData as { main?: unknown[][]; connection_types?: Record<string, unknown> };
 
         // Handle n8n format: { main: [[{ node: "targetId", type: "main", index: 0 }]] }
         if (conn.main && Array.isArray(conn.main)) {

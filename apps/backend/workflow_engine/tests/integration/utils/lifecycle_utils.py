@@ -33,11 +33,11 @@ async def get_supabase_jwt_token() -> Optional[str]:
     """
     try:
         supabase_url = os.getenv("SUPABASE_URL")
-        supabase_anon_key = os.getenv("SUPABASE_ANON_KEY")
+        supabase_public_key = os.getenv("SUPABASE_PUB_KEY")
         test_email = os.getenv("TEST_USER_EMAIL", "daming.lu@starmates.ai")
         test_password = "test.1234!"
 
-        if not supabase_url or not supabase_anon_key:
+        if not supabase_url or not supabase_public_key:
             logger.warning("Missing Supabase credentials for authentication")
             return None
 
@@ -46,7 +46,7 @@ async def get_supabase_jwt_token() -> Optional[str]:
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 auth_url,
-                headers={"apikey": supabase_anon_key, "Content-Type": "application/json"},
+                headers={"apikey": supabase_public_key, "Content-Type": "application/json"},
                 json={"email": test_email, "password": test_password},
             )
 

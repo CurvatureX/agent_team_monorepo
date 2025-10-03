@@ -18,7 +18,7 @@
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-switch": "^1.2.5",
     "@radix-ui/react-toast": "^1.2.14",
-    "@radix-ui/react-tooltip": "^1.2.7",
+    "@radix-ui/react-tooltip": "^1.2.8",
     "@splinetool/react-spline": "^4.1.0",
     "@splinetool/runtime": "^1.10.33",
     "@supabase/auth-helpers-nextjs": "^0.10.0",

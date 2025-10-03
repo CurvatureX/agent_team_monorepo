@@ -1,5 +1,17 @@
 import { Workflow } from '@/types/workflow';
-import { WorkflowType, WorkflowStatus, ErrorPolicy, CallerPolicy } from '@/types/workflow-enums';
+import {
+  WorkflowType,
+  WorkflowStatus,
+  ErrorPolicy,
+  CallerPolicy,
+  NodeType,
+  TriggerSubtype,
+  AIAgentSubtype,
+  ActionSubtype,
+  HumanLoopSubtype,
+  FlowSubtype,
+  ToolSubtype,
+} from '@/types/workflow-enums';
 
 export const exampleWorkflow: Workflow = {
   "created_at": new Date().toISOString(),
@@ -9,15 +21,15 @@ export const exampleWorkflow: Workflow = {
   "name": "Example Workflow",
   "description": "An example workflow demonstrating various node types",
   "type": WorkflowType.Sequential,
-  "status": WorkflowStatus.Active,
+  "status": WorkflowStatus.Idle,
   "version": 1,
   "execution_count": 0,
   "nodes": [
     {
       "id": "trigger_0",
       "name": "When calendar event occurs",
-      "type": "trigger",
-      "subtype": "calendar",
+      "type": NodeType.TRIGGER,
+      "subtype": TriggerSubtype.WEBHOOK,
       "type_version": 1,
       "position": {
         "x": -200,
@@ -36,9 +48,9 @@ export const exampleWorkflow: Workflow = {
     },
     {
       "id": "ai_agent_0",
-      "name": "AI Agent Processing",
-      "type": "ai_agent",
-      "subtype": "agent",
+      "name": "ChatGPT Agent",
+      "type": NodeType.AI_AGENT,
+      "subtype": AIAgentSubtype.OPENAI_CHATGPT,
       "type_version": 1,
       "position": {
         "x": 1020,
@@ -58,8 +70,8 @@ export const exampleWorkflow: Workflow = {
     {
       "id": "action_2",
       "name": "Action Node",
-      "type": "action",
-      "subtype": "data_transform",
+      "type": NodeType.ACTION,
+      "subtype": ActionSubtype.DATA_TRANSFORMATION,
       "type_version": 1,
       "position": {
         "x": 460,
@@ -79,8 +91,8 @@ export const exampleWorkflow: Workflow = {
     {
       "id": "external_action_0",
       "name": "External Action",
-      "type": "external_action",
-      "subtype": "github",
+      "type": NodeType.TOOL,
+      "subtype": ToolSubtype.HTTP_CLIENT,
       "type_version": 1,
       "position": {
         "x": 160,
@@ -100,8 +112,8 @@ export const exampleWorkflow: Workflow = {
     {
       "id": "flow_0",
       "name": "Flow Control",
-      "type": "flow",
-      "subtype": "filter",
+      "type": NodeType.FLOW,
+      "subtype": FlowSubtype.FILTER,
       "type_version": 1,
       "position": {
         "x": 740,
@@ -121,8 +133,8 @@ export const exampleWorkflow: Workflow = {
     {
       "id": "human_in_the_loop_0",
       "name": "Human Input via Discord",
-      "type": "human_in_the_loop",
-      "subtype": "discord",
+      "type": NodeType.HUMAN_IN_THE_LOOP,
+      "subtype": HumanLoopSubtype.DISCORD_INTERACTION,
       "type_version": 1,
       "position": {
         "x": 1380,
@@ -142,8 +154,8 @@ export const exampleWorkflow: Workflow = {
     {
       "id": "human_in_the_loop_1",
       "name": "Human Input via Gmail",
-      "type": "human_in_the_loop",
-      "subtype": "gmail",
+      "type": NodeType.HUMAN_IN_THE_LOOP,
+      "subtype": HumanLoopSubtype.GMAIL_INTERACTION,
       "type_version": 1,
       "position": {
         "x": 400,

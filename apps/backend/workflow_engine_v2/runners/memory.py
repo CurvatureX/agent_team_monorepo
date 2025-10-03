@@ -14,7 +14,7 @@ sys.path.insert(0, str(backend_dir))
 # Use absolute imports
 from shared.models import TriggerInfo
 from shared.models.node_enums import MemorySubtype
-from shared.models.workflow_new import Node
+from shared.models.workflow import Node
 from workflow_engine_v2.runners.base import NodeRunner
 
 # Import enhanced memory implementations

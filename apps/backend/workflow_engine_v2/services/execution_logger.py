@@ -35,7 +35,7 @@ sys.path.insert(0, str(backend_dir))
 # Use absolute imports
 from shared.models import ExecutionStatus, LogLevel, NodeExecutionStatus
 from shared.models.execution_new import Execution
-from shared.models.workflow_new import Node
+from shared.models.workflow import Node
 
 
 class ExecutionLogLevel(str, Enum):
