@@ -51,7 +51,8 @@ class DirectDBService:
 
         # Legacy mappings for transitional states
         mapping = {
-            "DRAFT": DeploymentStatus.PENDING.value,
+            "IDLE": DeploymentStatus.PENDING.value,
+            "DRAFT": DeploymentStatus.PENDING.value,  # Legacy support
             "DEPLOYING": DeploymentStatus.PENDING.value,
             "UNDEPLOYING": DeploymentStatus.PENDING.value,
             "DEPRECATED": DeploymentStatus.UNDEPLOYED.value,

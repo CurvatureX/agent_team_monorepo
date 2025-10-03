@@ -300,7 +300,7 @@ class WorkflowMigration:
                 name=workflow_record.get("name", "Untitled Workflow"),
                 icon_url=workflow_record.get("icon_url"),
                 description=workflow_record.get("description", ""),
-                deployment_status=workflow_record.get("deployment_status", "DRAFT"),
+                deployment_status=workflow_record.get("deployment_status", "IDLE"),
                 last_execution_status=None,
                 last_execution_time=None,
                 tags=workflow_record.get("tags", []),

@@ -3135,15 +3135,15 @@
             "WorkflowStatus": {
                 "type": "string",
                 "enum": [
-                    "draft",
-                    "active",
-                    "paused",
-                    "completed",
-                    "failed",
-                    "archived"
+                    "IDLE",
+                    "RUNNING",
+                    "SUCCESS",
+                    "ERROR",
+                    "CANCELED",
+                    "WAITING_FOR_HUMAN"
                 ],
                 "title": "WorkflowStatus",
-                "description": "工作流状态枚举"
+                "description": "工作流状态枚举（与后端一致）"
             },
             "WorkflowType": {
                 "type": "string",

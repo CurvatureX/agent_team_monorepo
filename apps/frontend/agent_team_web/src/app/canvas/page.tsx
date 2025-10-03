@@ -51,13 +51,13 @@ interface WorkflowItem {
 interface RawWorkflow {
   id: string;
   name?: string;
-  description?: string;
+  description?: string | null;
   status?: string;
-  deployment_status?: string;
-  latest_execution_status?: string;
-  latest_execution_time?: number;
-  created_at?: number | string;
-  updated_at?: number | string;
+  deployment_status?: string | null;
+  latest_execution_status?: string | null;
+  latest_execution_time?: number | string | null;
+  created_at?: number | string | null;
+  updated_at?: number | string | null;
   execution_count?: number;
   success_rate?: number;
   average_duration?: number;
@@ -142,7 +142,9 @@ function CanvasPage() {
       deploymentStatus: workflow.deployment_status || "pending",
       lastExecutionStatus: workflow.latest_execution_status || "pending",
       lastRunTime: workflow.latest_execution_time
-        ? new Date(workflow.latest_execution_time * 1000)
+        ? (typeof workflow.latest_execution_time === 'number'
+          ? new Date(workflow.latest_execution_time * 1000)
+          : new Date(workflow.latest_execution_time))
         : null,
       createdAt: workflow.created_at
         ? (typeof workflow.created_at === 'number'

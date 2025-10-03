@@ -3,7 +3,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { API_PATHS } from '../config';
 import { useAuthSWR, apiRequest } from '../fetcher';
 import { useCallback } from 'react';
-import { WorkflowListResponse } from '@/types/workflow';
+import { WorkflowListResponse, WorkflowResponse } from '@/types/workflow';
 
 // 获取工作流列表
 export function useWorkflowsApi(params?: {
@@ -38,7 +38,7 @@ export function useWorkflowsApi(params?: {
 
 // 获取单个工作流
 export function useWorkflowApi(workflowId: string | null) {
-  const { data, error, isLoading, mutate } = useAuthSWR(
+  const { data, error, isLoading, mutate } = useAuthSWR<WorkflowResponse>(
     workflowId ? API_PATHS.WORKFLOW(workflowId) : null,
     { revalidateOnFocus: false }
   );
