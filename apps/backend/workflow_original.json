@@ -1,0 +1,173 @@
+{
+  "metadata": {
+    "id": "0f8ace07-091b-4a35-b038-abb0d5541f3f",
+    "name": "GitHub Issue Slack Notifier",
+    "icon_url": null,
+    "description": null,
+    "deployment_status": "DRAFT",
+    "last_execution_status": null,
+    "last_execution_time": null,
+    "tags": [],
+    "created_time": 1759470199680,
+    "parent_workflow": null,
+    "statistics": {
+      "total_runs": 0,
+      "average_duration_ms": 0,
+      "total_credits": 0,
+      "last_success_time": null
+    },
+    "version": "1.0",
+    "created_by": "7ba36345-a2bb-4ec9-a001-bb46d79d629d",
+    "updated_by": null
+  },
+  "nodes": [
+    {
+      "id": "github_trigger_1",
+      "name": "github_trigger",
+      "description": "Listens for issue events on the backend repository",
+      "type": "TRIGGER",
+      "subtype": "GITHUB",
+      "configurations": {
+        "events": [
+          "issues"
+        ],
+        "enabled": true,
+        "timeout": 120,
+        "branches": [],
+        "repository": "team/backend",
+        "retry_attempts": 3,
+        "webhook_secret": "",
+        "include_payload": true,
+        "filter_conditions": {}
+      },
+      "input_params": {},
+      "output_params": {
+        "branch": "",
+        "sender": "",
+        "commit_sha": "",
+        "event_type": "",
+        "repository": "",
+        "trigger_time": "",
+        "github_payload": {},
+        "trigger_message": ""
+      },
+      "input_ports": [],
+      "output_ports": [],
+      "position": {
+        "x": 100.0,
+        "y": 100.0
+      },
+      "attached_nodes": null
+    },
+    {
+      "id": "transform_extract_issue_1",
+      "name": "extract_issue",
+      "description": "Extracts title, creator, and URL from the GitHub issue payload",
+      "type": "ACTION",
+      "subtype": "DATA_TRANSFORMATION",
+      "configurations": {
+        "enabled": true,
+        "timeout": 30,
+        "operation": "extract_fields",
+        "sort_config": {
+          "field": "",
+          "direction": "asc"
+        },
+        "field_mapping": {
+          "url": "issue.html_url",
+          "title": "issue.title",
+          "creator": "issue.user.login"
+        },
+        "output_format": "json",
+        "retry_attempts": 2,
+        "group_by_fields": [],
+        "filter_conditions": [],
+        "preserve_metadata": false,
+        "aggregation_functions": {},
+        "transformation_script": "def transform(payload):\n    issue = payload.get('issue', {})\n    return {'title': issue.get('title'), 'creator': issue.get('user', {}).get('login'), 'url': issue.get('html_url')}"
+      },
+      "input_params": {
+        "data": [],
+        "context": {},
+        "variables": {}
+      },
+      "output_params": {
+        "success": false,
+        "output_count": 0,
+        "error_message": "",
+        "original_count": 0,
+        "transformed_data": [],
+        "transformation_stats": {}
+      },
+      "input_ports": [],
+      "output_ports": [],
+      "position": {
+        "x": 300.0,
+        "y": 100.0
+      },
+      "attached_nodes": null
+    },
+    {
+      "id": "slack_post_message_1",
+      "name": "slack_notification",
+      "description": "Sends a Slack message to the backend channel with extracted issue details",
+      "type": "EXTERNAL_ACTION",
+      "subtype": "SLACK",
+      "configurations": {
+        "channel": "#backend",
+        "enabled": true,
+        "timeout": 30,
+        "bot_token": "xoxb-123456789012-9876543210-EXAMPLETOKEN",
+        "thread_ts": "",
+        "use_oauth": false,
+        "action_type": "post_message",
+        "unfurl_links": true,
+        "unfurl_media": false,
+        "message_format": "New issue opened: {title} by {creator}\n{url}",
+        "retry_attempts": 2
+      },
+      "input_params": {
+        "blocks": [],
+        "message": "",
+        "metadata": {},
+        "attachments": [],
+        "user_mentions": [],
+        "channel_override": ""
+      },
+      "output_params": {
+        "success": false,
+        "channel_id": "",
+        "message_ts": "",
+        "api_response": {},
+        "error_message": "",
+        "response_data": {}
+      },
+      "input_ports": [],
+      "output_ports": [],
+      "position": {
+        "x": 500.0,
+        "y": 100.0
+      },
+      "attached_nodes": null
+    }
+  ],
+  "connections": [
+    {
+      "id": "github_to_transform",
+      "from_node": "github_trigger_1",
+      "to_node": "transform_extract_issue_1",
+      "output_key": "result",
+      "conversion_function": "def convert(input_data: Dict[str, Any]) -> Dict[str, Any]:\n    payload = input_data.get(\"data\", input_data)\n    # Normalize to a list for uniform processing\n    items = payload if isinstance(payload, list) else [payload]\n    transformed = []\n    original_count = len(items)\n    for original in items:\n        if not isinstance(original, dict):\n            continue\n        # Unwrap possible wrapper keys (common patterns)\n        candidate = original\n        if \"github_payload\" in candidate and isinstance(candidate[\"github_payload\"], dict):\n            candidate = candidate[\"github_payload\"]\n        if \"payload\" in candidate and isinstance(candidate[\"payload\"], dict):\n            candidate = candidate[\"payload\"]\n        # Identify issue object\n        issue = candidate.get(\"issue\")\n        # Some webhook payloads embed issue under 'data' or other keys\n        if issue is None:\n            # Try common nested locations\n            issue = candidate.get(\"issue\") or candidate.get(\"action_payload\") or None\n        action = (candidate.get(\"action\") or original.get(\"action\") or \"\").lower()\n        # Repository identification\n        repo_obj = candidate.get(\"repository\") or original.get(\"repository\") or {}\n        repo_name = \"\"\n        if isinstance(repo_obj, dict):\n            repo_name = repo_obj.get(\"full_name\") or repo_obj.get(\"name\") or \"\"\n        elif isinstance(repo_obj, str):\n            repo_name = repo_obj\n        repo_name = (repo_name or \"\").lower()\n        # Additional fallback: top-level event_type indicating 'issues'\n        event_type = (original.get(\"event_type\") or candidate.get(\"event_type\") or \"\").lower()\n        # Determine if this is a newly opened issue in a backend repo\n        is_issue_event = issue is not None or event_type == \"issues\"\n        is_opened = action == \"opened\" or action == \"open\" or action == \"created\"\n        is_backend_repo = \"backend\" in repo_name if repo_name else (\"backend\" in (original.get(\"repository\") or \"\") )\n        if is_issue_event and is_opened and is_backend_repo:\n            # Robust extraction of fields\n            issue_obj = issue if isinstance(issue, dict) else candidate.get(\"issue\", {})\n            title = issue_obj.get(\"title\", \"\") or \"\"\n            creator = (issue_obj.get(\"user\", {}) or {}).get(\"login\") or (original.get(\"sender\", {}) or {}).get(\"login\") or \"\"\n            url = issue_obj.get(\"html_url\") or issue_obj.get(\"html_url\") or issue_obj.get(\"url\") or \"\"\n            number = issue_obj.get(\"number\")\n            trigger_message = f\"New issue opened in {repo_name or original.get('repository', '')}: {title}\"\n            item = {\n                \"title\": title,\n                \"creator\": creator,\n                \"url\": url,\n                \"repository\": repo_name or (repo_obj if isinstance(repo_obj, str) else \"\"),\n                \"issue_number\": number,\n                \"trigger_message\": trigger_message,\n                \"github_payload\": issue_obj\n            }\n            transformed.append(item)\n    output = {\n        \"transformed_data\": transformed,\n        \"original_count\": original_count,\n        \"output_count\": len(transformed),\n        \"transformation_stats\": {\n            \"processed\": original_count,\n            \"matched\": len(transformed)\n        },\n        \"success\": True if len(transformed) > 0 else False,\n        \"error_message\": \"\" if len(transformed) > 0 else \"\"\n    }\n    return output"
+    },
+    {
+      "id": "transform_to_slack",
+      "from_node": "transform_extract_issue_1",
+      "to_node": "slack_post_message_1",
+      "output_key": "result",
+      "conversion_function": "def convert(input_data: Dict[str, Any]) -> Dict[str, Any]:\n    # Robustly locate the primary payload\n    payload = input_data.get(\"data\", None)\n    if payload is None:\n        payload = input_data.get(\"value\", None)\n    if payload is None:\n        payload = input_data.get(\"output\", input_data)\n\n    # If payload is a list, take the first item as the issue payload\n    if isinstance(payload, list):\n        payload = payload[0] if payload else {}\n\n    if not isinstance(payload, dict):\n        payload = {}\n\n    # GitHub webhook shape: issue often nested under \"issue\"\n    issue = payload.get(\"issue\") if \"issue\" in payload else payload\n\n    # Helper safe getters\n    def _get(d, *keys):\n        if not isinstance(d, dict):\n            return None\n        for k in keys:\n            v = d.get(k)\n            if v:\n                return v\n        return None\n\n    title = _get(issue, \"title\", \"issue_title\") or \"\"\n    url = _get(issue, \"html_url\", \"htmlUrl\", \"url\") or \"\"\n    number = _get(issue, \"number\") or \"\"\n    # user may be nested under issue.user.login or payload.sender.login\n    user = \"\"\n    if isinstance(issue, dict):\n        user = _get(issue.get(\"user\", {}), \"login\", \"name\") or _get(issue, \"creator\") or \"\"\n    if not user:\n        user = _get(payload.get(\"sender\", {}), \"login\", \"name\") or user\n    # repository name may be at payload.repository.name\n    repo = _get(payload.get(\"repository\", {}), \"name\") or _get(payload, \"repo\", {}) and _get(payload.get(\"repo\", {}), \"name\") or \"\"\n    if not repo:\n        repo = _get(issue.get(\"repository\", {}), \"name\") if isinstance(issue, dict) else \"\"\n\n    # Build a clear Slack message (mrkdwn)\n    parts = []\n    parts.append(\"*New GitHub issue opened*\")\n    if repo:\n        parts.append(f\"*Repository:* {repo}\")\n    if number:\n        parts.append(f\"*Issue:* #{number}\")\n    if title:\n        parts.append(f\"*Title:* {title}\")\n    if user:\n        parts.append(f\"*Opened by:* {user}\")\n    if url:\n        parts.append(url)\n\n    message_text = \"\\n\".join(parts) if parts else \"A new GitHub issue was opened.\"\n\n    # Compose result for Slack node\n    result = {\n        \"action_type\": \"send_message\",\n        \"channel\": \"#backend\",\n        \"message_format\": \"mrkdwn\",\n        \"message\": message_text,\n        \"metadata\": {\n            \"source\": \"github\",\n            \"extracted\": {\n                \"title\": title,\n                \"number\": number,\n                \"user\": user,\n                \"url\": url,\n                \"repository\": repo\n            }\n        }\n    }\n\n    return result"
+    }
+  ],
+  "triggers": [
+    "github_trigger_1"
+  ]
+}

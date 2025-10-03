@@ -70,6 +70,11 @@ class Settings(BaseSettings):
         os.getenv("WORKFLOW_ENGINE_TIMEOUT", "300")
     )  # 300 seconds (5 minutes)
 
+    # Conversion generation settings
+    CONVERSION_GENERATION_MAX_CONCURRENCY: int = int(
+        os.getenv("CONVERSION_GENERATION_MAX_CONCURRENCY", "4")
+    )
+
     # MCP API timeout settings
     MCP_TOTAL_TIMEOUT: int = int(os.getenv("MCP_TOTAL_TIMEOUT", "60"))  # 60 seconds total
     MCP_CONNECT_TIMEOUT: int = int(os.getenv("MCP_CONNECT_TIMEOUT", "10"))  # 10 seconds connect

@@ -10,7 +10,7 @@ import logging
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 # Add backend directory to path for absolute imports
 backend_dir = Path(__file__).parent.parent.parent
@@ -359,16 +359,41 @@ class WorkflowServiceV2:
         for col_name, col_value in optional_columns.items():
             workflow_data[col_name] = col_value
 
+        def attempt_insert(data: Dict[str, Any]):
+            return self.supabase.table("workflows").insert(data).execute()
+
         try:
             # Insert workflow into database
-            result = self.supabase.table("workflows").insert(workflow_data).execute()
+            result = attempt_insert(workflow_data)
             self.logger.info(
                 f"💾 Successfully inserted workflow {workflow.metadata.id} into database"
             )
             return result
         except Exception as e:
+            error_message = str(e)
+            if "valid_deployment_status" in error_message:
+                self.logger.warning("Deployment status 'pending' not accepted; retrying with legacy value 'DRAFT'")
+                workflow_data["deployment_status"] = WorkflowDeploymentStatus.DRAFT.value
+                try:
+                    result = attempt_insert(workflow_data)
+                    self.logger.info(
+                        f"💾 Successfully inserted workflow {workflow.metadata.id} into database with fallback status"
+                    )
+                    return result
+                except Exception as deployment_error:
+                    deployment_error_message = str(deployment_error)
+                    if "valid_deployment_status" in deployment_error_message:
+                        self.logger.warning("Deployment status still rejected; removing column entirely for compatibility")
+                        workflow_data.pop("deployment_status", None)
+                        result = attempt_insert(workflow_data)
+                        self.logger.info(
+                            f"💾 Successfully inserted workflow {workflow.metadata.id} into database without deployment status"
+                        )
+                        return result
+                    error_message = deployment_error_message
+                    e = deployment_error
             # Check if it's a schema error (missing columns)
-            if "Could not find" in str(e) and "column" in str(e):
+            if "Could not find" in error_message and "column" in error_message:
                 self.logger.warning(f"⚠️ Schema error, retrying with basic columns only: {e}")
                 # Retry with only the basic columns that should exist
                 basic_workflow_data = {
@@ -384,7 +409,7 @@ class WorkflowServiceV2:
                     "updated_at": int(time.time() * 1000),
                 }
                 try:
-                    result = self.supabase.table("workflows").insert(basic_workflow_data).execute()
+                    result = attempt_insert(basic_workflow_data)
                     self.logger.info(
                         f"💾 Successfully inserted workflow {workflow.metadata.id} with basic schema"
                     )
@@ -393,7 +418,7 @@ class WorkflowServiceV2:
                     self.logger.error(f"❌ Failed even with basic schema: {e2}")
                     raise e2
             # Check if it's a duplicate key error (workflow already exists)
-            elif "duplicate key" in str(e).lower() or "already exists" in str(e).lower():
+            elif "duplicate key" in error_message.lower() or "already exists" in error_message.lower():
                 self.logger.info(
                     f"📝 Workflow {workflow.metadata.id} already exists, updating instead"
                 )
