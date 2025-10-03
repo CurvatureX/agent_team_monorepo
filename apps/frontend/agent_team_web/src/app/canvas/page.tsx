@@ -51,13 +51,13 @@ interface WorkflowItem {
 interface RawWorkflow {
   id: string;
   name?: string;
-  description?: string;
+  description?: string | null;
   status?: string;
-  deployment_status?: string;
-  latest_execution_status?: string;
-  latest_execution_time?: number;
-  created_at?: number | string;
-  updated_at?: number | string;
+  deployment_status?: string | null;
+  latest_execution_status?: string | null;
+  latest_execution_time?: number | string | null;
+  created_at?: number | string | null;
+  updated_at?: number | string | null;
   execution_count?: number;
   success_rate?: number;
   average_duration?: number;
@@ -69,12 +69,12 @@ interface RawWorkflow {
 }
 
 // Define deployment status configuration outside component for consistency
+// Aligned with backend WorkflowDeploymentStatus enum (pending, deployed, failed, undeployed)
 const deploymentStatusConfig = {
-  DRAFT: { icon: Clock, label: "Draft", color: "text-gray-500", bg: "bg-gray-50", variant: "outline" as const },
-  PENDING: { icon: Activity, label: "Deploying", color: "text-blue-500", bg: "bg-blue-50", variant: "secondary" as const },
-  DEPLOYED: { icon: CheckCircle, label: "Deployed", color: "text-green-500", bg: "bg-green-50", variant: "default" as const },
-  FAILED: { icon: XCircle, label: "Failed", color: "text-red-500", bg: "bg-red-50", variant: "destructive" as const },
-  UNDEPLOYED: { icon: Pause, label: "Undeployed", color: "text-gray-500", bg: "bg-gray-50", variant: "outline" as const },
+  pending: { icon: Activity, label: "Pending", color: "text-blue-500", bg: "bg-blue-50", variant: "secondary" as const },
+  deployed: { icon: CheckCircle, label: "Deployed", color: "text-green-500", bg: "bg-green-50", variant: "default" as const },
+  failed: { icon: XCircle, label: "Failed", color: "text-red-500", bg: "bg-red-50", variant: "destructive" as const },
+  undeployed: { icon: Pause, label: "Undeployed", color: "text-gray-500", bg: "bg-gray-50", variant: "outline" as const },
 };
 
 function CanvasPage() {
@@ -138,11 +138,13 @@ function CanvasPage() {
       id: workflow.id,
       name: workflow.name || "Unnamed Workflow",
       description: workflow.description || "",
-      status: workflow.status || "DRAFT",
-      deploymentStatus: workflow.deployment_status || "DRAFT",
-      lastExecutionStatus: workflow.latest_execution_status || "DRAFT",
+      status: workflow.status || "pending",
+      deploymentStatus: workflow.deployment_status || "pending",
+      lastExecutionStatus: workflow.latest_execution_status || "pending",
       lastRunTime: workflow.latest_execution_time
-        ? new Date(workflow.latest_execution_time * 1000)
+        ? (typeof workflow.latest_execution_time === 'number'
+          ? new Date(workflow.latest_execution_time * 1000)
+          : new Date(workflow.latest_execution_time))
         : null,
       createdAt: workflow.created_at
         ? (typeof workflow.created_at === 'number'
@@ -219,16 +221,14 @@ function CanvasPage() {
   // Helper function to get status color
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "DEPLOYED":
+      case "deployed":
         return "text-green-600 bg-green-50 border-green-200 dark:text-green-400 dark:bg-green-950 dark:border-green-800";
-      case "UNDEPLOYED":
+      case "undeployed":
         return "text-orange-600 bg-orange-50 border-orange-200 dark:text-orange-400 dark:bg-orange-950 dark:border-orange-800";
-      case "PENDING":
+      case "pending":
         return "text-blue-600 bg-blue-50 border-blue-200 dark:text-blue-400 dark:bg-blue-950 dark:border-blue-800";
-      case "FAILED":
+      case "failed":
         return "text-red-600 bg-red-50 border-red-200 dark:text-red-400 dark:bg-red-950 dark:border-red-800";
-      case "DRAFT":
-        return "text-gray-600 bg-gray-50 border-gray-200 dark:text-gray-400 dark:bg-gray-950 dark:border-gray-800";
       default:
         return "text-gray-600 bg-gray-50 border-gray-200 dark:text-gray-400 dark:bg-gray-950 dark:border-gray-800";
     }
@@ -378,7 +378,7 @@ function CanvasPage() {
                 >
                   <div className="flex gap-4 pb-4" style={{ width: 'max-content' }}>
                     {statusWorkflows.map((workflow: WorkflowItem) => {
-                    const deploymentConfig = deploymentStatusConfig[workflow.deploymentStatus as keyof typeof deploymentStatusConfig] || deploymentStatusConfig.DRAFT;
+                    const deploymentConfig = deploymentStatusConfig[workflow.deploymentStatus as keyof typeof deploymentStatusConfig] || deploymentStatusConfig.pending;
 
                     return (
                       <Card

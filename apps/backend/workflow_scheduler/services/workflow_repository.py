@@ -83,7 +83,8 @@ class WorkflowRepository:
                 except Exception:
                     # Fallback: map common legacy statuses
                     legacy_map = {
-                        "DRAFT": DeploymentStatus.PENDING.value,
+                        "IDLE": DeploymentStatus.PENDING.value,
+                        "DRAFT": DeploymentStatus.PENDING.value,  # Legacy support
                         "PENDING": DeploymentStatus.PENDING.value,
                         "DEPLOYING": DeploymentStatus.PENDING.value,
                         "DEPLOYED": DeploymentStatus.DEPLOYED.value,

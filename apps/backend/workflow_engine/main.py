@@ -21,23 +21,23 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from shared.models.db_models import WorkflowStatusEnum
-
 # Import our migrated modules
 from config import settings
 from database import Database
 from executor import WorkflowExecutor
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from models import (
     ExecuteWorkflowRequest,
     ExecuteWorkflowResponse,
     GetExecutionRequest,
     GetExecutionResponse,
 )
+from pydantic import BaseModel
 from services.oauth2_service_lite import OAuth2ServiceLite
 from utils.unicode_utils import clean_unicode_data, ensure_utf8_safe_dict
+
+from shared.models.db_models import WorkflowStatusEnum
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -525,7 +525,7 @@ async def create_workflow(workflow_data: dict):
                 "active": workflow_data.get("active", True),
                 "tags": workflow_data.get("tags", []),
                 "version": workflow_data.get("version", 1),
-                "deployment_status": WorkflowStatusEnum.DRAFT.value,
+                "deployment_status": WorkflowStatusEnum.IDLE.value,
                 "created_at": now,
                 "updated_at": now,
                 "workflow_data": {

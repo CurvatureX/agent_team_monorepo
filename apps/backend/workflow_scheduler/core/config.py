@@ -63,10 +63,10 @@ class Settings(BaseSettings):
         description="Supabase service role secret key",
         validation_alias=AliasChoices("SUPABASE_SECRET_KEY", "supabase_secret_key"),
     )
-    supabase_anon_key: str = Field(
+    supabase_pub_key: str = Field(
         default="",
-        description="Supabase anonymous public key",
-        validation_alias=AliasChoices("SUPABASE_ANON_KEY", "supabase_anon_key"),
+        description="Supabase public key",
+        validation_alias=AliasChoices("SUPABASE_PUB_KEY", "supabase_pub_key"),
     )
 
     # Email Configuration (for EmailTrigger)
