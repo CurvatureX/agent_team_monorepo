@@ -26,13 +26,26 @@ from workflow_engine_v2.api.models import (
 from workflow_engine_v2.core.engine import ExecutionEngine
 from workflow_engine_v2.services.workflow import WorkflowServiceV2
 from workflow_engine_v2.services.workflow_status_manager import WorkflowStatusManagerV2
+from workflow_engine_v2.services.supabase_repository_v2 import SupabaseExecutionRepository
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["V2 Executions"])
 
 # Global engine instance with user-friendly logging enabled
-engine = ExecutionEngine(enable_user_friendly_logging=True)
+try:
+    execution_repository = SupabaseExecutionRepository()
+except Exception as repo_error:  # pragma: no cover - runtime safeguard
+    execution_repository = None
+    logger.warning(
+        "⚠️ [v2] Supabase execution repository unavailable, falling back to in-memory store: %s",
+        repo_error,
+    )
+
+engine = ExecutionEngine(
+    repository=execution_repository,
+    enable_user_friendly_logging=True,
+)
 workflow_service = WorkflowServiceV2()
 
 
