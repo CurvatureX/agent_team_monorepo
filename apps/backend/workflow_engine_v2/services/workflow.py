@@ -221,15 +221,31 @@ class WorkflowServiceV2:
 
             result = (
                 supabase_client.table("workflows")
-                .select("workflow_data")
+                .select("workflow_data, deployment_status")
                 .eq("active", True)
                 .execute()
             )
             workflows = []
             for row in result.data:
                 workflow_data = row.get("workflow_data")
+                deployment_status = row.get("deployment_status")
                 if workflow_data:
                     try:
+                        # Merge top-level deployment_status into workflow_data metadata
+                        # Always set deployment_status from column (even if None, Pydantic will use default)
+                        if "metadata" not in workflow_data:
+                            self.logger.warning(
+                                f"workflow_data missing metadata field: {workflow_data.keys()}"
+                            )
+                        else:
+                            if deployment_status:
+                                workflow_data["metadata"]["deployment_status"] = deployment_status
+                                self.logger.debug(
+                                    f"Merged deployment_status={deployment_status} for workflow {workflow_data.get('metadata', {}).get('id')}"
+                                )
+                            else:
+                                # Set default if column is None
+                                workflow_data["metadata"]["deployment_status"] = "UNDEPLOYED"
                         workflows.append(Workflow(**workflow_data))
                     except Exception as e:
                         self.logger.warning(f"Failed to parse workflow data: {e}")
@@ -248,11 +264,20 @@ class WorkflowServiceV2:
             raise Exception("Supabase client not available")
 
         try:
+            # Dump workflow data and remove deployment_status from metadata
+            # (deployment_status should only live in the top-level column)
+            workflow_data_dict = workflow.model_dump()
+            if (
+                "metadata" in workflow_data_dict
+                and "deployment_status" in workflow_data_dict["metadata"]
+            ):
+                del workflow_data_dict["metadata"]["deployment_status"]
+
             update_data = {
                 "name": workflow.metadata.name,
                 "description": workflow.metadata.description,
                 "version": workflow.metadata.version,
-                "workflow_data": workflow.model_dump(),
+                "workflow_data": workflow_data_dict,
                 "tags": workflow.metadata.tags or [],
                 "updated_at": int(time.time() * 1000),
             }
@@ -328,6 +353,15 @@ class WorkflowServiceV2:
         if not self.supabase:
             raise Exception("Supabase client not available")
 
+        # Dump workflow data and remove deployment_status from metadata
+        # (deployment_status should only live in the top-level column)
+        workflow_data_dict = workflow.model_dump()
+        if (
+            "metadata" in workflow_data_dict
+            and "deployment_status" in workflow_data_dict["metadata"]
+        ):
+            del workflow_data_dict["metadata"]["deployment_status"]
+
         # Base workflow data with only guaranteed columns
         workflow_data = {
             "id": workflow.metadata.id,
@@ -336,7 +370,7 @@ class WorkflowServiceV2:
             "description": workflow.metadata.description,
             "version": workflow.metadata.version,
             "active": True,
-            "workflow_data": workflow.model_dump(),  # Store entire new workflow as JSON
+            "workflow_data": workflow_data_dict,  # Store entire new workflow as JSON
             "tags": workflow.metadata.tags or [],
             "created_at": created_time_ms,
             "updated_at": int(time.time() * 1000),
