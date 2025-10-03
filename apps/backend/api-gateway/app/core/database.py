@@ -441,15 +441,15 @@ class DatabaseManager:
     def create_user_client(self, access_token: str) -> Optional[Client]:
         """Create user-specific Supabase client with RLS (backward compatibility)."""
         try:
-            if not settings.SUPABASE_URL or not settings.SUPABASE_ANON_KEY or not access_token:
+            if not settings.SUPABASE_URL or not settings.SUPABASE_PUB_KEY or not access_token:
                 logger.error(
-                    "❌ Missing SUPABASE_URL, SUPABASE_ANON_KEY, or access_token for user client"
+                    "❌ Missing SUPABASE_URL, SUPABASE_PUB_KEY, or access_token for user client"
                 )
                 return None
 
-            # Create client using ANON_KEY and set user access_token for RLS
-            # This is the correct way for RLS: ANON_KEY + user token in headers
-            client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
+            # Create client using PUB_KEY and set user access_token for RLS
+            # This is the correct way for RLS: PUB_KEY + user token in headers
+            client = create_client(settings.SUPABASE_URL, settings.SUPABASE_PUB_KEY)
 
             # Set the user's access token in headers for RLS authentication
             client.options.headers["Authorization"] = f"Bearer {access_token}"
