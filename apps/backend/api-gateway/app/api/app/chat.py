@@ -183,8 +183,8 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                 # 构建 workflow_context - 优先使用 ChatRequest 参数，其次使用 session
                 workflow_context = None
                 # Priority: ChatRequest parameters > session data
-                action = chat_request.action or session.get("action", "create")
-                workflow_id = chat_request.workflow_id or session.get("workflow_id", "")
+                action = chat_request.action or session_result.get("action", "create")
+                workflow_id = chat_request.workflow_id or session_result.get("workflow_id", "")
 
                 if action and action != "create":
                     workflow_context = {

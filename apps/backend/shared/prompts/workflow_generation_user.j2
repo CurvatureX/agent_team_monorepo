@@ -1,3 +1,39 @@
+**🚨 ABSOLUTELY CRITICAL: CONNECTIONS ARE MANDATORY!**
+
+YOU MUST GENERATE CONNECTIONS IN THE WORKFLOW JSON - NO EMPTY CONNECTIONS ARRAY!
+
+**For every workflow you generate:**
+1. **Count your nodes** - if you have N nodes, you need at least N-1 connections
+2. **Link them sequentially** - first node connects to second, second to third, etc.
+3. **Use this exact format:**
+```json
+"connections": [
+  {
+    "id": "node1_to_node2",
+    "from_node": "first_node_id",
+    "to_node": "second_node_id",
+    "output_key": "result",
+    "conversion_function": "lambda input_data: input_data['data']"
+  }
+]
+```
+
+**EXAMPLE for 2-node workflow (trigger + action):**
+```json
+"connections": [
+  {
+    "id": "trigger_to_action",
+    "from_node": "cron_trigger_1",
+    "to_node": "http_action_1",
+    "output_key": "result",
+    "conversion_function": "lambda input_data: input_data['data']"
+  }
+]
+```
+
+**❌ NEVER generate**: `"connections": []` or `"connections": {}`
+**✅ ALWAYS generate**: Array with actual connection objects linking your nodes
+
 Create a workflow for: {{ intent_summary }}
 
 **Workflow Name Requirement:**
@@ -63,5 +99,12 @@ If the user mentions "confirmation", "approval", "wait for user", or similar con
 - You MUST include a HUMAN_IN_THE_LOOP node to wait for user response
 - You MUST include the final action node that executes after approval
 - Example flow: Trigger → Process → Send confirmation → HUMAN_IN_THE_LOOP → Final action
+
+**🚨 CRITICAL - Connections Are Required:**
+Your workflow MUST include connections that link the nodes together into a coherent flow:
+- Each node (except the first trigger) should receive input from a previous node
+- Each node (except the last action) should output to a subsequent node
+- Connections format: `"connections": [{"id": "conn1", "from_node": "node1", "to_node": "node2", "output_key": "result", "conversion_function": "lambda input_data: input_data['data']"}]`
+- Even simple connections need conversion functions because node input/output parameter names usually differ
 
 **Output:** Complete JSON workflow only. Start with `{` and end with `}`. No explanations or markdown.
