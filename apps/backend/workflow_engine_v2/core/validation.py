@@ -44,6 +44,22 @@ def validate_workflow(workflow: Workflow) -> None:
             if hasattr(spec, "validate_configuration"):
                 ok = spec.validate_configuration(n.configurations)
                 if not ok:
+                    # Log detailed validation failure info
+                    required_keys = set()
+                    if hasattr(spec, "configurations"):
+                        for key, value in spec.configurations.items():
+                            if isinstance(value, dict) and value.get("required", False):
+                                required_keys.add(key)
+
+                    present_keys = set(n.configurations.keys())
+                    missing_keys = required_keys - present_keys
+
+                    logger.error(
+                        f"❌ Configuration validation failed for {ntype}.{n.subtype} (node {n.id})\n"
+                        f"   Required keys: {required_keys}\n"
+                        f"   Present keys: {present_keys}\n"
+                        f"   Missing keys: {missing_keys}"
+                    )
                     errors.append(f"Invalid configuration for node {n.id} ({ntype}.{n.subtype})")
             else:
                 # Spec loaded but doesn't have validate_configuration (stub spec)

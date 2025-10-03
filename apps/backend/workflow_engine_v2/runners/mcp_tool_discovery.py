@@ -214,6 +214,56 @@ def _get_fallback_tool_schemas() -> Dict[str, List[Dict[str, Any]]]:
         ],
         ToolSubtype.NOTION_MCP_TOOL.value: [
             {
+                "name": "notion_search",
+                "description": "Search for pages and databases in Notion",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search query string",
+                        },
+                        "filter": {
+                            "type": "object",
+                            "description": "Filter by object type (page, database)",
+                        },
+                    },
+                    "required": ["query"],
+                },
+            },
+            {
+                "name": "notion_get_page",
+                "description": "Get a Notion page by ID",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "page_id": {
+                            "type": "string",
+                            "description": "Notion page ID",
+                        },
+                    },
+                    "required": ["page_id"],
+                },
+            },
+            {
+                "name": "notion_update_page",
+                "description": "Update properties of a Notion page",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "page_id": {
+                            "type": "string",
+                            "description": "Notion page ID",
+                        },
+                        "properties": {
+                            "type": "object",
+                            "description": "Page properties to update",
+                        },
+                    },
+                    "required": ["page_id", "properties"],
+                },
+            },
+            {
                 "name": "notion_create_page",
                 "description": "Create a new page in Notion",
                 "parameters": {
