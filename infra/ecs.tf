@@ -228,8 +228,8 @@ resource "aws_ecs_task_definition" "api_gateway" {
           valueFrom = aws_ssm_parameter.supabase_secret_key.arn
         },
         {
-          name      = "SUPABASE_ANON_KEY"
-          valueFrom = aws_ssm_parameter.supabase_anon_key.arn
+          name      = "SUPABASE_PUB_KEY"
+          valueFrom = aws_ssm_parameter.supabase_pub_key.arn
         },
         {
           name      = "NOTION_CLIENT_ID"
@@ -377,6 +377,10 @@ resource "aws_ecs_task_definition" "workflow_engine" {
         {
           name      = "SUPABASE_SECRET_KEY"
           valueFrom = aws_ssm_parameter.supabase_secret_key.arn
+        },
+        {
+          name      = "SUPABASE_PUB_KEY"
+          valueFrom = aws_ssm_parameter.supabase_pub_key.arn
         },
         {
           name      = "DATABASE_URL"
@@ -728,8 +732,8 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
           valueFrom = aws_ssm_parameter.supabase_secret_key.arn
         },
         {
-          name      = "SUPABASE_ANON_KEY"
-          valueFrom = aws_ssm_parameter.supabase_anon_key.arn
+          name      = "SUPABASE_PUB_KEY"
+          valueFrom = aws_ssm_parameter.supabase_pub_key.arn
         },
         {
           name      = "DATABASE_URL"

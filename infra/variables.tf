@@ -135,8 +135,8 @@ variable "supabase_secret_key" {
   sensitive   = true
 }
 
-variable "supabase_anon_key" {
-  description = "Supabase anonymous key for RLS operations"
+variable "supabase_pub_key" {
+  description = "Supabase public key for RLS operations"
   type        = string
   sensitive   = true
 }

@@ -20,7 +20,7 @@ class TestConfig:
 
     # Supabase配置
     supabase_url = os.getenv("SUPABASE_URL")
-    supabase_anon_key = os.getenv("SUPABASE_ANON_KEY")
+    supabase_public_key = os.getenv("SUPABASE_PUB_KEY")
     test_email = os.getenv("TEST_USER_EMAIL")
     test_password = os.getenv("TEST_USER_PASSWORD")
 
@@ -36,7 +36,7 @@ class TestConfig:
     @classmethod
     def has_auth_config(cls) -> bool:
         """检查是否有完整的认证配置"""
-        return all([cls.supabase_url, cls.supabase_anon_key, cls.test_email, cls.test_password])
+        return all([cls.supabase_url, cls.supabase_public_key, cls.test_email, cls.test_password])
 
     @classmethod
     def get_auth_headers(cls, token: Optional[str] = None) -> Dict[str, str]:

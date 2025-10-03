@@ -48,7 +48,8 @@ def _normalize_status(status: str) -> str:
         pass
     # Legacy mappings
     legacy_map = {
-        "DRAFT": DeploymentStatus.PENDING.value,
+        "IDLE": DeploymentStatus.PENDING.value,
+        "DRAFT": DeploymentStatus.PENDING.value,  # Legacy support
         "DEPLOYING": DeploymentStatus.PENDING.value,
         "UNDEPLOYING": DeploymentStatus.PENDING.value,
         "DEPLOYMENT_FAILED": DeploymentStatus.FAILED.value,

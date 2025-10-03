@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { API_PATHS } from '../config';
+import { ExecutionStatusEnum } from '@/types/workflow-enums';
 import { apiRequest } from '../fetcher';
 
 export interface NodeExecution {
@@ -15,7 +16,8 @@ export interface NodeExecution {
 export interface ExecutionStatus {
   execution_id: string;
   workflow_id: string;
-  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'SUCCESS' | 'ERROR';
+  // Use centralized enum, allow string for backward-compat (e.g. 'FAILED')
+  status: ExecutionStatusEnum | string;
   start_time?: string | number;
   end_time?: string | number;
   error?: string;
@@ -44,7 +46,7 @@ export function useWorkflowExecution() {
   const [error, setError] = useState<string | null>(null);
 
   const executeWorkflow = useCallback(async (
-    workflowId: string, 
+    workflowId: string,
     request: ExecutionRequest = {}
   ) => {
     if (!session?.access_token) {
@@ -53,7 +55,7 @@ export function useWorkflowExecution() {
 
     setIsExecuting(true);
     setError(null);
-    
+
     try {
       const result = await apiRequest(
         API_PATHS.WORKFLOW_EXECUTE(workflowId),
@@ -61,7 +63,7 @@ export function useWorkflowExecution() {
         'POST',
         request
       );
-      
+
       if (result.execution_id) {
         setExecutionId(result.execution_id);
         return result.execution_id;
@@ -126,7 +128,7 @@ export function useExecutionStatus(
         session.access_token,
         'GET'
       );
-      
+
       return result as ExecutionStatus;
     } catch (err) {
       const error = err as Error;
@@ -169,19 +171,34 @@ export function useExecutionStatus(
     const poll = async () => {
       try {
         const latestStatus = await fetchStatus();
-        
+
         if (!mountedRef.current) return;
-        
+
         if (latestStatus) {
           setStatus(latestStatus);
-          
-          // Check if execution is complete (handle both COMPLETED and SUCCESS)
-          if (['COMPLETED', 'SUCCESS', 'FAILED', 'CANCELLED', 'ERROR'].includes(latestStatus.status)) {
+
+          // Check if execution is complete
+          const stopStatuses = new Set<string>([
+            ExecutionStatusEnum.Completed,
+            ExecutionStatusEnum.Success,
+            ExecutionStatusEnum.Error,
+            ExecutionStatusEnum.Cancelled,
+            ExecutionStatusEnum.Canceled,
+            // Backward compatibility
+            'FAILED',
+          ]);
+          if (stopStatuses.has(latestStatus.status)) {
             stopPolling();
-            
-            if (latestStatus.status === 'COMPLETED' || latestStatus.status === 'SUCCESS') {
+
+            if (
+              latestStatus.status === ExecutionStatusEnum.Completed ||
+              latestStatus.status === ExecutionStatusEnum.Success
+            ) {
               onComplete?.(latestStatus);
-            } else if (latestStatus.status === 'FAILED' || latestStatus.status === 'ERROR') {
+            } else if (
+              latestStatus.status === 'FAILED' ||
+              latestStatus.status === ExecutionStatusEnum.Error
+            ) {
               const errorMsg = latestStatus.error || latestStatus.error_message || 'Execution failed';
               setError(errorMsg);
               onError?.(errorMsg);
@@ -190,7 +207,7 @@ export function useExecutionStatus(
         }
       } catch (err) {
         if (!mountedRef.current) return;
-        
+
         const error = err as Error;
         const errorMsg = error.message || 'Failed to fetch status';
         setError(errorMsg);
@@ -220,7 +237,7 @@ export function useExecutionStatus(
   // Cleanup on unmount
   useEffect(() => {
     mountedRef.current = true;
-    
+
     return () => {
       mountedRef.current = false;
       stopPolling();
@@ -250,14 +267,14 @@ export function useExecutionCancel() {
 
     setIsCancelling(true);
     setError(null);
-    
+
     try {
       const result = await apiRequest(
         `${API_PATHS.EXECUTION(executionId)}/cancel`,
         session.access_token,
         'POST'
       );
-      
+
       return result;
     } catch (err) {
       const error = err as Error;

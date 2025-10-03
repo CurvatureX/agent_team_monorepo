@@ -2,10 +2,10 @@
 
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  CheckCircle2, 
-  XCircle, 
-  Clock, 
+import {
+  CheckCircle2,
+  XCircle,
+  Clock,
   AlertCircle,
   Activity,
   ChevronDown,
@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import type { ExecutionStatus } from '@/lib/api/hooks/useExecutionApi';
+import { ExecutionStatusEnum } from '@/types/workflow-enums';
 
 interface ExecutionStatusPanelProps {
   status: ExecutionStatus | null;
@@ -37,15 +38,24 @@ export const ExecutionStatusPanel: React.FC<ExecutionStatusPanelProps> = ({
 
   const getStatusIcon = (execStatus?: string) => {
     switch (execStatus) {
-      case 'COMPLETED':
+      case ExecutionStatusEnum.Completed:
+      case ExecutionStatusEnum.Success:
         return <CheckCircle2 className="w-4 h-4 text-green-500" />;
       case 'FAILED':
+      case ExecutionStatusEnum.Error:
         return <XCircle className="w-4 h-4 text-red-500" />;
-      case 'RUNNING':
+      case ExecutionStatusEnum.Running:
         return <Activity className="w-4 h-4 text-blue-500 animate-pulse" />;
-      case 'PENDING':
+      case ExecutionStatusEnum.Pending:
+      case ExecutionStatusEnum.New:
+      case ExecutionStatusEnum.Waiting:
         return <Clock className="w-4 h-4 text-yellow-500" />;
-      case 'CANCELLED':
+      case ExecutionStatusEnum.Cancelled:
+      case ExecutionStatusEnum.Canceled:
+      case ExecutionStatusEnum.Paused:
+      case ExecutionStatusEnum.WaitingForHuman:
+      case ExecutionStatusEnum.Timeout:
+      case ExecutionStatusEnum.Skipped:
         return <AlertCircle className="w-4 h-4 text-gray-500" />;
       default:
         return <Clock className="w-4 h-4 text-gray-400" />;
@@ -54,15 +64,24 @@ export const ExecutionStatusPanel: React.FC<ExecutionStatusPanelProps> = ({
 
   const getStatusColor = (execStatus?: string) => {
     switch (execStatus) {
-      case 'COMPLETED':
+      case ExecutionStatusEnum.Completed:
+      case ExecutionStatusEnum.Success:
         return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
       case 'FAILED':
+      case ExecutionStatusEnum.Error:
         return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
-      case 'RUNNING':
+      case ExecutionStatusEnum.Running:
         return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
-      case 'PENDING':
+      case ExecutionStatusEnum.Pending:
+      case ExecutionStatusEnum.New:
+      case ExecutionStatusEnum.Waiting:
         return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
-      case 'CANCELLED':
+      case ExecutionStatusEnum.Cancelled:
+      case ExecutionStatusEnum.Canceled:
+      case ExecutionStatusEnum.Paused:
+      case ExecutionStatusEnum.WaitingForHuman:
+      case ExecutionStatusEnum.Timeout:
+      case ExecutionStatusEnum.Skipped:
         return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
       default:
         return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
@@ -72,7 +91,7 @@ export const ExecutionStatusPanel: React.FC<ExecutionStatusPanelProps> = ({
   const formatTime = (time?: string | number) => {
     if (!time) return 'N/A';
     // Handle both Unix timestamp (seconds) and ISO string
-    const date = typeof time === 'number' 
+    const date = typeof time === 'number'
       ? new Date(time * 1000)  // Unix timestamp in seconds
       : new Date(time);
     return date.toLocaleTimeString();
@@ -80,25 +99,25 @@ export const ExecutionStatusPanel: React.FC<ExecutionStatusPanelProps> = ({
 
   const calculateDuration = (start?: string | number, end?: string | number) => {
     if (!start) return 'N/A';
-    
+
     // Handle both Unix timestamp (seconds) and ISO string
-    const startTime = typeof start === 'number' 
-      ? start * 1000  
+    const startTime = typeof start === 'number'
+      ? start * 1000
       : new Date(start).getTime();
-    
-    const endTime = end 
+
+    const endTime = end
       ? (typeof end === 'number' ? end * 1000 : new Date(end).getTime())
       : Date.now();
-    
+
     const duration = endTime - startTime;
-    
+
     const seconds = Math.floor(duration / 1000);
     if (seconds < 60) return `${seconds}s`;
-    
+
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
     if (minutes < 60) return `${minutes}m ${remainingSeconds}s`;
-    
+
     const hours = Math.floor(minutes / 60);
     const remainingMinutes = minutes % 60;
     return `${hours}h ${remainingMinutes}m`;
