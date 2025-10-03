@@ -28,9 +28,12 @@ _cache_ttl: int = 300  # 5 minutes
 
 
 def _get_api_gateway_url() -> str:
-    """Get API Gateway URL from environment."""
-    # Default to localhost for development, can be overridden
-    return os.getenv("MCP_SERVER_URL", "http://localhost:8000")
+    """Get API Gateway URL from environment.
+
+    Uses API_GATEWAY_URL which is already configured in ECS for service discovery.
+    Defaults to localhost for local development and docker-compose.
+    """
+    return os.getenv("API_GATEWAY_URL", "http://localhost:8000")
 
 
 async def fetch_mcp_tools_from_api_gateway() -> Dict[str, List[Dict[str, Any]]]:
@@ -51,7 +54,8 @@ async def fetch_mcp_tools_from_api_gateway() -> Dict[str, List[Dict[str, Any]]]:
         return _mcp_tools_cache
 
     api_gateway_url = _get_api_gateway_url()
-    tools_endpoint = f"{api_gateway_url}/api/v1/mcp/tools"
+    # Use internal endpoint that doesn't require API key authentication
+    tools_endpoint = f"{api_gateway_url}/api/v1/mcp/tools/internal"
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -114,8 +118,8 @@ def _get_fallback_tool_schemas() -> Dict[str, List[Dict[str, Any]]]:
     These are minimal schemas - full schemas should be fetched from API Gateway.
     """
     return {
-        ToolSubtype.SLACK_MCP_TOOL.value: {
-            "slack_send_message": {
+        ToolSubtype.SLACK_MCP_TOOL.value: [
+            {
                 "name": "slack_send_message",
                 "description": "Send a message to a Slack channel or direct message",
                 "parameters": {
@@ -137,7 +141,7 @@ def _get_fallback_tool_schemas() -> Dict[str, List[Dict[str, Any]]]:
                     "required": ["channel", "text"],
                 },
             },
-            "slack_list_channels": {
+            {
                 "name": "slack_list_channels",
                 "description": "List all channels in the Slack workspace",
                 "parameters": {
@@ -155,7 +159,7 @@ def _get_fallback_tool_schemas() -> Dict[str, List[Dict[str, Any]]]:
                     "required": [],
                 },
             },
-            "slack_get_user_info": {
+            {
                 "name": "slack_get_user_info",
                 "description": "Get information about a Slack user",
                 "parameters": {
@@ -169,7 +173,7 @@ def _get_fallback_tool_schemas() -> Dict[str, List[Dict[str, Any]]]:
                     "required": ["user_id"],
                 },
             },
-            "slack_get_channel_history": {
+            {
                 "name": "slack_get_channel_history",
                 "description": "Get message history from a Slack channel",
                 "parameters": {
@@ -187,9 +191,9 @@ def _get_fallback_tool_schemas() -> Dict[str, List[Dict[str, Any]]]:
                     "required": ["channel"],
                 },
             },
-        },
-        ToolSubtype.DISCORD_MCP_TOOL.value: {
-            "discord_send_message": {
+        ],
+        ToolSubtype.DISCORD_MCP_TOOL.value: [
+            {
                 "name": "discord_send_message",
                 "description": "Send a message to a Discord channel",
                 "parameters": {
@@ -207,9 +211,9 @@ def _get_fallback_tool_schemas() -> Dict[str, List[Dict[str, Any]]]:
                     "required": ["channel_id", "content"],
                 },
             },
-        },
-        ToolSubtype.NOTION_MCP_TOOL.value: {
-            "notion_create_page": {
+        ],
+        ToolSubtype.NOTION_MCP_TOOL.value: [
+            {
                 "name": "notion_create_page",
                 "description": "Create a new page in Notion",
                 "parameters": {
@@ -231,7 +235,7 @@ def _get_fallback_tool_schemas() -> Dict[str, List[Dict[str, Any]]]:
                     "required": ["parent_id", "title"],
                 },
             },
-            "notion_query_database": {
+            {
                 "name": "notion_query_database",
                 "description": "Query a Notion database",
                 "parameters": {
@@ -249,9 +253,9 @@ def _get_fallback_tool_schemas() -> Dict[str, List[Dict[str, Any]]]:
                     "required": ["database_id"],
                 },
             },
-        },
-        ToolSubtype.GOOGLE_CALENDAR_MCP_TOOL.value: {
-            "calendar_create_event": {
+        ],
+        ToolSubtype.GOOGLE_CALENDAR_MCP_TOOL.value: [
+            {
                 "name": "calendar_create_event",
                 "description": "Create a new event in Google Calendar",
                 "parameters": {
@@ -282,7 +286,7 @@ def _get_fallback_tool_schemas() -> Dict[str, List[Dict[str, Any]]]:
                     "required": ["summary", "start_time", "end_time"],
                 },
             },
-            "calendar_list_events": {
+            {
                 "name": "calendar_list_events",
                 "description": "List events from Google Calendar",
                 "parameters": {
@@ -304,9 +308,9 @@ def _get_fallback_tool_schemas() -> Dict[str, List[Dict[str, Any]]]:
                     "required": [],
                 },
             },
-        },
-        ToolSubtype.FIRECRAWL_MCP_TOOL.value: {
-            "firecrawl_scrape": {
+        ],
+        ToolSubtype.FIRECRAWL_MCP_TOOL.value: [
+            {
                 "name": "firecrawl_scrape",
                 "description": "Scrape content from a website URL",
                 "parameters": {
@@ -325,7 +329,7 @@ def _get_fallback_tool_schemas() -> Dict[str, List[Dict[str, Any]]]:
                     "required": ["url"],
                 },
             },
-        },
+        ],
     }
 
 
