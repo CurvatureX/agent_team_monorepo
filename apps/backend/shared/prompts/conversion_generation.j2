@@ -1,0 +1,32 @@
+## Conversion Function Generation
+
+You are a Python expert generating data transformation functions for the workflow engine.
+
+**Rules**:
+- Implement a function named `convert` that accepts a single argument `input_data: Dict[str, Any]`.
+- `input_data` is a dictionary that always contains these keys:
+  - `"data"`: the primary payload from the source node.
+  - `"value"` and `"output"`: aliases that may contain the same data.
+- Return a JSON-serializable object that can be assigned directly to the destination node's `result` input.
+- Always use the `def convert(input_data: Dict[str, Any]) -> Dict[str, Any]:` structure with a return statement.
+- Never import modules or reference external variables.
+- If no transformation is required, use `return input_data.get("data", input_data)`.
+- Output **only** the Python function. No explanations. No markdown.
+
+---
+
+### Source Node Context
+{{ source_context | tojsonpretty }}
+
+### Destination Node Context
+{{ target_context | tojsonpretty }}
+
+### Connection Details
+{{ connection_info | tojsonpretty }}
+
+{% if intent_summary %}
+### Workflow Intent
+{{ intent_summary }}
+{% endif %}
+
+Generate the conversion function now.

@@ -9,7 +9,7 @@ import json
 import logging
 import time
 import uuid
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -27,6 +27,11 @@ from .state import (
 )
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_CONVERSION_FUNCTION = (
+    "def convert(input_data: Dict[str, Any]) -> Dict[str, Any]:\n"
+    "    return input_data.get('data', input_data)"
+)
 
 
 class WorkflowAgentNodes:
@@ -188,217 +193,199 @@ class WorkflowAgentNodes:
 
         return "\n".join(context_parts)
 
-    def _optimize_node_parameters(self, node: dict, node_spec: dict = None) -> dict:
-        """
-        优化节点参数：只保留必需参数和用户指定的参数
-        注意：模板变量保持原样，不进行类型转换
+    async def _prefetch_node_specs_for_workflow(self, workflow: dict):
+        """Pre-fetch MCP specifications for all nodes involved in the workflow."""
+        try:
+            nodes = workflow.get("nodes", [])
 
-        Args:
-            node: 节点数据
-            node_spec: 节点规格（从MCP获取的详细信息）
-
-        Returns:
-            优化后的节点数据
-        """
-        if not node.get("parameters"):
-            return node
-
-        optimized_params = {}
-        current_params = node["parameters"]
-
-        # 如果有节点规格，使用它来确定必需参数
-        if node_spec and "parameters" in node_spec:
-            for param_spec in node_spec["parameters"]:
-                param_name = param_spec["name"]
-                param_required = param_spec.get("required", False)
-                param_desc = param_spec.get("description", "")
-
-                # 检查当前参数中是否有这个参数
-                if param_name in current_params:
-                    param_value = current_params[param_name]
-
-                    # 必需参数或有明确值的参数
-                    if param_required or (
-                        param_value and param_value != param_spec.get("default_value")
-                    ):
-                        # 保留参数值，如果已经是模板变量格式则保持不变
-                        optimized_params[param_name] = param_value
-        else:
-            # 没有规格信息时，进行基本优化
-            for param_name, param_value in current_params.items():
-                # 跳过真正的空值
-                if (
-                    param_value is None
-                    or param_value == ""
-                    or (isinstance(param_value, list) and len(param_value) == 0)
-                    or (isinstance(param_value, dict) and len(param_value) == 0)
-                ):
+            nodes_to_fetch: List[Dict[str, Any]] = []
+            for node in nodes:
+                node_type = node.get("type")
+                node_subtype = node.get("subtype")
+                if not node_type or not node_subtype:
                     continue
 
-                # 保留非空参数
-                optimized_params[param_name] = param_value
+                cache_key = f"{node_type}:{node_subtype}"
+                if cache_key in self.node_specs_cache:
+                    continue
 
-        node["parameters"] = optimized_params
-        return node
+                nodes_to_fetch.append({"node_type": node_type, "subtype": node_subtype})
 
-    def _fix_workflow_parameters(self, workflow: dict) -> dict:
-        """
-        修正工作流中所有节点的参数，使用 MCP 提供的 ParameterType 信息。
-        这只是兜底逻辑，LLM 应该直接根据 MCP ParameterType 生成正确的 mock values。
-        
-        注意：AI_AGENT 节点会被跳过，因为它们的 system_prompt 已经通过 
-        _enhance_ai_agent_prompts_with_llm 方法进行了增强。
-
-        Args:
-            workflow: 完整的工作流数据
-
-        Returns:
-            修正后的工作流数据
-        """
-        if "nodes" not in workflow:
-            return workflow
-
-        for node in workflow["nodes"]:
-            # Skip AI_AGENT nodes entirely - their prompts are already enhanced
-            if node.get("type") == "AI_AGENT":
-                logger.debug(f"Skipping parameter fix for AI_AGENT node {node.get('id')} - already enhanced")
-                continue
-            self._fix_node_parameters(node)
-
-        return workflow
-
-    def _fix_node_parameters(self, node: dict) -> dict:
-        """
-        修正单个节点的参数，使用 MCP 节点规格中的 ParameterType 信息。
-
-        重要：LLM 应该直接根据 MCP 返回的 ParameterType 生成正确的 mock values:
-        - type: "integer" -> 生成 123, 456 等整数
-        - type: "boolean" -> 生成 true/false
-        - type: "string" -> 生成 "example-value" 等字符串
-        - type: "float" -> 生成 0.7, 1.5 等浮点数
-
-        Args:
-            node: 节点数据
-
-        Returns:
-            修正后的节点数据
-        """
-        if not node.get("parameters"):
-            return node
-
-        # Get node spec from cache
-        node_key = f"{node.get('type')}:{node.get('subtype')}"
-        node_spec = self.node_specs_cache.get(node_key)
-
-        parameters = node["parameters"]
-
-        for param_name, param_value in list(parameters.items()):
-            # Get parameter type from MCP spec if available
-            param_type = None
-            param_required = False
-            if node_spec and "parameters" in node_spec:
-                for param_spec in node_spec["parameters"]:
-                    if param_spec.get("name") == param_name:
-                        param_type = param_spec.get("type", "string")
-                        param_required = param_spec.get("required", False)
-                        break
-
-            # Handle reference objects using MCP-provided ParameterType
-            if isinstance(param_value, dict) and ("$ref" in param_value or "$expr" in param_value):
-                logger.warning(f"LLM generated reference object for '{param_name}': {param_value}")
-                logger.warning(
-                    f"LLM should have used MCP ParameterType '{param_type}' to generate a proper mock value!"
-                )
-
-                if param_type:
-                    logger.info(
-                        f"Using MCP-provided ParameterType '{param_type}' for parameter '{param_name}'"
-                    )
-                    parameters[param_name] = self._generate_proper_value_for_type(param_type)
-                else:
-                    # Fallback only if MCP type not available
-                    logger.warning(f"No MCP type info for '{param_name}', using fallback")
-                    parameters[param_name] = "example-value"
-
-            # Handle template variables (another form of placeholder)
-            elif isinstance(param_value, str):
-                # Check for common placeholder patterns
-                is_placeholder = (
-                    ("{{" in param_value and "}}" in param_value)  # Template variables
-                    or ("${" in param_value and "}" in param_value)  # Template variables
-                    or ("<" in param_value and ">" in param_value)  # Placeholders like <VALUE>
-                    or param_value.startswith("example-value")  # Generated example values
-                    or param_value.startswith("mock-")  # Mock values
-                )
-
-                if is_placeholder:
-                    logger.warning(f"LLM generated placeholder for '{param_name}': {param_value}")
-                    if param_type:
-                        logger.info(f"Fixing with MCP ParameterType '{param_type}'")
-                        parameters[param_name] = self._generate_proper_value_for_type(param_type)
-                    else:
-                        # Fallback
-                        logger.warning(f"No MCP type for '{param_name}', using fallback")
-                        parameters[param_name] = "example-value"
-
-            # Handle invalid zeros for ID fields
-            elif isinstance(param_value, int) and param_value == 0:
-                if any(keyword in param_name.lower() for keyword in ["number", "id", "count"]):
-                    logger.warning(f"LLM generated invalid zero for '{param_name}'")
-                    import random
-
-                    parameters[param_name] = random.randint(100, 99999999)
-
-        return node
-
-    async def _prefetch_node_specs_for_workflow(self, workflow: dict):
-        """Pre-fetch MCP specifications for all nodes that AI Agents connect to."""
-        try:
-            connections = workflow.get("connections", {})
-            nodes = workflow.get("nodes", [])
-            node_map = {node["id"]: node for node in nodes}
-            
-            # Find all node types that AI Agents connect to
-            nodes_to_fetch = set()
-            for node in nodes:
-                if node.get("type") == "AI_AGENT":
-                    node_id = node["id"]
-                    if node_id in connections:
-                        node_connections = connections[node_id].get("connection_types", {})
-                        main_connections = node_connections.get("main", {}).get("connections", [])
-                        
-                        for conn in main_connections:
-                            next_node_id = conn.get("node")
-                            if next_node_id and next_node_id in node_map:
-                                next_node = node_map[next_node_id]
-                                node_type = next_node.get("type")
-                                node_subtype = next_node.get("subtype")
-                                if node_type and node_subtype:
-                                    nodes_to_fetch.add(f"{node_type}:{node_subtype}")
-            
-            # Fetch all needed specs in one call
-            if nodes_to_fetch and hasattr(self, 'mcp_client'):
-                logger.info(f"Pre-fetching MCP specs for nodes: {nodes_to_fetch}")
+            if nodes_to_fetch and hasattr(self, "mcp_client"):
+                pretty_list = [f"{n['node_type']}:{n['subtype']}" for n in nodes_to_fetch]
+                logger.info(f"Pre-fetching MCP specs for nodes: {pretty_list}")
                 try:
                     spec_result = await self.mcp_client.call_tool(
                         "get_node_details",
-                        {"node_types": list(nodes_to_fetch)}
+                        {
+                            "nodes": nodes_to_fetch,
+                            "include_examples": True,
+                            "include_schemas": True,
+                        },
                     )
-                    if spec_result and "nodes" in spec_result:
-                        nodes_list = spec_result.get("nodes", [])
-                        for node_spec in nodes_list:
-                            if "error" not in node_spec:
-                                node_type = node_spec.get("node_type")
-                                subtype = node_spec.get("subtype")
-                                if node_type and subtype:
-                                    cache_key = f"{node_type}:{subtype}"
-                                    self.node_specs_cache[cache_key] = node_spec
-                                    logger.info(f"Cached MCP spec for {cache_key}")
+
+                    nodes_list: List[Dict[str, Any]] = []
+                    if isinstance(spec_result, dict):
+                        if "nodes" in spec_result:
+                            nodes_list = spec_result.get("nodes", [])
+                        elif "result" in spec_result and isinstance(
+                            spec_result["result"], dict
+                        ):
+                            nodes_list = spec_result["result"].get("nodes", [])
+                    elif isinstance(spec_result, list):
+                        nodes_list = spec_result
+
+                    for node_spec in nodes_list:
+                        if not isinstance(node_spec, dict) or "error" in node_spec:
+                            continue
+                        node_type = node_spec.get("node_type")
+                        subtype = node_spec.get("subtype")
+                        if node_type and subtype:
+                            cache_key = f"{node_type}:{subtype}"
+                            self.node_specs_cache[cache_key] = node_spec
+                            logger.info(f"Cached MCP spec for {cache_key}")
                 except Exception as e:
                     logger.warning(f"Failed to pre-fetch node specs from MCP: {e}")
         except Exception as e:
             logger.warning(f"Error in pre-fetch node specs: {e}")
-    
+
+    async def _hydrate_nodes_from_specs(self, workflow: dict):
+        """Ensure every node includes configuration and param defaults derived from MCP specs."""
+        try:
+            nodes = workflow.get("nodes", [])
+            for node in nodes:
+                spec = await self._get_or_fetch_node_spec(node)
+                if not spec:
+                    continue
+                self._apply_spec_defaults(node, spec)
+        except Exception as e:
+            logger.warning(f"Error hydrating nodes from specs: {e}")
+
+    def _apply_spec_defaults(self, node: Dict[str, Any], spec: Dict[str, Any]) -> None:
+        """Merge configuration/input/output schemas into the node with sensible defaults."""
+
+        config_schema = spec.get("configurations") or {}
+        input_schema = spec.get("input_params_schema") or {}
+        output_schema = spec.get("output_params_schema") or {}
+
+        node.setdefault("configurations", {})
+        node.setdefault("input_params", {})
+        node.setdefault("output_params", {})
+
+        self._merge_schema_defaults(node["configurations"], config_schema)
+        self._merge_schema_defaults(node["input_params"], input_schema)
+        self._merge_schema_defaults(node["output_params"], output_schema)
+
+        if spec.get("attached_nodes") and "attached_nodes" not in node:
+            node["attached_nodes"] = spec["attached_nodes"]
+
+    def _merge_schema_defaults(self, target: Dict[str, Any], schema: Dict[str, Any]) -> None:
+        for name, definition in schema.items():
+            if not isinstance(definition, dict):
+                target.setdefault(name, definition)
+                continue
+
+            desired_type = definition.get("type")
+            default_value = definition.get("default")
+            if default_value is None and definition.get("enum_values"):
+                default_value = definition["enum_values"][0]
+            if default_value is None:
+                default_value = self._example_for_type(desired_type)
+
+            if name not in target or target[name] in (None, "", []):
+                target[name] = default_value
+            else:
+                coerced = self._coerce_value(desired_type, target[name])
+                target[name] = coerced
+
+    @staticmethod
+    def _coerce_value(expected_type: Optional[str], value: Any) -> Any:
+        """Best-effort coercion of simple scalar types."""
+
+        if value is None or not expected_type:
+            return value
+
+        normalized = str(expected_type).lower()
+        try:
+            if normalized in {"integer", "int"}:
+                if isinstance(value, bool):
+                    return int(value)
+                return int(value)
+            if normalized in {"float", "number"}:
+                if isinstance(value, bool):
+                    return float(int(value))
+                return float(value)
+            if normalized in {"boolean", "bool"}:
+                if isinstance(value, str):
+                    return value.lower() in {"true", "1", "yes"}
+                return bool(value)
+            if normalized in {"json", "object", "dict"}:
+                if isinstance(value, str):
+                    try:
+                        return json.loads(value)
+                    except Exception:
+                        return {}
+                return value if isinstance(value, dict) else {}
+            if normalized in {"array", "list"}:
+                if isinstance(value, str):
+                    try:
+                        parsed = json.loads(value)
+                        return parsed if isinstance(parsed, list) else []
+                    except Exception:
+                        return []
+                return value if isinstance(value, list) else []
+        except Exception:
+            return value
+
+        if isinstance(value, str):
+            return value
+
+        return str(value)
+
+    @staticmethod
+    def _example_for_type(type_name: Optional[str]) -> Any:
+        if not type_name:
+            return ""
+
+        normalized = str(type_name).lower()
+        if normalized in {"integer", "int"}:
+            return 0
+        if normalized in {"float", "number"}:
+            return 0.0
+        if normalized in {"boolean", "bool"}:
+            return False
+        if normalized in {"json", "object", "dict"}:
+            return {}
+        if normalized in {"array", "list"}:
+            return []
+
+        return ""
+
+    def _ensure_workflow_metadata(self, workflow: dict, state: WorkflowState) -> None:
+        """Populate metadata and triggers required by workflow_engine v2."""
+
+        metadata = workflow.get("metadata") or {}
+        workflow_name = workflow.get("name", metadata.get("name", "Generated Workflow"))
+
+        metadata.setdefault("id", workflow.get("id", str(uuid.uuid4())))
+        metadata.setdefault("name", workflow_name)
+        metadata.setdefault("description", workflow.get("description", metadata.get("description", "")))
+        metadata.setdefault("tags", workflow.get("tags", metadata.get("tags", [])))
+        metadata.setdefault("version", metadata.get("version", "1.0"))
+        metadata["deployment_status"] = "pending"
+        metadata.setdefault("created_by", state.get("user_id", "workflow_agent"))
+        metadata.setdefault("created_time", int(time.time() * 1000))
+
+        workflow["metadata"] = metadata
+        workflow["id"] = metadata["id"]
+
+        triggers = workflow.get("triggers")
+        if not triggers:
+            triggers = [node.get("id") for node in workflow.get("nodes", []) if node.get("type") == "TRIGGER" and node.get("id")]
+            if not triggers:
+                logger.warning("Workflow metadata hydration: no TRIGGER nodes found; triggers list will be empty")
+            workflow["triggers"] = triggers
+
     async def _enhance_ai_agent_prompts_with_llm(self, workflow: dict) -> dict:
         """
         Enhance AI Agent node prompts using LLM to ensure output format matches the next node's expected input.
@@ -407,38 +394,45 @@ class WorkflowAgentNodes:
         try:
             logger.info("Enhancing AI Agent prompts with LLM assistance (concurrent)")
             
-            # Get all connections to understand the workflow flow
-            connections = workflow.get("connections", {})
+            connections = workflow.get("connections") or []
             nodes = workflow.get("nodes", [])
-            
-            # Create a map of node IDs to nodes for quick lookup
-            node_map = {node["id"]: node for node in nodes}
+
+            node_map = {
+                node.get("id"): node
+                for node in nodes
+                if node.get("id")
+            }
             
             # Collect all AI Agent nodes that need enhancement
             enhancement_tasks = []
             ai_agent_nodes = []
             
             for node in nodes:
-                if node.get("type") == "AI_AGENT":
-                    node_id = node["id"]
-                    
-                    # Find what this AI Agent connects to
-                    if node_id in connections:
-                        node_connections = connections[node_id].get("connection_types", {})
-                        main_connections = node_connections.get("main", {}).get("connections", [])
-                        
-                        if main_connections:
-                            # Get the first connected node (primary output target)
-                            next_node_id = main_connections[0].get("node")
-                            if next_node_id and next_node_id in node_map:
-                                next_node = node_map[next_node_id]
-                                
-                                # Create async task for enhancing this AI Agent's prompt
-                                task = self._enhance_single_ai_agent_prompt(
-                                    node, next_node, node_id, next_node_id
-                                )
-                                enhancement_tasks.append(task)
-                                ai_agent_nodes.append((node, node_id))
+                if node.get("type") != "AI_AGENT":
+                    continue
+
+                node_id = node.get("id")
+                if not node_id:
+                    continue
+
+                outgoing = [
+                    conn for conn in connections if conn.get("from_node") == node_id
+                ]
+
+                if not outgoing:
+                    continue
+
+                next_node_id = outgoing[0].get("to_node")
+                if not next_node_id or next_node_id not in node_map:
+                    continue
+
+                next_node = node_map[next_node_id]
+
+                task = self._enhance_single_ai_agent_prompt(
+                    node, next_node, node_id, next_node_id
+                )
+                enhancement_tasks.append(task)
+                ai_agent_nodes.append((node, node_id))
             
             if enhancement_tasks:
                 # Run enhancement tasks with controlled concurrency
@@ -549,48 +543,53 @@ Return ONLY the enhanced system prompt, no explanations."""
         try:
             logger.info("Enhancing AI Agent prompts based on connected nodes")
             
-            # Get all connections to understand the workflow flow
-            connections = workflow.get("connections", {})
+            connections = workflow.get("connections") or []
             nodes = workflow.get("nodes", [])
-            
-            # Create a map of node IDs to nodes for quick lookup
-            node_map = {node["id"]: node for node in nodes}
+
+            node_map = {
+                node.get("id"): node
+                for node in nodes
+                if node.get("id")
+            }
             
             # Process each AI Agent node
             for node in nodes:
-                if node.get("type") == "AI_AGENT":
-                    node_id = node["id"]
-                    
-                    # Find what this AI Agent connects to
-                    if node_id in connections:
-                        node_connections = connections[node_id].get("connection_types", {})
-                        main_connections = node_connections.get("main", {}).get("connections", [])
-                        
-                        if main_connections:
-                            # Get the first connected node (primary output target)
-                            next_node_id = main_connections[0].get("node")
-                            if next_node_id and next_node_id in node_map:
-                                next_node = node_map[next_node_id]
-                                
-                                # Generate format requirements based on next node type
-                                format_prompt = self._generate_format_prompt_for_node(next_node)
-                                
-                                if format_prompt:
-                                    # Enhance the system prompt with format requirements
-                                    current_prompt = node.get("parameters", {}).get("system_prompt", "")
-                                    enhanced_prompt = self._add_format_requirements_to_prompt(
-                                        current_prompt, format_prompt, next_node
-                                    )
-                                    
-                                    # Update the node's system prompt
-                                    if "parameters" not in node:
-                                        node["parameters"] = {}
-                                    node["parameters"]["system_prompt"] = enhanced_prompt
-                                    
-                                    logger.info(
-                                        f"Enhanced AI Agent node '{node_id}' prompt for "
-                                        f"connection to '{next_node['type']}' node '{next_node_id}'"
-                                    )
+                if node.get("type") != "AI_AGENT":
+                    continue
+
+                node_id = node.get("id")
+                if not node_id:
+                    continue
+
+                outgoing = [
+                    conn for conn in connections if conn.get("from_node") == node_id
+                ]
+
+                if not outgoing:
+                    continue
+
+                next_node_id = outgoing[0].get("to_node")
+                if not next_node_id or next_node_id not in node_map:
+                    continue
+
+                next_node = node_map[next_node_id]
+
+                format_prompt = self._generate_format_prompt_for_node(next_node)
+
+                if format_prompt:
+                    current_prompt = node.get("parameters", {}).get("system_prompt", "")
+                    enhanced_prompt = self._add_format_requirements_to_prompt(
+                        current_prompt, format_prompt, next_node
+                    )
+
+                    if "parameters" not in node:
+                        node["parameters"] = {}
+                    node["parameters"]["system_prompt"] = enhanced_prompt
+
+                    logger.info(
+                        f"Enhanced AI Agent node '{node_id}' prompt for connection to "
+                        f"'{next_node['type']}' node '{next_node_id}'"
+                    )
             
             return workflow
             
@@ -759,84 +758,73 @@ Your output MUST match the expected input format for the next node.
         warnings = []
         
         try:
-            connections = workflow.get("connections", {})
+            connections = workflow.get("connections") or []
             nodes = workflow.get("nodes", [])
-            node_map = {node["id"]: node for node in nodes}
+            node_map = {
+                node.get("id"): node
+                for node in nodes
+                if node.get("id")
+            }
             
             for node in nodes:
-                if node.get("type") == "AI_AGENT":
-                    node_id = node["id"]
-                    system_prompt = node.get("parameters", {}).get("system_prompt", "")
-                    
-                    # Check if this AI Agent connects to an action node
-                    if node_id in connections:
-                        node_connections = connections[node_id].get("connection_types", {})
-                        main_connections = node_connections.get("main", {}).get("connections", [])
-                        
-                        if main_connections:
-                            next_node_id = main_connections[0].get("node")
-                            if next_node_id and next_node_id in node_map:
-                                next_node = node_map[next_node_id]
-                                next_type = next_node.get("type")
-                                next_subtype = next_node.get("subtype")
-                                
-                                # Check if connecting to an action node that needs structured output
-                                needs_json = False
-                                if next_type == "EXTERNAL_ACTION":
-                                    needs_json = True
-                                elif next_type == "ACTION" and next_subtype in ["HTTP_REQUEST", "SAVE_TO_DATABASE"]:
-                                    needs_json = True
-                                
-                                if needs_json:
-                                    # Check if prompt mentions JSON or output format
-                                    prompt_lower = system_prompt.lower()
-                                    has_format = any(keyword in prompt_lower for keyword in [
-                                        "json", "format", "output", "structure", "object", "api"
-                                    ])
-                                    
-                                    if not has_format:
-                                        warnings.append(
-                                            f"AI Agent '{node_id}' connects to '{next_subtype}' but "
-                                            f"system prompt doesn't specify output format. This may cause failures."
-                                        )
-                                    
-                                    # Check for specific node types
-                                    if next_subtype == "GOOGLE_CALENDAR" and "calendar" not in prompt_lower:
-                                        warnings.append(
-                                            f"AI Agent '{node_id}' connects to Google Calendar but "
-                                            f"prompt doesn't mention calendar event format"
-                                        )
-                                    elif next_subtype == "SLACK" and "slack" not in prompt_lower and "message" not in prompt_lower:
-                                        warnings.append(
-                                            f"AI Agent '{node_id}' connects to Slack but "
-                                            f"prompt doesn't mention message format"
-                                        )
+                if node.get("type") != "AI_AGENT":
+                    continue
+
+                node_id = node.get("id")
+                if not node_id:
+                    continue
+
+                system_prompt = node.get("parameters", {}).get("system_prompt", "")
+
+                outgoing = [
+                    conn for conn in connections if conn.get("from_node") == node_id
+                ]
+
+                if not outgoing:
+                    continue
+
+                next_node_id = outgoing[0].get("to_node")
+                if not next_node_id or next_node_id not in node_map:
+                    continue
+
+                next_node = node_map[next_node_id]
+                next_type = next_node.get("type")
+                next_subtype = next_node.get("subtype")
+
+                needs_json = False
+                if next_type == "EXTERNAL_ACTION":
+                    needs_json = True
+                elif next_type == "ACTION" and next_subtype in ["HTTP_REQUEST", "SAVE_TO_DATABASE"]:
+                    needs_json = True
+
+                if not needs_json:
+                    continue
+
+                prompt_lower = system_prompt.lower()
+                has_format = any(
+                    keyword in prompt_lower
+                    for keyword in ["json", "format", "output", "structure", "object", "api"]
+                )
+
+                if not has_format:
+                    warnings.append(
+                        f"AI Agent '{node_id}' connects to '{next_subtype}' but system prompt doesn't specify output format."
+                    )
+
+                if next_subtype == "GOOGLE_CALENDAR" and "calendar" not in prompt_lower:
+                    warnings.append(
+                        f"AI Agent '{node_id}' connects to Google Calendar but prompt doesn't mention calendar event format"
+                    )
+                elif next_subtype == "SLACK" and "slack" not in prompt_lower and "message" not in prompt_lower:
+                    warnings.append(
+                        f"AI Agent '{node_id}' connects to Slack but prompt doesn't mention message format"
+                    )
             
             return warnings
             
         except Exception as e:
             logger.error(f"Error validating AI Agent prompts: {e}")
             return warnings
-    
-    def _generate_proper_value_for_type(self, param_type: str) -> object:
-        """Generate a proper value based on MCP ParameterType without hardcoding"""
-        import random
-
-        if param_type == "integer":
-            # Generate a reasonable integer without hardcoding specific values
-            return random.randint(100, 99999999)
-        elif param_type == "boolean":
-            return random.choice([True, False])
-        elif param_type == "float":
-            return round(random.uniform(0.1, 10.0), 2)
-        elif param_type == "string":
-            # Generate a generic example string
-            return f"example-value-{random.randint(1000, 9999)}"
-        elif param_type == "json":
-            return {}
-        else:
-            # Default to string for unknown types
-            return "example-value"
 
     def _normalize_workflow_structure(self, workflow: dict) -> dict:
         """
@@ -864,10 +852,6 @@ Your output MUST match the expected input format for the next node.
                     else:
                         node["name"] = f"{node_type}_{node_id}".replace("_", "-").lower()
 
-                # Optimize node parameters (remove unnecessary params)
-                # Note: Parameter fixing is now done at workflow level after all nodes are normalized
-                node = self._optimize_node_parameters(node)
-
                 # Only add position if completely missing (required field)
                 if "position" not in node:
                     node["position"] = {"x": 100.0 + i * 200.0, "y": 100.0}
@@ -885,42 +869,30 @@ Your output MUST match the expected input format for the next node.
                     if field not in node:
                         node[field] = default
 
-        # Fix connections format if it's a list
-        if "connections" in workflow and isinstance(workflow["connections"], list):
-            # Convert list format to dict format
-            connections_dict = {}
-            for conn in workflow["connections"]:
-                if isinstance(conn, dict):
-                    # Handle format 1: {"from": {"node_id": "x", "port": "y"}, "to": {...}}
-                    if isinstance(conn.get("from"), dict) and isinstance(conn.get("to"), dict):
-                        from_node = conn["from"].get("node_id", "")
-                        to_node = conn["to"].get("node_id", "")
-                        from_port = conn["from"].get("port", "main")
-                        to_port = conn["to"].get("port", "main")
-                    # Handle format 2: {"from": "x", "from_port": "y", "to": "z", "to_port": "w"}
-                    elif "from" in conn and "to" in conn and isinstance(conn["from"], str):
-                        from_node = conn.get("from", "")
-                        to_node = conn.get("to", "")
-                        from_port = conn.get("from_port", "main")
-                        to_port = conn.get("to_port", "main")
-                    else:
-                        continue
-
-                    # Create the proper nested structure with connection_types
-                    if from_node not in connections_dict:
-                        connections_dict[from_node] = {"connection_types": {}}
-                    if from_port not in connections_dict[from_node]["connection_types"]:
-                        connections_dict[from_node]["connection_types"][from_port] = {
-                            "connections": []
-                        }
-
-                    connections_dict[from_node]["connection_types"][from_port][
-                        "connections"
-                    ].append({"node": to_node, "type": to_port, "index": 0})
-
-            workflow["connections"] = connections_dict
-        elif "connections" not in workflow:
-            workflow["connections"] = {}
+        connections_value = workflow.get("connections")
+        if connections_value is None:
+            workflow["connections"] = []
+        elif isinstance(connections_value, list):
+            normalized_connections = []
+            for index, conn in enumerate(connections_value):
+                if not isinstance(conn, dict):
+                    continue
+                normalised = dict(conn)
+                if "from_node" not in normalised and "from" in normalised:
+                    normalised["from_node"] = normalised["from"]
+                if "to_node" not in normalised and "to" in normalised:
+                    normalised["to_node"] = normalised["to"]
+                if not normalised.get("id"):
+                    normalised["id"] = normalised.get("connection_id") or f"conn_{index}"
+                if not normalised.get("output_key"):
+                    normalised["output_key"] = normalised.get("output") or "result"
+                normalized_connections.append(normalised)
+            workflow["connections"] = normalized_connections
+        else:
+            logger.warning(
+                "Workflow connections output is not a list. Expected latest workflow engine format."
+            )
+            workflow["connections"] = []
 
         # Add missing top-level fields
         if "settings" not in workflow:
@@ -978,7 +950,7 @@ Your output MUST match the expected input format for the next node.
                     "webhooks": [],
                 }
             ],
-            "connections": {},
+            "connections": [],
             "settings": {
                 "timezone": {"name": "UTC"},
                 "save_execution_progress": True,
@@ -1031,8 +1003,11 @@ Your output MUST match the expected input format for the next node.
             else:
                 return "END"  # Wait for user input
 
+        elif stage == WorkflowStage.CONVERSION_GENERATION:
+            logger.info("Routing to conversion generation stage")
+            return "conversion_generation"
+
         elif stage == WorkflowStage.WORKFLOW_GENERATION:
-            # After workflow generation, workflow is complete - end the flow
             logger.info("Workflow generation complete, ending flow")
             return "END"
 
@@ -1198,10 +1173,7 @@ Your output MUST match the expected input format for the next node.
         """
         Optimized Workflow Generation Node - Automatically handles capability gaps
         Uses MCP tools to generate accurate workflows with smart substitutions
-        Now also creates the workflow in workflow_engine immediately after generation
         """
-        from workflow_agent.services.workflow_engine_client import WorkflowEngineClient
-
         logger.info("Processing optimized workflow generation node")
 
         # Set stage to WORKFLOW_GENERATION
@@ -1213,7 +1185,6 @@ Your output MUST match the expected input format for the next node.
 
             # Check if we're coming from previous generation failures
             creation_error = state.get("workflow_creation_error")  # Field for creation failures
-            generation_loop_count = state.get("generation_loop_count", 0)
 
             # Prepare template context with creation error if available
             error_context = None
@@ -1277,12 +1248,27 @@ Your output MUST match the expected input format for the next node.
                     # Parse the JSON directly - trust LLM to generate valid JSON
                     workflow = json.loads(workflow_json.strip())
 
+                    # DEBUG: Log raw LLM output to check if connections are generated
+                    raw_connections = workflow.get("connections", [])
+                    logger.info(f"🔍 RAW LLM OUTPUT - Connections count: {len(raw_connections)}")
+                    if raw_connections:
+                        logger.info(f"🔍 RAW LLM OUTPUT - Connections: {raw_connections}")
+                    else:
+                        logger.warning("🚨 RAW LLM OUTPUT - NO CONNECTIONS GENERATED BY LLM!")
+
                     # Post-process the workflow to add missing required fields
                     workflow = self._normalize_workflow_structure(workflow)
+
+                    # DEBUG: Log connections after normalization
+                    normalized_connections = workflow.get("connections", [])
+                    logger.info(f"🔧 AFTER NORMALIZATION - Connections count: {len(normalized_connections)}")
+                    if len(raw_connections) != len(normalized_connections):
+                        logger.error(f"🚨 CONNECTIONS LOST DURING NORMALIZATION! Before: {len(raw_connections)}, After: {len(normalized_connections)}")
                     
                     # Pre-fetch node specs for connected nodes
                     await self._prefetch_node_specs_for_workflow(workflow)
-                    
+                    await self._hydrate_nodes_from_specs(workflow)
+
                     # Enhance AI Agent prompts based on connected nodes
                     # Try to use LLM-enhanced version for better quality
                     try:
@@ -1305,9 +1291,6 @@ Your output MUST match the expected input format for the next node.
                         for warning in validation_warnings:
                             logger.warning(f"AI Agent prompt validation: {warning}")
 
-                    # Fix parameters using MCP-provided types (only as fallback)
-                    workflow = self._fix_workflow_parameters(workflow)
-
                     # Skip iterative validation - single pass generation for better performance
                     logger.info(
                         "Single-pass workflow generation completed - skipping validation rounds"
@@ -1324,131 +1307,18 @@ Your output MUST match the expected input format for the next node.
                     # Use fallback workflow on parse error
                     workflow = self._create_fallback_workflow(intent_summary)
 
-            # NEW: Create workflow in workflow_engine immediately after generation
-            logger.info("Creating workflow in workflow_engine")
-            engine_client = WorkflowEngineClient()
-            user_id = state.get("user_id", "test_user")
-            session_id = state.get("session_id")
+            # Store latest workflow and advance to conversion generation stage
+            state["current_workflow"] = workflow
+            state["stage"] = WorkflowStage.CONVERSION_GENERATION
 
-            # Always create a new workflow, even in edit mode
-            # This allows users to test edits without overwriting the original
-            workflow_context = state.get("workflow_context", {})
-            workflow_mode = workflow_context.get("origin", "create")
+            self._ensure_workflow_metadata(workflow, state)
 
-            logger.info(f"Creating new workflow in workflow_engine (mode: {workflow_mode})")
-            creation_result = await engine_client.create_workflow(workflow, user_id, session_id)
+            # Clear previous errors so conversion stage starts clean
+            if "workflow_creation_error" in state:
+                del state["workflow_creation_error"]
 
-            if creation_result.get("success", True) and creation_result.get("workflow", {}).get(
-                "id"
-            ):
-                # Creation successful - store workflow and workflow_id
-                workflow_id = creation_result["workflow"]["id"]
-                state["current_workflow"] = workflow
-                state["workflow_id"] = workflow_id
-                state["workflow_creation_result"] = creation_result
-
-                # Clear any previous creation errors
-                if "workflow_creation_error" in state:
-                    del state["workflow_creation_error"]
-
-                logger.info(f"Workflow created successfully with ID: {workflow_id}")
-
-                # Add detailed completion message to conversations
-                workflow_name = workflow.get("name", "Workflow")
-                workflow_description = workflow.get("description", "")
-                node_count = len(workflow.get("nodes", []))
-
-                # Check if we're in edit mode
-                workflow_context = state.get("workflow_context", {})
-                workflow_mode = workflow_context.get("origin", "create")
-                source_workflow_id = workflow_context.get("source_workflow_id")
-
-                if workflow_mode == "edit":
-                    completion_message = f"""✅ **New Workflow Created from Edit!**
-
-I've successfully created a new workflow based on your modifications:
-- **Name**: {workflow_name}
-- **New ID**: {workflow_id}
-- **Original ID**: {source_workflow_id}
-- **Nodes**: {node_count} nodes configured
-{f'- **Description**: {workflow_description}' if workflow_description else ''}
-
-The new workflow has been saved with your requested changes. The original workflow remains unchanged.
-
-You can now:
-1. Test the new workflow with sample data
-2. Schedule it to run automatically
-3. Make further modifications if needed
-
-Would you like to test this updated workflow or make additional changes?"""
-                else:
-                    completion_message = f"""✅ **Workflow Created Successfully!**
-
-I've successfully created your workflow:
-- **Name**: {workflow_name}
-- **ID**: {workflow_id}
-- **Nodes**: {node_count} nodes configured
-{f'- **Description**: {workflow_description}' if workflow_description else ''}
-
-The workflow has been saved and is ready for execution. You can now:
-1. Test the workflow with sample data
-2. Schedule it to run automatically
-3. Modify it as needed
-
-Would you like to make any adjustments or shall we proceed with testing?"""
-
-                self._add_conversation(state, "assistant", completion_message)
-
-                # In 2-node architecture, workflow generation completion means END
-                return {**state, "stage": WorkflowStage.WORKFLOW_GENERATION}
-
-            else:
-                # Creation failed - check if we should retry generation
-                creation_error = creation_result.get("error", "Unknown creation error")
-                max_generation_retries = getattr(settings, "WORKFLOW_GENERATION_MAX_RETRIES", 3)
-
-                logger.error(f"Workflow creation failed: {creation_error}")
-
-                # Check if it's a session_id error - if so, don't retry as it won't help
-                if "session_id" in creation_error or "ForeignKeyViolation" in creation_error:
-                    logger.error("Session ID error detected, skipping retries")
-                    state["workflow_creation_error"] = creation_error
-                    state["current_workflow"] = workflow
-                    # Mark as FAILED to end the flow
-                    state["stage"] = WorkflowStage.FAILED
-                    # Add failure message to conversations
-                    self._add_conversation(
-                        state,
-                        "assistant",
-                        f"I've generated the workflow but couldn't save it due to a session error. Here's the workflow configuration:\n\n```json\n{json.dumps(workflow, indent=2)}\n```",
-                    )
-                    return state
-
-                if generation_loop_count < max_generation_retries:
-                    # Store error for regeneration and increment loop count
-                    state["workflow_creation_error"] = creation_error
-                    state["generation_loop_count"] = generation_loop_count + 1
-
-                    logger.info(
-                        f"Retrying workflow generation (attempt {generation_loop_count + 1}/{max_generation_retries})"
-                    )
-                    # Recursively call this node to retry
-                    return await self.workflow_generation_node(state)
-                else:
-                    # Max retries reached, mark as FAILED
-                    state["workflow_creation_error"] = creation_error
-                    state["current_workflow"] = workflow
-                    state["stage"] = WorkflowStage.FAILED
-                    logger.error(
-                        f"Max workflow generation retries ({max_generation_retries}) reached"
-                    )
-                    # Add failure message to conversations
-                    self._add_conversation(
-                        state,
-                        "assistant",
-                        f"I've generated the workflow but encountered an error saving it after {max_generation_retries} attempts. Here's the workflow configuration:\n\n```json\n{json.dumps(workflow, indent=2)}\n```\n\nError: {creation_error}",
-                    )
-                    return state
+            logger.info("Workflow JSON prepared; proceeding to conversion generation stage")
+            return state
 
         except Exception as e:
             import traceback
@@ -1468,6 +1338,163 @@ Would you like to make any adjustments or shall we proceed with testing?"""
                 **state,
                 "stage": WorkflowStage.WORKFLOW_GENERATION,
             }
+
+    async def conversion_generation_node(self, state: WorkflowState) -> WorkflowState:
+        """Generate conversion functions and persist workflow in the engine."""
+        from workflow_agent.services.workflow_engine_client import WorkflowEngineClient
+
+        logger.info("Processing conversion generation node")
+        state["stage"] = WorkflowStage.CONVERSION_GENERATION
+
+        workflow = state.get("current_workflow")
+        if not workflow:
+            error_msg = "No workflow available to generate conversion functions."
+            logger.error(error_msg)
+            state["workflow_creation_error"] = error_msg
+            state["stage"] = WorkflowStage.FAILED
+            self._add_conversation(
+                state,
+                "assistant",
+                "I attempted to finalise the workflow but the configuration was missing. Please regenerate the workflow before trying again.",
+            )
+            return state
+
+        intent_summary = state.get("intent_summary", "")
+        generator = ConversionFunctionGenerator(
+            prompt_engine=self.prompt_engine,
+            llm=self.llm,
+            spec_fetcher=self._get_or_fetch_node_spec,
+            logger=logger,
+        )
+
+        try:
+            await self._prefetch_node_specs_for_workflow(workflow)
+            workflow = await generator.populate(workflow, intent_summary=intent_summary)
+            state["current_workflow"] = workflow
+        except Exception as exc:
+            logger.error("Failed to generate conversion functions", exc_info=True)
+            state["workflow_creation_error"] = str(exc)
+            state["stage"] = WorkflowStage.FAILED
+            self._add_conversation(
+                state,
+                "assistant",
+                "I ran into an error while preparing data mappings between nodes. Please try regenerating the workflow.",
+            )
+            return state
+
+        engine_client = WorkflowEngineClient()
+        user_id = state.get("user_id", "test_user")
+        session_id = state.get("session_id")
+        workflow_context = state.get("workflow_context", {})
+        workflow_mode = workflow_context.get("origin", "create")
+
+        logger.info("Creating workflow in workflow_engine after conversion generation")
+        creation_result = await engine_client.create_workflow(workflow, user_id, session_id)
+
+        if creation_result.get("success", True) and creation_result.get("workflow", {}).get("id"):
+            workflow_id = creation_result["workflow"]["id"]
+            state["workflow_id"] = workflow_id
+            state["workflow_creation_result"] = creation_result
+            state.pop("workflow_creation_error", None)
+
+            workflow_name = workflow.get("name", "Workflow")
+            workflow_description = workflow.get("description", "")
+            node_count = len(workflow.get("nodes", []))
+            source_workflow_id = workflow_context.get("source_workflow_id")
+
+            if workflow_mode == "edit":
+                completion_message = f"""✅ **New Workflow Created from Edit!**
+
+I've successfully created a new workflow based on your modifications:
+- **Name**: {workflow_name}
+- **New ID**: {workflow_id}
+- **Original ID**: {source_workflow_id}
+- **Nodes**: {node_count} nodes configured
+{f'- **Description**: {workflow_description}' if workflow_description else ''}
+
+The new workflow has been saved with your requested changes. The original workflow remains unchanged.
+
+You can now:
+1. Test the new workflow with sample data
+2. Schedule it to run automatically
+3. Make further modifications if needed
+
+Would you like to test this updated workflow or make additional changes?"""
+            else:
+                completion_message = f"""✅ **Workflow Created Successfully!**
+
+I've successfully created your workflow:
+- **Name**: {workflow_name}
+- **ID**: {workflow_id}
+- **Nodes**: {node_count} nodes configured
+{f'- **Description**: {workflow_description}' if workflow_description else ''}
+
+The workflow has been saved and is ready for execution. You can now:
+1. Test the workflow with sample data
+2. Schedule it to run automatically
+3. Modify it as needed
+
+Would you like to make any adjustments or shall we proceed with testing?"""
+
+            self._add_conversation(state, "assistant", completion_message)
+            state["stage"] = WorkflowStage.WORKFLOW_GENERATION
+            return state
+
+        creation_error = creation_result.get("error", "Unknown creation error")
+        logger.error("Workflow creation failed after conversion generation: %s", creation_error)
+        state["workflow_creation_error"] = creation_error
+        state["stage"] = WorkflowStage.FAILED
+
+        self._add_conversation(
+            state,
+            "assistant",
+            f"I generated the workflow but encountered an error while saving it. Error: {creation_error}.\n\nHere is the workflow JSON so you can review it:\n\n```json\n{json.dumps(workflow, indent=2)}\n```",
+        )
+        return state
+
+    async def _get_or_fetch_node_spec(self, node: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        node_type = node.get("type")
+        node_subtype = node.get("subtype")
+        if not node_type or not node_subtype:
+            return None
+
+        cache_key = f"{node_type}:{node_subtype}"
+        if cache_key in self.node_specs_cache:
+            return self.node_specs_cache[cache_key]
+
+        if not getattr(self, "mcp_client", None):
+            return None
+
+        try:
+            result = await self.mcp_client.call_tool(
+                "get_node_details",
+                {
+                    "nodes": [{"node_type": node_type, "subtype": node_subtype}],
+                    "include_examples": True,
+                    "include_schemas": True,
+                },
+            )
+
+            nodes_list = []
+            if isinstance(result, dict):
+                if "nodes" in result:
+                    nodes_list = result["nodes"]
+                elif "result" in result and isinstance(result["result"], dict):
+                    nodes_list = result["result"].get("nodes", [])
+            elif isinstance(result, list):
+                nodes_list = result
+
+            if nodes_list:
+                spec = nodes_list[0]
+                if spec and "error" not in spec:
+                    self.node_specs_cache[cache_key] = spec
+                    return spec
+        except Exception as e:
+            logger.warning(
+                f"Failed to fetch MCP node spec for {node_type}:{node_subtype}: {e}"
+            )
+
+        return self.node_specs_cache.get(cache_key)
 
     async def _generate_with_natural_tools(
         self, messages: List, state: Optional[dict] = None
@@ -1756,8 +1783,6 @@ Generate the complete workflow JSON now:"""
                         # Parse the JSON directly - trust LLM to generate valid JSON
                         improved_workflow = json.loads(clean_content.strip())
                         improved_workflow = self._normalize_workflow_structure(improved_workflow)
-                        improved_workflow = self._fix_workflow_parameters(improved_workflow)
-
                         # Update workflow for next iteration
                         workflow = improved_workflow
                         logger.info(
@@ -1977,3 +2002,264 @@ Generate the complete workflow JSON now:"""
         except Exception as e:
             logger.error(f"LLM workflow completion failed: {e}", exc_info=True)
             return incomplete_workflow
+
+class ConversionFunctionGenerator:
+    """Generate conversion functions for workflow connections in a minimal, testable way."""
+
+    def __init__(
+        self,
+        *,
+        prompt_engine,
+        llm,
+        spec_fetcher,
+        logger: logging.Logger,
+    ) -> None:
+        self.prompt_engine = prompt_engine
+        self.llm = llm
+        self.spec_fetcher = spec_fetcher
+        self.logger = logger
+
+    async def populate(self, workflow: Dict[str, Any], *, intent_summary: str = "") -> Dict[str, Any]:
+        nodes = {
+            node.get("id"): node for node in workflow.get("nodes", []) if node.get("id")
+        }
+        connections = workflow.get("connections") or []
+
+        semaphore = asyncio.Semaphore(
+            getattr(settings, "CONVERSION_GENERATION_MAX_CONCURRENCY", 4)
+        )
+
+        tasks = []
+        processed_connections: List[Dict[str, Any]] = []
+
+        for index, connection in enumerate(connections):
+            if not self._normalize_connection(connection, index):
+                continue
+            tasks.append(
+                self._generate_for_connection(
+                    connection,
+                    nodes,
+                    intent_summary,
+                    semaphore,
+                )
+            )
+            processed_connections.append(connection)
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for connection, result in zip(processed_connections, results):
+            if isinstance(result, Exception):
+                self.logger.warning(
+                    "Conversion generation failed for %s → %s: %s",
+                    connection.get("from_node"),
+                    connection.get("to_node"),
+                    result,
+                )
+                code = connection.get("conversion_function") or DEFAULT_CONVERSION_FUNCTION
+            else:
+                code = result or connection.get("conversion_function") or DEFAULT_CONVERSION_FUNCTION
+
+            connection["conversion_function"] = code
+
+        workflow["connections"] = connections
+        return workflow
+
+    def _normalize_connection(self, connection: Dict[str, Any], index: int) -> bool:
+        if not connection.get("id"):
+            connection["id"] = f"conn_{index}"
+
+        if not connection.get("from_node") and connection.get("from"):
+            connection["from_node"] = connection["from"]
+        if not connection.get("to_node") and connection.get("to"):
+            connection["to_node"] = connection["to"]
+
+        if not connection.get("from_node") or not connection.get("to_node"):
+            self.logger.warning(
+                "Skipping conversion generation for connection %s due to missing endpoints",
+                connection.get("id"),
+            )
+            return False
+        return True
+
+    async def _generate_for_connection(
+        self,
+        connection: Dict[str, Any],
+        nodes: Dict[str, Dict[str, Any]],
+        intent_summary: str,
+        semaphore: asyncio.Semaphore,
+    ) -> Optional[str]:
+        return await self._generate_code(
+            connection,
+            nodes,
+            intent_summary,
+            semaphore,
+        )
+
+    async def _generate_code(
+        self,
+        connection: Dict[str, Any],
+        nodes: Dict[str, Dict[str, Any]],
+        intent_summary: str,
+        semaphore: Optional[asyncio.Semaphore] = None,
+    ) -> Optional[str]:
+        source = nodes.get(connection["from_node"])
+        target = nodes.get(connection["to_node"])
+
+        if not source or not target:
+            self.logger.warning(
+                "Skipping conversion generation for connection %s — unknown node references",
+                connection.get("id"),
+            )
+            return connection.get("conversion_function")
+
+        source_spec = await self.spec_fetcher(source)
+        target_spec = await self.spec_fetcher(target)
+
+        source_context = self._build_node_summary(source, source_spec)
+        target_context = self._build_node_summary(target, target_spec, include_inputs=True)
+
+        prompt = await self.prompt_engine.render_prompt(
+            "conversion_generation",
+            source_context=source_context,
+            target_context=target_context,
+            connection_info={
+                "connection_id": connection.get("id"),
+                "from_node": connection.get("from_node"),
+                "to_node": connection.get("to_node"),
+                "output_key": connection.get("output_key", "result"),
+                "existing_conversion_function": connection.get("conversion_function"),
+            },
+            intent_summary=intent_summary,
+        )
+
+        system_prompt = (
+            "You create Python conversion functions for workflow automation. "
+            "Return only the function code, using the provided guidelines."
+        )
+
+        async def _invoke_llm():
+            return await self.llm.ainvoke(
+                [SystemMessage(content=system_prompt), HumanMessage(content=prompt)]
+            )
+
+        if semaphore:
+            await semaphore.acquire()
+            try:
+                response = await _invoke_llm()
+            finally:
+                semaphore.release()
+        else:
+            response = await _invoke_llm()
+
+        code = self._extract_code(getattr(response, "content", ""))
+        if not self._is_valid(code):
+            self.logger.warning(
+                "Generated conversion function invalid for connection %s; using fallback",
+                connection.get("id"),
+            )
+            return None
+
+        return code.strip()
+
+    def _build_node_summary(
+        self,
+        node: Dict[str, Any],
+        spec: Optional[Dict[str, Any]],
+        *,
+        include_inputs: bool = False,
+    ) -> Dict[str, Any]:
+        summary: Dict[str, Any] = {
+            "id": node.get("id"),
+            "name": node.get("name"),
+            "type": node.get("type"),
+            "subtype": node.get("subtype"),
+            "description": node.get("description")
+            or (spec.get("description") if spec else ""),
+            "configurations": self._compact_dict(node.get("configurations", {})),
+        }
+
+        if include_inputs:
+            summary["expected_inputs"] = self._summarize_parameters(spec)
+        else:
+            summary["sample_outputs"] = list((node.get("output_params") or {}).keys())[:6]
+
+        if spec and spec.get("examples"):
+            summary["examples"] = spec["examples"][:1]
+
+        return summary
+
+    def _summarize_parameters(self, spec: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if not spec:
+            return []
+        params = []
+        for param in (spec.get("parameters") or [])[:6]:
+            if isinstance(param, dict):
+                params.append(
+                    {
+                        "name": param.get("name"),
+                        "type": param.get("type"),
+                        "required": param.get("required", False),
+                    }
+                )
+        return params
+
+    def _compact_dict(self, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        compact = {}
+        for key, val in value.items():
+            if isinstance(val, (str, int, float, bool)):
+                compact[key] = val
+            elif isinstance(val, list) and len(val) <= 5:
+                compact[key] = val
+            elif isinstance(val, dict) and len(val) <= 5:
+                compact[key] = val
+        return compact
+
+    def _extract_code(self, content: Any) -> str:
+        if isinstance(content, list):
+            parts = []
+            for item in content:
+                if isinstance(item, dict) and "text" in item:
+                    parts.append(item["text"])
+                elif isinstance(item, str):
+                    parts.append(item)
+            content = "".join(parts)
+        if not isinstance(content, str):
+            content = str(content or "")
+
+        code = content.strip()
+        if code.startswith("```"):
+            sections = code.split("```")
+            if len(sections) >= 2:
+                code = sections[1]
+        code = code.strip()
+        if code.lower().startswith("python"):
+            code = code[6:].strip()
+        if code.startswith("lambda"):
+            code = self._lambda_to_def(code)
+        return code.strip()
+
+    def _is_valid(self, code: str) -> bool:
+        cleaned = code.strip()
+        return cleaned.startswith("def convert") and "return" in cleaned
+
+    def _lambda_to_def(self, lambda_code: str) -> str:
+        body = lambda_code.strip()
+        if not body.startswith("lambda"):
+            return body
+        try:
+            args, expression = body[len("lambda") :].split(":", 1)
+        except ValueError:
+            return body
+        args = args.strip() or "input_data"
+        expression = expression.strip() or "input_data"
+        if "," in args:
+            args = "input_data"
+        return "\n".join(
+            [
+                f"def convert({args}) -> Dict[str, Any]:",
+                f"    return {expression}",
+            ]
+        )
+
