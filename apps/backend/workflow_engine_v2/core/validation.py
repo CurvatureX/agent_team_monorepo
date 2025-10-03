@@ -37,6 +37,16 @@ def validate_workflow(workflow: Workflow) -> None:
     node_map = {n.id: n for n in workflow.nodes}
     for n in workflow.nodes:
         ntype = n.type.value if hasattr(n.type, "value") else str(n.type)
+
+        # Debug logging to see actual node data
+        logger.debug(
+            f"Validating node {n.id} ({ntype}.{n.subtype})\n"
+            f"   Node object type: {type(n)}\n"
+            f"   Configurations type: {type(n.configurations)}\n"
+            f"   Configurations value: {n.configurations}\n"
+            f"   Has configurations attr: {hasattr(n, 'configurations')}"
+        )
+
         if not is_valid_node_subtype_combination(ntype, n.subtype):
             errors.append(f"Invalid type/subtype: {ntype}.{n.subtype} (node {n.id})")
         try:
