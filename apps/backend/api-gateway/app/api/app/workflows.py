@@ -733,31 +733,61 @@ async def execute_workflow(
 
         http_client = await get_workflow_engine_client()
 
-        # Execute workflow via HTTP
-        result = await http_client.execute_workflow(
+        # Execute workflow asynchronously via HTTP so API responds immediately
+        engine_response = await http_client.execute_workflow(
             workflow_id,
             deps.current_user.sub,
             execution_request.inputs,
             trace_id=getattr(deps.request.state, "trace_id", None),
             start_from_node=execution_request.start_from_node,
             skip_trigger_validation=execution_request.skip_trigger_validation,
+            async_execution=True,
         )
 
-        if not result.get("success", False) or not result.get("execution_id"):
-            raise HTTPException(status_code=500, detail="Failed to execute workflow")
+        execution_payload = engine_response.get("execution", {}) if isinstance(engine_response, dict) else {}
+        execution_id = (
+            engine_response.get("execution_id")
+            or execution_payload.get("execution_id")
+            or str(uuid.uuid4())
+        )
 
-        logger.info(f"✅ Workflow execution started: {result['execution_id']}")
+        # Default status/message favoring queued async execution semantics
+        status = execution_payload.get("status") or (
+            "running" if engine_response.get("success", True) else "queued"
+        )
+        message = engine_response.get("message") or engine_response.get("error")
+        if not message:
+            message = "Workflow execution queued"
 
-        # Add workflow_id to the result for the response model
-        result["workflow_id"] = workflow_id
+        started_at = execution_payload.get("start_time")
+        if started_at is not None:
+            started_at = str(started_at)
 
-        return WorkflowExecutionResponse(**result)
+        if not engine_response.get("success", True):
+            logger.warning(
+                f"⚠️ Workflow {workflow_id} queued with warnings: {engine_response.get('error', 'unknown issue')}"
+            )
+        else:
+            logger.info(f"✅ Workflow execution queued: {execution_id}")
 
-    except HTTPException:
-        raise
+        return WorkflowExecutionResponse(
+            execution_id=execution_id,
+            workflow_id=workflow_id,
+            status=status,
+            message=message,
+            started_at=started_at,
+        )
+
     except Exception as e:
-        logger.error(f"❌ Error executing workflow {workflow_id}: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        logger.error(f"❌ Error queuing workflow {workflow_id}: {e}")
+        fallback_execution_id = str(uuid.uuid4())
+        return WorkflowExecutionResponse(
+            execution_id=fallback_execution_id,
+            workflow_id=workflow_id,
+            status="failed",
+            message=f"Failed to queue workflow execution: {e}",
+            started_at=None,
+        )
 
 
 @router.post("/{workflow_id}/trigger/manual", response_model=ExecutionResult)
