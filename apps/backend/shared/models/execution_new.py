@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 class ExecutionStatus(str, Enum):
     """工作流执行状态 - Enhanced version"""
 
+    IDLE = "IDLE"  # 闲置状态 (从未执行，默认状态)
     NEW = "NEW"  # 新建状态
     PENDING = "PENDING"  # 等待开始
     RUNNING = "RUNNING"  # 正在执行

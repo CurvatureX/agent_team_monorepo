@@ -31,12 +31,12 @@ from .execution_new import (
 
 
 class WorkflowDeploymentStatus(str, Enum):
-    """工作流部署状态"""
+    """工作流部署状态 - Simplified to 4 clear statuses"""
 
-    PENDING = "pending"  # 等待部署
-    DEPLOYED = "deployed"  # 已部署
-    FAILED = "failed"  # 部署失败
-    UNDEPLOYED = "undeployed"  # 已取消部署
+    UNDEPLOYED = "UNDEPLOYED"  # 未部署 (默认状态)
+    DEPLOYING = "DEPLOYING"  # 正在部署
+    DEPLOYED = "DEPLOYED"  # 已部署
+    DEPLOYMENT_FAILED = "DEPLOYMENT_FAILED"  # 部署失败
 
 
 # ============================================================================
@@ -109,7 +109,7 @@ class WorkflowMetadata(BaseModel):
     icon_url: Optional[str] = Field(default=None, description="工作流图标链接")
     description: Optional[str] = Field(default=None, description="工作流描述")
     deployment_status: WorkflowDeploymentStatus = Field(
-        default=WorkflowDeploymentStatus.PENDING, description="部署状态"
+        default=WorkflowDeploymentStatus.UNDEPLOYED, description="部署状态"
     )
     last_execution_status: Optional[ExecutionStatus] = Field(default=None, description="上次运行状态")
     last_execution_time: Optional[int] = Field(default=None, description="上次运行时间戳（毫秒）")

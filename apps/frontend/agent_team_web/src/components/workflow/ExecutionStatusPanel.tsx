@@ -1,7 +1,7 @@
 "use client";
 
-import React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   CheckCircle2,
   XCircle,
@@ -9,15 +9,15 @@ import {
   AlertCircle,
   Activity,
   ChevronDown,
-  ChevronUp
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
-import type { ExecutionStatus } from '@/lib/api/hooks/useExecutionApi';
-import { ExecutionStatusEnum } from '@/types/workflow-enums';
+  ChevronUp,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import type { ExecutionStatus } from "@/lib/api/hooks/useExecutionApi";
+import { ExecutionStatusEnum } from "@/types/workflow-enums";
 
 interface ExecutionStatusPanelProps {
   status: ExecutionStatus | null;
@@ -41,11 +41,12 @@ export const ExecutionStatusPanel: React.FC<ExecutionStatusPanelProps> = ({
       case ExecutionStatusEnum.Completed:
       case ExecutionStatusEnum.Success:
         return <CheckCircle2 className="w-4 h-4 text-green-500" />;
-      case 'FAILED':
+      case "FAILED":
       case ExecutionStatusEnum.Error:
         return <XCircle className="w-4 h-4 text-red-500" />;
       case ExecutionStatusEnum.Running:
         return <Activity className="w-4 h-4 text-blue-500 animate-pulse" />;
+      case ExecutionStatusEnum.Idle:
       case ExecutionStatusEnum.Pending:
       case ExecutionStatusEnum.New:
       case ExecutionStatusEnum.Waiting:
@@ -66,47 +67,53 @@ export const ExecutionStatusPanel: React.FC<ExecutionStatusPanelProps> = ({
     switch (execStatus) {
       case ExecutionStatusEnum.Completed:
       case ExecutionStatusEnum.Success:
-        return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
-      case 'FAILED':
+        return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
+      case "FAILED":
       case ExecutionStatusEnum.Error:
-        return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+        return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200";
       case ExecutionStatusEnum.Running:
-        return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
+        return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
+      case ExecutionStatusEnum.Idle:
       case ExecutionStatusEnum.Pending:
       case ExecutionStatusEnum.New:
       case ExecutionStatusEnum.Waiting:
-        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
+        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200";
       case ExecutionStatusEnum.Cancelled:
       case ExecutionStatusEnum.Canceled:
       case ExecutionStatusEnum.Paused:
       case ExecutionStatusEnum.WaitingForHuman:
       case ExecutionStatusEnum.Timeout:
       case ExecutionStatusEnum.Skipped:
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
+        return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200";
       default:
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
+        return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200";
     }
   };
 
   const formatTime = (time?: string | number) => {
-    if (!time) return 'N/A';
+    if (!time) return "N/A";
     // Handle both Unix timestamp (seconds) and ISO string
-    const date = typeof time === 'number'
-      ? new Date(time * 1000)  // Unix timestamp in seconds
-      : new Date(time);
+    const date =
+      typeof time === "number"
+        ? new Date(time * 1000) // Unix timestamp in seconds
+        : new Date(time);
     return date.toLocaleTimeString();
   };
 
-  const calculateDuration = (start?: string | number, end?: string | number) => {
-    if (!start) return 'N/A';
+  const calculateDuration = (
+    start?: string | number,
+    end?: string | number
+  ) => {
+    if (!start) return "N/A";
 
     // Handle both Unix timestamp (seconds) and ISO string
-    const startTime = typeof start === 'number'
-      ? start * 1000
-      : new Date(start).getTime();
+    const startTime =
+      typeof start === "number" ? start * 1000 : new Date(start).getTime();
 
     const endTime = end
-      ? (typeof end === 'number' ? end * 1000 : new Date(end).getTime())
+      ? typeof end === "number"
+        ? end * 1000
+        : new Date(end).getTime()
       : Date.now();
 
     const duration = endTime - startTime;
@@ -129,10 +136,7 @@ export const ExecutionStatusPanel: React.FC<ExecutionStatusPanelProps> = ({
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 20 }}
-        className={cn(
-          "fixed bottom-4 right-4 z-50 w-96",
-          className
-        )}
+        className={cn("fixed bottom-4 right-4 z-50 w-96", className)}
       >
         <Card className="shadow-lg border-border/50 bg-background/95 backdrop-blur-sm">
           <CardHeader className="pb-3">
@@ -142,7 +146,9 @@ export const ExecutionStatusPanel: React.FC<ExecutionStatusPanelProps> = ({
                   Execution Status
                 </CardTitle>
                 {status && (
-                  <Badge className={cn("text-xs", getStatusColor(status.status))}>
+                  <Badge
+                    className={cn("text-xs", getStatusColor(status.status))}
+                  >
                     {status.status}
                   </Badge>
                 )}
@@ -192,10 +198,11 @@ export const ExecutionStatusPanel: React.FC<ExecutionStatusPanelProps> = ({
                   )}
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Duration:</span>
-                    <span>{calculateDuration(status.start_time, status.end_time)}</span>
+                    <span>
+                      {calculateDuration(status.start_time, status.end_time)}
+                    </span>
                   </div>
                 </div>
-
 
                 {status.node_executions && status.node_executions.length > 0 ? (
                   <>
@@ -216,7 +223,10 @@ export const ExecutionStatusPanel: React.FC<ExecutionStatusPanelProps> = ({
                                 </span>
                               </div>
                               <span className="text-xs text-muted-foreground">
-                                {calculateDuration(node.start_time, node.end_time)}
+                                {calculateDuration(
+                                  node.start_time,
+                                  node.end_time
+                                )}
                               </span>
                             </div>
                           ))}
