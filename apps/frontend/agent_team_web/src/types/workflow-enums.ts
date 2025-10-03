@@ -22,6 +22,14 @@ export enum WorkflowStatus {
   Archived = 'archived'
 }
 
+// 工作流部署状态枚举 (Aligned with backend WorkflowDeploymentStatus)
+export enum WorkflowDeploymentStatus {
+  Pending = 'pending',     // 等待部署
+  Deployed = 'deployed',   // 已部署
+  Failed = 'failed',       // 部署失败
+  Undeployed = 'undeployed' // 已取消部署
+}
+
 // 节点类型枚举
 export enum NodeType {
   Trigger = 'trigger',
