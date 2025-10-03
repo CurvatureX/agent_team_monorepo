@@ -40,6 +40,13 @@ class FirecrawlActionSpec(BaseNodeSpec):
             },
             # Parameter schemas (simplified)
             input_params={
+                "action_type": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Dynamic action type (overrides configuration action_type)",
+                    "required": False,
+                    "options": ["scrape", "crawl", "extract", "screenshot"],
+                },
                 "url": {
                     "type": "string",
                     "default": "",
@@ -312,6 +319,31 @@ class FirecrawlActionSpec(BaseNodeSpec):
                     },
                 },
             ],
+            # System prompt appendix for AI guidance
+            system_prompt_appendix="""Output `action_type` to dynamically control Firecrawl web scraping operations.
+
+**All Action Types:**
+
+- `scrape`: Extract content from single page - needs url, optional format (markdown/html/text/json), include_selectors/exclude_selectors (CSS)
+- `crawl`: Multi-page crawling - needs urls array OR single url, optional max_depth (how deep to follow links), limit (max pages)
+- `extract`: Structured data extraction - needs url, schema (define what data to extract)
+- `screenshot`: Capture page image - needs url, optional full_page flag (true for entire page, false for viewport)
+
+**Output Formats:**
+- `markdown` (default): Clean markdown text
+- `html`: Raw HTML
+- `text`: Plain text only
+- `json`: Structured JSON
+
+**Selectors (CSS):**
+- `include_selectors`: Keep only these elements (e.g., ["article", ".content"])
+- `exclude_selectors`: Remove these elements (e.g., ["nav", "footer", "script"])
+
+**Example:**
+```json
+{"action_type": "scrape", "url": "https://blog.example.com/post", "format": "markdown", "exclude_selectors": ["nav", "footer", ".sidebar"]}
+```
+""",
         )
 
 

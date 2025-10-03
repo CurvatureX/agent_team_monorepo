@@ -218,6 +218,15 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                         yield format_sse_event(error_event.model_dump())
                         return
 
+                    # Handle heartbeat responses - keep connection alive
+                    elif response.get("response_type") == "RESPONSE_TYPE_HEARTBEAT":
+                        # Heartbeat messages don't need to be forwarded to client
+                        # They're just to keep the connection alive during long operations
+                        logger.debug(
+                            f"💓 Heartbeat received: {response.get('message', 'Processing...')}"
+                        )
+                        continue
+
                     # Handle status change responses - 新增支持
                     elif response.get("response_type") == "RESPONSE_TYPE_STATUS_CHANGE":
                         status_change = response.get("status_change", {})

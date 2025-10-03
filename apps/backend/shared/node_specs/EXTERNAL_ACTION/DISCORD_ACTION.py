@@ -150,6 +150,24 @@ class DiscordActionSpec(BaseNodeSpec):
             },
             # Parameter schemas (preferred over legacy defaults)
             input_params={
+                "action_type": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Dynamic action type (overrides configuration action_type)",
+                    "required": False,
+                    "options": [
+                        "send_message",
+                        "send_file",
+                        "create_channel",
+                        "delete_channel",
+                        "manage_roles",
+                        "kick_member",
+                        "ban_member",
+                        "create_invite",
+                        "send_dm",
+                        "react_to_message",
+                    ],
+                },
                 "data": {
                     "type": "object",
                     "default": {},
@@ -414,6 +432,38 @@ class DiscordActionSpec(BaseNodeSpec):
                     },
                 },
             ],
+            # System prompt appendix for AI guidance
+            system_prompt_appendix="""Output `action_type` to dynamically control Discord operations. **If you don't know channel_id/user_id, leave blank - workflow may provide them.**
+
+**All Action Types:**
+
+**Messaging:**
+- `send_message`: Send to channel - needs channel_id, content (text) OR embed (rich format)
+- `send_dm`: Direct message user - needs user_id, content
+- `react_to_message`: Add emoji reaction - needs channel_id, message_id, emoji (e.g., "👍" or ":thumbsup:")
+- `send_file`: Upload file - needs channel_id, file (base64/url), filename
+
+**Channels:**
+- `create_channel`: New channel - needs name, optional type (text/voice/category), parent_id (category ID)
+- `delete_channel`: Remove channel - needs channel_id
+
+**Members:**
+- `kick_member`: Remove from server - needs user_id, optional reason
+- `ban_member`: Ban from server - needs user_id, optional reason, delete_message_days (1-7)
+- `manage_roles`: Add/remove role - needs user_id, role_id, action (add/remove)
+
+**Server:**
+- `create_invite`: Invite link - needs channel_id, optional max_age (seconds, 0=never), max_uses (0=unlimited)
+
+**Embed Format (rich messages):**
+`{"title": "Title", "description": "Description text", "color": 3447003, "fields": [{"name": "Field Name", "value": "Field Value"}]}`
+**Colors:** Blue=3447003, Green=3066993, Red=15158332, Yellow=16776960
+
+**Example:**
+```json
+{"action_type": "send_message", "channel_id": "", "embed": {"title": "Deploy Status", "description": "Deployment successful", "color": 3066993}}
+```
+""",
         )
 
 
