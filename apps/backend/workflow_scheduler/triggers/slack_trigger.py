@@ -15,7 +15,7 @@ import httpx
 from shared.models.execution_new import ExecutionStatus
 from shared.models.node_enums import IntegrationProvider, SlackEventType, TriggerSubtype
 from shared.models.trigger import TriggerStatus
-from shared.models.workflow_new import WorkflowExecutionResponse
+from shared.models.workflow import WorkflowExecutionResponse
 from workflow_scheduler.triggers.base import BaseTrigger
 
 logger = logging.getLogger(__name__)

@@ -49,28 +49,28 @@ def create_supabase_client() -> Optional[Client]:
 
 def create_supabase_anon_client() -> Optional[Client]:
     """
-    Create a Supabase client using anonymous key for RLS operations.
+    Create a Supabase client using public key for RLS operations.
 
-    Uses SUPABASE_URL and SUPABASE_ANON_KEY from environment.
+    Uses SUPABASE_URL and SUPABASE_PUB_KEY from environment.
 
     Returns:
         Optional[Client]: Supabase client instance or None if configuration is missing
     """
     try:
         supabase_url = os.getenv("SUPABASE_URL")
-        supabase_anon_key = os.getenv("SUPABASE_ANON_KEY")
+        supabase_public_key = os.getenv("SUPABASE_PUB_KEY")
 
-        if not supabase_url or not supabase_anon_key:
-            logger.warning("Missing SUPABASE_URL or SUPABASE_ANON_KEY environment variables")
+        if not supabase_url or not supabase_public_key:
+            logger.warning("Missing SUPABASE_URL or SUPABASE_PUB_KEY environment variables")
             return None
 
-        client = create_client(supabase_url, supabase_anon_key)
-        logger.debug("✅ Supabase anonymous client created successfully")
+        client = create_client(supabase_url, supabase_public_key)
+        logger.debug("✅ Supabase public client created successfully")
 
         return client
 
     except Exception as e:
-        logger.error(f"❌ Failed to create Supabase anonymous client: {e}")
+        logger.error(f"❌ Failed to create Supabase public client: {e}")
         return None
 
 
@@ -86,14 +86,14 @@ def create_user_supabase_client(access_token: str) -> Optional[Client]:
     """
     try:
         supabase_url = os.getenv("SUPABASE_URL")
-        supabase_anon_key = os.getenv("SUPABASE_ANON_KEY")
+        supabase_public_key = os.getenv("SUPABASE_PUB_KEY")
 
-        if not supabase_url or not supabase_anon_key or not access_token:
-            logger.error("Missing SUPABASE_URL, SUPABASE_ANON_KEY, or access_token for user client")
+        if not supabase_url or not supabase_public_key or not access_token:
+            logger.error("Missing SUPABASE_URL, SUPABASE_PUB_KEY, or access_token for user client")
             return None
 
-        # Create client using ANON_KEY and set user access_token for RLS
-        client = create_client(supabase_url, supabase_anon_key)
+        # Create client using PUB_KEY and set user access_token for RLS
+        client = create_client(supabase_url, supabase_public_key)
 
         # Set the user's access token in headers for RLS authentication
         client.options.headers["Authorization"] = f"Bearer {access_token}"

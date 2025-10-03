@@ -12,7 +12,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.db_models import WorkflowDB, WorkflowDeploymentHistory
-from shared.models.workflow_new import WorkflowDeploymentStatus as DeploymentStatus
+from shared.models.workflow import WorkflowDeploymentStatus as DeploymentStatus
 from workflow_scheduler.core.database import get_db_session
 
 logger = logging.getLogger(__name__)
@@ -81,20 +81,8 @@ class WorkflowRepository:
                         else str(deployment_status)
                     )
                 except Exception:
-                    # Fallback: map common legacy statuses
-                    legacy_map = {
-                        "DRAFT": DeploymentStatus.PENDING.value,
-                        "PENDING": DeploymentStatus.PENDING.value,
-                        "DEPLOYING": DeploymentStatus.PENDING.value,
-                        "DEPLOYED": DeploymentStatus.DEPLOYED.value,
-                        "UNDEPLOYING": DeploymentStatus.PENDING.value,
-                        "UNDEPLOYED": DeploymentStatus.UNDEPLOYED.value,
-                        "FAILED": DeploymentStatus.FAILED.value,
-                        "DEPLOYMENT_FAILED": DeploymentStatus.FAILED.value,
-                    }
-                    normalized_status = legacy_map.get(
-                        str(deployment_status).upper(), DeploymentStatus.PENDING.value
-                    )
+                    # Fallback: Default to UNDEPLOYED if invalid status
+                    normalized_status = DeploymentStatus.UNDEPLOYED.value
 
                 # Prepare update data
                 current_time = datetime.now(timezone.utc)
@@ -205,7 +193,7 @@ class WorkflowRepository:
                     error_message=error_message,
                     deployment_logs=deployment_logs or {},
                     started_at=datetime.now(timezone.utc),
-                    completed_at=datetime.now(timezone.utc) if error_message is None else None,
+                    completed_at=(datetime.now(timezone.utc) if error_message is None else None),
                 )
 
                 session.add(history_record)
@@ -378,10 +366,10 @@ class WorkflowRepository:
                     from_status_name = (
                         DeploymentStatus(current_status).name
                         if current_status in {d.value for d in DeploymentStatus}
-                        else DeploymentStatus.PENDING.name
+                        else DeploymentStatus.UNDEPLOYED.name
                     )
                 except Exception:
-                    from_status_name = DeploymentStatus.PENDING.name
+                    from_status_name = DeploymentStatus.UNDEPLOYED.name
 
                 try:
                     to_status_name = (
@@ -402,7 +390,7 @@ class WorkflowRepository:
                     error_message=error_message,
                     deployment_logs=deployment_logs or {},
                     started_at=datetime.now(timezone.utc),
-                    completed_at=datetime.now(timezone.utc) if error_message is None else None,
+                    completed_at=(datetime.now(timezone.utc) if error_message is None else None),
                 )
 
                 session.add(history_record)

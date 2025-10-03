@@ -20,7 +20,7 @@ from config import get_settings
 
 backend_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(backend_dir))
-from shared.models.workflow_new import Node, Workflow, WorkflowMetadata
+from shared.models.workflow import Node, Workflow, WorkflowMetadata
 
 from .supabase_repository import SupabaseWorkflowRepository
 

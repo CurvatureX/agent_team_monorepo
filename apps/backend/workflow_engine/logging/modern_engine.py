@@ -30,7 +30,7 @@ sys.path.insert(0, str(backend_dir))
 # Use absolute imports
 from shared.models import ExecutionStatus, TriggerInfo
 from shared.models.execution_new import Execution
-from shared.models.workflow_new import Node, Workflow
+from shared.models.workflow import Node, Workflow
 from workflow_engine_v2.core.exceptions import EngineError, ExecutionFailure
 from workflow_engine_v2.core.graph import WorkflowGraph
 from workflow_engine_v2.core.spec import get_spec

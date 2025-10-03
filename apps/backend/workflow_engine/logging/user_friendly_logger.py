@@ -31,7 +31,7 @@ from shared.models.db_models import LogLevelEnum as LogLevel
 from shared.models.execution_new import Execution
 
 # Use shared imports - workflow_engine is already in backend
-from shared.models.workflow_new import Node
+from shared.models.workflow import Node
 
 logger = logging.getLogger(__name__)
 

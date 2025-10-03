@@ -62,7 +62,7 @@ try:
         TriggerStatus,
         TriggerType,
     )
-    from shared.models.workflow_new import Workflow as NewWorkflow
+    from shared.models.workflow import Workflow as NewWorkflow
 except ImportError:
     # 如果直接导入失败，尝试添加路径后导入
     import sys
@@ -128,7 +128,7 @@ except ImportError:
         TriggerStatus,
         TriggerType,
     )
-    from shared.models.workflow_new import Workflow as NewWorkflow
+    from shared.models.workflow import Workflow as NewWorkflow
 
 # 向后兼容别名
 HealthResponse = HealthCheckModel

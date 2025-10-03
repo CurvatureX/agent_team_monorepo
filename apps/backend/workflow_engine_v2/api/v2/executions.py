@@ -13,7 +13,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from shared.models.execution_new import ExecutionStatus, TriggerInfo
 from shared.models.node_enums import TriggerSubtype
-from shared.models.workflow_new import Workflow, WorkflowMetadata
+from shared.models.workflow import Workflow, WorkflowMetadata
 from workflow_engine_v2.api.models import (
     CancelExecutionResponse,
     ExecuteWorkflowRequest,

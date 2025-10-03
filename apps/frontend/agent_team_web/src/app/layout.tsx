@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { NavigationHeader } from "@/components/ui/navigation-header";
+import { SidebarNavigation } from "@/components/ui/sidebar-navigation";
+import { LayoutWrapper } from "@/components/ui/layout-wrapper";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/contexts/auth-context";
+import { PageTitleProvider } from "@/contexts/page-title-context";
 import { Toaster } from "@/components/ui/toaster";
 
 const inter = Inter({
@@ -32,9 +34,15 @@ export default function RootLayout({
           enableSystem
         >
           <AuthProvider>
-            <NavigationHeader />
-            {children}
-            <Toaster />
+            <PageTitleProvider>
+              <LayoutWrapper>
+                <SidebarNavigation />
+                <main className="h-full">
+                  {children}
+                </main>
+              </LayoutWrapper>
+              <Toaster />
+            </PageTitleProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

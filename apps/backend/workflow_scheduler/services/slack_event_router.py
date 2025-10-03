@@ -9,7 +9,7 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
-from shared.models.workflow_new import WorkflowExecutionResponse
+from shared.models.workflow import WorkflowExecutionResponse
 
 logger = logging.getLogger(__name__)
 

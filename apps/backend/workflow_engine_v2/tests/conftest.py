@@ -89,7 +89,7 @@ def setup_test_env(monkeypatch):
 @pytest.fixture
 def sample_execution_context():
     """Create a sample execution context for testing."""
-    from shared.models.workflow_new import Node
+    from shared.models.workflow import Node
 
     context = MagicMock()
     context.execution_id = "test_exec_123"
@@ -143,7 +143,7 @@ def workflow_factory():
     """Factory for creating test workflows."""
     from datetime import datetime
 
-    from shared.models.workflow_new import Connection, Node, Workflow, WorkflowMetadata
+    from shared.models.workflow import Connection, Node, Workflow, WorkflowMetadata
 
     def _create_workflow(workflow_id="test_workflow", node_count=2):
         metadata = WorkflowMetadata(

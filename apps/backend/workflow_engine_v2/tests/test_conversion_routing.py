@@ -11,7 +11,7 @@ from pprint import pprint as _pp
 
 from shared.models import TriggerInfo
 from shared.models.node_enums import ActionSubtype, FlowSubtype, NodeType, TriggerSubtype
-from shared.models.workflow_new import Connection, Workflow, WorkflowMetadata, WorkflowStatistics
+from shared.models.workflow import Connection, Workflow, WorkflowMetadata, WorkflowStatistics
 
 """Ensure optional deps won't break imports (stub supabase)."""
 if "supabase" not in sys.modules:

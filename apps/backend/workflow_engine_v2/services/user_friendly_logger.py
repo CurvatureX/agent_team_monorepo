@@ -34,7 +34,7 @@ sys.path.insert(0, str(backend_dir))
 from shared.models.execution_new import Execution
 
 # Use absolute imports
-from shared.models.workflow_new import Node
+from shared.models.workflow import Node
 
 logger = logging.getLogger(__name__)
 

@@ -33,7 +33,7 @@ async def run_schema_migrations():
             logger.info("🔧 Adding deployment columns to workflows table...")
 
             deployment_columns = [
-                ("deployment_status", "VARCHAR(50) NOT NULL DEFAULT 'DRAFT'"),
+                ("deployment_status", "VARCHAR(50) NOT NULL DEFAULT 'IDLE'"),
                 ("deployed_at", "TIMESTAMP WITH TIME ZONE"),
                 ("deployed_by", "UUID"),
                 ("undeployed_at", "TIMESTAMP WITH TIME ZONE"),

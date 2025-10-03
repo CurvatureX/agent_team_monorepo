@@ -4,7 +4,7 @@ in the 'shared' directory. By importing and exposing all models here,
 we can simplify imports in other parts of the application.
 
 Instead of writing:
-from shared.models.workflow_new import Workflow
+from shared.models.workflow import Workflow
 from shared.models.execution_new import Execution
 
 You can simply write:
@@ -32,8 +32,7 @@ from .node_enums import *  # Authoritative node type definitions
 from .session import *
 from .supabase import *
 from .trigger import *
-from .workflow_complete import *  # Consolidated API
-from .workflow_new import *  # Current workflow models
+from .workflow import *  # Current workflow models
 
 # SQLAlchemy-dependent models (import only when SQLAlchemy is available)
 try:
@@ -77,9 +76,8 @@ __all__ = [
     "is_valid_node_subtype_combination",
     "get_all_node_types",
     "get_all_subtypes",
-    # workflow_new.py - Current workflow models
+    # workflow.py - Current workflow models
     "WorkflowDeploymentStatus",
-    "Port",
     "Connection",
     "Node",
     "WorkflowStatistics",

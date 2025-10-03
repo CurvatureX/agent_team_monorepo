@@ -12,7 +12,7 @@ sys.path.insert(0, str(backend_dir))
 from shared.models.node_enums import ActionSubtype, AIAgentSubtype, FlowSubtype, NodeType
 
 # Use absolute imports
-from shared.models.workflow_new import Node
+from shared.models.workflow import Node
 
 from .action import DataTransformationRunner, HttpRequestRunner
 from .ai import AIAgentRunner

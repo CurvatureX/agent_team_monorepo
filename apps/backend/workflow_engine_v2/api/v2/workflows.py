@@ -9,9 +9,9 @@ import time
 import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 
-from shared.models.workflow_new import WorkflowDeploymentStatus
+from shared.models.workflow import WorkflowDeploymentStatus
 
 # Import shared node specs service
 from shared.services.node_specs_api_service import get_node_specs_api_service
@@ -69,8 +69,8 @@ async def create_workflow(request: CreateWorkflowRequest):
                 "active": True,
                 "created_at": created_time_ms,
                 "updated_at": created_time_ms,
-                "deployment_status": WorkflowDeploymentStatus.PENDING.value,
-                "latest_execution_status": None,
+                "deployment_status": WorkflowDeploymentStatus.UNDEPLOYED.value,
+                "latest_execution_status": ExecutionStatus.IDLE.value,
                 "latest_execution_time": None,
                 "latest_execution_id": None,
             }
@@ -142,16 +142,25 @@ async def list_workflows(
     tags: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
+    request: Request = None,
 ):
-    """List workflows with filtering"""
+    """List workflows with filtering using Supabase RLS"""
     try:
-        logger.info("📋 [v2] Listing workflows")
-        workflows = workflow_service.list_workflows()
+        # Extract access token for RLS-based filtering
+        access_token = None
+        if request and request.headers.get("authorization"):
+            auth_header = request.headers.get("authorization")
+            if auth_header.startswith("Bearer "):
+                access_token = auth_header[7:]  # Remove "Bearer " prefix
+                logger.info("🔐 [v2] Using JWT token for RLS-based filtering")
+
+        # Use Supabase RLS to filter workflows by user automatically
+        workflows = workflow_service.list_workflows(access_token=access_token)
 
         # Parse tags if provided
         tag_list = tags.split(",") if tags else []
 
-        # Filter workflows
+        # Filter workflows (RLS already handles user filtering)
         filtered_workflows = []
         for workflow in workflows:
             workflow_dict = workflow.model_dump()
@@ -173,7 +182,7 @@ async def list_workflows(
                     "name": workflow_dict["metadata"]["name"],
                     "description": workflow_dict["metadata"].get("description"),
                     "deployment_status": workflow_dict["metadata"].get(
-                        "deployment_status", "pending"
+                        "deployment_status", WorkflowDeploymentStatus.UNDEPLOYED.value
                     ),
                     "created_at": workflow_dict["metadata"]["created_time"],
                     "updated_at": workflow_dict["metadata"]["created_time"],
