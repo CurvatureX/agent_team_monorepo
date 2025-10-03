@@ -344,6 +344,10 @@ resource "aws_ecs_task_definition" "workflow_engine" {
           value = "8002"
         },
         {
+          name  = "API_GATEWAY_URL"
+          value = "http://api-gateway.${local.name_prefix}.local:8000"
+        },
+        {
           name  = "ENVIRONMENT"
           value = var.environment
         },

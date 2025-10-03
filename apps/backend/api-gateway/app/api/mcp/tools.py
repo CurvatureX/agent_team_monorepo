@@ -373,6 +373,49 @@ async def list_tools(
         )
 
 
+@router.get("/tools/internal")
+async def list_tools_internal():
+    """
+    Internal endpoint for service-to-service MCP tool discovery.
+    No authentication required - for use by workflow_engine and other internal services.
+
+    Returns simplified tool list without MCP JSON-RPC wrapper for easier consumption.
+    """
+    try:
+        logger.info("🔧 Internal service requesting MCP tools (no auth)")
+
+        # Get tools from all services
+        node_tools_response = mcp_service.get_available_tools()
+        notion_tools_response = notion_mcp_service.get_available_tools()
+        google_calendar_tools_response = google_calendar_mcp_service.get_available_tools()
+        slack_tools_response = slack_mcp_service.get_available_tools()
+        github_tools_response = github_mcp_service.get_available_tools()
+        gmail_tools_response = gmail_mcp_service.get_available_tools()
+        discord_tools_response = discord_mcp_service.get_available_tools()
+        firecrawl_tools_response = firecrawl_mcp_service.get_available_tools()
+
+        # Combine tools from all services
+        all_tools = (
+            node_tools_response.tools
+            + notion_tools_response.tools
+            + google_calendar_tools_response.tools
+            + slack_tools_response.tools
+            + github_tools_response.tools
+            + gmail_tools_response.tools
+            + discord_tools_response.tools
+            + firecrawl_tools_response.tools
+        )
+
+        logger.info(f"✅ Internal tools retrieved: {len(all_tools)} total tools")
+
+        # Return simplified format (not JSON-RPC wrapped)
+        return {"tools": all_tools}
+
+    except Exception as e:
+        logger.error(f"❌ Error retrieving internal MCP tools: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve tools: {str(e)}")
+
+
 @router.post("/invoke")
 async def invoke_tool(
     invoke_request: MCPInvokeRequest,

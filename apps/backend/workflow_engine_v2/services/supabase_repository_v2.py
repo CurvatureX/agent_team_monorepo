@@ -55,7 +55,9 @@ class SupabaseExecutionRepositoryV2(ExecutionRepository):
 
         try:
             status_value = (
-                execution.status.value if hasattr(execution.status, "value") else str(execution.status)
+                execution.status.value
+                if hasattr(execution.status, "value")
+                else str(execution.status)
             )
             trigger_info = getattr(execution, "trigger_info", None)
             trigger_data = {}
@@ -66,13 +68,26 @@ class SupabaseExecutionRepositoryV2(ExecutionRepository):
                 trigger_user = getattr(trigger_info, "user_id", None)
                 trigger_type = str(getattr(trigger_info, "trigger_type", "manual")).upper()
 
+            # Map trigger types to valid execution modes
+            # Database constraint allows: MANUAL, TRIGGER, WEBHOOK, RETRY
+            execution_mode_map = {
+                "MANUAL": "MANUAL",
+                "SLACK": "TRIGGER",
+                "SCHEDULE": "TRIGGER",
+                "WEBHOOK": "WEBHOOK",
+                "EMAIL": "TRIGGER",
+                "API": "TRIGGER",
+                "RETRY": "RETRY",
+            }
+            execution_mode = execution_mode_map.get(trigger_type, "MANUAL")
+
             now_iso = datetime.utcnow().isoformat()
 
             execution_payload: Dict[str, Any] = {
                 "execution_id": execution.execution_id,
                 "workflow_id": execution.workflow_id,
                 "status": status_value,
-                "mode": trigger_type if trigger_type else "MANUAL",
+                "mode": execution_mode,
                 "triggered_by": trigger_user,
                 "start_time": getattr(execution, "start_time", None),
                 "end_time": getattr(execution, "end_time", None),
