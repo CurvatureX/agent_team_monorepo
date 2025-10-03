@@ -118,7 +118,7 @@ async def deploy_workflow_public(
         # Return DeploymentResult
         return DeploymentResult(
             deployment_id=result.get("deployment_id", ""),
-            status=DeploymentStatus(result.get("status", "deployed")),
+            status=DeploymentStatus(result.get("status", DeploymentStatus.DEPLOYED.value)),
             message=result.get("message", "Workflow deployed successfully"),
         )
 

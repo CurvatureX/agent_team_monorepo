@@ -356,7 +356,7 @@ class WorkflowDeployment(Base, BaseModel):
     status = Column(
         Enum(WorkflowDeploymentStatus),
         nullable=False,
-        default=WorkflowDeploymentStatus.PENDING,
+        default=WorkflowDeploymentStatus.UNDEPLOYED,
         index=True,
     )
     workflow_spec = Column(JSON, nullable=False, default=dict)

@@ -24,14 +24,15 @@ export enum WorkflowStatus {
 
 // 工作流部署状态枚举 (Aligned with backend WorkflowDeploymentStatus)
 export enum WorkflowDeploymentStatus {
-  Pending = 'pending',     // 等待部署
-  Deployed = 'deployed',   // 已部署
-  Failed = 'failed',       // 部署失败
-  Undeployed = 'undeployed' // 已取消部署
+  Undeployed = 'UNDEPLOYED',            // 未部署 (默认状态)
+  Deploying = 'DEPLOYING',              // 正在部署
+  Deployed = 'DEPLOYED',                // 已部署
+  DeploymentFailed = 'DEPLOYMENT_FAILED' // 部署失败
 }
 
 // 执行状态枚举 (Aligned with backend ExecutionStatus)
 export enum ExecutionStatusEnum {
+  Idle = 'IDLE',                 // 闲置状态 (从未执行，默认状态)
   New = 'NEW',
   Pending = 'PENDING',
   Running = 'RUNNING',

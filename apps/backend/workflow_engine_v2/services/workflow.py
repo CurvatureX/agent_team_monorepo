@@ -348,8 +348,8 @@ class WorkflowServiceV2:
         from shared.models.workflow import WorkflowDeploymentStatus
 
         optional_columns = {
-            "deployment_status": WorkflowDeploymentStatus.PENDING.value,  # Always start as pending, change only via deploy API
-            "latest_execution_status": ExecutionStatus.NEW.value,  # Always start as NEW
+            "deployment_status": WorkflowDeploymentStatus.UNDEPLOYED.value,  # Default state (never deployed)
+            "latest_execution_status": ExecutionStatus.IDLE.value,  # Always start as IDLE (never executed)
             "latest_execution_time": None,  # No execution yet
             "latest_execution_id": None,
             "icon_url": workflow.metadata.icon_url,
