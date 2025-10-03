@@ -142,6 +142,23 @@ class WorkflowServiceV2:
                             metadata["created_time"] = metadata.get("created_time_ms", 0)
                         if "created_by" not in metadata:
                             metadata["created_by"] = metadata.get("created_by", "unknown")
+                        # Normalize status fields to expected enum values
+                        try:
+                            if "deployment_status" in metadata and isinstance(
+                                metadata["deployment_status"], str
+                            ):
+                                metadata["deployment_status"] = metadata[
+                                    "deployment_status"
+                                ].lower()
+                            if "latest_execution_status" in metadata and isinstance(
+                                metadata["latest_execution_status"], str
+                            ):
+                                metadata["latest_execution_status"] = metadata[
+                                    "latest_execution_status"
+                                ].lower()
+                        except Exception:
+                            # Gracefully ignore normalization issues
+                            pass
                         if "version" in metadata and isinstance(metadata["version"], int):
                             metadata["version"] = str(metadata["version"])
                         workflow_data["metadata"] = metadata
@@ -178,6 +195,22 @@ class WorkflowServiceV2:
                             metadata["created_time"] = metadata.get("created_time_ms", 0)
                         if "created_by" not in metadata:
                             metadata["created_by"] = metadata.get("created_by", "unknown")
+                        # Normalize status fields to align with enums
+                        try:
+                            if "deployment_status" in metadata and isinstance(
+                                metadata["deployment_status"], str
+                            ):
+                                metadata["deployment_status"] = metadata[
+                                    "deployment_status"
+                                ].lower()
+                            if "latest_execution_status" in metadata and isinstance(
+                                metadata["latest_execution_status"], str
+                            ):
+                                metadata["latest_execution_status"] = metadata[
+                                    "latest_execution_status"
+                                ].lower()
+                        except Exception:
+                            pass
                         if "version" in metadata and isinstance(metadata["version"], int):
                             metadata["version"] = str(metadata["version"])
                         workflow_data["metadata"] = metadata
