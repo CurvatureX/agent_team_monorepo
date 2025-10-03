@@ -20,7 +20,7 @@ from shared.models.db_models import WorkflowDB
 from shared.models.supabase import create_supabase_client
 
 # Use absolute imports
-from shared.models.workflow import Workflow, WorkflowMetadata
+from shared.models.workflow import Workflow, WorkflowMetadata, WorkflowDeploymentStatus
 from workflow_engine_v2.core.spec import coerce_node_to_v2, get_spec
 from workflow_engine_v2.core.validation import validate_workflow
 
@@ -36,6 +36,42 @@ class WorkflowServiceV2:
             self.logger.warning(f"⚠️ Failed to initialize Supabase client: {e}")
             self.supabase = None
             raise Exception("Supabase client is required for workflow operations")
+
+    @staticmethod
+    def _normalize_metadata(workflow_data: Dict[str, Any]) -> None:
+        """Coerce legacy metadata fields to the canonical schema."""
+
+        metadata = workflow_data.get("metadata")
+        if not isinstance(metadata, dict):
+            return
+
+        status = metadata.get("deployment_status")
+        if isinstance(status, str):
+            normalized = status.strip().lower()
+            status_map = {
+                "draft": WorkflowDeploymentStatus.UNDEPLOYED.value,
+                "idle": WorkflowDeploymentStatus.UNDEPLOYED.value,
+                "undeployed": WorkflowDeploymentStatus.UNDEPLOYED.value,
+                "pending": WorkflowDeploymentStatus.DEPLOYING.value,
+                "deploying": WorkflowDeploymentStatus.DEPLOYING.value,
+                "deployed": WorkflowDeploymentStatus.DEPLOYED.value,
+                "failed": WorkflowDeploymentStatus.DEPLOYMENT_FAILED.value,
+                "deployment_failed": WorkflowDeploymentStatus.DEPLOYMENT_FAILED.value,
+            }
+            metadata["deployment_status"] = status_map.get(
+                normalized, status.strip().upper()
+            )
+
+        latest = metadata.get("last_execution_status")
+        if isinstance(latest, str):
+            metadata["last_execution_status"] = latest.strip().upper()
+
+        # Ensure required timestamp / author fields exist.  Fall back to zero/empty
+        # values so Pydantic validation surfaces a controlled error instead of
+        # a KeyError.
+        metadata.setdefault("created_time", metadata.get("created_time_ms", 0))
+        metadata.setdefault("created_by", metadata.get("created_by", ""))
+        metadata.setdefault("version", "1.0")
 
     def create_workflow(
         self,
@@ -137,11 +173,29 @@ class WorkflowServiceV2:
                     # Fix missing fields in workflow_data for Pydantic validation
                     if "metadata" in workflow_data:
                         metadata = workflow_data["metadata"]
+                        self._normalize_metadata(workflow_data)
                         # Ensure required fields exist with proper types
                         if "created_time" not in metadata:
                             metadata["created_time"] = metadata.get("created_time_ms", 0)
                         if "created_by" not in metadata:
                             metadata["created_by"] = metadata.get("created_by", "unknown")
+                        # Normalize status fields to expected enum values
+                        try:
+                            if "deployment_status" in metadata and isinstance(
+                                metadata["deployment_status"], str
+                            ):
+                                metadata["deployment_status"] = metadata[
+                                    "deployment_status"
+                                ].upper()
+                            if "latest_execution_status" in metadata and isinstance(
+                                metadata["latest_execution_status"], str
+                            ):
+                                metadata["latest_execution_status"] = metadata[
+                                    "latest_execution_status"
+                                ].upper()
+                        except Exception:
+                            # Gracefully ignore normalization issues
+                            pass
                         if "version" in metadata and isinstance(metadata["version"], int):
                             metadata["version"] = str(metadata["version"])
                         workflow_data["metadata"] = metadata
@@ -173,11 +227,28 @@ class WorkflowServiceV2:
                     # Fix missing fields in workflow_data for Pydantic validation
                     if "metadata" in workflow_data:
                         metadata = workflow_data["metadata"]
+                        self._normalize_metadata(workflow_data)
                         # Ensure required fields exist with proper types
                         if "created_time" not in metadata:
                             metadata["created_time"] = metadata.get("created_time_ms", 0)
                         if "created_by" not in metadata:
                             metadata["created_by"] = metadata.get("created_by", "unknown")
+                        # Normalize status fields to align with enums
+                        try:
+                            if "deployment_status" in metadata and isinstance(
+                                metadata["deployment_status"], str
+                            ):
+                                metadata["deployment_status"] = metadata[
+                                    "deployment_status"
+                                ].upper()
+                            if "latest_execution_status" in metadata and isinstance(
+                                metadata["latest_execution_status"], str
+                            ):
+                                metadata["latest_execution_status"] = metadata[
+                                    "latest_execution_status"
+                                ].upper()
+                        except Exception:
+                            pass
                         if "version" in metadata and isinstance(metadata["version"], int):
                             metadata["version"] = str(metadata["version"])
                         workflow_data["metadata"] = metadata
