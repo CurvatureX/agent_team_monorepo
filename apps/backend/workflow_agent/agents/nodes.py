@@ -228,9 +228,7 @@ class WorkflowAgentNodes:
                     if isinstance(spec_result, dict):
                         if "nodes" in spec_result:
                             nodes_list = spec_result.get("nodes", [])
-                        elif "result" in spec_result and isinstance(
-                            spec_result["result"], dict
-                        ):
+                        elif "result" in spec_result and isinstance(spec_result["result"], dict):
                             nodes_list = spec_result["result"].get("nodes", [])
                     elif isinstance(spec_result, list):
                         nodes_list = spec_result
@@ -369,7 +367,9 @@ class WorkflowAgentNodes:
 
         metadata.setdefault("id", workflow.get("id", str(uuid.uuid4())))
         metadata.setdefault("name", workflow_name)
-        metadata.setdefault("description", workflow.get("description", metadata.get("description", "")))
+        metadata.setdefault(
+            "description", workflow.get("description", metadata.get("description", ""))
+        )
         metadata.setdefault("tags", workflow.get("tags", metadata.get("tags", [])))
         metadata.setdefault("version", metadata.get("version", "1.0"))
         metadata["deployment_status"] = "pending"
@@ -381,9 +381,15 @@ class WorkflowAgentNodes:
 
         triggers = workflow.get("triggers")
         if not triggers:
-            triggers = [node.get("id") for node in workflow.get("nodes", []) if node.get("type") == "TRIGGER" and node.get("id")]
+            triggers = [
+                node.get("id")
+                for node in workflow.get("nodes", [])
+                if node.get("type") == "TRIGGER" and node.get("id")
+            ]
             if not triggers:
-                logger.warning("Workflow metadata hydration: no TRIGGER nodes found; triggers list will be empty")
+                logger.warning(
+                    "Workflow metadata hydration: no TRIGGER nodes found; triggers list will be empty"
+                )
             workflow["triggers"] = triggers
 
     async def _enhance_ai_agent_prompts_with_llm(self, workflow: dict) -> dict:
@@ -393,20 +399,16 @@ class WorkflowAgentNodes:
         """
         try:
             logger.info("Enhancing AI Agent prompts with LLM assistance (concurrent)")
-            
+
             connections = workflow.get("connections") or []
             nodes = workflow.get("nodes", [])
 
-            node_map = {
-                node.get("id"): node
-                for node in nodes
-                if node.get("id")
-            }
-            
+            node_map = {node.get("id"): node for node in nodes if node.get("id")}
+
             # Collect all AI Agent nodes that need enhancement
             enhancement_tasks = []
             ai_agent_nodes = []
-            
+
             for node in nodes:
                 if node.get("type") != "AI_AGENT":
                     continue
@@ -415,9 +417,7 @@ class WorkflowAgentNodes:
                 if not node_id:
                     continue
 
-                outgoing = [
-                    conn for conn in connections if conn.get("from_node") == node_id
-                ]
+                outgoing = [conn for conn in connections if conn.get("from_node") == node_id]
 
                 if not outgoing:
                     continue
@@ -428,48 +428,54 @@ class WorkflowAgentNodes:
 
                 next_node = node_map[next_node_id]
 
-                task = self._enhance_single_ai_agent_prompt(
-                    node, next_node, node_id, next_node_id
-                )
+                task = self._enhance_single_ai_agent_prompt(node, next_node, node_id, next_node_id)
                 enhancement_tasks.append(task)
                 ai_agent_nodes.append((node, node_id))
-            
+
             if enhancement_tasks:
                 # Run enhancement tasks with controlled concurrency
                 max_concurrent = getattr(settings, "MAX_CONCURRENT_LLM_ENHANCEMENTS", 5)
-                logger.info(f"Running {len(enhancement_tasks)} LLM enhancements with max concurrency of {max_concurrent}")
-                
+                logger.info(
+                    f"Running {len(enhancement_tasks)} LLM enhancements with max concurrency of {max_concurrent}"
+                )
+
                 # Process in batches to control concurrency
                 enhanced_prompts = []
                 for i in range(0, len(enhancement_tasks), max_concurrent):
-                    batch = enhancement_tasks[i:i + max_concurrent]
+                    batch = enhancement_tasks[i : i + max_concurrent]
                     batch_results = await asyncio.gather(*batch, return_exceptions=True)
                     enhanced_prompts.extend(batch_results)
-                    
+
                     # Small delay between batches to avoid rate limiting
                     if i + max_concurrent < len(enhancement_tasks):
                         await asyncio.sleep(0.5)
-                
+
                 # Apply the enhanced prompts back to the nodes
                 for (node, node_id), enhanced_prompt in zip(ai_agent_nodes, enhanced_prompts):
                     if isinstance(enhanced_prompt, Exception):
-                        logger.warning(f"Failed to enhance prompt for node {node_id}: {enhanced_prompt}")
+                        logger.warning(
+                            f"Failed to enhance prompt for node {node_id}: {enhanced_prompt}"
+                        )
                         # Keep original prompt if enhancement failed
                     elif enhanced_prompt:
                         # Update the node's system prompt with LLM-enhanced version
                         if "parameters" not in node:
                             node["parameters"] = {}
                         node["parameters"]["system_prompt"] = enhanced_prompt
-                        logger.info(f"Successfully enhanced AI Agent node '{node_id}' prompt with LLM")
-            
+                        logger.info(
+                            f"Successfully enhanced AI Agent node '{node_id}' prompt with LLM"
+                        )
+
             return workflow
-            
+
         except Exception as e:
             logger.warning(f"Error in concurrent AI Agent prompt enhancement: {e}")
             # Fall back to non-LLM enhancement
             return self._enhance_ai_agent_prompts(workflow)
-    
-    async def _enhance_single_ai_agent_prompt(self, ai_node: dict, next_node: dict, ai_node_id: str, next_node_id: str) -> str:
+
+    async def _enhance_single_ai_agent_prompt(
+        self, ai_node: dict, next_node: dict, ai_node_id: str, next_node_id: str
+    ) -> str:
         """
         Enhance a single AI Agent's prompt using LLM to understand the next node's requirements.
         """
@@ -477,11 +483,11 @@ class WorkflowAgentNodes:
             current_prompt = ai_node.get("parameters", {}).get("system_prompt", "")
             next_node_type = next_node.get("type")
             next_node_subtype = next_node.get("subtype")
-            
+
             # Get the node spec from cache if available
             node_key = f"{next_node_type}:{next_node_subtype}"
             node_spec = self.node_specs_cache.get(node_key)
-            
+
             # Prepare context for LLM
             enhancement_prompt = f"""You are a workflow optimization expert. You need to enhance an AI Agent's system prompt to ensure its output format matches what the next node expects.
 
@@ -492,7 +498,7 @@ This AI Agent connects to: {next_node_type} - {next_node_subtype}
 Next node's purpose: {next_node.get('name', 'Unknown')}
 
 """
-            
+
             if node_spec:
                 # Add spec details if available
                 parameters = node_spec.get("parameters", [])
@@ -500,7 +506,7 @@ Next node's purpose: {next_node.get('name', 'Unknown')}
                     enhancement_prompt += "Next node expects these parameters:\n"
                     for param in parameters[:10]:  # Limit to first 10 params
                         enhancement_prompt += f"- {param.get('name')} ({param.get('type')}): {param.get('description', 'N/A')}\n"
-            
+
             enhancement_prompt += """
 Please enhance the system prompt to:
 1. Clearly specify the output format required by the next node
@@ -513,28 +519,34 @@ Return ONLY the enhanced system prompt, no explanations."""
 
             # Use LLM to enhance the prompt
             messages = [
-                SystemMessage(content="You are an expert at optimizing AI system prompts for workflow integration."),
-                HumanMessage(content=enhancement_prompt)
+                SystemMessage(
+                    content="You are an expert at optimizing AI system prompts for workflow integration."
+                ),
+                HumanMessage(content=enhancement_prompt),
             ]
-            
+
             response = await self.llm.ainvoke(messages)
             enhanced_prompt = response.content.strip()
-            
+
             # Validate the enhanced prompt isn't empty or too different
             if enhanced_prompt and len(enhanced_prompt) > 20:
-                logger.info(f"LLM enhanced prompt for node {ai_node_id} connecting to {next_node_id}")
+                logger.info(
+                    f"LLM enhanced prompt for node {ai_node_id} connecting to {next_node_id}"
+                )
                 return enhanced_prompt
             else:
                 # Fall back to simple enhancement
                 format_prompt = self._generate_format_prompt_for_node(next_node)
-                return self._add_format_requirements_to_prompt(current_prompt, format_prompt, next_node)
-                
+                return self._add_format_requirements_to_prompt(
+                    current_prompt, format_prompt, next_node
+                )
+
         except Exception as e:
             logger.warning(f"Error enhancing single prompt with LLM: {e}")
             # Fall back to simple enhancement
             format_prompt = self._generate_format_prompt_for_node(next_node)
             return self._add_format_requirements_to_prompt(current_prompt, format_prompt, next_node)
-    
+
     def _enhance_ai_agent_prompts(self, workflow: dict) -> dict:
         """
         Enhance AI Agent node prompts to ensure output format matches the next node's expected input.
@@ -542,16 +554,12 @@ Return ONLY the enhanced system prompt, no explanations."""
         """
         try:
             logger.info("Enhancing AI Agent prompts based on connected nodes")
-            
+
             connections = workflow.get("connections") or []
             nodes = workflow.get("nodes", [])
 
-            node_map = {
-                node.get("id"): node
-                for node in nodes
-                if node.get("id")
-            }
-            
+            node_map = {node.get("id"): node for node in nodes if node.get("id")}
+
             # Process each AI Agent node
             for node in nodes:
                 if node.get("type") != "AI_AGENT":
@@ -561,9 +569,7 @@ Return ONLY the enhanced system prompt, no explanations."""
                 if not node_id:
                     continue
 
-                outgoing = [
-                    conn for conn in connections if conn.get("from_node") == node_id
-                ]
+                outgoing = [conn for conn in connections if conn.get("from_node") == node_id]
 
                 if not outgoing:
                     continue
@@ -590,106 +596,112 @@ Return ONLY the enhanced system prompt, no explanations."""
                         f"Enhanced AI Agent node '{node_id}' prompt for connection to "
                         f"'{next_node['type']}' node '{next_node_id}'"
                     )
-            
+
             return workflow
-            
+
         except Exception as e:
             logger.warning(f"Error enhancing AI Agent prompts: {e}")
             # Return workflow unchanged if enhancement fails
             return workflow
-    
+
     def _generate_format_prompt_for_node(self, node: dict) -> str:
         """Generate format requirements based on the node's MCP specification."""
         node_type = node.get("type")
         node_subtype = node.get("subtype")
-        
+
         # Try to get node spec from cache first
         node_key = f"{node_type}:{node_subtype}"
         node_spec = self.node_specs_cache.get(node_key)
-        
+
         # If not in cache, try to fetch from MCP
-        if not node_spec and hasattr(self, 'mcp_client'):
+        if not node_spec and hasattr(self, "mcp_client"):
             try:
                 # Query MCP for this specific node's details
                 # Note: We'll use the cached specs if available, otherwise skip dynamic fetch
                 # since this is called from sync context but MCP client is async
-                logger.info(f"Node spec for {node_key} not in cache, will use generic format prompt")
+                logger.info(
+                    f"Node spec for {node_key} not in cache, will use generic format prompt"
+                )
             except Exception as e:
                 logger.warning(f"Failed to fetch node spec from MCP: {e}")
-        
+
         # Generate format prompt from MCP spec
         if node_spec:
             return self._generate_format_from_mcp_spec(node_spec, node_type, node_subtype)
-        
+
         # Fallback: Generic prompt for unknown nodes
         return """
 Your output should be structured data that the next node can process.
 Check the node's expected input format and structure your response accordingly.
 """
-    
-    def _add_format_requirements_to_prompt(self, current_prompt: str, format_prompt: str, next_node: dict) -> str:
+
+    def _add_format_requirements_to_prompt(
+        self, current_prompt: str, format_prompt: str, next_node: dict
+    ) -> str:
         """Add format requirements to the existing prompt."""
         if not format_prompt:
             return current_prompt
-        
+
         # Add a clear section about output format requirements
         enhanced_prompt = current_prompt
-        
+
         # Check if prompt already has format requirements
         if "output format" not in current_prompt.lower() and "json" not in current_prompt.lower():
             node_name = next_node.get("name", next_node.get("subtype", "next node"))
             node_subtype = next_node.get("subtype", "")
-            
+
             enhanced_prompt += f"""
 
 === CRITICAL OUTPUT FORMAT REQUIREMENT ===
 Your response will be passed to a {node_subtype or node_name} node.
 {format_prompt}
 
-IMPORTANT: 
+IMPORTANT:
 - Your entire response should be ONLY the JSON object
 - Do NOT include any explanation, markdown formatting, or code blocks
 - The JSON must be valid and parseable
 - All required fields must be present
 """
-        
+
         return enhanced_prompt
-    
-    def _generate_format_from_mcp_spec(self, node_spec: dict, node_type: str, node_subtype: str) -> str:
+
+    def _generate_format_from_mcp_spec(
+        self, node_spec: dict, node_type: str, node_subtype: str
+    ) -> str:
         """Generate format prompt from MCP node specification."""
         format_prompt = """
 Your output MUST match the expected input format for the next node.
 """
-        
+
         # Extract parameters from the spec
         parameters = node_spec.get("parameters", [])
         required_params = [p for p in parameters if p.get("required", False)]
         optional_params = [p for p in parameters if not p.get("required", False)]
-        
+
         if parameters:
             format_prompt += f"\nThe {node_subtype} node expects the following input:\n\n"
-            
+
             # Build a JSON structure example based on parameters
             format_prompt += "Required JSON structure:\n```json\n{\n"
-            
+
             # Add required parameters
             if required_params:
                 for i, param in enumerate(required_params):
                     param_name = param.get("name", "param")
                     param_type = param.get("type", "string")
                     param_desc = param.get("description", "")
-                    
+
                     # Generate example value based on type
                     example_value = self._get_example_for_param_type(param_type, param_name)
-                    
+
                     format_prompt += f'    "{param_name}": {example_value}'
                     if param_desc:
-                        format_prompt += f'  // {param_desc}'
-                    
+                        format_prompt += f"  // {param_desc}"
+
                     if i < len(required_params) - 1 or optional_params:
                         format_prompt += ","
                     format_prompt += "\n"
-            
+
             # Add optional parameters as comments
             if optional_params:
                 format_prompt += "    // Optional fields:\n"
@@ -698,9 +710,9 @@ Your output MUST match the expected input format for the next node.
                     param_type = param.get("type", "string")
                     example_value = self._get_example_for_param_type(param_type, param_name)
                     format_prompt += f'    // "{param_name}": {example_value}\n'
-            
+
             format_prompt += "}\n```\n"
-            
+
             # Add parameter descriptions if available
             if required_params:
                 format_prompt += "\nRequired fields:\n"
@@ -709,15 +721,15 @@ Your output MUST match the expected input format for the next node.
                     param_desc = param.get("description", "No description")
                     param_type = param.get("type", "string")
                     format_prompt += f"- **{param_name}** ({param_type}): {param_desc}\n"
-        
+
         # Add any specific notes based on node type
         if node_type == "EXTERNAL_ACTION":
             format_prompt += "\nIMPORTANT: This is an external API integration. Ensure your output exactly matches the API's expected format."
         elif node_type == "ACTION":
             format_prompt += "\nIMPORTANT: Structure your output as valid JSON that can be processed by the action node."
-        
+
         return format_prompt
-    
+
     def _get_example_for_param_type(self, param_type: str, param_name: str) -> str:
         """Generate an example value for a parameter based on its type."""
         # Map MCP parameter types to example values
@@ -728,9 +740,9 @@ Your output MUST match the expected input format for the next node.
             "boolean": "true",
             "json": "{}",
             "array": "[]",
-            "object": "{}"
+            "object": "{}",
         }
-        
+
         # Use parameter name hints for better examples
         if "email" in param_name.lower():
             return '"user@example.com"'
@@ -746,26 +758,22 @@ Your output MUST match the expected input format for the next node.
             return '"item-123"'
         elif "channel" in param_name.lower():
             return '"#general"'
-        
+
         # Return type-based default
         return type_examples.get(param_type, '"value"')
-    
+
     def _validate_ai_agent_prompts(self, workflow: dict) -> List[str]:
         """
         Validate that AI Agent prompts are properly configured for their connections.
         Returns a list of warnings if issues are found.
         """
         warnings = []
-        
+
         try:
             connections = workflow.get("connections") or []
             nodes = workflow.get("nodes", [])
-            node_map = {
-                node.get("id"): node
-                for node in nodes
-                if node.get("id")
-            }
-            
+            node_map = {node.get("id"): node for node in nodes if node.get("id")}
+
             for node in nodes:
                 if node.get("type") != "AI_AGENT":
                     continue
@@ -776,9 +784,7 @@ Your output MUST match the expected input format for the next node.
 
                 system_prompt = node.get("parameters", {}).get("system_prompt", "")
 
-                outgoing = [
-                    conn for conn in connections if conn.get("from_node") == node_id
-                ]
+                outgoing = [conn for conn in connections if conn.get("from_node") == node_id]
 
                 if not outgoing:
                     continue
@@ -815,13 +821,17 @@ Your output MUST match the expected input format for the next node.
                     warnings.append(
                         f"AI Agent '{node_id}' connects to Google Calendar but prompt doesn't mention calendar event format"
                     )
-                elif next_subtype == "SLACK" and "slack" not in prompt_lower and "message" not in prompt_lower:
+                elif (
+                    next_subtype == "SLACK"
+                    and "slack" not in prompt_lower
+                    and "message" not in prompt_lower
+                ):
                     warnings.append(
                         f"AI Agent '{node_id}' connects to Slack but prompt doesn't mention message format"
                     )
-            
+
             return warnings
-            
+
         except Exception as e:
             logger.error(f"Error validating AI Agent prompts: {e}")
             return warnings
@@ -1261,10 +1271,14 @@ Your output MUST match the expected input format for the next node.
 
                     # DEBUG: Log connections after normalization
                     normalized_connections = workflow.get("connections", [])
-                    logger.info(f"🔧 AFTER NORMALIZATION - Connections count: {len(normalized_connections)}")
+                    logger.info(
+                        f"🔧 AFTER NORMALIZATION - Connections count: {len(normalized_connections)}"
+                    )
                     if len(raw_connections) != len(normalized_connections):
-                        logger.error(f"🚨 CONNECTIONS LOST DURING NORMALIZATION! Before: {len(raw_connections)}, After: {len(normalized_connections)}")
-                    
+                        logger.error(
+                            f"🚨 CONNECTIONS LOST DURING NORMALIZATION! Before: {len(raw_connections)}, After: {len(normalized_connections)}"
+                        )
+
                     # Pre-fetch node specs for connected nodes
                     await self._prefetch_node_specs_for_workflow(workflow)
                     await self._hydrate_nodes_from_specs(workflow)
@@ -1274,7 +1288,7 @@ Your output MUST match the expected input format for the next node.
                     try:
                         # Check if we should use LLM enhancement (can be controlled by settings)
                         use_llm_enhancement = getattr(settings, "USE_LLM_PROMPT_ENHANCEMENT", True)
-                        
+
                         if use_llm_enhancement:
                             logger.info("Using concurrent LLM enhancement for AI Agent prompts")
                             workflow = await self._enhance_ai_agent_prompts_with_llm(workflow)
@@ -1284,7 +1298,7 @@ Your output MUST match the expected input format for the next node.
                     except Exception as e:
                         logger.warning(f"LLM enhancement failed, falling back to rule-based: {e}")
                         workflow = self._enhance_ai_agent_prompts(workflow)
-                    
+
                     # Validate that AI Agent prompts are properly configured
                     validation_warnings = self._validate_ai_agent_prompts(workflow)
                     if validation_warnings:
@@ -1490,9 +1504,7 @@ Would you like to make any adjustments or shall we proceed with testing?"""
                     self.node_specs_cache[cache_key] = spec
                     return spec
         except Exception as e:
-            logger.warning(
-                f"Failed to fetch MCP node spec for {node_type}:{node_subtype}: {e}"
-            )
+            logger.warning(f"Failed to fetch MCP node spec for {node_type}:{node_subtype}: {e}")
 
         return self.node_specs_cache.get(cache_key)
 
@@ -1551,6 +1563,7 @@ Would you like to make any adjustments or shall we proceed with testing?"""
                     current_messages.append(SystemMessage(content=f"Assistant: {response.content}"))
 
                 # Process each tool call
+                has_new_tool_calls = False
                 for tool_call in response.tool_calls:
                     tool_name = getattr(tool_call, "name", tool_call.get("name", ""))
                     tool_args = getattr(tool_call, "args", tool_call.get("args", {}))
@@ -1563,9 +1576,11 @@ Would you like to make any adjustments or shall we proceed with testing?"""
                         logger.warning(f"Skipping duplicate tool call: {tool_name} with same args")
                         continue
 
+                    has_new_tool_calls = True
                     tool_call_history.append(tool_signature)
                     logger.info(f"Processing tool call: {tool_name}")
                     result = await self.mcp_client.call_tool(tool_name, tool_args)
+                    logger.info(f"🔍 Raw MCP result for {tool_name}: {result}")
 
                     # Cache node specs for type reference
                     if tool_name == "get_node_details" and isinstance(result, dict):
@@ -1585,12 +1600,27 @@ Would you like to make any adjustments or shall we proceed with testing?"""
                         else len(str(result))
                     )
                     result_str = self._filter_mcp_response_for_prompt(result, tool_name)
-                    logger.debug(
-                        f"💡 MCP response filtered: reduced from {original_size} to {len(result_str)} characters"
+                    logger.info(
+                        f"💡 MCP response for {tool_name}: original={original_size} chars, filtered={len(result_str)} chars"
                     )
-                    current_messages.append(
-                        HumanMessage(content=f"Tool result for {tool_name}:\n{result_str}")
-                    )
+                    logger.info(f"📤 Sending to LLM: {result_str[:500]}...")
+
+                    # Add explicit next step guidance for get_node_types
+                    if tool_name == "get_node_types":
+                        current_messages.append(
+                            HumanMessage(
+                                content=f"Tool result for {tool_name}:\n{result_str}\n\n**Next step**: Now call get_node_details with the specific nodes you need (e.g., TRIGGER:SLACK, AI_AGENT:OPENAI_CHATGPT, EXTERNAL_ACTION:NOTION) to get their full specifications before generating the workflow JSON."
+                            )
+                        )
+                    else:
+                        current_messages.append(
+                            HumanMessage(content=f"Tool result for {tool_name}:\n{result_str}")
+                        )
+
+                # Break the loop if all tool calls were duplicates
+                if not has_new_tool_calls:
+                    logger.warning("All tool calls were duplicates, breaking out of loop")
+                    break
 
                 # Add stronger reminder about MCP types if we got node details
                 has_node_details = any("get_node_details" in str(tc) for tc in response.tool_calls)
@@ -2003,6 +2033,7 @@ Generate the complete workflow JSON now:"""
             logger.error(f"LLM workflow completion failed: {e}", exc_info=True)
             return incomplete_workflow
 
+
 class ConversionFunctionGenerator:
     """Generate conversion functions for workflow connections in a minimal, testable way."""
 
@@ -2019,15 +2050,13 @@ class ConversionFunctionGenerator:
         self.spec_fetcher = spec_fetcher
         self.logger = logger
 
-    async def populate(self, workflow: Dict[str, Any], *, intent_summary: str = "") -> Dict[str, Any]:
-        nodes = {
-            node.get("id"): node for node in workflow.get("nodes", []) if node.get("id")
-        }
+    async def populate(
+        self, workflow: Dict[str, Any], *, intent_summary: str = ""
+    ) -> Dict[str, Any]:
+        nodes = {node.get("id"): node for node in workflow.get("nodes", []) if node.get("id")}
         connections = workflow.get("connections") or []
 
-        semaphore = asyncio.Semaphore(
-            getattr(settings, "CONVERSION_GENERATION_MAX_CONCURRENCY", 4)
-        )
+        semaphore = asyncio.Semaphore(getattr(settings, "CONVERSION_GENERATION_MAX_CONCURRENCY", 4))
 
         tasks = []
         processed_connections: List[Dict[str, Any]] = []
@@ -2057,7 +2086,9 @@ class ConversionFunctionGenerator:
                 )
                 code = connection.get("conversion_function") or DEFAULT_CONVERSION_FUNCTION
             else:
-                code = result or connection.get("conversion_function") or DEFAULT_CONVERSION_FUNCTION
+                code = (
+                    result or connection.get("conversion_function") or DEFAULT_CONVERSION_FUNCTION
+                )
 
             connection["conversion_function"] = code
 
@@ -2173,8 +2204,7 @@ class ConversionFunctionGenerator:
             "name": node.get("name"),
             "type": node.get("type"),
             "subtype": node.get("subtype"),
-            "description": node.get("description")
-            or (spec.get("description") if spec else ""),
+            "description": node.get("description") or (spec.get("description") if spec else ""),
             "configurations": self._compact_dict(node.get("configurations", {})),
         }
 
@@ -2262,4 +2292,3 @@ class ConversionFunctionGenerator:
                 f"    return {expression}",
             ]
         )
-
