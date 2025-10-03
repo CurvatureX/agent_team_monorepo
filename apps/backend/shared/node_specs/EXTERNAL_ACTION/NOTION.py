@@ -198,18 +198,6 @@ class NotionActionSpec(BaseNodeSpec):
                     "description": "Primary input payload",
                     "required": False,
                 },
-                "context": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Context for templating or logic",
-                    "required": False,
-                },
-                "variables": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Template variables",
-                    "required": False,
-                },
             },
             output_params={
                 "success": {
