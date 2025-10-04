@@ -28,12 +28,25 @@ class WorkflowValidationError(ValueError):
 
 
 def validate_workflow(workflow: Workflow) -> None:
+    import logging
+
+    logger = logging.getLogger(__name__)
     errors: List[str] = []
 
     # Validate nodes
     node_map = {n.id: n for n in workflow.nodes}
     for n in workflow.nodes:
         ntype = n.type.value if hasattr(n.type, "value") else str(n.type)
+
+        # Debug logging to see actual node data
+        logger.debug(
+            f"Validating node {n.id} ({ntype}.{n.subtype})\n"
+            f"   Node object type: {type(n)}\n"
+            f"   Configurations type: {type(n.configurations)}\n"
+            f"   Configurations value: {n.configurations}\n"
+            f"   Has configurations attr: {hasattr(n, 'configurations')}"
+        )
+
         if not is_valid_node_subtype_combination(ntype, n.subtype):
             errors.append(f"Invalid type/subtype: {ntype}.{n.subtype} (node {n.id})")
         try:
@@ -41,8 +54,31 @@ def validate_workflow(workflow: Workflow) -> None:
             if hasattr(spec, "validate_configuration"):
                 ok = spec.validate_configuration(n.configurations)
                 if not ok:
+                    # Log detailed validation failure info
+                    required_keys = set()
+                    if hasattr(spec, "configurations"):
+                        for key, value in spec.configurations.items():
+                            if isinstance(value, dict) and value.get("required", False):
+                                required_keys.add(key)
+
+                    present_keys = set(n.configurations.keys())
+                    missing_keys = required_keys - present_keys
+
+                    logger.error(
+                        f"❌ Configuration validation failed for {ntype}.{n.subtype} (node {n.id})\n"
+                        f"   Required keys: {required_keys}\n"
+                        f"   Present keys: {present_keys}\n"
+                        f"   Missing keys: {missing_keys}"
+                    )
                     errors.append(f"Invalid configuration for node {n.id} ({ntype}.{n.subtype})")
+            else:
+                # Spec loaded but doesn't have validate_configuration (stub spec)
+                logger.warning(
+                    f"⚠️ Spec for {ntype}.{n.subtype} (node {n.id}) doesn't have validate_configuration - "
+                    f"using stub spec (validation skipped)"
+                )
         except Exception as e:
+            logger.error(f"❌ Failed to get spec for {ntype}.{n.subtype} (node {n.id}): {e}")
             errors.append(f"Spec not found for {ntype}.{n.subtype} (node {n.id})")
 
     # Validate connections: nodes must exist

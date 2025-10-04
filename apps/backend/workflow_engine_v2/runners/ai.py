@@ -91,6 +91,9 @@ class AIAgentRunner(NodeRunner):
                     f"🧠 Enhanced prompt with {len(conversation_history)} chars of memory context"
                 )
 
+        # 1.5. BEFORE AI execution: Enhance with downstream node guidance (if next node is EXTERNAL_ACTION)
+        enhanced_prompt = self._enhance_prompt_with_downstream_guidance(enhanced_prompt, node, ctx)
+
         # 2. BEFORE AI execution: Detect available MCP tools
         tool_nodes = self._detect_attached_nodes(node, ctx, NodeType.TOOL)
         available_tools = []
@@ -257,6 +260,69 @@ Current user message: {user_message}
 Please respond based on the conversation history above and the current user message. Maintain context and reference previous interactions when relevant."""
 
         return enhanced_prompt
+
+    def _enhance_prompt_with_downstream_guidance(
+        self, base_prompt: str, node: Node, ctx: Any
+    ) -> str:
+        """Enhance system prompt with downstream EXTERNAL_ACTION node usage instructions.
+
+        This method detects if the current AI_AGENT node's output flows into an
+        EXTERNAL_ACTION node, and if so, appends that node's system_prompt_appendix
+        to guide the AI on how to structure its output for proper consumption.
+        """
+        if not ctx or not hasattr(ctx, "graph"):
+            return base_prompt
+
+        try:
+            # Import here to avoid circular dependencies
+            from workflow_engine_v2.core.spec import get_spec
+
+            graph = ctx.graph  # WorkflowGraph instance
+
+            # Get successor nodes (nodes that receive output from this AI node)
+            downstream_nodes = graph.successors(node.id)
+
+            if not downstream_nodes:
+                return base_prompt
+
+            appendices = []
+
+            for next_node_id, output_key, _ in downstream_nodes:
+                next_node = graph.nodes.get(next_node_id)
+
+                # Only enhance for EXTERNAL_ACTION nodes
+                if next_node and next_node.type == NodeType.EXTERNAL_ACTION:
+                    # Load node spec to get system_prompt_appendix
+                    try:
+                        spec = get_spec(next_node.type, next_node.subtype)
+
+                        if (
+                            spec
+                            and hasattr(spec, "system_prompt_appendix")
+                            and spec.system_prompt_appendix
+                        ):
+                            logger.info(
+                                f"📋 Enhancing prompt with guidance for downstream node: {next_node.name} ({next_node.subtype})"
+                            )
+                            appendices.append(
+                                f"\n\n## Downstream Node Output Guidance: {next_node.name}\n"
+                                f"Your output will be consumed by a {next_node.subtype} external action node.\n"
+                                f"{spec.system_prompt_appendix}"
+                            )
+                    except Exception as e:
+                        logger.debug(f"⚠️ Could not load spec for {next_node.subtype}: {str(e)}")
+
+            if appendices:
+                enhanced = base_prompt + "\n".join(appendices)
+                logger.info(
+                    f"✨ Enhanced system prompt with {len(appendices)} downstream node guidance(s)"
+                )
+                return enhanced
+
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to enhance prompt with downstream guidance: {str(e)}")
+
+        return base_prompt
 
     async def _discover_mcp_tools(
         self, tool_nodes: List[Node], ctx: Any, trigger: TriggerInfo
