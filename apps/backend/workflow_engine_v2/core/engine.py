@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures as _fut
+import logging
 import os
 import random
 import sys
@@ -59,6 +60,7 @@ from workflow_engine_v2.services.events_publisher import get_event_publisher
 from workflow_engine_v2.services.hil_classifier import get_hil_classifier
 from workflow_engine_v2.services.logging import get_logging_service
 from workflow_engine_v2.services.repository import ExecutionRepository, InMemoryExecutionRepository
+from workflow_engine_v2.utils.run_data import build_run_data_snapshot
 from workflow_engine_v2.services.timers import get_timer_service
 
 
@@ -182,6 +184,30 @@ class ExecutionEngine:
             except ImportError:
                 pass
 
+    def _persist_execution(self, execution: Execution) -> None:
+        """Persist execution state and maintain a run_data snapshot."""
+        try:
+            execution.run_data = build_run_data_snapshot(execution)
+        except Exception as snapshot_error:  # pragma: no cover - defensive logging only
+            logging.getLogger(__name__).warning(
+                "Failed to build run_data snapshot for execution %s: %s",
+                execution.execution_id,
+                snapshot_error,
+            )
+        self._repo.save(execution)
+
+    def _snapshot_execution(self, execution: Execution) -> Execution:
+        """Ensure run_data is populated before returning execution state."""
+        try:
+            execution.run_data = build_run_data_snapshot(execution)
+        except Exception as snapshot_error:  # pragma: no cover - defensive logging only
+            logging.getLogger(__name__).warning(
+                "Failed to snapshot run_data for execution %s: %s",
+                execution.execution_id,
+                snapshot_error,
+            )
+        return execution
+
     def validate_against_specs(self, workflow: Workflow) -> None:
         # Ensure spec exists for each node (type/subtype)
         for n in workflow.nodes:
@@ -190,12 +216,16 @@ class ExecutionEngine:
         validate_workflow(workflow)
 
     def run(
-        self, workflow: Workflow, trigger: TriggerInfo, trace_id: Optional[str] = None
+        self,
+        workflow: Workflow,
+        trigger: TriggerInfo,
+        trace_id: Optional[str] = None,
+        execution_id: Optional[str] = None,
     ) -> Execution:
         """Execute workflow synchronously with optional trace ID for debugging."""
         self.validate_against_specs(workflow)
 
-        exec_id = str(uuid.uuid4())
+        exec_id = execution_id or str(uuid.uuid4())
         trace_id = trace_id or str(uuid.uuid4())
 
         workflow_execution = Execution(
@@ -207,6 +237,7 @@ class ExecutionEngine:
             start_time=_now_ms(),
             trigger_info=trigger,
         )
+        we = workflow_execution  # Legacy alias used in downstream helpers
 
         # User-friendly logging if enabled
         if self._user_friendly_logger:
@@ -220,7 +251,7 @@ class ExecutionEngine:
 
         self._log.log(workflow_execution, level=LogLevel.INFO, message="Execution started")
         self._events.execution_started(workflow_execution)
-        self._repo.save(workflow_execution)
+        self._persist_execution(workflow_execution)
 
         graph = WorkflowGraph(workflow)
         _ = graph.topo_order()  # Raises on cycle
@@ -391,7 +422,7 @@ class ExecutionEngine:
                     )
                 except Exception:
                     pass
-                self._repo.save(we)
+                self._persist_execution(we)
                 break
 
             # HIL (Human-in-the-Loop) Wait handling with database persistence
@@ -466,7 +497,7 @@ class ExecutionEngine:
                     )
 
                 self._events.user_input_required(workflow_execution, current_node_id, ne)
-                return workflow_execution
+                return self._snapshot_execution(workflow_execution)
             if outputs.get("_wait"):
                 if "_wait_timeout_ms" in outputs:
                     try:
@@ -486,7 +517,7 @@ class ExecutionEngine:
                 workflow_execution.current_node_id = current_node_id
                 workflow_execution.status = ExecutionStatus.WAITING
                 self._events.execution_paused(we)
-                return workflow_execution
+                return self._snapshot_execution(workflow_execution)
             if "_delay_ms" in outputs:
                 delay_ms = int(outputs.get("_delay_ms") or 0)
                 self._timers.schedule(
@@ -501,7 +532,7 @@ class ExecutionEngine:
                 workflow_execution.current_node_id = current_node_id
                 workflow_execution.status = ExecutionStatus.WAITING
                 self._events.execution_paused(we)
-                return workflow_execution
+                return self._snapshot_execution(workflow_execution)
 
             # Streaming support: publish partial chunks if provided
             try:
@@ -599,7 +630,7 @@ class ExecutionEngine:
             )
             self._events.node_output_update(workflow_execution, current_node_id, node_execution)
             self._events.node_completed(workflow_execution, current_node_id, node_execution)
-            self._repo.save(workflow_execution)
+            self._persist_execution(workflow_execution)
             # Update node outputs context (by id and by name)
             execution_context.node_outputs[current_node_id] = shaped_outputs
             try:
@@ -707,22 +738,32 @@ class ExecutionEngine:
                 message="Execution completed successfully",
             )
             self._events.execution_completed(workflow_execution)
-            self._repo.save(workflow_execution)
-        return workflow_execution
+            self._persist_execution(workflow_execution)
+        return self._snapshot_execution(workflow_execution)
 
     # Async wrappers for non-blocking execution
     async def run_async(
-        self, workflow: Workflow, trigger: TriggerInfo, trace_id: Optional[str] = None
+        self,
+        workflow: Workflow,
+        trigger: TriggerInfo,
+        trace_id: Optional[str] = None,
+        execution_id: Optional[str] = None,
     ) -> Execution:
         """Execute workflow asynchronously."""
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._pool, self.run, workflow, trigger, trace_id)
+        return await loop.run_in_executor(
+            self._pool, self.run, workflow, trigger, trace_id, execution_id
+        )
 
     async def execute_workflow(
-        self, workflow: Workflow, trigger: TriggerInfo, trace_id: Optional[str] = None
+        self,
+        workflow: Workflow,
+        trigger: TriggerInfo,
+        trace_id: Optional[str] = None,
+        execution_id: Optional[str] = None,
     ) -> Execution:
         """Async alias for run_async - for compatibility with ModernExecutionEngine API."""
-        return await self.run_async(workflow, trigger, trace_id)
+        return await self.run_async(workflow, trigger, trace_id, execution_id)
 
         # Execute nodes in dependency order with readiness checks
         executed: set[str] = set()
@@ -758,7 +799,7 @@ class ExecutionEngine:
                     workflow_execution.current_node_id = current_node_id
                     workflow_execution.status = ExecutionStatus.WAITING_FOR_HUMAN
                     # Return and allow caller to resume later
-                    return workflow_execution
+                    return self._snapshot_execution(workflow_execution)
                 # Handle wait markers
                 if outputs.get("_wait"):
                     # Schedule optional timeout before returning
@@ -779,7 +820,7 @@ class ExecutionEngine:
                     node_execution.status = NodeExecutionStatus.WAITING_INPUT
                     workflow_execution.current_node_id = current_node_id
                     workflow_execution.status = ExecutionStatus.WAITING
-                    return workflow_execution
+                    return self._snapshot_execution(workflow_execution)
                 # Handle delay markers
                 if "_delay_ms" in outputs:
                     delay_ms = int(outputs.get("_delay_ms") or 0)
@@ -794,7 +835,7 @@ class ExecutionEngine:
                     node_execution.status = NodeExecutionStatus.WAITING_INPUT
                     workflow_execution.current_node_id = current_node_id
                     workflow_execution.status = ExecutionStatus.WAITING
-                    return workflow_execution
+                    return self._snapshot_execution(workflow_execution)
                 node_execution.output_data = outputs
                 node_execution.input_data = inputs
                 node_execution.status = NodeExecutionStatus.COMPLETED
@@ -810,7 +851,7 @@ class ExecutionEngine:
                     message=f"Node {node.name} completed",
                     node_id=current_node_id,
                 )
-                self._repo.save(we)
+                self._persist_execution(we)
 
                 # Propagate according to graph connections
                 for (
@@ -869,7 +910,7 @@ class ExecutionEngine:
                     message=f"Node {node.name} failed",
                     node_id=current_node_id,
                 )
-                self._repo.save(we)
+                self._persist_execution(we)
                 break
 
         if workflow_execution.status != ExecutionStatus.ERROR:
@@ -883,9 +924,9 @@ class ExecutionEngine:
                 level=LogLevel.INFO,
                 message="Execution completed successor_nodeessfully",
             )
-            self._repo.save(we)
+            self._persist_execution(we)
 
-        return workflow_execution
+        return self._snapshot_execution(workflow_execution)
 
     # -------- Engine control API --------
 
@@ -896,7 +937,7 @@ class ExecutionEngine:
         pending_inputs = execution_context.pending_inputs
 
         if workflow_execution.current_node_id != node_id:
-            return workflow_execution
+            return self._snapshot_execution(workflow_execution)
 
         # Build outputs; special handling for HIL classification
         node = execution_context.graph.nodes[node_id]
@@ -1000,7 +1041,7 @@ class ExecutionEngine:
                     node_execution2.status = NodeExecutionStatus.WAITING_INPUT
                     workflow_execution.current_node_id = current_node_id
                     workflow_execution.status = ExecutionStatus.WAITING_FOR_HUMAN
-                    return workflow_execution
+                    return self._snapshot_execution(workflow_execution)
                 node_execution2.output_data = outputs
                 node_execution2.input_data = inputs
                 node_execution2.status = NodeExecutionStatus.COMPLETED
@@ -1052,8 +1093,8 @@ class ExecutionEngine:
                 level=LogLevel.INFO,
                 message="Execution completed successor_nodeessfully",
             )
-            self._repo.save(we)
-        return workflow_execution
+            self._persist_execution(we)
+        return self._snapshot_execution(workflow_execution)
 
     def _create_workflow_pause(
         self,
@@ -1115,7 +1156,7 @@ class ExecutionEngine:
         we = execution_context.execution
         pending_inputs = execution_context.pending_inputs
         if workflow_execution.current_node_id != node_id:
-            return workflow_execution
+            return self._snapshot_execution(workflow_execution)
 
         ne = workflow_execution.node_executions[node_id]
         inputs = pending_inputs.get(node_id, {})
@@ -1190,7 +1231,7 @@ class ExecutionEngine:
                     node_execution2.status = NodeExecutionStatus.WAITING_INPUT
                     workflow_execution.current_node_id = current_node_id
                     workflow_execution.status = ExecutionStatus.WAITING_FOR_HUMAN
-                    return workflow_execution
+                    return self._snapshot_execution(workflow_execution)
                 if "_wait_timeout_ms" in outputs2:
                     timeout_ms2 = int(outputs2.get("_wait_timeout_ms") or 0)
                     if timeout_ms2 > 0:
@@ -1214,7 +1255,7 @@ class ExecutionEngine:
                     node_execution2.status = NodeExecutionStatus.WAITING_INPUT
                     workflow_execution.current_node_id = current_node_id
                     workflow_execution.status = ExecutionStatus.WAITING
-                    return workflow_execution
+                    return self._snapshot_execution(workflow_execution)
                 node_execution2.output_data = outputs2
                 node_execution2.input_data = inputs2
                 node_execution2.status = NodeExecutionStatus.COMPLETED
@@ -1263,7 +1304,7 @@ class ExecutionEngine:
             workflow_execution.duration_ms = workflow_execution.end_time - (
                 workflow_execution.start_time or workflow_execution.end_time
             )
-        return workflow_execution
+        return self._snapshot_execution(workflow_execution)
 
     def resume_due_timers(self) -> None:
         """Check and resume all due timers across executions."""
@@ -1291,7 +1332,7 @@ class ExecutionEngine:
             ne = workflow_execution.node_executions[node_id]
             node_execution.status = NodeExecutionStatus.PENDING
             node_execution.error = None
-        return workflow_execution
+        return self._snapshot_execution(workflow_execution)
 
     # -------- Helpers --------
 

@@ -20,6 +20,8 @@ sys.path.insert(0, str(backend_dir))
 from shared.models import Execution, ExecutionStatus
 from shared.models.supabase import create_supabase_client
 
+from workflow_engine_v2.utils.run_data import build_run_data_snapshot
+
 from .repository import ExecutionRepository
 
 
@@ -83,6 +85,10 @@ class SupabaseExecutionRepositoryV2(ExecutionRepository):
 
             now_iso = datetime.utcnow().isoformat()
 
+            # Build run_data snapshot from node executions for observability dashboards
+            run_data_snapshot = build_run_data_snapshot(execution)
+            execution.run_data = run_data_snapshot
+
             execution_payload: Dict[str, Any] = {
                 "execution_id": execution.execution_id,
                 "workflow_id": execution.workflow_id,
@@ -91,7 +97,7 @@ class SupabaseExecutionRepositoryV2(ExecutionRepository):
                 "triggered_by": trigger_user,
                 "start_time": getattr(execution, "start_time", None),
                 "end_time": getattr(execution, "end_time", None),
-                "run_data": getattr(execution, "output_data", {}) or {},
+                "run_data": run_data_snapshot,
                 "metadata": {"trigger_data": trigger_data},
                 "error_message": getattr(execution, "error_message", None),
                 "error_details": getattr(execution, "error_details", None),
