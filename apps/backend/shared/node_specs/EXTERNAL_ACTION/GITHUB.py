@@ -100,6 +100,57 @@ class GitHubActionSpec(BaseNodeSpec):
             },
             # Parameter schemas (simplified)
             input_params={
+                "action_type": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Dynamic action type (overrides configuration action_type)",
+                    "required": False,
+                    "options": [
+                        "create_repository",
+                        "update_repository",
+                        "delete_repository",
+                        "fork_repository",
+                        "list_repositories",
+                        "create_issue",
+                        "update_issue",
+                        "close_issue",
+                        "reopen_issue",
+                        "list_issues",
+                        "add_issue_comment",
+                        "assign_issue",
+                        "add_issue_labels",
+                        "create_pull_request",
+                        "update_pull_request",
+                        "merge_pull_request",
+                        "close_pull_request",
+                        "list_pull_requests",
+                        "request_pr_review",
+                        "approve_pr_review",
+                        "add_pr_comment",
+                        "create_file",
+                        "update_file",
+                        "delete_file",
+                        "get_file_content",
+                        "upload_release_asset",
+                        "create_release",
+                        "update_release",
+                        "delete_release",
+                        "list_releases",
+                        "create_branch",
+                        "delete_branch",
+                        "list_branches",
+                        "protect_branch",
+                        "trigger_workflow",
+                        "list_workflow_runs",
+                        "cancel_workflow_run",
+                        "invite_user",
+                        "add_team_member",
+                        "create_team",
+                        "create_webhook",
+                        "update_webhook",
+                        "delete_webhook",
+                    ],
+                },
                 "owner": {
                     "type": "string",
                     "default": "",
@@ -347,6 +398,77 @@ class GitHubActionSpec(BaseNodeSpec):
                     },
                 },
             ],
+            # System prompt appendix for AI guidance
+            system_prompt_appendix="""Output `action_type` to dynamically control GitHub operations. **If you don't know owner/repo, leave blank - workflow may provide them.**
+
+**All Action Types:**
+
+**Repositories:**
+- `create_repository`: New repo - needs name, optional description, private flag
+- `update_repository`: Change settings - needs owner, repo, settings dict
+- `delete_repository`: Delete repo - needs owner, repo
+- `fork_repository`: Fork to your account - needs owner, repo
+- `list_repositories`: List repos - optional user filter
+
+**Issues:**
+- `create_issue`: New issue - needs owner, repo, title, body, optional labels/assignees
+- `update_issue`: Edit issue - needs owner, repo, issue_number, optional title/body
+- `close_issue`: Close issue - needs owner, repo, issue_number
+- `reopen_issue`: Reopen closed issue - needs owner, repo, issue_number
+- `list_issues`: Get issues - needs owner, repo, optional state filter (open/closed/all)
+- `add_issue_comment`: Comment on issue - needs owner, repo, issue_number, body
+- `assign_issue`: Assign users - needs owner, repo, issue_number, assignees array
+- `add_issue_labels`: Tag issue - needs owner, repo, issue_number, labels array
+
+**Pull Requests:**
+- `create_pull_request`: New PR - needs owner, repo, title, head (source branch), base (target branch), optional body
+- `update_pull_request`: Edit PR - needs owner, repo, pr_number, optional title/body
+- `merge_pull_request`: Merge PR - needs owner, repo, pr_number, optional commit_message
+- `close_pull_request`: Close without merging - needs owner, repo, pr_number
+- `list_pull_requests`: Get PRs - needs owner, repo, optional state
+- `request_pr_review`: Request reviews - needs owner, repo, pr_number, reviewers array
+- `approve_pr_review`: Approve PR - needs owner, repo, pr_number
+- `add_pr_comment`: Comment on PR - needs owner, repo, pr_number, body
+
+**Files:**
+- `create_file`: Add file - needs owner, repo, path, content, commit message, optional branch
+- `update_file`: Modify file - needs owner, repo, path, content, message, sha (file hash)
+- `delete_file`: Remove file - needs owner, repo, path, message, sha
+- `get_file_content`: Read file - needs owner, repo, path, optional ref (branch/commit)
+- `upload_release_asset`: Attach file to release - needs owner, repo, release_id, file
+
+**Releases:**
+- `create_release`: New release - needs owner, repo, tag_name, optional name/body/draft/prerelease flags
+- `update_release`: Edit release - needs owner, repo, release_id, optional name/body
+- `delete_release`: Remove release - needs owner, repo, release_id
+- `list_releases`: Get releases - needs owner, repo
+
+**Branches:**
+- `create_branch`: New branch - needs owner, repo, branch name, sha (commit to branch from)
+- `delete_branch`: Remove branch - needs owner, repo, branch name
+- `list_branches`: Get branches - needs owner, repo
+- `protect_branch`: Add protection rules - needs owner, repo, branch, settings
+
+**Workflows:**
+- `trigger_workflow`: Run action - needs owner, repo, workflow_id, ref (branch), optional inputs
+- `list_workflow_runs`: Get runs - needs owner, repo, optional workflow_id filter
+- `cancel_workflow_run`: Stop run - needs owner, repo, run_id
+
+**Organization:**
+- `invite_user`: Invite to org - needs org, username
+- `add_team_member`: Add to team - needs org, team, username
+- `create_team`: New team - needs org, name, optional description
+
+**Webhooks:**
+- `create_webhook`: New webhook - needs owner, repo, url, events array
+- `update_webhook`: Modify webhook - needs owner, repo, webhook_id, optional url/events
+- `delete_webhook`: Remove webhook - needs owner, repo, webhook_id
+
+**Example:**
+```json
+{"action_type": "create_issue", "owner": "", "repo": "", "title": "Bug: Login fails", "body": "User cannot login with valid credentials", "labels": ["bug", "priority-high"]}
+```
+""",
         )
 
 

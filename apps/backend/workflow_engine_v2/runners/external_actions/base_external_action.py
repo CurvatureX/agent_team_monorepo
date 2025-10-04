@@ -32,8 +32,13 @@ class BaseExternalAction(ABC):
     async def execute(self, context: NodeExecutionContext) -> NodeExecutionResult:
         """Execute the external action based on node configuration."""
         try:
-            # Extract operation from node configuration
-            operation = context.node.configurations.get("action_type", "default")
+            # Extract operation with priority: input_params > configurations
+            # This allows AI agents to dynamically control action_type via their output
+            operation = (
+                context.input_data.get("action_type")  # Runtime dynamic (from AI output)
+                or context.node.configurations.get("action_type")  # Configuration static
+                or "default"  # Fallback
+            )
 
             # Call the specific implementation
             return await self.handle_operation(context, operation)

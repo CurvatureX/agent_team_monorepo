@@ -88,6 +88,24 @@ class SlackExternalActionSpec(BaseNodeSpec):
             },
             # Parameter schemas (preferred over legacy defaults)
             input_params={
+                "action_type": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Dynamic action type (overrides configuration action_type)",
+                    "required": False,
+                    "options": [
+                        "send_message",
+                        "send_file",
+                        "create_channel",
+                        "invite_users",
+                        "get_user_info",
+                        "get_channel_info",
+                        "update_message",
+                        "delete_message",
+                        "set_channel_topic",
+                        "archive_channel",
+                    ],
+                },
                 "message": {
                     "type": "string",
                     "default": "",
@@ -254,6 +272,40 @@ class SlackExternalActionSpec(BaseNodeSpec):
                     },
                 },
             ],
+            # System prompt appendix for AI guidance
+            system_prompt_appendix="""Output `action_type` to dynamically control Slack operations. **If you don't know channel/user IDs, use channel names like "#general" or leave blank.**
+
+**All Action Types:**
+
+**Messaging:**
+- `send_message`: Send text/rich message - needs message OR blocks, optional channel (defaults to config), thread_ts for replies
+- `update_message`: Edit existing message - needs message_ts (timestamp), updated message/blocks, channel
+- `delete_message`: Remove message - needs message_ts, channel
+- `send_file`: Upload file - needs file_content (base64/url), filename, optional channel, initial_comment
+
+**Channels:**
+- `create_channel`: New channel - needs channel_name (lowercase, no spaces), optional is_private flag
+- `invite_users`: Add users to channel - needs user_ids array, optional channel
+- `set_channel_topic`: Update description - needs topic text, optional channel
+- `archive_channel`: Archive channel - needs channel (or uses config)
+
+**Info:**
+- `get_channel_info`: Get channel metadata - needs channel
+- `get_user_info`: Get user profile - needs user_id
+
+**Block Kit (rich messages):**
+- Section: `{"type": "section", "text": {"type": "mrkdwn", "text": "*Bold* _italic_"}}`
+- Fields: `{"type": "section", "fields": [{"type": "mrkdwn", "text": "*Label:*\\nValue"}]}`
+- Divider: `{"type": "divider"}`
+- Buttons: `{"type": "actions", "elements": [{"type": "button", "text": {"type": "plain_text", "text": "Click"}, "value": "val"}]}`
+
+**Formatting:** Bold `*text*`, Italic `_text_`, Code `` `code` ``, Link `<url|text>`, Mention `<@USER_ID>`, Channel `<#CHANNEL_ID>`
+
+**Example:**
+```json
+{"action_type": "send_message", "channel": "#deployments", "blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "*Deploy Success* :white_check_mark:"}}]}
+```
+""",
         )
 
 
