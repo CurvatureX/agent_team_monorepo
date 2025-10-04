@@ -415,12 +415,25 @@ class AnthropicClaudeRunner(NodeRunner):
                             ctx=ctx,
                         )
 
-                        # Format tool result for Claude
+                        # Format tool result for Claude - use JSON for better parsing
+                        import json
+
                         result_content = tool_result.get("result", {})
-                        if isinstance(result_content, dict):
-                            result_str = str(result_content)
+
+                        # Format as JSON if it's a dict/list, otherwise as string
+                        if isinstance(result_content, (dict, list)):
+                            try:
+                                result_str = json.dumps(
+                                    result_content, ensure_ascii=False, indent=2
+                                )
+                            except:
+                                result_str = str(result_content)
                         else:
-                            result_str = str(result_content)
+                            result_str = (
+                                str(result_content)
+                                if result_content
+                                else "Tool executed successfully"
+                            )
 
                         tool_results.append(
                             {

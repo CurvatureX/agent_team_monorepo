@@ -416,6 +416,63 @@ async def list_tools_internal():
         raise HTTPException(status_code=500, detail=f"Failed to retrieve tools: {str(e)}")
 
 
+@router.post("/invoke/internal")
+async def invoke_tool_internal(invoke_request: dict):
+    """
+    Internal endpoint for service-to-service MCP tool invocation.
+    No authentication required - for use by workflow_engine and other internal services.
+
+    Expected request format:
+    {
+        "name": "tool_name",
+        "arguments": {...},
+        "_metadata": {"user_id": "..."}  # For OAuth token retrieval
+    }
+    """
+    start_time = time.time()
+    request_id = f"internal-{int(time.time() * 1000)}"
+
+    try:
+        tool_name = invoke_request.get("name")
+        arguments = invoke_request.get("arguments", {})
+        user_id = invoke_request.get("_metadata", {}).get("user_id")
+
+        logger.info(f"⚡ Internal service invoking MCP tool '{tool_name}' (user_id: {user_id})")
+
+        # Add user_id to arguments for OAuth token retrieval
+        if user_id:
+            arguments["_user_id"] = user_id
+
+        # Route tool call to appropriate service
+        service = get_service_for_tool(tool_name)
+        result = await service.invoke_tool(tool_name=tool_name, params=arguments)
+
+        # Store internal metadata
+        result._request_id = request_id
+        if not result._execution_time_ms:
+            result._execution_time_ms = round((time.time() - start_time) * 1000, 2)
+
+        logger.info(
+            f"✅ Internal tool '{tool_name}' executed successfully in {result._execution_time_ms}ms"
+        )
+
+        # Return simplified format (not JSON-RPC wrapped)
+        return result.model_dump()
+
+    except Exception as e:
+        processing_time = time.time() - start_time
+        tool_name = invoke_request.get("name", "unknown")
+        logger.error(f"❌ Internal tool '{tool_name}' execution failed: {e}")
+
+        # Return simplified error format
+        return {
+            "content": [{"type": "text", "text": f"Tool invocation failed: {str(e)}"}],
+            "isError": True,
+            "_request_id": request_id,
+            "_execution_time_ms": round(processing_time * 1000, 2),
+        }
+
+
 @router.post("/invoke")
 async def invoke_tool(
     invoke_request: MCPInvokeRequest,

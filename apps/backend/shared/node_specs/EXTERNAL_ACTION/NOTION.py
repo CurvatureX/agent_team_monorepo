@@ -626,9 +626,15 @@ class NotionActionSpec(BaseNodeSpec):
                 },
             ],
             # System prompt appendix for AI guidance
-            system_prompt_appendix="""**IMPORTANT: This downstream Notion node will handle all Notion operations automatically using OAuth tokens. DO NOT use MCP notion tools directly. Instead, output `action_type` and data for this node to process.**
+            system_prompt_appendix="""**IMPORTANT: Two-step Notion workflow pattern:**
 
-Output `action_type` to dynamically control Notion operations. **If you don't know IDs (database_id, page_id, etc.), leave them blank or use descriptive names - the workflow may provide them.**
+1. **Use MCP tools for READING**: Use `notion_search`, `notion_get_page`, etc. to gather information
+2. **Output `action_type` for WRITING**: For create/update/delete operations, output structured JSON with `action_type` and data
+
+**When to use MCP tools directly**: Search, retrieve, query (read-only operations)
+**When to output action_type**: Create, update, delete, append (write operations that this downstream node will execute)
+
+Output `action_type` to dynamically control Notion write operations. **If you don't know IDs (database_id, page_id, etc.), leave them blank or use descriptive names - the workflow may provide them.**
 
 **All Action Types:**
 

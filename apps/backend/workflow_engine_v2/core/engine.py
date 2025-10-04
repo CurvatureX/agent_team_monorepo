@@ -837,6 +837,7 @@ class ExecutionEngine:
             trace_id,
             start_from_node,
             skip_trigger_validation,
+            execution_id,
         )
 
     async def execute_workflow(
@@ -846,174 +847,12 @@ class ExecutionEngine:
         trace_id: Optional[str] = None,
         start_from_node: Optional[str] = None,
         skip_trigger_validation: bool = False,
+        execution_id: Optional[str] = None,
     ) -> Execution:
         """Async alias for run_async - for compatibility with ModernExecutionEngine API."""
         return await self.run_async(
             workflow, trigger, trace_id, start_from_node, skip_trigger_validation, execution_id
         )
-
-        # Execute nodes in dependency order with readiness checks
-        executed: set[str] = set()
-        ready = self._get_initial_ready_nodes(graph)
-        while ready:
-            current_node_id = ready.pop(0)
-            if current_node_id in executed:
-                continue
-            node = graph.nodes[current_node_id]
-
-            node_execution = workflow_execution.node_executions[current_node_id]
-            node_execution.status = NodeExecutionStatus.RUNNING
-            node_execution.start_time = _now_ms()
-            self._log.log(
-                workflow_execution,
-                level=LogLevel.INFO,
-                message=f"Node {node.name} started",
-                node_id=current_node_id,
-            )
-
-            # Collect inputs for node; inject context for runners
-            inputs: Dict[str, Any] = pending_inputs.get(current_node_id, {})
-            inputs["_ctx"] = execution_context
-
-            # Execute node via runner
-            try:
-                runner = default_runner_for(node)
-                outputs = runner.run(node, inputs, trigger)
-                # Handle HIL wait markers
-                if outputs.get("_hil_wait"):
-                    node_execution.input_data = inputs
-                    node_execution.status = NodeExecutionStatus.WAITING_INPUT
-                    workflow_execution.current_node_id = current_node_id
-                    workflow_execution.status = ExecutionStatus.WAITING_FOR_HUMAN
-                    # Return and allow caller to resume later
-                    return self._snapshot_execution(workflow_execution)
-                # Handle wait markers
-                if outputs.get("_wait"):
-                    # Schedule optional timeout before returning
-                    if "_wait_timeout_ms" in outputs:
-                        try:
-                            timeout_ms = int(outputs.get("_wait_timeout_ms") or 0)
-                        except Exception:
-                            timeout_ms = 0
-                        if timeout_ms > 0:
-                            self._timers.schedule(
-                                workflow_execution.execution_id,
-                                current_node_id,
-                                timeout_ms,
-                                reason="wait_timeout",
-                                port="timeout",
-                            )
-                    node_execution.input_data = inputs
-                    node_execution.status = NodeExecutionStatus.WAITING_INPUT
-                    workflow_execution.current_node_id = current_node_id
-                    workflow_execution.status = ExecutionStatus.WAITING
-                    return self._snapshot_execution(workflow_execution)
-                # Handle delay markers
-                if "_delay_ms" in outputs:
-                    delay_ms = int(outputs.get("_delay_ms") or 0)
-                    self._timers.schedule(
-                        workflow_execution.execution_id,
-                        current_node_id,
-                        delay_ms,
-                        reason="delay",
-                        port="main",
-                    )
-                    node_execution.input_data = inputs
-                    node_execution.status = NodeExecutionStatus.WAITING_INPUT
-                    workflow_execution.current_node_id = current_node_id
-                    workflow_execution.status = ExecutionStatus.WAITING
-                    return self._snapshot_execution(workflow_execution)
-                node_execution.output_data = outputs
-                node_execution.input_data = inputs
-                node_execution.status = NodeExecutionStatus.COMPLETED
-                node_execution.end_time = _now_ms()
-                node_execution.duration_ms = (
-                    (node_execution.end_time - node_execution.start_time)
-                    if node_execution.start_time
-                    else None
-                )
-                self._log.log(
-                    workflow_execution,
-                    level=LogLevel.INFO,
-                    message=f"Node {node.name} completed",
-                    node_id=current_node_id,
-                )
-                self._persist_execution(we)
-
-                # Propagate according to graph connections
-                for (
-                    successor_node,
-                    output_key,
-                    conversion_function,
-                ) in graph.successors(current_node_id):
-                    successor_node_inputs = pending_inputs.setdefault(successor_node, {})
-                    value = outputs.get(output_key)
-                    if value is None:
-                        value = outputs.get("result", outputs)
-
-                    # Apply conversion function if provided
-                    if conversion_function and isinstance(conversion_function, str):
-                        try:
-                            converted_data = execute_conversion_function_flexible(
-                                conversion_function,
-                                {"value": value, "data": value, "output": value},
-                            )
-                            value = converted_data
-                        except Exception as e:
-                            print(f"Conversion function failed: {e}")
-                            # Keep original value on error
-
-                    # Input to successor node (use "main" as default input key)
-                    input_key = "result"
-                    if input_key in successor_node_inputs:
-                        existing = successor_node_inputs[input_key]
-                        if isinstance(existing, list):
-                            existing.append(value)
-                            successor_node_inputs[input_key] = existing
-                        else:
-                            successor_node_inputs[input_key] = [existing, value]
-                    else:
-                        successor_node_inputs[input_key] = value
-
-                workflow_execution.execution_sequence.append(current_node_id)
-                executed.add(current_node_id)
-                # Enqueue successors that are now ready
-                for successor_node, _, _ in graph.successors(current_node_id):
-                    if self._is_node_ready(graph, successor_node, pending_inputs):
-                        ready.append(successor_node)
-
-            except Exception:
-                node_execution.status = NodeExecutionStatus.FAILED
-                node_execution.end_time = _now_ms()
-                node_execution.duration_ms = (
-                    (node_execution.end_time - node_execution.start_time)
-                    if node_execution.start_time
-                    else None
-                )
-                workflow_execution.status = ExecutionStatus.ERROR
-                self._log.log(
-                    workflow_execution,
-                    level=LogLevel.ERROR,
-                    message=f"Node {node.name} failed",
-                    node_id=current_node_id,
-                )
-                self._persist_execution(we)
-                break
-
-        if workflow_execution.status != ExecutionStatus.ERROR:
-            workflow_execution.status = ExecutionStatus.SUCCESS
-            workflow_execution.end_time = _now_ms()
-            workflow_execution.duration_ms = workflow_execution.end_time - (
-                workflow_execution.start_time or workflow_execution.end_time
-            )
-            self._log.log(
-                workflow_execution,
-                level=LogLevel.INFO,
-                message="Execution completed successfully",
-            )
-            self._persist_execution(we)
-
-        return self._snapshot_execution(workflow_execution)
 
     # -------- Engine control API --------
 
@@ -1180,7 +1019,7 @@ class ExecutionEngine:
                 level=LogLevel.INFO,
                 message="Execution completed successfully",
             )
-            self._persist_execution(we)
+            self._persist_execution(workflow_execution)
         return self._snapshot_execution(workflow_execution)
 
     def _create_workflow_pause(

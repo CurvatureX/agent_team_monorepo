@@ -86,33 +86,18 @@ class ExternalActionRunner(NodeRunner):
             action_type = None
 
         # Route to dedicated handlers for OAuth-based integrations
+        # All handlers use execute() which extracts action_type from input_data or configurations
         if esub == ExternalActionSubtype.SLACK:
-            if not action_type:
-                return {"error": {"message": "Missing required parameter: action_type"}}
-            return self._run_async_handler(
-                node, esub, self.slack_handler.handle_operation(context, action_type)
-            )
+            return self._run_async_handler(node, esub, self.slack_handler.execute(context))
 
         elif esub == ExternalActionSubtype.GITHUB:
-            if not action_type:
-                return {"error": {"message": "Missing required parameter: action_type"}}
-            return self._run_async_handler(
-                node, esub, self.github_handler.handle_operation(context, action_type)
-            )
+            return self._run_async_handler(node, esub, self.github_handler.execute(context))
 
         elif esub == ExternalActionSubtype.GOOGLE_CALENDAR:
-            if not action_type:
-                return {"error": {"message": "Missing required parameter: action_type"}}
-            return self._run_async_handler(
-                node, esub, self.google_handler.handle_operation(context, action_type)
-            )
+            return self._run_async_handler(node, esub, self.google_handler.execute(context))
 
         elif esub == ExternalActionSubtype.NOTION:
-            if not action_type:
-                return {"error": {"message": "Missing required parameter: action_type"}}
-            return self._run_async_handler(
-                node, esub, self.notion_handler.handle_operation(context, action_type)
-            )
+            return self._run_async_handler(node, esub, self.notion_handler.execute(context))
 
         # Fallback to original implementations for backward compatibility
         return self._run_legacy_action(node, inputs, trigger, esub)

@@ -34,8 +34,11 @@ class BaseExternalAction(ABC):
         try:
             # Extract operation with priority: input_params > configurations
             # This allows AI agents to dynamically control action_type via their output
+
+            # Check multiple locations for action_type (handles conversion function wrapping)
             operation = (
-                context.input_data.get("action_type")  # Runtime dynamic (from AI output)
+                context.input_data.get("action_type")  # Direct top-level
+                or context.input_data.get("result", {}).get("action_type")  # Inside 'result' key
                 or context.node.configurations.get("action_type")  # Configuration static
                 or "default"  # Fallback
             )
