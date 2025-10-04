@@ -136,19 +136,6 @@ class WorkflowEngineHTTPClient:
             elif hasattr(settings, "__dict__"):
                 settings_dict = settings.__dict__
 
-            request_data = {
-                "name": name,
-                "description": description,
-                "nodes": nodes or [],
-                "connections": connections or {},
-                "settings": settings_dict,
-                "static_data": static_data or {},
-                "tags": tags or [],
-                "user_id": user_id,
-                "session_id": session_id,
-                "icon_url": icon_url,
-            }
-
             log_info(f"📨 HTTP request to create workflow: {name}")
 
             headers = {}
@@ -156,107 +143,107 @@ class WorkflowEngineHTTPClient:
                 headers["X-Trace-ID"] = trace_id
 
             client = await self._get_client()
-            if self.use_v2:
-                # Convert to v2 creation payload (using spec-driven server-side instance creation)
-                v2_nodes = []
-                for nd in nodes or []:
-                    it = {
-                        "id": nd.get("id") or nd.get("name"),
-                        "name": nd.get("name"),
-                        "description": nd.get("description", ""),  # Required field
-                        "type": nd.get("type"),
-                        "subtype": nd.get("subtype"),
-                        "position": nd.get("position"),
-                        # map parameters -> configurations for v2
-                        # Support both 'configurations' (new format) and 'parameters' (legacy format)
-                        "configurations": nd.get("configurations") or nd.get("parameters", {}),
-                        # Support both formats for input/output params and ports
-                        "input_params": nd.get("input_params", {}),
-                        "output_params": nd.get("output_params", {}),
-                        "input_ports": nd.get("input_ports", []),
-                        "output_ports": nd.get("output_ports", []),
-                        # attach list if present in UI payload
-                        "attached_nodes": nd.get("attached_nodes"),
-                    }
-                    v2_nodes.append(it)
+            # Convert to v2 creation payload (using spec-driven server-side instance creation)
+            v2_nodes: List[Dict[str, Any]] = []
+            for nd in nodes or []:
+                converted_node = {
+                    "id": nd.get("id") or nd.get("name"),
+                    "name": nd.get("name"),
+                    "description": nd.get("description", ""),  # Required field
+                    "type": nd.get("type"),
+                    "subtype": nd.get("subtype"),
+                    "position": nd.get("position"),
+                    # map parameters -> configurations for v2
+                    # Support both 'configurations' (new format) and 'parameters' (legacy format)
+                    "configurations": nd.get("configurations") or nd.get("parameters", {}),
+                    # Support both formats for input/output params and ports
+                    "input_params": nd.get("input_params", {}),
+                    "output_params": nd.get("output_params", {}),
+                    "input_ports": nd.get("input_ports", []),
+                    "output_ports": nd.get("output_ports", []),
+                    # attach list if present in UI payload
+                    "attached_nodes": nd.get("attached_nodes"),
+                }
+                v2_nodes.append(converted_node)
 
-                def _convert_connections(conn_input: Any) -> List[Dict[str, str]]:
-                    """Convert connections to v2 format - handles both list and dict formats"""
-                    result: List[Dict[str, str]] = []
+            def _convert_connections(conn_input: Any) -> List[Dict[str, str]]:
+                """Convert connections to v2 format - handles both list and dict formats"""
+                result: List[Dict[str, str]] = []
 
-                    # If connections is already a list (new format), pass through with validation
-                    if isinstance(conn_input, list):
-                        for conn in conn_input:
-                            if isinstance(conn, dict) and "from_node" in conn and "to_node" in conn:
-                                result.append(
-                                    {
-                                        "id": conn.get(
-                                            "id", f"{conn['from_node']}->{conn['to_node']}"
-                                        ),
-                                        "from_node": conn["from_node"],
-                                        "to_node": conn["to_node"],
-                                        "from_port": conn.get("from_port", "main"),
-                                        "to_port": conn.get("to_port", "main"),
-                                        "conversion_function": conn.get("conversion_function"),
-                                    }
-                                )
-                        return result
-
-                    # Legacy dict format (n8n-style)
-                    if not isinstance(conn_input, dict):
-                        return result
-                    for src, node_conns in conn_input.items():
-                        ctypes = (
-                            (node_conns or {}).get("connection_types", {})
-                            if isinstance(node_conns, dict)
-                            else {}
-                        )
-                        for from_port, arr in ctypes.items():
-                            conns = (
-                                (arr or {}).get("connections", []) if isinstance(arr, dict) else []
+                # If connections is already a list (new format), pass through with validation
+                if isinstance(conn_input, list):
+                    for conn in conn_input:
+                        if isinstance(conn, dict) and "from_node" in conn and "to_node" in conn:
+                            result.append(
+                                {
+                                    "id": conn.get("id", f"{conn['from_node']}->{conn['to_node']}"),
+                                    "from_node": conn["from_node"],
+                                    "to_node": conn["to_node"],
+                                    "from_port": conn.get("from_port", "main"),
+                                    "to_port": conn.get("to_port", "main"),
+                                    "conversion_function": conn.get("conversion_function"),
+                                }
                             )
-                            for idx, c in enumerate(conns):
-                                if not isinstance(c, dict):
-                                    continue
-                                tgt = c.get("node")
-                                to_port = c.get("type", "main")
-                                if not tgt:
-                                    continue
-                                result.append(
-                                    {
-                                        "id": f"{src}:{from_port}->{tgt}:{to_port}:{idx}",
-                                        "from_node": src,
-                                        "to_node": tgt,
-                                        "from_port": from_port,
-                                        "to_port": to_port,
-                                    }
-                                )
                     return result
 
-                v2_payload = {
-                    "workflow_id": str(uuid.uuid4()),  # Always generate a fresh UUID
-                    "name": name,
-                    "created_by": user_id,
-                    "created_time_ms": int(time.time() * 1000),
-                    "nodes": v2_nodes,
-                    "connections": _convert_connections(
-                        connections or []
-                    ),  # Pass empty list, not dict
-                    "triggers": [
-                        n.get("id") or n.get("name")
-                        for n in v2_nodes
-                        if (n.get("type") == "TRIGGER")
-                    ],
-                }
-                response = await client.post(
-                    f"{self.base_url}{self._api_prefix}/workflows", json=v2_payload, headers=headers
-                )
-            else:
-                response = await client.post(
-                    f"{self.base_url}{self._api_prefix}/workflows",
-                    json=request_data,
-                    headers=headers,
-                )
+                # Legacy dict format (n8n-style)
+                if not isinstance(conn_input, dict):
+                    return result
+                for src, node_conns in conn_input.items():
+                    ctypes = (
+                        (node_conns or {}).get("connection_types", {})
+                        if isinstance(node_conns, dict)
+                        else {}
+                    )
+                    for from_port, arr in ctypes.items():
+                        conns = (arr or {}).get("connections", []) if isinstance(arr, dict) else []
+                        for idx, c in enumerate(conns):
+                            if not isinstance(c, dict):
+                                continue
+                            tgt = c.get("node")
+                            to_port = c.get("type", "main")
+                            if not tgt:
+                                continue
+                            result.append(
+                                {
+                                    "id": f"{src}:{from_port}->{tgt}:{to_port}:{idx}",
+                                    "from_node": src,
+                                    "to_node": tgt,
+                                    "from_port": from_port,
+                                    "to_port": to_port,
+                                }
+                            )
+                return result
+
+            v2_payload = {
+                "workflow_id": str(uuid.uuid4()),  # Always generate a fresh UUID
+                "name": name,
+                "created_by": user_id,
+                "created_time_ms": int(time.time() * 1000),
+                "nodes": v2_nodes,
+                "connections": _convert_connections(connections or []),
+                "triggers": [
+                    n.get("id") or n.get("name") for n in v2_nodes if (n.get("type") == "TRIGGER")
+                ],
+            }
+
+            # Preserve optional metadata fields for the workflow engine to stitch in later
+            if description:
+                v2_payload["description"] = description
+            if tags:
+                v2_payload["tags"] = tags
+            if static_data:
+                v2_payload["static_data"] = static_data
+            if session_id:
+                v2_payload["session_id"] = session_id
+            if icon_url:
+                v2_payload["icon_url"] = icon_url
+            if settings_dict:
+                v2_payload["settings"] = settings_dict
+
+            response = await client.post(
+                f"{self.base_url}{self._api_prefix}/workflows", json=v2_payload, headers=headers
+            )
             response.raise_for_status()
 
             data = response.json()
@@ -325,18 +312,6 @@ class WorkflowEngineHTTPClient:
             await self.connect()
 
         try:
-            request_data = {
-                "workflow_id": workflow_id,
-                "user_id": user_id,
-                "trigger_data": input_data or {},  # 修正字段名从input_data到trigger_data
-                "async_execution": async_execution,  # Pass async flag to workflow engine
-            }
-
-            # 添加新的start_from_node参数
-            if start_from_node:
-                request_data["start_from_node"] = start_from_node
-                request_data["skip_trigger_validation"] = skip_trigger_validation
-
             headers = {}
             if trace_id:
                 headers["X-Trace-ID"] = trace_id
@@ -359,24 +334,25 @@ class WorkflowEngineHTTPClient:
 
             start_time = time.time()
 
-            if self.use_v2:
-                v2_payload = {
-                    "trigger_type": "manual",
-                    "trigger_data": input_data or {},
-                }
-                response = await client.post(
-                    f"{self.base_url}{self._api_prefix}/workflows/{workflow_id}/execute",
-                    json=v2_payload,
-                    headers=headers,
-                    timeout=timeout,
-                )
-            else:
-                response = await client.post(
-                    f"{self.base_url}{self._api_prefix}/workflows/{workflow_id}/execute",
-                    json=request_data,
-                    headers=headers,
-                    timeout=timeout,  # Override timeout for this specific request
-                )
+            v2_payload: Dict[str, Any] = {
+                "trigger_type": "manual",
+                "trigger_data": input_data or {},
+                "async_execution": async_execution,
+            }
+            if trace_id:
+                v2_payload["trace_id"] = trace_id
+            if start_from_node:
+                v2_payload["start_from_node"] = start_from_node
+                v2_payload["skip_trigger_validation"] = skip_trigger_validation
+            if user_id:
+                v2_payload["user_id"] = user_id
+
+            response = await client.post(
+                f"{self.base_url}{self._api_prefix}/workflows/{workflow_id}/execute",
+                json=v2_payload,
+                headers=headers,
+                timeout=timeout,
+            )
 
             end_time = time.time()
             response_time = end_time - start_time
@@ -502,6 +478,7 @@ class WorkflowEngineHTTPClient:
         description: Optional[str] = None,
         nodes: Optional[List[Dict[str, Any]]] = None,
         connections: Optional[Dict[str, Any]] = None,
+        triggers: Optional[List[str]] = None,
         settings: Optional[Dict[str, Any]] = None,
         static_data: Optional[Dict[str, str]] = None,
         tags: Optional[List[str]] = None,
@@ -522,6 +499,8 @@ class WorkflowEngineHTTPClient:
                 update_data["nodes"] = nodes
             if connections is not None:
                 update_data["connections"] = connections
+            if triggers is not None:
+                update_data["triggers"] = triggers
             if settings is not None:
                 update_data["settings"] = settings
             if static_data is not None:

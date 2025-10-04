@@ -442,6 +442,11 @@ async def unified_auth_middleware(request: Request, call_next):
 
     # MCP API - API Key 认证
     if path.startswith("/api/v1/mcp/"):
+        # Exception: Internal endpoint for service-to-service communication
+        if path == "/api/v1/mcp/tools/internal":
+            logger.info(f"🔓 Internal MCP endpoint, skipping auth: {path}")
+            return await call_next(request)
+
         if not settings.MCP_API_KEY_REQUIRED:
             logger.info(f"MCP API endpoint, auth disabled: {path}")
             return await call_next(request)

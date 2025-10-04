@@ -31,6 +31,7 @@ CREATE TABLE api_provider_configs (
 CREATE TABLE sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     user_id UUID NOT NULL DEFAULT auth.uid(),
     source_workflow_id VARCHAR(255),
     action_type VARCHAR(255)

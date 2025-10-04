@@ -11,7 +11,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from shared.models import ExecutionStatus
+from shared.models.execution_new import ExecutionStatus
 from shared.models.workflow import WorkflowDeploymentStatus
 
 # Import shared node specs service
