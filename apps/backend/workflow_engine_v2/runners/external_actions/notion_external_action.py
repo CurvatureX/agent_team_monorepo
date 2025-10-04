@@ -1,11 +1,20 @@
 """
-Notion External Action Implementation using shared Notion SDK.
+Notion External Action Implementation with AI-powered multi-round execution.
 
-This module handles all Notion operations through the centralized Notion SDK.
+This module handles Notion operations through:
+1. AI Loop Mode: Multi-round intelligent execution based on natural language instructions
+2. Legacy Mode: Direct single-action execution with explicit action_type
+
+Maximum 5 rounds enforced for AI loop mode with comprehensive telemetry.
 """
 
-from dataclasses import asdict
-from typing import Any, Dict
+import json
+import os
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+import httpx
 
 from shared.models.execution_new import ExecutionStatus, NodeExecutionResult
 from shared.sdks.notion_sdk.client import NotionClient
@@ -13,13 +22,46 @@ from shared.sdks.notion_sdk.exceptions import NotionAPIError
 from workflow_engine_v2.core.context import NodeExecutionContext
 
 from .base_external_action import BaseExternalAction
+from .notion_ai_helpers import accumulate_context as helper_accumulate_context
+from .notion_ai_helpers import build_ai_context as helper_build_ai_context
+from .notion_ai_helpers import call_ai_model_anthropic, call_ai_model_openai
+
+
+@dataclass
+class RoundTelemetry:
+    """Structured telemetry for each execution round."""
+
+    round_num: int
+    phase: str  # "planning" | "execution"
+
+    # AI Decision
+    decision_text: str  # Raw AI JSON output
+    decision_parsed: Dict[str, Any]  # Parsed decision
+
+    # Notion API Call
+    api_call: Optional[Dict[str, Any]] = None  # {action_type, parameters}
+    api_result: Optional[Dict[str, Any]] = None  # Response or error
+    api_success: bool = True
+
+    # Timing
+    timestamp: str = ""
+    duration_ms: int = 0
+
+    # Context snapshot
+    context_used: List[str] = field(default_factory=list)
+    discovered_resources: Dict[str, Any] = field(default_factory=dict)
 
 
 class NotionExternalAction(BaseExternalAction):
-    """Notion external action using shared SDK."""
+    """AI-powered Notion external action with strict 5-round limit."""
+
+    MAX_ROUNDS = 5
+    MAX_PLAN_STEPS = 4  # Round 1 for planning, rounds 2-5 for execution
 
     def __init__(self):
         super().__init__(integration_name="notion")
+        self._anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+        self._openai_api_key = os.getenv("OPENAI_API_KEY")
 
     def _create_success_result(
         self,
@@ -31,7 +73,7 @@ class NotionExternalAction(BaseExternalAction):
         """Create a success result matching the Notion spec output_params."""
         return NodeExecutionResult(
             status=ExecutionStatus.SUCCESS,
-            outputs={
+            output_data={
                 "success": True,
                 "notion_response": notion_response,
                 "resource_id": resource_id,
@@ -45,65 +87,609 @@ class NotionExternalAction(BaseExternalAction):
     async def handle_operation(
         self, context: NodeExecutionContext, operation: str
     ) -> NodeExecutionResult:
-        """Handle Notion operations using the shared SDK."""
-        try:
-            # Get Notion OAuth token
-            notion_token = await self.get_oauth_token(context)
+        """Execute AI-powered multi-round Notion operations."""
+        instruction = context.input_data.get("instruction", "").strip()
 
-            if not notion_token:
-                error_msg = "❌ No Notion authentication token found. Please connect your Notion account in integrations settings."
-                self.log_execution(context, error_msg, "ERROR")
-                return self.create_error_result(error_msg, operation)
+        if not instruction:
+            return self.create_error_result(
+                "Missing required 'instruction' parameter",
+                "ai_execution",
+                {
+                    "error": "instruction parameter is required for Notion External Action",
+                    "solution": "Provide a natural language instruction describing what to do in Notion",
+                },
+            )
 
-            # Initialize Notion SDK client
-            async with NotionClient(auth_token=notion_token) as client:
-                # Map operation to SDK method
-                action_type = operation.lower().replace("-", "_")
+        # AI-powered multi-round execution
+        self.log_execution(context, f"🤖 AI Mode: {instruction[:100]}...")
+        return await self._execute_ai_loop(context, instruction)
 
-                if action_type in ["search", "search_pages", "search_content"]:
-                    return await self._search(context, client)
-                elif action_type in ["get_page", "retrieve_page"]:
-                    return await self._get_page(context, client)
-                elif action_type in ["create_page"]:
-                    return await self._create_page(context, client)
-                elif action_type in ["update_page"]:
-                    return await self._update_page(context, client)
-                elif action_type in ["get_database", "retrieve_database"]:
-                    return await self._get_database(context, client)
-                elif action_type in ["query_database"]:
-                    return await self._query_database(context, client)
-                elif action_type in ["create_database"]:
-                    return await self._create_database(context, client)
-                elif action_type in ["update_database"]:
-                    return await self._update_database(context, client)
-                elif action_type in ["get_block", "retrieve_block"]:
-                    return await self._get_block(context, client)
-                elif action_type in ["get_block_children", "retrieve_block_children"]:
-                    return await self._get_block_children(context, client)
-                elif action_type in ["append_blocks", "append_block_children"]:
-                    return await self._append_blocks(context, client)
-                elif action_type in ["update_block"]:
-                    return await self._update_block(context, client)
-                elif action_type in ["delete_block"]:
-                    return await self._delete_block(context, client)
-                elif action_type in ["list_users"]:
-                    return await self._list_users(context, client)
-                elif action_type in ["get_user", "retrieve_user"]:
-                    return await self._get_user(context, client)
-                else:
-                    supported = "search, get_page, create_page, update_page, get_database, query_database, create_database, update_database, get_block, get_block_children, append_blocks, update_block, delete_block, list_users, get_user"
-                    error_msg = f"Unsupported Notion operation: {operation}. Supported: {supported}"
-                    self.log_execution(context, error_msg, "ERROR")
-                    return self.create_error_result(error_msg, operation)
+    async def _execute_ai_loop(
+        self, context: NodeExecutionContext, instruction: str
+    ) -> NodeExecutionResult:
+        """Multi-round AI execution with HARD 5-round limit."""
+        start_time = datetime.utcnow()
 
-        except NotionAPIError as e:
-            error_msg = f"❌ Notion API error: {str(e)}"
-            self.log_execution(context, error_msg, "ERROR")
-            return self.create_error_result(error_msg, operation)
-        except Exception as e:
-            error_msg = f"❌ Notion action failed: {str(e)}"
-            self.log_execution(context, error_msg, "ERROR")
-            return self.create_error_result(error_msg, operation)
+        # Initialize execution state
+        execution_state = {
+            "instruction": instruction,
+            "user_context": context.input_data.get("context", {}),
+            "plan": None,
+            "current_step": 0,
+            "rounds": [],
+            "discovered_resources": {},
+            "schemas_cache": {},  # Cache database schemas
+            "completed": False,
+        }
+
+        # Get Notion OAuth token once
+        notion_token = await self.get_oauth_token(context)
+        if not notion_token:
+            return self.create_error_result(
+                "No Notion OAuth token found", "ai_execution", {"instruction": instruction}
+            )
+
+        # Build comprehensive context (5 layers)
+        ai_context = await self._build_ai_context(context, instruction, execution_state)
+
+        async with NotionClient(auth_token=notion_token) as client:
+            for round_num in range(1, self.MAX_ROUNDS + 1):
+                round_start = datetime.utcnow()
+
+                self.log_execution(
+                    context,
+                    f"🔄 Round {round_num}/{self.MAX_ROUNDS}: {'Planning' if round_num == 1 else 'Execution'}",
+                )
+
+                # AI Decision Phase
+                try:
+                    ai_decision = await self._get_ai_decision(
+                        round_num=round_num,
+                        rounds_remaining=self.MAX_ROUNDS - round_num,
+                        instruction=instruction,
+                        execution_state=execution_state,
+                        ai_context=ai_context,
+                        context=context,
+                    )
+                except Exception as e:
+                    self.log_execution(context, f"❌ AI decision failed: {str(e)}", "ERROR")
+                    break
+
+                # Initialize round telemetry
+                round_telemetry = RoundTelemetry(
+                    round_num=round_num,
+                    phase="planning"
+                    if round_num == 1 and ai_decision.get("planning_phase")
+                    else "execution",
+                    decision_text=json.dumps(ai_decision, indent=2),
+                    decision_parsed=ai_decision,
+                    timestamp=datetime.utcnow().isoformat(),
+                    context_used=ai_decision.get("context_used", []),
+                )
+
+                # Round 1: Store the plan (if provided)
+                if round_num == 1 and "plan" in ai_decision:
+                    plan = ai_decision.get("plan", [])
+                    if len(plan) > self.MAX_PLAN_STEPS:
+                        return self.create_error_result(
+                            f"Plan has {len(plan)} steps, exceeds maximum {self.MAX_PLAN_STEPS}",
+                            "ai_execution",
+                            {
+                                "instruction": instruction,
+                                "plan_steps": len(plan),
+                                "max_allowed": self.MAX_PLAN_STEPS,
+                            },
+                        )
+                    execution_state["plan"] = plan
+                    self.log_execution(context, f"📋 Plan created: {len(plan)} steps")
+
+                # Notion Execution Phase
+                action_type = ai_decision.get("action_type")
+                parameters = ai_decision.get("parameters", {})
+
+                if not action_type:
+                    self.log_execution(context, "⚠️ AI decision missing action_type", "WARNING")
+                    execution_state["rounds"].append(asdict(round_telemetry))
+                    continue
+
+                # Log API call
+                round_telemetry.api_call = {"action_type": action_type, "parameters": parameters}
+
+                try:
+                    action_result = await self._execute_notion_action(
+                        client=client,
+                        action_type=action_type,
+                        parameters=parameters,
+                        context=context,
+                    )
+
+                    round_telemetry.api_success = True
+                    round_telemetry.api_result = action_result
+
+                    self.log_execution(context, f"✅ {action_type} executed successfully")
+
+                except Exception as e:
+                    round_telemetry.api_success = False
+                    round_telemetry.api_result = {"error": str(e)}
+
+                    self.log_execution(context, f"❌ {action_type} failed: {str(e)}", "ERROR")
+                    # Continue to next round despite error
+
+                # Accumulate discovered resources
+                if round_telemetry.api_success:
+                    self._accumulate_context(
+                        execution_state=execution_state,
+                        action_type=action_type,
+                        result=action_result,
+                    )
+
+                # Update telemetry
+                round_telemetry.discovered_resources = execution_state[
+                    "discovered_resources"
+                ].copy()
+                round_telemetry.duration_ms = int(
+                    (datetime.utcnow() - round_start).total_seconds() * 1000
+                )
+
+                # Store round telemetry
+                execution_state["rounds"].append(asdict(round_telemetry))
+
+                # Check if AI says we're done (after executing the action)
+                if ai_decision.get("completed", False):
+                    execution_state["completed"] = True
+                    self.log_execution(context, "✅ AI marked task as completed")
+                    break
+
+                # Update context for next round
+                ai_context["execution_history"] = execution_state["rounds"]
+                ai_context["notion_context"] = execution_state["discovered_resources"]
+
+        # Build final result
+        total_duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+
+        if not execution_state["completed"]:
+            self.log_execution(
+                context,
+                f"⚠️ Reached maximum {self.MAX_ROUNDS} rounds without completion",
+                "WARNING",
+            )
+
+        # Return result matching node spec output_params
+        return NodeExecutionResult(
+            status=ExecutionStatus.SUCCESS,
+            output_data={
+                "success": execution_state["completed"],
+                "resource_id": "",  # No single resource for multi-round execution
+                "resource_url": "",
+                "error_message": "",
+                "ai_execution": {
+                    "plan": execution_state["plan"],
+                    "rounds_executed": len(execution_state["rounds"]),
+                    "max_rounds": self.MAX_ROUNDS,
+                    "rounds": execution_state["rounds"],
+                    "completed": execution_state["completed"],
+                    "hit_round_limit": len(execution_state["rounds"]) == self.MAX_ROUNDS
+                    and not execution_state["completed"],
+                    "total_duration_ms": total_duration_ms,
+                },
+                "discovered_resources": execution_state["discovered_resources"],
+            },
+        )
+
+    async def _build_ai_context(
+        self, context: NodeExecutionContext, instruction: str, execution_state: dict
+    ) -> dict:
+        """Build comprehensive 5-layer context."""
+        return await helper_build_ai_context(context, instruction, execution_state)
+
+    async def _get_ai_decision(
+        self,
+        round_num: int,
+        rounds_remaining: int,
+        instruction: str,
+        execution_state: dict,
+        ai_context: dict,
+        context: NodeExecutionContext,
+    ) -> dict:
+        """Generate AI decision with round budget awareness."""
+        # Build comprehensive system prompt for Notion AI loop
+        system_prompt = """You are an AI assistant that executes Notion operations through a multi-round execution system.
+
+**YOUR TASK:** Break down natural language instructions into Notion API operations and execute them intelligently.
+
+**CRITICAL RULES:**
+1. **Output ONLY valid JSON** - No markdown, no explanations, no code blocks
+2. **Maximum 5 rounds total** - Plan efficiently within budget
+3. **Schema safety** - Always retrieve database schema before using properties
+4. **Resource accumulation** - Use discovered resources from previous rounds
+
+**Available Notion Operations:**
+- search: Find databases/pages by query
+- retrieve_database: Get database schema and properties
+- retrieve_page: Get page properties (title, created_time, etc.)
+- retrieve_block_children: Get all child blocks of a page/block (use this to see page content!)
+- create_page: Create new page in database or as child of page
+- update_page: Update existing page properties/content
+- append_blocks: Add content blocks to page
+- update_block: Modify existing block content (paragraph text, heading, etc.)
+- delete_block: Remove/archive a single block
+- batch_delete_blocks: Delete multiple blocks at once (efficient for bulk cleanup!)
+- query_database: Query database with filters/sorts
+- update_database: Update database properties and schema
+
+**Batch Operations & Caching:**
+- Use batch_delete_blocks to delete multiple blocks efficiently in one operation
+- Pass an array of block_ids: {"block_ids": ["id1", "id2", "id3", ...]}
+- **IMPORTANT**: After retrieving blocks with retrieve_block_children, the block IDs are cached in discovered_resources
+- Check discovered_resources for cached block_ids before retrieving again
+- Use cached block_ids directly for batch operations to save rounds
+
+**JSON Response Format:**
+{
+  "action_type": "operation_name",
+  "parameters": { /* operation-specific params */ },
+  "reasoning": "Brief explanation of this step",
+  "completed": false,  // true only when task is fully done
+  "planning_phase": false,  // true only for Round 1 planning
+  "plan": []  // only for Round 1: array of {step, action_type}
+}
+
+**IMPORTANT:** Return ONLY the JSON object above. Do not wrap in markdown code blocks or add any other text."""
+
+        # Build user message with full context
+        user_message = f"""**Round {round_num}/{self.MAX_ROUNDS}** (⏱️ {rounds_remaining} rounds remaining)
+
+**Instruction:** {instruction}
+
+**Available Context:**
+
+### User-Provided Context:
+```json
+{json.dumps(ai_context["user_context"], indent=2)}
+```
+
+### Workflow Context:
+- Trigger: {ai_context["workflow_context"]["trigger_type"]}
+- Trigger Data:
+```json
+{json.dumps(ai_context["workflow_context"]["trigger_data"], indent=2)}
+```
+- Workflow: {ai_context["workflow_context"]["workflow_name"]}
+
+### Previous Node Outputs:
+```json
+{json.dumps(ai_context["previous_outputs"], indent=2)}
+```
+
+### Execution History:
+{self._format_execution_history(ai_context["execution_history"])}
+
+### Discovered Notion Resources:
+```json
+{json.dumps(ai_context["notion_context"], indent=2)}
+```
+
+**Round Budget:**
+- Current: {round_num}/{self.MAX_ROUNDS}
+- Remaining: {rounds_remaining}
+- If planning phase: Maximum {self.MAX_PLAN_STEPS} steps allowed
+
+**Your Task:**
+{self._get_round_specific_prompt(round_num, rounds_remaining, execution_state)}
+"""
+
+        # Call AI model (prefer Anthropic, fallback to OpenAI)
+        if self._anthropic_api_key:
+            return await call_ai_model_anthropic(
+                api_key=self._anthropic_api_key,
+                system_prompt=system_prompt,
+                user_message=user_message,
+            )
+        elif self._openai_api_key:
+            return await call_ai_model_openai(
+                api_key=self._openai_api_key,
+                system_prompt=system_prompt,
+                user_message=user_message,
+            )
+        else:
+            raise ValueError(
+                "No AI API key found. Set ANTHROPIC_API_KEY or OPENAI_API_KEY environment variable."
+            )
+
+    def _format_execution_history(self, rounds: List[dict]) -> str:
+        """Format execution history for AI context."""
+        if not rounds:
+            return "(No previous rounds yet)"
+
+        history_lines = []
+        for r in rounds:
+            round_num = r.get("round_num", "?")
+            decision = r.get("decision_parsed", {})
+            api_call = r.get("api_call")
+            success = r.get("api_success", True)
+
+            line = f"Round {round_num}: "
+            if api_call:
+                action = api_call.get("action_type", "unknown")
+                status = "✅ Success" if success else "❌ Failed"
+                line += f"{action} ({status})"
+            else:
+                line += "Planning/Completion"
+
+            history_lines.append(line)
+
+        return "\n".join(history_lines)
+
+    def _get_round_specific_prompt(
+        self, round_num: int, rounds_remaining: int, execution_state: dict
+    ) -> str:
+        """Generate round-specific guidance."""
+        if round_num == 1:
+            return f"""
+Analyze the instruction and context. Choose strategy:
+- **Simple task (1-2 operations)**: Execute directly using Pattern 2, no planning phase needed
+- **Complex task (3-4 operations)**: Create plan with ≤{self.MAX_PLAN_STEPS} steps using Pattern 1
+
+If task requires >4 steps, return error explaining it exceeds budget.
+"""
+        elif rounds_remaining == 0:
+            return """
+**FINAL ROUND** - This is your last chance!
+- Complete the most critical operation
+- OR mark task as completed if already satisfied
+- OR return graceful failure if impossible to complete
+"""
+        else:
+            return f"""
+Execute the next planned step or direct action.
+Remaining budget: {rounds_remaining} rounds.
+Be efficient - prefer completing in fewer rounds.
+"""
+
+    def _accumulate_context(self, execution_state: dict, action_type: str, result: dict) -> None:
+        """Extract and cache discovered resources."""
+        helper_accumulate_context(execution_state, action_type, result)
+
+    async def _execute_notion_action(
+        self,
+        client: NotionClient,
+        action_type: str,
+        parameters: dict,
+        context: NodeExecutionContext,
+    ) -> dict:
+        """Execute a single Notion action based on AI decision."""
+        action_type_normalized = action_type.lower().replace("-", "_")
+
+        # Route to appropriate SDK method
+        if action_type_normalized == "search":
+            query = parameters.get("query", "")
+            filter_obj = parameters.get("filter", {})
+            page_size = parameters.get("page_size", 10)
+
+            # Extract filter value if it's a dict, otherwise use as string
+            if isinstance(filter_obj, dict):
+                filter_value = filter_obj.get("value", "page")
+            else:
+                filter_value = filter_obj or "page"
+
+            result = await client.search(
+                query=query, filter_value=filter_value, page_size=page_size
+            )
+
+            return {
+                "notion_response": {
+                    "object": "list",
+                    "results": [asdict(item) for item in result.results],
+                    "has_more": result.has_more,
+                    "next_cursor": result.next_cursor,
+                },
+                "resource_id": "",
+                "execution_metadata": {
+                    "action_type": "search",
+                    "query": query,
+                    "result_count": len(result.results),
+                },
+            }
+
+        elif action_type_normalized == "retrieve_database":
+            database_id = parameters.get("database_id", "").replace("-", "")
+            database = await client.get_database(database_id)
+
+            return {
+                "notion_response": asdict(database),
+                "resource_id": database.id,
+                "execution_metadata": {"action_type": "retrieve_database"},
+            }
+
+        elif action_type_normalized == "retrieve_page":
+            page_id = parameters.get("page_id", "").replace("-", "")
+            page = await client.get_page(page_id)
+
+            return {
+                "notion_response": asdict(page),
+                "resource_id": page.id,
+                "resource_url": page.url,
+                "execution_metadata": {"action_type": "retrieve_page"},
+            }
+
+        elif action_type_normalized == "create_page":
+            parent = parameters.get("parent", {})
+            properties = parameters.get("properties", {})
+            children = parameters.get("children", [])
+
+            page = await client.create_page(parent=parent, properties=properties, children=children)
+
+            return {
+                "notion_response": asdict(page),
+                "resource_id": page.id,
+                "resource_url": page.url,
+                "execution_metadata": {"action_type": "create_page"},
+            }
+
+        elif action_type_normalized == "update_page":
+            page_id = parameters.get("page_id", "").replace("-", "")
+            properties = parameters.get("properties", {})
+
+            page = await client.update_page(page_id, properties)
+
+            return {
+                "notion_response": asdict(page),
+                "resource_id": page.id,
+                "resource_url": page.url,
+                "execution_metadata": {"action_type": "update_page"},
+            }
+
+        elif action_type_normalized == "update_database":
+            database_id = parameters.get("database_id", "").replace("-", "")
+            properties = parameters.get("properties", {})
+
+            database = await client.update_database(database_id, properties=properties)
+
+            return {
+                "notion_response": asdict(database),
+                "resource_id": database.id,
+                "execution_metadata": {"action_type": "update_database"},
+            }
+
+        elif action_type_normalized == "append_blocks":
+            # Accept either block_id or page_id (Notion API uses block_id)
+            block_id = parameters.get("block_id") or parameters.get("page_id", "")
+            block_id = block_id.replace("-", "")
+            children = parameters.get("children", [])
+
+            result = await client.append_block_children(block_id=block_id, children=children)
+
+            return {
+                "notion_response": {
+                    "object": "list",
+                    "results": [asdict(block) for block in result["blocks"]],
+                },
+                "resource_id": block_id,
+                "execution_metadata": {"action_type": "append_blocks", "block_id": block_id},
+            }
+
+        elif action_type_normalized == "retrieve_block_children":
+            block_id = parameters.get("block_id") or parameters.get("page_id", "")
+            block_id = block_id.replace("-", "")
+            page_size = parameters.get("page_size", 100)
+
+            result = await client.get_block_children(block_id=block_id, page_size=page_size)
+
+            return {
+                "notion_response": {
+                    "object": "list",
+                    "results": [asdict(block) for block in result["blocks"]],
+                    "has_more": result.get("has_more", False),
+                    "next_cursor": result.get("next_cursor"),
+                },
+                "resource_id": block_id,
+                "execution_metadata": {
+                    "action_type": "retrieve_block_children",
+                    "block_id": block_id,
+                    "block_count": len(result["blocks"]),
+                },
+            }
+
+        elif action_type_normalized == "update_block":
+            block_id = parameters.get("block_id", "").replace("-", "")
+            block_data = parameters.get("block_data", {})
+            archived = parameters.get("archived")
+
+            result = await client.update_block(
+                block_id=block_id, block_data=block_data, archived=archived
+            )
+
+            return {
+                "notion_response": asdict(result),
+                "resource_id": block_id,
+                "execution_metadata": {
+                    "action_type": "update_block",
+                    "block_id": block_id,
+                },
+            }
+
+        elif action_type_normalized == "delete_block":
+            block_id = parameters.get("block_id", "").replace("-", "")
+
+            result = await client.delete_block(block_id=block_id)
+
+            return {
+                "notion_response": asdict(result),
+                "resource_id": block_id,
+                "execution_metadata": {
+                    "action_type": "delete_block",
+                    "block_id": block_id,
+                },
+            }
+
+        elif action_type_normalized == "batch_delete_blocks":
+            block_ids = parameters.get("block_ids", [])
+
+            if not block_ids:
+                raise ValueError("batch_delete_blocks requires a list of block_ids")
+
+            # Delete blocks in parallel for performance
+            deleted_blocks = []
+            failed_blocks = []
+
+            for block_id in block_ids:
+                try:
+                    block_id_clean = block_id.replace("-", "")
+                    result = await client.delete_block(block_id=block_id_clean)
+                    deleted_blocks.append(
+                        {
+                            "id": block_id_clean,
+                            "status": "deleted",
+                            "archived": result.archived,
+                        }
+                    )
+                except Exception as e:
+                    failed_blocks.append(
+                        {
+                            "id": block_id,
+                            "status": "failed",
+                            "error": str(e),
+                        }
+                    )
+
+            return {
+                "notion_response": {
+                    "deleted": deleted_blocks,
+                    "failed": failed_blocks,
+                    "total_requested": len(block_ids),
+                    "total_deleted": len(deleted_blocks),
+                    "total_failed": len(failed_blocks),
+                },
+                "resource_id": "",
+                "execution_metadata": {
+                    "action_type": "batch_delete_blocks",
+                    "total_requested": len(block_ids),
+                    "total_deleted": len(deleted_blocks),
+                    "total_failed": len(failed_blocks),
+                },
+            }
+
+        elif action_type_normalized == "query_database":
+            database_id = parameters.get("database_id", "").replace("-", "")
+            filter_conditions = parameters.get("filter")
+            sorts = parameters.get("sorts", [])
+            page_size = parameters.get("page_size", 100)
+
+            result = await client.query_database(
+                database_id, filter_conditions=filter_conditions, sorts=sorts, page_size=page_size
+            )
+
+            return {
+                "notion_response": result,
+                "results": result["pages"],
+                "execution_metadata": {
+                    "action_type": "query_database",
+                    "database_id": database_id,
+                },
+            }
+
+        else:
+            raise ValueError(f"Unsupported Notion action type for AI execution: {action_type}")
 
     async def _search(
         self, context: NodeExecutionContext, client: NotionClient
