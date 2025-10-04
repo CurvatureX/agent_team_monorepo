@@ -130,6 +130,7 @@ async def execute_workflow_by_id(
                         trace_id=trace_id,
                         start_from_node=start_from_node,
                         skip_trigger_validation=skip_trigger_validation,
+                        execution_id=execution_id,
                     )
                     logger.info(
                         f"✅ [v2] Background execution completed for {execution_id}: {execution.status}"
