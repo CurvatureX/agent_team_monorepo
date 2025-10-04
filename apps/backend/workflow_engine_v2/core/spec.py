@@ -15,11 +15,20 @@ class SpecNotFoundError(KeyError):
 
 def _import_spec_registry():
     """Import shared spec registry if available; returns callables or (None, None)."""
+    import logging
+
+    logger = logging.getLogger(__name__)
+
     try:
         from shared.node_specs import get_node_spec, list_available_specs  # type: ignore
 
+        logger.info("✅ Successfully loaded node spec registry from shared.node_specs")
         return get_node_spec, list_available_specs
-    except Exception:
+    except Exception as e:
+        logger.error(f"❌ Failed to import node spec registry: {type(e).__name__}: {str(e)}")
+        import traceback
+
+        logger.error(f"Traceback:\n{traceback.format_exc()}")
         return None, None
 
 
@@ -66,6 +75,21 @@ def coerce_node_to_v2(node: Any):
 class _StubSpec(BaseModel):
     node_type: str
     subtype: str
+
+    def validate_configuration(self, config: dict) -> bool:
+        """Stub validation - always returns True since we don't have the real spec.
+
+        This is a fallback for when the real spec registry can't be loaded.
+        Real validation should be done by the actual spec classes.
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.debug(
+            f"Using stub spec validation for {self.node_type}.{self.subtype} - "
+            f"skipping detailed validation (real spec unavailable)"
+        )
+        return True
 
     def create_node_instance(self, node_id: str, **kwargs):  # pragma: no cover - simple constructor
         from shared.models.node_enums import (

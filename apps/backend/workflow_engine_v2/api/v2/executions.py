@@ -24,6 +24,7 @@ from workflow_engine_v2.api.models import (
     LogMilestoneResponse,
 )
 from workflow_engine_v2.core.engine import ExecutionEngine
+from workflow_engine_v2.services.supabase_repository_v2 import SupabaseExecutionRepository
 from workflow_engine_v2.services.workflow import WorkflowServiceV2
 from workflow_engine_v2.services.workflow_status_manager import WorkflowStatusManagerV2
 
@@ -32,7 +33,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["V2 Executions"])
 
 # Global engine instance with user-friendly logging enabled
-engine = ExecutionEngine(enable_user_friendly_logging=True)
+try:
+    execution_repository = SupabaseExecutionRepository()
+except Exception as repo_error:  # pragma: no cover - runtime safeguard
+    execution_repository = None
+    logger.warning(
+        "⚠️ [v2] Supabase execution repository unavailable, falling back to in-memory store: %s",
+        repo_error,
+    )
+
+engine = ExecutionEngine(
+    repository=execution_repository,
+    enable_user_friendly_logging=True,
+)
 workflow_service = WorkflowServiceV2()
 
 
@@ -65,6 +78,22 @@ async def execute_workflow_by_id(
 
         workflow, user_id = workflow_result
         logger.info(f"📋 [v2] Retrieved workflow {workflow_id} for user {user_id}")
+
+        # Check if workflow is deployed before execution
+        from shared.models.workflow import WorkflowDeploymentStatus
+
+        if workflow.metadata.deployment_status != WorkflowDeploymentStatus.DEPLOYED:
+            error_msg = (
+                f"Workflow {workflow_id} is not deployed (status: {workflow.metadata.deployment_status}). "
+                f"Only deployed workflows can be executed."
+            )
+            logger.error(f"❌ [v2] {error_msg}")
+            return ExecuteWorkflowResponse(
+                success=False,
+                execution_id="",
+                execution=None,
+                error=error_msg,
+            )
 
         # Determine trigger type from payload if provided
         incoming_type = (
@@ -158,16 +187,35 @@ async def execute_workflow(request: ExecuteWorkflowRequest, background_tasks: Ba
         trigger_dict = request.trigger
 
         # Create Workflow object
+        from shared.models.workflow import WorkflowDeploymentStatus
+
         workflow = Workflow(
             metadata=WorkflowMetadata(
                 id=workflow_dict.get("id", "unknown"),
                 name=workflow_dict.get("name", "Unnamed Workflow"),
                 description=workflow_dict.get("description", ""),
                 version=workflow_dict.get("version", 1),
+                deployment_status=WorkflowDeploymentStatus(
+                    workflow_dict.get("deployment_status", WorkflowDeploymentStatus.DEPLOYED.value)
+                ),
             ),
             nodes=workflow_dict.get("nodes", []),
             connections=workflow_dict.get("connections", []),
         )
+
+        # Check if workflow is deployed before execution
+        if workflow.metadata.deployment_status != WorkflowDeploymentStatus.DEPLOYED:
+            error_msg = (
+                f"Workflow {workflow.metadata.id} is not deployed (status: {workflow.metadata.deployment_status}). "
+                f"Only deployed workflows can be executed."
+            )
+            logger.error(f"❌ [v2] {error_msg}")
+            return ExecuteWorkflowResponse(
+                success=False,
+                execution_id="",
+                execution=None,
+                error=error_msg,
+            )
 
         # Create TriggerInfo object
         trigger = TriggerInfo(

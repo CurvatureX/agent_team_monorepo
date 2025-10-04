@@ -160,8 +160,8 @@ class BaseTrigger(ABC):
                 "user_id": workflow_owner_id,  # Use actual workflow owner
             }
 
-            # Call workflow_engine execute endpoint
-            engine_url = f"{settings.workflow_engine_url}/v1/workflows/{self.workflow_id}/execute"
+            # Call workflow_engine execute endpoint (v2 API)
+            engine_url = f"{settings.workflow_engine_url}/v2/workflows/{self.workflow_id}/execute"
 
             logger.info(
                 f"🚀 Triggering workflow {self.workflow_id} via {engine_url} (immediate execution)"
@@ -281,16 +281,23 @@ class BaseTrigger(ABC):
             Dict with 'should_resume' boolean and 'execution_id' if applicable
         """
         try:
-            # Query workflow engine for paused executions of this workflow
+            # Query workflow engine for paused executions of this workflow (v2 API)
             engine_url = (
-                f"{settings.workflow_engine_url}/v1/workflows/{self.workflow_id}/executions"
+                f"{settings.workflow_engine_url}/v2/workflows/{self.workflow_id}/executions"
             )
 
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(engine_url)
 
                 if response.status_code == 200:
-                    executions = response.json()
+                    response_data = response.json()
+
+                    # v2 API returns {"workflows": [...]} not a direct list
+                    executions = (
+                        response_data.get("workflows", [])
+                        if isinstance(response_data, dict)
+                        else response_data
+                    )
 
                     # Filter for paused executions
                     paused_executions = [
@@ -342,8 +349,8 @@ class BaseTrigger(ABC):
         try:
             logger.info(f"🔄 Resuming paused workflow execution {execution_id} with trigger data")
 
-            # Call workflow_engine resume endpoint
-            engine_url = f"{settings.workflow_engine_url}/v1/executions/{execution_id}/resume"
+            # Call workflow_engine resume endpoint (v2 API)
+            engine_url = f"{settings.workflow_engine_url}/v2/executions/{execution_id}/resume"
 
             # Format trigger data as resume data
             resume_payload = {

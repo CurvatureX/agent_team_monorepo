@@ -20,7 +20,7 @@ from shared.models.db_models import WorkflowDB
 from shared.models.supabase import create_supabase_client
 
 # Use absolute imports
-from shared.models.workflow import Workflow, WorkflowMetadata
+from shared.models.workflow import Workflow, WorkflowDeploymentStatus, WorkflowMetadata
 from workflow_engine_v2.core.spec import coerce_node_to_v2, get_spec
 from workflow_engine_v2.core.validation import validate_workflow
 
@@ -36,6 +36,40 @@ class WorkflowServiceV2:
             self.logger.warning(f"⚠️ Failed to initialize Supabase client: {e}")
             self.supabase = None
             raise Exception("Supabase client is required for workflow operations")
+
+    @staticmethod
+    def _normalize_metadata(workflow_data: Dict[str, Any]) -> None:
+        """Coerce legacy metadata fields to the canonical schema."""
+
+        metadata = workflow_data.get("metadata")
+        if not isinstance(metadata, dict):
+            return
+
+        status = metadata.get("deployment_status")
+        if isinstance(status, str):
+            normalized = status.strip().lower()
+            status_map = {
+                "draft": WorkflowDeploymentStatus.UNDEPLOYED.value,
+                "idle": WorkflowDeploymentStatus.UNDEPLOYED.value,
+                "undeployed": WorkflowDeploymentStatus.UNDEPLOYED.value,
+                "pending": WorkflowDeploymentStatus.DEPLOYING.value,
+                "deploying": WorkflowDeploymentStatus.DEPLOYING.value,
+                "deployed": WorkflowDeploymentStatus.DEPLOYED.value,
+                "failed": WorkflowDeploymentStatus.DEPLOYMENT_FAILED.value,
+                "deployment_failed": WorkflowDeploymentStatus.DEPLOYMENT_FAILED.value,
+            }
+            metadata["deployment_status"] = status_map.get(normalized, status.strip().upper())
+
+        latest = metadata.get("last_execution_status")
+        if isinstance(latest, str):
+            metadata["last_execution_status"] = latest.strip().upper()
+
+        # Ensure required timestamp / author fields exist.  Fall back to zero/empty
+        # values so Pydantic validation surfaces a controlled error instead of
+        # a KeyError.
+        metadata.setdefault("created_time", metadata.get("created_time_ms", 0))
+        metadata.setdefault("created_by", metadata.get("created_by", ""))
+        metadata.setdefault("version", "1.0")
 
     def create_workflow(
         self,
@@ -123,13 +157,14 @@ class WorkflowServiceV2:
         try:
             result = (
                 self.supabase.table("workflows")
-                .select("workflow_data, user_id")
+                .select("workflow_data, user_id, deployment_status")
                 .eq("id", workflow_id)
                 .eq("active", True)
                 .execute()
             )
             if result.data:
                 workflow_data = result.data[0].get("workflow_data")
+                deployment_status = result.data[0].get("deployment_status")
                 if workflow_data:
                     # Debug: Log the actual workflow data structure
                     self.logger.info(f"🔍 Raw workflow_data structure: {workflow_data}")
@@ -137,11 +172,38 @@ class WorkflowServiceV2:
                     # Fix missing fields in workflow_data for Pydantic validation
                     if "metadata" in workflow_data:
                         metadata = workflow_data["metadata"]
+                        self._normalize_metadata(workflow_data)
                         # Ensure required fields exist with proper types
                         if "created_time" not in metadata:
                             metadata["created_time"] = metadata.get("created_time_ms", 0)
                         if "created_by" not in metadata:
                             metadata["created_by"] = metadata.get("created_by", "unknown")
+                        # Merge top-level deployment_status into metadata (single source of truth)
+                        if deployment_status:
+                            metadata["deployment_status"] = deployment_status
+                            self.logger.debug(
+                                f"Merged deployment_status={deployment_status} for workflow {workflow_id}"
+                            )
+                        else:
+                            # Set default if column is None
+                            metadata["deployment_status"] = "UNDEPLOYED"
+                        # Normalize status fields to expected enum values
+                        try:
+                            if "deployment_status" in metadata and isinstance(
+                                metadata["deployment_status"], str
+                            ):
+                                metadata["deployment_status"] = metadata[
+                                    "deployment_status"
+                                ].upper()
+                            if "latest_execution_status" in metadata and isinstance(
+                                metadata["latest_execution_status"], str
+                            ):
+                                metadata["latest_execution_status"] = metadata[
+                                    "latest_execution_status"
+                                ].upper()
+                        except Exception:
+                            # Gracefully ignore normalization issues
+                            pass
                         if "version" in metadata and isinstance(metadata["version"], int):
                             metadata["version"] = str(metadata["version"])
                         workflow_data["metadata"] = metadata
@@ -161,7 +223,7 @@ class WorkflowServiceV2:
         try:
             result = (
                 self.supabase.table("workflows")
-                .select("workflow_data, user_id")
+                .select("workflow_data, user_id, deployment_status")
                 .eq("id", workflow_id)
                 .eq("active", True)
                 .execute()
@@ -169,15 +231,42 @@ class WorkflowServiceV2:
             if result.data:
                 workflow_data = result.data[0].get("workflow_data")
                 user_id = result.data[0].get("user_id")
+                deployment_status = result.data[0].get("deployment_status")
                 if workflow_data and user_id:
                     # Fix missing fields in workflow_data for Pydantic validation
                     if "metadata" in workflow_data:
                         metadata = workflow_data["metadata"]
+                        self._normalize_metadata(workflow_data)
                         # Ensure required fields exist with proper types
                         if "created_time" not in metadata:
                             metadata["created_time"] = metadata.get("created_time_ms", 0)
                         if "created_by" not in metadata:
                             metadata["created_by"] = metadata.get("created_by", "unknown")
+                        # Merge top-level deployment_status into metadata (single source of truth)
+                        if deployment_status:
+                            metadata["deployment_status"] = deployment_status
+                            self.logger.debug(
+                                f"Merged deployment_status={deployment_status} for workflow {workflow_id}"
+                            )
+                        else:
+                            # Set default if column is None
+                            metadata["deployment_status"] = "UNDEPLOYED"
+                        # Normalize status fields to align with enums
+                        try:
+                            if "deployment_status" in metadata and isinstance(
+                                metadata["deployment_status"], str
+                            ):
+                                metadata["deployment_status"] = metadata[
+                                    "deployment_status"
+                                ].upper()
+                            if "latest_execution_status" in metadata and isinstance(
+                                metadata["latest_execution_status"], str
+                            ):
+                                metadata["latest_execution_status"] = metadata[
+                                    "latest_execution_status"
+                                ].upper()
+                        except Exception:
+                            pass
                         if "version" in metadata and isinstance(metadata["version"], int):
                             metadata["version"] = str(metadata["version"])
                         workflow_data["metadata"] = metadata
@@ -221,15 +310,31 @@ class WorkflowServiceV2:
 
             result = (
                 supabase_client.table("workflows")
-                .select("workflow_data")
+                .select("workflow_data, deployment_status")
                 .eq("active", True)
                 .execute()
             )
             workflows = []
             for row in result.data:
                 workflow_data = row.get("workflow_data")
+                deployment_status = row.get("deployment_status")
                 if workflow_data:
                     try:
+                        # Merge top-level deployment_status into workflow_data metadata
+                        # Always set deployment_status from column (even if None, Pydantic will use default)
+                        if "metadata" not in workflow_data:
+                            self.logger.warning(
+                                f"workflow_data missing metadata field: {workflow_data.keys()}"
+                            )
+                        else:
+                            if deployment_status:
+                                workflow_data["metadata"]["deployment_status"] = deployment_status
+                                self.logger.debug(
+                                    f"Merged deployment_status={deployment_status} for workflow {workflow_data.get('metadata', {}).get('id')}"
+                                )
+                            else:
+                                # Set default if column is None
+                                workflow_data["metadata"]["deployment_status"] = "UNDEPLOYED"
                         workflows.append(Workflow(**workflow_data))
                     except Exception as e:
                         self.logger.warning(f"Failed to parse workflow data: {e}")
@@ -248,11 +353,20 @@ class WorkflowServiceV2:
             raise Exception("Supabase client not available")
 
         try:
+            # Dump workflow data and remove deployment_status from metadata
+            # (deployment_status should only live in the top-level column)
+            workflow_data_dict = workflow.model_dump()
+            if (
+                "metadata" in workflow_data_dict
+                and "deployment_status" in workflow_data_dict["metadata"]
+            ):
+                del workflow_data_dict["metadata"]["deployment_status"]
+
             update_data = {
                 "name": workflow.metadata.name,
                 "description": workflow.metadata.description,
                 "version": workflow.metadata.version,
-                "workflow_data": workflow.model_dump(),
+                "workflow_data": workflow_data_dict,
                 "tags": workflow.metadata.tags or [],
                 "updated_at": int(time.time() * 1000),
             }
@@ -328,6 +442,15 @@ class WorkflowServiceV2:
         if not self.supabase:
             raise Exception("Supabase client not available")
 
+        # Dump workflow data and remove deployment_status from metadata
+        # (deployment_status should only live in the top-level column)
+        workflow_data_dict = workflow.model_dump()
+        if (
+            "metadata" in workflow_data_dict
+            and "deployment_status" in workflow_data_dict["metadata"]
+        ):
+            del workflow_data_dict["metadata"]["deployment_status"]
+
         # Base workflow data with only guaranteed columns
         workflow_data = {
             "id": workflow.metadata.id,
@@ -336,7 +459,7 @@ class WorkflowServiceV2:
             "description": workflow.metadata.description,
             "version": workflow.metadata.version,
             "active": True,
-            "workflow_data": workflow.model_dump(),  # Store entire new workflow as JSON
+            "workflow_data": workflow_data_dict,  # Store entire new workflow as JSON
             "tags": workflow.metadata.tags or [],
             "created_at": created_time_ms,
             "updated_at": int(time.time() * 1000),
@@ -372,7 +495,9 @@ class WorkflowServiceV2:
         except Exception as e:
             error_message = str(e)
             if "valid_deployment_status" in error_message:
-                self.logger.warning("Deployment status 'pending' not accepted; retrying with legacy value 'DRAFT'")
+                self.logger.warning(
+                    "Deployment status 'pending' not accepted; retrying with legacy value 'DRAFT'"
+                )
                 workflow_data["deployment_status"] = WorkflowDeploymentStatus.DRAFT.value
                 try:
                     result = attempt_insert(workflow_data)
@@ -383,7 +508,9 @@ class WorkflowServiceV2:
                 except Exception as deployment_error:
                     deployment_error_message = str(deployment_error)
                     if "valid_deployment_status" in deployment_error_message:
-                        self.logger.warning("Deployment status still rejected; removing column entirely for compatibility")
+                        self.logger.warning(
+                            "Deployment status still rejected; removing column entirely for compatibility"
+                        )
                         workflow_data.pop("deployment_status", None)
                         result = attempt_insert(workflow_data)
                         self.logger.info(
@@ -418,7 +545,10 @@ class WorkflowServiceV2:
                     self.logger.error(f"❌ Failed even with basic schema: {e2}")
                     raise e2
             # Check if it's a duplicate key error (workflow already exists)
-            elif "duplicate key" in error_message.lower() or "already exists" in error_message.lower():
+            elif (
+                "duplicate key" in error_message.lower()
+                or "already exists" in error_message.lower()
+            ):
                 self.logger.info(
                     f"📝 Workflow {workflow.metadata.id} already exists, updating instead"
                 )

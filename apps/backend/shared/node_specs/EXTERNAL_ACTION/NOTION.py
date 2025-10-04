@@ -155,22 +155,47 @@ class NotionActionSpec(BaseNodeSpec):
             },
             # Parameter schemas (preferred over legacy defaults)
             input_params={
+                "action_type": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Dynamic action type (overrides configuration action_type)",
+                    "required": False,
+                    "options": [
+                        # Page Operations
+                        "create_page",
+                        "update_page",
+                        "delete_page",
+                        "retrieve_page",
+                        "duplicate_page",
+                        # Database Operations
+                        "create_database",
+                        "update_database",
+                        "query_database",
+                        "retrieve_database",
+                        # Database Entry Operations
+                        "create_database_entry",
+                        "update_database_entry",
+                        "delete_database_entry",
+                        # Block Operations
+                        "append_blocks",
+                        "update_block",
+                        "delete_block",
+                        "retrieve_block_children",
+                        # Search Operations
+                        "search_content",
+                        "filter_pages",
+                        # User Operations
+                        "list_users",
+                        "retrieve_user",
+                        # Comment Operations
+                        "create_comment",
+                        "retrieve_comments",
+                    ],
+                },
                 "data": {
                     "type": "object",
                     "default": {},
                     "description": "Primary input payload",
-                    "required": False,
-                },
-                "context": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Context for templating or logic",
-                    "required": False,
-                },
-                "variables": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Template variables",
                     "required": False,
                 },
             },
@@ -600,6 +625,58 @@ class NotionActionSpec(BaseNodeSpec):
                     },
                 },
             ],
+            # System prompt appendix for AI guidance
+            system_prompt_appendix="""Output `action_type` to dynamically control Notion operations. **If you don't know IDs (database_id, page_id, etc.), leave them blank or use descriptive names - the workflow may provide them.**
+
+**All Action Types:**
+
+**Pages:**
+- `create_page`: Create new page in database/parent - needs parent_id (database UUID), title, content
+- `update_page`: Modify page properties - needs page_id, properties dict
+- `retrieve_page`: Get page details - needs page_id
+- `delete_page`: Archive page - needs page_id
+- `duplicate_page`: Copy existing page - needs page_id
+
+**Databases:**
+- `create_database`: New database - needs parent (page_id), title, properties schema
+- `update_database`: Modify database schema - needs database_id, properties
+- `query_database`: Search database with filters - needs database_id, optional filter/sorts
+- `retrieve_database`: Get database schema - needs database_id
+
+**Database Entries:**
+- `create_database_entry`: Add row to database - needs database_id, properties with values
+- `update_database_entry`: Update row - needs page_id (entry ID), properties
+- `delete_database_entry`: Delete row - needs page_id
+
+**Blocks:**
+- `append_blocks`: Add content to page - needs page_id, children (blocks array)
+- `update_block`: Modify block - needs block_id, content
+- `delete_block`: Remove block - needs block_id
+- `retrieve_block_children`: Get nested blocks - needs block_id
+
+**Search:**
+- `search_content`: Find pages/databases - optional query text, filter
+- `filter_pages`: Advanced search - needs filter criteria
+
+**Users/Comments:**
+- `list_users`: Get workspace users
+- `retrieve_user`: Get user info - needs user_id
+- `create_comment`: Add comment - needs parent (page_id), rich_text
+- `retrieve_comments`: Get comments - needs parent (page_id)
+
+**Property Formats:**
+- Title: `{"title": [{"text": {"content": "text here"}}]}`
+- Select: `{"select": {"name": "option"}}`
+- Date: `{"date": {"start": "2025-01-20"}}`
+- Checkbox: `{"checkbox": true}`
+- Number: `{"number": 42}`
+- People: `{"people": [{"id": "user-uuid"}]}`
+
+**Example:**
+```json
+{"action_type": "create_database_entry", "database_id": "", "properties": {"Name": {"title": [{"text": {"content": "New Task"}}]}, "Status": {"select": {"name": "In Progress"}}}}
+```
+""",
         )
 
 

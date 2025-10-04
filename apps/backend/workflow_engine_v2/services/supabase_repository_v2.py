@@ -27,7 +27,10 @@ class SupabaseExecutionRepositoryV2(ExecutionRepository):
     """Enhanced Supabase-backed execution repository."""
 
     def __init__(
-        self, url: Optional[str] = None, key: Optional[str] = None, table: str = "executions"
+        self,
+        url: Optional[str] = None,
+        key: Optional[str] = None,
+        table: str = "workflow_executions",
     ) -> None:
         self._table = table
         self.logger = logging.getLogger(__name__)
@@ -51,18 +54,55 @@ class SupabaseExecutionRepositoryV2(ExecutionRepository):
             return
 
         try:
-            data = execution.model_dump()
-            # Convert datetime objects to ISO strings for database storage
-            if hasattr(execution, "start_time") and execution.start_time:
-                data["start_time"] = execution.start_time.isoformat()
-            if hasattr(execution, "end_time") and execution.end_time:
-                data["end_time"] = execution.end_time.isoformat()
+            status_value = (
+                execution.status.value
+                if hasattr(execution.status, "value")
+                else str(execution.status)
+            )
+            trigger_info = getattr(execution, "trigger_info", None)
+            trigger_data = {}
+            trigger_user = None
+            trigger_type = "MANUAL"
+            if trigger_info:
+                trigger_data = getattr(trigger_info, "trigger_data", {}) or {}
+                trigger_user = getattr(trigger_info, "user_id", None)
+                trigger_type = str(getattr(trigger_info, "trigger_type", "manual")).upper()
 
-            # Add metadata for tracking
-            data["updated_at"] = datetime.utcnow().isoformat()
+            # Map trigger types to valid execution modes
+            # Database constraint allows: MANUAL, TRIGGER, WEBHOOK, RETRY
+            execution_mode_map = {
+                "MANUAL": "MANUAL",
+                "SLACK": "TRIGGER",
+                "SCHEDULE": "TRIGGER",
+                "WEBHOOK": "WEBHOOK",
+                "EMAIL": "TRIGGER",
+                "API": "TRIGGER",
+                "RETRY": "RETRY",
+            }
+            execution_mode = execution_mode_map.get(trigger_type, "MANUAL")
+
+            now_iso = datetime.utcnow().isoformat()
+
+            execution_payload: Dict[str, Any] = {
+                "execution_id": execution.execution_id,
+                "workflow_id": execution.workflow_id,
+                "status": status_value,
+                "mode": execution_mode,
+                "triggered_by": trigger_user,
+                "start_time": getattr(execution, "start_time", None),
+                "end_time": getattr(execution, "end_time", None),
+                "run_data": getattr(execution, "output_data", {}) or {},
+                "metadata": {"trigger_data": trigger_data},
+                "error_message": getattr(execution, "error_message", None),
+                "error_details": getattr(execution, "error_details", None),
+                "created_at": getattr(execution, "created_at", None) or now_iso,
+                "updated_at": now_iso,
+            }
 
             result = (
-                self._client.table(self._table).upsert(data, on_conflict="execution_id").execute()
+                self._client.table(self._table)
+                .upsert(execution_payload, on_conflict="execution_id")
+                .execute()
             )
 
             if not result.data:
