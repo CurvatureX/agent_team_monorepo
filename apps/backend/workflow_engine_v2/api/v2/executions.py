@@ -123,7 +123,10 @@ async def execute_workflow_by_id(
                 try:
                     logger.info(f"🚀 [v2] Background execution started for {execution_id}")
                     execution = await engine.execute_workflow(
-                        workflow=workflow, trigger=trigger, trace_id=trace_id
+                        workflow=workflow,
+                        trigger=trigger,
+                        trace_id=trace_id,
+                        execution_id=execution_id,
                     )
                     logger.info(
                         f"✅ [v2] Background execution completed for {execution_id}: {execution.status}"
