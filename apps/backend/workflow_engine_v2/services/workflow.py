@@ -20,7 +20,7 @@ from shared.models.db_models import WorkflowDB
 from shared.models.supabase import create_supabase_client
 
 # Use absolute imports
-from shared.models.workflow import Workflow, WorkflowMetadata, WorkflowDeploymentStatus
+from shared.models.workflow import Workflow, WorkflowDeploymentStatus, WorkflowMetadata
 from workflow_engine_v2.core.spec import coerce_node_to_v2, get_spec
 from workflow_engine_v2.core.validation import validate_workflow
 
@@ -58,9 +58,7 @@ class WorkflowServiceV2:
                 "failed": WorkflowDeploymentStatus.DEPLOYMENT_FAILED.value,
                 "deployment_failed": WorkflowDeploymentStatus.DEPLOYMENT_FAILED.value,
             }
-            metadata["deployment_status"] = status_map.get(
-                normalized, status.strip().upper()
-            )
+            metadata["deployment_status"] = status_map.get(normalized, status.strip().upper())
 
         latest = metadata.get("last_execution_status")
         if isinstance(latest, str):
@@ -159,13 +157,14 @@ class WorkflowServiceV2:
         try:
             result = (
                 self.supabase.table("workflows")
-                .select("workflow_data, user_id")
+                .select("workflow_data, user_id, deployment_status")
                 .eq("id", workflow_id)
                 .eq("active", True)
                 .execute()
             )
             if result.data:
                 workflow_data = result.data[0].get("workflow_data")
+                deployment_status = result.data[0].get("deployment_status")
                 if workflow_data:
                     # Debug: Log the actual workflow data structure
                     self.logger.info(f"🔍 Raw workflow_data structure: {workflow_data}")
@@ -179,6 +178,15 @@ class WorkflowServiceV2:
                             metadata["created_time"] = metadata.get("created_time_ms", 0)
                         if "created_by" not in metadata:
                             metadata["created_by"] = metadata.get("created_by", "unknown")
+                        # Merge top-level deployment_status into metadata (single source of truth)
+                        if deployment_status:
+                            metadata["deployment_status"] = deployment_status
+                            self.logger.debug(
+                                f"Merged deployment_status={deployment_status} for workflow {workflow_id}"
+                            )
+                        else:
+                            # Set default if column is None
+                            metadata["deployment_status"] = "UNDEPLOYED"
                         # Normalize status fields to expected enum values
                         try:
                             if "deployment_status" in metadata and isinstance(
@@ -215,7 +223,7 @@ class WorkflowServiceV2:
         try:
             result = (
                 self.supabase.table("workflows")
-                .select("workflow_data, user_id")
+                .select("workflow_data, user_id, deployment_status")
                 .eq("id", workflow_id)
                 .eq("active", True)
                 .execute()
@@ -223,6 +231,7 @@ class WorkflowServiceV2:
             if result.data:
                 workflow_data = result.data[0].get("workflow_data")
                 user_id = result.data[0].get("user_id")
+                deployment_status = result.data[0].get("deployment_status")
                 if workflow_data and user_id:
                     # Fix missing fields in workflow_data for Pydantic validation
                     if "metadata" in workflow_data:
@@ -233,6 +242,15 @@ class WorkflowServiceV2:
                             metadata["created_time"] = metadata.get("created_time_ms", 0)
                         if "created_by" not in metadata:
                             metadata["created_by"] = metadata.get("created_by", "unknown")
+                        # Merge top-level deployment_status into metadata (single source of truth)
+                        if deployment_status:
+                            metadata["deployment_status"] = deployment_status
+                            self.logger.debug(
+                                f"Merged deployment_status={deployment_status} for workflow {workflow_id}"
+                            )
+                        else:
+                            # Set default if column is None
+                            metadata["deployment_status"] = "UNDEPLOYED"
                         # Normalize status fields to align with enums
                         try:
                             if "deployment_status" in metadata and isinstance(
@@ -477,7 +495,9 @@ class WorkflowServiceV2:
         except Exception as e:
             error_message = str(e)
             if "valid_deployment_status" in error_message:
-                self.logger.warning("Deployment status 'pending' not accepted; retrying with legacy value 'DRAFT'")
+                self.logger.warning(
+                    "Deployment status 'pending' not accepted; retrying with legacy value 'DRAFT'"
+                )
                 workflow_data["deployment_status"] = WorkflowDeploymentStatus.DRAFT.value
                 try:
                     result = attempt_insert(workflow_data)
@@ -488,7 +508,9 @@ class WorkflowServiceV2:
                 except Exception as deployment_error:
                     deployment_error_message = str(deployment_error)
                     if "valid_deployment_status" in deployment_error_message:
-                        self.logger.warning("Deployment status still rejected; removing column entirely for compatibility")
+                        self.logger.warning(
+                            "Deployment status still rejected; removing column entirely for compatibility"
+                        )
                         workflow_data.pop("deployment_status", None)
                         result = attempt_insert(workflow_data)
                         self.logger.info(
@@ -523,7 +545,10 @@ class WorkflowServiceV2:
                     self.logger.error(f"❌ Failed even with basic schema: {e2}")
                     raise e2
             # Check if it's a duplicate key error (workflow already exists)
-            elif "duplicate key" in error_message.lower() or "already exists" in error_message.lower():
+            elif (
+                "duplicate key" in error_message.lower()
+                or "already exists" in error_message.lower()
+            ):
                 self.logger.info(
                     f"📝 Workflow {workflow.metadata.id} already exists, updating instead"
                 )
