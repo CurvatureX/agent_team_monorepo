@@ -17,6 +17,8 @@ from workflow_agent.core.config import settings
 from workflow_agent.core.llm_provider import LLMFactory
 from workflow_agent.core.prompt_engine import get_prompt_engine
 
+from .exceptions import WorkflowGenerationError
+
 from .mcp_tools import MCPToolCaller
 from .state import (
     WorkflowStage,
@@ -930,42 +932,68 @@ Your output MUST match the expected input format for the next node.
 
         return workflow
 
-    def _create_fallback_workflow(self, intent_summary: str) -> dict:
-        """Create a simple fallback workflow when generation fails"""
-        return {
-            "name": "Fallback Workflow",
-            "description": f"Basic workflow for: {intent_summary[:100]}",
-            "nodes": [
-                {
-                    "id": str(uuid.uuid4()),
-                    "name": "manual-trigger",
-                    "type": "TRIGGER",
-                    "subtype": "MANUAL",
-                    "parameters": {},
-                    "position": {"x": 100, "y": 100},
-                    "disabled": False,
-                    "on_error": "continue",
-                    "credentials": {},
-                    "notes": {},
-                    "webhooks": [],
-                }
-            ],
-            "connections": [],
-            "settings": {
-                "timezone": {"name": "UTC"},
-                "save_execution_progress": True,
-                "save_manual_executions": True,
-                "timeout": 3600,
-                "error_policy": "continue",
-                "caller_policy": "workflow",
-            },
-            "static_data": {},
-            "pin_data": {},
-            "tags": ["fallback"],
-            "active": True,
-            "version": "1.0",
-            "id": "fallback-workflow",
-        }
+    def _ensure_node_descriptions(self, workflow: Dict[str, Any], intent_summary: str = "") -> None:
+        """Ensure every node has a non-empty description before submission."""
+        nodes = workflow.get("nodes", [])
+        context = (intent_summary or workflow.get("description", "")).strip()
+
+        for index, node in enumerate(nodes):
+            if not isinstance(node, dict):
+                raise ValueError(
+                    f"Invalid node payload at index {index}: expected dict, got {type(node).__name__}"
+                )
+            description = node.get("description")
+            if isinstance(description, str) and description.strip():
+                continue
+
+            node_name = (
+                node.get("name")
+                or node.get("subtype")
+                or node.get("type")
+                or node.get("id")
+                or f"node-{index + 1}"
+            )
+            description_context = context[:200]
+            if description_context:
+                node["description"] = (
+                    f"Auto-generated node '{node_name}' supporting intent: {description_context}"
+                )
+            else:
+                node["description"] = f"Auto-generated node '{node_name}'"
+
+        workflow["nodes"] = nodes
+
+        missing_nodes = []
+        for index, node in enumerate(nodes):
+            node_description = node.get("description")
+            if not (isinstance(node_description, str) and node_description.strip()):
+                missing_nodes.append(node.get("id") or f"node-{index + 1}")
+
+        if missing_nodes:
+            raise ValueError(
+                f"Nodes missing descriptions: {', '.join(missing_nodes)}"
+            )
+
+    def _fail_workflow_generation(
+        self,
+        state: WorkflowState,
+        *,
+        error_message: str,
+        user_message: Optional[str] = None,
+    ) -> WorkflowState:
+        """Mark the current workflow state as failed and record messaging."""
+
+        state["stage"] = WorkflowStage.FAILED
+        state["workflow_generation_failed"] = True
+        state["final_error_message"] = error_message
+
+        if user_message:
+            self._add_conversation(state, "assistant", user_message)
+
+        # Ensure there is no stale workflow payload that downstream nodes could use
+        state.pop("current_workflow", None)
+
+        return state
 
     def should_continue(self, state: WorkflowState) -> str:
         """
@@ -1229,8 +1257,20 @@ Your output MUST match the expected input format for the next node.
 
             # Check if we got an empty response
             if not workflow_json or workflow_json.strip() == "":
-                logger.error("Empty response from LLM, using fallback workflow")
-                workflow = self._create_fallback_workflow(intent_summary)
+                error_message = (
+                    "Empty workflow response from LLM after reaching the maximum tool iterations"
+                )
+                logger.error(error_message)
+                failure_message = (
+                    "I wasn't able to generate a workflow because the model returned an empty "
+                    "response after several attempts. Please adjust the requirements or try again."
+                )
+                self._fail_workflow_generation(
+                    state,
+                    error_message=error_message,
+                    user_message=failure_message,
+                )
+                return state
             else:
                 # Parse the workflow JSON
                 try:
@@ -1301,11 +1341,22 @@ Your output MUST match the expected input format for the next node.
                     )
 
                 except json.JSONDecodeError as e:
-                    logger.error(
-                        f"Failed to parse workflow JSON: {e}, response was: {workflow_json[:500]}"
+                    error_message = (
+                        "Failed to parse workflow JSON returned by the model"
                     )
-                    # Use fallback workflow on parse error
-                    workflow = self._create_fallback_workflow(intent_summary)
+                    logger.error(
+                        f"{error_message}: {e}, response was: {workflow_json[:500]}"
+                    )
+                    failure_message = (
+                        "I attempted to generate the workflow but the response format was invalid. "
+                        "Please retry or provide additional guidance."
+                    )
+                    self._fail_workflow_generation(
+                        state,
+                        error_message=error_message,
+                        user_message=failure_message,
+                    )
+                    return state
 
             # Store latest workflow and advance to conversion generation stage
             state["current_workflow"] = workflow
@@ -1320,6 +1371,8 @@ Your output MUST match the expected input format for the next node.
             logger.info("Workflow JSON prepared; proceeding to conversion generation stage")
             return state
 
+        except WorkflowGenerationError:
+            raise
         except Exception as e:
             import traceback
 
@@ -1370,6 +1423,7 @@ Your output MUST match the expected input format for the next node.
         try:
             await self._prefetch_node_specs_for_workflow(workflow)
             workflow = await generator.populate(workflow, intent_summary=intent_summary)
+            self._ensure_node_descriptions(workflow, intent_summary=intent_summary)
             state["current_workflow"] = workflow
         except Exception as exc:
             logger.error("Failed to generate conversion functions", exc_info=True)
@@ -1551,6 +1605,7 @@ Would you like to make any adjustments or shall we proceed with testing?"""
                     current_messages.append(SystemMessage(content=f"Assistant: {response.content}"))
 
                 # Process each tool call
+                executed_tool_this_iteration = False
                 for tool_call in response.tool_calls:
                     tool_name = getattr(tool_call, "name", tool_call.get("name", ""))
                     tool_args = getattr(tool_call, "args", tool_call.get("args", {}))
@@ -1561,11 +1616,20 @@ Would you like to make any adjustments or shall we proceed with testing?"""
                     # Skip if this exact tool call was already made
                     if tool_signature in tool_call_history:
                         logger.warning(f"Skipping duplicate tool call: {tool_name} with same args")
+                        current_messages.append(
+                            HumanMessage(
+                                content=(
+                                    f"Tool `{tool_name}` was already called with the same arguments. "
+                                    "Reuse the earlier response and proceed to build the workflow JSON."
+                                )
+                            )
+                        )
                         continue
 
                     tool_call_history.append(tool_signature)
                     logger.info(f"Processing tool call: {tool_name}")
                     result = await self.mcp_client.call_tool(tool_name, tool_args)
+                    executed_tool_this_iteration = True
 
                     # Cache node specs for type reference
                     if tool_name == "get_node_details" and isinstance(result, dict):
@@ -1626,6 +1690,7 @@ Generate the COMPLETE JSON workflow now with ALL required nodes."""
                 response = await self.llm_with_tools.ainvoke(current_messages)
                 tool_elapsed = time.time() - tool_start
                 logger.info(f"Tool iteration {iteration} completed in {tool_elapsed:.2f} seconds")
+
 
             if iteration >= max_iterations:
                 logger.warning(f"Reached max iterations ({max_iterations}) in tool calling")
@@ -2134,7 +2199,8 @@ class ConversionFunctionGenerator:
 
         system_prompt = (
             "You create Python conversion functions for workflow automation. "
-            "Return only the function code, using the provided guidelines."
+            "Return only the function code, keep the logic minimal (simple field access and dictionary construction), "
+            "and follow the provided guidelines exactly."
         )
 
         async def _invoke_llm():
@@ -2262,4 +2328,3 @@ class ConversionFunctionGenerator:
                 f"    return {expression}",
             ]
         )
-
