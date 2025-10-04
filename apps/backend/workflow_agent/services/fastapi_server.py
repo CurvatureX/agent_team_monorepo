@@ -17,6 +17,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 
 from workflow_agent.agents.state import WorkflowStage, WorkflowState
+from workflow_agent.agents.exceptions import WorkflowGenerationError
 
 # Import workflow agent components
 from workflow_agent.agents.workflow_agent import WorkflowAgent
@@ -315,6 +316,37 @@ class WorkflowAgentServicer:
                                         "Sending completion message after workflow_gen completed"
                                     )
                                     yield f"data: {message_response.model_dump_json()}\n\n"
+
+                            if current_stage == WorkflowStage.FAILED:
+                                failure_state = self._convert_from_workflow_state(updated_state)
+                                current_state = failure_state
+
+                                message_response = await self._create_message_response(
+                                    session_id, updated_state
+                                )
+                                if message_response:
+                                    logger.info(
+                                        "Sending failure message to user"
+                                    )
+                                    yield f"data: {message_response.model_dump_json()}\n\n"
+
+                                error_message = failure_state.get(
+                                    "final_error_message",
+                                    "Workflow generation failed",
+                                )
+
+                                saved = self.state_manager.save_full_state(
+                                    session_id=session_id,
+                                    workflow_state=failure_state,
+                                    access_token=request.access_token,
+                                )
+                                if not saved:
+                                    logger.error(
+                                        "Failed to persist failure state",
+                                        extra={"session_id": session_id},
+                                    )
+
+                                raise WorkflowGenerationError(error_message)
                             # Debug logic removed - no longer needed in 2-node architecture
 
                             # 更新状态跟踪
@@ -434,6 +466,8 @@ class WorkflowAgentServicer:
                     },
                 )
 
+        except WorkflowGenerationError:
+            raise
         except Exception as e:
             import traceback
 
@@ -565,6 +599,7 @@ class WorkflowAgentServicer:
                 # Only set is_final=True when we're in the final stages or when workflow is complete
                 is_final = current_stage in [
                     WorkflowStage.WORKFLOW_GENERATION,
+                    WorkflowStage.FAILED,
                     "__end__",
                 ]
 
