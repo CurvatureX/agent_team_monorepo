@@ -626,7 +626,9 @@ class NotionActionSpec(BaseNodeSpec):
                 },
             ],
             # System prompt appendix for AI guidance
-            system_prompt_appendix="""Output `action_type` to dynamically control Notion operations. **If you don't know IDs (database_id, page_id, etc.), leave them blank or use descriptive names - the workflow may provide them.**
+            system_prompt_appendix="""**IMPORTANT: This downstream Notion node will handle all Notion operations automatically using OAuth tokens. DO NOT use MCP notion tools directly. Instead, output `action_type` and data for this node to process.**
+
+Output `action_type` to dynamically control Notion operations. **If you don't know IDs (database_id, page_id, etc.), leave them blank or use descriptive names - the workflow may provide them.**
 
 **All Action Types:**
 

@@ -355,7 +355,8 @@ class WorkflowRepository:
                     return False
 
                 current_status = (
-                    getattr(workflow, "deployment_status", None) or DeploymentStatus.PENDING.value
+                    getattr(workflow, "deployment_status", None)
+                    or DeploymentStatus.UNDEPLOYED.value
                 )
                 current_version = getattr(workflow, "deployment_version", None) or 0
 
@@ -378,7 +379,7 @@ class WorkflowRepository:
                         else DeploymentStatus(str(deployment_status)).name
                     )
                 except Exception:
-                    to_status_name = DeploymentStatus.PENDING.name
+                    to_status_name = DeploymentStatus.UNDEPLOYED.name
 
                 history_record = WorkflowDeploymentHistory(
                     workflow_id=workflow_uuid,

@@ -273,7 +273,9 @@ class SlackExternalActionSpec(BaseNodeSpec):
                 },
             ],
             # System prompt appendix for AI guidance
-            system_prompt_appendix="""Output `action_type` to dynamically control Slack operations. **If you don't know channel/user IDs, use channel names like "#general" or leave blank.**
+            system_prompt_appendix="""**IMPORTANT: This downstream Slack node will handle all Slack operations automatically using OAuth tokens. DO NOT use MCP slack tools directly. Instead, output `action_type` and message data for this node to process.**
+
+Output `action_type` to dynamically control Slack operations. **If you don't know channel/user IDs, use channel names like "#general" or leave blank.**
 
 **All Action Types:**
 

@@ -48,6 +48,7 @@ class NotionMCPService:
             MCPTool(
                 name="notion_search",
                 description="Universal search across all Notion content with AI-optimized results formatting for OpenAI, Claude, and Gemini",
+                category="notion",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -104,12 +105,12 @@ class NotionMCPService:
                     },
                     "required": ["access_token", "query"],
                 },
-                category="notion",
                 tags=["search", "universal", "pages", "databases"],
             ),
             MCPTool(
                 name="notion_page",
                 description="Complete page management (get, create, update, retrieve documents with full content) - AI-optimized for OpenAI, Claude, and Gemini",
+                category="notion",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -292,7 +293,6 @@ class NotionMCPService:
                     },
                     "required": ["access_token", "action"],
                 },
-                category="notion",
                 tags=[
                     "page",
                     "crud",
@@ -307,6 +307,7 @@ class NotionMCPService:
             MCPTool(
                 name="notion_database",
                 description="Complete database operations (get schema, query with advanced filtering) - AI-optimized for OpenAI, Claude, and Gemini",
+                category="notion",
                 inputSchema={
                     "type": "object",
                     "properties": {
@@ -371,7 +372,6 @@ class NotionMCPService:
                     },
                     "required": ["access_token", "action", "database_id"],
                 },
-                category="notion",
                 tags=["database", "query", "schema", "filter"],
             ),
         ]

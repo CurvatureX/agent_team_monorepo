@@ -63,18 +63,28 @@ class BaseExternalAction(ABC):
     async def get_oauth_token(self, context: NodeExecutionContext) -> Optional[str]:
         """Get OAuth token for this integration from oauth_tokens table."""
         try:
-            # Get user_id from execution context
-            user_id = context.execution.get("user_id") if context.execution else None
+            # Get user_id from multiple sources (prioritized)
+            user_id = None
 
-            if not user_id:
-                # Try to get from metadata
-                if hasattr(context, "metadata") and context.metadata:
-                    user_id = context.metadata.get("user_id")
+            # 1. Try from trigger (highest priority for workflow executions)
+            if context.trigger:
+                user_id = getattr(context.trigger, "user_id", None)
+
+            # 2. Try from context metadata
+            if not user_id and hasattr(context, "metadata") and context.metadata:
+                user_id = context.metadata.get("user_id")
+
+            # 3. Try from execution object (if it's a dict)
+            if not user_id and context.execution:
+                if isinstance(context.execution, dict):
+                    user_id = context.execution.get("user_id")
+                elif hasattr(context.execution, "user_id"):
+                    user_id = getattr(context.execution, "user_id", None)
 
             if not user_id:
                 self.log_execution(
                     context,
-                    f"❌ Cannot get {self.integration_name} token: user_id not found",
+                    f"❌ Cannot get {self.integration_name} token: user_id not found in trigger, metadata, or execution",
                     LogLevel.ERROR.value,
                 )
                 return None

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures as _fut
+import logging
 import os
 import random
 import sys
@@ -27,6 +28,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from supabase import create_client
+
+logger = logging.getLogger(__name__)
 
 # Add backend directory to path for absolute imports
 backend_dir = Path(__file__).parent.parent.parent
@@ -108,6 +111,12 @@ def execute_conversion_function_flexible(
                 "sum": sum,
                 "abs": abs,
                 "round": round,
+                # Common safe builtins often needed in conversions
+                "sorted": sorted,
+                "any": any,
+                "all": all,
+                "isinstance": isinstance,
+                "type": type,
             },
         }
 
@@ -190,9 +199,22 @@ class ExecutionEngine:
         validate_workflow(workflow)
 
     def run(
-        self, workflow: Workflow, trigger: TriggerInfo, trace_id: Optional[str] = None
+        self,
+        workflow: Workflow,
+        trigger: TriggerInfo,
+        trace_id: Optional[str] = None,
+        start_from_node: Optional[str] = None,
+        skip_trigger_validation: bool = False,
     ) -> Execution:
-        """Execute workflow synchronously with optional trace ID for debugging."""
+        """Execute workflow synchronously with optional trace ID for debugging.
+
+        Args:
+            workflow: The workflow to execute
+            trigger: Trigger information
+            trace_id: Optional trace ID for debugging
+            start_from_node: Optional node ID to start execution from (skips upstream nodes)
+            skip_trigger_validation: Whether to skip trigger validation when using start_from_node
+        """
         self.validate_against_specs(workflow)
 
         exec_id = str(uuid.uuid4())
@@ -250,10 +272,27 @@ class ExecutionEngine:
         # New task-queue execution (supports fan-out and retries)
         executed_main: set[str] = set()
         run_counts: Dict[str, int] = {}
-        queue: List[Dict[str, Any]] = [
-            {"node_id": node_id, "override": None}
-            for node_id in self._get_initial_ready_nodes(graph)
-        ]
+
+        # Determine starting nodes
+        if start_from_node:
+            # Start from specified node, passing trigger_data directly as inputs
+            if start_from_node not in graph.nodes:
+                raise ValueError(f"start_from_node '{start_from_node}' not found in workflow")
+
+            logger.info(f"🎯 Starting execution from node: {start_from_node}")
+            logger.info(f"📥 Trigger data will be passed directly to {start_from_node}")
+
+            # Initialize pending_inputs for the start node with trigger_data
+            trigger_data = trigger.trigger_data if trigger.trigger_data else {}
+            pending_inputs[start_from_node] = {"result": trigger_data}
+
+            queue: List[Dict[str, Any]] = [{"node_id": start_from_node, "override": None}]
+        else:
+            # Normal execution: start from initial ready nodes
+            queue: List[Dict[str, Any]] = [
+                {"node_id": node_id, "override": None}
+                for node_id in self._get_initial_ready_nodes(graph)
+            ]
         while queue:
             task = queue.pop(0)
             current_node_id = task["node_id"]
@@ -275,20 +314,39 @@ class ExecutionEngine:
                 pass
             node_execution.status = NodeExecutionStatus.RUNNING
             node_execution.start_time = _now_ms()
-            self._log.log(
-                workflow_execution,
-                level=LogLevel.INFO,
-                message=f"Node {node.name} started",
-                node_id=current_node_id,
-            )
-            self._events.node_started(workflow_execution, current_node_id, node_execution)
 
+            # Prepare inputs for execution
             inputs: Dict[str, Any] = {}
             if is_fanout_run:
                 inputs.update(override or {})
             else:
                 inputs.update(pending_inputs.get(current_node_id, {}))
             inputs["_ctx"] = execution_context
+
+            # Log node execution start with detailed information
+            input_summary = {k: v for k, v in inputs.items() if not k.startswith("_")}
+
+            # Log to both execution log and console
+            logger.info("=" * 80)
+            logger.info(f"🚀 Executing Node: {node.name}")
+            logger.info(f"   Type: {node.type}, Subtype: {node.subtype}")
+            logger.info(f"   Node ID: {current_node_id}")
+            logger.info(f"📥 Input Parameters: {input_summary}")
+            logger.info("=" * 80)
+
+            self._log.log(
+                workflow_execution,
+                level=LogLevel.INFO,
+                message=f"🚀 Executing Node: {node.name} (type={node.type}, subtype={node.subtype})",
+                node_id=current_node_id,
+            )
+            self._log.log(
+                workflow_execution,
+                level=LogLevel.INFO,
+                message=f"📥 Input Parameters: {input_summary}",
+                node_id=current_node_id,
+            )
+            self._events.node_started(workflow_execution, current_node_id, node_execution)
 
             # Simple retry loop
             # Helper to extract value from config (may be schema dict or direct value)
@@ -370,8 +428,8 @@ class ExecutionEngine:
                     message=f"Node {node.name} failed",
                     node_id=current_node_id,
                 )
-                self._events.node_failed(workflow_execution, current_node_id, ne)
-                self._events.execution_failed(we)
+                self._events.node_failed(workflow_execution, current_node_id, node_execution)
+                self._events.execution_failed(workflow_execution)
                 try:
                     # NodeError and ExecutionError already imported above
                     node_execution.error = NodeError(
@@ -391,7 +449,7 @@ class ExecutionEngine:
                     )
                 except Exception:
                     pass
-                self._repo.save(we)
+                self._repo.save(workflow_execution)
                 break
 
             # HIL (Human-in-the-Loop) Wait handling with database persistence
@@ -465,7 +523,9 @@ class ExecutionEngine:
                         node_id=current_node_id,
                     )
 
-                self._events.user_input_required(workflow_execution, current_node_id, ne)
+                self._events.user_input_required(
+                    workflow_execution, current_node_id, node_execution
+                )
                 return workflow_execution
             if outputs.get("_wait"):
                 if "_wait_timeout_ms" in outputs:
@@ -485,7 +545,7 @@ class ExecutionEngine:
                 node_execution.status = NodeExecutionStatus.WAITING_INPUT
                 workflow_execution.current_node_id = current_node_id
                 workflow_execution.status = ExecutionStatus.WAITING
-                self._events.execution_paused(we)
+                self._events.execution_paused(workflow_execution)
                 return workflow_execution
             if "_delay_ms" in outputs:
                 delay_ms = int(outputs.get("_delay_ms") or 0)
@@ -500,7 +560,7 @@ class ExecutionEngine:
                 node_execution.status = NodeExecutionStatus.WAITING_INPUT
                 workflow_execution.current_node_id = current_node_id
                 workflow_execution.status = ExecutionStatus.WAITING
-                self._events.execution_paused(we)
+                self._events.execution_paused(workflow_execution)
                 return workflow_execution
 
             # Streaming support: publish partial chunks if provided
@@ -509,7 +569,10 @@ class ExecutionEngine:
                 if chunks and isinstance(chunks, list):
                     for ch in chunks:
                         self._events.node_output_update(
-                            workflow_execution, current_node_id, ne, partial={"stream": ch}
+                            workflow_execution,
+                            current_node_id,
+                            node_execution,
+                            partial={"stream": ch},
                         )
             except Exception:
                 pass
@@ -591,10 +654,27 @@ class ExecutionEngine:
             if node_execution.execution_details.metrics is None:
                 node_execution.execution_details.metrics = {}
             node_execution.execution_details.metrics["runs"] = run_counts[current_node_id]
+
+            # Log node execution completion with output details
+            output_summary = {k: v for k, v in shaped_outputs.items() if not k.startswith("_")}
+
+            # Log to both execution log and console
+            logger.info("=" * 80)
+            logger.info(f"✅ Node Completed: {node.name}")
+            logger.info(f"   Node ID: {current_node_id}")
+            logger.info(f"📤 Output Parameters: {output_summary}")
+            logger.info("=" * 80)
+
             self._log.log(
                 workflow_execution,
                 level=LogLevel.INFO,
-                message=f"Node {node.name} completed",
+                message=f"✅ Node Completed: {node.name}",
+                node_id=current_node_id,
+            )
+            self._log.log(
+                workflow_execution,
+                level=LogLevel.INFO,
+                message=f"📤 Output Parameters: {output_summary}",
                 node_id=current_node_id,
             )
             self._events.node_output_update(workflow_execution, current_node_id, node_execution)
@@ -712,17 +792,37 @@ class ExecutionEngine:
 
     # Async wrappers for non-blocking execution
     async def run_async(
-        self, workflow: Workflow, trigger: TriggerInfo, trace_id: Optional[str] = None
+        self,
+        workflow: Workflow,
+        trigger: TriggerInfo,
+        trace_id: Optional[str] = None,
+        start_from_node: Optional[str] = None,
+        skip_trigger_validation: bool = False,
     ) -> Execution:
         """Execute workflow asynchronously."""
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._pool, self.run, workflow, trigger, trace_id)
+        return await loop.run_in_executor(
+            self._pool,
+            self.run,
+            workflow,
+            trigger,
+            trace_id,
+            start_from_node,
+            skip_trigger_validation,
+        )
 
     async def execute_workflow(
-        self, workflow: Workflow, trigger: TriggerInfo, trace_id: Optional[str] = None
+        self,
+        workflow: Workflow,
+        trigger: TriggerInfo,
+        trace_id: Optional[str] = None,
+        start_from_node: Optional[str] = None,
+        skip_trigger_validation: bool = False,
     ) -> Execution:
         """Async alias for run_async - for compatibility with ModernExecutionEngine API."""
-        return await self.run_async(workflow, trigger, trace_id)
+        return await self.run_async(
+            workflow, trigger, trace_id, start_from_node, skip_trigger_validation
+        )
 
         # Execute nodes in dependency order with readiness checks
         executed: set[str] = set()
@@ -733,7 +833,7 @@ class ExecutionEngine:
                 continue
             node = graph.nodes[current_node_id]
 
-            ne = workflow_execution.node_executions[current_node_id]
+            node_execution = workflow_execution.node_executions[current_node_id]
             node_execution.status = NodeExecutionStatus.RUNNING
             node_execution.start_time = _now_ms()
             self._log.log(
@@ -745,7 +845,7 @@ class ExecutionEngine:
 
             # Collect inputs for node; inject context for runners
             inputs: Dict[str, Any] = pending_inputs.get(current_node_id, {})
-            inputs["_ctx"] = ctx
+            inputs["_ctx"] = execution_context
 
             # Execute node via runner
             try:
@@ -810,7 +910,7 @@ class ExecutionEngine:
                     message=f"Node {node.name} completed",
                     node_id=current_node_id,
                 )
-                self._repo.save(we)
+                self._repo.save(workflow_execution)
 
                 # Propagate according to graph connections
                 for (
@@ -869,7 +969,7 @@ class ExecutionEngine:
                     message=f"Node {node.name} failed",
                     node_id=current_node_id,
                 )
-                self._repo.save(we)
+                self._repo.save(workflow_execution)
                 break
 
         if workflow_execution.status != ExecutionStatus.ERROR:
@@ -881,9 +981,9 @@ class ExecutionEngine:
             self._log.log(
                 workflow_execution,
                 level=LogLevel.INFO,
-                message="Execution completed successor_nodeessfully",
+                message="Execution completed successfully",
             )
-            self._repo.save(we)
+            self._repo.save(workflow_execution)
 
         return workflow_execution
 
@@ -920,8 +1020,8 @@ class ExecutionEngine:
         )
         workflow_execution.execution_sequence.append(node_id)
         # Publish events and update node outputs
-        self._events.node_output_update(workflow_execution, node_id, ne)
-        self._events.node_completed(workflow_execution, node_id, ne)
+        self._events.node_output_update(workflow_execution, node_id, node_execution)
+        self._events.node_completed(workflow_execution, node_id, node_execution)
         execution_context.node_outputs[node_id] = outputs
         try:
             execution_context.node_outputs_by_name[node.name] = outputs
@@ -969,7 +1069,7 @@ class ExecutionEngine:
         # Clear waiting state
         workflow_execution.current_node_id = None
         workflow_execution.status = ExecutionStatus.RUNNING
-        self._events.execution_resumed(we)
+        self._events.execution_resumed(workflow_execution)
 
         # Continue scheduling from successors
         ready = [
@@ -987,7 +1087,7 @@ class ExecutionEngine:
             node_execution2.status = NodeExecutionStatus.RUNNING
             node_execution2.start_time = _now_ms()
             inputs = pending_inputs.get(current_node_id, {})
-            inputs["_ctx"] = ctx
+            inputs["_ctx"] = execution_context
             try:
                 runner = default_runner_for(node)
                 outputs = runner.run(
@@ -1050,9 +1150,9 @@ class ExecutionEngine:
             self._log.log(
                 workflow_execution,
                 level=LogLevel.INFO,
-                message="Execution completed successor_nodeessfully",
+                message="Execution completed successfully",
             )
-            self._repo.save(we)
+            self._repo.save(workflow_execution)
         return workflow_execution
 
     def _create_workflow_pause(
@@ -1111,13 +1211,13 @@ class ExecutionEngine:
         self, execution_id: str, node_id: str, *, reason: str = "delay", port: str = "main"
     ) -> Execution:
         """Resume a timer-waiting node after delay has elapsed."""
-        ctx = self._store.get(execution_id)
-        we = execution_context.execution
+        execution_context = self._store.get(execution_id)
+        workflow_execution = execution_context.execution
         pending_inputs = execution_context.pending_inputs
         if workflow_execution.current_node_id != node_id:
             return workflow_execution
 
-        ne = workflow_execution.node_executions[node_id]
+        node_execution = workflow_execution.node_executions[node_id]
         inputs = pending_inputs.get(node_id, {})
         base = inputs.get("result", inputs)
         outputs = {port: base, "result": base}
@@ -1135,8 +1235,8 @@ class ExecutionEngine:
             execution_context.node_outputs_by_name[node_name] = outputs
         except Exception:
             pass
-        self._events.node_output_update(workflow_execution, node_id, ne)
-        self._events.node_completed(workflow_execution, node_id, ne)
+        self._events.node_output_update(workflow_execution, node_id, node_execution)
+        self._events.node_completed(workflow_execution, node_id, node_execution)
 
         for (
             successor_node,
@@ -1177,7 +1277,7 @@ class ExecutionEngine:
             node_execution2.status = NodeExecutionStatus.RUNNING
             node_execution2.start_time = _now_ms()
             inputs2 = pending_inputs.get(current_node_id, {})
-            inputs2["_ctx"] = ctx
+            inputs2["_ctx"] = execution_context
             try:
                 runner = default_runner_for(node)
                 outputs2 = runner.run(
@@ -1272,23 +1372,23 @@ class ExecutionEngine:
 
     # Control operations
     def pause(self, execution_id: str) -> Execution:
-        ctx = self._store.get(execution_id)
+        execution_context = self._store.get(execution_id)
         execution_context.execution.status = ExecutionStatus.PAUSED
         self._events.execution_paused(execution_context.execution)
         return execution_context.execution
 
     def cancel(self, execution_id: str) -> Execution:
-        ctx = self._store.get(execution_id)
+        execution_context = self._store.get(execution_id)
         execution_context.execution.status = ExecutionStatus.CANCELED
         execution_context.execution.end_time = _now_ms()
         self._events.execution_failed(execution_context.execution)
         return execution_context.execution
 
     def retry_node(self, execution_id: str, node_id: str) -> Execution:
-        ctx = self._store.get(execution_id)
-        we = execution_context.execution
+        execution_context = self._store.get(execution_id)
+        workflow_execution = execution_context.execution
         if node_id in workflow_execution.node_executions:
-            ne = workflow_execution.node_executions[node_id]
+            node_execution = workflow_execution.node_executions[node_id]
             node_execution.status = NodeExecutionStatus.PENDING
             node_execution.error = None
         return workflow_execution

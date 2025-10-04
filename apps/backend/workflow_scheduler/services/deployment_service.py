@@ -902,17 +902,32 @@ class DeploymentService:
                     f"Ensure user has an active Slack OAuth integration."
                 )
 
-            # Resolve channel names to IDs if channel_filter or channel is specified
-            channel_filter = parameters.get("channel_filter") or parameters.get("channel")
+            # Resolve channel names to IDs if channels array or legacy channel_filter is specified
+            # Prefer 'channels' array (node spec) over legacy 'channel_filter'
+            channels_list = parameters.get("channels")
+            using_channels_array = False
+
+            if channels_list and isinstance(channels_list, list):
+                # Node spec uses 'channels' array
+                using_channels_array = True
+                channel_filter = ",".join(str(ch) for ch in channels_list)
+                logger.debug(f"Using channels array from node spec: {channels_list}")
+            else:
+                # Fall back to legacy channel_filter or channel
+                channel_filter = parameters.get("channel_filter") or parameters.get("channel")
+
             if not channel_filter:
-                logger.debug("No channel_filter or channel specified for Slack trigger")
+                logger.debug(
+                    "No channels array, channel_filter, or channel specified for Slack trigger"
+                )
                 return
 
-            # If already looks like a channel ID (starts with C), skip resolution
-            if channel_filter.startswith("C"):
-                logger.debug(
-                    f"Channel filter '{channel_filter}' already appears to be a channel ID"
-                )
+            # Check if all channels are already IDs (start with C)
+            channel_names = [ch.strip() for ch in channel_filter.split(",")]
+            all_are_ids = all(ch.startswith("C") for ch in channel_names)
+
+            if all_are_ids:
+                logger.debug(f"All channels are already IDs: {channel_names}")
                 return
 
             # Resolve channel name(s) to ID(s)
@@ -922,10 +937,20 @@ class DeploymentService:
 
             if resolved_channel_ids:
                 # Update the parameters with resolved channel IDs
-                parameters["channel_filter"] = resolved_channel_ids
-                logger.info(
-                    f"Resolved Slack channel filter '{channel_filter}' to '{resolved_channel_ids}' for user {user_id}"
-                )
+                resolved_ids_list = resolved_channel_ids.split(",")
+
+                if using_channels_array:
+                    # Update the 'channels' array with resolved IDs
+                    parameters["channels"] = resolved_ids_list
+                    logger.info(
+                        f"Resolved Slack channels {channels_list} to {resolved_ids_list} for user {user_id}"
+                    )
+                else:
+                    # Update legacy 'channel_filter' field
+                    parameters["channel_filter"] = resolved_channel_ids
+                    logger.info(
+                        f"Resolved Slack channel filter '{channel_filter}' to '{resolved_channel_ids}' for user {user_id}"
+                    )
             else:
                 logger.warning(
                     f"Could not resolve Slack channel filter '{channel_filter}' for user {user_id}"
