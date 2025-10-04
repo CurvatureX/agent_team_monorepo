@@ -190,12 +190,16 @@ class ExecutionEngine:
         validate_workflow(workflow)
 
     def run(
-        self, workflow: Workflow, trigger: TriggerInfo, trace_id: Optional[str] = None
+        self,
+        workflow: Workflow,
+        trigger: TriggerInfo,
+        trace_id: Optional[str] = None,
+        execution_id: Optional[str] = None,
     ) -> Execution:
         """Execute workflow synchronously with optional trace ID for debugging."""
         self.validate_against_specs(workflow)
 
-        exec_id = str(uuid.uuid4())
+        exec_id = execution_id or str(uuid.uuid4())
         trace_id = trace_id or str(uuid.uuid4())
 
         workflow_execution = Execution(
@@ -712,17 +716,27 @@ class ExecutionEngine:
 
     # Async wrappers for non-blocking execution
     async def run_async(
-        self, workflow: Workflow, trigger: TriggerInfo, trace_id: Optional[str] = None
+        self,
+        workflow: Workflow,
+        trigger: TriggerInfo,
+        trace_id: Optional[str] = None,
+        execution_id: Optional[str] = None,
     ) -> Execution:
         """Execute workflow asynchronously."""
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._pool, self.run, workflow, trigger, trace_id)
+        return await loop.run_in_executor(
+            self._pool, self.run, workflow, trigger, trace_id, execution_id
+        )
 
     async def execute_workflow(
-        self, workflow: Workflow, trigger: TriggerInfo, trace_id: Optional[str] = None
+        self,
+        workflow: Workflow,
+        trigger: TriggerInfo,
+        trace_id: Optional[str] = None,
+        execution_id: Optional[str] = None,
     ) -> Execution:
         """Async alias for run_async - for compatibility with ModernExecutionEngine API."""
-        return await self.run_async(workflow, trigger, trace_id)
+        return await self.run_async(workflow, trigger, trace_id, execution_id)
 
         # Execute nodes in dependency order with readiness checks
         executed: set[str] = set()
