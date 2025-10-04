@@ -715,6 +715,29 @@ async def list_workflows(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@router.get("/executions/{execution_id}")
+async def get_execution_status(execution_id: str, deps: AuthenticatedDeps = Depends()):
+    """Retrieve execution status, falling back to Supabase if engine no longer has it."""
+
+    try:
+        http_client = await get_workflow_engine_client()
+        engine_response = await http_client.get_execution_status(execution_id)
+
+        if engine_response.get("success") is False and "error" in engine_response:
+            fallback = _get_execution_status_from_supabase(execution_id)
+            if fallback is not None:
+                return fallback
+            raise HTTPException(status_code=404, detail="Execution not found")
+
+        return engine_response
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"❌ Error fetching execution {execution_id}: {exc}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 @router.post("/{workflow_id}/execute", response_model=WorkflowExecutionResponse)
 async def execute_workflow(
     workflow_id: str,
@@ -792,6 +815,62 @@ async def execute_workflow(
             message=f"Failed to queue workflow execution: {e}",
             started_at=None,
         )
+
+
+def _get_execution_status_from_supabase(execution_id: str) -> Optional[Dict[str, Any]]:
+    """Fetch execution status from Supabase execution_status table."""
+
+    try:
+        supabase = get_supabase_admin()
+        if not supabase:
+            logger.warning("Supabase admin client unavailable for execution status fallback")
+            return None
+
+        response = (
+            supabase.table("execution_status")
+            .select("*")
+            .eq("execution_id", execution_id)
+            .order("updated_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+
+        rows = response.data or []
+        if not rows:
+            return None
+
+        status_row = rows[0]
+
+        def _to_millis(value: Any) -> Any:
+            if value is None:
+                return None
+            if isinstance(value, (int, float)):
+                return int(value)
+            if isinstance(value, str):
+                try:
+                    return int(datetime.fromisoformat(value).timestamp() * 1000)
+                except ValueError:
+                    return value
+            return value
+
+        return {
+            "execution_id": execution_id,
+            "workflow_id": status_row.get("workflow_id"),
+            "status": status_row.get("status"),
+            "current_node_id": status_row.get("current_node_id"),
+            "progress_data": status_row.get("progress_data"),
+            "error_message": status_row.get("error_message"),
+            "created_at": _to_millis(status_row.get("created_at")),
+            "updated_at": _to_millis(status_row.get("updated_at")),
+        }
+
+    except Exception as fallback_error:
+        logger.error(
+            "❌ Supabase fallback failed for execution %s: %s",
+            execution_id,
+            fallback_error,
+        )
+        return None
 
 
 @router.post("/{workflow_id}/trigger/manual", response_model=ExecutionResult)

@@ -118,6 +118,38 @@ class SupabaseExecutionRepositoryV2(ExecutionRepository):
             else:
                 self.logger.debug(f"Successfully saved execution {execution.execution_id}")
 
+            # Update execution_status table for quick status lookups
+            try:
+                now_iso = datetime.utcnow().isoformat()
+                status_payload = {
+                    "execution_id": execution.execution_id,
+                    "workflow_id": execution.workflow_id,
+                    "status": status_value,
+                    "current_node_id": execution.current_node_id,
+                    "progress_data": {"run_data": run_data_snapshot},
+                    "error_message": getattr(execution, "error_message", None),
+                    "created_at": now_iso,
+                    "updated_at": now_iso,
+                }
+
+                status_result = (
+                    self._client.table("execution_status")
+                    .upsert(status_payload, on_conflict="execution_id")
+                    .execute()
+                )
+
+                if not status_result.data:
+                    self.logger.debug(
+                        "Execution status upsert returned no data for %s",
+                        execution.execution_id,
+                    )
+            except Exception as status_error:
+                self.logger.error(
+                    "Failed to update execution_status for %s: %s",
+                    execution.execution_id,
+                    status_error,
+                )
+
         except Exception as e:
             self.logger.error(f"Failed to save execution {execution.execution_id}: {e}")
 
