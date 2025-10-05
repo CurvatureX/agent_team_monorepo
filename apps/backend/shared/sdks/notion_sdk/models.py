@@ -43,6 +43,7 @@ class PropertyType(Enum):
     VERIFICATION = "verification"
     UNIQUE_ID = "unique_id"
     STATUS = "status"
+    BUTTON = "button"
 
 
 class BlockType(Enum):

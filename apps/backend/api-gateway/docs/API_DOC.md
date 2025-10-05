@@ -8,6 +8,70 @@
 
 ## API 接口
 
+### 0. 集成查询（Slack / Notion）
+
+#### GET /api/v1/app/integrations/slack/channels
+- **作用**：列出当前授权 Slack 工作区可用的频道（支持分页）
+- **Query 参数**：
+  - `types`（可选，默认 `public_channel,private_channel`）
+  - `limit`（可选，1–1000）
+  - `cursor`（可选，Slack 分页游标）
+- **返回**：`
+  {
+    "success": true,
+    "channels": [ { "id": "C123", "name": "general", ... } ],
+    "next_cursor": "..."
+  }
+`
+
+#### GET /api/v1/app/integrations/slack/users
+- **作用**：列出 Slack 成员信息，用于 @user / 邀请配置
+- **Query 参数**：`limit`（1–200）、`cursor`
+- **返回**：`
+  {
+    "success": true,
+    "users": [ { "id": "U123", "name": "alice", ... } ],
+    "next_cursor": "..."
+  }
+`
+
+#### GET /api/v1/app/integrations/notion/databases
+- **作用**：列出当前授权 Notion 集成可访问的数据库
+- **Query 参数**：
+  - `query`（可选，模糊搜索）
+  - `page_size`（1–100）
+  - `cursor`（Notion start_cursor）
+  - `sort_property`、`sort_direction`（可选，排序）
+- **返回**：`
+  {
+    "success": true,
+    "databases": [ { "id": "db1", "title": "Tasks", ... } ],
+    "next_cursor": "...",
+    "has_more": false
+  }
+`
+
+#### GET /api/v1/app/integrations/notion/databases/{database_id}
+- **作用**：获取单个数据库 schema（属性列表、描述等）
+- **路径参数**：`database_id`
+- **返回**：`
+  {
+    "success": true,
+    "database": { "id": "...", "properties": [ ... ] }
+  }
+`
+
+#### GET /api/v1/app/integrations/notion/users
+- **作用**：列出 Notion 工作区用户，辅助 People 属性填写
+- **Query 参数**：`page_size`（1–100）、`cursor`
+- **返回**：`
+  {
+    "success": true,
+    "users": [ { "id": "...", "name": "..." } ],
+    "next_cursor": "..."
+  }
+`
+
 ### 1. POST /session
 创建新会话
 
