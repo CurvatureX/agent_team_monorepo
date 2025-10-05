@@ -15,7 +15,6 @@ from shared.models.node_enums import ActionSubtype, AIAgentSubtype, FlowSubtype,
 from shared.models.workflow import Node
 
 from .action import DataTransformationRunner, HttpRequestRunner
-from .ai import AIAgentRunner
 from .ai_anthropic import AnthropicClaudeRunner
 from .ai_gemini import GoogleGeminiRunner
 from .ai_openai import OpenAIChatGPTRunner
@@ -100,8 +99,13 @@ def default_runner_for(node: Node):
         elif ai_subtype == AIAgentSubtype.GOOGLE_GEMINI:
             return GoogleGeminiRunner()
 
-        # Fallback to generic AIAgentRunner for unknown subtypes
-        return AIAgentRunner()
+        # No generic fallback: require explicit provider subtype
+        raise ValueError(
+            f"Unknown AI_AGENT subtype '{subtype}'. Use one of: "
+            f"{AIAgentSubtype.ANTHROPIC_CLAUDE.value}, "
+            f"{AIAgentSubtype.OPENAI_CHATGPT.value}, "
+            f"{AIAgentSubtype.GOOGLE_GEMINI.value}"
+        )
     if ntype == NodeType.HUMAN_IN_THE_LOOP:
         return HILRunner()
     return PassthroughRunner()

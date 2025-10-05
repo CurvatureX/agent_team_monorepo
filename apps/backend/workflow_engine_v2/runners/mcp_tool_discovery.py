@@ -413,7 +413,7 @@ def discover_mcp_tools_from_nodes(tool_nodes: List[Node]) -> List[Dict[str, Any]
 
             # Get tool schemas for this tool type from fetched schemas
             if tool_subtype not in tools_by_subtype:
-                logger.warning(f"⚠️ Unknown MCP tool type: {tool_subtype}")
+                logger.warning(f"⚠️ No MCP tools available for type: {tool_subtype}")
                 continue
 
             tool_schemas = tools_by_subtype[tool_subtype]

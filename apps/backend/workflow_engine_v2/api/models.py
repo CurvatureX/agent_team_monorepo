@@ -24,6 +24,12 @@ class CreateWorkflowRequest(BaseModel):
     connections: List[Dict[str, Any]]
     triggers: Optional[List[str]] = []
 
+    # Add missing metadata fields
+    description: Optional[str] = None
+    tags: Optional[List[str]] = None
+    parent_workflow: Optional[str] = None
+    icon_url: Optional[str] = None
+
 
 class CreateWorkflowResponse(BaseModel):
     """Response from creating a workflow"""

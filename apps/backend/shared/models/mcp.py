@@ -22,9 +22,11 @@ class MCPTool(BaseModel):
     )
     annotations: Optional[Dict[str, Any]] = Field(default_factory=dict, description="工具注解和提示")
 
-    # Optional fields for internal use (excluded from API response)
+    # Optional fields for internal use
     required_scopes: List[str] = Field(default_factory=list, description="所需权限范围", exclude=True)
-    category: Optional[str] = Field(default=None, description="工具分类", exclude=True)
+    category: Optional[str] = Field(
+        default=None, description="工具分类"
+    )  # Include in API response for tool discovery
     version: Optional[str] = Field(default="1.0.0", description="工具版本", exclude=True)
     tags: List[str] = Field(default_factory=list, description="工具标签", exclude=True)
 

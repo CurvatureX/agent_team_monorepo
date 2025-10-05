@@ -48,13 +48,13 @@ def _normalize_status(status: str) -> str:
         pass
     # Legacy mappings
     legacy_map = {
-        "IDLE": DeploymentStatus.PENDING.value,
-        "DRAFT": DeploymentStatus.PENDING.value,  # Legacy support
-        "DEPLOYING": DeploymentStatus.PENDING.value,
-        "UNDEPLOYING": DeploymentStatus.PENDING.value,
-        "DEPLOYMENT_FAILED": DeploymentStatus.FAILED.value,
+        "IDLE": DeploymentStatus.UNDEPLOYED.value,
+        "DRAFT": DeploymentStatus.UNDEPLOYED.value,  # Legacy support
+        "DEPLOYING": DeploymentStatus.DEPLOYING.value,
+        "UNDEPLOYING": DeploymentStatus.UNDEPLOYED.value,
+        "DEPLOYMENT_FAILED": DeploymentStatus.DEPLOYMENT_FAILED.value,
     }
-    return legacy_map.get(s.upper(), DeploymentStatus.PENDING.value)
+    return legacy_map.get(s.upper(), DeploymentStatus.UNDEPLOYED.value)
 
 
 def update_workflow_deployment_status(workflow_id: str, status: str = "DEPLOYED"):
@@ -107,10 +107,12 @@ def update_workflow_deployment_status(workflow_id: str, status: str = "DEPLOYED"
                         (
                             workflow_uuid,
                             "DEPLOY",
-                            DeploymentStatus.PENDING.name,
-                            DeploymentStatus[normalized.upper()].name
-                            if normalized.upper() in DeploymentStatus.__members__
-                            else DeploymentStatus.PENDING.name,
+                            DeploymentStatus.UNDEPLOYED.name,
+                            (
+                                DeploymentStatus[normalized.upper()].name
+                                if normalized.upper() in DeploymentStatus.__members__
+                                else DeploymentStatus.UNDEPLOYED.name
+                            ),
                             cur.execute(
                                 "SELECT deployment_version FROM workflows WHERE id = %s",
                                 (workflow_uuid,),

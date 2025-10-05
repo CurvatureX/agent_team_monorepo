@@ -34,8 +34,11 @@ class BaseExternalAction(ABC):
         try:
             # Extract operation with priority: input_params > configurations
             # This allows AI agents to dynamically control action_type via their output
+
+            # Check multiple locations for action_type (handles conversion function wrapping)
             operation = (
-                context.input_data.get("action_type")  # Runtime dynamic (from AI output)
+                context.input_data.get("action_type")  # Direct top-level
+                or context.input_data.get("result", {}).get("action_type")  # Inside 'result' key
                 or context.node.configurations.get("action_type")  # Configuration static
                 or "default"  # Fallback
             )
@@ -63,18 +66,28 @@ class BaseExternalAction(ABC):
     async def get_oauth_token(self, context: NodeExecutionContext) -> Optional[str]:
         """Get OAuth token for this integration from oauth_tokens table."""
         try:
-            # Get user_id from execution context
-            user_id = context.execution.get("user_id") if context.execution else None
+            # Get user_id from multiple sources (prioritized)
+            user_id = None
 
-            if not user_id:
-                # Try to get from metadata
-                if hasattr(context, "metadata") and context.metadata:
-                    user_id = context.metadata.get("user_id")
+            # 1. Try from trigger (highest priority for workflow executions)
+            if context.trigger:
+                user_id = getattr(context.trigger, "user_id", None)
+
+            # 2. Try from context metadata
+            if not user_id and hasattr(context, "metadata") and context.metadata:
+                user_id = context.metadata.get("user_id")
+
+            # 3. Try from execution object (if it's a dict)
+            if not user_id and context.execution:
+                if isinstance(context.execution, dict):
+                    user_id = context.execution.get("user_id")
+                elif hasattr(context.execution, "user_id"):
+                    user_id = getattr(context.execution, "user_id", None)
 
             if not user_id:
                 self.log_execution(
                     context,
-                    f"❌ Cannot get {self.integration_name} token: user_id not found",
+                    f"❌ Cannot get {self.integration_name} token: user_id not found in trigger, metadata, or execution",
                     LogLevel.ERROR.value,
                 )
                 return None
@@ -139,16 +152,21 @@ class BaseExternalAction(ABC):
         self, operation: str, output_data: Dict[str, Any]
     ) -> NodeExecutionResult:
         """Create a standardized success result."""
-        base_output = {
-            "integration_type": self.integration_name,
-            "operation": operation,
-            "timestamp": datetime.now().isoformat(),
-        }
-        base_output.update(output_data)
+        # Add standard success flag if not present
+        if "success" not in output_data:
+            output_data["success"] = True
+
+        # Add execution metadata
+        if "execution_metadata" not in output_data:
+            output_data["execution_metadata"] = {
+                "integration_type": self.integration_name,
+                "operation": operation,
+                "timestamp": datetime.now().isoformat(),
+            }
 
         return NodeExecutionResult(
             status=ExecutionStatus.SUCCESS,
-            output_data={"main": base_output},
+            output_data=output_data,
             metadata={
                 "node_type": "external_action",
                 "integration": self.integration_name,

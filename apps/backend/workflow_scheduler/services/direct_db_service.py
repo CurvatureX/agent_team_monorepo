@@ -434,7 +434,7 @@ class DirectDBService:
                     user_uuid,
                     workflow_name,
                     json.dumps(workflow_spec),
-                    DeploymentStatus.PENDING.value,  # Default deployment status
+                    DeploymentStatus.UNDEPLOYED.value,  # Default deployment status
                     1,  # Default deployment version
                     json.dumps({}),  # Default deployment config
                     now_timestamp,

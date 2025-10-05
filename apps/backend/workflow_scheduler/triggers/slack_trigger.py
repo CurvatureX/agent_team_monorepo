@@ -41,7 +41,26 @@ class SlackTrigger(BaseTrigger):
 
         # Slack-specific configuration
         self.workspace_id = trigger_config.get("workspace_id")
-        self.channel_filter = trigger_config.get("channel_filter")
+
+        # Handle both 'channels' array (node spec) and 'channel_filter' (legacy)
+        # Supports channel names (e.g., "general") or channel IDs (e.g., "C1234567890")
+        channels_array = trigger_config.get("channels")
+        logger.info(f"DEBUG: channels_array = {channels_array}, type = {type(channels_array)}")
+        if (
+            channels_array is not None
+            and isinstance(channels_array, list)
+            and len(channels_array) > 0
+        ):
+            # Convert array to comma-separated string for internal use
+            self.channel_filter = ",".join(str(ch) for ch in channels_array)
+            logger.debug(
+                f"Converted channels array {channels_array} to filter: {self.channel_filter}"
+            )
+        else:
+            # Fall back to legacy channel_filter
+            self.channel_filter = trigger_config.get("channel_filter")
+            logger.debug(f"Using legacy channel_filter: {self.channel_filter}")
+
         # Handle both 'events' and 'event_types' keys for backward compatibility
         self.event_types = trigger_config.get("event_types") or trigger_config.get(
             "events", [SlackEventType.MESSAGE.value, SlackEventType.APP_MENTION.value]

@@ -54,9 +54,7 @@ class WorkflowStatusManagerV2:
             value = normalized.get(key)
             if isinstance(value, str):
                 try:
-                    normalized[key] = int(
-                        datetime.fromisoformat(value).timestamp() * 1000
-                    )
+                    normalized[key] = int(datetime.fromisoformat(value).timestamp() * 1000)
                 except ValueError:
                     # Leave original value when conversion fails
                     pass

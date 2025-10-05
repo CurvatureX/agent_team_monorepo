@@ -85,14 +85,27 @@ class AnthropicClaudeRunner(NodeRunner):
                 provider_guidance = get_tool_invocation_guidance("anthropic")
                 system_prompt = f"{system_prompt}\n\n{mcp_guidance}\n\n{provider_guidance}".strip()
 
-        # Generate Claude AI response
+        # Enhance with downstream node configuration context
+        system_prompt = self._enhance_prompt_with_downstream_guidance(system_prompt, node, ctx)
+
+        # Log the final enhanced system prompt for debugging
+        logger.info("=" * 80)
+        logger.info("📝 FINAL ENHANCED SYSTEM PROMPT:")
+        logger.info("=" * 80)
+        logger.info(system_prompt)
+        logger.info("=" * 80)
+
+        # Generate Claude AI response with tool execution loop
         try:
-            generation_result = self._generate_claude_response(
+            generation_result = self._generate_claude_response_with_tools(
                 node=node,
                 user_prompt=user_prompt,
                 system_prompt=system_prompt,
                 conversation_history=conversation_history,
                 available_tools=available_tools,
+                tool_nodes=tool_nodes,
+                trigger=trigger,
+                ctx=ctx,
             )
 
             ai_response = generation_result["content"]
@@ -141,6 +154,18 @@ class AnthropicClaudeRunner(NodeRunner):
             )
 
         model = configs.get("model", "claude-sonnet-4-20250514")
+        # Guard against misconfigured OpenAI model names on Anthropic runner
+        try:
+            if isinstance(model, str) and (
+                model.lower().startswith("gpt") or "gpt-" in model.lower()
+            ):
+                logger.warning(
+                    f"⚠️ Anthropic runner received OpenAI model '{model}'. Falling back to Claude default."
+                )
+                model = "claude-sonnet-4-20250514"
+        except Exception:
+            # If any issue occurs, just proceed with default
+            model = "claude-sonnet-4-20250514"
         max_tokens = int(configs.get("max_tokens", 8192))
         temperature = float(configs.get("temperature", 0.7))
         top_p = float(configs.get("top_p", 0.9))
@@ -246,6 +271,271 @@ class AnthropicClaudeRunner(NodeRunner):
         except Exception as e:
             logger.error(f"❌ Anthropic API request failed: {str(e)}")
             raise ValueError(f"Anthropic API request failed: {str(e)}")
+
+    def _generate_claude_response_with_tools(
+        self,
+        node: Node,
+        user_prompt: str,
+        system_prompt: str,
+        conversation_history: List[Dict[str, str]],
+        available_tools: List[Dict[str, Any]],
+        tool_nodes: List[Node],
+        trigger: TriggerInfo,
+        ctx: Any,
+    ) -> Dict[str, Any]:
+        """Generate Claude response with multi-turn tool execution support.
+
+        This implements the proper tool calling pattern:
+        1. Send user message to Claude
+        2. If Claude calls tools, execute them
+        3. Send tool results back to Claude
+        4. Claude generates final text response
+        5. Return the final text response
+        """
+        configs = node.configurations
+        api_key = configs.get("anthropic_api_key") or self._api_key
+        if not api_key:
+            raise ValueError("ANTHROPIC_API_KEY not found")
+
+        model = configs.get("model", "claude-sonnet-4-20250514")
+        max_tokens = int(configs.get("max_tokens", 8192))
+        temperature = float(configs.get("temperature", 0.7))
+        top_p = float(configs.get("top_p", 0.9))
+        timeout_seconds = float(configs.get("performance_config", {}).get("timeout_seconds", 120))
+
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": configs.get(
+                "anthropic_version", os.getenv("ANTHROPIC_VERSION", "2023-06-01")
+            ),
+            "Content-Type": "application/json",
+        }
+
+        # Build initial messages
+        messages = []
+        for msg in conversation_history:
+            messages.append({"role": msg["role"], "content": msg["content"]})
+        messages.append({"role": "user", "content": user_prompt})
+
+        total_input_tokens = 0
+        total_output_tokens = 0
+        all_tool_calls = []
+        max_iterations = 5
+        iteration = 0
+
+        while iteration < max_iterations:
+            iteration += 1
+            logger.info(f"🔄 Claude conversation turn {iteration}/{max_iterations}")
+
+            # Build request body
+            body = {
+                "model": model,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "top_p": top_p,
+                "messages": messages,
+            }
+
+            if system_prompt:
+                body["system"] = system_prompt
+
+            if available_tools:
+                body["tools"] = self._format_tools_for_anthropic(available_tools)
+
+            # Call Anthropic API
+            try:
+                with httpx.Client(timeout=timeout_seconds) as client:
+                    resp = client.post(
+                        "https://api.anthropic.com/v1/messages",
+                        headers=headers,
+                        json=body,
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+
+                # Extract response content and tool calls
+                content_text = ""
+                tool_calls = []
+
+                if "content" in data:
+                    for content_block in data["content"]:
+                        if content_block.get("type") == "text":
+                            content_text += content_block.get("text", "")
+                        elif content_block.get("type") == "tool_use":
+                            tool_calls.append(
+                                {
+                                    "id": content_block.get("id"),
+                                    "name": content_block.get("name"),
+                                    "input": content_block.get("input", {}),
+                                }
+                            )
+
+                # Track token usage
+                usage = data.get("usage", {})
+                total_input_tokens += usage.get("input_tokens", 0)
+                total_output_tokens += usage.get("output_tokens", 0)
+                all_tool_calls.extend(tool_calls)
+
+                # If no tool calls, we're done
+                if not tool_calls:
+                    logger.info(f"✅ Claude generated final response ({len(content_text)} chars)")
+                    return {
+                        "content": content_text,
+                        "metadata": {
+                            "model_version": model,
+                            "stop_reason": data.get("stop_reason"),
+                            "stop_sequence": data.get("stop_sequence"),
+                        },
+                        "format_type": "text",
+                        "token_usage": {
+                            "input_tokens": total_input_tokens,
+                            "output_tokens": total_output_tokens,
+                            "total_tokens": total_input_tokens + total_output_tokens,
+                        },
+                        "function_calls": all_tool_calls,
+                    }
+
+                # Execute tool calls
+                logger.info(f"🔧 Executing {len(tool_calls)} tool call(s)")
+                tool_results = []
+
+                for tool_call in tool_calls:
+                    tool_name = tool_call.get("name")
+                    tool_input = tool_call.get("input", {})
+                    tool_id = tool_call.get("id")
+
+                    logger.info(f"🔨 Executing tool: {tool_name}")
+
+                    try:
+                        tool_result = self._execute_mcp_tool(
+                            tool_name=tool_name,
+                            tool_input=tool_input,
+                            tool_nodes=tool_nodes,
+                            trigger=trigger,
+                            ctx=ctx,
+                        )
+
+                        # Format tool result for Claude - use JSON for better parsing
+                        import json
+
+                        result_content = tool_result.get("result", {})
+
+                        # Format as JSON if it's a dict/list, otherwise as string
+                        if isinstance(result_content, (dict, list)):
+                            try:
+                                result_str = json.dumps(
+                                    result_content, ensure_ascii=False, indent=2
+                                )
+                            except:
+                                result_str = str(result_content)
+                        else:
+                            result_str = (
+                                str(result_content)
+                                if result_content
+                                else "Tool executed successfully"
+                            )
+
+                        tool_results.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": tool_id,
+                                "content": result_str,
+                            }
+                        )
+
+                        logger.info(f"✅ Tool {tool_name} executed successfully")
+
+                    except Exception as e:
+                        logger.error(f"❌ Tool {tool_name} execution failed: {str(e)}")
+                        tool_results.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": tool_id,
+                                "content": f"Error: {str(e)}",
+                                "is_error": True,
+                            }
+                        )
+
+                # Build assistant message with tool uses
+                assistant_content = []
+                if content_text:
+                    assistant_content.append({"type": "text", "text": content_text})
+
+                for tc in tool_calls:
+                    assistant_content.append(
+                        {
+                            "type": "tool_use",
+                            "id": tc["id"],
+                            "name": tc["name"],
+                            "input": tc["input"],
+                        }
+                    )
+
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": assistant_content,
+                    }
+                )
+
+                # Add tool results as user message
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": tool_results,
+                    }
+                )
+
+            except httpx.HTTPStatusError as e:
+                error_text = e.response.text
+                logger.error(f"❌ Anthropic API error: {e.response.status_code} - {error_text}")
+                raise ValueError(f"Anthropic API error: {e.response.status_code} - {error_text}")
+            except Exception as e:
+                logger.error(f"❌ Anthropic API request failed: {str(e)}")
+                raise ValueError(f"Anthropic API request failed: {str(e)}")
+
+        # Max iterations reached
+        logger.warning(f"⚠️ Max iterations ({max_iterations}) reached")
+        return {
+            "content": content_text,
+            "metadata": {"model_version": model, "stop_reason": "max_iterations"},
+            "format_type": "text",
+            "token_usage": {
+                "input_tokens": total_input_tokens,
+                "output_tokens": total_output_tokens,
+                "total_tokens": total_input_tokens + total_output_tokens,
+            },
+            "function_calls": all_tool_calls,
+        }
+
+    def _execute_mcp_tool(
+        self,
+        tool_name: str,
+        tool_input: Dict[str, Any],
+        tool_nodes: List[Node],
+        trigger: TriggerInfo,
+        ctx: Any,
+    ) -> Dict[str, Any]:
+        """Execute an MCP tool call through the appropriate tool node."""
+        # Find the tool node that provides this tool
+        for tool_node in tool_nodes:
+            # Execute the tool via the tool runner
+            tool_runner_inputs = {
+                "main": {
+                    "tool_name": tool_name,
+                    "args": tool_input,
+                },
+                "_ctx": ctx,
+            }
+
+            try:
+                result = self._tool_runner.run(tool_node, tool_runner_inputs, trigger)
+                return result
+            except Exception as e:
+                logger.error(f"❌ Tool execution error: {str(e)}")
+                raise
+
+        raise ValueError(f"No tool node found that can execute {tool_name}")
 
     def _format_tools_for_anthropic(
         self, available_tools: List[Dict[str, Any]]
@@ -516,6 +806,133 @@ class AnthropicClaudeRunner(NodeRunner):
         )
 
         self._memory_runner.run(memory_node_copy, generic_inputs, trigger)
+
+    def _extract_config_context(self, node: Node, spec: Any) -> str:
+        """Extract human-readable configuration context from downstream node.
+
+        This provides the AI with visibility into what's already configured in the
+        downstream node, so it can make intelligent decisions about what to include
+        in its output.
+
+        Note: All configurations are exposed to AI context, including tokens/keys,
+        as the AI needs this information to generate correct instructions.
+        """
+        config_lines = []
+
+        # Get all configurations from the node
+        for key, value in node.configurations.items():
+            if value is not None:
+                # Handle schema-style configuration (dict with default/value)
+                if isinstance(value, dict):
+                    # Check if it's a schema definition
+                    if "default" in value or "value" in value:
+                        actual_value = value.get("default") or value.get("value")
+                    else:
+                        # It's a configuration object, show it
+                        actual_value = value
+                else:
+                    actual_value = value
+
+                # Format for readability
+                if actual_value or actual_value == "":
+                    # Truncate very long values
+                    value_str = str(actual_value)
+                    if len(value_str) > 300:
+                        value_str = value_str[:300] + "... (truncated)"
+
+                    if actual_value == "":
+                        config_lines.append(f"- `{key}`: (empty string)")
+                    else:
+                        config_lines.append(f"- `{key}`: {value_str}")
+
+        if config_lines:
+            return (
+                "\n".join(config_lines)
+                + "\n\n**Note:** You can override any of these configured values by including them in your output. If not specified, the configured values above will be used."
+            )
+        else:
+            return "(No pre-configured values - all parameters must come from your output)"
+
+    def _enhance_prompt_with_downstream_guidance(
+        self, base_prompt: str, node: Node, ctx: Any
+    ) -> str:
+        """Enhance system prompt with downstream EXTERNAL_ACTION node usage instructions AND configuration context.
+
+        This method detects if the current AI_AGENT node's output flows into an
+        EXTERNAL_ACTION node, and if so, appends:
+        1. The node's system_prompt_appendix (static guidance)
+        2. The node's configuration context (dynamic configuration values)
+
+        This allows the AI to make informed decisions about what to include in its output.
+        """
+        if not ctx or not hasattr(ctx, "graph"):
+            return base_prompt
+
+        try:
+            # Import here to avoid circular dependencies
+            from workflow_engine_v2.core.spec import get_spec
+
+            graph = ctx.graph  # WorkflowGraph instance
+
+            # Get successor nodes (nodes that receive output from this AI node)
+            downstream_nodes = graph.successors(node.id)
+
+            if not downstream_nodes:
+                return base_prompt
+
+            appendices = []
+
+            for next_node_id, output_key, _ in downstream_nodes:
+                next_node = graph.nodes.get(next_node_id)
+
+                # Only enhance for EXTERNAL_ACTION nodes
+                if next_node and next_node.type == NodeType.EXTERNAL_ACTION:
+                    # Load node spec to get system_prompt_appendix
+                    try:
+                        spec = get_spec(next_node.type, next_node.subtype)
+
+                        # Build the guidance section
+                        guidance_text = ""
+                        if (
+                            spec
+                            and hasattr(spec, "system_prompt_appendix")
+                            and spec.system_prompt_appendix
+                        ):
+                            guidance_text = spec.system_prompt_appendix
+
+                        # Extract configuration context
+                        config_context = self._extract_config_context(next_node, spec)
+
+                        logger.info(
+                            f"📋 Enhancing prompt with guidance + config for downstream node: {next_node.name} ({next_node.subtype})"
+                        )
+
+                        # Combine guidance and configuration context
+                        appendix = (
+                            f"\n\n## Downstream Node: {next_node.name} ({next_node.subtype})\n\n"
+                        )
+
+                        if guidance_text:
+                            appendix += f"{guidance_text}\n\n"
+
+                        appendix += f"**Current Configuration:**\n{config_context}"
+
+                        appendices.append(appendix)
+
+                    except Exception as e:
+                        logger.debug(f"⚠️ Could not load spec for {next_node.subtype}: {str(e)}")
+
+            if appendices:
+                enhanced = base_prompt + "\n".join(appendices)
+                logger.info(
+                    f"✨ Enhanced system prompt with {len(appendices)} downstream node context(s)"
+                )
+                return enhanced
+
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to enhance prompt with downstream guidance: {str(e)}")
+
+        return base_prompt
 
 
 __all__ = ["AnthropicClaudeRunner"]
