@@ -158,9 +158,11 @@ class NotionExternalAction(BaseExternalAction):
                 # Initialize round telemetry
                 round_telemetry = RoundTelemetry(
                     round_num=round_num,
-                    phase="planning"
-                    if round_num == 1 and ai_decision.get("planning_phase")
-                    else "execution",
+                    phase=(
+                        "planning"
+                        if round_num == 1 and ai_decision.get("planning_phase")
+                        else "execution"
+                    ),
                     decision_text=json.dumps(ai_decision, indent=2),
                     decision_parsed=ai_decision,
                     timestamp=datetime.utcnow().isoformat(),

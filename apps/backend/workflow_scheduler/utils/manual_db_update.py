@@ -108,9 +108,11 @@ def update_workflow_deployment_status(workflow_id: str, status: str = "DEPLOYED"
                             workflow_uuid,
                             "DEPLOY",
                             DeploymentStatus.UNDEPLOYED.name,
-                            DeploymentStatus[normalized.upper()].name
-                            if normalized.upper() in DeploymentStatus.__members__
-                            else DeploymentStatus.UNDEPLOYED.name,
+                            (
+                                DeploymentStatus[normalized.upper()].name
+                                if normalized.upper() in DeploymentStatus.__members__
+                                else DeploymentStatus.UNDEPLOYED.name
+                            ),
                             cur.execute(
                                 "SELECT deployment_version FROM workflows WHERE id = %s",
                                 (workflow_uuid,),

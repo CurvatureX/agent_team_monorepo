@@ -522,9 +522,11 @@ class NotionMCPService:
                 try:
                     children = await client.get_block_children(result_item["id"])
                     result_item["content"] = [
-                        child.to_dict()
-                        if hasattr(child, "to_dict")
-                        else {"id": getattr(child, "id", "unknown")}
+                        (
+                            child.to_dict()
+                            if hasattr(child, "to_dict")
+                            else {"id": getattr(child, "id", "unknown")}
+                        )
                         for child in children.get("blocks", [])
                     ]
                 except:
@@ -598,26 +600,30 @@ class NotionMCPService:
             page = await client.get_page(page_id)
             result = {
                 "action": "get",
-                "page": page.to_dict()
-                if hasattr(page, "to_dict")
-                else {
-                    "id": page.id,
-                    "object": page.object,
-                    "title": self._extract_title(page),
-                    "url": page.url,
-                    "properties": page.properties,
-                },
+                "page": (
+                    page.to_dict()
+                    if hasattr(page, "to_dict")
+                    else {
+                        "id": page.id,
+                        "object": page.object,
+                        "title": self._extract_title(page),
+                        "url": page.url,
+                        "properties": page.properties,
+                    }
+                ),
             }
 
             if include_content:
                 children = await client.get_block_children(page_id)
                 result["content"] = [
-                    child.to_dict()
-                    if hasattr(child, "to_dict")
-                    else {
-                        "id": getattr(child, "id", "unknown"),
-                        "type": getattr(child, "type", "unknown"),
-                    }
+                    (
+                        child.to_dict()
+                        if hasattr(child, "to_dict")
+                        else {
+                            "id": getattr(child, "id", "unknown"),
+                            "type": getattr(child, "type", "unknown"),
+                        }
+                    )
                     for child in children.get("blocks", [])
                 ]
 
@@ -654,14 +660,16 @@ class NotionMCPService:
 
             result = {
                 "action": "create",
-                "page": page.to_dict()
-                if hasattr(page, "to_dict")
-                else {
-                    "id": page.id,
-                    "object": page.object,
-                    "title": self._extract_title(page),
-                    "url": page.url,
-                },
+                "page": (
+                    page.to_dict()
+                    if hasattr(page, "to_dict")
+                    else {
+                        "id": page.id,
+                        "object": page.object,
+                        "title": self._extract_title(page),
+                        "url": page.url,
+                    }
+                ),
             }
 
             return result
@@ -800,15 +808,17 @@ class NotionMCPService:
             database = await client.get_database(database_id)
             return {
                 "action": "get",
-                "database": database.to_dict()
-                if hasattr(database, "to_dict")
-                else {
-                    "id": database.id,
-                    "object": database.object,
-                    "title": self._extract_title(database),
-                    "properties": database.properties,
-                    "url": database.url,
-                },
+                "database": (
+                    database.to_dict()
+                    if hasattr(database, "to_dict")
+                    else {
+                        "id": database.id,
+                        "object": database.object,
+                        "title": self._extract_title(database),
+                        "properties": database.properties,
+                        "url": database.url,
+                    }
+                ),
             }
 
         elif action == "query":
@@ -872,9 +882,11 @@ class NotionMCPService:
                     try:
                         children = await client.get_block_children(page.id)
                         page_data["content"] = [
-                            child.to_dict()
-                            if hasattr(child, "to_dict")
-                            else {"id": getattr(child, "id", "unknown")}
+                            (
+                                child.to_dict()
+                                if hasattr(child, "to_dict")
+                                else {"id": getattr(child, "id", "unknown")}
+                            )
                             for child in children.get("blocks", [])
                         ]
                     except:
@@ -983,31 +995,37 @@ class NotionMCPService:
                     document["properties"] = {
                         "title": self._extract_title(page),
                         "url": page.url,
-                        "created_time": page.created_time.isoformat()
-                        if page.created_time
-                        else None,
-                        "last_edited_time": page.last_edited_time.isoformat()
-                        if page.last_edited_time
-                        else None,
-                        "created_by": getattr(page.created_by, "id", None)
-                        if page.created_by
-                        else None,
-                        "last_edited_by": getattr(page.last_edited_by, "id", None)
-                        if page.last_edited_by
-                        else None,
-                        "cover": page.cover.file.url
-                        if page.cover and hasattr(page.cover, "file")
-                        else None,
-                        "icon": page.icon.file.url
-                        if page.icon and hasattr(page.icon, "file")
-                        else None,
+                        "created_time": (
+                            page.created_time.isoformat() if page.created_time else None
+                        ),
+                        "last_edited_time": (
+                            page.last_edited_time.isoformat() if page.last_edited_time else None
+                        ),
+                        "created_by": (
+                            getattr(page.created_by, "id", None) if page.created_by else None
+                        ),
+                        "last_edited_by": (
+                            getattr(page.last_edited_by, "id", None)
+                            if page.last_edited_by
+                            else None
+                        ),
+                        "cover": (
+                            page.cover.file.url
+                            if page.cover and hasattr(page.cover, "file")
+                            else None
+                        ),
+                        "icon": (
+                            page.icon.file.url if page.icon and hasattr(page.icon, "file") else None
+                        ),
                         "archived": page.archived,
-                        "parent": {
-                            "type": page.parent.type,
-                            "id": getattr(page.parent, page.parent.type + "_id", None),
-                        }
-                        if page.parent
-                        else None,
+                        "parent": (
+                            {
+                                "type": page.parent.type,
+                                "id": getattr(page.parent, page.parent.type + "_id", None),
+                            }
+                            if page.parent
+                            else None
+                        ),
                         "custom_properties": page.properties if hasattr(page, "properties") else {},
                     }
 
@@ -1071,12 +1089,16 @@ class NotionMCPService:
                     "id": block.id,
                     "type": block.type,
                     "content": self._extract_text_from_block(block),
-                    "created_time": block.created_time.isoformat()
-                    if hasattr(block, "created_time") and block.created_time
-                    else None,
-                    "last_edited_time": block.last_edited_time.isoformat()
-                    if hasattr(block, "last_edited_time") and block.last_edited_time
-                    else None,
+                    "created_time": (
+                        block.created_time.isoformat()
+                        if hasattr(block, "created_time") and block.created_time
+                        else None
+                    ),
+                    "last_edited_time": (
+                        block.last_edited_time.isoformat()
+                        if hasattr(block, "last_edited_time") and block.last_edited_time
+                        else None
+                    ),
                 }
                 formatted_blocks.append(formatted_block)
             else:  # full format
@@ -1085,18 +1107,26 @@ class NotionMCPService:
                     "id": block.id,
                     "object": block.object,
                     "type": block.type,
-                    "created_time": block.created_time.isoformat()
-                    if hasattr(block, "created_time") and block.created_time
-                    else None,
-                    "last_edited_time": block.last_edited_time.isoformat()
-                    if hasattr(block, "last_edited_time") and block.last_edited_time
-                    else None,
-                    "created_by": getattr(block.created_by, "id", None)
-                    if hasattr(block, "created_by") and block.created_by
-                    else None,
-                    "last_edited_by": getattr(block.last_edited_by, "id", None)
-                    if hasattr(block, "last_edited_by") and block.last_edited_by
-                    else None,
+                    "created_time": (
+                        block.created_time.isoformat()
+                        if hasattr(block, "created_time") and block.created_time
+                        else None
+                    ),
+                    "last_edited_time": (
+                        block.last_edited_time.isoformat()
+                        if hasattr(block, "last_edited_time") and block.last_edited_time
+                        else None
+                    ),
+                    "created_by": (
+                        getattr(block.created_by, "id", None)
+                        if hasattr(block, "created_by") and block.created_by
+                        else None
+                    ),
+                    "last_edited_by": (
+                        getattr(block.last_edited_by, "id", None)
+                        if hasattr(block, "last_edited_by") and block.last_edited_by
+                        else None
+                    ),
                     "has_children": block.has_children if hasattr(block, "has_children") else False,
                     "archived": block.archived if hasattr(block, "archived") else False,
                     "content": self._extract_block_content(block),
@@ -1425,9 +1455,11 @@ class NotionMCPService:
             parent = document.parent
             metadata["parent"] = {
                 "type": getattr(parent, "type", None),
-                "id": getattr(parent, getattr(parent, "type", "unknown") + "_id", None)
-                if hasattr(parent, "type")
-                else None,
+                "id": (
+                    getattr(parent, getattr(parent, "type", "unknown") + "_id", None)
+                    if hasattr(parent, "type")
+                    else None
+                ),
             }
 
         # Include content preview
@@ -1747,9 +1779,11 @@ class NotionMCPService:
                     {
                         "title": doc.get("title", "Untitled"),
                         "type": doc.get("object", "unknown"),
-                        "last_edited": doc.get("last_edited_time", "")[:10]
-                        if doc.get("last_edited_time")
-                        else None,
+                        "last_edited": (
+                            doc.get("last_edited_time", "")[:10]
+                            if doc.get("last_edited_time")
+                            else None
+                        ),
                         "has_preview": bool(doc.get("content_preview")),
                         "property_count": len(doc.get("custom_properties", {})),
                     }

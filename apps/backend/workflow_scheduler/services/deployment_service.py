@@ -665,7 +665,10 @@ class DeploymentService:
 
             nodes = workflow_spec["nodes"]
             if not isinstance(nodes, list):
-                return {"valid": ValidationResult.INVALID, "error": "'nodes' must be a list"}
+                return {
+                    "valid": ValidationResult.INVALID,
+                    "error": "'nodes' must be a list",
+                }
 
             # Check for at least one trigger node (node_type or type field)
             trigger_nodes = [node for node in nodes if node.get("type") == NodeType.TRIGGER.value]
@@ -696,7 +699,10 @@ class DeploymentService:
             return {"valid": ValidationResult.VALID, "error": None}
 
         except Exception as e:
-            return {"valid": ValidationResult.ERROR, "error": f"Validation error: {str(e)}"}
+            return {
+                "valid": ValidationResult.ERROR,
+                "error": f"Validation error: {str(e)}",
+            }
 
     async def _extract_trigger_specs(self, workflow_spec: Dict) -> List[TriggerSpec]:
         """

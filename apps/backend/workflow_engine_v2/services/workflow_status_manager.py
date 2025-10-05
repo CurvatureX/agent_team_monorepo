@@ -46,6 +46,21 @@ class WorkflowStatusManagerV2:
         except Exception as e:
             self.logger.warning(f"Workflow Status Manager: Failed to initialize Supabase: {e}")
 
+    def _normalize_status_payload(self, status_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert database-friendly fields into API schema friendly values."""
+        normalized = dict(status_info) if status_info else {}
+
+        for key in ["created_at", "updated_at"]:
+            value = normalized.get(key)
+            if isinstance(value, str):
+                try:
+                    normalized[key] = int(datetime.fromisoformat(value).timestamp() * 1000)
+                except ValueError:
+                    # Leave original value when conversion fails
+                    pass
+
+        return normalized
+
     async def update_execution_status(
         self,
         execution_id: str,
@@ -115,7 +130,7 @@ class WorkflowStatusManagerV2:
         try:
             # Check cache first
             if execution_id in self.status_cache:
-                return self.status_cache[execution_id]
+                return self._normalize_status_payload(self.status_cache[execution_id])
 
             # Query database
             if self.supabase:
@@ -133,7 +148,7 @@ class WorkflowStatusManagerV2:
                         status_info = result.data[0]
                         # Cache the result
                         self.status_cache[execution_id] = status_info
-                        return status_info
+                        return self._normalize_status_payload(status_info)
 
                 except Exception as e:
                     self.logger.error(f"Error querying execution status: {e}")

@@ -175,9 +175,9 @@ class ExternalActionRunner(NodeRunner):
                     "input": payload,
                     "config": cfg,
                     "nodes_id": getattr(engine_ctx, "node_outputs", {}) if engine_ctx else {},
-                    "nodes_name": getattr(engine_ctx, "node_outputs_by_name", {})
-                    if engine_ctx
-                    else {},
+                    "nodes_name": (
+                        getattr(engine_ctx, "node_outputs_by_name", {}) if engine_ctx else {}
+                    ),
                 }
                 subject = payload.get("subject") or cfg.get("subject")
                 text = payload.get("text") or cfg.get("text")

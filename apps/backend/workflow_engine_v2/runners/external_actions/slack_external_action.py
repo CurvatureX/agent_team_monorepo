@@ -441,9 +441,11 @@ class SlackExternalAction(BaseExternalAction):
             return self._create_spec_success_result(
                 "send_file",
                 response,
-                channel_id=response.get("file", {}).get("channels", [channel])[0]
-                if isinstance(response.get("file", {}).get("channels"), list)
-                else channel,
+                channel_id=(
+                    response.get("file", {}).get("channels", [channel])[0]
+                    if isinstance(response.get("file", {}).get("channels"), list)
+                    else channel
+                ),
             )
 
         except Exception as e:

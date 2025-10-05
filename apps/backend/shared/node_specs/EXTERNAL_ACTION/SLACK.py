@@ -273,15 +273,7 @@ class SlackExternalActionSpec(BaseNodeSpec):
                 },
             ],
             # System prompt appendix for AI guidance
-            system_prompt_appendix="""**IMPORTANT: Two-step Slack workflow pattern:**
-
-1. **Use MCP tools for INFO**: Use slack tools to get channel/user info if needed (read-only)
-2. **Output `action_type` for ACTIONS**: For sending/updating messages, output structured JSON with `action_type` and message data
-
-**When to use MCP tools directly**: Get info, search (read-only operations)
-**When to output action_type**: Send, update, delete messages (write operations that this downstream node will execute)
-
-Output `action_type` to dynamically control Slack operations. **If you don't know channel/user IDs, use channel names like "#general" or leave blank.**
+            system_prompt_appendix="""Output `action_type` to dynamically control Slack operations. **If you don't know channel/user IDs, use channel names like "#general" or leave blank.**
 
 **All Action Types:**
 

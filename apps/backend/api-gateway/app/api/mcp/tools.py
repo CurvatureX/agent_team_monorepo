@@ -645,12 +645,14 @@ async def mcp_health(
             version="3.0.0",
             available_tools=all_tools,
             timestamp=int(time.time()),
-            error=None
-            if overall_healthy
-            else (
-                f"Node: {node_health.error}, Notion: {notion_health.error}, Google Calendar: {google_calendar_health.error}, "
-                f"Slack: {slack_health.error}, GitHub: {github_health.error}, Gmail: {gmail_health.error}, "
-                f"Discord: {discord_health.error}, Firecrawl: {firecrawl_health.error}"
+            error=(
+                None
+                if overall_healthy
+                else (
+                    f"Node: {node_health.error}, Notion: {notion_health.error}, Google Calendar: {google_calendar_health.error}, "
+                    f"Slack: {slack_health.error}, GitHub: {github_health.error}, Gmail: {gmail_health.error}, "
+                    f"Discord: {discord_health.error}, Firecrawl: {firecrawl_health.error}"
+                )
             ),
             request_id=request_id,
             processing_time_ms=round(processing_time * 1000, 2),
