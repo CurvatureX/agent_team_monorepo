@@ -17,13 +17,16 @@ from shared.models.node_enums import ExternalActionSubtype
 from shared.models.workflow import Node
 from workflow_engine_v2.core.context import NodeExecutionContext
 from workflow_engine_v2.runners.base import NodeRunner
+
+# Import dedicated external action handlers
+from workflow_engine_v2.runners.external_actions.firecrawl_external_action import (
+    FirecrawlExternalAction,
+)
 from workflow_engine_v2.runners.external_actions.github_external_action import GitHubExternalAction
 from workflow_engine_v2.runners.external_actions.google_calendar_external_action import (
     GoogleCalendarExternalAction,
 )
 from workflow_engine_v2.runners.external_actions.notion_external_action import NotionExternalAction
-
-# Import dedicated external action handlers
 from workflow_engine_v2.runners.external_actions.slack_external_action import SlackExternalAction
 from workflow_engine_v2.services.http_client import HTTPClient
 
@@ -35,6 +38,7 @@ class ExternalActionRunner(NodeRunner):
         self.github_handler = GitHubExternalAction()
         self.google_handler = GoogleCalendarExternalAction()
         self.notion_handler = NotionExternalAction()
+        self.firecrawl_handler = FirecrawlExternalAction()
 
     def run(self, node: Node, inputs: Dict[str, Any], trigger: TriggerInfo) -> Dict[str, Any]:
         try:
@@ -98,6 +102,9 @@ class ExternalActionRunner(NodeRunner):
 
         elif esub == ExternalActionSubtype.NOTION:
             return self._run_async_handler(node, esub, self.notion_handler.execute(context))
+
+        elif esub == ExternalActionSubtype.FIRECRAWL:
+            return self._run_async_handler(node, esub, self.firecrawl_handler.execute(context))
 
         # Fallback to original implementations for backward compatibility
         return self._run_legacy_action(node, inputs, trigger, esub)

@@ -8,14 +8,22 @@ from typing import Any, Dict
 from app.models import MCPContentItem, MCPInvokeResponse, MCPTool, MCPToolsResponse
 from app.utils.logger import get_logger
 
-from shared.sdks import FirecrawlSDK
+try:
+    from firecrawl import FirecrawlApp
+except ImportError:
+    FirecrawlApp = None
 
 logger = get_logger(__name__)
 
 
 class FirecrawlMCPService:
     def __init__(self) -> None:
-        self.sdk = FirecrawlSDK()
+        # Use official Firecrawl SDK
+        if FirecrawlApp is None:
+            logger.warning("⚠️ FirecrawlApp not available - install firecrawl-py package")
+            self.sdk = None
+        else:
+            self.sdk = None  # Will be initialized per-request with API key
 
     def get_available_tools(self) -> MCPToolsResponse:
         tools = [
@@ -247,32 +255,82 @@ class FirecrawlMCPService:
 
     async def invoke_tool(self, tool_name: str, params: Dict[str, Any]) -> MCPInvokeResponse:
         start_time = time.time()
-        try:
-            credentials = {"api_key": params.get("api_key")}
-            op_params = {k: v for k, v in params.items() if k != "api_key"}
 
-            api_resp = await self.sdk.call_operation(tool_name, op_params, credentials)
-            if not api_resp.success:
-                resp = MCPInvokeResponse(
-                    content=[
-                        MCPContentItem(
-                            type="text", text=str(api_resp.error or "Firecrawl operation failed")
-                        )
-                    ],
-                    isError=True,
-                )
-            else:
-                resp = MCPInvokeResponse(
-                    content=[
-                        MCPContentItem(type="text", text=f"{tool_name} executed successfully")
-                    ],
-                    isError=False,
-                    structuredContent=api_resp.data,
-                )
+        # Check if SDK is available
+        if FirecrawlApp is None:
+            resp = MCPInvokeResponse(
+                content=[
+                    MCPContentItem(
+                        type="text",
+                        text="Firecrawl SDK not available. Install with: pip install firecrawl-py",
+                    )
+                ],
+                isError=True,
+            )
             resp._tool_name = tool_name
             resp._execution_time_ms = round((time.time() - start_time) * 1000, 2)
             return resp
+
+        try:
+            # Extract API key and initialize Firecrawl client
+            api_key = params.get("api_key")
+            if not api_key:
+                raise ValueError("api_key is required for Firecrawl operations")
+
+            # Initialize Firecrawl app with API key
+            app = FirecrawlApp(api_key=api_key)
+
+            # Extract operation parameters (exclude api_key)
+            op_params = {k: v for k, v in params.items() if k != "api_key"}
+
+            # Execute the appropriate Firecrawl operation
+            result = None
+            if tool_name == "firecrawl_scrape":
+                result = app.scrape_url(
+                    url=op_params.get("url"), params=op_params.get("params", {})
+                )
+            elif tool_name == "firecrawl_crawl":
+                result = app.crawl_url(
+                    url=op_params.get("url"),
+                    params=op_params.get("params", {}),
+                    poll_interval=op_params.get("poll_interval", 2),
+                )
+            elif tool_name == "firecrawl_crawl_async":
+                result = app.async_crawl_url(
+                    url=op_params.get("url"), params=op_params.get("params", {})
+                )
+            elif tool_name == "firecrawl_check_crawl_status":
+                result = app.check_crawl_status(id=op_params.get("id"))
+            elif tool_name == "firecrawl_search":
+                result = app.search(
+                    query=op_params.get("query"),
+                    params={k: v for k, v in op_params.items() if k != "query"},
+                )
+            elif tool_name == "firecrawl_extract":
+                result = app.extract(
+                    urls=op_params.get("urls"),
+                    params={k: v for k, v in op_params.items() if k != "urls"},
+                )
+            elif tool_name == "firecrawl_llmstxt":
+                result = app.crawl_url(
+                    url=op_params.get("url"),
+                    params={"formats": ["markdown"], **(op_params.get("params", {}))},
+                )
+            else:
+                raise ValueError(f"Unknown Firecrawl tool: {tool_name}")
+
+            # Build success response
+            resp = MCPInvokeResponse(
+                content=[MCPContentItem(type="text", text=f"{tool_name} executed successfully")],
+                isError=False,
+                structuredContent=result,
+            )
+            resp._tool_name = tool_name
+            resp._execution_time_ms = round((time.time() - start_time) * 1000, 2)
+            return resp
+
         except Exception as e:
+            logger.error(f"❌ Firecrawl tool execution failed: {str(e)}")
             resp = MCPInvokeResponse(
                 content=[
                     MCPContentItem(type="text", text=f"Firecrawl tool execution failed: {str(e)}")

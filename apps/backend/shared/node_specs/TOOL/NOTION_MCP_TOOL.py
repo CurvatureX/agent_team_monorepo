@@ -26,12 +26,6 @@ class NotionMCPToolSpec(BaseNodeSpec):
             description="Notion MCP tool for database and page operations through MCP protocol",
             # Configuration parameters
             configurations={
-                "mcp_server_url": {
-                    "type": "string",
-                    "default": "http://localhost:8000/api/v1/mcp",
-                    "description": "MCP服务器URL",
-                    "required": True,
-                },
                 "notion_integration_token": {
                     "type": "string",
                     "default": "",
@@ -39,10 +33,23 @@ class NotionMCPToolSpec(BaseNodeSpec):
                     "required": True,
                     "sensitive": True,
                 },
+                "operation_type": {
+                    "type": "string",
+                    "default": "database",
+                    "description": "操作类型：database (数据库操作) 或 page (页面操作)",
+                    "required": False,
+                    "options": ["database", "page", "both"],
+                },
                 "default_database_id": {
                     "type": "string",
                     "default": "",
-                    "description": "默认数据库ID",
+                    "description": "默认数据库ID（当operation_type为database或both时使用）",
+                    "required": False,
+                },
+                "default_page_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "默认页面ID（当operation_type为page或both时使用）",
                     "required": False,
                 },
                 "available_tools": {
@@ -173,7 +180,6 @@ class NotionMCPToolSpec(BaseNodeSpec):
                     "name": "Search Notion Pages",
                     "description": "Search for pages and databases in Notion workspace",
                     "configurations": {
-                        "mcp_server_url": "http://localhost:8000/api/v1/mcp",
                         "notion_integration_token": "secret_notion_token_123",
                         "available_tools": ["notion_search"],
                         "page_size_limit": 50,
@@ -224,8 +230,8 @@ class NotionMCPToolSpec(BaseNodeSpec):
                     "name": "Create Notion Database Entry",
                     "description": "Create new items in Notion databases with properties",
                     "configurations": {
-                        "mcp_server_url": "http://localhost:8000/api/v1/mcp",
                         "notion_integration_token": "secret_notion_token_456",
+                        "operation_type": "database",
                         "default_database_id": "db_789",
                         "available_tools": ["notion_create_database_item"],
                         "auto_create_missing_props": True,
@@ -277,8 +283,9 @@ class NotionMCPToolSpec(BaseNodeSpec):
                     "name": "Query Notion Database",
                     "description": "Query database with filters and sorting options",
                     "configurations": {
-                        "mcp_server_url": "http://localhost:8000/api/v1/mcp",
                         "notion_integration_token": "secret_notion_token_789",
+                        "operation_type": "database",
+                        "default_database_id": "db_analytics_101",
                         "available_tools": ["notion_query_database"],
                         "page_size_limit": 25,
                     },
@@ -323,6 +330,45 @@ class NotionMCPToolSpec(BaseNodeSpec):
                             "success": True,
                             "execution_time": 1.1,
                             "notion_object_type": "database_query_results",
+                        },
+                    },
+                },
+                {
+                    "name": "Update Notion Page",
+                    "description": "Update content and properties of an existing Notion page",
+                    "configurations": {
+                        "notion_integration_token": "secret_notion_token_update",
+                        "operation_type": "page",
+                        "default_page_id": "27f0b1df-411b-80ac-aa54-c4cba158a1f9",
+                        "available_tools": ["notion_update_page", "notion_get_page"],
+                        "enable_rich_text": True,
+                    },
+                    "usage_example": {
+                        "attached_to": "content_management_ai",
+                        "function_call": {
+                            "tool_name": "notion_update_page",
+                            "function_args": {
+                                "integration_token": "secret_notion_token_update",
+                                "page_id": "27f0b1df-411b-80ac-aa54-c4cba158a1f9",
+                                "properties": {
+                                    "title": {
+                                        "title": [{"text": {"content": "Updated Page Title"}}]
+                                    }
+                                },
+                                "archived": False,
+                            },
+                            "context": {"operation": "update_page_title"},
+                        },
+                        "expected_result": {
+                            "result": {
+                                "id": "27f0b1df-411b-80ac-aa54-c4cba158a1f9",
+                                "object": "page",
+                                "url": "https://www.notion.so/Updated-Page-Title-27f0b1df411b80acaa54c4cba158a1f9",
+                            },
+                            "success": True,
+                            "execution_time": 0.6,
+                            "notion_object_id": "27f0b1df-411b-80ac-aa54-c4cba158a1f9",
+                            "notion_object_type": "page",
                         },
                     },
                 },

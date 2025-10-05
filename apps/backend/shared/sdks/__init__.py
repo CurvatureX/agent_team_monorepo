@@ -51,11 +51,8 @@ except ImportError as e:
     DiscordSDK = None
     print(f"Warning: Failed to import DiscordSDK: {e}")
 
-try:
-    from .firecrawl_sdk import FirecrawlSDK
-except ImportError as e:
-    FirecrawlSDK = None
-    print(f"Warning: Failed to import FirecrawlSDK: {e}")
+# Note: Firecrawl uses official firecrawl-py SDK, not a custom wrapper
+# Import directly from firecrawl package: from firecrawl import FirecrawlApp
 
 __all__ = [
     "BaseSDK",
@@ -69,5 +66,4 @@ __all__ = [
     "ApiCallSDK",
     "NotionSDK",
     "DiscordSDK",
-    "FirecrawlSDK",
 ]

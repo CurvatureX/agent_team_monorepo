@@ -66,25 +66,6 @@ class SlackTriggerSpec(BaseNodeSpec):
                     "required": True,
                     "sensitive": True,
                 },
-                "signing_secret": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Slack签名密钥",
-                    "required": True,
-                    "sensitive": True,
-                },
-                "filter_bot_messages": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "是否过滤机器人消息",
-                    "required": False,
-                },
-                "include_thread_replies": {
-                    "type": "boolean",
-                    "default": True,
-                    "description": "是否包含线程回复",
-                    "required": False,
-                },
                 **COMMON_CONFIGS,
             },
             # Parameter schemas (preferred over legacy defaults)
@@ -170,8 +151,6 @@ class SlackTriggerSpec(BaseNodeSpec):
                     "required": False,
                 },
             },
-            # Port definitions            # Metadata
-            tags=["trigger", "slack", "chat", "workspace", "collaboration"],
             # Examples
             examples=[
                 {
@@ -182,8 +161,6 @@ class SlackTriggerSpec(BaseNodeSpec):
                         "events": ["app_mention"],
                         "channels": ["general", "support"],
                         "bot_token": "xoxb-slack-bot-token-123",
-                        "signing_secret": "slack_signing_secret_456",
-                        "filter_bot_messages": True,
                     },
                     "expected_output": {
                         "trigger_time": "2025-01-20T14:30:00Z",
@@ -216,8 +193,7 @@ class SlackTriggerSpec(BaseNodeSpec):
                         "events": ["message"],
                         "channels": ["alerts", "incidents"],
                         "keywords": ["urgent", "critical", "outage"],
-                        "filter_bot_messages": True,
-                        "include_thread_replies": False,
+                        "bot_token": "xoxb-slack-bot-token-456",
                     },
                     "expected_output": {
                         "trigger_time": "2025-01-20T16:45:00Z",
@@ -248,8 +224,7 @@ class SlackTriggerSpec(BaseNodeSpec):
                         "workspace_id": "T1234567890",
                         "events": ["reaction_added"],
                         "channels": ["approvals"],
-                        "keywords": ["✅", "approve", "👍"],
-                        "filter_bot_messages": False,
+                        "bot_token": "xoxb-slack-bot-token-789",
                     },
                     "expected_output": {
                         "trigger_time": "2025-01-20T18:15:00Z",
@@ -282,7 +257,7 @@ class SlackTriggerSpec(BaseNodeSpec):
                     "configurations": {
                         "workspace_id": "T1234567890",
                         "events": ["channel_created"],
-                        "filter_bot_messages": False,
+                        "bot_token": "xoxb-slack-bot-token-101",
                     },
                     "expected_output": {
                         "trigger_time": "2025-01-20T20:00:00Z",

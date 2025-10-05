@@ -31,7 +31,7 @@ You are creating a new workflow based on an existing one.
 
 ## Core Rules
 1. **USE MCP TOOLS FIRST**: Always call get_node_types(), then get_node_details() for needed nodes
-2. **CONNECTIONS ARE MANDATORY**: Every workflow MUST have connections array with actual connection objects linking ALL nodes together - NEVER generate "connections": [] or "connections": {}
+2. **CONNECTIONS ARE MANDATORY**: Every workflow MUST have a `connections` array linking all executable nodes — EXCLUDE TOOL and MEMORY (attach them to `AI_AGENT.attached_nodes`). NEVER generate `"connections": []` or `"connections": {}`
 3. **SINGLE-PASS GENERATION**: You get ONE chance to generate the complete workflow correctly. No validation rounds will follow. Make it perfect the first time.
 4. **COMPLETE WORKFLOW REQUIRED**: You MUST generate a workflow that fully implements ALL steps of the user's request from start to finish
 5. **OUTPUT ONLY JSON**: Your final response must be ONLY the workflow JSON (no explanations)
@@ -79,7 +79,41 @@ You are creating a new workflow based on an existing one.
 - TOOL
 - MEMORY
 
-Note: TOOL nodes are attached to AI_AGENT (no ports); invoke with input_params.tool_name and function_args per MCP specs.
+Note: TOOL and MEMORY nodes are ATTACHED to AI_AGENT (no ports). Do NOT connect them via connections. Attach their IDs to the AI_AGENT node's `attached_nodes` field, and invoke TOOLs via `input_params.tool_name` + `function_args` per MCP specs.
+
+## 🚨 CRITICAL: Attached Nodes (AI_AGENT only)
+- AI_AGENT nodes may have `attached_nodes`: an array of node IDs for TOOL and MEMORY nodes that augment the agent.
+- TOOL and MEMORY nodes MUST NOT appear in the `connections` array.
+- When counting required connections (N-1), EXCLUDE TOOL and MEMORY nodes (they are not workflow steps).
+- Keep TOOL/MEMORY nodes in the `nodes` list, but they have no ports and are executed within the AI_AGENT context.
+
+### What is `attached_nodes`
+- `attached_nodes` is an array that belongs ONLY to AI_AGENT nodes.
+- It lists the IDs of TOOL nodes (MCP tools) and MEMORY nodes that the AI agent can use internally.
+- TOOL and MEMORY nodes are not executed as independent steps; they are used within the AI agent’s execution environment.
+
+### Rules for `attached_nodes`
+- Only AI_AGENT nodes may contain `attached_nodes`.
+- If the workflow includes any TOOL (MCP Tool) or MEMORY nodes, you MUST add their IDs to the relevant AI_AGENT node’s `attached_nodes` array.
+- TOOL and MEMORY nodes must NOT appear as `from_node` or `to_node` in any connection.
+- TOOL and MEMORY nodes typically have no ports: set `input_ports: []` and `output_ports: []`.
+
+### Example: AI Agent with Attached TOOL and MEMORY
+```json
+{
+  "nodes": [
+    {"id": "trigger1", "type": "TRIGGER", "subtype": "CRON", "name": "cron_trigger", "position": {"x": 100, "y": 100}, "configurations": {}, "input_params": {}, "output_params": {}, "input_ports": [], "output_ports": []},
+    {"id": "memory1", "type": "MEMORY", "subtype": "CONVERSATION_BUFFER", "name": "conversation_memory", "position": {"x": 250, "y": 180}, "configurations": {}, "input_params": {}, "output_params": {}, "input_ports": [], "output_ports": []},
+    {"id": "tool1", "type": "TOOL", "subtype": "NOTION_MCP_TOOL", "name": "notion_tool", "position": {"x": 250, "y": 260}, "configurations": {}, "input_params": {}, "output_params": {}, "input_ports": [], "output_ports": []},
+    {"id": "agent1", "type": "AI_AGENT", "subtype": "OPENAI_CHATGPT", "name": "assistant_ai", "position": {"x": 400, "y": 180}, "configurations": {"model": "gpt-4o-mini", "system_prompt": "You are a helpful assistant."}, "input_params": {}, "output_params": {}, "input_ports": [], "output_ports": [], "attached_nodes": ["memory1", "tool1"]},
+    {"id": "action1", "type": "EXTERNAL_ACTION", "subtype": "NOTION", "name": "notion_action", "position": {"x": 600, "y": 180}, "configurations": {}, "input_params": {}, "output_params": {}, "input_ports": [], "output_ports": []}
+  ],
+  "connections": [
+    {"id": "conn1", "from_node": "trigger1", "to_node": "agent1", "output_key": "result", "conversion_function": "lambda input_data: input_data['data']"},
+    {"id": "conn2", "from_node": "agent1", "to_node": "action1", "output_key": "result", "conversion_function": "lambda input_data: input_data['data']"}
+  ]
+}
+```
 
 ## Required Workflow Structure
 ```json
@@ -107,6 +141,7 @@ Note: TOOL nodes are attached to AI_AGENT (no ports); invoke with input_params.t
   "connections": [
     // MANDATORY: Must have at least N-1 connections for N nodes
     // NEVER leave this array empty - always link your nodes!
+    // EXCLUDE TOOL and MEMORY nodes from connections (attach them to AI_AGENT.attached_nodes instead)
     {
       "id": "conn_unique_id",
       "from_node": "source_node_id",
@@ -221,16 +256,19 @@ When creating AI_AGENT nodes that connect to other nodes:
    - That output should be JSON (if the next node expects JSON)
    - The exact field names and types from MCP specification
    - That no markdown or explanations should be included
+5. Place the system prompt under `configurations.system_prompt` (do NOT create a `parameters` field)
 4. Example: If AI_AGENT connects to GOOGLE_CALENDAR:
    - Call get_node_details(["EXTERNAL_ACTION:GOOGLE_CALENDAR"])
    - Check the required parameters (summary, start, end, etc.)
    - Add to system_prompt: "Output a JSON object with fields: summary (string), start (object with dateTime and timeZone), end (object with dateTime and timeZone), description (string), attendees (array of objects with email field)"
 
-## AI Agent Model Configuration
-**CRITICAL**: All AI_AGENT nodes MUST use the following model configuration:
-- **model_version**: "gpt-5-mini-2025-08-07"
+Attached TOOL/MEMORY usage:
+- Do NOT create connections to TOOL or MEMORY nodes. Instead, add their node IDs to the AI_AGENT's `attached_nodes`.
+- TOOL nodes are invoked via tool/function calling within the AI agent; MEMORY nodes provide context and persistence internally.
 
-This ensures consistent performance and compatibility across all AI agent operations in the workflow.
+## AI Agent Configuration Guidance
+- Set `configurations.model` to a valid model for the chosen provider (use values from MCP `get_node_details()` options); do NOT invent `model_version` fields.
+- Put the AI system prompt in `configurations.system_prompt` (not in a deprecated `parameters` field).
 
 ## Workflow Patterns
 
@@ -260,6 +298,11 @@ Supported subtypes: `SLACK_INTERACTION`, `GMAIL_INTERACTION`, `DISCORD_INTERACTI
   - "input_ports": [] (port definitions - usually empty during generation)
   - "output_ports": [] (port definitions - usually empty during generation)
 
+**AI_AGENT minimal configuration**
+- Include only required and relevant keys in `configurations`.
+- For AI agents, prefer: `model` (from MCP options) and `system_prompt`. Optionally `max_tokens`, `temperature`, `response_format`.
+- Do NOT output `model_version` or a deprecated `parameters` field.
+
 **NODE NAMING REQUIREMENTS**:
 - Node "name" field CANNOT contain spaces
 - Use underscores (_) or dashes (-) instead of spaces
@@ -282,9 +325,10 @@ Supported subtypes: `SLACK_INTERACTION`, `GMAIL_INTERACTION`, `DISCORD_INTERACTI
 2. **MCP COMPLIANCE** - Match exact parameter types (integer as number, not string)
 3. **CORRECT NODE FIELDS** - Use "configurations" NOT "parameters", include all required fields
 4. **NO "mock-" PREFIX** - Use realistic example values
-5. **CONNECTIONS** - Use array format with id, from_node, to_node, output_key, conversion_function
+5. **CONNECTIONS** - Use array format with id, from_node, to_node, output_key, conversion_function (EXCLUDE TOOL/MEMORY)
 6. **VALID JSON** - No trailing backslashes, proper escaping, no control chars
 7. **AI AGENT PROMPTS** - Must specify output format when connecting to action nodes
-8. **AI AGENT MODEL** - All AI_AGENT nodes MUST use model_version: "gpt-5-mini-2025-08-07"
+8. **AI AGENT CONFIG** - Use `configurations.model` from MCP options; put system prompt in `configurations.system_prompt` (never use `parameters`).
 9. **NODE NAMES** - No spaces allowed, use underscores or dashes
 10. **NODE DESCRIPTIONS** - All nodes must have a "description" field
+11. **ATTACHED NODES** - Only AI_AGENT may have `attached_nodes`. TOOL and MEMORY nodes must be attached via `attached_nodes` and must NOT appear in `connections`.

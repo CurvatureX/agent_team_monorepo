@@ -1,141 +1,62 @@
-Every node has a main_type and sub_type.
-There are 8 Node types: TRIGGER_NODE, AI_AGENT_NODE, EXTERNAL_ACTION_NODE, ACTION_NODE, FLOW_NODE, HUMAN_IN_THE_LOOP_NODE, TOOL_NODE, MEMORY_NODE
+Node Type Glossary (aligned with node_specs)
 
-Node Type: TRIGGER_NODE
-Description: A node that initiates a workflow based on an event or schedule.
-Subtypes:
-- TRIGGER_CHAT: Triggered by chat input from users.
-- TRIGGER_WEBHOOK: Triggered by an incoming HTTP webhook.
-- TRIGGER_CRON: Triggered by a scheduled cron job.
-- TRIGGER_MANUAL: Triggered manually by a user action.
-- TRIGGER_EMAIL: Triggered when a specific email is received.
-- TRIGGER_FORM: Triggered when a form is submitted.
-- TRIGGER_CALENDAR: Triggered by a calendar event.
+There are 8 node types (no “_NODE” suffix): TRIGGER, AI_AGENT, EXTERNAL_ACTION, ACTION, FLOW, HUMAN_IN_THE_LOOP, TOOL, MEMORY.
 
-Node Type: AI_AGENT_NODE
-Description: A node that runs an intelligent AI-driven task using provider-based architecture where functionality is defined by system prompts.
-Subtypes:
-- GEMINI_NODE: Google Gemini AI agent with customizable behavior via system prompt.
-- OPENAI_NODE: OpenAI GPT AI agent with customizable behavior via system prompt.
-- CLAUDE_NODE: Anthropic Claude AI agent with customizable behavior via system prompt.
+General field conventions
+- Use fields: id, type, subtype, name, description, position, configurations, input_params, output_params, input_ports, output_ports.
+- Use configurations for static config (not “parameters”).
+- Node names should not contain spaces; use underscores or dashes.
+- The legacy `parameters` field is DEPRECATED; do not generate it. Place AI agent prompts in `configurations.system_prompt`.
 
-Node Type: EXTERNAL_ACTION_NODE
-Description: A node that interacts with external systems and platforms.
-Subtypes:
-1. EXTERNAL_GITHUB
-- Description: Performs actions using the GitHub API.
-- Capabilities:
-  * Create, update, delete repositories, branches, tags, and files.
-  * Manage issues, pull requests, comments, labels, and milestones.
-  * Trigger and manage GitHub Actions workflows.
-  * Access organization/team settings and members.
-  * Use GraphQL or REST APIs; subscribe to webhook events.
+Attached Nodes (AI_AGENT only)
+- attached_nodes is an array that belongs ONLY to AI_AGENT nodes.
+- It lists the IDs of TOOL (MCP tools) and MEMORY nodes that the AI agent uses internally.
+- TOOL and MEMORY nodes must NOT appear in workflow connections; they have no ports and are executed within the AI agent context.
+- When counting required connections, EXCLUDE TOOL and MEMORY nodes.
+- Example:
+  - AI_AGENT.assistant_ai.attached_nodes = ["conversation_memory", "notion_mcp_tool"]
+  - connections: TRIGGER → AI_AGENT → EXTERNAL_ACTION (no edges to TOOL/MEMORY)
 
-2. EXTERNAL_GOOGLE_CALENDAR
-- Description: Interacts with Google Calendar.
-- Capabilities:
-  * Create, update, and delete calendars and events.
-  * Manage attendees, reminders, timezones, and recurrence.
-  * Access free/busy status and user settings like working location.
-  * Use push notifications/webhooks for real-time sync.
+TRIGGER
+Description: Initiate a workflow based on events or schedule.
+Common subtypes (see shared/node_specs/TRIGGER): MANUAL, WEBHOOK, CRON, GITHUB, SLACK, EMAIL.
 
-3. EXTERNAL_TRELLO
-- Description: Sends actions to or reads data from Trello.
-- Capabilities:
-  * Create, update, delete boards, lists, cards, and checklists.
-  * Manage labels, attachments, comments, and due dates.
-  * Search across boards and cards.
-  * Extend with Power-Ups or webhooks.
+AI_AGENT
+Description: Provider-based AI agent where functionality is defined by system prompts; can attach TOOL and MEMORY via attached_nodes.
+Common subtypes (shared/node_specs/AI_AGENT): OPENAI_CHATGPT, ANTHROPIC_CLAUDE, GOOGLE_GEMINI.
+Field guidance:
+- Required: configurations.model (pick from MCP options)
+- Recommended: configurations.system_prompt; optionally max_tokens, temperature, response_format
+- Do NOT add a deprecated `parameters` field; keep configuration minimal and relevant.
 
-4. EXTERNAL_EMAIL
-- Description: Sends or receives emails.
-- Capabilities:
-  * Send emails via SMTP or email APIs (e.g., Gmail, Outlook).
-  * Receive and parse emails via IMAP or webhook forwarding.
-  * Trigger workflows based on email content.
-  * Attach files or HTML content.
+EXTERNAL_ACTION
+Description: Interact with external systems via provider-specific integrations.
+Common subtypes (shared/node_specs/EXTERNAL_ACTION): SLACK, GITHUB, NOTION, GOOGLE_CALENDAR, FIRECRAWL, DISCORD_ACTION, TELEGRAM_ACTION.
 
-5. EXTERNAL_SLACK
-- Description: Sends messages or reads data from Slack.
-- Capabilities:
-  * Send, update, and delete messages in channels or threads.
-  * Upload and attach files.
-  * Interact with users via bots, modals, and slash commands.
-  * Subscribe to workspace events and channel activity.
-  * Search messages and users.
+ACTION
+Description: Self-contained processing within the workflow.
+Common subtypes (shared/node_specs/ACTION): HTTP_REQUEST, DATA_TRANSFORMATION.
 
-6. EXTERNAL_API_CALL
-- Description: Makes a generic HTTP API call.
-- Capabilities:
-  * Make HTTP requests (GET, POST, PUT, DELETE, etc.) to any REST API.
-  * Set custom headers, body (JSON/XML), and query params.
-  * Handle responses, errors, and authentication.
-  * Chain API responses into subsequent workflow steps.
+FLOW
+Description: Control flow of execution.
+Common subtypes (shared/node_specs/FLOW): IF, FILTER, SORT, LOOP, MERGE, WAIT, DELAY.
 
-7. EXTERNAL_WEBHOOK
-- Description: Sends a webhook to an external service.
-- Capabilities:
-  * Send HTTP POST (or other method) to external endpoint.
-  * Customize payloads, headers, and retry logic.
-  * Trigger integrations with third-party systems.
-  * Log response or continue workflow conditionally.
+HUMAN_IN_THE_LOOP
+Description: Pause and wait for human response/approval; includes integrated messaging/analysis.
+Common subtypes (shared/node_specs/HUMAN_IN_THE_LOOP): SLACK_INTERACTION, GMAIL_INTERACTION, OUTLOOK_INTERACTION, DISCORD_INTERACTION, TELEGRAM_INTERACTION, MANUAL_REVIEW.
 
-8. EXTERNAL_NOTIFICATION
-- Description: Sends a notification to a user or system.
-- Capabilities:
-  * Send push notifications (APNs, FCM), SMS, or in-app alerts.
-  * Customize message content and target.
-  * Integrate with services like OneSignal, Twilio, or Amazon SNS.
-  * Track delivery status and user interaction.
+TOOL
+Description: MCP tool surface; ATTACHED to an AI_AGENT via attached_nodes (no ports).
+Common subtypes (shared/node_specs/TOOL): NOTION_MCP_TOOL, GOOGLE_CALENDAR_MCP_TOOL, SLACK_MCP_TOOL, FIRECRAWL_MCP_TOOL, DISCORD_MCP_TOOL.
+Runtime schema: input_params { tool_name: string (required), function_args: object, context: object, call_id: string }; output_params { result: object, success: boolean, error_message: string, execution_time: number, cached: boolean, plus tool-specific fields }.
 
-Node Type: ACTION_NODE
-Description: A node that performs a self-contained action within the workflow.
-Subtypes:
-- ACTION_RUN_CODE: Runs a script or code block.
-- ACTION_SEND_HTTP_REQUEST: Sends a standard HTTP request.
-- ACTION_PARSE_IMAGE: Processes and analyzes image data.
-- ACTION_WEB_SEARCH: Performs a web search to find information.
-- ACTION_DATABASE_OPERATION: Executes CRUD operations on a database.
-- ACTION_FILE_OPERATION: Reads, writes, or moves files.
-- ACTION_DATA_TRANSFORMATION: Transforms input data into a new format.
+MEMORY
+Description: Memory providers for AI agent context and persistence; ATTACHED to AI_AGENT via attached_nodes (no ports).
+Common subtypes (shared/node_specs/MEMORY): CONVERSATION_BUFFER, KEY_VALUE_STORE, VECTOR_DATABASE.
 
-Node Type: FLOW_NODE
-Description: A node used to control the flow of the workflow.
-Subtypes:
-- FLOW_IF: Evaluates an input condition and directs the workflow to either the "true" or "false" branch based on the result, determining which path is executed.
-- FLOW_FILTER: Applies specified conditions to filter elements in a collection, passing only those that meet criteria to subsequent nodes.
-- FLOW_LOOP: Repeatedly executes a connected node for each item in a collection or until a specified condition is met, processing data iteratively and passing results back to the workflow.
-- FLOW_MERGE: Combines multiple incoming flows or data streams into a single unified path, synchronizing parallel branches.
-- FLOW_WAIT: Waits for a specified amount of time or event, can connect with a Trigger node.
+Connections and Data Flow
+- Connections link executable nodes only (e.g., TRIGGER → AI_AGENT → EXTERNAL_ACTION).
+- Do NOT connect TOOL/MEMORY nodes; attach them to AI_AGENT.attached_nodes instead.
 
-Node Type: HUMAN_IN_THE_LOOP_NODE
-Description: A node that waits for manual human interaction to continue.
-Subtypes:
-- HUMAN_GMAIL: Sends message through email and wait for a human's reply.
-- HUMAN_SLACK: Invokes Slack interaction with a human.
-- HUMAN_DISCORD: Requires human interaction via Discord.
-- HUMAN_TELEGRAM: Engages a human via Telegram.
-- HUMAN_APP: Interfaces with a human in our mobile app.
-
-Node Type: TOOL_NODE
-Description: A utility node that exposes MCP tools to AI agents. TOOL nodes are attached to AI_AGENT via attached_nodes (no input/output ports) and are invoked from the AI node.
-Subtypes (current):
-- GOOGLE_CALENDAR_MCP_TOOL: Google Calendar via MCP
-- NOTION_MCP_TOOL: Notion via MCP
-- SLACK_MCP_TOOL: Slack via MCP
-- DISCORD_MCP_TOOL: Discord via MCP
-- FIRECRAWL_MCP_TOOL: Web scraping via MCP
-
-Parameter Schema (runtime):
-- input_params: { tool_name: string (required), function_args: object, context: object, call_id: string }
-- output_params: { result: object, success: boolean, error_message: string, execution_time: number, cached: boolean, plus tool-specific fields }
-
-Node Type: MEMORY_NODE
-Description: A node that stores or retrieves memory for AI Node.
-Subtypes:
-- MEMORY_SIMPLE: Stores simple key-value memory.
-- MEMORY_BUFFER: Stores recent history or conversation buffer.
-- MEMORY_KNOWLEDGE: Saves structured knowledge for later retrieval.
-- MEMORY_VECTOR_STORE: Embeds and stores vectors for semantic search.
-- MEMORY_DOCUMENT: Stores and retrieves full documents.
-- MEMORY_EMBEDDING: Embeds content into vector space for AI tasks.
+Compliance
+- Parameter types and schemas follow MCP specifications exposed by node_specs; ensure configurations and params match the defined types.

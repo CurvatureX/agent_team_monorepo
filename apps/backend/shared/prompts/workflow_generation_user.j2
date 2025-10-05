@@ -1,9 +1,9 @@
-**🚨 ABSOLUTELY CRITICAL: CONNECTIONS ARE MANDATORY!**
+**🚨 ABSOLUTELY CRITICAL: CONNECTIONS ARE MANDATORY (EXCEPT TOOL/MEMORY)!**
 
 YOU MUST GENERATE CONNECTIONS IN THE WORKFLOW JSON - NO EMPTY CONNECTIONS ARRAY!
 
 **For every workflow you generate:**
-1. **Count your nodes** - if you have N nodes, you need at least N-1 connections
+1. **Count executable nodes** - if you have K executable nodes (ALL nodes EXCEPT TOOL and MEMORY), you need at least K-1 connections
 2. **Link them sequentially** - first node connects to second, second to third, etc.
 3. **Use this exact format:**
 ```json
@@ -18,7 +18,7 @@ YOU MUST GENERATE CONNECTIONS IN THE WORKFLOW JSON - NO EMPTY CONNECTIONS ARRAY!
 ]
 ```
 
-**EXAMPLE for 2-node workflow (trigger + action):**
+**EXAMPLE A: 2 executable nodes (trigger + action):**
 ```json
 "connections": [
   {
@@ -33,6 +33,24 @@ YOU MUST GENERATE CONNECTIONS IN THE WORKFLOW JSON - NO EMPTY CONNECTIONS ARRAY!
 
 **❌ NEVER generate**: `"connections": []` or `"connections": {}`
 **✅ ALWAYS generate**: Array with actual connection objects linking your nodes
+**❗ DO NOT** include TOOL or MEMORY nodes in `connections` — attach them to the AI_AGENT node's `attached_nodes` instead.
+
+**EXAMPLE B: AI agent with TOOL + MEMORY attached (NOT connected):**
+```json
+{
+  "nodes": [
+    {"id": "cron1", "type": "TRIGGER", "subtype": "CRON", "name": "cron1"},
+    {"id": "mem1", "type": "MEMORY", "subtype": "CONVERSATION_BUFFER", "name": "conv_mem"},
+    {"id": "tool1", "type": "TOOL", "subtype": "NOTION_MCP_TOOL", "name": "notion_tool"},
+    {"id": "agent1", "type": "AI_AGENT", "subtype": "OPENAI_CHATGPT", "name": "assistant_ai", "attached_nodes": ["mem1", "tool1"]},
+    {"id": "act1", "type": "EXTERNAL_ACTION", "subtype": "NOTION", "name": "notion_action"}
+  ],
+  "connections": [
+    {"id": "c1", "from_node": "cron1", "to_node": "agent1", "output_key": "result", "conversion_function": "lambda input_data: input_data['data']"},
+    {"id": "c2", "from_node": "agent1", "to_node": "act1", "output_key": "result", "conversion_function": "lambda input_data: input_data['data']"}
+  ]
+}
+```
 
 Create a workflow for: {{ intent_summary }}
 
@@ -106,5 +124,15 @@ Your workflow MUST include connections that link the nodes together into a coher
 - Each node (except the last action) should output to a subsequent node
 - Connections format: `"connections": [{"id": "conn1", "from_node": "node1", "to_node": "node2", "output_key": "result", "conversion_function": "lambda input_data: input_data['data']"}]`
 - Even simple connections need conversion functions because node input/output parameter names usually differ
+
+**Attached Nodes Rule:**
+- `attached_nodes` belongs ONLY to AI_AGENT nodes.
+- TOOL (MCP tools) and MEMORY nodes must NOT be connected. Instead, add their node IDs to the AI_AGENT node's `attached_nodes` array.
+- Keep TOOL/MEMORY nodes in the `nodes` list; they have no ports and are used within the AI agent's execution.
+- Sanity check before output: ensure no connection has TOOL/MEMORY as `from_node` or `to_node`.
+
+**AI Agent Configuration:**
+- Use `configurations.model` from MCP `get_node_details()` options (do NOT output `model_version`).
+- Put the system prompt in `configurations.system_prompt` (do NOT create a `parameters` field).
 
 **Output:** Complete JSON workflow only. Start with `{` and end with `}`. No explanations or markdown.

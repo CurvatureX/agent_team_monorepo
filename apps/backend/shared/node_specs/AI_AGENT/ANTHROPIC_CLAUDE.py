@@ -191,7 +191,6 @@ class AnthropicClaudeSpec(BaseNodeSpec):
                         "anthropic_api_key": "sk-ant-your_api_key_here",
                         "model": "claude-sonnet-4-20250514",
                         "system_prompt": "You are an expert software engineer and security analyst. Perform comprehensive code reviews focusing on:\n1. Code quality and best practices\n2. Security vulnerabilities\n3. Performance optimizations\n4. Maintainability improvements\n5. Testing recommendations\n\nProvide specific, actionable feedback with code examples.",
-                        "user_prompt": "Please analyze the following code:\n\n**Language:** {{language}}\n**Context:** {{code_context}}\n**Code:**\n```{{language}}\n{{code_content}}\n```\n\nProvide a detailed analysis covering security, performance, maintainability, and suggestions for improvement.",
                         "max_tokens": 8192,
                         "temperature": 0.3,
                         "response_format": "json",
@@ -246,7 +245,6 @@ class AnthropicClaudeSpec(BaseNodeSpec):
                         "anthropic_api_key": "sk-ant-your_api_key_here",
                         "model": "claude-sonnet-4-20250514",
                         "system_prompt": "You are an expert document analyst specializing in multi-modal content analysis...",
-                        "user_prompt": "Analyze this document comprehensively:\n\n**Document Type:** {{document_type}}\n**Purpose:** {{analysis_purpose}}\n**Content:** {{text_content}}\n\nPlease provide:\n1. Executive summary\n2. Key findings and data points\n3. Visual elements analysis\n4. Recommendations based on the content\n5. Any concerns or red flags identified",
                         "max_tokens": 6144,
                         "temperature": 0.4,
                         "multimodal_config": {

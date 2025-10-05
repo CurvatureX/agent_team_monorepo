@@ -100,8 +100,49 @@ class NotionExternalAction(BaseExternalAction):
                 },
             )
 
+        # Validate configuration based on operation_type
+        operation_type = context.node.configurations.get("operation_type", "database")
+        page_id = context.node.configurations.get("page_id", "")
+        database_id = context.node.configurations.get("database_id", "")
+
+        if operation_type == "page" and not page_id:
+            self.log_execution(
+                context,
+                "⚠️ operation_type is 'page' but page_id not configured. AI will need to discover the page.",
+                "WARNING",
+            )
+        elif operation_type == "database" and not database_id:
+            self.log_execution(
+                context,
+                "⚠️ operation_type is 'database' but database_id not configured. AI will need to discover the database.",
+                "WARNING",
+            )
+        elif operation_type == "both":
+            # For 'both', at least one ID should be configured
+            if not page_id and not database_id:
+                self.log_execution(
+                    context,
+                    "⚠️ operation_type is 'both' but neither page_id nor database_id configured. AI will need to discover resources.",
+                    "WARNING",
+                )
+            elif not page_id:
+                self.log_execution(
+                    context,
+                    "ℹ️ operation_type is 'both' but only database_id configured. Page operations will require discovery.",
+                    "INFO",
+                )
+            elif not database_id:
+                self.log_execution(
+                    context,
+                    "ℹ️ operation_type is 'both' but only page_id configured. Database operations will require discovery.",
+                    "INFO",
+                )
+
         # AI-powered multi-round execution
-        self.log_execution(context, f"🤖 AI Mode: {instruction[:100]}...")
+        self.log_execution(
+            context,
+            f"🤖 AI Mode [{operation_type}]: {instruction[:100]}...",
+        )
         return await self._execute_ai_loop(context, instruction)
 
     async def _execute_ai_loop(
@@ -281,8 +322,21 @@ class NotionExternalAction(BaseExternalAction):
     async def _build_ai_context(
         self, context: NodeExecutionContext, instruction: str, execution_state: dict
     ) -> dict:
-        """Build comprehensive 5-layer context."""
-        return await helper_build_ai_context(context, instruction, execution_state)
+        """Build comprehensive 5-layer context with operation_type awareness."""
+        ai_context = await helper_build_ai_context(context, instruction, execution_state)
+
+        # Add operation_type configuration to context
+        operation_type = context.node.configurations.get("operation_type", "database")
+        page_id = context.node.configurations.get("page_id", "")
+        database_id = context.node.configurations.get("database_id", "")
+
+        ai_context["configuration"] = {
+            "operation_type": operation_type,
+            "page_id": page_id,
+            "database_id": database_id,
+        }
+
+        return ai_context
 
     async def _get_ai_decision(
         self,
@@ -339,9 +393,24 @@ class NotionExternalAction(BaseExternalAction):
 **IMPORTANT:** Return ONLY the JSON object above. Do not wrap in markdown code blocks or add any other text."""
 
         # Build user message with full context
+        configuration = ai_context.get("configuration", {})
+        operation_type = configuration.get("operation_type", "database")
+        page_id = configuration.get("page_id", "")
+        database_id = configuration.get("database_id", "")
+
         user_message = f"""**Round {round_num}/{self.MAX_ROUNDS}** (⏱️ {rounds_remaining} rounds remaining)
 
 **Instruction:** {instruction}
+
+**Node Configuration:**
+- Operation Type: {operation_type}
+- Page ID: {page_id if page_id else "(not configured)"}
+- Database ID: {database_id if database_id else "(not configured)"}
+
+**Configuration Guidance:**
+- When operation_type is "page": Use the configured page_id for page operations
+- When operation_type is "database": Use the configured database_id for database operations
+- When operation_type is "both": You can use either page_id or database_id as needed
 
 **Available Context:**
 

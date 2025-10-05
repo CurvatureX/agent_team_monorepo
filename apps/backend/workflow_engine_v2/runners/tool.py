@@ -116,6 +116,41 @@ class ToolRunner(NodeRunner):
                 }
             }
 
+        # Enrich tool arguments with configuration parameters (for Notion MCP tools)
+        # Extract operation_type, default_page_id, default_database_id from configurations
+        operation_type = node.configurations.get("operation_type", "")
+        default_page_id = node.configurations.get("default_page_id", "")
+        default_database_id = node.configurations.get("default_database_id", "")
+        notion_integration_token = node.configurations.get("notion_integration_token", "")
+
+        # Add configuration to tool_args if they're Notion-related
+        if tool_name and tool_name.startswith("notion_"):
+            if notion_integration_token and "integration_token" not in tool_args:
+                tool_args["integration_token"] = notion_integration_token
+
+            # Auto-populate page_id or database_id based on operation_type if not provided
+            if operation_type == "page":
+                # Page operations only
+                if default_page_id and "page_id" not in tool_args:
+                    tool_args["page_id"] = default_page_id
+            elif operation_type == "database":
+                # Database operations only
+                if default_database_id and "database_id" not in tool_args:
+                    tool_args["database_id"] = default_database_id
+            elif operation_type == "both":
+                # Both page and database operations - provide both IDs if available
+                # The tool will determine which one to use based on its operation
+                if default_page_id and "page_id" not in tool_args:
+                    tool_args["page_id"] = default_page_id
+                if default_database_id and "database_id" not in tool_args:
+                    tool_args["database_id"] = default_database_id
+
+            logger.info(
+                f"🔧 Enriched Notion MCP tool with config: operation_type={operation_type}, "
+                f"page_id={default_page_id[:8] if default_page_id else 'N/A'}, "
+                f"database_id={default_database_id[:8] if default_database_id else 'N/A'}"
+            )
+
         # Get user_id from trigger for OAuth token retrieval
         user_id = trigger.user_id if hasattr(trigger, "user_id") else None
         if not user_id:

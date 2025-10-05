@@ -29,16 +29,34 @@ class NotionActionSpec(BaseNodeSpec):
                     "required": True,
                     "sensitive": True,
                 },
+                "operation_type": {
+                    "type": "string",
+                    "default": "database",
+                    "description": "操作类型：database (数据库操作) 或 page (页面操作)",
+                    "required": False,
+                    "options": ["database", "page", "both"],
+                },
+                "database_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "目标数据库ID（当operation_type为database或both时使用）",
+                    "required": False,
+                },
+                "page_id": {
+                    "type": "string",
+                    "default": "",
+                    "description": "目标页面ID（当operation_type为page或both时使用）",
+                    "required": False,
+                },
                 "database_config": {
                     "type": "object",
                     "default": {
-                        "database_id": "",
                         "title": "",
                         "description": "",
                         "properties": {},
                         "parent": {},
                     },
-                    "description": "数据库配置",
+                    "description": "数据库配置（用于创建数据库时的额外配置）",
                     "required": False,
                 },
                 "page_config": {
@@ -50,7 +68,7 @@ class NotionActionSpec(BaseNodeSpec):
                         "icon": {},
                         "cover": {},
                     },
-                    "description": "页面配置",
+                    "description": "页面配置（用于创建页面时的额外配置）",
                     "required": False,
                 },
                 **COMMON_CONFIGS,
@@ -231,7 +249,15 @@ class NotionActionSpec(BaseNodeSpec):
                 },
             ],
             # System prompt appendix for AI guidance
-            system_prompt_appendix="""Output `instruction` with a natural language description of what to do in Notion (e.g., "Create a new task page with high priority"), and optionally provide `context` with any relevant data like `database_id`, `page_id`, content, or metadata that helps complete the task.""",
+            system_prompt_appendix="""Output `instruction` with a natural language description of what to do in Notion (e.g., "Create a new task page with high priority"), and optionally provide `context` with any relevant data like content or metadata that helps complete the task.
+
+Configuration Guidelines:
+- Set `operation_type` to "database" for database operations (query, create items, etc.)
+- Set `operation_type` to "page" for page operations (update content, get page info, etc.)
+- Set `operation_type` to "both" if you need to work with both pages and databases
+- For database operations, provide `database_id` in configuration
+- For page operations, provide `page_id` in configuration
+- The AI will automatically determine whether to use the configured database_id or page_id based on the instruction""",
         )
 
 

@@ -1,6 +1,7 @@
 """External action implementations for workflow_engine_v2."""
 
 from .base_external_action import BaseExternalAction
+from .firecrawl_external_action import FirecrawlExternalAction
 from .github_external_action import GitHubExternalAction
 from .google_calendar_external_action import GoogleCalendarExternalAction
 from .notion_external_action import NotionExternalAction
@@ -12,4 +13,5 @@ __all__ = [
     "GitHubExternalAction",
     "GoogleCalendarExternalAction",
     "NotionExternalAction",
+    "FirecrawlExternalAction",
 ]

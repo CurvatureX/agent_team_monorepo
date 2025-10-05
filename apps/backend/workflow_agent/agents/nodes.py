@@ -18,7 +18,6 @@ from workflow_agent.core.llm_provider import LLMFactory
 from workflow_agent.core.prompt_engine import get_prompt_engine
 
 from .exceptions import WorkflowGenerationError
-
 from .mcp_tools import MCPToolCaller
 from .state import (
     WorkflowStage,
@@ -461,9 +460,11 @@ class WorkflowAgentNodes:
                         # Keep original prompt if enhancement failed
                     elif enhanced_prompt:
                         # Update the node's system prompt with LLM-enhanced version
-                        if "parameters" not in node:
-                            node["parameters"] = {}
-                        node["parameters"]["system_prompt"] = enhanced_prompt
+                        if "configurations" not in node or not isinstance(
+                            node["configurations"], dict
+                        ):
+                            node["configurations"] = {}
+                        node["configurations"]["system_prompt"] = enhanced_prompt
                         logger.info(
                             f"Successfully enhanced AI Agent node '{node_id}' prompt with LLM"
                         )
@@ -482,7 +483,8 @@ class WorkflowAgentNodes:
         Enhance a single AI Agent's prompt using LLM to understand the next node's requirements.
         """
         try:
-            current_prompt = ai_node.get("parameters", {}).get("system_prompt", "")
+            # Read system prompt from configurations (parameters is deprecated)
+            current_prompt = ai_node.get("configurations", {}).get("system_prompt", "")
             next_node_type = next_node.get("type")
             next_node_subtype = next_node.get("subtype")
 
@@ -585,14 +587,14 @@ Return ONLY the enhanced system prompt, no explanations."""
                 format_prompt = self._generate_format_prompt_for_node(next_node)
 
                 if format_prompt:
-                    current_prompt = node.get("parameters", {}).get("system_prompt", "")
+                    current_prompt = node.get("configurations", {}).get("system_prompt", "")
                     enhanced_prompt = self._add_format_requirements_to_prompt(
                         current_prompt, format_prompt, next_node
                     )
 
-                    if "parameters" not in node:
-                        node["parameters"] = {}
-                    node["parameters"]["system_prompt"] = enhanced_prompt
+                    if "configurations" not in node or not isinstance(node["configurations"], dict):
+                        node["configurations"] = {}
+                    node["configurations"]["system_prompt"] = enhanced_prompt
 
                     logger.info(
                         f"Enhanced AI Agent node '{node_id}' prompt for connection to "
@@ -784,7 +786,7 @@ Your output MUST match the expected input format for the next node.
                 if not node_id:
                     continue
 
-                system_prompt = node.get("parameters", {}).get("system_prompt", "")
+                system_prompt = node.get("configurations", {}).get("system_prompt", "")
 
                 outgoing = [conn for conn in connections if conn.get("from_node") == node_id]
 
@@ -942,6 +944,53 @@ Your output MUST match the expected input format for the next node.
 
         return workflow
 
+    def _validate_no_tool_memory_connections(self, workflow: Dict[str, Any]) -> List[str]:
+        """Validate that TOOL/MEMORY nodes do not appear in connections.
+
+        Returns a list of human-readable error strings for each offending connection.
+        """
+        errors: List[str] = []
+        try:
+            nodes: List[Dict[str, Any]] = workflow.get("nodes") or []
+            connections: List[Dict[str, Any]] = workflow.get("connections") or []
+
+            if not isinstance(nodes, list) or not isinstance(connections, list):
+                return errors
+
+            node_map: Dict[str, Dict[str, Any]] = {
+                n.get("id"): n for n in nodes if isinstance(n, dict) and n.get("id")
+            }
+
+            def node_type(node_id: Optional[str]) -> Optional[str]:
+                if not node_id:
+                    return None
+                node = node_map.get(node_id)
+                return node.get("type") if isinstance(node, dict) else None
+
+            for conn in connections:
+                if not isinstance(conn, dict):
+                    continue
+                from_id = conn.get("from_node") or conn.get("from")
+                to_id = conn.get("to_node") or conn.get("to")
+                cid = conn.get("id") or f"{from_id or '?'}->{to_id or '?'}"
+
+                ft = node_type(from_id)
+                tt = node_type(to_id)
+
+                if ft in {"TOOL", "MEMORY"}:
+                    errors.append(
+                        f"Connection '{cid}' uses {ft} node '{from_id}' as source; TOOL/MEMORY must be attached to AI_AGENT, not connected."
+                    )
+                if tt in {"TOOL", "MEMORY"}:
+                    errors.append(
+                        f"Connection '{cid}' uses {tt} node '{to_id}' as target; TOOL/MEMORY must be attached to AI_AGENT, not connected."
+                    )
+
+            return errors
+        except Exception as e:
+            logger.warning(f"Failed to validate TOOL/MEMORY connections: {e}")
+            return errors
+
     def _ensure_node_descriptions(self, workflow: Dict[str, Any], intent_summary: str = "") -> None:
         """Ensure every node has a non-empty description before submission."""
         nodes = workflow.get("nodes", [])
@@ -965,9 +1014,9 @@ Your output MUST match the expected input format for the next node.
             )
             description_context = context[:200]
             if description_context:
-                node["description"] = (
-                    f"Auto-generated node '{node_name}' supporting intent: {description_context}"
-                )
+                node[
+                    "description"
+                ] = f"Auto-generated node '{node_name}' supporting intent: {description_context}"
             else:
                 node["description"] = f"Auto-generated node '{node_name}'"
 
@@ -980,9 +1029,7 @@ Your output MUST match the expected input format for the next node.
                 missing_nodes.append(node.get("id") or f"node-{index + 1}")
 
         if missing_nodes:
-            raise ValueError(
-                f"Nodes missing descriptions: {', '.join(missing_nodes)}"
-            )
+            raise ValueError(f"Nodes missing descriptions: {', '.join(missing_nodes)}")
 
     def _fail_workflow_generation(
         self,
@@ -1323,6 +1370,25 @@ Your output MUST match the expected input format for the next node.
                     await self._prefetch_node_specs_for_workflow(workflow)
                     await self._hydrate_nodes_from_specs(workflow)
 
+                    # Validate that TOOL/MEMORY nodes are not used in connections
+                    invalid_conn_errors = self._validate_no_tool_memory_connections(workflow)
+                    if invalid_conn_errors:
+                        error_message = (
+                            "Invalid workflow: TOOL and MEMORY nodes must be attached to AI_AGENT via 'attached_nodes', not connected.\n"
+                            + "\n".join(invalid_conn_errors)
+                        )
+                        logger.error(error_message)
+                        failure_message = (
+                            "The generated workflow connected TOOL/MEMORY nodes in the dataflow. "
+                            "Please regenerate the workflow and attach TOOL/MEMORY node IDs to the AI agent's 'attached_nodes' field instead of connecting them."
+                        )
+                        self._fail_workflow_generation(
+                            state,
+                            error_message=error_message,
+                            user_message=failure_message,
+                        )
+                        return state
+
                     # Enhance AI Agent prompts based on connected nodes
                     # Try to use LLM-enhanced version for better quality
                     try:
@@ -1355,12 +1421,8 @@ Your output MUST match the expected input format for the next node.
                     )
 
                 except json.JSONDecodeError as e:
-                    error_message = (
-                        "Failed to parse workflow JSON returned by the model"
-                    )
-                    logger.error(
-                        f"{error_message}: {e}, response was: {workflow_json[:500]}"
-                    )
+                    error_message = "Failed to parse workflow JSON returned by the model"
+                    logger.error(f"{error_message}: {e}, response was: {workflow_json[:500]}")
                     failure_message = (
                         "I attempted to generate the workflow but the response format was invalid. "
                         "Please retry or provide additional guidance."
@@ -1718,7 +1780,6 @@ Generate the COMPLETE JSON workflow now with ALL required nodes."""
                 response = await self.llm_with_tools.ainvoke(current_messages)
                 tool_elapsed = time.time() - tool_start
                 logger.info(f"Tool iteration {iteration} completed in {tool_elapsed:.2f} seconds")
-
 
             if iteration >= max_iterations:
                 logger.warning(f"Reached max iterations ({max_iterations}) in tool calling")
