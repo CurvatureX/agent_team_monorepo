@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
     DEFAULT_MODEL_PROVIDER: str = os.getenv("DEFAULT_MODEL_PROVIDER", "openai")
-    DEFAULT_MODEL_NAME: str = os.getenv("DEFAULT_MODEL_NAME", OpenAIModel.GPT_5_NANO.value)
+    DEFAULT_MODEL_NAME: str = os.getenv("DEFAULT_MODEL_NAME", "gpt-4o-mini")
 
     # LangGraph settings
 
@@ -72,7 +72,7 @@ class Settings(BaseSettings):
 
     # Conversion generation settings
     CONVERSION_GENERATION_MAX_CONCURRENCY: int = int(
-        os.getenv("CONVERSION_GENERATION_MAX_CONCURRENCY", "4")
+        os.getenv("CONVERSION_GENERATION_MAX_CONCURRENCY", "20")
     )
 
     # MCP API timeout settings

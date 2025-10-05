@@ -8,7 +8,7 @@ OpenAI's ChatGPT to act as a workflow generation agent using your custom
 workflow tools deployed at:
 http://agent-prod-alb-352817645.us-east-1.elb.amazonaws.com/api/v1/mcp/
 
-The agent uses the workflow_gen_f1.j2 prompt template to:
+The agent uses the workflow_gen_simplified.j2 prompt template to:
 1. Understand user workflow requirements
 2. Use MCP tools to discover available workflow nodes
 3. Generate valid workflow configurations in JSON format
@@ -40,7 +40,7 @@ def load_workflow_generation_prompt() -> str:
     """Load the workflow generation prompt template"""
     try:
         prompt_path = os.path.join(
-            os.path.dirname(__file__), "shared", "prompts", "workflow_gen_f1.j2"
+            os.path.dirname(__file__), "shared", "prompts", "workflow_gen_simplified.j2"
         )
         with open(prompt_path, "r") as f:
             template_content = f.read()

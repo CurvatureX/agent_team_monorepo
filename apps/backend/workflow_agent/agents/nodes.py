@@ -2119,7 +2119,7 @@ class ConversionFunctionGenerator:
         nodes = {node.get("id"): node for node in workflow.get("nodes", []) if node.get("id")}
         connections = workflow.get("connections") or []
 
-        semaphore = asyncio.Semaphore(getattr(settings, "CONVERSION_GENERATION_MAX_CONCURRENCY", 4))
+        semaphore = asyncio.Semaphore(getattr(settings, "CONVERSION_GENERATION_MAX_CONCURRENCY", 20))
 
         tasks = []
         processed_connections: List[Dict[str, Any]] = []
