@@ -337,8 +337,8 @@ class DirectPostgreSQLManager:
         try:
             async with self.pool.acquire() as conn:
                 query = """
-                    SELECT id, user_id, provider, access_token, refresh_token,
-                           expires_at, token_type, is_active, created_at, updated_at
+                    SELECT id, user_id, provider, integration_id, access_token, refresh_token,
+                           credential_data, expires_at, token_type, is_active, created_at, updated_at
                     FROM oauth_tokens
                     WHERE user_id = $1 AND provider = $2 AND is_active = true
                     ORDER BY updated_at DESC
