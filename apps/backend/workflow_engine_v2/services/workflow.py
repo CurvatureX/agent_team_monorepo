@@ -82,9 +82,14 @@ class WorkflowServiceV2:
         connections: List[Dict],
         triggers: Optional[List[str]] = None,
         metadata: Optional[Dict] = None,
+        description: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        parent_workflow: Optional[str] = None,
+        icon_url: Optional[str] = None,
     ) -> Workflow:
-        # Generate icon URL using shared utility
-        icon_url = metadata.get("icon_url") if metadata else None
+        # Use provided icon URL or generate one
+        if not icon_url:
+            icon_url = metadata.get("icon_url") if metadata else None
         if not icon_url:
             try:
                 from shared.utils.icon_utils import generate_random_icon_url
@@ -97,9 +102,12 @@ class WorkflowServiceV2:
         meta = WorkflowMetadata(
             id=workflow_id,
             name=name,
+            description=description,
             created_time=created_time_ms,
             created_by=created_by,
             icon_url=icon_url,
+            tags=tags or [],
+            parent_workflow=parent_workflow,
         )
 
         # Convert user dictionaries to Node objects, preserving their data exactly

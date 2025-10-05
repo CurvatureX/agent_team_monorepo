@@ -198,6 +198,7 @@ services:
       PYTHONPATH: "/app"
       PYTHONUNBUFFERED: "1"
       SERVICE_NAME: "workflow-engine-v2"
+      API_GATEWAY_URL: "http://api-gateway:8000"
       OTEL_SDK_DISABLED: "true"
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
       OTEL_EXPORTER_OTLP_INSECURE: "true"

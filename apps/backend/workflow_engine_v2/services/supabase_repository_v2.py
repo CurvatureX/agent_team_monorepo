@@ -19,7 +19,6 @@ sys.path.insert(0, str(backend_dir))
 # Use absolute imports
 from shared.models import Execution, ExecutionStatus
 from shared.models.supabase import create_supabase_client
-
 from workflow_engine_v2.utils.run_data import build_run_data_snapshot
 
 from .repository import ExecutionRepository

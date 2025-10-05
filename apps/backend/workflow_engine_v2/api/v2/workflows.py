@@ -54,6 +54,10 @@ async def create_workflow(request: CreateWorkflowRequest):
             nodes=request.nodes,
             connections=request.connections,
             triggers=request.triggers or [],
+            description=request.description,
+            tags=request.tags,
+            parent_workflow=request.parent_workflow,
+            icon_url=request.icon_url,
             metadata={},
         )
 

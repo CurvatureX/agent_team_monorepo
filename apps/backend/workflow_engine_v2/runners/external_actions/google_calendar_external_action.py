@@ -1,28 +1,55 @@
 """
-Google Calendar external action for workflow_engine_v2.
+Google Calendar external action for workflow_engine_v2 using Google Calendar SDK.
+
+This implementation uses the shared Google Calendar SDK for all operations,
+strictly following the node specification in shared/node_specs/EXTERNAL_ACTION/GOOGLE_CALENDAR.py.
 """
 
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
-
-import httpx
 
 # Add backend directory to path for absolute imports
 backend_dir = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(backend_dir))
 
 from shared.models import ExecutionStatus, NodeExecutionResult
+from shared.sdks.google_calendar_sdk.client import GoogleCalendarSDK
+from shared.sdks.google_calendar_sdk.exceptions import (
+    GoogleCalendarAuthError,
+    GoogleCalendarError,
+    GoogleCalendarNotFoundError,
+    GoogleCalendarPermissionError,
+    GoogleCalendarRateLimitError,
+    GoogleCalendarValidationError,
+)
 from workflow_engine_v2.core.context import NodeExecutionContext
 
 from .base_external_action import BaseExternalAction
 
 
 class GoogleCalendarExternalAction(BaseExternalAction):
-    """Google Calendar external action handler for workflow_engine_v2."""
+    """
+    Google Calendar external action handler using Google Calendar SDK.
+
+    Follows node spec output format (11 fields):
+    - success: boolean
+    - google_response: object (parsed Google API response)
+    - event: object (single event when applicable)
+    - events: array (list of events when listing)
+    - calendars: array (list of calendars when listing)
+    - next_page_token: string
+    - next_sync_token: string
+    - html_link: string
+    - event_id: string
+    - event_url: string/calendar_url: string
+    - meeting_link: string
+    - error_message: string
+    - execution_metadata: object
+    """
 
     def __init__(self):
         super().__init__("google")
@@ -30,355 +57,278 @@ class GoogleCalendarExternalAction(BaseExternalAction):
     async def handle_operation(
         self, context: NodeExecutionContext, operation: str
     ) -> NodeExecutionResult:
-        """Handle Google Calendar-specific operations."""
+        """Handle Google Calendar-specific operations using SDK."""
         try:
             # Get Google OAuth token from oauth_tokens table
             google_token = await self.get_oauth_token(context)
 
             if not google_token:
-                error_msg = "❌ No Google authentication token found. Please connect your Google account in integrations settings."
-                self.log_execution(context, error_msg, "ERROR")
-                return self.create_error_result(error_msg, operation)
+                return self._create_spec_error_result(
+                    "No Google authentication token found. Please connect your Google account in integrations settings.",
+                    operation,
+                    {
+                        "reason": "missing_oauth_token",
+                        "solution": "Connect Google account in integrations settings",
+                    },
+                )
 
-            # Prepare headers with OAuth token
-            headers = {
-                "Authorization": f"Bearer {google_token}",
-                "Content-Type": "application/json",
-            }
+            # Initialize SDK
+            sdk = GoogleCalendarSDK()
+            credentials = {"access_token": google_token}
 
-            # Handle different Google Calendar operations
-            if operation.lower() in ["create_event", "create-event"]:
-                return await self._create_event(context, headers)
-            elif operation.lower() in ["list_events", "list-events"]:
-                return await self._list_events(context, headers)
-            elif operation.lower() in ["get_calendars", "list_calendars"]:
-                return await self._list_calendars(context, headers)
-            elif operation.lower() in ["update_event", "update-event"]:
-                return await self._update_event(context, headers)
+            # Build parameters from input_data (highest priority) and configurations (fallback)
+            parameters = self._build_parameters(context)
+
+            # Execute operation via SDK
+            self.log_execution(context, f"Executing Google Calendar operation: {operation}")
+            start_time = datetime.now()
+
+            response = await sdk.call_operation(operation, parameters, credentials)
+
+            execution_time_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+
+            if response.success:
+                self.log_execution(context, f"✅ Google Calendar {operation} succeeded")
+                return self._create_spec_success_result(operation, response.data, execution_time_ms)
             else:
-                # Default: list events from primary calendar
-                return await self._list_events(context, headers)
+                self.log_execution(
+                    context, f"❌ Google Calendar {operation} failed: {response.error}", "ERROR"
+                )
+                return self._create_spec_error_result(
+                    response.error or "Unknown error",
+                    operation,
+                    {
+                        "reason": "api_error",
+                        "status_code": response.status_code,
+                    },
+                )
 
+        except GoogleCalendarAuthError as e:
+            self.log_execution(context, f"Google Calendar authentication error: {str(e)}", "ERROR")
+            return self._create_spec_error_result(
+                f"Google Calendar authentication failed: {str(e)}",
+                operation,
+                {
+                    "reason": "authentication_error",
+                    "solution": "Check Google OAuth token validity and refresh if needed",
+                },
+            )
+        except GoogleCalendarPermissionError as e:
+            self.log_execution(context, f"Google Calendar permission error: {str(e)}", "ERROR")
+            return self._create_spec_error_result(
+                f"Insufficient permissions: {str(e)}",
+                operation,
+                {
+                    "reason": "permission_error",
+                    "solution": "Grant required Google Calendar permissions in OAuth consent",
+                },
+            )
+        except GoogleCalendarRateLimitError as e:
+            self.log_execution(context, f"Google Calendar rate limit exceeded: {str(e)}", "ERROR")
+            return self._create_spec_error_result(
+                f"Rate limit exceeded: {str(e)}",
+                operation,
+                {"reason": "rate_limit_exceeded", "solution": "Wait before retrying"},
+            )
+        except GoogleCalendarNotFoundError as e:
+            self.log_execution(context, f"Google Calendar resource not found: {str(e)}", "ERROR")
+            return self._create_spec_error_result(
+                f"Resource not found: {str(e)}",
+                operation,
+                {"reason": "resource_not_found", "solution": "Verify calendar_id/event_id"},
+            )
+        except GoogleCalendarValidationError as e:
+            self.log_execution(context, f"Google Calendar validation error: {str(e)}", "ERROR")
+            return self._create_spec_error_result(
+                f"Validation error: {str(e)}",
+                operation,
+                {"reason": "validation_error", "solution": "Check required parameters"},
+            )
+        except GoogleCalendarError as e:
+            self.log_execution(context, f"Google Calendar API error: {str(e)}", "ERROR")
+            return self._create_spec_error_result(
+                f"Google Calendar API error: {str(e)}",
+                operation,
+                {"reason": "api_error"},
+            )
         except Exception as e:
-            self.log_execution(context, f"Google Calendar action failed: {str(e)}", "ERROR")
-            return NodeExecutionResult(
-                status=ExecutionStatus.ERROR,
-                error_message=f"Google Calendar action failed: {str(e)}",
-                error_details={"integration_type": "google_calendar", "operation": operation},
+            self.log_execution(context, f"Unexpected error: {str(e)}", "ERROR")
+            return self._create_spec_error_result(
+                f"Google Calendar action failed: {str(e)}",
+                operation,
+                {"exception_type": type(e).__name__, "exception": str(e)},
             )
 
-    async def _create_event(
-        self, context: NodeExecutionContext, headers: dict
+    def _build_parameters(self, context: NodeExecutionContext) -> Dict[str, Any]:
+        """
+        Build parameters from input_data and configurations.
+
+        Priority: input_data (highest) > configurations (fallback)
+        Per node spec input_params schema.
+        """
+        # Start with configurations as base
+        params = dict(context.node.configurations)
+
+        # Override with input_data (highest priority)
+        if context.input_data:
+            params.update(context.input_data)
+
+        # Handle nested 'data' object from node spec input_params
+        if "data" in params and isinstance(params["data"], dict):
+            # Merge data object into parameters
+            data = params.pop("data")
+            for key, value in data.items():
+                if key not in params or params[key] is None:
+                    params[key] = value
+
+        return params
+
+    def _create_spec_error_result(
+        self, message: str, operation: str, error_details: Dict[str, Any] = None
     ) -> NodeExecutionResult:
-        """Create a Google Calendar event."""
-        # Get calendar ID (default to primary)
-        calendar_id = context.node.configurations.get("calendar_id", "primary")
+        """
+        Create error result following node spec output format.
 
-        # Get event details
-        summary = (
-            context.input_data.get("title")
-            or context.input_data.get("summary")
-            or context.node.configurations.get("summary")
-            or context.node.configurations.get("title")
-            or "Workflow Generated Event"
-        )
-        description = (
-            context.input_data.get("description")
-            or context.input_data.get("message")
-            or context.node.configurations.get("description")
-            or context.node.configurations.get("body")
-            or "This event was created by a workflow automation."
-        )
-
-        # Get start and end times
-        start_time = context.input_data.get("start_time") or context.node.configurations.get(
-            "start_time"
-        )
-        end_time = context.input_data.get("end_time") or context.node.configurations.get("end_time")
-        duration_minutes = context.node.configurations.get("duration_minutes", 60)
-
-        # If no start time provided, default to 1 hour from now
-        if not start_time:
-            start_datetime = datetime.now() + timedelta(hours=1)
-            start_time = start_datetime.isoformat()
-
-        # If no end time provided, calculate from start + duration
-        if not end_time:
-            if start_time:
-                start_datetime = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-                end_datetime = start_datetime + timedelta(minutes=duration_minutes)
-                end_time = end_datetime.isoformat()
-
-        # Create event payload
-        event = {
-            "summary": summary,
-            "description": description,
-            "start": {
-                "dateTime": start_time,
-                "timeZone": context.node.configurations.get("timezone", "UTC"),
+        Spec output_params (11 fields):
+        - success: false
+        - google_response: {}
+        - event: {}
+        - events: []
+        - calendars: []
+        - next_page_token: ""
+        - next_sync_token: ""
+        - html_link: ""
+        - event_id: ""
+        - event_url/calendar_url: ""
+        - meeting_link: ""
+        - error_message: string
+        - execution_metadata: object
+        """
+        return NodeExecutionResult(
+            status=ExecutionStatus.ERROR,
+            error_message=message,
+            error_details={
+                "integration": self.integration_name,
+                "operation": operation,
+                **(error_details or {}),
             },
-            "end": {
-                "dateTime": end_time,
-                "timeZone": context.node.configurations.get("timezone", "UTC"),
+            output_data={
+                "success": False,
+                "google_response": {},
+                "event": {},
+                "events": [],
+                "calendars": [],
+                "next_page_token": "",
+                "next_sync_token": "",
+                "html_link": "",
+                "event_id": "",
+                "event_url": "",
+                "calendar_url": "",
+                "meeting_link": "",
+                "error_message": message,
+                "execution_metadata": {
+                    "integration_type": self.integration_name,
+                    "operation": operation,
+                    "timestamp": datetime.now().isoformat(),
+                },
+            },
+            metadata={
+                "node_type": "external_action",
+                "integration": self.integration_name,
+                "operation": operation,
+            },
+        )
+
+    def _create_spec_success_result(
+        self, operation: str, response_data: Any, execution_time_ms: int = 0
+    ) -> NodeExecutionResult:
+        """
+        Create success result following node spec output format.
+
+        Spec output_params (11 fields):
+        - success: true
+        - google_response: object (parsed Google API response)
+        - event: object (single event when applicable)
+        - events: array (list of events when listing)
+        - calendars: array (list of calendars when listing)
+        - next_page_token: string
+        - next_sync_token: string
+        - html_link: string
+        - event_id: string
+        - event_url/calendar_url: string
+        - meeting_link: string
+        - error_message: ""
+        - execution_metadata: object
+        """
+        # Initialize all fields with defaults
+        output = {
+            "success": True,
+            "google_response": response_data if isinstance(response_data, dict) else {},
+            "event": {},
+            "events": [],
+            "calendars": [],
+            "next_page_token": "",
+            "next_sync_token": "",
+            "html_link": "",
+            "event_id": "",
+            "event_url": "",
+            "calendar_url": "",
+            "meeting_link": "",
+            "error_message": "",
+            "execution_metadata": {
+                "integration_type": self.integration_name,
+                "operation": operation,
+                "timestamp": datetime.now().isoformat(),
+                "execution_time_ms": execution_time_ms,
             },
         }
 
-        # Add attendees if specified
-        attendees = context.node.configurations.get("attendees", [])
-        if attendees:
-            event["attendees"] = [{"email": email} for email in attendees]
+        # Populate fields based on response structure
+        if isinstance(response_data, dict):
+            # Single event operations (create_event, update_event, get_event)
+            if "event" in response_data:
+                event = response_data["event"]
+                output["event"] = event
+                output["event_id"] = event.get("id", "")
+                output["html_link"] = event.get("htmlLink", "") or event.get("html_link", "")
+                output["event_url"] = output["html_link"]
+                # Extract meeting link (Google Meet, Zoom, etc.)
+                output["meeting_link"] = event.get("hangoutLink", "") or event.get(
+                    "conferenceData", {}
+                ).get("entryPoints", [{}])[0].get("uri", "")
 
-        # Add location if specified
-        location = context.node.configurations.get("location")
-        if location:
-            event["location"] = location
+            # List events operations
+            if "events" in response_data:
+                output["events"] = response_data["events"]
+                output["next_page_token"] = response_data.get("next_page_token", "")
+                output["next_sync_token"] = response_data.get("next_sync_token", "")
 
-        self.log_execution(context, f"Creating Google Calendar event: {summary}")
+            # List calendars operations
+            if "calendars" in response_data:
+                output["calendars"] = response_data["calendars"]
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events",
-                headers=headers,
-                json=event,
-                timeout=30.0,
-            )
+            # Calendar operations
+            if "calendar" in response_data:
+                calendar = response_data["calendar"]
+                output["google_response"] = calendar
+                output["calendar_url"] = calendar.get("id", "")
 
-        if response.status_code == 200:
-            result = response.json()
-            self.log_execution(context, f"✅ Google Calendar event created successfully")
+            # Direct fields
+            if "event_id" in response_data:
+                output["event_id"] = response_data["event_id"]
+            if "html_link" in response_data:
+                output["html_link"] = response_data["html_link"]
+                output["event_url"] = response_data["html_link"]
 
-            return self.create_success_result(
-                "create_event",
-                {
-                    "event_id": result.get("id"),
-                    "event_url": result.get("htmlLink"),
-                    "summary": result.get("summary"),
-                    "description": result.get("description"),
-                    "start": result.get("start"),
-                    "end": result.get("end"),
-                    "location": result.get("location"),
-                    "attendees": result.get("attendees", []),
-                    "calendar_id": calendar_id,
-                },
-            )
-        else:
-            error = f"Google Calendar API error: {response.status_code} - {response.text}"
-            self.log_execution(context, f"❌ {error}", "ERROR")
-            return NodeExecutionResult(
-                status=ExecutionStatus.ERROR,
-                error_message=error,
-                error_details={"status_code": response.status_code, "response": response.text},
-            )
-
-    async def _list_events(
-        self, context: NodeExecutionContext, headers: dict
-    ) -> NodeExecutionResult:
-        """List Google Calendar events."""
-        calendar_id = context.node.configurations.get("calendar_id", "primary")
-        max_results = context.node.configurations.get("max_results", 10)
-        time_min = context.node.configurations.get("time_min")
-        time_max = context.node.configurations.get("time_max")
-
-        # Default to next 30 days if no time range specified
-        if not time_min:
-            time_min = datetime.now().isoformat() + "Z"
-        if not time_max:
-            time_max = (datetime.now() + timedelta(days=30)).isoformat() + "Z"
-
-        params = {
-            "timeMin": time_min,
-            "timeMax": time_max,
-            "maxResults": max_results,
-            "singleEvents": True,
-            "orderBy": "startTime",
-        }
-
-        self.log_execution(context, f"Listing Google Calendar events from {calendar_id}")
-
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events",
-                headers=headers,
-                params=params,
-                timeout=30.0,
-            )
-
-        if response.status_code == 200:
-            result = response.json()
-            events = result.get("items", [])
-            self.log_execution(context, f"✅ Retrieved {len(events)} Google Calendar events")
-
-            events_data = []
-            for event in events:
-                events_data.append(
-                    {
-                        "id": event.get("id"),
-                        "summary": event.get("summary"),
-                        "description": event.get("description"),
-                        "start": event.get("start"),
-                        "end": event.get("end"),
-                        "location": event.get("location"),
-                        "html_link": event.get("htmlLink"),
-                        "attendees": event.get("attendees", []),
-                    }
-                )
-
-            return self.create_success_result(
-                "list_events",
-                {
-                    "events_count": len(events_data),
-                    "events": events_data,
-                    "calendar_id": calendar_id,
-                },
-            )
-        else:
-            error = f"Google Calendar API error: {response.status_code} - {response.text}"
-            self.log_execution(context, f"❌ {error}", "ERROR")
-            return NodeExecutionResult(
-                status=ExecutionStatus.ERROR,
-                error_message=error,
-                error_details={"status_code": response.status_code, "response": response.text},
-            )
-
-    async def _list_calendars(
-        self, context: NodeExecutionContext, headers: dict
-    ) -> NodeExecutionResult:
-        """List Google calendars."""
-        self.log_execution(context, "Listing Google calendars")
-
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                "https://www.googleapis.com/calendar/v3/users/me/calendarList",
-                headers=headers,
-                timeout=30.0,
-            )
-
-        if response.status_code == 200:
-            result = response.json()
-            calendars = result.get("items", [])
-            self.log_execution(context, f"✅ Retrieved {len(calendars)} Google calendars")
-
-            calendars_data = []
-            for calendar in calendars:
-                calendars_data.append(
-                    {
-                        "id": calendar.get("id"),
-                        "summary": calendar.get("summary"),
-                        "description": calendar.get("description"),
-                        "primary": calendar.get("primary", False),
-                        "access_role": calendar.get("accessRole"),
-                        "time_zone": calendar.get("timeZone"),
-                    }
-                )
-
-            return self.create_success_result(
-                "list_calendars",
-                {
-                    "calendars_count": len(calendars_data),
-                    "calendars": calendars_data,
-                },
-            )
-        else:
-            error = f"Google Calendar API error: {response.status_code} - {response.text}"
-            self.log_execution(context, f"❌ {error}", "ERROR")
-            return NodeExecutionResult(
-                status=ExecutionStatus.ERROR,
-                error_message=error,
-                error_details={"status_code": response.status_code, "response": response.text},
-            )
-
-    async def _update_event(
-        self, context: NodeExecutionContext, headers: dict
-    ) -> NodeExecutionResult:
-        """Update a Google Calendar event."""
-        calendar_id = context.node.configurations.get("calendar_id", "primary")
-        event_id = context.input_data.get("event_id") or context.node.configurations.get("event_id")
-
-        if not event_id:
-            return NodeExecutionResult(
-                status=ExecutionStatus.ERROR,
-                error_message="Google Calendar update event requires 'event_id' parameter",
-                error_details={"operation": "update_event", "missing": ["event_id"]},
-            )
-
-        # Get event details to update
-        update_data = {}
-
-        if "summary" in context.input_data or "summary" in context.node.configurations:
-            update_data["summary"] = context.input_data.get(
-                "summary"
-            ) or context.node.configurations.get("summary")
-
-        if "description" in context.input_data or "description" in context.node.configurations:
-            update_data["description"] = context.input_data.get(
-                "description"
-            ) or context.node.configurations.get("description")
-
-        if not update_data:
-            return NodeExecutionResult(
-                status=ExecutionStatus.ERROR,
-                error_message="No update data provided (summary, description, etc.)",
-                error_details={"operation": "update_event", "event_id": event_id},
-            )
-
-        self.log_execution(context, f"Updating Google Calendar event: {event_id}")
-
-        async with httpx.AsyncClient() as client:
-            # First get the existing event
-            get_response = await client.get(
-                f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events/{event_id}",
-                headers=headers,
-                timeout=30.0,
-            )
-
-            if get_response.status_code != 200:
-                error = f"Failed to get existing event: {get_response.status_code} - {get_response.text}"
-                self.log_execution(context, f"❌ {error}", "ERROR")
-                return NodeExecutionResult(
-                    status=ExecutionStatus.ERROR,
-                    error_message=error,
-                    error_details={"status_code": get_response.status_code},
-                )
-
-            # Update the event with new data
-            existing_event = get_response.json()
-            existing_event.update(update_data)
-
-            # Send the update
-            update_response = await client.put(
-                f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events/{event_id}",
-                headers=headers,
-                json=existing_event,
-                timeout=30.0,
-            )
-
-        if update_response.status_code == 200:
-            result = update_response.json()
-            self.log_execution(context, f"✅ Google Calendar event updated successfully")
-
-            return self.create_success_result(
-                "update_event",
-                {
-                    "event_id": result.get("id"),
-                    "event_url": result.get("htmlLink"),
-                    "summary": result.get("summary"),
-                    "description": result.get("description"),
-                    "updated": result.get("updated"),
-                },
-            )
-        else:
-            error = (
-                f"Google Calendar API error: {update_response.status_code} - {update_response.text}"
-            )
-            self.log_execution(context, f"❌ {error}", "ERROR")
-            return NodeExecutionResult(
-                status=ExecutionStatus.ERROR,
-                error_message=error,
-                error_details={
-                    "status_code": update_response.status_code,
-                    "response": update_response.text,
-                },
-            )
+        return NodeExecutionResult(
+            status=ExecutionStatus.SUCCESS,
+            output_data=output,
+            metadata={
+                "node_type": "external_action",
+                "integration": self.integration_name,
+                "operation": operation,
+            },
+        )
 
 
 __all__ = ["GoogleCalendarExternalAction"]
