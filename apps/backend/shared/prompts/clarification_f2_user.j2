@@ -1,15 +1,7 @@
-{% if conversation_history %}
-## Conversation History
-{{ conversation_history }}
----
-{% endif %}
-
-## Current Request
-**User's message:** {{ user_message }}
+User request: {{ user_message }}
 
 {% if existing_intent %}
-**Current understanding:** {{ existing_intent }}
+Previous understanding: {{ existing_intent }}
 {% endif %}
 
-## Your Task
-Based on the above information, analyze the user's workflow request and respond appropriately.
+Respond with JSON format only.
