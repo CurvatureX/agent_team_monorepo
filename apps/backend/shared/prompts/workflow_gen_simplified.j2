@@ -33,6 +33,40 @@ TRIGGER, EXTERNAL_ACTION, AI_AGENT, ACTION, FLOW, HUMAN_IN_THE_LOOP, TOOL, MEMOR
 
 Note: TOOL/MEMORY attach to AI_AGENT via attached_nodes, not connections.
 
+## 🚨 CRITICAL: Attached Nodes (AI_AGENT only)
+- AI_AGENT nodes may have `attached_nodes`: an array of node IDs for TOOL and MEMORY nodes that augment the agent.
+- TOOL and MEMORY nodes MUST NOT appear in the `connections` array.
+- When counting required connections (N-1), EXCLUDE TOOL and MEMORY nodes (they are not workflow steps).
+- Keep TOOL/MEMORY nodes in the `nodes` list, but they have no ports and are executed within the AI_AGENT context.
+
+### What is `attached_nodes`
+- `attached_nodes` is an array that belongs ONLY to AI_AGENT nodes.
+- It lists the IDs of TOOL nodes (MCP tools) and MEMORY nodes that the AI agent can use internally.
+- TOOL and MEMORY nodes are not executed as independent steps; they are used within the AI agent's execution environment.
+
+### Rules for `attached_nodes`
+- Only AI_AGENT nodes may contain `attached_nodes`.
+- If the workflow includes any TOOL (MCP Tool) or MEMORY nodes, you MUST add their IDs to the relevant AI_AGENT node's `attached_nodes` array.
+- TOOL and MEMORY nodes must NOT appear as `from_node` or `to_node` in any connection.
+- TOOL and MEMORY nodes typically have no ports: set `input_ports: []` and `output_ports: []`.
+
+### Example: AI Agent with Attached TOOL and MEMORY
+```json
+{
+  "nodes": [
+    {"id": "trigger1", "type": "TRIGGER", "subtype": "CRON", "name": "cron_trigger", "position": {"x": 100, "y": 100}, "configurations": {}, "input_params": {}, "output_params": {}, "input_ports": [], "output_ports": []},
+    {"id": "memory1", "type": "MEMORY", "subtype": "CONVERSATION_BUFFER", "name": "conversation_memory", "position": {"x": 250, "y": 180}, "configurations": {}, "input_params": {}, "output_params": {}, "input_ports": [], "output_ports": []},
+    {"id": "tool1", "type": "TOOL", "subtype": "NOTION_MCP_TOOL", "name": "notion_tool", "position": {"x": 250, "y": 260}, "configurations": {}, "input_params": {}, "output_params": {}, "input_ports": [], "output_ports": []},
+    {"id": "agent1", "type": "AI_AGENT", "subtype": "OPENAI_CHATGPT", "name": "assistant_ai", "position": {"x": 400, "y": 180}, "configurations": {"model": "gpt-4o-mini", "system_prompt": "You are a helpful assistant."}, "input_params": {}, "output_params": {}, "input_ports": [], "output_ports": [], "attached_nodes": ["memory1", "tool1"]},
+    {"id": "action1", "type": "EXTERNAL_ACTION", "subtype": "NOTION", "name": "notion_action", "position": {"x": 600, "y": 180}, "configurations": {}, "input_params": {}, "output_params": {}, "input_ports": [], "output_ports": []}
+  ],
+  "connections": [
+    {"id": "conn1", "from_node": "trigger1", "to_node": "agent1", "output_key": "result", "conversion_function": "def convert(input_data: Dict[str, Any]) -> Dict[str, Any]: return input_data.get('data', input_data)"},
+    {"id": "conn2", "from_node": "agent1", "to_node": "action1", "output_key": "result", "conversion_function": "def convert(input_data: Dict[str, Any]) -> Dict[str, Any]: return input_data.get('data', input_data)"}
+  ]
+}
+```
+
 ## Required Structure
 ```json
 {
@@ -53,6 +87,7 @@ Note: TOOL/MEMORY attach to AI_AGENT via attached_nodes, not connections.
     "output_params": {},
     "input_ports": [],
     "output_ports": []
+    // For AI_AGENT only: "attached_nodes": ["tool_id", "memory_id"]
   }],
   "connections": [{
     "id": "connection_id",
