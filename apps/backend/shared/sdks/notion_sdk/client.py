@@ -555,6 +555,53 @@ class NotionClient:
             "total_count": len(results),
         }
 
+    async def list_databases(
+        self,
+        query: Optional[str] = None,
+        start_cursor: Optional[str] = None,
+        page_size: int = 100,
+        sort: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """List databases accessible to the integration token.
+
+        Args:
+            query: Optional search keyword to narrow down databases
+            start_cursor: Pagination cursor from previous call
+            page_size: Number of databases per page (max 100)
+            sort: Optional sort directive following Notion API format
+
+        Returns:
+            Dict containing databases list and pagination metadata
+        """
+
+        payload: Dict[str, Any] = {"page_size": min(page_size, 100)}
+
+        if query:
+            payload["query"] = query
+
+        payload["filter"] = {"property": "object", "value": "database"}
+
+        if sort:
+            payload["sort"] = sort
+
+        if start_cursor:
+            payload["start_cursor"] = start_cursor
+
+        response = await self._make_request("POST", "search", payload)
+
+        databases = [
+            NotionDatabase.from_dict(result)
+            for result in response.get("results", [])
+            if result.get("object") == "database"
+        ]
+
+        return {
+            "databases": databases,
+            "next_cursor": response.get("next_cursor"),
+            "has_more": response.get("has_more", False),
+            "total_count": len(databases),
+        }
+
     # User operations
     async def get_user(self, user_id: str) -> NotionUser:
         """

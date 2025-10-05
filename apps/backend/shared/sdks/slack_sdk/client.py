@@ -273,19 +273,79 @@ class SlackWebClient:
         response = self._make_request("GET", "conversations.info", data)
         return response.get("channel", {})
 
-    def list_channels(self, types: str = "public_channel,private_channel") -> List[Dict]:
+    def list_channels(
+        self,
+        types: str = "public_channel,private_channel",
+        limit: int = 100,
+        cursor: Optional[str] = None,
+    ) -> List[Dict]:
         """
-        List channels in the workspace.
+        List channels in the workspace (legacy helper).
 
         Args:
             types: Comma-separated list of channel types to include
+            limit: Number of channels to return (Slack default 100, max 1000)
+            cursor: Pagination cursor returned by Slack
 
         Returns:
             List of channel dictionaries
         """
-        data = {"types": types}
+        result = self.list_channels_with_cursor(types=types, limit=limit, cursor=cursor)
+        return result["channels"]
+
+    def list_channels_with_cursor(
+        self,
+        types: str = "public_channel,private_channel",
+        limit: int = 100,
+        cursor: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        List channels including pagination metadata.
+
+        Args:
+            types: Comma-separated list of channel types to include
+            limit: Number of channels to return (Slack default 100, max 1000)
+            cursor: Pagination cursor returned by Slack
+
+        Returns:
+            Dict containing channels list and next cursor
+        """
+        data: Dict[str, Any] = {"types": types, "limit": max(1, min(limit, 1000))}
+        if cursor:
+            data["cursor"] = cursor
+
         response = self._make_request("GET", "conversations.list", data)
-        return response.get("channels", [])
+        return {
+            "channels": response.get("channels", []),
+            "next_cursor": response.get("response_metadata", {}).get("next_cursor"),
+            "response_metadata": response.get("response_metadata", {}),
+        }
+
+    def list_users_with_cursor(
+        self,
+        limit: int = 100,
+        cursor: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        List workspace users with pagination metadata.
+
+        Args:
+            limit: Number of users to return (Slack default 100, max 200)
+            cursor: Pagination cursor returned by Slack
+
+        Returns:
+            Dict containing users list and next cursor
+        """
+        data: Dict[str, Any] = {"limit": max(1, min(limit, 200))}
+        if cursor:
+            data["cursor"] = cursor
+
+        response = self._make_request("GET", "users.list", data)
+        return {
+            "members": response.get("members", []),
+            "next_cursor": response.get("response_metadata", {}).get("next_cursor"),
+            "response_metadata": response.get("response_metadata", {}),
+        }
 
     def auth_test(self) -> Dict:
         """
