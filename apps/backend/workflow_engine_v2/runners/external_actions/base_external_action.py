@@ -152,16 +152,21 @@ class BaseExternalAction(ABC):
         self, operation: str, output_data: Dict[str, Any]
     ) -> NodeExecutionResult:
         """Create a standardized success result."""
-        base_output = {
-            "integration_type": self.integration_name,
-            "operation": operation,
-            "timestamp": datetime.now().isoformat(),
-        }
-        base_output.update(output_data)
+        # Add standard success flag if not present
+        if "success" not in output_data:
+            output_data["success"] = True
+
+        # Add execution metadata
+        if "execution_metadata" not in output_data:
+            output_data["execution_metadata"] = {
+                "integration_type": self.integration_name,
+                "operation": operation,
+                "timestamp": datetime.now().isoformat(),
+            }
 
         return NodeExecutionResult(
             status=ExecutionStatus.SUCCESS,
-            output_data={"main": base_output},
+            output_data=output_data,
             metadata={
                 "node_type": "external_action",
                 "integration": self.integration_name,

@@ -46,10 +46,12 @@ class GitHubAuth:
         if not self._parsed_private_key:
             raise GitHubAuthError("Private key not properly initialized")
 
-        now = datetime.utcnow()
+        import time
+
+        now = int(time.time())
         payload = {
-            "iat": int(now.timestamp()) - 60,  # Issued 1 minute ago to account for clock skew
-            "exp": int((now + timedelta(minutes=expiration_minutes)).timestamp()),
+            "iat": now - 60,  # Issued 1 minute ago to account for clock skew
+            "exp": now + (expiration_minutes * 60),
             "iss": self.app_id,
         }
 
@@ -67,14 +69,19 @@ class GitHubAuth:
         expires_at = datetime.fromisoformat(token_data["expires_at"].replace("Z", "+00:00"))
 
         # Consider token expired if it expires within 5 minutes
-        return expires_at > datetime.utcnow() + timedelta(minutes=5)
+        from datetime import timezone
+
+        now_utc = datetime.now(timezone.utc)
+        return expires_at > now_utc + timedelta(minutes=5)
 
     def cache_installation_token(self, installation_id: int, token: str, expires_at: str):
         """Cache installation token for reuse."""
+        from datetime import timezone
+
         self._installation_tokens[installation_id] = {
             "token": token,
             "expires_at": expires_at,
-            "cached_at": datetime.utcnow().isoformat(),
+            "cached_at": datetime.now(timezone.utc).isoformat(),
         }
 
     def get_cached_installation_token(self, installation_id: int) -> Optional[str]:
