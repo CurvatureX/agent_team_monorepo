@@ -300,7 +300,9 @@ class WorkflowEngineHTTPClient:
         self,
         workflow_id: str,
         user_id: str,
-        input_data: Optional[Dict[str, Any]] = None,
+        node_inputs: Optional[Dict[str, Any]] = None,
+        *,
+        trigger_data: Optional[Dict[str, Any]] = None,
         trace_id: Optional[str] = None,
         start_from_node: Optional[str] = None,
         skip_trigger_validation: bool = False,
@@ -334,11 +336,17 @@ class WorkflowEngineHTTPClient:
 
             start_time = time.time()
 
+            trigger_payload: Dict[str, Any] = (
+                trigger_data if trigger_data is not None else (node_inputs or {})
+            )
+
             v2_payload: Dict[str, Any] = {
                 "trigger_type": "manual",
-                "trigger_data": input_data or {},
+                "trigger_data": trigger_payload,
                 "async_execution": async_execution,
             }
+            if node_inputs:
+                v2_payload["inputs"] = node_inputs
             if trace_id:
                 v2_payload["trace_id"] = trace_id
             if start_from_node:

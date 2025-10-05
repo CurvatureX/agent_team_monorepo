@@ -7,7 +7,7 @@ Modern workflow execution endpoints with comprehensive logging and progress trac
 import logging
 import time
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
@@ -64,6 +64,24 @@ async def execute_workflow_by_id(
         trigger_data = request.get("trigger_data") or request.get("input_data") or trigger_payload
         trace_id = request.get("trace_id")
         async_execution = request.get("async_execution", True)
+        start_from = request.get("start_from_node")
+        start_nodes: Optional[List[str]] = None
+        if start_from:
+            if isinstance(start_from, (list, tuple)):
+                start_nodes = [str(node) for node in start_from]
+            else:
+                start_nodes = [str(start_from)]
+
+        node_inputs = request.get("inputs")
+        if node_inputs and not isinstance(node_inputs, dict):
+            logger.warning(
+                "⚠️ [v2] Ignoring non-dict inputs payload (%s)", type(node_inputs).__name__
+            )
+            node_inputs = None
+        elif isinstance(node_inputs, dict) and not node_inputs:
+            node_inputs = None
+        elif isinstance(node_inputs, dict) and not start_nodes:
+            start_nodes = [str(node_id) for node_id in node_inputs.keys()]
 
         # Retrieve the actual workflow and user_id from the workflow service
         workflow_result = workflow_service.get_workflow_with_user_id(workflow_id)
@@ -127,6 +145,8 @@ async def execute_workflow_by_id(
                         trigger=trigger,
                         trace_id=trace_id,
                         execution_id=execution_id,
+                        start_nodes=start_nodes,
+                        initial_inputs=node_inputs,
                     )
                     logger.info(
                         f"✅ [v2] Background execution completed for {execution_id}: {execution.status}"
@@ -151,7 +171,11 @@ async def execute_workflow_by_id(
         else:
             # Execute synchronously
             execution = await engine.execute_workflow(
-                workflow=workflow, trigger=trigger, trace_id=trace_id
+                workflow=workflow,
+                trigger=trigger,
+                trace_id=trace_id,
+                start_nodes=start_nodes,
+                initial_inputs=node_inputs,
             )
 
             logger.info(

@@ -102,6 +102,7 @@ def execute_conversion_function_flexible(
                 "bool": bool,
                 "list": list,
                 "dict": dict,
+                "isinstance": isinstance,
                 "range": range,
                 "enumerate": enumerate,
                 "zip": zip,
@@ -221,6 +222,8 @@ class ExecutionEngine:
         trigger: TriggerInfo,
         trace_id: Optional[str] = None,
         execution_id: Optional[str] = None,
+        start_nodes: Optional[list[str]] = None,
+        initial_inputs: Optional[Dict[str, Any]] = None,
     ) -> Execution:
         """Execute workflow synchronously with optional trace ID for debugging."""
         self.validate_against_specs(workflow)
@@ -259,6 +262,16 @@ class ExecutionEngine:
         # Track data flow per node input ports
         pending_inputs: Dict[str, Dict[str, Any]] = {node_id: {} for node_id in graph.nodes.keys()}
 
+        if initial_inputs:
+            for node_id, payload in initial_inputs.items():
+                if node_id not in pending_inputs:
+                    continue
+                target_bucket = pending_inputs[node_id]
+                if isinstance(payload, dict):
+                    target_bucket.update(payload)
+                else:
+                    target_bucket["result"] = payload
+
         # Initialize node execution records
         for node_id, node in graph.nodes.items():
             workflow_execution.node_executions[node_id] = NodeExecution(
@@ -281,9 +294,17 @@ class ExecutionEngine:
         # New task-queue execution (supports fan-out and retries)
         executed_main: set[str] = set()
         run_counts: Dict[str, int] = {}
+        if start_nodes:
+            normalized = []
+            for node_id in start_nodes:
+                if node_id in graph.nodes:
+                    normalized.append(node_id)
+            initial_ready = normalized or self._get_initial_ready_nodes(graph)
+        else:
+            initial_ready = self._get_initial_ready_nodes(graph)
+
         queue: List[Dict[str, Any]] = [
-            {"node_id": node_id, "override": None}
-            for node_id in self._get_initial_ready_nodes(graph)
+            {"node_id": node_id, "override": None} for node_id in initial_ready
         ]
         while queue:
             task = queue.pop(0)
@@ -748,11 +769,20 @@ class ExecutionEngine:
         trigger: TriggerInfo,
         trace_id: Optional[str] = None,
         execution_id: Optional[str] = None,
+        start_nodes: Optional[List[str]] = None,
+        initial_inputs: Optional[Dict[str, Any]] = None,
     ) -> Execution:
         """Execute workflow asynchronously."""
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
-            self._pool, self.run, workflow, trigger, trace_id, execution_id
+            self._pool,
+            self.run,
+            workflow,
+            trigger,
+            trace_id,
+            execution_id,
+            start_nodes,
+            initial_inputs,
         )
 
     async def execute_workflow(
@@ -761,9 +791,18 @@ class ExecutionEngine:
         trigger: TriggerInfo,
         trace_id: Optional[str] = None,
         execution_id: Optional[str] = None,
+        start_nodes: Optional[List[str]] = None,
+        initial_inputs: Optional[Dict[str, Any]] = None,
     ) -> Execution:
         """Async alias for run_async - for compatibility with ModernExecutionEngine API."""
-        return await self.run_async(workflow, trigger, trace_id, execution_id)
+        return await self.run_async(
+            workflow,
+            trigger,
+            trace_id,
+            execution_id,
+            start_nodes,
+            initial_inputs,
+        )
 
         # Execute nodes in dependency order with readiness checks
         executed: set[str] = set()

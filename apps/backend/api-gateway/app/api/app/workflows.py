@@ -757,10 +757,16 @@ async def execute_workflow(
         http_client = await get_workflow_engine_client()
 
         # Execute workflow asynchronously via HTTP so API responds immediately
+        node_inputs = execution_request.inputs or None
+        trigger_data = execution_request.trigger_data
+        if not trigger_data and execution_request.metadata:
+            trigger_data = execution_request.metadata.get("trigger_data")
+
         engine_response = await http_client.execute_workflow(
             workflow_id,
             deps.current_user.sub,
-            execution_request.inputs,
+            node_inputs,
+            trigger_data=trigger_data,
             trace_id=getattr(deps.request.state, "trace_id", None),
             start_from_node=execution_request.start_from_node,
             skip_trigger_validation=execution_request.skip_trigger_validation,
@@ -1325,7 +1331,8 @@ async def manual_invoke_trigger(
         execution_result = await workflow_engine_client.execute_workflow(
             workflow_id=workflow_id,
             user_id=deps.current_user.sub,
-            input_data=trigger_data,  # Pass trigger data as input_data
+            node_inputs=None,
+            trigger_data=trigger_data,
             trace_id=getattr(deps.request.state, "trace_id", None),
             access_token=deps.access_token,  # Pass JWT token for authentication
             async_execution=True,  # Return immediately without waiting for completion

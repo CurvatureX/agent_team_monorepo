@@ -160,6 +160,9 @@ class WorkflowExecutionRequest(BaseModel):
     """工作流执行请求模型"""
 
     inputs: Dict[str, Any] = Field(default_factory=dict, description="执行时的输入参数")
+    trigger_data: Optional[Dict[str, Any]] = Field(
+        default=None, description="覆盖触发器数据（用于手动执行或跳过触发器时的上下文）"
+    )
     settings: Optional[Dict[str, Any]] = Field(default=None, description="执行时的特殊设置")
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="执行元数据")
     start_from_node: Optional[str] = Field(default=None, description="从指定节点开始执行")
