@@ -42,13 +42,13 @@ class SlackExternalActionSpec(BaseNodeSpec):
                 },
                 "channel": {
                     "type": "string",
-                    "default": "#general",
+                    "default": "{{$placeholder}}",
                     "description": "目标频道（#channel 或 @user 或 channel_id）",
                     "required": True,
                 },
                 "bot_token": {
                     "type": "string",
-                    "default": "",
+                    "default": "{{$placeholder}}",
                     "description": "Slack Bot Token (xoxb-...)",
                     "required": True,
                     "sensitive": True,
@@ -190,7 +190,7 @@ class SlackExternalActionSpec(BaseNodeSpec):
                     "description": "Send a text message to a Slack channel",
                     "configurations": {
                         "action_type": "send_message",
-                        "channel": "#general",
+                        "channel": "{{$placeholder}}",
                         "message_format": "text",
                         "use_oauth": True,
                     },
@@ -214,7 +214,7 @@ class SlackExternalActionSpec(BaseNodeSpec):
                     "description": "Send a formatted message using Slack blocks",
                     "configurations": {
                         "action_type": "send_message",
-                        "channel": "#alerts",
+                        "channel": "{{$placeholder}}",
                         "message_format": "blocks",
                     },
                     "input_example": {
@@ -252,7 +252,7 @@ class SlackExternalActionSpec(BaseNodeSpec):
                     "description": "Reply to an existing message thread",
                     "configurations": {
                         "action_type": "send_message",
-                        "channel": "#development",
+                        "channel": "{{$placeholder}}",
                         "thread_ts": "1706441000.111222",
                     },
                     "input_example": {

@@ -13,7 +13,7 @@ YOU MUST GENERATE CONNECTIONS IN THE WORKFLOW JSON - NO EMPTY CONNECTIONS ARRAY!
     "from_node": "first_node_id",
     "to_node": "second_node_id",
     "output_key": "result",
-    "conversion_function": "lambda input_data: input_data['data']"
+    "conversion_function": ""
   }
 ]
 ```
@@ -26,7 +26,7 @@ YOU MUST GENERATE CONNECTIONS IN THE WORKFLOW JSON - NO EMPTY CONNECTIONS ARRAY!
     "from_node": "cron_trigger_1",
     "to_node": "http_action_1",
     "output_key": "result",
-    "conversion_function": "lambda input_data: input_data['data']"
+    "conversion_function": ""
   }
 ]
 ```
@@ -84,28 +84,40 @@ Use your available MCP tools to generate a complete workflow. Follow this exact 
    - DO NOT call get_node_details multiple times with the same nodes
    - Pass all nodes in one array: `{"nodes": [{"node_type": "...", "subtype": "..."}, ...]}`
 
-**🚨 CRITICAL - MCP Type Compliance is MANDATORY:**
-When MCP returns node specifications, each parameter includes a "type" field that MUST be strictly followed:
+**🚨 CRITICAL - Parameter Generation Strategy:**
+When MCP returns node specifications, follow this EXACT priority order for parameter values:
 
-- `type="integer"` → Generate ONLY numbers: `123`, `45678`, `999`
-  - ❌ WRONG: `"123"`, `"mock-id"`, `"{{id}}"`
-  - ✅ RIGHT: `123`, `45678`, `999`
+**Priority 1: User-Specified Values**
+- If user mentions specific values, use those EXACT values
+- Example: User says "send to #general channel" → use "#general"
 
-- `type="string"` → Generate ONLY proper strings: `"example text"`, `"user@email.com"`
-  - ❌ WRONG: `"mock-something"`, `"{{variable}}"`, `123` (without quotes)
-  - ✅ RIGHT: `"Hello World"`, `"user@example.com"`, `"Production Server"`
+**Priority 2: Required Parameters (MCP required: true) WITHOUT User Input**
+- **MUST** use EXACTLY the string `{{"{{$placeholder}}"}}`
+- **NEVER** use any other format like:
+  - ❌ "xoxb-slack-bot-token"
+  - ❌ "notion-integration-token"
+  - ❌ "YOUR_API_KEY_HERE"
+  - ❌ "T1234567890"
+  - ❌ 123456789 (fake numbers)
+- **ONLY** use: ✅ `{{"{{$placeholder}}"}}`
 
-- `type="boolean"` → Generate ONLY: `true` or `false`
-  - ❌ WRONG: `"true"`, `1`, `"false"`
-  - ✅ RIGHT: `true`, `false`
+**Priority 3: Optional Parameters (MCP required: false)**
+- If user hasn't specified a value → OMIT the parameter entirely
 
-- `type="array"` → Generate JSON arrays: `["item1", "item2"]`, `[]`
-- `type="object"` → Generate JSON objects: `{"key": "value"}`, `{}`
+**Type Compliance Examples:**
+- `type="integer"` + user didn't specify → `{{"{{$placeholder}}"}}`
+- `type="string"` + user didn't specify → `{{"{{$placeholder}}"}}`
+- `type="boolean"` + user didn't specify → `{{"{{$placeholder}}"}}`
+- `type="array"` + user didn't specify → `{{"{{$placeholder}}"}}`
+- `type="object"` + user didn't specify → `{{"{{$placeholder}}"}}`
 
-**MCP's type field is the source of truth - ignore parameter names when determining types!**
+**MCP's required field determines placeholder usage - type only affects final validation!**
 
 **🚨 CRITICAL - Complete Workflow Requirement:**
 You MUST generate a COMPLETE workflow that fully implements the user's requirements.
+
+**🚨 CRITICAL - Node Names Must NOT Contain Spaces:**
+All node names MUST use underscores/dashes only (e.g. "slack_trigger", "ai_agent_1", "notion_action").
 
 For the given intent: "{{ intent_summary }}"
 - Analyze what ALL the steps are needed to complete this workflow end-to-end

@@ -24,7 +24,7 @@ class NotionActionSpec(BaseNodeSpec):
             configurations={
                 "notion_token": {
                     "type": "string",
-                    "default": "",
+                    "default": "{{$placeholder}}",
                     "description": "Notion集成令牌",
                     "required": True,
                     "sensitive": True,

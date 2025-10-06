@@ -24,7 +24,7 @@ class GoogleCalendarActionSpec(BaseNodeSpec):
             configurations={
                 "access_token": {
                     "type": "string",
-                    "default": "",
+                    "default": "{{$placeholder}}",
                     "description": "OAuth2 access token for Google Calendar API authentication",
                     "required": True,
                     "sensitive": True,

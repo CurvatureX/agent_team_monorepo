@@ -28,7 +28,7 @@ class NotionMCPToolSpec(BaseNodeSpec):
             configurations={
                 "access_token": {
                     "type": "string",
-                    "default": "",
+                    "default": "{{$placeholder}}",
                     "description": "Notion OAuth access token (optional - auto-fetched from oauth_tokens table by user_id if not provided)",
                     "required": False,
                     "sensitive": True,

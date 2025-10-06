@@ -161,6 +161,26 @@ class AIAgentRunner(NodeRunner):
 
         # Add standardized output field for conversion functions
         output["output"] = ai_response
+
+        # Parse JSON responses to make structured data available to conversion functions
+        if ai_response and isinstance(ai_response, str):
+            try:
+                import json
+                # Try to parse AI response as JSON
+                parsed_response = json.loads(ai_response.strip())
+                if isinstance(parsed_response, dict):
+                    # Merge parsed JSON fields into output for easy access by conversion functions
+                    output["parsed_json"] = parsed_response
+                    # Also add individual fields to the top level for backward compatibility
+                    for key, value in parsed_response.items():
+                        if key not in output:  # Don't overwrite existing fields
+                            output[key] = value
+                    logger.info(f"✅ Parsed AI response as JSON with {len(parsed_response)} fields")
+                else:
+                    logger.debug("🔍 AI response is valid JSON but not an object")
+            except (json.JSONDecodeError, ValueError):
+                logger.debug("🔍 AI response is not valid JSON - keeping as string")
+
         return {"result": output}
 
     def _extract_user_message(self, main_input: Dict[str, Any]) -> str:
