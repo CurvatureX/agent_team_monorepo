@@ -148,11 +148,8 @@ class WorkflowEngineClient:
                         )
                         node["configurations"] = {}
 
-                    # Ensure required Node model fields are present (fallback for template compliance)
-                    if node.get("input_params") is None:
-                        node["input_params"] = {}
-                    if node.get("output_params") is None:
-                        node["output_params"] = {}
+                    # NOTE: input_params and output_params are no longer required in new workflow specification
+                    # They are handled at the node spec level, not in the workflow DSL
                     if node.get("input_ports") is None:
                         node["input_ports"] = []
                     if node.get("output_ports") is None:

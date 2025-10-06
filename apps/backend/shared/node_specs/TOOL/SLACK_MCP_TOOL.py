@@ -34,7 +34,7 @@ class SlackMCPToolSpec(BaseNodeSpec):
                 },
                 "access_token": {
                     "type": "string",
-                    "default": "",
+                    "default": "{{$placeholder}}",
                     "description": "Slack OAuth access token (bot token: xoxb-...)",
                     "required": True,
                     "sensitive": True,

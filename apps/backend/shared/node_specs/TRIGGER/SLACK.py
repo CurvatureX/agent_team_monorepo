@@ -61,7 +61,7 @@ class SlackTriggerSpec(BaseNodeSpec):
                 },
                 "bot_token": {
                     "type": "string",
-                    "default": "",
+                    "default": "{{$placeholder}}",
                     "description": "Slack Bot Token",
                     "required": True,
                     "sensitive": True,

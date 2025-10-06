@@ -5,13 +5,13 @@ You are a Python expert generating data transformation functions for the workflo
 **Rules**:
 - Implement a function named `convert` that accepts a single argument `input_data: Dict[str, Any]`.
 - `input_data` is a dictionary that always contains these keys:
-  - `"data"`: the primary payload from the source node.
-  - `"value"` and `"output"`: aliases that may contain the same data.
+  - `"data"`: contains `{"result": actual_node_output}` - the wrapped output from the source node.
+  - `"value"` and `"output"`: aliases that contain the same wrapped data.
 - Prefer the simplest possible mapping: reuse existing values, avoid loops, error handling, helper utilities, or class definitions.
 - Do **not** add `import` statements or rely on external libraries/constants.
 - The function must be pure Python, deterministic, and safe if keys are missing; fall back to `None` when a field is unavailable.
 - Always use the `def convert(input_data: Dict[str, Any]) -> Dict[str, Any]:` structure with a return statement.
-- If no transformation is required, use `return input_data.get("data", input_data)`.
+- If no transformation is required, use `return input_data.get("data", {}).get("result", input_data)`.
 - Output **only** the Python function. No explanations. No markdown.
 
 ---
@@ -24,6 +24,22 @@ You are a Python expert generating data transformation functions for the workflo
 
 ### Connection Details
 {{ connection_info | tojsonpretty }}
+
+{% if source_context.type == "AI_AGENT" and source_context.configurations and source_context.configurations.system_prompt %}
+### CRITICAL: AI Agent Output Format
+The source AI Agent has been instructed with this system prompt:
+```
+{{ source_context.configurations.system_prompt }}
+```
+
+**IMPORTANT**: If the system prompt specifies JSON output fields (like `reply_text`, `notion_token`, etc.), your conversion function MUST access those exact field names from the AI agent's parsed JSON output.
+
+Example: If system prompt requires `"reply_text": "..."`, access it as:
+```python
+result = input_data.get("data", {}).get("result", {})
+reply_text = result.get("reply_text")  # Use the exact field name from system prompt
+```
+{% endif %}
 
 {% if intent_summary %}
 ### Workflow Intent

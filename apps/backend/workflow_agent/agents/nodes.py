@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CONVERSION_FUNCTION = (
     "def convert(input_data: Dict[str, Any]) -> Dict[str, Any]:\n"
-    "    return input_data.get('data', input_data)"
+    "    return input_data.get('data', {}).get('result', input_data)"
 )
 
 
@@ -646,26 +646,12 @@ Check the node's expected input format and structure your response accordingly.
         if not format_prompt:
             return current_prompt
 
-        # Add a clear section about output format requirements
+        # Add simple format requirements
         enhanced_prompt = current_prompt
 
         # Check if prompt already has format requirements
-        if "output format" not in current_prompt.lower() and "json" not in current_prompt.lower():
-            node_name = next_node.get("name", next_node.get("subtype", "next node"))
-            node_subtype = next_node.get("subtype", "")
-
-            enhanced_prompt += f"""
-
-=== CRITICAL OUTPUT FORMAT REQUIREMENT ===
-Your response will be passed to a {node_subtype or node_name} node.
-{format_prompt}
-
-IMPORTANT:
-- Your entire response should be ONLY the JSON object
-- Do NOT include any explanation, markdown formatting, or code blocks
-- The JSON must be valid and parseable
-- All required fields must be present
-"""
+        if "json" not in current_prompt.lower():
+            enhanced_prompt += f"\n\n{format_prompt}"
 
         return enhanced_prompt
 
@@ -673,64 +659,25 @@ IMPORTANT:
         self, node_spec: dict, node_type: str, node_subtype: str
     ) -> str:
         """Generate format prompt from MCP node specification."""
-        format_prompt = """
-Your output MUST match the expected input format for the next node.
-"""
-
-        # Extract parameters from the spec
+        # Extract required parameters only
         parameters = node_spec.get("parameters", [])
         required_params = [p for p in parameters if p.get("required", False)]
-        optional_params = [p for p in parameters if not p.get("required", False)]
 
-        if parameters:
-            format_prompt += f"\nThe {node_subtype} node expects the following input:\n\n"
+        if not required_params:
+            return "Return JSON response."
 
-            # Build a JSON structure example based on parameters
-            format_prompt += "Required JSON structure:\n```json\n{\n"
+        # Build simple JSON structure with only required fields
+        json_fields = []
+        for param in required_params:
+            param_name = param.get("name", "param")
+            param_type = param.get("type", "string")
+            example_value = self._get_example_for_param_type(param_type, param_name)
+            json_fields.append(f'  "{param_name}": {example_value}')
 
-            # Add required parameters
-            if required_params:
-                for i, param in enumerate(required_params):
-                    param_name = param.get("name", "param")
-                    param_type = param.get("type", "string")
-                    param_desc = param.get("description", "")
-
-                    # Generate example value based on type
-                    example_value = self._get_example_for_param_type(param_type, param_name)
-
-                    format_prompt += f'    "{param_name}": {example_value}'
-                    if param_desc:
-                        format_prompt += f"  // {param_desc}"
-
-                    if i < len(required_params) - 1 or optional_params:
-                        format_prompt += ","
-                    format_prompt += "\n"
-
-            # Add optional parameters as comments
-            if optional_params:
-                format_prompt += "    // Optional fields:\n"
-                for param in optional_params[:3]:  # Show max 3 optional fields
-                    param_name = param.get("name", "param")
-                    param_type = param.get("type", "string")
-                    example_value = self._get_example_for_param_type(param_type, param_name)
-                    format_prompt += f'    // "{param_name}": {example_value}\n'
-
-            format_prompt += "}\n```\n"
-
-            # Add parameter descriptions if available
-            if required_params:
-                format_prompt += "\nRequired fields:\n"
-                for param in required_params:
-                    param_name = param.get("name")
-                    param_desc = param.get("description", "No description")
-                    param_type = param.get("type", "string")
-                    format_prompt += f"- **{param_name}** ({param_type}): {param_desc}\n"
-
-        # Add any specific notes based on node type
-        if node_type == "EXTERNAL_ACTION":
-            format_prompt += "\nIMPORTANT: This is an external API integration. Ensure your output exactly matches the API's expected format."
-        elif node_type == "ACTION":
-            format_prompt += "\nIMPORTANT: Structure your output as valid JSON that can be processed by the action node."
+        format_prompt = f"""Return JSON:
+{{
+{chr(10).join(json_fields)}
+}}"""
 
         return format_prompt
 

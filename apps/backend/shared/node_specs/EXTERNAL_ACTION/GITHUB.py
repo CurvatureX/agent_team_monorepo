@@ -24,7 +24,7 @@ class GitHubActionSpec(BaseNodeSpec):
             configurations={
                 "github_token": {
                     "type": "string",
-                    "default": "",
+                    "default": "{{$placeholder}}",
                     "description": "GitHub个人访问令牌",
                     "required": True,
                     "sensitive": True,
