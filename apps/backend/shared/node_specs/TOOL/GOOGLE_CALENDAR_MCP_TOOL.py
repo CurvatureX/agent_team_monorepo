@@ -34,7 +34,7 @@ class GoogleCalendarMCPToolSpec(BaseNodeSpec):
                 },
                 "access_token": {
                     "type": "string",
-                    "default": "",
+                    "default": "{{$placeholder}}",
                     "description": "Google OAuth access token for Calendar API authentication",
                     "required": True,
                     "sensitive": True,

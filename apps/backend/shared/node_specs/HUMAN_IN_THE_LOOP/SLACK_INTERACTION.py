@@ -39,7 +39,7 @@ class SlackInteractionSpec(BaseNodeSpec):
                 },
                 "bot_token": {
                     "type": "string",
-                    "default": "",
+                    "default": "{{$placeholder}}",
                     "description": "Slack Bot Token (xoxb-...)",
                     "required": True,
                     "sensitive": True,
