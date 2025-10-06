@@ -6,20 +6,20 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useWorkflow, useEditorUI } from '@/store/hooks';
 import { FormRenderer } from './FormRenderer';
-import { getNodeIcon, getCategoryColor } from '@/utils/nodeHelpers';
+import { getNodeIcon, getCategoryColor, getCategoryFromNodeType } from '@/utils/nodeHelpers';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogDescription, 
-  DialogFooter, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogTrigger 
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
 } from '@/components/ui/dialog';
 
 interface NodeDetailsPanelProps {
@@ -78,7 +78,8 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({ className })
     selectedNode.data.template.node_type,
     selectedNode.data.template.node_subtype
   );
-  const colorScheme = getCategoryColor(selectedNode.data.template.category);
+  const category = getCategoryFromNodeType(selectedNode.data.template.node_type);
+  const colorScheme = getCategoryColor(category);
 
   return (
     <AnimatePresence mode="wait">
@@ -130,7 +131,7 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({ className })
           </div>
 
           <Separator />
-          
+
           {/* Node info */}
           <div className="p-4 bg-muted/30">
             <div className="flex items-start gap-2">
@@ -138,13 +139,13 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({ className })
               <div className="flex-1 text-xs text-muted-foreground">
                 <p>{selectedNode.data.template.description}</p>
                 <p className="mt-1">
-                  Version: {selectedNode.data.template.version} • 
+                  Version: {selectedNode.data.template.version} •
                   ID: {selectedNode.data.template.id}
                 </p>
               </div>
             </div>
           </div>
-          
+
           <Separator />
 
           {/* Parameters form */}
@@ -165,7 +166,7 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({ className })
           </ScrollArea>
 
           <Separator />
-          
+
           {/* Actions */}
           <div className="p-4 space-y-2">
             <div className="flex gap-2">

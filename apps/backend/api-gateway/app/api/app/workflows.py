@@ -58,7 +58,7 @@ class WorkflowSummary(BaseModel):
     created_at: Optional[int] = None
     updated_at: Optional[int] = None
     version: str = "1.0"
-    logo_url: Optional[str] = None  # Mapped from icon_url
+    icon_url: Optional[str] = None
 
     # Keep deployment and execution status for list view
     deployment_status: Optional[str] = None
@@ -75,7 +75,7 @@ class WorkflowListResponseModel(BaseModel):
 
 
 class WorkflowDetailResponse(BaseModel):
-    """Workflow detail response with logo_url field"""
+    """Workflow detail response with icon_url field"""
 
     id: Optional[str] = None
     name: str
@@ -90,7 +90,7 @@ class WorkflowDetailResponse(BaseModel):
     created_at: Optional[int] = None
     updated_at: Optional[int] = None
     version: str = "1.0"
-    logo_url: Optional[str] = None  # Mapped from icon_url
+    icon_url: Optional[str] = None
 
 
 class WorkflowDetailResponseModel(BaseModel):
@@ -391,7 +391,6 @@ async def _inject_oauth_credentials(workflow_data: Dict[str, Any], user_id: str)
 
 @router.get("/node-templates", response_model=NodeTemplateListResponse)
 async def list_all_node_templates(
-    category: Optional[str] = None,
     node_type: Optional[str] = None,
     include_system: bool = True,
     deps: AuthenticatedDeps = Depends(),
@@ -411,7 +410,7 @@ async def list_all_node_templates(
         # Use node specs service directly for better performance and consistency
         specs_service = get_node_specs_api_service()
         templates = specs_service.list_all_node_templates(
-            category_filter=category, type_filter=node_type, include_system_templates=include_system
+            type_filter=node_type, include_system_templates=include_system
         )
 
         logger.info(f"Retrieved {len(templates)} node templates from specs")
@@ -693,7 +692,7 @@ async def list_workflows(
                 created_at=workflow_data.get("created_at"),
                 updated_at=workflow_data.get("updated_at"),
                 version=workflow_data.get("version", "1.0"),
-                logo_url=workflow_data.get("icon_url"),  # Map icon_url to logo_url
+                icon_url=workflow_data.get("icon_url"),
                 deployment_status=workflow_data.get("deployment_status"),
                 latest_execution_status=workflow_data.get("latest_execution_status"),
                 latest_execution_time=workflow_data.get("latest_execution_time"),

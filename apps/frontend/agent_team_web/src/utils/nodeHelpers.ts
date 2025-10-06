@@ -122,6 +122,21 @@ export const CATEGORY_COLORS: Record<NodeCategory, NodeColorSchemeWithStyles> = 
   },
 };
 
+// Map node_type to proper category
+export const getCategoryFromNodeType = (nodeType: string): NodeCategory => {
+  const typeMap: Record<string, NodeCategory> = {
+    'TRIGGER': 'Trigger',
+    'AI_AGENT': 'AI Agents',
+    'ACTION': 'Actions',
+    'EXTERNAL_ACTION': 'Actions',
+    'FLOW': 'Flow Control',
+    'HUMAN_IN_THE_LOOP': 'Human Interaction',
+    'MEMORY': 'Memory',
+    'TOOL': 'Tools',
+  };
+  return typeMap[nodeType.toUpperCase()] || 'Actions';
+};
+
 // Get color scheme for category
 export const getCategoryColor = (category: NodeCategory): NodeColorSchemeWithStyles => {
   return CATEGORY_COLORS[category] || {

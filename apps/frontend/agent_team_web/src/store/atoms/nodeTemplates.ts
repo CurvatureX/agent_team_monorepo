@@ -2,6 +2,21 @@ import { atom } from 'jotai';
 import type { NodeTemplate, NodeCategory } from '@/types/node-template';
 import { searchQueryAtom, selectedCategoryAtom } from './ui';
 
+// Helper function to derive category from node_type
+const getCategoryFromNodeType = (nodeType: string): NodeCategory => {
+  const typeMap: Record<string, NodeCategory> = {
+    'TRIGGER': 'Trigger',
+    'AI_AGENT': 'AI Agents',
+    'ACTION': 'Actions',
+    'EXTERNAL_ACTION': 'Actions',
+    'FLOW': 'Flow Control',
+    'HUMAN_IN_THE_LOOP': 'Human Interaction',
+    'MEMORY': 'Memory',
+    'TOOL': 'Tools',
+  };
+  return typeMap[nodeType.toUpperCase()] || 'Actions';
+};
+
 // Node templates data
 export const nodeTemplatesAtom = atom<NodeTemplate[]>([]);
 
@@ -26,8 +41,9 @@ export const filteredTemplatesAtom = atom((get) => {
       template.node_type.toLowerCase().includes(query) ||
       template.node_subtype.toLowerCase().includes(query);
 
-    // Filter by category
-    const matchesCategory = !category || template.category === category;
+    // Filter by category (derive from node_type)
+    const templateCategory = getCategoryFromNodeType(template.node_type);
+    const matchesCategory = !category || templateCategory === category;
 
     return matchesSearch && matchesCategory;
   });
@@ -36,9 +52,9 @@ export const filteredTemplatesAtom = atom((get) => {
 // Derived atom - templates grouped by category
 export const templatesByCategoryAtom = atom((get) => {
   const templates = get(nodeTemplatesAtom);
-  
+
   return templates.reduce((acc, template) => {
-    const category = template.category;
+    const category = getCategoryFromNodeType(template.node_type);
     if (!acc[category]) {
       acc[category] = [];
     }
@@ -51,18 +67,19 @@ export const templatesByCategoryAtom = atom((get) => {
 export const availableCategoriesAtom = atom((get) => {
   const templates = get(nodeTemplatesAtom);
   const categories = new Set<NodeCategory>();
-  
+
   templates.forEach((template) => {
-    categories.add(template.category);
+    const category = getCategoryFromNodeType(template.node_type);
+    categories.add(category);
   });
-  
+
   return Array.from(categories).sort();
 });
 
 // Derived atom - category counts
 export const categoryCounts = atom((get) => {
   const templatesByCategory = get(templatesByCategoryAtom);
-  
+
   return Object.entries(templatesByCategory).reduce((acc, [category, templates]) => {
     acc[category as NodeCategory] = templates.length;
     return acc;
@@ -75,19 +92,19 @@ export const loadNodeTemplatesAtom = atom(
   async (get, set) => {
     set(nodeTemplatesLoadingAtom, true);
     set(nodeTemplatesErrorAtom, null);
-    
+
     try {
       // Try to load from API first
       const response = await fetch('/api/node-templates');
       if (!response.ok) {
         throw new Error('Failed to fetch node templates');
       }
-      
+
       const data = await response.json();
       set(nodeTemplatesAtom, data.node_templates);
     } catch (error) {
       console.error('Failed to load node templates from API:', error);
-      
+
       // Fallback to local JSON file
       try {
         const localData = await import('@/lib/node-template.json');

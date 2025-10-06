@@ -10,22 +10,22 @@ async function handler(
   const resolvedParams = await params;
   const path = resolvedParams.path.join('/');
   const url = `${BACKEND_URL}/${path}${request.nextUrl.search}`;
-  
+
   console.log('Proxying request to:', url);
-  
+
   try {
     const headers = new Headers();
-    
+
     // Forward important headers (check both cases)
     const authHeader = request.headers.get('authorization') || request.headers.get('Authorization');
-    
+
     if (authHeader) {
       // Ensure proper capitalization for backend
       headers.set('Authorization', authHeader);
     }
     headers.set('Content-Type', 'application/json');
     headers.set('Accept', 'application/json');
-    
+
     // Get request body if present
     let body: string | undefined = undefined;
     if (request.method !== 'GET' && request.method !== 'HEAD') {
@@ -35,7 +35,7 @@ async function handler(
         // No body
       }
     }
-    
+
     const response = await fetch(url, {
       method: request.method,
       headers,
@@ -43,9 +43,9 @@ async function handler(
       // Important: don't follow redirects automatically
       redirect: 'manual',
     });
-    
+
     console.log('Backend response status:', response.status);
-    
+
     // Log error details for authentication failures
     if (response.status === 401 || response.status === 403) {
       const errorText = await response.text();
@@ -60,36 +60,38 @@ async function handler(
         { status: response.status }
       );
     }
-    
+
     // Handle redirects on the server side
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get('location');
       console.log('Backend redirect to:', location);
-      
+
       if (location) {
         // If it's redirecting to the full backend URL, follow it server-side
         if (location.startsWith('http')) {
-          // Force HTTPS for security (backend incorrectly redirects to HTTP)
-          const secureLocation = location.replace(/^http:\/\//, 'https://');
+          // Keep HTTP for localhost, only force HTTPS for production
+          const secureLocation = location.includes('localhost')
+            ? location
+            : location.replace(/^http:\/\//, 'https://');
           console.log('Following redirect to:', secureLocation);
           console.log('Redirect auth present:', headers.get('Authorization') ? 'Yes' : 'No');
-          
+
           const redirectResponse = await fetch(secureLocation, {
             method: request.method,
             headers,
             body,
           });
-          
+
           const data = await redirectResponse.text();
           const contentType = redirectResponse.headers.get('content-type');
-          
+
           if (contentType?.includes('application/json')) {
-            return NextResponse.json(JSON.parse(data), { 
-              status: redirectResponse.status 
+            return NextResponse.json(JSON.parse(data), {
+              status: redirectResponse.status
             });
           }
-          
-          return new NextResponse(data, { 
+
+          return new NextResponse(data, {
             status: redirectResponse.status,
             headers: {
               'Content-Type': contentType || 'text/plain',
@@ -98,25 +100,25 @@ async function handler(
         }
       }
     }
-    
+
     // Handle normal response
     const contentType = response.headers.get('content-type');
-    
+
     // For JSON responses, parse and return
     if (contentType?.includes('application/json')) {
       const data = await response.text();
-      const jsonResponse = NextResponse.json(JSON.parse(data), { 
-        status: response.status 
+      const jsonResponse = NextResponse.json(JSON.parse(data), {
+        status: response.status
       });
-      
+
       // Add cache headers for GET requests
       if (request.method === 'GET' && response.status === 200) {
         jsonResponse.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=30');
       }
-      
+
       return jsonResponse;
     }
-    
+
     // For non-JSON, stream the response (faster for large responses)
     if (response.body) {
       return new NextResponse(response.body, {
@@ -126,17 +128,17 @@ async function handler(
         }
       });
     }
-    
+
     // Fallback for responses without body
     const data = await response.text();
-    
-    return new NextResponse(data, { 
+
+    return new NextResponse(data, {
       status: response.status,
       headers: {
         'Content-Type': contentType || 'text/plain',
       }
     });
-    
+
   } catch (error) {
     console.error('Proxy error:', error);
     return NextResponse.json(

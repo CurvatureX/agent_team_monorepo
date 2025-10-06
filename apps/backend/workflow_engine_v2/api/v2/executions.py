@@ -343,39 +343,55 @@ async def get_execution_history(workflow_id: str, limit: int = 50):
     try:
         logger.info(f"📋 [v2] Getting execution history for workflow {workflow_id}")
 
-        # Use workflow status manager to get real execution data
-        status_manager = WorkflowStatusManagerV2()
+        # Use repository directly for full execution data with run_data and metadata
+        if execution_repository is None:
+            logger.warning("⚠️ [v2] Execution repository unavailable, returning empty results")
+            return {"executions": [], "total_count": 0, "has_more": False}
 
-        # Get execution summary which includes recent executions
-        summary = await status_manager.get_workflow_execution_summary(workflow_id)
+        # Get executions from workflow_executions table
+        executions = execution_repository.list_by_workflow(workflow_id, limit=limit)
 
-        # Extract recent executions from summary
-        executions = summary.get("recent_executions", [])
-
-        # If we have executions, format them properly
+        # Format executions for API response
         formatted_executions = []
-        for execution in executions[:limit]:
+        for exec_obj in executions:
             formatted_executions.append(
                 {
-                    "id": execution.get("execution_id", execution.get("id")),
-                    "execution_id": execution.get("execution_id", execution.get("id")),
-                    "workflow_id": workflow_id,
-                    "status": execution.get("status", "UNKNOWN"),
-                    "start_time": execution.get("start_time"),
-                    "end_time": execution.get("end_time"),
-                    "created_at": execution.get("created_at"),
-                    "updated_at": execution.get("updated_at"),
+                    "id": exec_obj.execution_id,
+                    "execution_id": exec_obj.execution_id,
+                    "workflow_id": exec_obj.workflow_id,
+                    "status": (
+                        exec_obj.status.value
+                        if hasattr(exec_obj.status, "value")
+                        else str(exec_obj.status)
+                    ),
+                    "start_time": exec_obj.start_time,
+                    "end_time": exec_obj.end_time,
+                    "created_at": getattr(exec_obj, "created_at", None),
+                    "updated_at": getattr(exec_obj, "updated_at", None),
+                    "error_message": getattr(exec_obj, "error_message", None),
+                    "duration_ms": (
+                        int((exec_obj.end_time - exec_obj.start_time) * 1000)
+                        if exec_obj.start_time and exec_obj.end_time
+                        else None
+                    ),
                 }
             )
 
+        logger.info(
+            f"✅ [v2] Retrieved {len(formatted_executions)} executions for workflow {workflow_id}"
+        )
+
         return {
-            "workflows": formatted_executions,
-            "total_count": summary.get("total_executions", len(formatted_executions)),
-            "has_more": summary.get("total_executions", 0) > limit,
+            "executions": formatted_executions,
+            "total_count": len(formatted_executions),
+            "has_more": len(formatted_executions) >= limit,
         }
     except Exception as e:
         logger.error(f"❌ [v2] Error getting execution history for workflow {workflow_id}: {e}")
-        return {"workflows": [], "total_count": 0, "has_more": False}
+        import traceback
+
+        logger.error(f"❌ [v2] Full traceback: {traceback.format_exc()}")
+        return {"executions": [], "total_count": 0, "has_more": False}
 
 
 @router.post("/executions/{execution_id}/cancel", response_model=CancelExecutionResponse)

@@ -13,40 +13,20 @@ import {
 import type { NodeCategory, NodeTemplate } from '@/types/node-template';
 import { useNodeTemplatesApi } from '@/lib/api';
 
-// Normalize category names to match the expected format
-const normalizeCategoryName = (category: string | null | undefined): NodeCategory => {
-  if (!category) {
-    // Default category based on node_type if category is null
-    return 'Actions'; // Default fallback
-  }
-  
-  const categoryMap: Record<string, NodeCategory> = {
-    'trigger': 'Trigger',
-    'triggers': 'Trigger',
-    'ai_agent': 'AI Agents',
-    'ai_agents': 'AI Agents',
-    'ai agents': 'AI Agents',
-    'action': 'Actions',
-    'actions': 'Actions',
-    'flow_control': 'Flow Control',
-    'flow control': 'Flow Control',
-    'human_interaction': 'Human Interaction',
-    'human interaction': 'Human Interaction',
-    'memory': 'Memory',
-    'tool': 'Tools',
-    'tools': 'Tools',
+// Map node_type to proper category
+export const getCategoryFromNodeType = (nodeType: string): NodeCategory => {
+  const typeMap: Record<string, NodeCategory> = {
+    'TRIGGER': 'Trigger',
+    'AI_AGENT': 'AI Agents',
+    'ACTION': 'Actions',
+    'EXTERNAL_ACTION': 'Actions',
+    'FLOW': 'Flow Control',
+    'HUMAN_IN_THE_LOOP': 'Human Interaction',
+    'MEMORY': 'Memory',
+    'TOOL': 'Tools',
   };
 
-  const lowerCategory = category.toLowerCase();
-  return categoryMap[lowerCategory] || (category as NodeCategory);
-};
-
-// Normalize templates data
-const normalizeTemplates = (templates: NodeTemplate[]): NodeTemplate[] => {
-  return templates.map(template => ({
-    ...template,
-    category: normalizeCategoryName(template.category),
-  }));
+  return typeMap[nodeType.toUpperCase()] || 'Actions';
 };
 
 export const useNodeTemplates = () => {
@@ -65,9 +45,7 @@ export const useNodeTemplates = () => {
   // Sync API data with Jotai atoms
   useEffect(() => {
     if (apiTemplates && apiTemplates.length > 0) {
-      // Normalize templates before setting
-      const normalized = normalizeTemplates(apiTemplates);
-      setTemplates(normalized);
+      setTemplates(apiTemplates);
       setLoading(false);
       setError(null);
     }
@@ -125,7 +103,7 @@ export const useNodeTemplates = () => {
       'Memory': { primary: '#f97316', secondary: '#fed7aa' },
       'Tools': { primary: '#06b6d4', secondary: '#cffafe' },
     };
-    
+
     return colorMap[category] || { primary: '#6b7280', secondary: '#f3f4f6' };
   }, []);
 
@@ -140,7 +118,7 @@ export const useNodeTemplates = () => {
       'Memory': 'database',
       'Tools': 'wrench',
     };
-    
+
     return iconMap[category] || 'circle';
   }, []);
 
@@ -153,18 +131,18 @@ export const useNodeTemplates = () => {
     templatesByCategory,
     categories,
     counts,
-    
+
     // Actions
     loadTemplates: () => {}, // No-op since SWR handles loading
     getTemplateById,
     getTemplatesByCategory,
     getTemplateByType,
     searchTemplates,
-    
+
     // Utilities
     getCategoryColor,
     getCategoryIcon,
-    
+
     // Setters
     setTemplates,
   };

@@ -21,7 +21,6 @@ class NodeSpecsApiService:
 
     def list_all_node_templates(
         self,
-        category_filter: Optional[str] = None,
         type_filter: Optional[str] = None,
         include_system_templates: bool = True,
     ) -> List[NodeTemplate]:
@@ -43,13 +42,6 @@ class NodeSpecsApiService:
             # Use list_all_specs() method instead of .values()
             for spec in node_spec_registry.list_all_specs():
                 # Apply filters
-                if (
-                    category_filter
-                    and hasattr(spec, "category")
-                    and spec.category != category_filter
-                ):
-                    continue
-
                 if type_filter and str(spec.type) != type_filter:
                     continue
 
@@ -147,7 +139,6 @@ class NodeSpecsApiService:
             "id": template_id,
             "name": display_name,
             "description": spec.description or "No description available",
-            "category": getattr(spec, "category", "general"),
             "node_type": node_type_str,
             "node_subtype": subtype_str,
             "version": getattr(spec, "version", "1.0"),
@@ -173,24 +164,6 @@ class NodeSpecsApiService:
         }
         return type_mapping.get(spec_type.lower(), "string")
 
-    def get_available_categories(self) -> List[str]:
-        """Get all available categories from node specs."""
-        try:
-            if not node_spec_registry:
-                return []
-
-            categories = set()
-            # Use list_all_specs() method instead of .values()
-            for spec in node_spec_registry.list_all_specs():
-                if hasattr(spec, "category") and spec.category:
-                    categories.add(spec.category)
-
-            return sorted(list(categories))
-
-        except Exception as e:
-            self.logger.error(f"Error getting categories: {str(e)}")
-            return []
-
     def get_available_node_types(self) -> List[str]:
         """Get all available node types from node specs."""
         try:
@@ -212,23 +185,18 @@ class NodeSpecsApiService:
         """Get statistics about available node templates."""
         try:
             if not node_spec_registry:
-                return {"total": 0, "by_category": {}, "by_type": {}}
+                return {"total": 0, "by_type": {}}
 
             # Use list_all_specs() method instead of .values()
             specs = node_spec_registry.list_all_specs()
             stats = {
                 "total": len(specs),
-                "by_category": {},
                 "by_type": {},
                 "system_templates": 0,
                 "user_templates": 0,
             }
 
             for spec in specs:
-                # Count by category
-                category = getattr(spec, "category", "uncategorized")
-                stats["by_category"][category] = stats["by_category"].get(category, 0) + 1
-
                 # Count by type
                 node_type = str(spec.type)
                 stats["by_type"][node_type] = stats["by_type"].get(node_type, 0) + 1

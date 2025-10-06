@@ -42,6 +42,225 @@ logger = get_logger(__name__)
 router = APIRouter()
 
 
+@router.get("/executions/recent_logs")
+async def get_recent_execution_logs(
+    workflow_id: str,
+    limit: int = 100,
+    include_all_executions: bool = False,
+    deps: AuthenticatedDeps = Depends(),
+):
+    """
+    Get the latest execution with its detailed logs for a workflow.
+    返回工作流最新执行及其详细日志
+
+    This API returns the most recent execution along with comprehensive logs,
+    replacing the old behavior of just returning execution IDs.
+
+    Query params:
+      - workflow_id: required workflow ID
+      - limit: maximum number of logs to return for the latest execution (default 100, max 1000)
+      - include_all_executions: if true, return logs from multiple recent executions (default: false)
+
+    Returns:
+      - latest_execution: Details of the most recent execution
+      - logs: Detailed execution logs with user-friendly messages
+      - summary: Log statistics and counts
+      - executions: (optional) List of other recent executions if include_all_executions=true
+    """
+    try:
+        # Clamp limit between 1 and 1000
+        limit = max(1, min(limit, 1000))
+
+        logger.info(
+            f"📋 Getting recent execution logs for workflow {workflow_id} (user: {deps.current_user.sub}, limit: {limit})"
+        )
+
+        http_client = await get_workflow_engine_client()
+
+        # Fetch execution history from workflow engine (get at least 1 to find latest)
+        execution_history_limit = 10 if include_all_executions else 1
+        execution_data = await http_client.get_execution_history(
+            workflow_id, execution_history_limit
+        )
+
+        # Extract executions from response
+        if isinstance(execution_data, dict):
+            executions = execution_data.get("executions", [])
+        elif isinstance(execution_data, list):
+            executions = execution_data
+        else:
+            executions = []
+
+        # If no executions found, return empty response
+        if not executions:
+            logger.info(f"⚠️ No executions found for workflow {workflow_id}")
+            return {
+                "workflow_id": workflow_id,
+                "latest_execution": None,
+                "logs": [],
+                "summary": {
+                    "total_logs": 0,
+                    "error_count": 0,
+                    "warning_count": 0,
+                    "milestone_count": 0,
+                },
+                "message": "No executions found for this workflow",
+            }
+
+        # Get the latest execution (first in the list, as it's ordered by most recent)
+        latest_execution_data = executions[0]
+        latest_execution_id = latest_execution_data.get(
+            "execution_id"
+        ) or latest_execution_data.get("id")
+
+        logger.info(f"📊 Latest execution found: {latest_execution_id}")
+
+        # Helper to format duration
+        def format_duration_from_execution(execution: Dict[str, Any]) -> Optional[str]:
+            try:
+                duration_ms = execution.get("duration_ms")
+                if duration_ms is not None:
+                    try:
+                        return f"{float(duration_ms) / 1000:.1f}s"
+                    except Exception:
+                        pass
+
+                start_time = execution.get("start_time") or execution.get("created_at")
+                end_time = execution.get("end_time") or execution.get("updated_at")
+
+                if not start_time or not end_time:
+                    return None  # Still running
+
+                from datetime import datetime
+
+                def _parse(t: Any) -> Optional[datetime]:
+                    if t is None:
+                        return None
+                    if isinstance(t, (int, float)):
+                        return datetime.fromtimestamp(
+                            float(t) / 1000 if float(t) > 10000000000 else float(t)
+                        )
+                    if isinstance(t, str):
+                        try:
+                            return datetime.fromisoformat(t.replace("Z", "+00:00"))
+                        except Exception:
+                            return None
+                    return None
+
+                s = _parse(start_time)
+                e = _parse(end_time)
+                if s and e:
+                    return f"{(e - s).total_seconds():.1f}s"
+            except Exception:
+                pass
+            return None
+
+        # Format latest execution details
+        latest_execution = {
+            "execution_id": latest_execution_id,
+            "status": latest_execution_data.get("status"),
+            "start_time": latest_execution_data.get("start_time")
+            or latest_execution_data.get("created_at"),
+            "end_time": latest_execution_data.get("end_time")
+            or latest_execution_data.get("updated_at"),
+            "duration": format_duration_from_execution(latest_execution_data),
+            "error_message": latest_execution_data.get("error_message")
+            or latest_execution_data.get("error"),
+        }
+
+        # Fetch detailed logs for the latest execution
+        try:
+            logs_response = await http_client.get_execution_logs(
+                latest_execution_id, deps.access_token, {"limit": limit, "offset": 0}
+            )
+
+            detailed_logs = []
+            if logs_response and logs_response.get("logs"):
+                for log_entry in logs_response.get("logs", []):
+                    detailed_log = {
+                        "id": log_entry.get("id"),
+                        "timestamp": log_entry.get("timestamp") or log_entry.get("created_at"),
+                        "level": log_entry.get("level", "info"),
+                        "message": log_entry.get("user_friendly_message")
+                        or log_entry.get("message", ""),
+                        "event_type": log_entry.get("event_type", "log"),
+                        "node_id": log_entry.get("node_id"),
+                        "node_name": log_entry.get("node_name"),
+                        "is_milestone": log_entry.get("is_milestone", False),
+                        "display_priority": log_entry.get("display_priority", 5),
+                        "step_number": log_entry.get("step_number")
+                        or log_entry.get("data", {}).get("step_number"),
+                        "total_steps": log_entry.get("total_steps")
+                        or log_entry.get("data", {}).get("total_steps"),
+                    }
+                    detailed_logs.append(detailed_log)
+
+            # Calculate summary statistics
+            summary = {
+                "total_logs": len(detailed_logs),
+                "error_count": sum(
+                    1 for log in detailed_logs if log.get("level", "").lower() == "error"
+                ),
+                "warning_count": sum(
+                    1 for log in detailed_logs if log.get("level", "").lower() == "warning"
+                ),
+                "milestone_count": sum(1 for log in detailed_logs if log.get("is_milestone")),
+            }
+
+            logger.info(
+                f"✅ Retrieved {len(detailed_logs)} logs for latest execution {latest_execution_id} "
+                f"(errors: {summary['error_count']}, warnings: {summary['warning_count']}, milestones: {summary['milestone_count']})"
+            )
+
+        except Exception as log_error:
+            logger.warning(
+                f"⚠️ Failed to fetch logs for execution {latest_execution_id}: {log_error}"
+            )
+            detailed_logs = []
+            summary = {
+                "total_logs": 0,
+                "error_count": 0,
+                "warning_count": 0,
+                "milestone_count": 0,
+            }
+
+        # Build response
+        response = {
+            "workflow_id": workflow_id,
+            "latest_execution": latest_execution,
+            "logs": detailed_logs,
+            "summary": summary,
+        }
+
+        # Optionally include other recent executions
+        if include_all_executions and len(executions) > 1:
+            other_executions = []
+            for execution in executions[1:]:  # Skip the first one (latest)
+                other_execution = {
+                    "execution_id": execution.get("execution_id") or execution.get("id"),
+                    "status": execution.get("status"),
+                    "start_time": execution.get("start_time") or execution.get("created_at"),
+                    "end_time": execution.get("end_time") or execution.get("updated_at"),
+                    "duration": format_duration_from_execution(execution),
+                    "error_message": execution.get("error_message") or execution.get("error"),
+                }
+                other_executions.append(other_execution)
+
+            response["other_executions"] = other_executions
+            response["total_executions"] = len(executions)
+
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error getting recent execution logs: {e}")
+        import traceback
+
+        logger.error(f"❌ Full traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 @router.get("/executions/{execution_id}", response_model=Execution)
 async def get_execution_status(execution_id: str, deps: AuthenticatedDeps = Depends()):
     """
@@ -109,6 +328,96 @@ async def cancel_execution(execution_id: str, deps: AuthenticatedDeps = Depends(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@router.get("/executions/recent")
+async def get_recent_executions(
+    workflow_id: Optional[str] = None, limit: int = 10, deps: AuthenticatedDeps = Depends()
+):
+    """
+    Get recent execution logs/summaries
+    获取最近的执行日志/摘要
+
+    Args:
+        workflow_id: Optional workflow ID to filter executions
+        limit: Maximum number of executions to return (default: 10, max: 50)
+    """
+    try:
+        # Clamp limit to reasonable bounds
+        limit = max(1, min(limit, 50))
+
+        logger.info(
+            f"📋 Getting recent executions (workflow_id: {workflow_id or 'all'}, limit: {limit}, user: {deps.current_user.sub})"
+        )
+
+        # Get HTTP client
+        http_client = await get_workflow_engine_client()
+
+        # Get execution history via HTTP
+        if workflow_id:
+            execution_data = await http_client.get_execution_history(workflow_id, limit)
+        else:
+            # TODO: Implement get all recent executions across workflows in workflow engine
+            # For now, return empty if no workflow_id
+            execution_data = {"executions": [], "total": 0}
+
+        # Extract executions list
+        if isinstance(execution_data, dict):
+            executions = execution_data.get("executions", [])
+        elif isinstance(execution_data, list):
+            executions = execution_data
+        else:
+            executions = []
+
+        # Transform executions to simplified format for logs display
+        recent_logs = []
+        for execution in executions:
+            log_entry = {
+                "execution_id": execution.get("execution_id") or execution.get("id"),
+                "workflow_id": execution.get("workflow_id"),
+                "status": execution.get("status"),
+                "start_time": execution.get("start_time") or execution.get("created_at"),
+                "end_time": execution.get("end_time") or execution.get("updated_at"),
+                "duration_ms": execution.get("duration_ms"),
+                "error_message": execution.get("error_message") or execution.get("error"),
+            }
+
+            # Calculate duration if not provided
+            if not log_entry["duration_ms"] and log_entry["start_time"] and log_entry["end_time"]:
+                try:
+                    from datetime import datetime
+
+                    start = (
+                        datetime.fromisoformat(log_entry["start_time"].replace("Z", "+00:00"))
+                        if isinstance(log_entry["start_time"], str)
+                        else datetime.fromtimestamp(log_entry["start_time"])
+                    )
+                    end = (
+                        datetime.fromisoformat(log_entry["end_time"].replace("Z", "+00:00"))
+                        if isinstance(log_entry["end_time"], str)
+                        else datetime.fromtimestamp(log_entry["end_time"])
+                    )
+                    log_entry["duration_ms"] = int((end - start).total_seconds() * 1000)
+                except Exception:
+                    pass
+
+            recent_logs.append(log_entry)
+
+        result = {
+            "workflow_id": workflow_id,
+            "executions": recent_logs,
+            "total": len(recent_logs),
+            "limit": limit,
+        }
+
+        logger.info(f"✅ Retrieved {len(recent_logs)} recent executions")
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error getting recent executions: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 @router.get("/workflows/{workflow_id}/executions")
 async def get_workflow_execution_history(
     workflow_id: str, limit: int = 50, deps: AuthenticatedDeps = Depends()
@@ -130,22 +439,28 @@ async def get_workflow_execution_history(
         # Get execution history via HTTP
         execution_data = await http_client.get_execution_history(workflow_id, limit)
 
-        # The workflow engine returns: {"workflow_id": "...", "executions": [...], "total": N}
-        # Return this directly instead of double-wrapping
-        if isinstance(execution_data, dict) and "executions" in execution_data:
-            logger.info(
-                f"✅ Retrieved {len(execution_data.get('executions', []))} executions for workflow {workflow_id}"
-            )
+        # Workflow engine v2 returns {"executions": [...], "total_count": N, "has_more": bool}
+        if isinstance(execution_data, dict):
+            executions = execution_data.get("executions", [])
+            logger.info(f"✅ Retrieved {len(executions)} executions for workflow {workflow_id}")
+            # Ensure workflow_id is included in response
+            execution_data.setdefault("workflow_id", workflow_id)
             return execution_data
-        else:
-            # Fallback for unexpected response format
-            logger.info(
-                f"✅ Retrieved {len(execution_data) if isinstance(execution_data, list) else 0} executions for workflow {workflow_id}"
-            )
+        elif isinstance(execution_data, list):
+            logger.info(f"✅ Retrieved {len(execution_data)} executions for workflow {workflow_id}")
             return {
                 "workflow_id": workflow_id,
-                "executions": execution_data if isinstance(execution_data, list) else [],
-                "total": len(execution_data) if isinstance(execution_data, list) else 0,
+                "executions": execution_data,
+                "total_count": len(execution_data),
+                "has_more": False,
+            }
+        else:
+            logger.info(f"✅ Retrieved 0 executions for workflow {workflow_id}")
+            return {
+                "workflow_id": workflow_id,
+                "executions": [],
+                "total_count": 0,
+                "has_more": False,
             }
 
     except HTTPException:

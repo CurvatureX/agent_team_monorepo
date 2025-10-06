@@ -1,21 +1,21 @@
 // Node template types based on node-template.json
 
-export type NodeCategory = 
-  | 'Trigger' 
-  | 'AI Agents' 
-  | 'Actions' 
-  | 'Flow Control' 
-  | 'Human Interaction' 
-  | 'Memory' 
+export type NodeCategory =
+  | 'Trigger'
+  | 'AI Agents'
+  | 'Actions'
+  | 'Flow Control'
+  | 'Human Interaction'
+  | 'Memory'
   | 'Tools';
 
-export type NodeTypeEnum = 
-  | 'TRIGGER' 
-  | 'AI_AGENT' 
-  | 'ACTION' 
-  | 'FLOW' 
-  | 'HUMAN_IN_THE_LOOP' 
-  | 'MEMORY' 
+export type NodeTypeEnum =
+  | 'TRIGGER'
+  | 'AI_AGENT'
+  | 'ACTION'
+  | 'FLOW'
+  | 'HUMAN_IN_THE_LOOP'
+  | 'MEMORY'
   | 'TOOL';
 
 export interface ParameterSchema {
@@ -35,7 +35,6 @@ export interface NodeTemplate {
   id: string;
   name: string;
   description: string;
-  category: NodeCategory;
   node_type: NodeTypeEnum;
   node_subtype: string;
   version: string;

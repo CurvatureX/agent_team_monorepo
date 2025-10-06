@@ -165,7 +165,7 @@ class WorkflowServiceV2:
         try:
             result = (
                 self.supabase.table("workflows")
-                .select("workflow_data, user_id, deployment_status")
+                .select("workflow_data, user_id, deployment_status, name, description")
                 .eq("id", workflow_id)
                 .eq("active", True)
                 .execute()
@@ -173,6 +173,10 @@ class WorkflowServiceV2:
             if result.data:
                 workflow_data = result.data[0].get("workflow_data")
                 deployment_status = result.data[0].get("deployment_status")
+                # Fetch top-level name and description for sync
+                db_name = result.data[0].get("name")
+                db_description = result.data[0].get("description")
+
                 if workflow_data:
                     # Debug: Log the actual workflow data structure
                     self.logger.info(f"🔍 Raw workflow_data structure: {workflow_data}")
@@ -191,6 +195,14 @@ class WorkflowServiceV2:
                         # The metadata.id might be stale from template/duplication, but the table ID is authoritative
                         metadata["id"] = workflow_id
                         self.logger.debug(f"Set metadata.id to database workflow_id: {workflow_id}")
+
+                        # SYNC: Sync top-level name and description to metadata (bidirectional sync)
+                        if db_name is not None:
+                            metadata["name"] = db_name
+                            self.logger.debug(f"Synced top-level name to metadata: {db_name}")
+                        if db_description is not None:
+                            metadata["description"] = db_description
+                            self.logger.debug(f"Synced top-level description to metadata")
 
                         # Merge top-level deployment_status into metadata (single source of truth)
                         if deployment_status:
@@ -237,7 +249,7 @@ class WorkflowServiceV2:
         try:
             result = (
                 self.supabase.table("workflows")
-                .select("workflow_data, user_id, deployment_status")
+                .select("workflow_data, user_id, deployment_status, name, description")
                 .eq("id", workflow_id)
                 .eq("active", True)
                 .execute()
@@ -246,6 +258,10 @@ class WorkflowServiceV2:
                 workflow_data = result.data[0].get("workflow_data")
                 user_id = result.data[0].get("user_id")
                 deployment_status = result.data[0].get("deployment_status")
+                # Fetch top-level name and description for sync
+                db_name = result.data[0].get("name")
+                db_description = result.data[0].get("description")
+
                 if workflow_data and user_id:
                     # Fix missing fields in workflow_data for Pydantic validation
                     if "metadata" in workflow_data:
@@ -261,6 +277,14 @@ class WorkflowServiceV2:
                         # The metadata.id might be stale from template/duplication, but the table ID is authoritative
                         metadata["id"] = workflow_id
                         self.logger.debug(f"Set metadata.id to database workflow_id: {workflow_id}")
+
+                        # SYNC: Sync top-level name and description to metadata (bidirectional sync)
+                        if db_name is not None:
+                            metadata["name"] = db_name
+                            self.logger.debug(f"Synced top-level name to metadata: {db_name}")
+                        if db_description is not None:
+                            metadata["description"] = db_description
+                            self.logger.debug(f"Synced top-level description to metadata")
 
                         # Merge top-level deployment_status into metadata (single source of truth)
                         if deployment_status:
@@ -330,7 +354,7 @@ class WorkflowServiceV2:
 
             result = (
                 supabase_client.table("workflows")
-                .select("workflow_data, deployment_status")
+                .select("workflow_data, deployment_status, icon_url, name, description")
                 .eq("active", True)
                 .execute()
             )
@@ -338,15 +362,33 @@ class WorkflowServiceV2:
             for row in result.data:
                 workflow_data = row.get("workflow_data")
                 deployment_status = row.get("deployment_status")
+                icon_url = row.get("icon_url")
+                # Fetch top-level name and description for sync
+                db_name = row.get("name")
+                db_description = row.get("description")
+
                 if workflow_data:
                     try:
-                        # Merge top-level deployment_status into workflow_data metadata
+                        # Merge top-level columns into workflow_data metadata
                         # Always set deployment_status from column (even if None, Pydantic will use default)
                         if "metadata" not in workflow_data:
                             self.logger.warning(
                                 f"workflow_data missing metadata field: {workflow_data.keys()}"
                             )
                         else:
+                            # SYNC: Sync top-level name and description to metadata (bidirectional sync)
+                            if db_name is not None:
+                                workflow_data["metadata"]["name"] = db_name
+                                self.logger.debug(
+                                    f"Synced top-level name to metadata for workflow {workflow_data.get('metadata', {}).get('id')}"
+                                )
+                            if db_description is not None:
+                                workflow_data["metadata"]["description"] = db_description
+                                self.logger.debug(
+                                    f"Synced top-level description to metadata for workflow {workflow_data.get('metadata', {}).get('id')}"
+                                )
+
+                            # Merge deployment_status
                             if deployment_status:
                                 workflow_data["metadata"]["deployment_status"] = deployment_status
                                 self.logger.debug(
@@ -355,6 +397,13 @@ class WorkflowServiceV2:
                             else:
                                 # Set default if column is None
                                 workflow_data["metadata"]["deployment_status"] = "UNDEPLOYED"
+
+                            # Merge icon_url from column into metadata (prefer column value if exists)
+                            if icon_url:
+                                workflow_data["metadata"]["icon_url"] = icon_url
+                                self.logger.debug(
+                                    f"Merged icon_url from column for workflow {workflow_data.get('metadata', {}).get('id')}"
+                                )
                         workflows.append(Workflow(**workflow_data))
                     except Exception as e:
                         self.logger.warning(f"Failed to parse workflow data: {e}")
@@ -404,24 +453,88 @@ class WorkflowServiceV2:
             raise e
 
     def delete_workflow(self, workflow_id: str) -> bool:
-        """Delete workflow from database (soft delete by setting active=false)."""
+        """
+        Delete workflow from database with cascading cleanup of all related data.
+
+        This performs a HARD DELETE (not soft delete) which triggers CASCADE deletion on:
+        - trigger_index (workflow triggers)
+        - workflow_deployments (deployment history)
+        - trigger_executions (trigger execution logs)
+        - trigger_status (trigger status records)
+        - email_messages (associated emails)
+        - human_interactions (HIL interactions)
+        - hil_responses (HIL responses)
+        - workflow_execution_pauses (HIL pauses)
+        - workflow_executions (execution history)
+        - workflow_execution_logs (execution logs)
+        - workflow_memory (memory records)
+        - workflow_versions (version history)
+        - nodes (workflow nodes)
+        - node_connections (node connections)
+
+        Args:
+            workflow_id: UUID of the workflow to delete
+
+        Returns:
+            bool: True if deletion succeeded, False otherwise
+        """
         if not self.supabase:
             self.logger.error("Supabase client not available")
             return False
 
         try:
-            result = (
-                self.supabase.table("workflows")
-                .update({"active": False})
-                .eq("id", workflow_id)
-                .execute()
-            )
+            self.logger.info(f"🗑️ Deleting workflow {workflow_id} and all related data...")
+
+            # Count related records before deletion (for logging)
+            counts = {}
+            try:
+                # Count trigger_index records
+                trigger_result = (
+                    self.supabase.table("trigger_index")
+                    .select("id", count="exact")
+                    .eq("workflow_id", workflow_id)
+                    .execute()
+                )
+                counts["trigger_index"] = (
+                    trigger_result.count if hasattr(trigger_result, "count") else 0
+                )
+
+                # Count workflow_executions
+                exec_result = (
+                    self.supabase.table("workflow_executions")
+                    .select("id", count="exact")
+                    .eq("workflow_id", workflow_id)
+                    .execute()
+                )
+                counts["workflow_executions"] = (
+                    exec_result.count if hasattr(exec_result, "count") else 0
+                )
+
+                self.logger.debug(f"Related records to delete: {counts}")
+            except Exception as count_error:
+                self.logger.warning(f"Could not count related records: {count_error}")
+
+            # Perform hard delete - CASCADE constraints will clean up related tables automatically
+            result = self.supabase.table("workflows").delete().eq("id", workflow_id).execute()
+
             if result.data:
-                self.logger.info(f"✅ Workflow {workflow_id} deleted (deactivated)")
+                self.logger.info(
+                    f"✅ Workflow {workflow_id} and all related data deleted successfully"
+                )
+                self.logger.info(
+                    f"   CASCADE deleted: {counts.get('trigger_index', '?')} triggers, "
+                    f"{counts.get('workflow_executions', '?')} executions, and other related records"
+                )
                 return True
-            return False
+            else:
+                self.logger.warning(f"⚠️ No workflow found with id {workflow_id}")
+                return False
+
         except Exception as e:
-            self.logger.error(f"Failed to delete workflow {workflow_id}: {e}")
+            self.logger.error(f"❌ Failed to delete workflow {workflow_id}: {e}")
+            import traceback
+
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
             return False
 
     # Import/Export helpers

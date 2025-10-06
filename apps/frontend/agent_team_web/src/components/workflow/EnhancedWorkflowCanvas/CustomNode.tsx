@@ -4,7 +4,7 @@ import React, { memo } from 'react';
 import { Handle, Position, NodeProps } from 'reactflow';
 import { cn } from '@/lib/utils';
 import type { WorkflowNodeData } from '@/types/workflow-editor';
-import { getNodeIcon, getCategoryColor, getParameterPreview } from '@/utils/nodeHelpers';
+import { getNodeIcon, getCategoryColor, getCategoryFromNodeType, getParameterPreview } from '@/utils/nodeHelpers';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -13,9 +13,10 @@ type CustomNodeProps = NodeProps<WorkflowNodeData>;
 
 export const CustomNode = memo<CustomNodeProps>(({ data, selected }) => {
   const Icon = getNodeIcon(data.template.node_type, data.template.node_subtype);
-  const colorScheme = getCategoryColor(data.template.category);
+  const category = getCategoryFromNodeType(data.template.node_type);
+  const colorScheme = getCategoryColor(category);
   const parameterPreview = getParameterPreview(data.parameters);
-  
+
   // Debug: Log status changes
   React.useEffect(() => {
     if (data.status && data.status !== 'idle') {
@@ -50,8 +51,8 @@ export const CustomNode = memo<CustomNodeProps>(({ data, selected }) => {
               <Tooltip>
                 <TooltipTrigger>
                   <Badge
-                    variant={data.status === 'error' ? 'destructive' : 
-                            data.status === 'success' ? 'default' : 
+                    variant={data.status === 'error' ? 'destructive' :
+                            data.status === 'success' ? 'default' :
                             data.status === 'idle' ? 'outline' : 'secondary'}
                     className={cn(
                       'text-sm px-2 py-1 h-6 min-w-[24px] font-bold',
@@ -107,7 +108,7 @@ export const CustomNode = memo<CustomNodeProps>(({ data, selected }) => {
             )}
           />
         )}
-        
+
         <Handle
           type="source"
           position={Position.Right}

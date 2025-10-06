@@ -191,7 +191,8 @@ export interface WorkflowSummary {
   created_at?: number | null;
   updated_at?: number | null;
   version: string;
-  logo_url?: string | null;             // 映射自backend的icon_url
+  icon_url?: string | null;
+  logo_url?: string | null;  // API currently returns this (will migrate to icon_url)
   deployment_status?: string | null;
   latest_execution_status?: string | null;
   latest_execution_time?: string | null;

@@ -4,7 +4,7 @@ import React, { DragEvent } from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import type { NodeTemplate } from '@/types/node-template';
-import { getNodeIcon, getCategoryColor } from '@/utils/nodeHelpers';
+import { getNodeIcon, getCategoryColor, getCategoryFromNodeType } from '@/utils/nodeHelpers';
 import { Card } from '@/components/ui/card';
 
 interface NodeTemplateCardProps {
@@ -19,7 +19,8 @@ export const NodeTemplateCard: React.FC<NodeTemplateCardProps> = ({
   onClick,
 }) => {
   const Icon = getNodeIcon(template.node_type, template.node_subtype);
-  const colorScheme = getCategoryColor(template.category);
+  const category = getCategoryFromNodeType(template.node_type);
+  const colorScheme = getCategoryColor(category);
 
   const handleDragStart = (e: DragEvent<HTMLDivElement>) => {
     onDragStart(e, template);
@@ -37,7 +38,7 @@ export const NodeTemplateCard: React.FC<NodeTemplateCardProps> = ({
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
     >
-      <Card 
+      <Card
         draggable
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}

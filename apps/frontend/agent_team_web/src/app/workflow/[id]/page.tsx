@@ -6,8 +6,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { PromptInputBox } from "@/components/ui/ai-prompt-box";
 import { PanelResizer } from "@/components/ui/panel-resizer";
 import { WorkflowEditor } from "@/components/workflow/WorkflowEditor";
-import { User, Bot, Maximize2, StopCircle, RefreshCw } from "lucide-react";
+import { User, Bot, Maximize2, StopCircle, RefreshCw, Clock, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronRight, MessageSquare, History } from "lucide-react";
 import { useResizablePanel } from "@/hooks";
+import { Badge } from "@/components/ui/badge";
 import {
   WorkflowData,
   WorkflowEdge,
@@ -16,6 +17,7 @@ import {
   WorkflowDataStructure
 } from "@/types/workflow";
 import { useWorkflowActions } from "@/lib/api/hooks/useWorkflowsApi";
+import { useRecentExecutionLogs } from "@/lib/api/hooks/useExecutionApi";
 import { useToast } from "@/hooks/use-toast";
 import { chatService, ChatSSEEvent } from "@/lib/api/chatService";
 import { useLayout } from "@/components/ui/layout-wrapper";
@@ -32,6 +34,46 @@ interface Message {
 }
 
 
+// Helper function to get status badge variant and icon
+const getExecutionStatusInfo = (status: string | null) => {
+  if (!status) return { variant: 'secondary' as const, icon: AlertCircle, label: 'No runs yet' };
+
+  const statusLower = status.toLowerCase();
+  if (statusLower === 'success' || statusLower === 'completed') {
+    return { variant: 'default' as const, icon: CheckCircle, label: 'Success', color: 'text-green-600' };
+  }
+  if (statusLower === 'error' || statusLower === 'failed') {
+    return { variant: 'destructive' as const, icon: XCircle, label: 'Failed', color: 'text-red-600' };
+  }
+  if (statusLower === 'running' || statusLower === 'in_progress') {
+    return { variant: 'outline' as const, icon: RefreshCw, label: 'Running', color: 'text-blue-600' };
+  }
+  return { variant: 'secondary' as const, icon: AlertCircle, label: status, color: 'text-gray-600' };
+};
+
+// Helper function to format execution time
+const formatExecutionTime = (time: string | null) => {
+  if (!time) return 'Never';
+
+  try {
+    const date = new Date(time);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+
+    return date.toLocaleDateString();
+  } catch {
+    return time;
+  }
+};
+
 const WorkflowDetailPage = () => {
   const params = useParams();
   const router = useRouter();
@@ -46,12 +88,20 @@ const WorkflowDetailPage = () => {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isLoadingWorkflow, setIsLoadingWorkflow] = useState(true);
   const [workflowName, setWorkflowName] = useState<string>('');
+  const [workflowDescription, setWorkflowDescription] = useState<string>('');
+  const [latestExecutionStatus, setLatestExecutionStatus] = useState<string | null>(null);
+  const [latestExecutionTime, setLatestExecutionTime] = useState<string | null>(null);
+  const [isChatExpanded, setIsChatExpanded] = useState(false);
+  const [isExecutionLogsExpanded, setIsExecutionLogsExpanded] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   const { toast } = useToast();
   const { session } = useAuth();
   const { updateWorkflow, getWorkflow } = useWorkflowActions();
+
+  // Fetch recent execution logs
+  const { logs: executionLogs, isLoading: isLoadingLogs, refresh: refreshLogs } = useRecentExecutionLogs(workflowId, 10);
   useLayout();
   const { setCustomTitle } = usePageTitle();
 
@@ -129,22 +179,24 @@ const WorkflowDetailPage = () => {
           // Convert edges from connections if needed
           if (!workflowData.edges && workflowData.connections) {
             workflowData.edges = [];
-            Object.entries(workflowData.connections).forEach(([sourceId, conn]) => {
-              const connection = conn as ConnectionType;
-              if (connection?.connection_types?.main?.connections) {
-                connection.connection_types.main.connections.forEach((target: WorkflowConnection) => {
-                  workflowData.edges!.push({
-                    id: `${sourceId}-${target.node}`,
-                    source: sourceId,
-                    target: target.node,
-                    sourceHandle: 'source',
-                    targetHandle: 'target'
-                  });
+
+            // Handle array format (new API format with from_node/to_node)
+            if (Array.isArray(workflowData.connections)) {
+              workflowData.connections.forEach((conn: any) => {
+                workflowData.edges!.push({
+                  id: conn.id || `${conn.from_node}-${conn.to_node}`,
+                  source: conn.from_node,
+                  target: conn.to_node,
+                  sourceHandle: conn.output_key || 'source',
+                  targetHandle: 'target'
                 });
-              } else if (connection?.main) {
-                // Alternative structure
-                connection.main.forEach((connectionGroup: WorkflowConnection[]) => {
-                  connectionGroup.forEach((target: WorkflowConnection) => {
+              });
+            } else {
+              // Handle object format (old n8n-style format)
+              Object.entries(workflowData.connections).forEach(([sourceId, conn]) => {
+                const connection = conn as ConnectionType;
+                if (connection?.connection_types?.main?.connections) {
+                  connection.connection_types.main.connections.forEach((target: WorkflowConnection) => {
                     workflowData.edges!.push({
                       id: `${sourceId}-${target.node}`,
                       source: sourceId,
@@ -153,17 +205,49 @@ const WorkflowDetailPage = () => {
                       targetHandle: 'target'
                     });
                   });
-                });
-              }
-            });
+                } else if (connection?.main) {
+                  // Alternative structure
+                  connection.main.forEach((connectionGroup: WorkflowConnection[]) => {
+                    connectionGroup.forEach((target: WorkflowConnection) => {
+                      workflowData.edges!.push({
+                        id: `${sourceId}-${target.node}`,
+                        source: sourceId,
+                        target: target.node,
+                        sourceHandle: 'source',
+                        targetHandle: 'target'
+                      });
+                    });
+                  });
+                }
+              });
+            }
           }
 
           console.log('Processed workflow data:', workflowData);
           setCurrentWorkflow(workflowData as unknown as WorkflowData);
 
-          // Set workflow name from response
-          const name = response?.workflow?.name || response?.name || workflowData?.name || 'Untitled Workflow';
+          // Set workflow name and description from metadata or fallback locations
+          // Priority: workflow.metadata > workflowData.metadata > workflow direct > workflowData direct
+          const name = response?.workflow?.metadata?.name || workflowData?.metadata?.name || response?.workflow?.name || response?.name || workflowData?.name || 'Untitled Workflow';
+          const description = response?.workflow?.metadata?.description || workflowData?.metadata?.description || response?.workflow?.description || response?.description || workflowData?.description || '';
+
           setWorkflowName(name);
+          setWorkflowDescription(description);
+
+          console.log('Extracted workflow info:', { name, description, metadata: response?.workflow?.metadata });
+
+          // Extract execution status and time from response (check metadata first)
+          const executionStatus = response?.workflow?.metadata?.last_execution_status || response?.workflow?.latest_execution_status || response?.latest_execution_status || null;
+          const executionTime = response?.workflow?.metadata?.last_execution_time || response?.workflow?.latest_execution_time || response?.latest_execution_time || null;
+
+          setLatestExecutionStatus(executionStatus);
+          setLatestExecutionTime(executionTime);
+
+          // Update workflow data with name and description if not present
+          if (workflowData && (!workflowData.name || !workflowData.description)) {
+            workflowData.name = name;
+            workflowData.description = description;
+          }
         } else {
           throw new Error('Invalid workflow data structure');
         }
@@ -545,6 +629,41 @@ const WorkflowDetailPage = () => {
           transition={{ duration: 0.6, delay: 0.2 }}
         >
           <div className="h-full flex flex-col">
+            {/* Workflow Header */}
+            {workflowName && (
+              <div className="px-4 py-3 bg-background/95 backdrop-blur-sm rounded-t-lg border border-b-0 border-border">
+                <h2 className="text-lg font-semibold text-foreground">{workflowName}</h2>
+                {workflowDescription && (
+                  <p className="text-sm text-muted-foreground mt-1">{workflowDescription}</p>
+                )}
+                {/* Execution Status and Time */}
+                <div className="flex items-center gap-3 mt-2">
+                  {(() => {
+                    const statusInfo = getExecutionStatusInfo(latestExecutionStatus);
+                    const StatusIcon = statusInfo.icon;
+                    return (
+                      <div className="flex items-center gap-1.5">
+                        <StatusIcon className={`w-3.5 h-3.5 ${statusInfo.color}`} />
+                        <span className={`text-xs font-medium ${statusInfo.color}`}>
+                          {statusInfo.label}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                  {latestExecutionTime && (
+                    <>
+                      <span className="text-muted-foreground/30">•</span>
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
+                        <Clock className="w-3.5 h-3.5" />
+                        <span className="text-xs">
+                          Last run: {formatExecutionTime(latestExecutionTime)}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
             {/* Workflow Editor */}
             <div className="flex-1 bg-muted/20 rounded-lg border border-border overflow-hidden">
               <WorkflowEditor
@@ -563,146 +682,242 @@ const WorkflowDetailPage = () => {
         {/* Resize Handle */}
         <PanelResizer isResizing={isResizing} resizerProps={resizerProps} overlayProps={overlayProps} />
 
-        {/* Right Side - Chat Area */}
+        {/* Right Side - Info Panel */}
         <motion.div
-          className="flex flex-col bg-background/95 backdrop-blur-sm h-full border-l border-t border-border/30 rounded-tl-lg"
+          className="flex flex-col bg-background/95 backdrop-blur-sm h-full border-l border-t border-border/30 rounded-tl-lg overflow-hidden"
           style={{ width: `${rightPanelWidth}px` }}
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.6, delay: 0.3 }}
         >
-          {/* Chat Header */}
-          <div className="p-4 border-b border-border/30">
-            <div className="flex items-center justify-between">
+          {/* Execution Logs Section */}
+          <div className="flex flex-col border-b border-border/30">
+            {/* Execution Logs Header */}
+            <button
+              onClick={() => setIsExecutionLogsExpanded(!isExecutionLogsExpanded)}
+              className="flex items-center justify-between p-4 hover:bg-accent/50 transition-colors"
+            >
               <div className="flex items-center gap-2">
-                <Avatar className="w-[20px] h-[20px]">
-                  <AvatarImage src="https://dtijyicuvv7hy.cloudfront.net/3.png" alt="Assistant" />
-                  <AvatarFallback className="bg-primary/10 text-primary font-medium text-[8px] flex items-center justify-center">
-                    AI
-                  </AvatarFallback>
-                </Avatar>
-                <h3 className="text-base font-semibold">Workflow Assistant</h3>
+                <History className="w-4 h-4" />
+                <h3 className="text-sm font-semibold">Recent Executions</h3>
               </div>
-            </div>
-          </div>
+              {isExecutionLogsExpanded ? (
+                <ChevronDown className="w-4 h-4" />
+              ) : (
+                <ChevronRight className="w-4 h-4" />
+              )}
+            </button>
 
-          {/* Chat Messages */}
-          <div ref={chatContainerRef} className="flex-1 p-4 overflow-y-auto pt-2">
-            <div className="space-y-4">
-              <AnimatePresence>
-                {messages.map((message) => (
-                  <motion.div
-                    key={message.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    transition={{ duration: 0.3 }}
-                    className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div
-                      className={`max-w-[80%] p-3 rounded-2xl ${
-                        message.sender === 'user'
-                          ? 'bg-primary text-primary-foreground ml-4'
-                          : 'bg-muted text-muted-foreground mr-4'
-                      }`}
-                    >
-                      <div className="flex items-start gap-2">
-                        {message.sender === 'assistant' && (
-                          <Bot className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                        )}
-                        {message.sender === 'user' && (
-                          <User className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                        )}
-                        <div>
-                          <p className="text-sm">{message.content}</p>
-                          <p className="text-xs opacity-70 mt-1">
-                            {message.timestamp.toLocaleTimeString()}
-                          </p>
+            {/* Execution Logs Content */}
+            <AnimatePresence>
+              {isExecutionLogsExpanded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <div className="px-4 pb-4 max-h-[300px] overflow-y-auto">
+                    {/* Execution logs */}
+                    {isLoadingLogs ? (
+                      <div className="flex items-center justify-center py-8">
+                        <div className="flex gap-1">
+                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" />
+                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
+                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
                         </div>
                       </div>
-                    </div>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-
-              <div ref={messagesEndRef} />
-
-              {isLoading && !isStreaming && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="flex justify-start"
-                >
-                  <div className="bg-muted text-muted-foreground p-3 rounded-2xl mr-4">
-                    <div className="flex items-center gap-2">
-                      <Bot className="w-4 h-4" />
-                      <div className="flex gap-1">
-                        <div className="w-2 h-2 bg-current rounded-full animate-bounce" />
-                        <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
-                        <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                    ) : executionLogs.length === 0 ? (
+                      <div className="text-xs text-muted-foreground text-center py-8">
+                        No execution logs yet
                       </div>
-                    </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {executionLogs.map((log, index) => {
+                          const statusInfo = getExecutionStatusInfo(log.status);
+                          const StatusIcon = statusInfo.icon;
+                          return (
+                            <div
+                              key={log.execution_id || index}
+                              className="flex items-center justify-between p-2 rounded-md hover:bg-accent/50 transition-colors cursor-pointer"
+                            >
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                <StatusIcon className={`w-3.5 h-3.5 flex-shrink-0 ${statusInfo.color}`} />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className={`text-xs font-medium ${statusInfo.color}`}>
+                                      {statusInfo.label}
+                                    </span>
+                                    {log.duration && (
+                                      <span className="text-xs text-muted-foreground">
+                                        {log.duration}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-muted-foreground truncate">
+                                    {formatExecutionTime(log.timestamp)}
+                                  </p>
+                                  {log.error_message && (
+                                    <p className="text-xs text-red-600 dark:text-red-400 truncate mt-0.5">
+                                      {log.error_message}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 </motion.div>
               )}
-            </div>
+            </AnimatePresence>
           </div>
 
-          {/* Action Buttons */}
-          {(isStreaming || messages.length > 0) && (
-            <div className="px-4 py-2 border-t border-border/30 flex items-center gap-2">
-              {isStreaming && (
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={handleStopStreaming}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors text-sm"
-                >
-                  <StopCircle className="w-4 h-4" />
-                  <span>Stop</span>
-                </motion.button>
+          {/* Chat Section */}
+          <div className="flex flex-col flex-1 min-h-0">
+            {/* Chat Header */}
+            <button
+              onClick={() => setIsChatExpanded(!isChatExpanded)}
+              className="flex items-center justify-between p-4 border-b border-border/30 hover:bg-accent/50 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <MessageSquare className="w-4 h-4" />
+                <h3 className="text-sm font-semibold">Workflow Assistant</h3>
+              </div>
+              {isChatExpanded ? (
+                <ChevronDown className="w-4 h-4" />
+              ) : (
+                <ChevronRight className="w-4 h-4" />
               )}
-              {!isLoading && messages.length > 0 && (
-                <>
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={handleRetryLastMessage}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-muted hover:bg-accent transition-colors text-sm"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                    <span>Retry</span>
-                  </motion.button>
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => {
-                      setMessages([]);
-                      chatService.clearSession();
-                    }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-muted hover:bg-accent transition-colors text-sm ml-auto"
-                  >
-                    <span>Clear Chat</span>
-                  </motion.button>
-                </>
-              )}
-            </div>
-          )}
+            </button>
 
-          {/* Input Area */}
-          <motion.div
-            className="p-4 bg-background/95 backdrop-blur-sm flex-shrink-0"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.4 }}
-          >
-            <PromptInputBox
-              onSend={handleSendMessage}
-              isLoading={isLoading}
-              placeholder="Ask about this workflow..."
-              className="shadow-sm"
-            />
-          </motion.div>
+            {/* Chat Content */}
+            <AnimatePresence>
+              {isChatExpanded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="flex flex-col flex-1 min-h-0 overflow-hidden"
+                >
+                  {/* Chat Messages */}
+                  <div ref={chatContainerRef} className="flex-1 p-4 overflow-y-auto pt-2">
+                    <div className="space-y-4">
+                      {messages.map((message) => (
+                        <motion.div
+                          key={message.id}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -20 }}
+                          transition={{ duration: 0.3 }}
+                          className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                        >
+                          <div
+                            className={`max-w-[80%] p-3 rounded-2xl ${
+                              message.sender === 'user'
+                                ? 'bg-primary text-primary-foreground ml-4'
+                                : 'bg-muted text-muted-foreground mr-4'
+                            }`}
+                          >
+                            <div className="flex items-start gap-2">
+                              {message.sender === 'assistant' && (
+                                <Bot className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                              )}
+                              {message.sender === 'user' && (
+                                <User className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                              )}
+                              <div>
+                                <p className="text-sm">{message.content}</p>
+                                <p className="text-xs opacity-70 mt-1">
+                                  {message.timestamp.toLocaleTimeString()}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </motion.div>
+                      ))}
+
+                      <div ref={messagesEndRef} />
+
+                      {isLoading && !isStreaming && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="flex justify-start"
+                        >
+                          <div className="bg-muted text-muted-foreground p-3 rounded-2xl mr-4">
+                            <div className="flex items-center gap-2">
+                              <Bot className="w-4 h-4" />
+                              <div className="flex gap-1">
+                                <div className="w-2 h-2 bg-current rounded-full animate-bounce" />
+                                <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
+                                <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                              </div>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  {(isStreaming || messages.length > 0) && (
+                    <div className="px-4 py-2 border-t border-border/30 flex items-center gap-2">
+                      {isStreaming && (
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
+                          onClick={handleStopStreaming}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors text-sm"
+                        >
+                          <StopCircle className="w-4 h-4" />
+                          <span>Stop</span>
+                        </motion.button>
+                      )}
+                      {!isLoading && messages.length > 0 && (
+                        <>
+                          <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={handleRetryLastMessage}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-muted hover:bg-accent transition-colors text-sm"
+                          >
+                            <RefreshCw className="w-4 h-4" />
+                            <span>Retry</span>
+                          </motion.button>
+                          <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => {
+                              setMessages([]);
+                              chatService.clearSession();
+                            }}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-muted hover:bg-accent transition-colors text-sm ml-auto"
+                          >
+                            <span>Clear Chat</span>
+                          </motion.button>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Input Area */}
+                  <div className="p-4 bg-background/95 backdrop-blur-sm flex-shrink-0">
+                    <PromptInputBox
+                      onSend={handleSendMessage}
+                      isLoading={isLoading}
+                      placeholder="Ask about this workflow..."
+                      className="shadow-sm"
+                    />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </motion.div>
       </motion.div>
 
