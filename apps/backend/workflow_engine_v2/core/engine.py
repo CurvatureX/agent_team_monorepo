@@ -615,9 +615,16 @@ class ExecutionEngine:
                 else {}
             )
 
-            # Enforce that each port payload exactly matches node.output_params keys
+            # Enforce that each port payload exactly matches node spec output_params keys
             def _shape_payload(payload: Any) -> Dict[str, Any]:
-                allowed_defaults = node.output_params or {}
+                # Get output_params from node spec registry, not from node definition
+                try:
+                    spec = get_spec(node.type, node.subtype)
+                    allowed_defaults = getattr(spec, "output_params", {}) or {}
+                except Exception:
+                    # Fallback to node.output_params if spec not available
+                    allowed_defaults = node.output_params or {}
+
                 if not isinstance(allowed_defaults, dict):
                     return payload if isinstance(payload, dict) else {}
                 shaped: Dict[str, Any] = {}

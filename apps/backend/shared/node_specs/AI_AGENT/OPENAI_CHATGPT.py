@@ -95,34 +95,15 @@ class OpenAIChatGPTSpec(BaseNodeSpec):
             },
             output_params={
                 "content": {
-                    "type": "string",
+                    "type": "object",
                     "default": "",
-                    "description": "Model response content",
-                    "required": False,
+                    "description": "The model response content includes fields that match the input parameters of connected nodes. When passing values to connected nodes, use these matching fields so the values are delivered correctly.",
+                    "required": True,
                 },
                 "metadata": {
                     "type": "object",
                     "default": {},
                     "description": "Additional metadata returned with the response",
-                    "required": False,
-                },
-                "format_type": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Actual response format for the content",
-                    "required": False,
-                    "options": ["text", "json", "schema"],
-                },
-                "source_node": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Source node identifier for tracing",
-                    "required": False,
-                },
-                "timestamp": {
-                    "type": "string",
-                    "default": "",
-                    "description": "ISO-8601 timestamp when the response was generated",
                     "required": False,
                 },
                 "token_usage": {
