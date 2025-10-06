@@ -81,6 +81,38 @@ def validate_workflow(workflow: Workflow) -> None:
             logger.error(f"❌ Failed to get spec for {ntype}.{n.subtype} (node {n.id}): {e}")
             errors.append(f"Spec not found for {ntype}.{n.subtype} (node {n.id})")
 
+        # Enforce attached_nodes semantics: only AI_AGENT may have attachments,
+        # and only TOOL/MEMORY nodes may be attached
+        try:
+            if getattr(n, "attached_nodes", None):
+                from shared.models.node_enums import NodeType as _NodeType
+
+                ntype_enum = n.type if isinstance(n.type, _NodeType) else _NodeType(str(n.type))
+                if ntype_enum != _NodeType.AI_AGENT:
+                    errors.append(
+                        f"Node {n.id} has attached_nodes but is not AI_AGENT (type={ntype_enum})"
+                    )
+
+                for aid in n.attached_nodes or []:
+                    if aid not in node_map:
+                        errors.append(f"Attached node id '{aid}' not found (referenced by {n.id})")
+                        continue
+                    attached = node_map[aid]
+                    atype = (
+                        attached.type
+                        if isinstance(attached.type, _NodeType)
+                        else _NodeType(str(attached.type))
+                    )
+                    if atype not in (_NodeType.TOOL, _NodeType.MEMORY):
+                        errors.append(
+                            f"Attached node '{aid}' must be TOOL or MEMORY (found {atype})"
+                        )
+        except Exception:
+            # Do not fail hard on validation pass; collect as generic error
+            errors.append(
+                f"Failed to validate attached_nodes for node {n.id} due to unexpected error"
+            )
+
     # Validate connections: nodes must exist
     for c in workflow.connections:
         if c.from_node not in node_map or c.to_node not in node_map:

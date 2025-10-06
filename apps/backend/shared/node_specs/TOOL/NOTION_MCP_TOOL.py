@@ -26,11 +26,11 @@ class NotionMCPToolSpec(BaseNodeSpec):
             description="Notion MCP tool for database and page operations through MCP protocol",
             # Configuration parameters
             configurations={
-                "notion_integration_token": {
+                "access_token": {
                     "type": "string",
                     "default": "",
-                    "description": "Notion集成令牌",
-                    "required": True,
+                    "description": "Notion OAuth access token (optional - auto-fetched from oauth_tokens table by user_id if not provided)",
+                    "required": False,
                     "sensitive": True,
                 },
                 "operation_type": {
@@ -56,25 +56,15 @@ class NotionMCPToolSpec(BaseNodeSpec):
                     "type": "array",
                     "default": [
                         "notion_search",
-                        "notion_create_page",
-                        "notion_update_page",
-                        "notion_get_page",
-                        "notion_query_database",
-                        "notion_create_database_item",
+                        "notion_page",
+                        "notion_database",
                     ],
-                    "description": "可用的Notion工具列表",
+                    "description": "可用的Notion工具列表 (notion_page包含create/get/update页面操作, notion_database包含查询和管理数据库)",
                     "required": False,
                     "options": [
                         "notion_search",
-                        "notion_create_page",
-                        "notion_update_page",
-                        "notion_get_page",
-                        "notion_delete_page",
-                        "notion_query_database",
-                        "notion_create_database_item",
-                        "notion_update_database_item",
-                        "notion_get_database",
-                        "notion_list_databases",
+                        "notion_page",
+                        "notion_database",
                     ],
                 },
                 "page_size_limit": {
@@ -180,7 +170,7 @@ class NotionMCPToolSpec(BaseNodeSpec):
                     "name": "Search Notion Pages",
                     "description": "Search for pages and databases in Notion workspace",
                     "configurations": {
-                        "notion_integration_token": "secret_notion_token_123",
+                        "access_token": "secret_notion_token_123",
                         "available_tools": ["notion_search"],
                         "page_size_limit": 50,
                         "enable_rich_text": True,
@@ -190,7 +180,7 @@ class NotionMCPToolSpec(BaseNodeSpec):
                         "function_call": {
                             "tool_name": "notion_search",
                             "function_args": {
-                                "integration_token": "secret_notion_token_123",
+                                "access_token": "secret_notion_token_123",
                                 "query": "project management",
                                 "filter": {"value": "page", "property": "object"},
                                 "sort": {
@@ -230,7 +220,7 @@ class NotionMCPToolSpec(BaseNodeSpec):
                     "name": "Create Notion Database Entry",
                     "description": "Create new items in Notion databases with properties",
                     "configurations": {
-                        "notion_integration_token": "secret_notion_token_456",
+                        "access_token": "secret_notion_token_456",
                         "operation_type": "database",
                         "default_database_id": "db_789",
                         "available_tools": ["notion_create_database_item"],
@@ -241,7 +231,7 @@ class NotionMCPToolSpec(BaseNodeSpec):
                         "function_call": {
                             "tool_name": "notion_create_database_item",
                             "function_args": {
-                                "integration_token": "secret_notion_token_456",
+                                "access_token": "secret_notion_token_456",
                                 "database_id": "db_789",
                                 "properties": {
                                     "Task Name": {
@@ -283,7 +273,7 @@ class NotionMCPToolSpec(BaseNodeSpec):
                     "name": "Query Notion Database",
                     "description": "Query database with filters and sorting options",
                     "configurations": {
-                        "notion_integration_token": "secret_notion_token_789",
+                        "access_token": "secret_notion_token_789",
                         "operation_type": "database",
                         "default_database_id": "db_analytics_101",
                         "available_tools": ["notion_query_database"],
@@ -294,7 +284,7 @@ class NotionMCPToolSpec(BaseNodeSpec):
                         "function_call": {
                             "tool_name": "notion_query_database",
                             "function_args": {
-                                "integration_token": "secret_notion_token_789",
+                                "access_token": "secret_notion_token_789",
                                 "database_id": "db_analytics_101",
                                 "filter": {
                                     "and": [
@@ -337,7 +327,7 @@ class NotionMCPToolSpec(BaseNodeSpec):
                     "name": "Update Notion Page",
                     "description": "Update content and properties of an existing Notion page",
                     "configurations": {
-                        "notion_integration_token": "secret_notion_token_update",
+                        "access_token": "secret_notion_token_update",
                         "operation_type": "page",
                         "default_page_id": "27f0b1df-411b-80ac-aa54-c4cba158a1f9",
                         "available_tools": ["notion_update_page", "notion_get_page"],
@@ -348,7 +338,7 @@ class NotionMCPToolSpec(BaseNodeSpec):
                         "function_call": {
                             "tool_name": "notion_update_page",
                             "function_args": {
-                                "integration_token": "secret_notion_token_update",
+                                "access_token": "secret_notion_token_update",
                                 "page_id": "27f0b1df-411b-80ac-aa54-c4cba158a1f9",
                                 "properties": {
                                     "title": {

@@ -605,10 +605,15 @@ class NotionMCPService:
                     if hasattr(page, "to_dict")
                     else {
                         "id": page.id,
-                        "object": page.object,
+                        "object": "page",  # NotionPage objects are always type "page"
                         "title": self._extract_title(page),
                         "url": page.url,
-                        "properties": page.properties,
+                        "properties": {
+                            k: v.__dict__ if hasattr(v, "__dict__") else v
+                            for k, v in (
+                                page.properties.items() if isinstance(page.properties, dict) else {}
+                            )
+                        },
                     }
                 ),
             }
@@ -616,14 +621,14 @@ class NotionMCPService:
             if include_content:
                 children = await client.get_block_children(page_id)
                 result["content"] = [
-                    (
-                        child.to_dict()
-                        if hasattr(child, "to_dict")
-                        else {
-                            "id": getattr(child, "id", "unknown"),
-                            "type": getattr(child, "type", "unknown"),
-                        }
-                    )
+                    {
+                        "id": child.id,
+                        "type": child.type.value
+                        if hasattr(child.type, "value")
+                        else str(child.type),
+                        "has_children": child.has_children,
+                        "content": child.content,  # ✅ Include the actual block content with text
+                    }
                     for child in children.get("blocks", [])
                 ]
 
@@ -1020,8 +1025,18 @@ class NotionMCPService:
                         "archived": page.archived,
                         "parent": (
                             {
-                                "type": page.parent.type,
-                                "id": getattr(page.parent, page.parent.type + "_id", None),
+                                "type": page.parent.get("type")
+                                if isinstance(page.parent, dict)
+                                else getattr(page.parent, "type", None),
+                                "id": (
+                                    page.parent.get(page.parent.get("type") + "_id")
+                                    if isinstance(page.parent, dict)
+                                    else getattr(
+                                        page.parent,
+                                        getattr(page.parent, "type", "page") + "_id",
+                                        None,
+                                    )
+                                ),
                             }
                             if page.parent
                             else None

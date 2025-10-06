@@ -58,6 +58,7 @@ async def execute_workflow_by_id(
     """Execute a workflow by ID with comprehensive logging"""
     try:
         logger.info(f"📝 [v2] Received workflow execution request for workflow {workflow_id}")
+        logger.info(f"🔍 [v2] Raw request data: {request}")
 
         # Extract parameters from API Gateway request format
         trigger_payload = request.get("trigger", {}) or {}
@@ -66,6 +67,11 @@ async def execute_workflow_by_id(
         async_execution = request.get("async_execution", True)
         start_from_node = request.get("start_from_node")
         skip_trigger_validation = request.get("skip_trigger_validation", False)
+
+        logger.info(f"🔍 [v2] Extracted trigger_data: {trigger_data}")
+        if start_from_node:
+            logger.info(f"🎯 [v2] start_from_node specified: {start_from_node}")
+            logger.info(f"📥 [v2] trigger_data for start node: {trigger_data}")
 
         # Retrieve the actual workflow and user_id from the workflow service
         workflow_result = workflow_service.get_workflow_with_user_id(workflow_id)
@@ -131,6 +137,7 @@ async def execute_workflow_by_id(
                         start_from_node=start_from_node,
                         skip_trigger_validation=skip_trigger_validation,
                         execution_id=execution_id,
+                        workflow_id=workflow_id,  # Pass database table ID
                     )
                     logger.info(
                         f"✅ [v2] Background execution completed for {execution_id}: {execution.status}"
@@ -160,6 +167,7 @@ async def execute_workflow_by_id(
                 trace_id=trace_id,
                 start_from_node=start_from_node,
                 skip_trigger_validation=skip_trigger_validation,
+                workflow_id=workflow_id,  # Pass database table ID
             )
 
             logger.info(
@@ -205,10 +213,13 @@ async def execute_workflow(request: ExecuteWorkflowRequest, background_tasks: Ba
                 id=workflow_dict.get("id", "unknown"),
                 name=workflow_dict.get("name", "Unnamed Workflow"),
                 description=workflow_dict.get("description", ""),
-                version=workflow_dict.get("version", 1),
+                version=workflow_dict.get("version", "1.0"),
                 deployment_status=WorkflowDeploymentStatus(
                     workflow_dict.get("deployment_status", WorkflowDeploymentStatus.DEPLOYED.value)
                 ),
+                created_time=workflow_dict.get("created_time", int(time.time() * 1000)),
+                created_by=workflow_dict.get("created_by", "unknown"),
+                updated_by=workflow_dict.get("updated_by"),
             ),
             nodes=workflow_dict.get("nodes", []),
             connections=workflow_dict.get("connections", []),
@@ -230,9 +241,12 @@ async def execute_workflow(request: ExecuteWorkflowRequest, background_tasks: Ba
 
         # Create TriggerInfo object
         trigger = TriggerInfo(
-            type=trigger_dict.get("type", TriggerSubtype.MANUAL.value),
-            source=trigger_dict.get("source", "api"),
-            timestamp=trigger_dict.get("timestamp"),
+            trigger_type=trigger_dict.get(
+                "trigger_type", trigger_dict.get("type", TriggerSubtype.MANUAL.value)
+            ),
+            user_id=trigger_dict.get("user_id", "unknown"),
+            timestamp=trigger_dict.get("timestamp", int(time.time() * 1000)),
+            trigger_data=trigger_dict.get("trigger_data", {}),
         )
 
         logger.info(
@@ -241,7 +255,10 @@ async def execute_workflow(request: ExecuteWorkflowRequest, background_tasks: Ba
 
         # Execute workflow
         execution = await engine.execute_workflow(
-            workflow=workflow, trigger=trigger, trace_id=request.trace_id
+            workflow=workflow,
+            trigger=trigger,
+            trace_id=request.trace_id,
+            workflow_id=workflow.metadata.id,  # Pass workflow ID from metadata
         )
 
         logger.info(

@@ -27,7 +27,26 @@ class WorkflowGraph:
 
     def __init__(self, workflow: Workflow):
         self.workflow = workflow
-        self.nodes = {n.id: n for n in workflow.nodes}
+
+        # Identify nodes that are attached to other nodes (e.g., TOOL/MEMORY attached to AI_AGENT)
+        # These nodes should not execute independently in the main graph.
+        attached: Set[str] = set()
+        try:
+            for n in workflow.nodes:
+                # Node.attached_nodes is only meaningful for AI_AGENT per spec, but safe to check generically
+                if getattr(n, "attached_nodes", None):
+                    for aid in n.attached_nodes or []:
+                        if isinstance(aid, str) and aid:
+                            attached.add(aid)
+        except Exception:
+            # Defensive: if any workflow node is malformed, do not exclude anything
+            attached = set()
+
+        # Expose for debugging/introspection
+        self.attached_node_ids: Set[str] = attached
+
+        # Build node map excluding attached nodes from main execution graph
+        self.nodes = {n.id: n for n in workflow.nodes if n.id not in self.attached_node_ids}
         # Edge tuple: (to_node, output_key, conversion_function)
         # output_key: which output from source node to use (e.g., 'main', 'true', 'false')
         self.adjacency_list: Dict[str, List[Tuple[str, str, Optional[str]]]] = defaultdict(list)
@@ -39,6 +58,10 @@ class WorkflowGraph:
 
     def _build(self) -> None:
         for c in self.workflow.connections:
+            # Skip edges that reference attached nodes (filtered from main graph)
+            if c.from_node not in self.nodes or c.to_node not in self.nodes:
+                continue
+
             # Use output_key from connection (default: "result")
             output_key = getattr(c, "output_key", "result")
 
@@ -63,7 +86,10 @@ class WorkflowGraph:
     def sources(self) -> List[str]:
         # Prefer configured triggers if available; otherwise in-degree==0
         if self.workflow.triggers:
-            return list(self.workflow.triggers)
+            # Only return triggers that exist in the filtered node set
+            existing_triggers = [tid for tid in self.workflow.triggers if tid in self.nodes]
+            if existing_triggers:
+                return existing_triggers
         return [node_id for node_id, deg in self._in_degree.items() if deg == 0]
 
     def topo_order(self) -> List[str]:

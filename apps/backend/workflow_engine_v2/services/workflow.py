@@ -186,6 +186,12 @@ class WorkflowServiceV2:
                             metadata["created_time"] = metadata.get("created_time_ms", 0)
                         if "created_by" not in metadata:
                             metadata["created_by"] = metadata.get("created_by", "unknown")
+
+                        # CRITICAL FIX: Override metadata.id with the actual database workflow ID
+                        # The metadata.id might be stale from template/duplication, but the table ID is authoritative
+                        metadata["id"] = workflow_id
+                        self.logger.debug(f"Set metadata.id to database workflow_id: {workflow_id}")
+
                         # Merge top-level deployment_status into metadata (single source of truth)
                         if deployment_status:
                             metadata["deployment_status"] = deployment_status
@@ -250,6 +256,12 @@ class WorkflowServiceV2:
                             metadata["created_time"] = metadata.get("created_time_ms", 0)
                         if "created_by" not in metadata:
                             metadata["created_by"] = metadata.get("created_by", "unknown")
+
+                        # CRITICAL FIX: Override metadata.id with the actual database workflow ID
+                        # The metadata.id might be stale from template/duplication, but the table ID is authoritative
+                        metadata["id"] = workflow_id
+                        self.logger.debug(f"Set metadata.id to database workflow_id: {workflow_id}")
+
                         # Merge top-level deployment_status into metadata (single source of truth)
                         if deployment_status:
                             metadata["deployment_status"] = deployment_status

@@ -32,10 +32,10 @@ class GoogleCalendarMCPToolSpec(BaseNodeSpec):
                     "description": "MCP服务器URL",
                     "required": True,
                 },
-                "google_oauth_access_token": {
+                "access_token": {
                     "type": "string",
                     "default": "",
-                    "description": "Google OAuth访问令牌",
+                    "description": "Google OAuth access token for Calendar API authentication",
                     "required": True,
                     "sensitive": True,
                 },
@@ -173,7 +173,7 @@ class GoogleCalendarMCPToolSpec(BaseNodeSpec):
                     "description": "List events from Google Calendar with natural language filtering",
                     "configurations": {
                         "mcp_server_url": "http://localhost:8000/api/v1/mcp",
-                        "google_oauth_access_token": "oauth_token_123",
+                        "access_token": "oauth_token_123",
                         "default_calendar_id": "primary",
                         "available_tools": ["google_calendar_events"],
                         "timezone": "America/New_York",
@@ -232,7 +232,7 @@ class GoogleCalendarMCPToolSpec(BaseNodeSpec):
                     "description": "Create events using natural language descriptions",
                     "configurations": {
                         "mcp_server_url": "http://localhost:8000/api/v1/mcp",
-                        "google_oauth_access_token": "oauth_token_456",
+                        "access_token": "oauth_token_456",
                         "available_tools": ["google_calendar_quick_add"],
                         "enable_natural_language": True,
                     },
@@ -275,7 +275,7 @@ class GoogleCalendarMCPToolSpec(BaseNodeSpec):
                     "description": "Find free time slots for scheduling meetings",
                     "configurations": {
                         "mcp_server_url": "http://localhost:8000/api/v1/mcp",
-                        "google_oauth_access_token": "oauth_token_789",
+                        "access_token": "oauth_token_789",
                         "available_tools": ["google_calendar_availability"],
                         "business_hours_only": True,
                         "timezone": "UTC",

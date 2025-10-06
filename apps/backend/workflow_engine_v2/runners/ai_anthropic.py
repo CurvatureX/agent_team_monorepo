@@ -129,6 +129,7 @@ class AnthropicClaudeRunner(NodeRunner):
                 "function_calls": generation_result.get("function_calls", []),
             }
 
+            logger.info(f"📦 Built output before return: {output}")
             return {"result": output}
 
         except Exception as e:
@@ -323,6 +324,17 @@ class AnthropicClaudeRunner(NodeRunner):
         max_iterations = 5
         iteration = 0
 
+        # Map tool name to its providing node (when discoverer provides metadata)
+        tool_source_map = {}
+        try:
+            tool_source_map = {
+                t["name"]: t.get("_source_node_id")
+                for t in (available_tools or [])
+                if isinstance(t, dict) and t.get("name") and t.get("_source_node_id")
+            }
+        except Exception:
+            tool_source_map = {}
+
         while iteration < max_iterations:
             iteration += 1
             logger.info(f"🔄 Claude conversation turn {iteration}/{max_iterations}")
@@ -411,6 +423,7 @@ class AnthropicClaudeRunner(NodeRunner):
                             tool_name=tool_name,
                             tool_input=tool_input,
                             tool_nodes=tool_nodes,
+                            tool_source_map=tool_source_map,
                             trigger=trigger,
                             ctx=ctx,
                         )
@@ -419,6 +432,12 @@ class AnthropicClaudeRunner(NodeRunner):
                         import json
 
                         result_content = tool_result.get("result", {})
+
+                        # Log tool result for debugging
+                        logger.info(f"📥 Tool '{tool_name}' returned: {str(tool_result)[:300]}...")
+                        logger.info(
+                            f"📊 Result content type: {type(result_content)}, has data: {bool(result_content)}"
+                        )
 
                         # Format as JSON if it's a dict/list, otherwise as string
                         if isinstance(result_content, (dict, list)):
@@ -434,6 +453,10 @@ class AnthropicClaudeRunner(NodeRunner):
                                 if result_content
                                 else "Tool executed successfully"
                             )
+
+                        logger.info(
+                            f"📤 Sending to Claude ({len(result_str)} chars): {result_str[:200]}..."
+                        )
 
                         tool_results.append(
                             {
@@ -513,12 +536,29 @@ class AnthropicClaudeRunner(NodeRunner):
         tool_name: str,
         tool_input: Dict[str, Any],
         tool_nodes: List[Node],
+        tool_source_map: Optional[Dict[str, str]],
         trigger: TriggerInfo,
         ctx: Any,
     ) -> Dict[str, Any]:
         """Execute an MCP tool call through the appropriate tool node."""
+        # Prefer the specific tool node that declared this tool (if known)
+        preferred_node_id = None
+        try:
+            preferred_node_id = (tool_source_map or {}).get(tool_name)
+        except Exception:
+            preferred_node_id = None
+
+        # Build an ordered list: preferred node first (if any), then the rest
+        ordered_tool_nodes: List[Node] = []
+        if preferred_node_id:
+            ordered_tool_nodes = [n for n in tool_nodes if n.id == preferred_node_id] + [
+                n for n in tool_nodes if n.id != preferred_node_id
+            ]
+        else:
+            ordered_tool_nodes = list(tool_nodes)
+
         # Find the tool node that provides this tool
-        for tool_node in tool_nodes:
+        for tool_node in ordered_tool_nodes:
             # Execute the tool via the tool runner
             tool_runner_inputs = {
                 "main": {

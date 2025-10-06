@@ -419,29 +419,37 @@ def discover_mcp_tools_from_nodes(tool_nodes: List[Node]) -> List[Dict[str, Any]
             tool_schemas = tools_by_subtype[tool_subtype]
 
             # Get available tools from node configuration
-            available_tool_names = tool_node.configurations.get("available_tools", [])
+            configured_tool_names = tool_node.configurations.get("available_tools", [])
 
-            # If no specific tools configured, include all tools for this type
-            if not available_tool_names:
-                available_tool_names = [t["name"] for t in tool_schemas]
+            # Try to match configured tools with actual MCP tools
+            matched_tools = []
+            if configured_tool_names:
+                for tool_name in configured_tool_names:
+                    tool_schema = next((t for t in tool_schemas if t["name"] == tool_name), None)
+                    if tool_schema:
+                        matched_tools.append(tool_schema)
+                    else:
+                        logger.warning(f"⚠️ Configured tool '{tool_name}' not found in MCP server")
 
-            # Add each available tool function
-            for tool_name in available_tool_names:
-                # Find tool schema by name
-                tool_schema = next((t for t in tool_schemas if t["name"] == tool_name), None)
+            # If no tools matched or no tools configured, use all available tools for this type
+            if not matched_tools:
+                if configured_tool_names:
+                    logger.warning(
+                        f"⚠️ None of the configured tools matched MCP server, using all {len(tool_schemas)} available tools"
+                    )
+                matched_tools = tool_schemas
 
-                if tool_schema:
-                    tool_def = tool_schema.copy()
+            # Add each matched tool
+            for tool_schema in matched_tools:
+                tool_def = tool_schema.copy()
 
-                    # Add metadata about the source tool node
-                    tool_def["_source_node_id"] = tool_node.id
-                    tool_def["_source_node_name"] = tool_node.name
-                    tool_def["_tool_subtype"] = tool_subtype
+                # Add metadata about the source tool node
+                tool_def["_source_node_id"] = tool_node.id
+                tool_def["_source_node_name"] = tool_node.name
+                tool_def["_tool_subtype"] = tool_subtype
 
-                    available_tools.append(tool_def)
-                    logger.debug(f"🔧 Added MCP tool: {tool_name} from {tool_node.id}")
-                else:
-                    logger.warning(f"⚠️ Tool '{tool_name}' not found in {tool_subtype} schemas")
+                available_tools.append(tool_def)
+                logger.info(f"🔧 Added MCP tool: {tool_schema['name']} from {tool_node.id}")
 
         except Exception as e:
             logger.error(f"❌ Failed to discover tools from {tool_node.id}: {str(e)}")

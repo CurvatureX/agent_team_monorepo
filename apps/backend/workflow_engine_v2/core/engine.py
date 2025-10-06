@@ -227,16 +227,18 @@ class ExecutionEngine:
         self,
         workflow: Workflow,
         trigger: TriggerInfo,
+        workflow_id: str,
         trace_id: Optional[str] = None,
         start_from_node: Optional[str] = None,
         skip_trigger_validation: bool = False,
         execution_id: Optional[str] = None,
     ) -> Execution:
-        """Execute workflow synchronously with optional trace ID for debugging.
+        """Execute workflow synchronously with required workflow ID.
 
         Args:
             workflow: The workflow to execute
             trigger: Trigger information
+            workflow_id: Database table workflow ID (REQUIRED - do NOT use workflow.metadata.id)
             trace_id: Optional trace ID for debugging
             start_from_node: Optional node ID to start execution from (skips upstream nodes)
             skip_trigger_validation: Whether to skip trigger validation when using start_from_node
@@ -246,10 +248,13 @@ class ExecutionEngine:
         exec_id = execution_id or str(uuid.uuid4())
         trace_id = trace_id or str(uuid.uuid4())
 
+        # IMPORTANT: Use the provided workflow_id from database, NOT workflow.metadata.id
+        # The database table ID is the authoritative source
+
         workflow_execution = Execution(
             id=exec_id,
             execution_id=exec_id,
-            workflow_id=workflow.metadata.id,
+            workflow_id=workflow_id,
             workflow_version=workflow.metadata.version,
             status=ExecutionStatus.RUNNING,
             start_time=_now_ms(),
@@ -643,6 +648,58 @@ class ExecutionEngine:
                 if node_execution.start_time
                 else None
             )
+
+            # Fail-fast: Check if node execution returned success=False
+            # Many nodes (TOOL, EXTERNAL_ACTION, etc.) return {"result": {"success": False, ...}}
+            # to indicate failure without throwing an exception
+            node_failed = False
+            try:
+                for port_data in shaped_outputs.values():
+                    if isinstance(port_data, dict) and port_data.get("success") is False:
+                        error_msg = port_data.get("error_message", "Node execution failed")
+                        logger.error(f"❌ Node {node.name} returned success=False: {error_msg}")
+
+                        # Mark node as failed
+                        node_execution.status = NodeExecutionStatus.FAILED
+                        node_execution.error = NodeError(
+                            error_code="NODE_EXECUTION_FAILED",
+                            error_message=error_msg,
+                            error_details={"node_output": port_data},
+                            is_retryable=False,
+                            timestamp=_now_ms(),
+                        )
+
+                        # Mark workflow as error
+                        workflow_execution.status = ExecutionStatus.ERROR
+                        workflow_execution.error = ExecutionError(
+                            error_code="EXECUTION_FAILED",
+                            error_message=f"Node {node.name} failed: {error_msg}",
+                            error_node_id=current_node_id,
+                            stack_trace=None,
+                            timestamp=_now_ms(),
+                            is_retryable=False,
+                        )
+
+                        # Log and notify
+                        self._log.log(
+                            workflow_execution,
+                            level=LogLevel.ERROR,
+                            message=f"Node {node.name} failed with success=False",
+                            node_id=current_node_id,
+                        )
+                        self._events.node_failed(
+                            workflow_execution, current_node_id, node_execution
+                        )
+                        self._events.execution_failed(workflow_execution)
+                        self._persist_execution(workflow_execution)
+                        node_failed = True
+                        break  # Stop checking other ports
+            except Exception as check_err:
+                logger.warning(f"Failed to check node success status: {check_err}")
+
+            # If node failed, stop workflow execution
+            if node_failed:
+                break
             # Merge execution details patch if provided by runner
             try:
                 details_patch = outputs.get("_details") if isinstance(outputs, dict) else None
@@ -822,6 +879,7 @@ class ExecutionEngine:
         self,
         workflow: Workflow,
         trigger: TriggerInfo,
+        workflow_id: str,
         trace_id: Optional[str] = None,
         start_from_node: Optional[str] = None,
         skip_trigger_validation: bool = False,
@@ -834,6 +892,7 @@ class ExecutionEngine:
             self.run,
             workflow,
             trigger,
+            workflow_id,
             trace_id,
             start_from_node,
             skip_trigger_validation,
@@ -844,6 +903,7 @@ class ExecutionEngine:
         self,
         workflow: Workflow,
         trigger: TriggerInfo,
+        workflow_id: str,
         trace_id: Optional[str] = None,
         start_from_node: Optional[str] = None,
         skip_trigger_validation: bool = False,
@@ -851,7 +911,13 @@ class ExecutionEngine:
     ) -> Execution:
         """Async alias for run_async - for compatibility with ModernExecutionEngine API."""
         return await self.run_async(
-            workflow, trigger, trace_id, start_from_node, skip_trigger_validation, execution_id
+            workflow,
+            trigger,
+            workflow_id,
+            trace_id,
+            start_from_node,
+            skip_trigger_validation,
+            execution_id,
         )
 
     # -------- Engine control API --------
@@ -1266,7 +1332,8 @@ class ExecutionEngine:
         # Only start from explicitly configured trigger nodes
         # Do NOT start from all in-degree 0 nodes
         if graph.workflow.triggers:
-            return list(graph.workflow.triggers)
+            # Filter triggers to those present in the execution graph (excludes attached nodes)
+            return [tid for tid in graph.workflow.triggers if tid in graph.nodes]
         # Fallback: if no triggers configured, use in-degree 0 nodes
         return [node_id for node_id in graph.nodes.keys() if graph.in_degree(node_id) == 0]
 

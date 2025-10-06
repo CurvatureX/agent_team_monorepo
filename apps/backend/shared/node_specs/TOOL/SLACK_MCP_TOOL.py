@@ -32,10 +32,10 @@ class SlackMCPToolSpec(BaseNodeSpec):
                     "description": "MCP服务器URL",
                     "required": True,
                 },
-                "slack_oauth_token": {
+                "access_token": {
                     "type": "string",
                     "default": "",
-                    "description": "Slack OAuth访问令牌",
+                    "description": "Slack OAuth access token (bot token: xoxb-...)",
                     "required": True,
                     "sensitive": True,
                 },
