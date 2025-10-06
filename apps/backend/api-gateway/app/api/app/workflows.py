@@ -8,7 +8,14 @@ import socket
 import time
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
+
+try:
+    from shared.models.node_enums import NodeType
+    from shared.node_specs.registry import node_spec_registry
+except Exception:  # pragma: no cover - fallback when specs not available
+    NodeType = None
+    node_spec_registry = None
 
 from app.core.config import get_settings
 from app.core.database import get_supabase_admin
@@ -45,6 +52,89 @@ router = APIRouter()
 # Workflow validation and data cache
 WORKFLOW_CACHE = {}
 CACHE_TTL = 300  # 5 minutes TTL for workflow data
+
+PLACEHOLDER_VALUE = "{{$placeholder}}"
+
+TOKEN_FIELD_KEYWORDS: Tuple[str, ...] = (
+    "token",
+    "secret",
+    "api_key",
+    "apikey",
+    "access_key",
+    "client_secret",
+)
+
+PROVIDER_ALIAS_MAP: Dict[str, Set[str]] = {
+    "notion": {"notion"},
+    "slack": {"slack"},
+    "github": {"github"},
+    "google_calendar": {"google_calendar"},
+    "discord_action": {"discord"},
+    "telegram_action": {"telegram"},
+}
+
+
+def _build_external_node_requirements() -> Dict[Tuple[str, str], Dict[str, Any]]:
+    requirements: Dict[Tuple[str, str], Dict[str, Any]] = {}
+
+    if not node_spec_registry or not NodeType:
+        return requirements
+
+    try:
+        specs = node_spec_registry.list_all_specs()
+    except Exception as exc:  # pragma: no cover - registry failures
+        logger.warning(f"⚠️ Failed to load node specs for configuration status: {exc}")
+        return requirements
+
+    for spec in specs:
+        try:
+            node_type_value = spec.type.value if hasattr(spec.type, "value") else str(spec.type)
+        except Exception:
+            continue
+
+        try:
+            if node_type_value != NodeType.EXTERNAL_ACTION.value:
+                continue
+        except Exception:
+            continue
+
+        subtype = getattr(spec, "subtype", None)
+        if not subtype:
+            continue
+
+        config_schema = getattr(spec, "configurations", {}) or {}
+
+        required_paths: List[Tuple[str, ...]] = []
+        token_fields: Set[str] = set()
+
+        for field_name, field_schema in config_schema.items():
+            if not isinstance(field_schema, dict):
+                continue
+
+            if field_schema.get("required"):
+                required_paths.append((field_name,))
+
+            field_lower = field_name.lower()
+            if any(keyword in field_lower for keyword in TOKEN_FIELD_KEYWORDS):
+                token_fields.add(field_name)
+
+        subtype_key = str(subtype).lower()
+        providers: Set[str] = set()
+        if token_fields:
+            providers.update(PROVIDER_ALIAS_MAP.get(subtype_key, set()))
+            if not providers and subtype_key:
+                providers.add(subtype_key)
+
+        requirements[(node_type_value, str(subtype))] = {
+            "providers": providers,
+            "required_paths": tuple(required_paths),
+            "token_fields": token_fields,
+        }
+
+    return requirements
+
+
+EXTERNAL_NODE_REQUIREMENTS = _build_external_node_requirements()
 
 
 class WorkflowSummary(BaseModel):
@@ -127,6 +217,184 @@ def _clear_workflow_cache(workflow_id: str, user_id: str):
     if cache_key in WORKFLOW_CACHE:
         del WORKFLOW_CACHE[cache_key]
         logger.info(f"📋 Cleared cached workflow data for {workflow_id}")
+
+
+def _normalize_provider_key(provider: Optional[str], integration_id: Optional[str]) -> Optional[str]:
+    """Normalize provider key for oauth token lookup."""
+    if integration_id == "github_app":
+        return "github"
+    if integration_id in {"google_calendar", "gmail"}:
+        return integration_id
+    return provider or integration_id
+
+
+def _collect_placeholder_paths(value: Any, path: Tuple[str, ...]) -> List[Tuple[str, ...]]:
+    paths: List[Tuple[str, ...]] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            paths.extend(_collect_placeholder_paths(child, (*path, str(key))))
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            paths.extend(_collect_placeholder_paths(child, (*path, str(index))))
+    else:
+        if isinstance(value, str) and value.strip() == PLACEHOLDER_VALUE:
+            paths.append(path)
+    return paths
+
+
+def _get_nested_value(data: Dict[str, Any], path: Sequence[str]) -> Any:
+    current: Any = data
+    for key in path:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    return current
+
+
+def _is_missing_config_value(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return True
+        if stripped == PLACEHOLDER_VALUE:
+            return True
+    return False
+
+
+async def _compute_workflow_configuration_status(
+    workflow: Dict[str, Any], user_id: str
+) -> Dict[str, Any]:
+    nodes = workflow.get("nodes") or workflow.get("workflow_data", {}).get("nodes", [])
+
+    oauth_tokens = await _fetch_oauth_tokens_with_retry(user_id)
+    provider_tokens: Dict[str, List[Dict[str, Any]]] = {}
+    for token_record in oauth_tokens:
+        provider_key = _normalize_provider_key(
+            token_record.get("provider"), token_record.get("integration_id")
+        )
+        if not provider_key:
+            continue
+        provider_tokens.setdefault(provider_key, []).append(token_record)
+
+    node_statuses: List[Dict[str, Any]] = []
+
+    for node in nodes:
+        node_type = node.get("type") or node.get("node_type")
+        node_subtype = node.get("subtype") or node.get("node_subtype")
+        if not node_type or not node_subtype:
+            continue
+
+        configurations = node.get("configurations") or {}
+
+        requirement = EXTERNAL_NODE_REQUIREMENTS.get((node_type, node_subtype))
+        if requirement is None:
+            if NodeType is not None:
+                is_external_action = node_type == NodeType.EXTERNAL_ACTION.value
+            else:
+                is_external_action = node_type == "EXTERNAL_ACTION"
+
+            if not is_external_action:
+                continue
+
+            subtype_lower = node_subtype.lower() if isinstance(node_subtype, str) else ""
+            fallback_token_fields: Set[str] = {
+                key
+                for key in configurations.keys()
+                if isinstance(key, str)
+                and any(keyword in key.lower() for keyword in TOKEN_FIELD_KEYWORDS)
+            }
+
+            fallback_providers: Set[str] = set()
+            if fallback_token_fields:
+                fallback_providers.update(PROVIDER_ALIAS_MAP.get(subtype_lower, set()))
+                if not fallback_providers and subtype_lower:
+                    fallback_providers.add(subtype_lower)
+
+            requirement = {
+                "providers": fallback_providers,
+                "required_paths": tuple(),
+                "token_fields": fallback_token_fields,
+            }
+
+        placeholder_paths = _collect_placeholder_paths(
+            configurations, ("configurations",)
+        )
+
+        token_fields = requirement.get("token_fields", set()) or set()
+        token_field_paths = {("configurations", field) for field in token_fields}
+
+        provider_set = requirement.get("providers", set()) or set()
+        token_ready: Optional[bool] = None
+        missing_tokens: List[str] = []
+
+        if provider_set:
+            token_ready = any(provider in provider_tokens for provider in provider_set)
+            if not token_ready:
+                missing_tokens = sorted(
+                    provider for provider in provider_set if provider not in provider_tokens
+                )
+
+        missing_item_paths: Set[Tuple[str, ...]] = set()
+
+        for path_tuple in placeholder_paths:
+            if path_tuple in token_field_paths and token_ready:
+                continue
+            missing_item_paths.add(path_tuple)
+
+        for path in requirement.get("required_paths", tuple()):
+            value = _get_nested_value(configurations, path)
+            if _is_missing_config_value(value):
+                if path and path[0] in token_fields and token_ready:
+                    continue
+                missing_item_paths.add(("configurations", *path))
+
+        if node_subtype == "NOTION":
+            operation_type = configurations.get("operation_type", "database")
+            database_id = _get_nested_value(configurations, ("database_id",))
+            page_id = _get_nested_value(configurations, ("page_id",))
+
+            if operation_type == "database":
+                if _is_missing_config_value(database_id):
+                    missing_item_paths.add(("configurations", "database_id"))
+            elif operation_type == "page":
+                if _is_missing_config_value(page_id):
+                    missing_item_paths.add(("configurations", "page_id"))
+            elif operation_type == "both":
+                missing_database = _is_missing_config_value(database_id)
+                missing_page = _is_missing_config_value(page_id)
+                if missing_database and missing_page:
+                    missing_item_paths.add(("configurations", "database_id"))
+                    missing_item_paths.add(("configurations", "page_id"))
+
+        config_ready = not missing_item_paths
+
+        node_status: Dict[str, Any] = {
+            "node_id": node.get("id") or node.get("node_id"),
+            "node_type": node_type,
+            "node_subtype": node_subtype,
+            "token_ready": token_ready if token_ready is not None else True,
+            "config_ready": config_ready,
+            "missing_items": sorted(".".join(path) for path in missing_item_paths),
+        }
+
+        if missing_tokens:
+            node_status["missing_tokens"] = missing_tokens
+            node_status["token_ready"] = False
+
+        node_statuses.append(node_status)
+
+    is_configured = all(
+        status.get("token_ready", True) and status.get("config_ready", True)
+        for status in node_statuses
+    )
+
+    return {
+        "is_configured": is_configured,
+        "checked_at": datetime.utcnow().isoformat() + "Z",
+        "nodes": node_statuses,
+    }
 
 
 async def _fetch_oauth_tokens_with_retry(user_id: str) -> List[Dict[str, Any]]:
@@ -534,9 +802,11 @@ async def get_workflow(workflow_id: str, deps: AuthenticatedDeps = Depends()):
 
         logger.info(f"✅ Workflow retrieved: {workflow_id}")
 
-        # Return the original GetWorkflowResponse structure from workflow engine
-        # This preserves the "found" field that the frontend expects
-        return result
+        configuration_status = await _compute_workflow_configuration_status(
+            result["workflow"], deps.current_user.sub
+        )
+
+        return {**result, "configuration_status": configuration_status}
 
     except (NotFoundError, HTTPException):
         raise

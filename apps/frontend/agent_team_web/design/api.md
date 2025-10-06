@@ -69,27 +69,77 @@
 ‎⁠GET /api/v1/app/workflows/{workflow_id}⁠
  • 请求参数
  ▫ 路径参数：‎⁠workflow_id⁠（string）
- • 返回体（Response Body）{
-  "workflow": {
-    "created_at": "2025-08-07T06:52:08.582Z",
-    "updated_at": "2025-08-07T06:52:08.582Z",
-    "id": "string",
-    "user_id": "string",
-    "name": "string",
-    "description": "string",
-    "type": "sequential",
-    "status": "draft",
-    "version": 1,
-    "nodes": [ ... ],
-    "edges": [ ... ],
-    "variables": { "additionalProp1": {} },
-    "settings": { "additionalProp1": {} },
-    "tags": ["string"],
-    "execution_count": 0,
-    "last_execution": "string"
-  },
-  "message": "string"
+• 返回体（Response Body）{
+ "workflow": {
+   "created_at": "2025-08-07T06:52:08.582Z",
+   "updated_at": "2025-08-07T06:52:08.582Z",
+   "id": "string",
+   "user_id": "string",
+   "name": "string",
+   "description": "string",
+   "type": "sequential",
+   "status": "draft",
+   "version": 1,
+   "nodes": [ ... ],
+   "edges": [ ... ],
+   "variables": { "additionalProp1": {} },
+   "settings": { "additionalProp1": {} },
+   "tags": ["string"],
+   "execution_count": 0,
+   "last_execution": "string"
+ },
+ "configuration_status": {
+   "is_configured": true,
+   "checked_at": "2025-08-07T06:52:08.600Z",
+   "nodes": [
+     {
+       "node_id": "string",
+       "node_type": "EXTERNAL_ACTION",
+       "node_subtype": "string",
+       "token_ready": true,
+       "config_ready": true,
+       "missing_items": [],
+       "missing_tokens": []
+     }
+   ]
+ },
+ "message": "string"
 }
+
+• 当工作流存在未配置完成的外部节点时，`configuration_status` 会返回缺失项示例：
+
+```
+{
+  "found": true,
+  "workflow": { ... },
+  "configuration_status": {
+    "is_configured": false,
+    "checked_at": "2025-02-04T12:34:56.789Z",
+    "nodes": [
+      {
+        "node_id": "notion_writer",
+        "node_type": "EXTERNAL_ACTION",
+        "node_subtype": "NOTION",
+        "token_ready": false,
+        "config_ready": false,
+        "missing_tokens": ["notion"],
+        "missing_items": [
+          "configurations.database_id",
+          "configurations.notion_token"
+        ]
+      },
+      {
+        "node_id": "slack_action",
+        "node_type": "EXTERNAL_ACTION",
+        "node_subtype": "SLACK",
+        "token_ready": true,
+        "config_ready": false,
+        "missing_items": ["configurations.channel"]
+      }
+    ]
+  }
+}
+```
 
 3. 更新工作流（Update Workflow）
  • URL
