@@ -25,21 +25,47 @@ You are a Python expert generating data transformation functions for the workflo
 ### Connection Details
 {{ connection_info | tojsonpretty }}
 
-{% if source_context.type == "AI_AGENT" and source_context.configurations and source_context.configurations.system_prompt %}
-### CRITICAL: AI Agent Output Format
-The source AI Agent has been instructed with this system prompt:
-```
-{{ source_context.configurations.system_prompt }}
-```
+### CRITICAL: Conversion Mapping Rules
 
-**IMPORTANT**: If the system prompt specifies JSON output fields (like `reply_text`, `notion_token`, etc.), your conversion function MUST access those exact field names from the AI agent's parsed JSON output.
+**Source Node Output**: The source node outputs data that needs to be transformed.
+{% if source_context.sample_outputs %}
+- Available output fields: {{ source_context.sample_outputs | join(', ') }}
+{% endif %}
 
-Example: If system prompt requires `"reply_text": "..."`, access it as:
+**Target Node Input Requirements**: The target node expects specific input parameters.
+{% if target_context.actual_input_params %}
+- Required input fields: {{ target_context.actual_input_params | join(', ') }}
+- YOU MUST map source output to these EXACT field names: {{ target_context.actual_input_params | join(', ') }}
+{% elif target_context.expected_inputs %}
+- Expected input parameters: {% for param in target_context.expected_inputs %}{{ param.name }}{% if param.required %} (required){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}
+{% endif %}
+
+{% if source_context.type == "AI_AGENT" %}
+**AI Agent Special Handling**:
+- AI agents typically output their response in a `content` field containing JSON or text
+- Modern AI agents use simplified output format: `{"content": "main response", "summary": "if applicable", "metadata": {}}`
+- Extract the actual data from the AI's response and map to target node inputs
+- Do NOT expect configuration fields from AI agents - those are handled by node configurations
+
+**Common AI Output Patterns**:
 ```python
+# Standard AI response
 result = input_data.get("data", {}).get("result", {})
-reply_text = result.get("reply_text")  # Use the exact field name from system prompt
+content = result.get("content", "")  # Main AI response
+
+# If content is JSON string, parse it
+try:
+    import json
+    parsed_content = json.loads(content) if isinstance(content, str) else content
+    summary = parsed_content.get("summary", "")
+    original_text = parsed_content.get("original_message", "")
+except:
+    # Fallback to raw content
+    summary = content
 ```
 {% endif %}
+
+**CRITICAL**: Your conversion function must map source output to target INPUT PARAMETERS, NOT configuration fields.
 
 {% if intent_summary %}
 ### Workflow Intent

@@ -512,12 +512,16 @@ Next node's purpose: {next_node.get('name', 'Unknown')}
                         enhancement_prompt += f"- {param.get('name')} ({param.get('type')}): {param.get('description', 'N/A')}\n"
 
             enhancement_prompt += """
+CRITICAL: The AI Agent should focus ONLY on its core task. Do NOT generate configuration data for downstream nodes - that's handled by conversion functions.
+
 Please enhance the system prompt to:
-1. Clearly specify the output format required by the next node
-2. Include JSON structure if the next node expects JSON
-3. Add examples if helpful
-4. Keep the original intent and functionality
-5. Be concise but explicit about format requirements
+1. Keep the core functionality (summarization, analysis, etc.)
+2. Use simple, clean JSON output with only the essential fields
+3. Focus on the AI's primary task, not downstream node requirements
+4. For summarization tasks, output should contain: summary, original_message, sender, timestamp
+5. Avoid generating technical configuration fields (tokens, operation_types, etc.)
+
+Enhanced prompt should be concise and focused on the AI's actual job.
 
 Return ONLY the enhanced system prompt, no explanations."""
 
@@ -658,28 +662,26 @@ Check the node's expected input format and structure your response accordingly.
     def _generate_format_from_mcp_spec(
         self, node_spec: dict, node_type: str, node_subtype: str
     ) -> str:
-        """Generate format prompt from MCP node specification."""
-        # Extract required parameters only
-        parameters = node_spec.get("parameters", [])
-        required_params = [p for p in parameters if p.get("required", False)]
+        """Generate simple format prompt focused on AI's core task, not downstream node requirements."""
 
-        if not required_params:
-            return "Return JSON response."
+        # For EXTERNAL_ACTION nodes, we should NOT require the AI to generate configuration
+        # The conversion function should handle the mapping from AI output to node input
+        if node_type == "EXTERNAL_ACTION":
+            return """Return simple JSON with your analysis/processing results:
+{
+  "content": "your main output/result",
+  "metadata": {"additional_info": "if needed"}
+}
 
-        # Build simple JSON structure with only required fields
-        json_fields = []
-        for param in required_params:
-            param_name = param.get("name", "param")
-            param_type = param.get("type", "string")
-            example_value = self._get_example_for_param_type(param_type, param_name)
-            json_fields.append(f'  "{param_name}": {example_value}')
+Do NOT generate configuration parameters - that's handled automatically."""
 
-        format_prompt = f"""Return JSON:
-{{
-{chr(10).join(json_fields)}
-}}"""
-
-        return format_prompt
+        # For other node types, keep it simple
+        return """Return JSON with your processing results:
+{
+  "content": "your main output",
+  "summary": "if applicable",
+  "data": "processed information"
+}"""
 
     def _get_example_for_param_type(self, param_type: str, param_name: str) -> str:
         """Generate an example value for a parameter based on its type."""
@@ -2282,6 +2284,10 @@ class ConversionFunctionGenerator:
 
         if include_inputs:
             summary["expected_inputs"] = self._summarize_parameters(spec)
+            # Also include the actual input params from the node for direct reference
+            input_params = node.get("input_params", {})
+            if input_params:
+                summary["actual_input_params"] = list(input_params.keys())
         else:
             summary["sample_outputs"] = list((node.get("output_params") or {}).keys())[:6]
 
@@ -2293,17 +2299,48 @@ class ConversionFunctionGenerator:
     def _summarize_parameters(self, spec: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if not spec:
             return []
-        params = []
-        for param in (spec.get("parameters") or [])[:6]:
-            if isinstance(param, dict):
+
+        # First try to get parameters from spec.parameters (MCP format)
+        parameters = spec.get("parameters", [])
+        if parameters:
+            params = []
+            for param in parameters[:6]:
+                if isinstance(param, dict):
+                    params.append(
+                        {
+                            "name": param.get("name"),
+                            "type": param.get("type"),
+                            "required": param.get("required", False),
+                        }
+                    )
+            return params
+
+        # If no parameters, try to extract from input_params (node format)
+        input_params = spec.get("input_params", {})
+        if isinstance(input_params, dict):
+            params = []
+            for param_name, param_value in input_params.items():
+                # Infer type from the default value
+                param_type = "string"
+                if isinstance(param_value, bool):
+                    param_type = "boolean"
+                elif isinstance(param_value, int):
+                    param_type = "integer"
+                elif isinstance(param_value, dict):
+                    param_type = "object"
+                elif isinstance(param_value, list):
+                    param_type = "array"
+
                 params.append(
                     {
-                        "name": param.get("name"),
-                        "type": param.get("type"),
-                        "required": param.get("required", False),
+                        "name": param_name,
+                        "type": param_type,
+                        "required": True,  # Assume all input params are required
                     }
                 )
-        return params
+            return params[:6]
+
+        return []
 
     def _compact_dict(self, value: Any) -> Any:
         if not isinstance(value, dict):
