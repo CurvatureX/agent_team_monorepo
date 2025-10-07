@@ -69,26 +69,41 @@ class HILRunner(NodeRunner):
                     "Failed to create HIL interaction", "interaction_creation_failed"
                 )
 
+            workflow_log_id = "unknown"
+            if ctx and hasattr(ctx, "workflow"):
+                wf_obj = getattr(ctx, "workflow")
+                workflow_log_id = (
+                    getattr(wf_obj, "workflow_id", None)
+                    or getattr(getattr(wf_obj, "metadata", None), "id", None)
+                    or getattr(wf_obj, "id", None)
+                    or "unknown"
+                )
+
             logger.info(
-                f"Created HIL interaction {interaction_id} for workflow {ctx.workflow.workflow_id if ctx.workflow else 'unknown'}"
+                f"Created HIL interaction {interaction_id} for workflow {workflow_log_id}"
             )
 
             # Return workflow pause signals
+            timeout_at = (
+                datetime.utcnow() + timedelta(seconds=hil_config["timeout_seconds"])
+            ).isoformat()
+            payload = {
+                "status": "waiting_for_human",
+                "interaction_id": interaction_id,
+                "interaction_type": hil_config["interaction_type"],
+                "channel_type": hil_config["channel_type"],
+                "timeout_at": timeout_at,
+                "message": hil_config.get("message", "Human input required"),
+                "timeout_action": hil_config.get("timeout_action", "fail"),
+            }
+
             return {
                 "_hil_wait": True,
                 "_hil_interaction_id": interaction_id,
                 "_hil_timeout_seconds": hil_config["timeout_seconds"],
                 "_hil_node_id": node.id,
-                "main": {
-                    "status": "waiting_for_human",
-                    "interaction_id": interaction_id,
-                    "interaction_type": hil_config["interaction_type"],
-                    "channel_type": hil_config["channel_type"],
-                    "timeout_at": (
-                        datetime.utcnow() + timedelta(seconds=hil_config["timeout_seconds"])
-                    ).isoformat(),
-                    "message": hil_config.get("message", "Human input required"),
-                },
+                "main": payload,
+                "result": payload,
             }
 
         except Exception as e:
@@ -116,7 +131,13 @@ class HILRunner(NodeRunner):
             "timeout_action": config.get(
                 "timeout_action", "fail"
             ),  # fail, continue, default_response
+            "channel_config": config.get("channel_config", {}),
+            "priority": config.get("priority", "normal"),
         }
+
+        channel_aliases = {"in_app": "app"}
+        channel_key = str(hil_config["channel_type"]).lower()
+        hil_config["channel_type"] = channel_aliases.get(channel_key, channel_key)
 
         return hil_config
 
@@ -132,7 +153,7 @@ class HILRunner(NodeRunner):
             )
 
         # Validate channel type
-        valid_channel_types = ["slack", "email", "webhook", "in_app"]
+        valid_channel_types = ["slack", "email", "webhook", "in_app", "app"]
         if hil_config["channel_type"] not in valid_channel_types:
             errors.append(
                 f"Invalid channel_type: {hil_config['channel_type']}. Must be one of: {valid_channel_types}"
@@ -194,10 +215,38 @@ class HILRunner(NodeRunner):
         """Create HIL interaction in database via HIL service."""
         try:
             # Prepare interaction data
-            interaction_type = HILInteractionType(hil_config["interaction_type"])
-            channel_type = HILChannelType(hil_config["channel_type"])
+            try:
+                interaction_type = HILInteractionType(hil_config["interaction_type"])
+            except ValueError:
+                interaction_type = HILInteractionType.APPROVAL
+
+            channel_value = hil_config["channel_type"]
+            try:
+                channel_type = HILChannelType(channel_value)
+            except ValueError:
+                # Allow alias 'app'
+                if channel_value == "app":
+                    channel_type = HILChannelType.APP
+                else:
+                    raise
 
             # Build request data
+            workflow_obj = getattr(ctx, "workflow", None)
+            workflow_id = None
+            if workflow_obj is not None:
+                workflow_id = getattr(workflow_obj, "workflow_id", None)
+                if not workflow_id and hasattr(workflow_obj, "metadata"):
+                    workflow_id = getattr(workflow_obj.metadata, "id", None)
+                if not workflow_id and hasattr(workflow_obj, "id"):
+                    workflow_id = workflow_obj.id
+
+            execution_obj = getattr(ctx, "execution", None)
+            execution_id = None
+            if execution_obj is not None:
+                execution_id = getattr(execution_obj, "execution_id", None)
+                if not execution_id and hasattr(execution_obj, "id"):
+                    execution_id = execution_obj.id
+
             request_data = {
                 "title": hil_config["title"],
                 "description": hil_config["description"],
@@ -209,11 +258,12 @@ class HILRunner(NodeRunner):
                 "template_variables": hil_config.get("template_variables", {}),
                 "response_messages": hil_config.get("response_messages", {}),
                 "timeout_action": hil_config["timeout_action"],
+                "channel_config": hil_config.get("channel_config", {}),
                 "node_configurations": node.configurations,
                 "input_data": inputs.get("main", {}),
                 "workflow_context": {
-                    "workflow_id": ctx.workflow.workflow_id if ctx and ctx.workflow else None,
-                    "execution_id": ctx.execution.execution_id if ctx and ctx.execution else None,
+                    "workflow_id": workflow_id,
+                    "execution_id": execution_id,
                     "node_id": node.id,
                     "node_name": node.name,
                     "node_description": node.description,
@@ -221,17 +271,16 @@ class HILRunner(NodeRunner):
             }
 
             # Create interaction using HIL service
-            interaction_id = self.hil_service.create_interaction(
-                workflow_id=ctx.workflow.workflow_id if ctx and ctx.workflow else str(uuid.uuid4()),
-                execution_id=ctx.execution.execution_id
-                if ctx and ctx.execution
-                else str(uuid.uuid4()),
+            interaction_id = self.hil_service.create_interaction_sync(
+                workflow_id=workflow_id or str(uuid.uuid4()),
+                execution_id=execution_id or str(uuid.uuid4()),
                 node_id=node.id,
                 user_id=user_id,
                 interaction_type=interaction_type,
                 channel_type=channel_type,
-                input_data=request_data,
+                request_data=request_data,
                 timeout_seconds=hil_config["timeout_seconds"],
+                priority=hil_config.get("priority", "normal"),
             )
 
             return interaction_id
