@@ -22,6 +22,7 @@ import { NodeType, NodeSubtypeAliasToCanonical, NodeSubtypeCanonicalToAlias } fr
 
 /**
  * Convert API workflow node to editor workflow node
+ * Maps backend Node format to React Flow node format
  */
 export function apiNodeToEditorNode(
   apiNode: ApiWorkflowNode,
@@ -38,14 +39,16 @@ export function apiNodeToEditorNode(
     position: apiNode.position || { x: 0, y: 0 },
     data: {
       label: apiNode.name || template.name,
+      description: apiNode.description || '',
       template,
+      // Merge configurations: template defaults + actual config values
       parameters: {
         ...template.default_parameters,
-        ...apiNode.config,
-        ...apiNode.parameters,
-        ...apiNode.inputs,
+        ...apiNode.configurations,  // Real values override placeholders
+        ...apiNode.input_params,
+        ...apiNode.output_params,
       },
-      status: apiNode.disabled ? 'error' : 'idle',
+      status: 'idle',
       // Store the original API node data for later export
       originalData: apiNode,
     },
@@ -54,6 +57,7 @@ export function apiNodeToEditorNode(
 
 /**
  * Convert editor workflow node to API workflow node
+ * Maps React Flow node format to backend Node format
  */
 export function editorNodeToApiNode(editorNode: EditorWorkflowNode): ApiWorkflowNode {
   const { data } = editorNode;
@@ -70,45 +74,83 @@ export function editorNodeToApiNode(editorNode: EditorWorkflowNode): ApiWorkflow
     name: data.label,
     description: template.description,
     position: editorNode.position,
-    config: data.parameters,
-    parameters: data.parameters,
-    inputs: {},
-    outputs: {},
-    metadata: {},
-    disabled: data.status === 'error',
+    // Backend format (clean - no legacy fields)
+    configurations: data.parameters,
+    input_params: {},
+    output_params: {},
   };
 }
 
 /**
  * Convert API workflow edge to editor workflow edge
+ * Maps backend Connection format to React Flow Edge format
  */
-export function apiEdgeToEditorEdge(apiEdge: ApiWorkflowEdge): EditorWorkflowEdge {
-  return {
+export function apiEdgeToEditorEdge(apiEdge: any): EditorWorkflowEdge {
+  console.log('🔄 Converting edge:', {
+    input: apiEdge,
+    type: typeof apiEdge,
+    keys: Object.keys(apiEdge),
+    from_node: apiEdge.from_node,
+    to_node: apiEdge.to_node,
+  });
+
+  // Extract fields with fallbacks for different possible field names
+  const fromNode = apiEdge.from_node || apiEdge.fromNode || apiEdge.source;
+  const toNode = apiEdge.to_node || apiEdge.toNode || apiEdge.target;
+  const outputKey = apiEdge.output_key || apiEdge.outputKey || 'result';
+  const conversionFunction = apiEdge.conversion_function || apiEdge.conversionFunction || null;
+
+  if (!fromNode || !toNode) {
+    console.error('❌ Missing from_node or to_node in edge:', apiEdge);
+  }
+
+  const edge = {
     id: apiEdge.id,
-    source: apiEdge.source,
-    target: apiEdge.target,
+    // React Flow format (REQUIRED for rendering)
+    source: fromNode,
+    target: toNode,
     type: 'default',
-    sourceHandle: apiEdge.sourceHandle || null,
-    targetHandle: apiEdge.targetHandle || null,
-    label: (apiEdge.label || apiEdge.condition || undefined) as string | undefined,
-    data: apiEdge.data,
+    sourceHandle: null,
+    targetHandle: null,
+    // Store backend Connection fields in data for round-trip conversion
+    data: {
+      from_node: fromNode,
+      to_node: toNode,
+      output_key: outputKey,
+      conversion_function: conversionFunction,
+    },
   };
+
+  console.log('✅ Converted edge result:', {
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    hasSource: !!edge.source,
+    hasTarget: !!edge.target,
+  });
+
+  return edge;
 }
 
 /**
  * Convert editor workflow edge to API workflow edge
+ * Maps React Flow Edge format to backend Connection format
  */
 export function editorEdgeToApiEdge(editorEdge: EditorWorkflowEdge): ApiWorkflowEdge {
+  // Extract backend fields from data object (where we store them)
+  const edgeData = editorEdge.data || {
+    from_node: editorEdge.source,
+    to_node: editorEdge.target,
+    output_key: 'result',
+    conversion_function: null,
+  };
+
   return {
     id: editorEdge.id,
-    source: editorEdge.source,
-    target: editorEdge.target,
-    condition: (typeof editorEdge.label === 'string' ? editorEdge.label : null),
-    label: (typeof editorEdge.label === 'string' ? editorEdge.label : null),
-    type: editorEdge.type,
-    sourceHandle: editorEdge.sourceHandle,
-    targetHandle: editorEdge.targetHandle,
-    data: editorEdge.data,
+    from_node: edgeData.from_node,
+    to_node: edgeData.to_node,
+    output_key: edgeData.output_key,
+    conversion_function: edgeData.conversion_function || null,
   };
 }
 
@@ -170,45 +212,35 @@ export function apiWorkflowToEditor(
   // Convert connections to edges
   const edges: EditorWorkflowEdge[] = [];
 
-  // If workflow has edges array, use it directly
-  if (apiWorkflow.edges && Array.isArray(apiWorkflow.edges)) {
-    edges.push(...apiWorkflow.edges.map(apiEdgeToEditorEdge));
-  }
-  // Otherwise, try to extract from connections object
-  else if (apiWorkflow.connections) {
-    // Parse n8n-style connections format
-    Object.entries(apiWorkflow.connections).forEach(([sourceNodeId, connectionData]) => {
-      // Check if this is n8n format with main connections
-      if (connectionData && typeof connectionData === 'object') {
-        const conn = connectionData as { main?: unknown[][]; connection_types?: Record<string, unknown> };
+  console.log('🔗 Processing connections:', {
+    hasConnections: !!apiWorkflow.connections,
+    isArray: Array.isArray(apiWorkflow.connections),
+    connectionsCount: Array.isArray(apiWorkflow.connections) ? apiWorkflow.connections.length : 0,
+    connections: apiWorkflow.connections,
+  });
 
-        // Handle n8n format: { main: [[{ node: "targetId", type: "main", index: 0 }]] }
-        if (conn.main && Array.isArray(conn.main)) {
-          conn.main.forEach((outputConnections: unknown[], outputIndex: number) => {
-            if (Array.isArray(outputConnections)) {
-              outputConnections.forEach((connection) => {
-                const conn = connection as { node?: string; type?: string; index?: number };
-                if (conn.node) {
-                  edges.push({
-                    id: `${sourceNodeId}-${conn.node}`,
-                    source: sourceNodeId,
-                    target: conn.node,
-                    sourceHandle: `output_${outputIndex}`,
-                    targetHandle: 'input_0',
-                    type: 'default',
-                  });
-                }
-              });
-            }
-          });
-        }
-        // Handle simple connection format (empty object means node might connect to next in sequence)
-        else if (Object.keys(conn).length === 0 || conn.connection_types !== undefined) {
-          // This might be a placeholder - we'll need to infer connections from node positions
-          // For now, we'll skip these as they don't contain connection info
-        }
-      }
+  // Backend sends connections as an array of Connection objects
+  if (apiWorkflow.connections && Array.isArray(apiWorkflow.connections)) {
+    console.log('🔗 Converting', apiWorkflow.connections.length, 'connections to edges...');
+    console.log('🔗 First connection raw data:', apiWorkflow.connections[0]);
+
+    const convertedEdges = apiWorkflow.connections.map((conn, index) => {
+      console.log(`🔗 Converting connection ${index}:`, {
+        id: conn.id,
+        from_node: conn.from_node,
+        to_node: conn.to_node,
+        hasFromNode: 'from_node' in conn,
+        hasToNode: 'to_node' in conn,
+        keys: Object.keys(conn),
+      });
+      return apiEdgeToEditorEdge(conn as any);
     });
+
+    edges.push(...convertedEdges);
+    console.log('✅ Converted connections to edges:', edges.length, 'edges created');
+    console.log('✅ First converted edge:', edges[0]);
+  } else {
+    console.warn('⚠️ No connections array found in API workflow data');
   }
 
   // If no edges were found, try to infer connections from node positions (workflow sequence)
@@ -237,21 +269,33 @@ export function apiWorkflowToEditor(
 
   // Debug: Log the conversion results
   console.log('Workflow conversion:', {
-    originalConnections: apiWorkflow.connections,
-    convertedEdges: edges,
-    nodes: nodes.map(n => ({ id: n.id, position: n.position }))
+    inputConnections: apiWorkflow.connections,
+    outputEdges: edges,
+    edgeCount: edges.length,
+    nodeCount: nodes.length,
+    edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target })),
   });
 
-  // Extract metadata
+  // Extract metadata - check both root level and nested metadata object
+  const workflowMetadata = (apiWorkflow as any).metadata || {};
   const metadata = {
-    id: apiWorkflow.id || '',
-    name: apiWorkflow.name || 'Untitled Workflow',
-    description: apiWorkflow.description || '',
-    version: String(apiWorkflow.version || '1'),
-    created_at: apiWorkflow.created_at || new Date().toISOString(),
-    updated_at: apiWorkflow.updated_at || new Date().toISOString(),
-    tags: apiWorkflow.tags || [],
+    id: apiWorkflow.id || workflowMetadata.id || '',
+    name: apiWorkflow.name || workflowMetadata.name || 'Untitled Workflow',
+    description: apiWorkflow.description || workflowMetadata.description || '',
+    version: String(apiWorkflow.version || workflowMetadata.version || '1'),
+    created_at: apiWorkflow.created_at || workflowMetadata.created_at || new Date().toISOString(),
+    updated_at: apiWorkflow.updated_at || workflowMetadata.updated_at || new Date().toISOString(),
+    tags: apiWorkflow.tags || workflowMetadata.tags || [],
   };
+
+  console.log('[Workflow Converter] Extracted metadata:', {
+    id: metadata.id,
+    name: metadata.name,
+    hasId: !!metadata.id,
+    apiWorkflowId: apiWorkflow.id,
+    nestedMetadataId: workflowMetadata.id,
+    structure: apiWorkflow.id ? 'flat' : (workflowMetadata.id ? 'nested' : 'missing'),
+  });
 
   return { nodes, edges, metadata };
 }

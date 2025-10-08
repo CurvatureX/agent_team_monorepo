@@ -1,10 +1,11 @@
 "use client";
 
 import React, { memo } from 'react';
+import Image from 'next/image';
 import { Handle, Position, NodeProps } from 'reactflow';
 import { cn } from '@/lib/utils';
 import type { WorkflowNodeData } from '@/types/workflow-editor';
-import { getNodeIcon, getCategoryColor, getParameterPreview } from '@/utils/nodeHelpers';
+import { getNodeIcon, getCategoryColor, getCategoryFromNodeType, getParameterPreview, formatSubtype, getNodeTypeDisplayName, getProviderIcon } from '@/utils/nodeHelpers';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -13,9 +14,11 @@ type CustomNodeProps = NodeProps<WorkflowNodeData>;
 
 export const CustomNode = memo<CustomNodeProps>(({ data, selected }) => {
   const Icon = getNodeIcon(data.template.node_type, data.template.node_subtype);
-  const colorScheme = getCategoryColor(data.template.category);
+  const providerIcon = getProviderIcon(data.template.node_type, data.template.node_subtype);
+  const category = getCategoryFromNodeType(data.template.node_type);
+  const colorScheme = getCategoryColor(category);
   const parameterPreview = getParameterPreview(data.parameters);
-  
+
   // Debug: Log status changes
   React.useEffect(() => {
     if (data.status && data.status !== 'idle') {
@@ -37,12 +40,22 @@ export const CustomNode = memo<CustomNodeProps>(({ data, selected }) => {
         <CardHeader className="p-3 pb-2">
           <div className="flex items-center gap-2">
             <div className={cn('p-1.5 rounded', colorScheme.bg)}>
-              <Icon className={cn('w-4 h-4', colorScheme.icon)} />
+              {providerIcon ? (
+                <Image
+                  src={providerIcon}
+                  alt={data.template.node_subtype}
+                  width={16}
+                  height={16}
+                  className="w-4 h-4"
+                />
+              ) : (
+                <Icon className={cn('w-4 h-4', colorScheme.icon)} />
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <h4 className="font-medium text-sm truncate">{data.label}</h4>
               <p className="text-xs text-muted-foreground truncate">
-                {data.template.node_type.replace(/_/g, ' ')}
+                {formatSubtype(data.template.node_subtype)}
               </p>
             </div>
             {/* Status badge - Always show for debugging */}
@@ -50,8 +63,8 @@ export const CustomNode = memo<CustomNodeProps>(({ data, selected }) => {
               <Tooltip>
                 <TooltipTrigger>
                   <Badge
-                    variant={data.status === 'error' ? 'destructive' : 
-                            data.status === 'success' ? 'default' : 
+                    variant={data.status === 'error' ? 'destructive' :
+                            data.status === 'success' ? 'default' :
                             data.status === 'idle' ? 'outline' : 'secondary'}
                     className={cn(
                       'text-sm px-2 py-1 h-6 min-w-[24px] font-bold',
@@ -107,7 +120,7 @@ export const CustomNode = memo<CustomNodeProps>(({ data, selected }) => {
             )}
           />
         )}
-        
+
         <Handle
           type="source"
           position={Position.Right}

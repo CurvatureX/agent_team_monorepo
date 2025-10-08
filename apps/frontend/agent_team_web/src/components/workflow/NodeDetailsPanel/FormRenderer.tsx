@@ -8,9 +8,13 @@ import {
   BooleanField,
   NumberField,
   ArrayField,
+  PasswordField,
+  TextareaField,
+  MultiSelectField,
+  DynamicSelectField,
+  DynamicMultiSelectField,
+  JsonEditorField,
 } from './fields';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 
 interface FormRendererProps {
   schema: ParameterSchema;
@@ -37,69 +41,141 @@ export const FormRenderer: React.FC<FormRendererProps> = ({
       name,
       value,
       onChange: (val: unknown) => handleFieldChange(name, val),
-      required: schema.required?.includes(name),
+      required: property.required || schema.required?.includes(name),
+      readonly: property.readonly || false,
+      placeholder: property.placeholder,
       error: errors[name],
     };
 
-    switch (property.type) {
-      case 'string':
-        if (property.enum) {
-          return (
-            <SelectField
-              {...commonProps}
-              value={typeof value === 'string' ? value : ''}
-              options={property.enum}
-            />
-          );
-        }
-        return <TextField {...commonProps} value={typeof value === 'string' ? value : ''} />;
+    // Password fields (sensitive strings)
+    if (property.type === 'string' && property.sensitive) {
+      return (
+        <PasswordField
+          {...commonProps}
+          value={value ? String(value) : ''}
+        />
+      );
+    }
 
-      case 'boolean':
-        return <BooleanField {...commonProps} value={typeof value === 'boolean' ? value : false} />;
+    // Multiline text fields (textarea)
+    if (property.type === 'string' && property.multiline) {
+      return (
+        <TextareaField
+          {...commonProps}
+          value={value ? String(value) : ''}
+          min={property.min}
+          max={property.max}
+        />
+      );
+    }
 
-      case 'integer':
-      case 'number':
+    // Dynamic select fields (API-driven dropdowns)
+    if (property.api_endpoint) {
+      return (
+        <DynamicSelectField
+          {...commonProps}
+          value={value ? String(value) : ''}
+          apiEndpoint={property.api_endpoint}
+        />
+      );
+    }
+
+    // String fields
+    if (property.type === 'string') {
+      if (property.enum) {
         return (
-          <NumberField
+          <SelectField
             {...commonProps}
-            value={typeof value === 'number' ? value : 0}
-            step={property.type === 'integer' ? 1 : 0.01}
+            value={value ? String(value) : ''}
+            options={property.enum}
           />
         );
-
-      case 'array':
-        // For now, assume string array. Could be enhanced for other types
-        return <ArrayField {...commonProps} value={Array.isArray(value) ? value : []} />;
-
-      case 'object':
-        // For complex objects, we could recursively render
-        // For now, just show a JSON editor
-        return (
-          <div className="space-y-2">
-            <Label>{name}</Label>
-            <Textarea
-              value={JSON.stringify(value || {}, null, 2)}
-              onChange={(e) => {
-                try {
-                  const parsed = JSON.parse(e.target.value);
-                  handleFieldChange(name, parsed);
-                } catch {
-                  // Invalid JSON, don't update
-                }
-              }}
-              className="h-32 font-mono"
-            />
-          </div>
-        );
-
-      default:
-        return null;
+      }
+      return <TextField {...commonProps} value={value ? String(value) : ''} />;
     }
+
+    // Boolean fields
+    if (property.type === 'boolean') {
+      return <BooleanField {...commonProps} value={typeof value === 'boolean' ? value : false} />;
+    }
+
+    // Number fields
+    if (property.type === 'integer' || property.type === 'number') {
+      return (
+        <NumberField
+          {...commonProps}
+          value={typeof value === 'number' ? value : 0}
+          step={property.type === 'integer' ? 1 : 0.01}
+          min={property.min}
+          max={property.max}
+        />
+      );
+    }
+
+    // Array fields
+    if (property.type === 'array') {
+      // Dynamic multi-select (API-driven)
+      if (property.api_endpoint) {
+        return (
+          <DynamicMultiSelectField
+            {...commonProps}
+            value={Array.isArray(value) ? value : []}
+            apiEndpoint={property.api_endpoint}
+          />
+        );
+      }
+
+      // Static multi-select with enum options
+      if (property.enum && property.multiple) {
+        return (
+          <MultiSelectField
+            {...commonProps}
+            value={Array.isArray(value) ? value : []}
+            options={property.enum}
+          />
+        );
+      }
+
+      // Regular array field for other cases
+      return <ArrayField {...commonProps} value={Array.isArray(value) ? value : []} />;
+    }
+
+    // Object fields (JSON editor)
+    if (property.type === 'object') {
+      console.log(`[FormRenderer] Rendering object field "${name}":`, {
+        propertyType: property.type,
+        valueType: typeof value,
+        value: value,
+        isString: typeof value === 'string',
+      });
+
+      // If the value is a string like "[object Object]", try to parse it
+      let objectValue: Record<string, any> = {};
+      if (typeof value === 'string') {
+        try {
+          objectValue = JSON.parse(value);
+        } catch {
+          console.warn(`[FormRenderer] Could not parse string value for ${name}:`, value);
+          objectValue = {};
+        }
+      } else if (typeof value === 'object' && value !== null) {
+        objectValue = value as Record<string, any>;
+      }
+
+      return (
+        <JsonEditorField
+          {...commonProps}
+          value={objectValue}
+        />
+      );
+    }
+
+    return null;
   };
 
   const fields = useMemo(() => {
     if (!schema.properties) return [];
-    
+
     return Object.entries(schema.properties).map(([name, property]) => ({
       name,
       property,

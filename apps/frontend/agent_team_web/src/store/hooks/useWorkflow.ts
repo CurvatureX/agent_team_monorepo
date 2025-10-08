@@ -99,39 +99,37 @@ export const useWorkflow = () => {
       if (node.data.originalData) {
         return {
           ...node.data.originalData,
+          name: node.data.label || node.data.originalData.name,
+          description: node.data.description || node.data.originalData.description,
           position: node.position, // Update position from editor
-          parameters: {
-            ...(node.data.originalData?.parameters || {}),
+          configurations: {
+            ...(node.data.originalData?.configurations || {}),
             ...node.data.parameters, // Merge any updated parameters
           },
         };
       }
 
-      // Fallback: construct node data from template
+      // Fallback: construct node data from template (clean backend format)
       return {
         id: node.id,
         name: node.data.label || node.id,
+        description: node.data.description || node.data.template.description,
         type: node.data.template.node_type,
         subtype: node.data.template.node_subtype,
-        type_version: 1,
         position: node.position,
-        parameters: node.data.parameters || {},
-        credentials: {},
-        disabled: false,
-        on_error: 'continue',
-        retry_policy: null,
-        notes: {},
-        webhooks: [],
+        configurations: node.data.parameters || {},
+        input_params: {},
+        output_params: {},
       };
     });
 
-    // Export edges in the correct format
+    // Export edges in backend Connection format
     const exportedEdges = edges.map((edge) => ({
       id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      condition: null,
-      label: edge.label || null,
+      from_node: edge.data?.from_node || edge.source,
+      to_node: edge.data?.to_node || edge.target,
+      output_key: edge.data?.output_key || 'result',
+      conversion_function: edge.data?.conversion_function || null,
     }));
 
     console.log('Exporting workflow - nodes:', exportedNodes.length, 'edges:', exportedEdges.length);
@@ -140,7 +138,7 @@ export const useWorkflow = () => {
     return {
       metadata,
       nodes: exportedNodes,
-      edges: exportedEdges,
+      connections: exportedEdges, // Backend uses 'connections' not 'edges'
     };
   }, [nodes, edges, metadata]);
 

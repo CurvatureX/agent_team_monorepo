@@ -276,6 +276,13 @@ class ExecutionEngine:
         self._events.execution_started(workflow_execution)
         self._persist_execution(workflow_execution)
 
+        # Update workflow's latest_execution_time and latest_execution_id when execution starts
+        self._update_workflow_execution_fields(
+            workflow_id=workflow_id,
+            latest_execution_time=workflow_execution.start_time,
+            latest_execution_id=workflow_execution.execution_id,
+        )
+
         graph = WorkflowGraph(workflow)
         _ = graph.topo_order()  # Raises on cycle
 
@@ -885,6 +892,39 @@ class ExecutionEngine:
             )
             self._events.execution_completed(workflow_execution)
             self._persist_execution(workflow_execution)
+
+            # Update workflow's latest_execution_status when execution completes successfully
+            self._update_workflow_execution_fields(
+                workflow_id=workflow_id,
+                latest_execution_status=ExecutionStatus.SUCCESS.value,
+                latest_execution_id=workflow_execution.execution_id,
+            )
+
+            # Update workflow statistics
+            self._update_workflow_statistics(
+                workflow_id=workflow_id,
+                duration_ms=workflow_execution.duration_ms or 0,
+                credits_consumed=workflow_execution.credits_consumed or 0,
+                success=True,
+                execution_time=workflow_execution.end_time or _now_ms(),
+            )
+        else:
+            # Update workflow's latest_execution_status when execution fails
+            self._update_workflow_execution_fields(
+                workflow_id=workflow_id,
+                latest_execution_status=ExecutionStatus.ERROR.value,
+                latest_execution_id=workflow_execution.execution_id,
+            )
+
+            # Update workflow statistics (even for failed executions)
+            self._update_workflow_statistics(
+                workflow_id=workflow_id,
+                duration_ms=workflow_execution.duration_ms or 0,
+                credits_consumed=workflow_execution.credits_consumed or 0,
+                success=False,
+                execution_time=workflow_execution.end_time or _now_ms(),
+            )
+
         return self._snapshot_execution(workflow_execution)
 
     # Async wrappers for non-blocking execution
@@ -1099,7 +1139,183 @@ class ExecutionEngine:
                 message="Execution completed successfully",
             )
             self._persist_execution(workflow_execution)
+
+            # Update workflow's latest_execution_status when resumed execution completes successfully
+            self._update_workflow_execution_fields(
+                workflow_id=workflow_execution.workflow_id,
+                latest_execution_status=ExecutionStatus.SUCCESS.value,
+                latest_execution_id=workflow_execution.execution_id,
+            )
+
+            # Update workflow statistics
+            self._update_workflow_statistics(
+                workflow_id=workflow_execution.workflow_id,
+                duration_ms=workflow_execution.duration_ms or 0,
+                credits_consumed=workflow_execution.credits_consumed or 0,
+                success=True,
+                execution_time=workflow_execution.end_time or _now_ms(),
+            )
+        else:
+            # Update workflow's latest_execution_status when resumed execution fails
+            self._update_workflow_execution_fields(
+                workflow_id=workflow_execution.workflow_id,
+                latest_execution_status=ExecutionStatus.ERROR.value,
+                latest_execution_id=workflow_execution.execution_id,
+            )
+
+            # Update workflow statistics (even for failed executions)
+            self._update_workflow_statistics(
+                workflow_id=workflow_execution.workflow_id,
+                duration_ms=workflow_execution.duration_ms or 0,
+                credits_consumed=workflow_execution.credits_consumed or 0,
+                success=False,
+                execution_time=workflow_execution.end_time or _now_ms(),
+            )
+
         return self._snapshot_execution(workflow_execution)
+
+    def _update_workflow_statistics(
+        self,
+        workflow_id: str,
+        duration_ms: int,
+        credits_consumed: int,
+        success: bool,
+        execution_time: int,
+    ) -> bool:
+        """Update workflow statistics in workflow_data.metadata.statistics."""
+        try:
+            # Create Supabase client for database operations
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_KEY")
+
+            if not supabase_url or not supabase_key:
+                logger.warning("Supabase credentials not available, skipping statistics update")
+                return False
+
+            client = create_client(supabase_url, supabase_key)
+
+            # Get current workflow_data
+            result = (
+                client.table("workflows").select("workflow_data").eq("id", workflow_id).execute()
+            )
+
+            if not result.data:
+                logger.warning(f"Workflow {workflow_id} not found, skipping statistics update")
+                return False
+
+            workflow_data = result.data[0].get("workflow_data", {})
+
+            # Ensure metadata and statistics exist
+            if "metadata" not in workflow_data:
+                workflow_data["metadata"] = {}
+
+            metadata = workflow_data["metadata"]
+            if "statistics" not in metadata:
+                metadata["statistics"] = {
+                    "total_runs": 0,
+                    "average_duration_ms": 0,
+                    "total_credits": 0,
+                    "last_success_time": None,
+                }
+
+            stats = metadata["statistics"]
+
+            # Update statistics
+            old_total_runs = stats.get("total_runs", 0)
+            old_avg_duration = stats.get("average_duration_ms", 0)
+            old_total_credits = stats.get("total_credits", 0)
+
+            # Calculate new values
+            new_total_runs = old_total_runs + 1
+            # Calculate running average: new_avg = (old_avg * old_count + new_value) / new_count
+            new_avg_duration = int(
+                (old_avg_duration * old_total_runs + duration_ms) / new_total_runs
+            )
+            new_total_credits = old_total_credits + credits_consumed
+
+            stats["total_runs"] = new_total_runs
+            stats["average_duration_ms"] = new_avg_duration
+            stats["total_credits"] = new_total_credits
+
+            # Update last_success_time only if execution was successful
+            if success:
+                stats["last_success_time"] = execution_time
+
+            # Save updated workflow_data back to database
+            update_result = (
+                client.table("workflows")
+                .update({"workflow_data": workflow_data})
+                .eq("id", workflow_id)
+                .execute()
+            )
+
+            if update_result.data:
+                logger.info(
+                    f"✅ Updated workflow {workflow_id} statistics: "
+                    f"runs={new_total_runs}, avg_duration={new_avg_duration}ms, "
+                    f"credits={new_total_credits}"
+                )
+                return True
+
+            return False
+
+        except Exception as e:
+            # Log error but don't fail execution
+            logger.warning(f"Failed to update workflow statistics: {str(e)}")
+            import traceback
+
+            logger.warning(f"Traceback: {traceback.format_exc()}")
+            return False
+
+    def _update_workflow_execution_fields(
+        self,
+        workflow_id: str,
+        latest_execution_status: Optional[str] = None,
+        latest_execution_time: Optional[int] = None,
+        latest_execution_id: Optional[str] = None,
+    ) -> bool:
+        """Update workflow's latest_execution_status, latest_execution_time, and latest_execution_id fields."""
+        try:
+            # Create Supabase client for database operations
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_KEY")
+
+            if not supabase_url or not supabase_key:
+                logger.warning("Supabase credentials not available, skipping workflow update")
+                return False
+
+            client = create_client(supabase_url, supabase_key)
+
+            # Build update data
+            update_data = {}
+            if latest_execution_status is not None:
+                update_data["latest_execution_status"] = latest_execution_status
+            if latest_execution_time is not None:
+                # Convert milliseconds to timestamp
+                from datetime import datetime
+
+                update_data["latest_execution_time"] = datetime.fromtimestamp(
+                    latest_execution_time / 1000
+                ).isoformat()
+            if latest_execution_id is not None:
+                update_data["latest_execution_id"] = latest_execution_id
+
+            if not update_data:
+                return False
+
+            # Update workflow record
+            result = client.table("workflows").update(update_data).eq("id", workflow_id).execute()
+
+            if result.data:
+                logger.info(f"✅ Updated workflow {workflow_id} execution fields: {update_data}")
+                return True
+
+            return False
+
+        except Exception as e:
+            # Log error but don't fail execution
+            logger.warning(f"Failed to update workflow execution fields: {str(e)}")
+            return False
 
     def _create_workflow_pause(
         self,
@@ -1344,6 +1560,39 @@ class ExecutionEngine:
             workflow_execution.duration_ms = workflow_execution.end_time - (
                 workflow_execution.start_time or workflow_execution.end_time
             )
+
+            # Update workflow's latest_execution_status when timer-resumed execution completes successfully
+            self._update_workflow_execution_fields(
+                workflow_id=workflow_execution.workflow_id,
+                latest_execution_status=ExecutionStatus.SUCCESS.value,
+                latest_execution_id=workflow_execution.execution_id,
+            )
+
+            # Update workflow statistics
+            self._update_workflow_statistics(
+                workflow_id=workflow_execution.workflow_id,
+                duration_ms=workflow_execution.duration_ms or 0,
+                credits_consumed=workflow_execution.credits_consumed or 0,
+                success=True,
+                execution_time=workflow_execution.end_time or _now_ms(),
+            )
+        else:
+            # Update workflow's latest_execution_status when timer-resumed execution fails
+            self._update_workflow_execution_fields(
+                workflow_id=workflow_execution.workflow_id,
+                latest_execution_status=ExecutionStatus.ERROR.value,
+                latest_execution_id=workflow_execution.execution_id,
+            )
+
+            # Update workflow statistics (even for failed executions)
+            self._update_workflow_statistics(
+                workflow_id=workflow_execution.workflow_id,
+                duration_ms=workflow_execution.duration_ms or 0,
+                credits_consumed=workflow_execution.credits_consumed or 0,
+                success=False,
+                execution_time=workflow_execution.end_time or _now_ms(),
+            )
+
         return self._snapshot_execution(workflow_execution)
 
     def resume_due_timers(self) -> None:

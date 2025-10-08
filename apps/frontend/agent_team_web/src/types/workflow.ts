@@ -27,45 +27,34 @@ export interface RetryPolicy {
 
 // ============== Node Types ==============
 
-// 工作流节点模型 (based on WorkflowNode from API)
+// 工作流节点模型 (aligned with backend Node model - workflow.py:64-88)
 export interface WorkflowNode {
+  // Core identification
   id: string;                           // 节点唯一标识符
-  type: NodeType | string;              // 节点类型 (使用枚举或字符串以支持扩展)
+  type: NodeType | string;              // 节点类型
+  subtype: string;                      // 节点子类型
   name: string;                          // 节点名称
-  description?: string | null;          // 节点描述
-  config?: Record<string, unknown>;     // 节点配置
-  position?: PositionData;              // 节点位置
-  inputs?: Record<string, unknown>;     // 输入参数
-  outputs?: Record<string, unknown>;    // 输出参数
-  metadata?: Record<string, unknown>;   // 元数据
+  description: string;                  // 节点描述
 
-  // Additional fields for compatibility with existing code
-  subtype?: string;                     // 节点子类型
-  type_version?: number;                // 类型版本
-  parameters?: Record<string, unknown>; // 参数（兼容旧版）
-  credentials?: Record<string, unknown>;// 凭证
-  disabled?: boolean;                   // 是否禁用
-  on_error?: ErrorPolicy | string;      // 错误处理策略
-  retry_policy?: RetryPolicy;           // 重试策略
-  notes?: Record<string, unknown>;      // 备注
-  webhooks?: string[];                  // Webhook列表
+  // Configuration and parameters (backend format)
+  configurations: Record<string, unknown>; // 节点配置参数 (主配置字段)
+  input_params: Record<string, unknown>;   // 运行时输入参数
+  output_params: Record<string, unknown>;  // 运行时输出参数
+  position?: PositionData;              // 节点位置 (Optional in backend)
+
+  // AI_AGENT specific field
+  attached_nodes?: string[] | null;     // 附加节点ID列表 (AI_AGENT only - for TOOL and MEMORY)
 }
 
 // ============== Edge Types ==============
 
-// 工作流边模型 (based on WorkflowEdge from API)
+// 工作流边/连接模型 (aligned with backend Connection model - workflow.py:47-56)
 export interface WorkflowEdge {
-  id: string;                           // 边的唯一标识符
-  source: string;                       // 源节点ID
-  target: string;                       // 目标节点ID
-  condition?: string | null;            // 边的条件表达式
-  label?: string | null;                // 边的标签
-
-  // Additional fields for React Flow compatibility
-  type?: string;                        // 边的类型（如 'default', 'smoothstep'）
-  sourceHandle?: string | null;         // 源节点句柄
-  targetHandle?: string | null;         // 目标节点句柄
-  data?: Record<string, unknown>;      // 自定义数据
+  id: string;                           // 连接的唯一标识符
+  from_node: string;                    // 源节点ID
+  to_node: string;                      // 目标节点ID
+  output_key: string;                   // 从源节点的哪个输出获取数据 (default: "result")
+  conversion_function?: string | null;  // 数据转换函数代码
 }
 
 // ============== Connection Types ==============
@@ -131,8 +120,7 @@ export interface WorkflowEntity {
 
   // Workflow structure
   nodes: WorkflowNode[];                // 工作流节点列表
-  edges?: WorkflowEdge[];               // 工作流连接边列表 (可选，某些API返回connections)
-  connections?: Record<string, unknown>; // n8n风格的连接信息 (可选，某些API返回这个而不是edges)
+  connections: WorkflowEdge[];          // 连接列表 (backend Connection model)
 
   // Additional data
   variables?: Record<string, unknown>;  // 工作流变量
@@ -191,7 +179,8 @@ export interface WorkflowSummary {
   created_at?: number | null;
   updated_at?: number | null;
   version: string;
-  logo_url?: string | null;             // 映射自backend的icon_url
+  icon_url?: string | null;
+  logo_url?: string | null;  // API currently returns this (will migrate to icon_url)
   deployment_status?: string | null;
   latest_execution_status?: string | null;
   latest_execution_time?: string | null;

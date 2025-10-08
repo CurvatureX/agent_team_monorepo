@@ -20,6 +20,7 @@ import {
   Merge,
   ToggleLeft,
   PauseCircle,
+  Plug,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -28,6 +29,7 @@ const NODE_TYPE_ICONS: Record<NodeTypeEnum, LucideIcon> = {
   TRIGGER: Play,
   AI_AGENT: Bot,
   ACTION: Zap,
+  EXTERNAL_ACTION: Plug,
   FLOW: GitBranch,
   HUMAN_IN_THE_LOOP: Users,
   MEMORY: Database,
@@ -88,6 +90,14 @@ export const CATEGORY_COLORS: Record<NodeCategory, NodeColorSchemeWithStyles> = 
     iconStyle: { color: 'rgb(217 119 6)' }, // amber-600
     borderStyle: { borderColor: 'rgb(245 158 11)' }, // amber-500
   },
+  'External Integrations': {
+    border: 'border-blue-500',
+    bg: 'bg-blue-50 dark:bg-blue-950',
+    icon: 'text-blue-600 dark:text-blue-400',
+    bgStyle: { backgroundColor: 'rgb(239 246 255)' }, // blue-50
+    iconStyle: { color: 'rgb(37 99 235)' }, // blue-600
+    borderStyle: { borderColor: 'rgb(59 130 246)' }, // blue-500
+  },
   'Flow Control': {
     border: 'border-purple-500',
     bg: 'bg-purple-50 dark:bg-purple-950',
@@ -122,6 +132,38 @@ export const CATEGORY_COLORS: Record<NodeCategory, NodeColorSchemeWithStyles> = 
   },
 };
 
+// Map node_type to proper category
+// NOTE: This is the SINGLE SOURCE OF TRUTH for node type → category mapping
+// Used by: atoms/nodeTemplates.ts, hooks/useNodeTemplates.ts, and all components
+export const getCategoryFromNodeType = (nodeType: string): NodeCategory => {
+  const typeMap: Record<string, NodeCategory> = {
+    'TRIGGER': 'Trigger',
+    'AI_AGENT': 'AI Agents',
+    'ACTION': 'Actions',
+    'EXTERNAL_ACTION': 'External Integrations',
+    'FLOW': 'Flow Control',
+    'HUMAN_IN_THE_LOOP': 'Human Interaction',
+    'MEMORY': 'Memory',
+    'TOOL': 'Tools',
+  };
+  return typeMap[nodeType.toUpperCase()] || 'Actions';
+};
+
+// Get display name for node type
+export const getNodeTypeDisplayName = (nodeType: string): string => {
+  const displayNames: Record<string, string> = {
+    'TRIGGER': 'Trigger',
+    'AI_AGENT': 'AI Agent',
+    'ACTION': 'Action',
+    'EXTERNAL_ACTION': 'External Integration Action',
+    'FLOW': 'Flow Control',
+    'HUMAN_IN_THE_LOOP': 'Human Interaction',
+    'MEMORY': 'Memory',
+    'TOOL': 'Tool',
+  };
+  return displayNames[nodeType.toUpperCase()] || nodeType.replace(/_/g, ' ');
+};
+
 // Get color scheme for category
 export const getCategoryColor = (category: NodeCategory): NodeColorSchemeWithStyles => {
   return CATEGORY_COLORS[category] || {
@@ -135,6 +177,82 @@ export const getCategoryColor = (category: NodeCategory): NodeColorSchemeWithSty
     iconStyle: { color: 'rgb(75 85 99)' },
     borderStyle: { borderColor: 'rgb(107 114 128)' },
   };
+};
+
+// Get provider icon path for AI Agent, External Action, Trigger, Tool (MCP), and Human-in-the-Loop nodes
+export const getProviderIcon = (nodeType: string, nodeSubtype: string): string | null => {
+  const subtype = nodeSubtype.toUpperCase();
+
+  // AI Agent provider icons
+  const aiProviderMap: Record<string, string> = {
+    'OPENAI_CHATGPT': '/icons/openai.svg',
+    'ANTHROPIC_CLAUDE': '/icons/claude.svg',
+    'GOOGLE_GEMINI': '/icons/gemini.svg',
+  };
+
+  // External Action provider icons
+  const externalProviderMap: Record<string, string> = {
+    'SLACK': '/icons/slack.svg',
+    'GITHUB': '/icons/github.svg',
+    'NOTION': '/icons/notion.svg',
+    'EMAIL': '/icons/gmail.svg',
+    'DISCORD_ACTION': '/icons/discord.svg',
+    'TELEGRAM_ACTION': '/icons/telegram.svg',
+    'GOOGLE_CALENDAR': '/icons/google-calendar.svg',
+    'FIRECRAWL': '/icons/firecrawl.svg',
+  };
+
+  // Trigger provider icons
+  const triggerProviderMap: Record<string, string> = {
+    'GITHUB': '/icons/github.svg',
+    'SLACK': '/icons/slack.svg',
+    'EMAIL': '/icons/email-inbox.svg',
+  };
+
+  // Tool (MCP) provider icons
+  const toolProviderMap: Record<string, string> = {
+    'DISCORD_MCP_TOOL': '/icons/discord.svg',
+    'FIRECRAWL_MCP_TOOL': '/icons/firecrawl.svg',
+    'GOOGLE_CALENDAR_MCP_TOOL': '/icons/google-calendar.svg',
+    'NOTION_MCP_TOOL': '/icons/notion.svg',
+    'SLACK_MCP_TOOL': '/icons/slack.svg',
+  };
+
+  // Human-in-the-Loop provider icons
+  const hilProviderMap: Record<string, string> = {
+    'DISCORD_INTERACTION': '/icons/discord.svg',
+    'GMAIL_INTERACTION': '/icons/gmail.svg',
+    'OUTLOOK_INTERACTION': '/icons/outlook.svg',
+    'SLACK_INTERACTION': '/icons/slack.svg',
+    'TELEGRAM_INTERACTION': '/icons/telegram.svg',
+  };
+
+  if (nodeType === 'AI_AGENT') {
+    return aiProviderMap[subtype] || null;
+  }
+
+  if (nodeType === 'EXTERNAL_ACTION') {
+    return externalProviderMap[subtype] || null;
+  }
+
+  if (nodeType === 'TRIGGER') {
+    return triggerProviderMap[subtype] || null;
+  }
+
+  if (nodeType === 'TOOL') {
+    return toolProviderMap[subtype] || null;
+  }
+
+  if (nodeType === 'HUMAN_IN_THE_LOOP') {
+    return hilProviderMap[subtype] || null;
+  }
+
+  return null;
+};
+
+// Legacy alias for backward compatibility
+export const getAIProviderIcon = (nodeSubtype: string): string | null => {
+  return getProviderIcon('AI_AGENT', nodeSubtype);
 };
 
 // Get icon for node type
@@ -179,6 +297,11 @@ export const humanizeKey = (key: string): string => {
     .split(' ')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join(' ');
+};
+
+// Format node subtype for display (replace underscores with spaces, keep original casing)
+export const formatSubtype = (subtype: string): string => {
+  return subtype.replace(/_/g, ' ');
 };
 
 // Validate node connection

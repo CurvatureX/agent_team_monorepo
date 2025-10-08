@@ -173,6 +173,12 @@ class WorkflowEngineClient:
                     )
                     connections_list = []
 
+                # Generate random icon_url using shared utility
+                from shared.utils.icon_utils import generate_random_icon_url
+
+                icon_url = generate_random_icon_url()
+                logger.info(f"🎨 Generated random icon_url: {icon_url}")
+
                 # Prepare the request data according to CreateWorkflowRequest model
                 request_data = {
                     "name": workflow_copy.get("name", "Automated Workflow"),
@@ -184,6 +190,7 @@ class WorkflowEngineClient:
                     "tags": workflow_copy.get("tags", ["debug", "test"]),
                     "user_id": user_id,
                     "created_by": user_id,  # Add required created_by field
+                    "icon_url": icon_url,  # Add random icon URL
                 }
 
                 # Add session_id if provided
@@ -209,7 +216,9 @@ class WorkflowEngineClient:
 
                 # Ensure request uses latest name/description values after fallbacks
                 request_data["name"] = workflow_copy.get("name", request_data["name"])
-                request_data["description"] = workflow_copy.get("description", request_data["description"])
+                request_data["description"] = workflow_copy.get(
+                    "description", request_data["description"]
+                )
 
                 triggers = workflow_copy.get("triggers")
                 if triggers:
@@ -328,7 +337,7 @@ class WorkflowEngineClient:
         async with AsyncClient(timeout=self.timeout) as client:
             try:
                 logger.info(f"Fetching workflow: {workflow_id} for user: {user_id}")
-                
+
                 response = await client.get(
                     f"{self.base_url}/v2/workflows/{workflow_id}",
                     params={"user_id": user_id},

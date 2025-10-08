@@ -292,3 +292,63 @@ export function useExecutionCancel() {
     error,
   };
 }
+
+// Hook for fetching recent execution logs
+export interface RecentExecutionLog {
+  execution_id: string;
+  status: string;
+  timestamp: string;
+  duration?: string;
+  error_message?: string;
+}
+
+export function useRecentExecutionLogs(workflowId: string | null, limit: number = 10) {
+  const { session } = useAuth();
+  const [logs, setLogs] = useState<RecentExecutionLog[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchLogs = useCallback(async () => {
+    if (!session?.access_token || !workflowId) {
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const params = new URLSearchParams({
+        workflow_id: workflowId,
+        limit: limit.toString(),
+      });
+
+      const result = await apiRequest(
+        `${API_PATHS.RECENT_LOGS}?${params.toString()}`,
+        session.access_token,
+        'GET'
+      );
+
+      setLogs(result.logs || []);
+    } catch (err) {
+      const error = err as Error;
+      const errorMsg = error.message || 'Failed to fetch recent logs';
+      setError(errorMsg);
+      console.error('Error fetching recent execution logs:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [session, workflowId, limit]);
+
+  useEffect(() => {
+    if (workflowId) {
+      fetchLogs();
+    }
+  }, [workflowId, fetchLogs]);
+
+  return {
+    logs,
+    isLoading,
+    error,
+    refresh: fetchLogs,
+  };
+}

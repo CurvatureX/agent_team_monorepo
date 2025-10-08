@@ -21,7 +21,6 @@ class NodeSpecsApiService:
 
     def list_all_node_templates(
         self,
-        category_filter: Optional[str] = None,
         type_filter: Optional[str] = None,
         include_system_templates: bool = True,
     ) -> List[NodeTemplate]:
@@ -43,13 +42,6 @@ class NodeSpecsApiService:
             # Use list_all_specs() method instead of .values()
             for spec in node_spec_registry.list_all_specs():
                 # Apply filters
-                if (
-                    category_filter
-                    and hasattr(spec, "category")
-                    and spec.category != category_filter
-                ):
-                    continue
-
                 if type_filter and str(spec.type) != type_filter:
                     continue
 
@@ -120,11 +112,52 @@ class NodeSpecsApiService:
                 "description": param_config.get("description", ""),
             }
 
-            if "enum" in param_config:
+            # Options for dropdowns
+            # Note: Node specs should use "options" field (not "enum")
+            # We convert to "enum" here for JSON Schema compatibility
+            if "options" in param_config:
+                prop_def["enum"] = param_config["options"]
+            elif "enum" in param_config:
+                # Legacy support - prefer "options" in node specs
                 prop_def["enum"] = param_config["enum"]
 
+            # Default value
             if "default" in param_config:
                 prop_def["default"] = param_config["default"]
+
+            # UI/Behavior properties
+            if "sensitive" in param_config:
+                prop_def["sensitive"] = param_config["sensitive"]
+
+            if "multiline" in param_config:
+                prop_def["multiline"] = param_config["multiline"]
+
+            if "readonly" in param_config:
+                prop_def["readonly"] = param_config["readonly"]
+
+            # Validation properties
+            if "min" in param_config:
+                prop_def["min"] = param_config["min"]
+
+            if "max" in param_config:
+                prop_def["max"] = param_config["max"]
+
+            if "validation_pattern" in param_config:
+                prop_def["validation_pattern"] = param_config["validation_pattern"]
+
+            # Dynamic dropdown properties
+            if "api_endpoint" in param_config:
+                prop_def["api_endpoint"] = param_config["api_endpoint"]
+
+            if "multiple" in param_config:
+                prop_def["multiple"] = param_config["multiple"]
+
+            # UI enhancement properties
+            if "placeholder" in param_config:
+                prop_def["placeholder"] = param_config["placeholder"]
+
+            if "help_text" in param_config:
+                prop_def["help_text"] = param_config["help_text"]
 
             parameter_schema["properties"][param_name] = prop_def
 
@@ -147,7 +180,6 @@ class NodeSpecsApiService:
             "id": template_id,
             "name": display_name,
             "description": spec.description or "No description available",
-            "category": getattr(spec, "category", "general"),
             "node_type": node_type_str,
             "node_subtype": subtype_str,
             "version": getattr(spec, "version", "1.0"),
@@ -164,7 +196,9 @@ class NodeSpecsApiService:
             "integer": "integer",
             "float": "number",
             "boolean": "boolean",
-            "json": "object",
+            "object": "object",  # Direct object type mapping
+            "array": "array",  # Direct array type mapping
+            "json": "object",  # Legacy: json -> object
             "enum": "string",
             "file": "string",
             "url": "string",
@@ -172,24 +206,6 @@ class NodeSpecsApiService:
             "cron": "string",
         }
         return type_mapping.get(spec_type.lower(), "string")
-
-    def get_available_categories(self) -> List[str]:
-        """Get all available categories from node specs."""
-        try:
-            if not node_spec_registry:
-                return []
-
-            categories = set()
-            # Use list_all_specs() method instead of .values()
-            for spec in node_spec_registry.list_all_specs():
-                if hasattr(spec, "category") and spec.category:
-                    categories.add(spec.category)
-
-            return sorted(list(categories))
-
-        except Exception as e:
-            self.logger.error(f"Error getting categories: {str(e)}")
-            return []
 
     def get_available_node_types(self) -> List[str]:
         """Get all available node types from node specs."""
@@ -212,23 +228,18 @@ class NodeSpecsApiService:
         """Get statistics about available node templates."""
         try:
             if not node_spec_registry:
-                return {"total": 0, "by_category": {}, "by_type": {}}
+                return {"total": 0, "by_type": {}}
 
             # Use list_all_specs() method instead of .values()
             specs = node_spec_registry.list_all_specs()
             stats = {
                 "total": len(specs),
-                "by_category": {},
                 "by_type": {},
                 "system_templates": 0,
                 "user_templates": 0,
             }
 
             for spec in specs:
-                # Count by category
-                category = getattr(spec, "category", "uncategorized")
-                stats["by_category"][category] = stats["by_category"].get(category, 0) + 1
-
                 # Count by type
                 node_type = str(spec.type)
                 stats["by_type"][node_type] = stats["by_type"].get(node_type, 0) + 1

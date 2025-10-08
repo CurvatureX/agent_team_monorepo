@@ -259,7 +259,7 @@ class BaseNodeSpec(BaseModel):
     Note on params fields:
     - input_params/output_params: schema-style parameter definitions (like configurations)
       Each param is a dict with at least: type, default, description, required,
-      and optional options for enums.
+      and optional "options" array for dropdown choices.
     - default_input_params/default_output_params: legacy defaults used by many
       existing node specs. Kept for backward compatibility.
 

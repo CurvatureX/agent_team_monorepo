@@ -14,12 +14,13 @@ export const API_PATHS = {
   WORKFLOW_EXECUTE: (id: string) => `${API_BASE}/app/workflows/${id}/execute`,
   WORKFLOW_DEPLOY: (id: string) => `${API_BASE}/app/workflows/${id}/deploy`,
   WORKFLOW_EXECUTIONS: (id: string) => `${API_BASE}/app/workflows/${id}/executions`,
-  
+
   // Sessions
   SESSIONS: `${API_BASE}/app/sessions`,
   SESSION: (id: string) => `${API_BASE}/app/sessions/${id}`,
-  
+
   // Executions
   EXECUTION: (id: string) => `${API_BASE}/app/executions/${id}`,
   EXECUTION_LOGS: (id: string) => `${API_BASE}/app/executions/${id}/logs`,
+  RECENT_LOGS: `${API_BASE}/app/executions/recent_logs`,
 } as const;

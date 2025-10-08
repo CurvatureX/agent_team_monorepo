@@ -148,7 +148,7 @@ class WorkflowSummary(BaseModel):
     created_at: Optional[int] = None
     updated_at: Optional[int] = None
     version: str = "1.0"
-    logo_url: Optional[str] = None  # Mapped from icon_url
+    icon_url: Optional[str] = None
 
     # Keep deployment and execution status for list view
     deployment_status: Optional[str] = None
@@ -165,7 +165,7 @@ class WorkflowListResponseModel(BaseModel):
 
 
 class WorkflowDetailResponse(BaseModel):
-    """Workflow detail response with logo_url field"""
+    """Workflow detail response with icon_url field"""
 
     id: Optional[str] = None
     name: str
@@ -180,7 +180,7 @@ class WorkflowDetailResponse(BaseModel):
     created_at: Optional[int] = None
     updated_at: Optional[int] = None
     version: str = "1.0"
-    logo_url: Optional[str] = None  # Mapped from icon_url
+    icon_url: Optional[str] = None
 
 
 class WorkflowDetailResponseModel(BaseModel):
@@ -219,7 +219,9 @@ def _clear_workflow_cache(workflow_id: str, user_id: str):
         logger.info(f"📋 Cleared cached workflow data for {workflow_id}")
 
 
-def _normalize_provider_key(provider: Optional[str], integration_id: Optional[str]) -> Optional[str]:
+def _normalize_provider_key(
+    provider: Optional[str], integration_id: Optional[str]
+) -> Optional[str]:
     """Normalize provider key for oauth token lookup."""
     if integration_id == "github_app":
         return "github"
@@ -318,9 +320,7 @@ async def _compute_workflow_configuration_status(
                 "token_fields": fallback_token_fields,
             }
 
-        placeholder_paths = _collect_placeholder_paths(
-            configurations, ("configurations",)
-        )
+        placeholder_paths = _collect_placeholder_paths(configurations, ("configurations",))
 
         token_fields = requirement.get("token_fields", set()) or set()
         token_field_paths = {("configurations", field) for field in token_fields}
@@ -659,7 +659,6 @@ async def _inject_oauth_credentials(workflow_data: Dict[str, Any], user_id: str)
 
 @router.get("/node-templates", response_model=NodeTemplateListResponse)
 async def list_all_node_templates(
-    category: Optional[str] = None,
     node_type: Optional[str] = None,
     include_system: bool = True,
     deps: AuthenticatedDeps = Depends(),
@@ -679,7 +678,7 @@ async def list_all_node_templates(
         # Use node specs service directly for better performance and consistency
         specs_service = get_node_specs_api_service()
         templates = specs_service.list_all_node_templates(
-            category_filter=category, type_filter=node_type, include_system_templates=include_system
+            type_filter=node_type, include_system_templates=include_system
         )
 
         logger.info(f"Retrieved {len(templates)} node templates from specs")
@@ -781,18 +780,90 @@ async def create_workflow(request: WorkflowCreate, deps: AuthenticatedDeps = Dep
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+async def _inject_credentials_into_configurations(
+    workflow_data: Dict[str, Any], oauth_tokens: List[Dict[str, Any]]
+) -> Tuple[Dict[str, Any], bool]:
+    """
+    Inject OAuth credentials into external action node configurations.
+
+    Returns:
+        Tuple[Dict[str, Any], bool]: (updated_workflow_data, credentials_changed)
+    """
+    # Build provider -> token mapping
+    provider_tokens = {}
+    for token_record in oauth_tokens:
+        provider = token_record.get("provider")
+        integration_id = token_record.get("integration_id")
+
+        # Map integration_id to provider names
+        provider_key = _normalize_provider_key(provider, integration_id)
+        if provider_key:
+            provider_tokens[provider_key] = token_record.get("access_token", "")
+
+    logger.info(f"🔐 Available OAuth providers: {list(provider_tokens.keys())}")
+
+    # Get nodes from workflow_data
+    nodes = workflow_data.get("nodes") or workflow_data.get("workflow_data", {}).get("nodes", [])
+    if not nodes:
+        return workflow_data, False
+
+    credentials_changed = False
+
+    # Process each node
+    for node in nodes:
+        node_type = node.get("type") or node.get("node_type")
+        node_subtype = node.get("subtype") or node.get("node_subtype")
+
+        if node_type != "EXTERNAL_ACTION":
+            continue
+
+        # Initialize configurations if not present
+        if "configurations" not in node:
+            node["configurations"] = {}
+
+        configurations = node["configurations"]
+
+        # Map node subtype to token field and provider
+        token_field = None
+        provider_key = None
+
+        if node_subtype == "NOTION":
+            token_field = "notion_token"
+            provider_key = "notion"
+        elif node_subtype == "SLACK":
+            token_field = "bot_token"
+            provider_key = "slack"
+        elif node_subtype == "GITHUB":
+            token_field = "github_token"
+            provider_key = "github"
+
+        # Inject credential if available and different
+        if token_field and provider_key and provider_key in provider_tokens:
+            new_token = provider_tokens[provider_key]
+            current_token = configurations.get(token_field, "")
+
+            if current_token != new_token:
+                configurations[token_field] = new_token
+                credentials_changed = True
+                logger.info(
+                    f"🔐 Updated {node_subtype} credential in node {node.get('id', 'unknown')}"
+                )
+
+    return workflow_data, credentials_changed
+
+
 @router.get("/{workflow_id}")
 async def get_workflow(workflow_id: str, deps: AuthenticatedDeps = Depends()):
     """
-    Get a workflow with user access control
-    通过ID获取工作流（支持用户访问控制）
+    Get a workflow with user access control and OAuth credential injection.
+    Only updates database when credentials have changed.
+    通过ID获取工作流（支持用户访问控制和OAuth凭证注入，仅在凭证变更时更新数据库）
     """
     try:
         logger.info(f"🔍 Getting workflow {workflow_id} using RLS with JWT token")
 
         # Get HTTP client
         settings = get_settings()
-
         http_client = await get_workflow_engine_client()
 
         # Get workflow via HTTP with JWT token for RLS
@@ -802,8 +873,44 @@ async def get_workflow(workflow_id: str, deps: AuthenticatedDeps = Depends()):
 
         logger.info(f"✅ Workflow retrieved: {workflow_id}")
 
+        # Fetch OAuth tokens
+        oauth_tokens = await _fetch_oauth_tokens_with_retry(deps.current_user.sub)
+
+        # Inject credentials and check if they changed
+        workflow_data = result["workflow"]
+        updated_workflow, credentials_changed = await _inject_credentials_into_configurations(
+            workflow_data, oauth_tokens
+        )
+
+        # Only update database if credentials actually changed
+        if credentials_changed:
+            logger.info(f"🔐 Credentials changed, updating workflow {workflow_id} in database")
+
+            # Extract nodes for update
+            update_data = {}
+            if "nodes" in updated_workflow:
+                update_data["nodes"] = updated_workflow["nodes"]
+            elif "workflow_data" in updated_workflow:
+                update_data["workflow_data"] = updated_workflow["workflow_data"]
+
+            if update_data:
+                await http_client.update_workflow(
+                    workflow_id=workflow_id, user_id=deps.current_user.sub, **update_data
+                )
+                logger.info(f"✅ Workflow {workflow_id} updated with fresh OAuth credentials")
+
+                # Clear cache since workflow was updated
+                _clear_workflow_cache(workflow_id, deps.current_user.sub)
+
+                # Refetch to get updated version
+                result = await http_client.get_workflow(workflow_id, deps.access_token)
+                workflow_data = result["workflow"]
+        else:
+            logger.info(f"🔐 Credentials unchanged, skipping database update for {workflow_id}")
+            workflow_data = updated_workflow
+
         configuration_status = await _compute_workflow_configuration_status(
-            result["workflow"], deps.current_user.sub
+            workflow_data, deps.current_user.sub
         )
 
         return {**result, "configuration_status": configuration_status}
@@ -963,7 +1070,7 @@ async def list_workflows(
                 created_at=workflow_data.get("created_at"),
                 updated_at=workflow_data.get("updated_at"),
                 version=workflow_data.get("version", "1.0"),
-                logo_url=workflow_data.get("icon_url"),  # Map icon_url to logo_url
+                icon_url=workflow_data.get("icon_url"),
                 deployment_status=workflow_data.get("deployment_status"),
                 latest_execution_status=workflow_data.get("latest_execution_status"),
                 latest_execution_time=workflow_data.get("latest_execution_time"),

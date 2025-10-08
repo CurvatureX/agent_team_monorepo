@@ -50,7 +50,7 @@ interface WorkflowItem {
   averageDuration: number;
   trigger: string | null;
   tags: string[];
-  logoUrl: string | null;
+  iconUrl: string | null;
   active: boolean;
   version: string;
 }
@@ -70,7 +70,8 @@ interface RawWorkflow {
   average_duration?: number;
   trigger?: string | null;
   tags?: string[];
-  logo_url?: string | null;
+  icon_url?: string | null;
+  logo_url?: string | null;  // API returns logo_url (will be deprecated)
   active?: boolean;
   version?: string;
 }
@@ -169,6 +170,11 @@ function CanvasPage() {
       }
     }
 
+    // Debug logging to check icon_url (can be removed after verification)
+    if (workflowArray.length > 0 && process.env.NODE_ENV === 'development') {
+      console.log("🔍 First workflow icon_url:", workflowArray[0].icon_url);
+    }
+
     if (workflowArray.length === 0) return [];
 
     let filteredWorkflows = workflowArray.map(
@@ -200,7 +206,7 @@ function CanvasPage() {
         averageDuration: workflow.average_duration || 0,
         trigger: workflow.trigger || null,
         tags: workflow.tags || [],
-        logoUrl: workflow.logo_url || null,
+        iconUrl: workflow.icon_url || workflow.logo_url || null,  // Support both fields
         active: workflow.active !== undefined ? workflow.active : true,
         version: workflow.version || "1.0.0",
       })
@@ -447,10 +453,10 @@ function CanvasPage() {
                             <div className="flex items-start justify-between gap-3">
                               <div className="flex items-center gap-3">
                                 <div className="relative h-12 w-12 overflow-hidden rounded-lg bg-muted">
-                                  {workflow.logoUrl ? (
+                                  {workflow.iconUrl ? (
                                     <Image
-                                      src={workflow.logoUrl}
-                                      alt={`${workflow.name} logo`}
+                                      src={workflow.iconUrl}
+                                      alt={`${workflow.name} icon`}
                                       fill
                                       className="object-cover"
                                       loading="lazy"

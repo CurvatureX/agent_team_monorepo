@@ -1,10 +1,11 @@
 "use client";
 
 import React, { DragEvent } from 'react';
+import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import type { NodeTemplate } from '@/types/node-template';
-import { getNodeIcon, getCategoryColor } from '@/utils/nodeHelpers';
+import { getNodeIcon, getCategoryColor, getCategoryFromNodeType, getProviderIcon } from '@/utils/nodeHelpers';
 import { Card } from '@/components/ui/card';
 
 interface NodeTemplateCardProps {
@@ -19,7 +20,9 @@ export const NodeTemplateCard: React.FC<NodeTemplateCardProps> = ({
   onClick,
 }) => {
   const Icon = getNodeIcon(template.node_type, template.node_subtype);
-  const colorScheme = getCategoryColor(template.category);
+  const providerIcon = getProviderIcon(template.node_type, template.node_subtype);
+  const category = getCategoryFromNodeType(template.node_type);
+  const colorScheme = getCategoryColor(category);
 
   const handleDragStart = (e: DragEvent<HTMLDivElement>) => {
     onDragStart(e, template);
@@ -37,7 +40,7 @@ export const NodeTemplateCard: React.FC<NodeTemplateCardProps> = ({
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
     >
-      <Card 
+      <Card
         draggable
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
@@ -56,7 +59,17 @@ export const NodeTemplateCard: React.FC<NodeTemplateCardProps> = ({
             )}
             style={colorScheme.bgStyle}
           >
-            <Icon className={cn('w-4 h-4', colorScheme.icon)} style={colorScheme.iconStyle} />
+            {providerIcon ? (
+              <Image
+                src={providerIcon}
+                alt={template.node_subtype}
+                width={16}
+                height={16}
+                className="w-4 h-4"
+              />
+            ) : (
+              <Icon className={cn('w-4 h-4', colorScheme.icon)} style={colorScheme.iconStyle} />
+            )}
           </div>
           <div className="flex-1 min-w-0">
             <h4 className="text-sm font-medium truncate">{template.name}</h4>
