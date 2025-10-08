@@ -29,8 +29,16 @@ interface IntegrationsResponse {
 }
 
 export function useIntegrationsApi() {
+  const redirectUri = typeof window !== 'undefined'
+    ? `${window.location.origin}/authorizations`
+    : '';
+
+  const apiUrl = redirectUri
+    ? `${API_PATHS.INTEGRATIONS}?redirect_uri=${encodeURIComponent(redirectUri)}`
+    : API_PATHS.INTEGRATIONS;
+
   const { data: integrationsData, error: integrationsError, isLoading: integrationsLoading, mutate } = useAuthSWR<IntegrationsResponse>(
-    API_PATHS.INTEGRATIONS,
+    apiUrl,
     {
       revalidateOnFocus: false,
       revalidateOnReconnect: true,

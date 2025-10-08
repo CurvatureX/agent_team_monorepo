@@ -508,7 +508,7 @@ function CanvasPage() {
                               <h4 className="text-xs font-medium text-foreground mb-1.5">
                                 Description
                               </h4>
-                              <TooltipProvider>
+                              <TooltipProvider delayDuration={650}>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <p className="text-xs leading-relaxed text-muted-foreground line-clamp-3">
