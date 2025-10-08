@@ -147,9 +147,7 @@ class NotionExternalAction(BaseExternalAction):
 
         # Cache resolved IDs so downstream helpers (_build_ai_context/_ensure_parent) can reuse them
         configuration.setdefault("_resolved_ids", {})
-        configuration["_resolved_ids"].update(
-            {"page_id": page_id, "database_id": database_id}
-        )
+        configuration["_resolved_ids"].update({"page_id": page_id, "database_id": database_id})
 
         if operation_type == "page" and not page_id:
             self.log_execution(
@@ -359,9 +357,7 @@ class NotionExternalAction(BaseExternalAction):
             )
 
         # Return result matching node spec output_params
-        operation_success = (
-            execution_state["completed"] and not execution_state["failures"]
-        )
+        operation_success = execution_state["completed"] and not execution_state["failures"]
 
         return NodeExecutionResult(
             status=ExecutionStatus.SUCCESS,
@@ -812,9 +808,31 @@ Be efficient - prefer completing in fewer rounds.
                 },
             }
 
-        raise ValueError(f"Unsupported Notion action_type: {action_type}")
+        elif action_type_normalized == "query_database":
+            database_id = parameters.get("database_id", "").replace("-", "")
+            filter_conditions = parameters.get("filter")
+            sorts = parameters.get("sorts", [])
+            page_size = parameters.get("page_size", 100)
 
-    def _ensure_parent(self, parent: Dict[str, Any], context: NodeExecutionContext) -> Dict[str, Any]:
+            result = await client.query_database(
+                database_id, filter_conditions=filter_conditions, sorts=sorts, page_size=page_size
+            )
+
+            return {
+                "notion_response": result,
+                "results": result["pages"],
+                "execution_metadata": {
+                    "action_type": "query_database",
+                    "database_id": database_id,
+                },
+            }
+
+        else:
+            raise ValueError(f"Unsupported Notion action_type: {action_type}")
+
+    def _ensure_parent(
+        self, parent: Dict[str, Any], context: NodeExecutionContext
+    ) -> Dict[str, Any]:
         """Ensure parent payload contains database_id/page_id derived from workflow configuration."""
 
         parent = parent or {}
@@ -857,28 +875,6 @@ Be efficient - prefer completing in fewer rounds.
 
         # No hint available; return empty dict so upstream error surfaces
         return parent
-
-        elif action_type_normalized == "query_database":
-            database_id = parameters.get("database_id", "").replace("-", "")
-            filter_conditions = parameters.get("filter")
-            sorts = parameters.get("sorts", [])
-            page_size = parameters.get("page_size", 100)
-
-            result = await client.query_database(
-                database_id, filter_conditions=filter_conditions, sorts=sorts, page_size=page_size
-            )
-
-            return {
-                "notion_response": result,
-                "results": result["pages"],
-                "execution_metadata": {
-                    "action_type": "query_database",
-                    "database_id": database_id,
-                },
-            }
-
-        else:
-            raise ValueError(f"Unsupported Notion action type for AI execution: {action_type}")
 
     async def _search(
         self, context: NodeExecutionContext, client: NotionClient

@@ -230,6 +230,10 @@ class NodeTemplate(BaseModel):
     required_parameters: List[str] = Field(default_factory=list, description="必需参数列表")
     parameter_schema: Dict[str, Any] = Field(default_factory=dict, description="参数JSON Schema")
 
+    # Input/Output parameter schemas (aligned with node specs)
+    input_params: Dict[str, Any] = Field(default_factory=dict, description="输入参数JSON Schema")
+    output_params: Dict[str, Any] = Field(default_factory=dict, description="输出参数JSON Schema")
+
     model_config = ConfigDict(
         json_schema_extra={
             "example": {

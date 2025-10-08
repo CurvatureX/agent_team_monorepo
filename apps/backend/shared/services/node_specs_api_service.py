@@ -103,7 +103,7 @@ class NodeSpecsApiService:
             if "default" in param_config:
                 default_parameters[param_name] = param_config["default"]
 
-        # Build parameter schema in JSON Schema format
+        # Build parameter schema in JSON Schema format (configurations)
         parameter_schema = {"type": "object", "properties": {}, "required": required_parameters}
 
         for param_name, param_config in configurations.items():
@@ -161,6 +161,18 @@ class NodeSpecsApiService:
 
             parameter_schema["properties"][param_name] = prop_def
 
+        # Build input_params schema
+        input_params_schema = {}
+        input_params = getattr(spec, "input_params", {})
+        if input_params:
+            input_params_schema = self._build_param_schema(input_params)
+
+        # Build output_params schema
+        output_params_schema = {}
+        output_params = getattr(spec, "output_params", {})
+        if output_params:
+            output_params_schema = self._build_param_schema(output_params)
+
         # Handle enum values for node_type and subtype
         node_type_str = spec.type.value if hasattr(spec.type, "value") else str(spec.type)
         subtype_str = spec.subtype
@@ -187,7 +199,72 @@ class NodeSpecsApiService:
             "default_parameters": default_parameters,
             "required_parameters": required_parameters,
             "parameter_schema": parameter_schema,
+            "input_params": input_params_schema,
+            "output_params": output_params_schema,
         }
+
+    def _build_param_schema(self, params: dict) -> dict:
+        """Build JSON Schema format from parameter definitions (input_params or output_params)."""
+        schema = {"type": "object", "properties": {}}
+        required = []
+
+        for param_name, param_config in params.items():
+            if not isinstance(param_config, dict):
+                continue
+
+            prop_def = {
+                "type": self._convert_param_type(param_config.get("type", "string")),
+                "description": param_config.get("description", ""),
+            }
+
+            # Options for dropdowns
+            if "options" in param_config:
+                prop_def["enum"] = param_config["options"]
+            elif "enum" in param_config:
+                prop_def["enum"] = param_config["enum"]
+
+            # Default value
+            if "default" in param_config:
+                prop_def["default"] = param_config["default"]
+
+            # Required field
+            if param_config.get("required", False):
+                required.append(param_name)
+
+            # UI/Behavior properties
+            if "sensitive" in param_config:
+                prop_def["sensitive"] = param_config["sensitive"]
+            if "multiline" in param_config:
+                prop_def["multiline"] = param_config["multiline"]
+            if "readonly" in param_config:
+                prop_def["readonly"] = param_config["readonly"]
+
+            # Validation properties
+            if "min" in param_config:
+                prop_def["min"] = param_config["min"]
+            if "max" in param_config:
+                prop_def["max"] = param_config["max"]
+            if "validation_pattern" in param_config:
+                prop_def["validation_pattern"] = param_config["validation_pattern"]
+
+            # Dynamic dropdown properties
+            if "api_endpoint" in param_config:
+                prop_def["api_endpoint"] = param_config["api_endpoint"]
+            if "multiple" in param_config:
+                prop_def["multiple"] = param_config["multiple"]
+
+            # UI enhancement properties
+            if "placeholder" in param_config:
+                prop_def["placeholder"] = param_config["placeholder"]
+            if "help_text" in param_config:
+                prop_def["help_text"] = param_config["help_text"]
+
+            schema["properties"][param_name] = prop_def
+
+        if required:
+            schema["required"] = required
+
+        return schema
 
     def _convert_param_type(self, spec_type: str) -> str:
         """Convert node spec parameter type to JSON Schema type."""
