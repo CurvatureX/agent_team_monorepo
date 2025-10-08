@@ -14,16 +14,16 @@ export default function Home() {
   const router = useRouter();
 
   const handleSendMessage = (message: string, files?: File[]) => {
-    // Store message in sessionStorage for canvas page
+    // Store message in sessionStorage for new workflow page
     sessionStorage.setItem('initialMessage', message);
-    
+
     // Handle file uploads if any
     if (files && files.length > 0) {
       console.log('Uploaded files:', files);
     }
-    
-    // Navigate to canvas page
-    router.push('/canvas');
+
+    // Navigate to new workflow page
+    router.push('/workflow/new');
   };
 
   return (

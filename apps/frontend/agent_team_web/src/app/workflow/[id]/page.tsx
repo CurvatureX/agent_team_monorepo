@@ -24,7 +24,6 @@ import {
 import { useResizablePanel } from "@/hooks";
 import {
   WorkflowData,
-  WorkflowConnection,
   WorkflowDataStructure,
 } from "@/types/workflow";
 import { useWorkflowActions } from "@/lib/api/hooks/useWorkflowsApi";
@@ -520,27 +519,35 @@ const WorkflowDetailPage = () => {
       setIsSavingWorkflow(true);
 
       try {
-        // Convert connections (backend WorkflowEdge[]) to connections format (n8n style)
-        const connections: Record<string, { main: WorkflowConnection[][] }> =
-          {};
+        // Convert connections to backend expected format (List of Connection objects)
+        const connections: Array<{
+          id: string;
+          from_node: string;
+          to_node: string;
+          output_key: string;
+        }> = [];
+
         if (workflow.connections) {
-          workflow.connections.forEach((edge) => {
+          workflow.connections.forEach((edge, index) => {
             // Handle both backend format (from_node/to_node) and React Flow format (source/target)
-            const edgeWithSource = edge as { from_node?: string; to_node?: string; source?: string; target?: string };
+            const edgeWithSource = edge as {
+              id?: string;
+              from_node?: string;
+              to_node?: string;
+              source?: string;
+              target?: string;
+              output_key?: string;
+            };
             const sourceNode = edge.from_node || edgeWithSource.source;
             const targetNode = edge.to_node || edgeWithSource.target;
 
             if (!sourceNode || !targetNode) return;
 
-            if (!connections[sourceNode]) {
-              connections[sourceNode] = {
-                main: [[]],
-              };
-            }
-            connections[sourceNode].main[0].push({
-              node: targetNode,
-              type: "main",
-              index: 0,
+            connections.push({
+              id: edgeWithSource.id || `conn_${index}`,
+              from_node: sourceNode,
+              to_node: targetNode,
+              output_key: edgeWithSource.output_key || "result",
             });
           });
         }

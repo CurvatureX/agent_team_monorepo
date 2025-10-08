@@ -6,6 +6,153 @@
     "version": "1.0.0"
   },
   "paths": {
+    "/api/v1/public/auth/login": {
+      "post": {
+        "tags": [
+          "Public API",
+          "Public - Authentication"
+        ],
+        "summary": "Login",
+        "description": "User login - public endpoint that doesn't require authentication\n用户登录 - 公共端点，无需认证",
+        "operationId": "login_api_v1_public_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/auth/register": {
+      "post": {
+        "tags": [
+          "Public API",
+          "Public - Authentication"
+        ],
+        "summary": "Register",
+        "description": "User registration - public endpoint that doesn't require authentication\n用户注册 - 公共端点，无需认证",
+        "operationId": "register_api_v1_public_auth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegisterResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/auth/refresh": {
+      "post": {
+        "tags": [
+          "Public API",
+          "Public - Authentication"
+        ],
+        "summary": "Refresh Token",
+        "description": "Refresh access token - public endpoint that doesn't require authentication\n刷新访问令牌 - 公共端点，无需认证",
+        "operationId": "refresh_token_api_v1_public_auth_refresh_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/public/health": {
       "get": {
         "tags": [
@@ -172,6 +319,98 @@
         }
       }
     },
+    "/api/v1/public/node-schemas/{node_type}/{node_subtype}": {
+      "get": {
+        "tags": [
+          "Public API",
+          "Public - Nodes"
+        ],
+        "summary": "Get Node Schema",
+        "description": "Get manual invocation parameter schema for any node type and subtype.\n\nThis is a public endpoint that returns the JSON schema and examples\nfor manually invoking a node of the specified type and subtype.\n\nArgs:\n    node_type: The main node type (e.g., 'TRIGGER', 'ACTION', 'AI_AGENT', etc.)\n    node_subtype: The node subtype (e.g., 'SLACK', 'HTTP_REQUEST', 'OPENAI_CHATGPT', etc.)\n\nReturns:\n    Dictionary containing:\n    - node_type: The requested node type\n    - node_subtype: The requested node subtype\n    - schema: JSON schema for the manual invocation parameters\n    - examples: Example parameter values\n    - description: Human-readable description\n    - supported: Boolean indicating if manual invocation is supported",
+        "operationId": "get_node_schema_api_v1_public_node_schemas__node_type___node_subtype__get",
+        "parameters": [
+          {
+            "name": "node_type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Node Type"
+            }
+          },
+          {
+            "name": "node_subtype",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Node Subtype"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Node Schema Api V1 Public Node Schemas  Node Type   Node Subtype  Get"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/node-types": {
+      "get": {
+        "tags": [
+          "Public API",
+          "Public - Nodes"
+        ],
+        "summary": "List Node Types",
+        "description": "List all available node types and subtypes with manual invocation support status.\n\nReturns:\n    Dictionary containing list of all node types, subtypes, and their manual invocation support",
+        "operationId": "list_node_types_api_v1_public_node_types_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response List Node Types Api V1 Public Node Types Get"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/api/v1/public/validation/stats": {
       "get": {
         "tags": [
@@ -199,6 +438,747 @@
         }
       }
     },
+    "/api/v1/public/webhook/workflow/{workflow_id}": {
+      "post": {
+        "tags": [
+          "Public API",
+          "Public - Webhooks"
+        ],
+        "summary": "Workflow Webhook",
+        "description": "Generic workflow webhook endpoint\nRoutes webhook requests to workflow_scheduler service",
+        "operationId": "workflow_webhook_api_v1_public_webhook_workflow__workflow_id__post",
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workflow Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/webhooks/github": {
+      "post": {
+        "tags": [
+          "Public API",
+          "Public - Webhooks"
+        ],
+        "summary": "Github Webhook",
+        "description": "GitHub webhook endpoint\nHandles GitHub App webhooks and routes them to workflow_scheduler",
+        "operationId": "github_webhook_api_v1_public_webhooks_github_post",
+        "parameters": [
+          {
+            "name": "X-GitHub-Event",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Github-Event"
+            }
+          },
+          {
+            "name": "X-GitHub-Delivery",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Github-Delivery"
+            }
+          },
+          {
+            "name": "X-Hub-Signature-256",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Hub-Signature-256"
+            }
+          },
+          {
+            "name": "X-GitHub-Hook-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Github-Hook-Id"
+            }
+          },
+          {
+            "name": "X-GitHub-Hook-Installation-Target-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Github-Hook-Installation-Target-Id"
+            }
+          },
+          {
+            "name": "X-GitHub-Hook-Installation-Target-Type",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Github-Hook-Installation-Target-Type"
+            }
+          },
+          {
+            "name": "X-Hub-Signature",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Hub-Signature"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Webhook Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/webhooks/slack": {
+      "post": {
+        "tags": [
+          "Public API",
+          "Public - Webhooks"
+        ],
+        "summary": "Slack Unified Webhook",
+        "description": "Unified Slack webhook endpoint\nHandles all Slack webhook types: events, interactive components, and slash commands\nAuto-detects webhook type and routes accordingly",
+        "operationId": "slack_unified_webhook_api_v1_public_webhooks_slack_post",
+        "parameters": [
+          {
+            "name": "X-Slack-Signature",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Slack-Signature"
+            }
+          },
+          {
+            "name": "X-Slack-Request-Timestamp",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "X-Slack-Request-Timestamp"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/webhooks/slack/auth": {
+      "get": {
+        "tags": [
+          "Public API",
+          "Public - Webhooks"
+        ],
+        "summary": "Slack Oauth Callback",
+        "description": "Slack OAuth callback endpoint\nHandles Slack app installation OAuth flow",
+        "operationId": "slack_oauth_callback_api_v1_public_webhooks_slack_auth_get",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "name": "error",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            }
+          },
+          {
+            "name": "error_description",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error Description"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/webhooks/github/auth": {
+      "get": {
+        "tags": [
+          "Public API",
+          "Public - Webhooks"
+        ],
+        "summary": "Github Oauth Callback",
+        "description": "GitHub OAuth callback endpoint\nHandles GitHub App installation OAuth flow",
+        "operationId": "github_oauth_callback_api_v1_public_webhooks_github_auth_get",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "name": "installation_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Installation Id"
+            }
+          },
+          {
+            "name": "setup_action",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Setup Action"
+            }
+          },
+          {
+            "name": "error",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            }
+          },
+          {
+            "name": "error_description",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error Description"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/webhooks/status": {
+      "get": {
+        "tags": [
+          "Public API",
+          "Public - Webhooks"
+        ],
+        "summary": "Webhook Status",
+        "description": "Get webhook system status\nUsed for monitoring webhook processing health",
+        "operationId": "webhook_status_api_v1_public_webhooks_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/v1/public/webhooks/notion/auth": {
+      "get": {
+        "tags": [
+          "Public API",
+          "Public - Webhooks"
+        ],
+        "summary": "Notion Oauth Callback",
+        "description": "Notion OAuth callback endpoint\nHandles Notion integration OAuth flow",
+        "operationId": "notion_oauth_callback_api_v1_public_webhooks_notion_auth_get",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "name": "error",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            }
+          },
+          {
+            "name": "error_description",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error Description"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/public/webhooks/google/auth": {
+      "get": {
+        "tags": [
+          "Public API",
+          "Public - Webhooks"
+        ],
+        "summary": "Google Oauth Callback",
+        "description": "Google OAuth callback endpoint\nHandles Google OAuth integration flow for all Google services\n(Calendar, Gmail, Drive, etc.)",
+        "operationId": "google_oauth_callback_api_v1_public_webhooks_google_auth_get",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "name": "error",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            }
+          },
+          {
+            "name": "error_description",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error Description"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Scope"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/app/sessions": {
       "post": {
         "tags": [
@@ -206,7 +1186,7 @@
           "App - Sessions"
         ],
         "summary": "Create Session",
-        "description": "Create a new session - 只 init session，不新建 workflow_agent_state\n根据最新的 proto 定义，workflow_agent_state 的管理全部由 workflow_agent 服务负责",
+        "description": "Create a new session - OPTIMIZED with direct PostgreSQL\n10x faster than Supabase REST API",
         "operationId": "create_session_api_v1_app_sessions_post",
         "security": [
           {
@@ -336,7 +1316,7 @@
           "App - Sessions"
         ],
         "summary": "Get Session",
-        "description": "Get session by ID with RLS\n通过ID获取会话（支持RLS）",
+        "description": "Get session by ID with RLS - OPTIMIZED with direct PostgreSQL\n5x faster than Supabase REST API",
         "operationId": "get_session_api_v1_app_sessions__session_id__get",
         "security": [
           {
@@ -676,7 +1656,7 @@
           "App - Workflows"
         ],
         "summary": "List All Node Templates",
-        "description": "List all available node templates via HTTP.",
+        "description": "List all available node templates from node specs.\n\nThis endpoint has been updated to use the node specs system instead of\nthe deprecated node_templates database table.",
         "operationId": "list_all_node_templates_api_v1_app_workflows_node_templates_get",
         "security": [
           {
@@ -684,22 +1664,6 @@
           }
         ],
         "parameters": [
-          {
-            "name": "category",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Category"
-            }
-          },
           {
             "name": "node_type",
             "in": "query",
@@ -770,7 +1734,7 @@
           "App - Workflows"
         ],
         "summary": "Create Workflow",
-        "description": "Create a new workflow\n创建新的工作流",
+        "description": "Create a new workflow - Updated to handle new node specs format\n创建新的工作流 - 支持新的节点规格格式",
         "operationId": "create_workflow_api_v1_app_workflows__post",
         "security": [
           {
@@ -792,9 +1756,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkflowResponse"
-                }
+                "schema": {}
               }
             }
           },
@@ -889,9 +1851,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response List Workflows Api V1 App Workflows  Get"
+                  "$ref": "#/components/schemas/WorkflowListResponseModel"
                 }
               }
             }
@@ -928,7 +1888,7 @@
           "App - Workflows"
         ],
         "summary": "Get Workflow",
-        "description": "Get a workflow with user access control\n通过ID获取工作流（支持用户访问控制）",
+        "description": "Get a workflow with user access control and OAuth credential injection.\nOnly updates database when credentials have changed.\n通过ID获取工作流（支持用户访问控制和OAuth凭证注入，仅在凭证变更时更新数据库）",
         "operationId": "get_workflow_api_v1_app_workflows__workflow_id__get",
         "security": [
           {
@@ -951,9 +1911,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WorkflowResponse"
-                }
+                "schema": {}
               }
             }
           },
@@ -1010,7 +1968,9 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/UpdateWorkflowRequest"
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Request Body"
               }
             }
           }
@@ -1110,6 +2070,65 @@
         }
       }
     },
+    "/api/v1/app/workflows/executions/{execution_id}": {
+      "get": {
+        "tags": [
+          "App API",
+          "App - Workflows"
+        ],
+        "summary": "Get Execution Status",
+        "description": "Retrieve execution status, falling back to Supabase if engine no longer has it.",
+        "operationId": "get_execution_status_api_v1_app_workflows_executions__execution_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "execution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Execution Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/app/workflows/{workflow_id}/execute": {
       "post": {
         "tags": [
@@ -1181,6 +2200,1739 @@
         }
       }
     },
+    "/api/v1/app/workflows/{workflow_id}/trigger/manual": {
+      "post": {
+        "tags": [
+          "App API",
+          "App - Workflows"
+        ],
+        "summary": "Trigger Manual Workflow",
+        "description": "Manually trigger a workflow execution\n手动触发工作流执行",
+        "operationId": "trigger_manual_workflow_api_v1_app_workflows__workflow_id__trigger_manual_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workflow Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualTriggerSpec"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app/workflows/{workflow_id}/deploy": {
+      "post": {
+        "tags": [
+          "App API",
+          "App - Workflows"
+        ],
+        "summary": "Deploy Workflow",
+        "description": "Deploy a workflow with its trigger configuration\n部署工作流及其触发器配置",
+        "operationId": "deploy_workflow_api_v1_app_workflows__workflow_id__deploy_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workflow Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app/workflows/{workflow_id}/undeploy": {
+      "delete": {
+        "tags": [
+          "App API",
+          "App - Workflows"
+        ],
+        "summary": "Undeploy Workflow",
+        "description": "Undeploy a workflow and cleanup its triggers\n卸载工作流并清理其触发器",
+        "operationId": "undeploy_workflow_api_v1_app_workflows__workflow_id__undeploy_delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workflow Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseModel"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app/workflows/{workflow_id}/deployment/status": {
+      "get": {
+        "tags": [
+          "App API",
+          "App - Workflows"
+        ],
+        "summary": "Get Deployment Status",
+        "description": "Get deployment status for a workflow\n获取工作流的部署状态",
+        "operationId": "get_deployment_status_api_v1_app_workflows__workflow_id__deployment_status_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workflow Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app/workflows/{workflow_id}/triggers/{trigger_node_id}/manual-invocation-schema": {
+      "get": {
+        "tags": [
+          "App API",
+          "App - Workflows"
+        ],
+        "summary": "Get Manual Invocation Schema",
+        "description": "Get manual invocation parameter schema for a specific trigger node.\n\nReturns the JSON schema and examples for manually invoking this trigger,\nenabling frontend forms to be dynamically generated.",
+        "operationId": "get_manual_invocation_schema_api_v1_app_workflows__workflow_id__triggers__trigger_node_id__manual_invocation_schema_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workflow Id"
+            }
+          },
+          {
+            "name": "trigger_node_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Trigger Node Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Manual Invocation Schema Api V1 App Workflows  Workflow Id  Triggers  Trigger Node Id  Manual Invocation Schema Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app/workflows/{workflow_id}/triggers/{trigger_node_id}/manual-invoke": {
+      "post": {
+        "tags": [
+          "App API",
+          "App - Workflows"
+        ],
+        "summary": "Manual Invoke Trigger",
+        "description": "Manually invoke a specific trigger with custom parameters.\n\nCreates a normal workflow execution with manual invocation metadata.",
+        "operationId": "manual_invoke_trigger_api_v1_app_workflows__workflow_id__triggers__trigger_node_id__manual_invoke_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workflow Id"
+            }
+          },
+          {
+            "name": "trigger_node_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Trigger Node Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "title": "Request Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Manual Invoke Trigger Api V1 App Workflows  Workflow Id  Triggers  Trigger Node Id  Manual Invoke Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app/executions/recent_logs": {
+      "get": {
+        "tags": [
+          "App API",
+          "App - Executions"
+        ],
+        "summary": "Get Recent Execution Logs",
+        "description": "Get the latest execution with its detailed logs for a workflow.\n返回工作流最新执行及其详细日志\n\nThis API returns the most recent execution along with comprehensive logs,\nreplacing the old behavior of just returning execution IDs.\n\nQuery params:\n  - workflow_id: required workflow ID\n  - limit: maximum number of logs to return for the latest execution (default 100, max 1000)\n  - include_all_executions: if true, return logs from multiple recent executions (default: false)\n\nReturns:\n  - latest_execution: Details of the most recent execution\n  - logs: Detailed execution logs with user-friendly messages\n  - summary: Log statistics and counts\n  - executions: (optional) List of other recent executions if include_all_executions=true",
+        "operationId": "get_recent_execution_logs_api_v1_app_executions_recent_logs_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workflow Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "include_all_executions",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include All Executions"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app/executions/{execution_id}": {
+      "get": {
+        "tags": [
+          "App API",
+          "App - Executions"
+        ],
+        "summary": "Get Execution Status",
+        "description": "Get execution status with user access control\n获取执行状态（支持用户访问控制）",
+        "operationId": "get_execution_status_api_v1_app_executions__execution_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "execution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Execution Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Execution"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app/executions/{execution_id}/cancel": {
+      "post": {
+        "tags": [
+          "App API",
+          "App - Executions"
+        ],
+        "summary": "Cancel Execution",
+        "description": "Cancel a running execution with user access control\n取消正在运行的执行（支持用户访问控制）",
+        "operationId": "cancel_execution_api_v1_app_executions__execution_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "execution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Execution Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionCancelResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app/executions/recent": {
+      "get": {
+        "tags": [
+          "App API",
+          "App - Executions"
+        ],
+        "summary": "Get Recent Executions",
+        "description": "Get recent execution logs/summaries\n获取最近的执行日志/摘要\n\nArgs:\n    workflow_id: Optional workflow ID to filter executions\n    limit: Maximum number of executions to return (default: 10, max: 50)",
+        "operationId": "get_recent_executions_api_v1_app_executions_recent_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Workflow Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app/workflows/{workflow_id}/executions": {
+      "get": {
+        "tags": [
+          "App API",
+          "App - Executions"
+        ],
+        "summary": "Get Workflow Execution History",
+        "description": "Get execution history for a workflow\n获取工作流的执行历史",
+        "operationId": "get_workflow_execution_history_api_v1_app_workflows__workflow_id__executions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "workflow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Workflow Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app/executions/{execution_id}/logs/stream": {
+      "get": {
+        "tags": [
+          "App API",
+          "App - Executions"
+        ],
+        "summary": "Stream Execution Logs",
+        "description": "Stream execution logs in real-time via Server-Sent Events (SSE)\n通过SSE实时流式传输执行日志\n\nArgs:\n    execution_id: The execution ID to stream logs for\n    follow: Whether to follow live logs (default: False - returns existing logs and closes)",
+        "operationId": "stream_execution_logs_api_v1_app_executions__execution_id__logs_stream_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "execution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Execution Id"
+            }
+          },
+          {
+            "name": "follow",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Follow"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app/executions/{execution_id}/logs": {
+      "get": {
+        "tags": [
+          "App API",
+          "App - Executions"
+        ],
+        "summary": "Get Execution Logs",
+        "description": "Get execution logs (static API endpoint)\n获取执行日志（静态API端点）\n\nArgs:\n    execution_id: The execution ID to get logs for\n    limit: Maximum number of logs to return (default: 100)\n    offset: Number of logs to skip (default: 0)\n    level: Filter by log level (optional)\n    start_time: Filter logs after this time (optional)\n    end_time: Filter logs before this time (optional)",
+        "operationId": "get_execution_logs_api_v1_app_executions__execution_id__logs_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "execution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Execution Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "level",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Level"
+            }
+          },
+          {
+            "name": "start_time",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start Time"
+            }
+          },
+          {
+            "name": "end_time",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End Time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app/integrations": {
+      "get": {
+        "tags": [
+          "App API",
+          "App - Integrations"
+        ],
+        "summary": "Get User Integrations",
+        "description": "Retrieve all integrations (OAuth tokens and app installations) for the authenticated user.\n\n    This includes:\n    - GitHub App installations\n    - Slack workspace connections\n    - Other OAuth-based integrations\n\n    Requires authentication via Supabase JWT token.",
+        "operationId": "get_user_integrations_api_v1_app_integrations_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserIntegrationsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/app/integrations/install-links": {
+      "get": {
+        "tags": [
+          "App API",
+          "App - Integrations"
+        ],
+        "summary": "Get Integration Install Links",
+        "description": "Get installation links for integrating external services into the system.\n\n    Currently supports:\n    - GitHub App installation with user context\n    - Notion workspace integration with OAuth flow\n    - Slack workspace integration with OAuth flow\n    - Google Calendar integration with OAuth flow\n\n    The links include the user_id as state parameter for proper OAuth flow.\n\n    Requires authentication via Supabase JWT token.",
+        "operationId": "get_install_links_api_v1_app_integrations_install_links_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstallLinksResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/app/integrations/slack/channels": {
+      "get": {
+        "tags": [
+          "App API",
+          "App - Integrations"
+        ],
+        "summary": "List Slack channels",
+        "description": "使用用户授权的 Slack 凭证拉取工作区频道列表，并返回分页游标。\n    需要先在 Integrations 页面完成 Slack 授权。",
+        "operationId": "list_slack_channels_api_v1_app_integrations_slack_channels_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "types",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Slack channel types",
+              "default": "public_channel,private_channel",
+              "title": "Types"
+            },
+            "description": "Slack channel types"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Number of channels to fetch",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Number of channels to fetch"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Slack pagination cursor",
+              "title": "Cursor"
+            },
+            "description": "Slack pagination cursor"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlackChannelsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app/integrations/slack/users": {
+      "get": {
+        "tags": [
+          "App API",
+          "App - Integrations"
+        ],
+        "summary": "List Slack users",
+        "description": "使用用户授权的 Slack 凭证拉取工作区成员列表，用于节点选择 @user。\n    支持 Slack 原生分页游标。",
+        "operationId": "list_slack_users_api_v1_app_integrations_slack_users_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "description": "Number of users to fetch",
+              "default": 100,
+              "title": "Limit"
+            },
+            "description": "Number of users to fetch"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Slack pagination cursor",
+              "title": "Cursor"
+            },
+            "description": "Slack pagination cursor"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlackUsersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app/integrations/notion/search": {
+      "get": {
+        "tags": [
+          "App API",
+          "App - Integrations"
+        ],
+        "summary": "Search Notion resources",
+        "description": "使用用户授权的 Notion 凭证搜索页面或数据库，辅助节点选择目标资源。\n    支持关键字、类型过滤与分页。",
+        "operationId": "search_notion_resources_api_v1_app_integrations_notion_search_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "关键字，可选",
+              "title": "Query"
+            },
+            "description": "关键字，可选"
+          },
+          {
+            "name": "filter_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(page|database)$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "过滤对象类型",
+              "title": "Filter Type"
+            },
+            "description": "过滤对象类型"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "返回数量",
+              "default": 20,
+              "title": "Page Size"
+            },
+            "description": "返回数量"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Notion start_cursor",
+              "title": "Cursor"
+            },
+            "description": "Notion start_cursor"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotionSearchResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app/integrations/notion/databases": {
+      "get": {
+        "tags": [
+          "App API",
+          "App - Integrations"
+        ],
+        "summary": "List Notion databases",
+        "description": "列出当前授权用户可访问的 Notion 数据库，支持搜索与分页。",
+        "operationId": "list_notion_databases_api_v1_app_integrations_notion_databases_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "关键字，可选",
+              "title": "Query"
+            },
+            "description": "关键字，可选"
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "返回数量",
+              "default": 20,
+              "title": "Page Size"
+            },
+            "description": "返回数量"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Notion start_cursor",
+              "title": "Cursor"
+            },
+            "description": "Notion start_cursor"
+          },
+          {
+            "name": "sort_property",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "排序字段，如 last_edited_time",
+              "title": "Sort Property"
+            },
+            "description": "排序字段，如 last_edited_time"
+          },
+          {
+            "name": "sort_direction",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(ascending|descending)$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "排序方向",
+              "title": "Sort Direction"
+            },
+            "description": "排序方向"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotionDatabasesListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app/integrations/notion/databases/{database_id}": {
+      "get": {
+        "tags": [
+          "App API",
+          "App - Integrations"
+        ],
+        "summary": "Get Notion database schema",
+        "description": "使用用户授权的 Notion 凭证获取数据库属性结构，辅助节点配置。",
+        "operationId": "get_notion_database_schema_api_v1_app_integrations_notion_databases__database_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "database_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Database Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotionDatabaseResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app/integrations/notion/users": {
+      "get": {
+        "tags": [
+          "App API",
+          "App - Integrations"
+        ],
+        "summary": "List Notion users",
+        "description": "使用用户授权的 Notion 凭证拉取工作区用户列表，用于 People 属性配置。\n    支持分页游标。",
+        "operationId": "list_notion_users_api_v1_app_integrations_notion_users_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "返回数量",
+              "default": 50,
+              "title": "Page Size"
+            },
+            "description": "返回数量"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Notion start_cursor",
+              "title": "Cursor"
+            },
+            "description": "Notion start_cursor"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotionUsersResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app/integrations/{provider}": {
+      "get": {
+        "tags": [
+          "App API",
+          "App - Integrations"
+        ],
+        "summary": "Get User Integrations by Provider",
+        "description": "Retrieve integrations for a specific provider (e.g., 'github', 'slack').\n\n    Requires authentication via Supabase JWT token.",
+        "operationId": "get_user_integrations_by_provider_api_v1_app_integrations__provider__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Provider"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/app/integrations/{integration_token_id}": {
+      "delete": {
+        "tags": [
+          "App API",
+          "App - Integrations"
+        ],
+        "summary": "Revoke User Integration",
+        "description": "Revoke/delete a specific integration for the authenticated user.\n\n    This will mark the integration as inactive and remove access.\n\n    Requires authentication via Supabase JWT token.",
+        "operationId": "revoke_user_integration_api_v1_app_integrations__integration_token_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "integration_token_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Integration Token Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Insufficient permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/mcp/tools": {
       "get": {
         "tags": [
@@ -1216,6 +3968,92 @@
             "HTTPBearer": []
           }
         ]
+      }
+    },
+    "/api/v1/mcp/tools/internal": {
+      "get": {
+        "tags": [
+          "MCP API"
+        ],
+        "summary": "List Tools Internal",
+        "description": "Internal endpoint for service-to-service MCP tool discovery.\nNo authentication required - for use by workflow_engine and other internal services.\n\nReturns simplified tool list without MCP JSON-RPC wrapper for easier consumption.",
+        "operationId": "list_tools_internal_api_v1_mcp_tools_internal_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "API key required"
+          },
+          "403": {
+            "description": "Insufficient API key permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/v1/mcp/invoke/internal": {
+      "post": {
+        "tags": [
+          "MCP API"
+        ],
+        "summary": "Invoke Tool Internal",
+        "description": "Internal endpoint for service-to-service MCP tool invocation.\nNo authentication required - for use by workflow_engine and other internal services.\n\nExpected request format:\n{\n    \"name\": \"tool_name\",\n    \"arguments\": {...},\n    \"_metadata\": {\"user_id\": \"...\"}  # For OAuth token retrieval\n}",
+        "operationId": "invoke_tool_internal_api_v1_mcp_invoke_internal_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Invoke Request"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "API key required"
+          },
+          "403": {
+            "description": "Insufficient API key permissions"
+          },
+          "429": {
+            "description": "Rate limit exceeded"
+          },
+          "500": {
+            "description": "Internal server error"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/mcp/invoke": {
@@ -1495,6 +4333,30 @@
             "type": "string",
             "title": "User Message",
             "description": "用户消息内容"
+          },
+          "action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action",
+            "description": "操作类型: create, edit, copy"
+          },
+          "workflow_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflow Id",
+            "description": "要编辑或复制的工作流ID"
           }
         },
         "type": "object",
@@ -1606,69 +4468,30 @@
         "title": "ChatStreamResponse",
         "description": "注意：实际响应为SSE (Server-Sent Events) 流式格式，此模型仅用于文档展示"
       },
-      "CreateWorkflowRequest": {
+      "Connection": {
         "properties": {
-          "name": {
+          "id": {
             "type": "string",
-            "maxLength": 255,
-            "minLength": 1,
-            "title": "Name"
+            "title": "Id",
+            "description": "连接的唯一标识符"
           },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 1000
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "nodes": {
-            "items": {
-              "$ref": "#/components/schemas/NodeData"
-            },
-            "type": "array",
-            "minItems": 1,
-            "title": "Nodes"
-          },
-          "connections": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Connections"
-          },
-          "settings": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/WorkflowSettingsData"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "static_data": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object",
-            "title": "Static Data"
-          },
-          "tags": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Tags"
-          },
-          "user_id": {
+          "from_node": {
             "type": "string",
-            "minLength": 1,
-            "title": "User Id"
+            "title": "From Node",
+            "description": "源节点的ID"
           },
-          "session_id": {
+          "to_node": {
+            "type": "string",
+            "title": "To Node",
+            "description": "目标节点的ID"
+          },
+          "output_key": {
+            "type": "string",
+            "title": "Output Key",
+            "description": "从源节点的哪个输出获取数据（如 'result', 'true', 'false'）",
+            "default": "result"
+          },
+          "conversion_function": {
             "anyOf": [
               {
                 "type": "string"
@@ -1677,17 +4500,498 @@
                 "type": "null"
               }
             ],
-            "title": "Session Id"
+            "title": "Conversion Function",
+            "description": "数据转换函数"
           }
         },
         "type": "object",
         "required": [
-          "name",
+          "id",
+          "from_node",
+          "to_node"
+        ],
+        "title": "Connection",
+        "description": "连接定义 - 符合 new_workflow_spec.md 规范"
+      },
+      "CreateWorkflowRequest": {
+        "properties": {
+          "nodes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Nodes",
+            "description": "节点列表"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata",
+            "description": "工作流元数据，包含name, description等"
+          },
+          "triggers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Triggers",
+            "description": "触发器节点ID列表"
+          },
+          "connections": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Connections",
+            "description": "连接列表"
+          }
+        },
+        "type": "object",
+        "required": [
           "nodes",
-          "user_id"
+          "metadata",
+          "triggers"
         ],
         "title": "CreateWorkflowRequest",
-        "description": "创建工作流请求"
+        "description": "创建工作流请求模型 - Updated to match new node specs format"
+      },
+      "DeploymentResult": {
+        "properties": {
+          "deployment_id": {
+            "type": "string",
+            "title": "Deployment Id"
+          },
+          "workflow_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflow Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/WorkflowDeploymentStatus"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "deployment_id",
+          "status",
+          "message"
+        ],
+        "title": "DeploymentResult"
+      },
+      "Execution": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "对应数据库的 id (UUID)"
+          },
+          "execution_id": {
+            "type": "string",
+            "title": "Execution Id",
+            "description": "对应数据库的 execution_id"
+          },
+          "workflow_id": {
+            "type": "string",
+            "title": "Workflow Id",
+            "description": "对应数据库的 workflow_id (UUID)"
+          },
+          "workflow_version": {
+            "type": "string",
+            "title": "Workflow Version",
+            "description": "工作流版本号",
+            "default": "1.0"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ExecutionStatus",
+            "description": "执行状态"
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time",
+            "description": "开始执行时间戳"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time",
+            "description": "结束时间戳"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms",
+            "description": "总耗时"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode",
+            "description": "执行模式"
+          },
+          "triggered_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Triggered By",
+            "description": "触发用户ID"
+          },
+          "trigger_info": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TriggerInfo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "详细触发信息"
+          },
+          "run_data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Data",
+            "description": "运行数据"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata",
+            "description": "元数据"
+          },
+          "execution_metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Metadata",
+            "description": "执行元数据"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "错误消息"
+          },
+          "error_details": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Details",
+            "description": "错误详情"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExecutionError"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "结构化错误信息"
+          },
+          "node_executions": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/NodeExecution"
+            },
+            "type": "object",
+            "title": "Node Executions",
+            "description": "节点执行详情，Key: node_id"
+          },
+          "execution_sequence": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Execution Sequence",
+            "description": "按执行顺序排列的node_id数组"
+          },
+          "current_node_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Node Id",
+            "description": "当前正在执行的节点"
+          },
+          "next_nodes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Next Nodes",
+            "description": "下一步将要执行的节点列表"
+          },
+          "credits_consumed": {
+            "type": "integer",
+            "title": "Credits Consumed",
+            "description": "消耗的credits",
+            "default": 0
+          },
+          "tokens_used": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TokenUsage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Token使用情况"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At",
+            "description": "创建时间"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At",
+            "description": "更新时间"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "execution_id",
+          "workflow_id",
+          "status"
+        ],
+        "title": "Execution",
+        "description": "Enhanced execution model with detailed tracking"
+      },
+      "ExecutionCancelResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "Whether cancellation was successful"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Result message"
+          },
+          "execution_id": {
+            "type": "string",
+            "title": "Execution Id",
+            "description": "Execution ID"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "message",
+          "execution_id"
+        ],
+        "title": "ExecutionCancelResponse"
+      },
+      "ExecutionError": {
+        "properties": {
+          "error_code": {
+            "type": "string",
+            "title": "Error Code",
+            "description": "错误代码"
+          },
+          "error_message": {
+            "type": "string",
+            "title": "Error Message",
+            "description": "错误消息"
+          },
+          "error_node_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Node Id",
+            "description": "出错的节点ID"
+          },
+          "stack_trace": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stack Trace",
+            "description": "堆栈跟踪"
+          },
+          "timestamp": {
+            "type": "integer",
+            "title": "Timestamp",
+            "description": "错误发生时间"
+          },
+          "is_retryable": {
+            "type": "boolean",
+            "title": "Is Retryable",
+            "description": "是否可重试",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "error_code",
+          "error_message",
+          "timestamp"
+        ],
+        "title": "ExecutionError",
+        "description": "执行错误信息"
+      },
+      "ExecutionResult": {
+        "properties": {
+          "execution_id": {
+            "type": "string",
+            "title": "Execution Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "trigger_data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Trigger Data"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "message",
+          "trigger_data"
+        ],
+        "title": "ExecutionResult"
+      },
+      "ExecutionStatus": {
+        "type": "string",
+        "enum": [
+          "IDLE",
+          "NEW",
+          "PENDING",
+          "RUNNING",
+          "PAUSED",
+          "SUCCESS",
+          "ERROR",
+          "CANCELED",
+          "WAITING",
+          "TIMEOUT",
+          "WAITING_FOR_HUMAN",
+          "SKIPPED",
+          "COMPLETED",
+          "CANCELLED"
+        ],
+        "title": "ExecutionStatus",
+        "description": "工作流执行状态 - Enhanced version"
       },
       "HTTPValidationError": {
         "properties": {
@@ -1808,6 +5112,269 @@
         "title": "HealthCheckModel",
         "description": "健康检查模型"
       },
+      "InstallLinksResponse": {
+        "properties": {
+          "github": {
+            "type": "string",
+            "title": "Github"
+          },
+          "notion": {
+            "type": "string",
+            "title": "Notion"
+          },
+          "slack": {
+            "type": "string",
+            "title": "Slack"
+          },
+          "google_calendar": {
+            "type": "string",
+            "title": "Google Calendar"
+          }
+        },
+        "type": "object",
+        "required": [
+          "github",
+          "notion",
+          "slack",
+          "google_calendar"
+        ],
+        "title": "InstallLinksResponse",
+        "description": "Integration install links response model"
+      },
+      "IntegrationInfo": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "integration_id": {
+            "type": "string",
+            "title": "Integration Id"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "integration_type": {
+            "type": "string",
+            "title": "Integration Type"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "created_at": {
+            "type": "string",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "title": "Updated At"
+          },
+          "credential_data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credential Data"
+          },
+          "configuration": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configuration"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "integration_id",
+          "provider",
+          "integration_type",
+          "name",
+          "is_active",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "IntegrationInfo",
+        "description": "Integration information model"
+      },
+      "LogEntry": {
+        "properties": {
+          "timestamp": {
+            "type": "integer",
+            "title": "Timestamp",
+            "description": "日志时间戳"
+          },
+          "level": {
+            "$ref": "#/components/schemas/LogLevel"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "日志消息"
+          },
+          "node_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Id",
+            "description": "关联的节点ID"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context",
+            "description": "上下文信息"
+          }
+        },
+        "type": "object",
+        "required": [
+          "timestamp",
+          "level",
+          "message"
+        ],
+        "title": "LogEntry",
+        "description": "日志条目"
+      },
+      "LogLevel": {
+        "type": "string",
+        "enum": [
+          "DEBUG",
+          "INFO",
+          "WARN",
+          "ERROR"
+        ],
+        "title": "LogLevel",
+        "description": "日志级别"
+      },
+      "LoginRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email",
+            "description": "User email address"
+          },
+          "password": {
+            "type": "string",
+            "title": "Password",
+            "description": "User password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginRequest"
+      },
+      "LoginResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "请求是否成功",
+            "default": true
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message",
+            "description": "响应消息"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp",
+            "description": "响应时间戳"
+          },
+          "access_token": {
+            "type": "string",
+            "title": "Access Token",
+            "description": "JWT access token"
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "description": "Token type",
+            "default": "bearer"
+          },
+          "expires_in": {
+            "type": "integer",
+            "title": "Expires In",
+            "description": "Token expiration time in seconds"
+          },
+          "expires_at": {
+            "type": "integer",
+            "title": "Expires At",
+            "description": "Token expiration timestamp"
+          },
+          "refresh_token": {
+            "type": "string",
+            "title": "Refresh Token",
+            "description": "Refresh token"
+          },
+          "user": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "User",
+            "description": "User information"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "expires_in",
+          "expires_at",
+          "refresh_token",
+          "user"
+        ],
+        "title": "LoginResponse"
+      },
       "MCPHealthCheck": {
         "properties": {
           "healthy": {
@@ -1925,6 +5492,17 @@
         "title": "MCPInvokeRequest",
         "description": "MCP工具调用请求模型 - 符合MCP tools/call标准"
       },
+      "ManualTriggerSpec": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "ManualTriggerSpec"
+      },
       "MessageType": {
         "type": "string",
         "enum": [
@@ -1934,169 +5512,67 @@
         "title": "MessageType",
         "description": "消息类型枚举"
       },
-      "NodeData": {
+      "Node": {
         "properties": {
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Id"
+            "type": "string",
+            "title": "Id",
+            "description": "节点的唯一标识符"
           },
           "name": {
             "type": "string",
-            "title": "Name"
+            "title": "Name",
+            "description": "节点名称，不可包含空格"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "节点的一句话简介"
           },
           "type": {
             "type": "string",
-            "title": "Type"
+            "title": "Type",
+            "description": "节点大类"
           },
           "subtype": {
             "type": "string",
-            "title": "Subtype"
+            "title": "Subtype",
+            "description": "节点细分种类"
           },
-          "type_version": {
-            "type": "integer",
-            "title": "Type Version",
-            "default": 1
+          "configurations": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Configurations",
+            "description": "节点配置参数"
+          },
+          "input_params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input Params",
+            "description": "运行时输入参数"
+          },
+          "output_params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Output Params",
+            "description": "运行时输出参数"
           },
           "position": {
-            "$ref": "#/components/schemas/PositionData"
-          },
-          "parameters": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object",
-            "title": "Parameters"
-          },
-          "credentials": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object",
-            "title": "Credentials"
-          },
-          "disabled": {
-            "type": "boolean",
-            "title": "Disabled",
-            "default": false
-          },
-          "on_error": {
-            "type": "string",
-            "pattern": "^(continue|stop)$",
-            "title": "On Error",
-            "default": "continue"
-          },
-          "retry_policy": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/RetryPolicyData"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "notes": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object",
-            "title": "Notes"
-          },
-          "webhooks": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Webhooks"
-          }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "type",
-          "subtype",
-          "position"
-        ],
-        "title": "NodeData",
-        "description": "工作流节点数据"
-      },
-      "NodeTemplate": {
-        "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "category": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Category"
-          },
-          "node_type": {
-            "type": "string",
-            "title": "Node Type"
-          },
-          "node_subtype": {
-            "type": "string",
-            "title": "Node Subtype"
-          },
-          "version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Version",
-            "default": "1.0.0"
-          },
-          "is_system_template": {
-            "type": "boolean",
-            "title": "Is System Template",
-            "default": false
-          },
-          "default_parameters": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
+                "additionalProperties": {
+                  "type": "number"
+                },
                 "type": "object"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Default Parameters"
+            "title": "Position",
+            "description": "节点在画布上的位置"
           },
-          "required_parameters": {
+          "attached_nodes": {
             "anyOf": [
               {
                 "items": {
@@ -2108,9 +5584,34 @@
                 "type": "null"
               }
             ],
-            "title": "Required Parameters"
+            "title": "Attached Nodes",
+            "description": "附加节点ID列表，只适用于AI_AGENT节点调用TOOL和MEMORY节点"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "type",
+          "subtype"
+        ],
+        "title": "Node",
+        "description": "节点定义"
+      },
+      "NodeError": {
+        "properties": {
+          "error_code": {
+            "type": "string",
+            "title": "Error Code",
+            "description": "错误代码"
           },
-          "parameter_schema": {
+          "error_message": {
+            "type": "string",
+            "title": "Error Message",
+            "description": "错误消息"
+          },
+          "error_details": {
             "anyOf": [
               {
                 "additionalProperties": true,
@@ -2120,7 +5621,477 @@
                 "type": "null"
               }
             ],
-            "title": "Parameter Schema"
+            "title": "Error Details",
+            "description": "错误详情"
+          },
+          "is_retryable": {
+            "type": "boolean",
+            "title": "Is Retryable",
+            "description": "是否可重试"
+          },
+          "timestamp": {
+            "type": "integer",
+            "title": "Timestamp",
+            "description": "错误发生时间"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error_code",
+          "error_message",
+          "is_retryable",
+          "timestamp"
+        ],
+        "title": "NodeError",
+        "description": "节点错误信息"
+      },
+      "NodeExecution": {
+        "properties": {
+          "node_id": {
+            "type": "string",
+            "title": "Node Id",
+            "description": "节点ID"
+          },
+          "node_name": {
+            "type": "string",
+            "title": "Node Name",
+            "description": "节点名称"
+          },
+          "node_type": {
+            "type": "string",
+            "title": "Node Type",
+            "description": "节点类型"
+          },
+          "node_subtype": {
+            "type": "string",
+            "title": "Node Subtype",
+            "description": "节点子类型"
+          },
+          "status": {
+            "$ref": "#/components/schemas/NodeExecutionStatus"
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time",
+            "description": "开始执行时间"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time",
+            "description": "结束时间"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms",
+            "description": "执行耗时"
+          },
+          "input_data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input Data",
+            "description": "输入数据"
+          },
+          "output_data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Output Data",
+            "description": "输出数据"
+          },
+          "execution_details": {
+            "$ref": "#/components/schemas/NodeExecutionDetails",
+            "description": "节点特定的执行详情"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NodeError"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "节点执行错误"
+          },
+          "retry_count": {
+            "type": "integer",
+            "title": "Retry Count",
+            "description": "重试次数",
+            "default": 0
+          },
+          "max_retries": {
+            "type": "integer",
+            "title": "Max Retries",
+            "description": "最大重试次数",
+            "default": 3
+          },
+          "credits_consumed": {
+            "type": "integer",
+            "title": "Credits Consumed",
+            "description": "该节点消耗的credits",
+            "default": 0
+          },
+          "attached_executions": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/NodeExecution"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attached Executions",
+            "description": "附加的Tool/Memory节点执行情况"
+          }
+        },
+        "type": "object",
+        "required": [
+          "node_id",
+          "node_name",
+          "node_type",
+          "node_subtype",
+          "status"
+        ],
+        "title": "NodeExecution",
+        "description": "单个节点执行详情"
+      },
+      "NodeExecutionDetails": {
+        "properties": {
+          "ai_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Model",
+            "description": "使用的AI模型"
+          },
+          "prompt_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Tokens",
+            "description": "Prompt token数"
+          },
+          "completion_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completion Tokens",
+            "description": "完成token数"
+          },
+          "model_response": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Response",
+            "description": "AI模型响应"
+          },
+          "api_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Endpoint",
+            "description": "API端点"
+          },
+          "http_method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Http Method",
+            "description": "HTTP方法"
+          },
+          "request_headers": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Headers",
+            "description": "请求头"
+          },
+          "response_status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Status",
+            "description": "响应状态码"
+          },
+          "response_headers": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Headers",
+            "description": "响应头"
+          },
+          "tool_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Name",
+            "description": "工具名称"
+          },
+          "tool_parameters": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Parameters",
+            "description": "工具参数"
+          },
+          "tool_result": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Result",
+            "description": "工具执行结果"
+          },
+          "user_prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Prompt",
+            "description": "给用户的提示"
+          },
+          "user_response": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Response",
+            "description": "用户的响应"
+          },
+          "waiting_since": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waiting Since",
+            "description": "开始等待的时间"
+          },
+          "condition_result": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition Result",
+            "description": "条件判断结果"
+          },
+          "branch_taken": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branch Taken",
+            "description": "选择的分支"
+          },
+          "logs": {
+            "items": {
+              "$ref": "#/components/schemas/LogEntry"
+            },
+            "type": "array",
+            "title": "Logs",
+            "description": "执行日志"
+          },
+          "metrics": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metrics",
+            "description": "自定义指标"
+          }
+        },
+        "type": "object",
+        "title": "NodeExecutionDetails",
+        "description": "节点执行详情 - 根据节点类型的不同而不同"
+      },
+      "NodeExecutionStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "running",
+          "waiting_input",
+          "completed",
+          "failed",
+          "skipped",
+          "retrying"
+        ],
+        "title": "NodeExecutionStatus",
+        "description": "节点执行状态"
+      },
+      "NodeTemplate": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "模板唯一标识符"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "模板显示名称"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "模板描述"
+          },
+          "node_type": {
+            "type": "string",
+            "title": "Node Type",
+            "description": "节点类型"
+          },
+          "node_subtype": {
+            "type": "string",
+            "title": "Node Subtype",
+            "description": "节点子类型"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "模板版本",
+            "default": "1.0.0"
+          },
+          "is_system_template": {
+            "type": "boolean",
+            "title": "Is System Template",
+            "description": "是否为系统模板",
+            "default": true
+          },
+          "default_parameters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Default Parameters",
+            "description": "默认参数"
+          },
+          "required_parameters": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Required Parameters",
+            "description": "必需参数列表"
+          },
+          "parameter_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Parameter Schema",
+            "description": "参数JSON Schema"
           }
         },
         "type": "object",
@@ -2131,7 +6102,35 @@
           "node_subtype"
         ],
         "title": "NodeTemplate",
-        "description": "Node Template Model"
+        "description": "Node template model for API responses",
+        "example": {
+          "default_parameters": {
+            "model_version": "gpt-4o-mini",
+            "temperature": 0.7
+          },
+          "description": "OpenAI GPT模型AI代理",
+          "id": "ai_agent_openai_chatgpt",
+          "is_system_template": true,
+          "name": "OpenAI ChatGPT",
+          "node_subtype": "OPENAI_CHATGPT",
+          "node_type": "AI_AGENT",
+          "parameter_schema": {
+            "properties": {
+              "system_prompt": {
+                "description": "系统提示词",
+                "type": "string"
+              }
+            },
+            "required": [
+              "system_prompt"
+            ],
+            "type": "object"
+          },
+          "required_parameters": [
+            "system_prompt"
+          ],
+          "version": "1.0.0"
+        }
       },
       "NodeTemplateListResponse": {
         "properties": {
@@ -2145,41 +6144,566 @@
         },
         "type": "object",
         "title": "NodeTemplateListResponse",
-        "description": "Response model for a list of node templates."
+        "description": "Response model for a list of node templates"
       },
-      "NodeType": {
-        "type": "string",
-        "enum": [
-          "trigger",
-          "action",
-          "condition",
-          "loop",
-          "webhook",
-          "api_call",
-          "email",
-          "delay"
-        ],
-        "title": "NodeType",
-        "description": "节点类型枚举"
-      },
-      "PositionData": {
+      "NotionDatabaseResponse": {
         "properties": {
-          "x": {
-            "type": "number",
-            "title": "X"
+          "success": {
+            "type": "boolean",
+            "title": "Success"
           },
-          "y": {
-            "type": "number",
-            "title": "Y"
+          "database": {
+            "$ref": "#/components/schemas/NotionDatabaseSchema"
           }
         },
         "type": "object",
         "required": [
-          "x",
-          "y"
+          "success",
+          "database"
         ],
-        "title": "PositionData",
-        "description": "节点位置数据"
+        "title": "NotionDatabaseResponse",
+        "description": "Envelope for Notion database metadata."
+      },
+      "NotionDatabaseSchema": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "cover": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover"
+          },
+          "properties": {
+            "items": {
+              "$ref": "#/components/schemas/NotionPropertySchema"
+            },
+            "type": "array",
+            "title": "Properties"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "url",
+          "properties"
+        ],
+        "title": "NotionDatabaseSchema",
+        "description": "Notion database schema response."
+      },
+      "NotionDatabaseSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "cover": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover"
+          },
+          "created_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created Time"
+          },
+          "last_edited_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Edited Time"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "url"
+        ],
+        "title": "NotionDatabaseSummary",
+        "description": "Lightweight Notion database summary for list endpoints."
+      },
+      "NotionDatabasesListResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "databases": {
+            "items": {
+              "$ref": "#/components/schemas/NotionDatabaseSummary"
+            },
+            "type": "array",
+            "title": "Databases"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "default": false
+          },
+          "total_count": {
+            "type": "integer",
+            "title": "Total Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "databases",
+          "total_count"
+        ],
+        "title": "NotionDatabasesListResponse",
+        "description": "Envelope for Notion database list."
+      },
+      "NotionPropertySchema": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "type": {
+            "type": "string",
+            "title": "Type"
+          },
+          "definition": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Definition"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "type",
+          "definition"
+        ],
+        "title": "NotionPropertySchema",
+        "description": "Simplified Notion property metadata for frontend configuration."
+      },
+      "NotionSearchItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "object_type": {
+            "type": "string",
+            "title": "Object Type"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
+          },
+          "last_edited_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Edited Time"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "object_type",
+          "title"
+        ],
+        "title": "NotionSearchItem",
+        "description": "Search result item for Notion resources."
+      },
+      "NotionSearchResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/NotionSearchItem"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "results"
+        ],
+        "title": "NotionSearchResponse",
+        "description": "Envelope for Notion search results."
+      },
+      "NotionUserInfo": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "NotionUserInfo",
+        "description": "Notion user information for assigning people properties."
+      },
+      "NotionUsersResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "users": {
+            "items": {
+              "$ref": "#/components/schemas/NotionUserInfo"
+            },
+            "type": "array",
+            "title": "Users"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "users"
+        ],
+        "title": "NotionUsersResponse",
+        "description": "Envelope for Notion users list."
+      },
+      "RefreshTokenRequest": {
+        "properties": {
+          "refresh_token": {
+            "type": "string",
+            "title": "Refresh Token",
+            "description": "Refresh token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "refresh_token"
+        ],
+        "title": "RefreshTokenRequest"
+      },
+      "RegisterRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "title": "Email",
+            "description": "User email address"
+          },
+          "password": {
+            "type": "string",
+            "title": "Password",
+            "description": "User password"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "User display name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "RegisterRequest"
+      },
+      "RegisterResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "description": "请求是否成功",
+            "default": true
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message",
+            "description": "响应消息"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp",
+            "description": "响应时间戳"
+          },
+          "user": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "User",
+            "description": "User information"
+          },
+          "session": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session",
+            "description": "Session information"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user"
+        ],
+        "title": "RegisterResponse"
       },
       "ResponseModel": {
         "properties": {
@@ -2211,27 +6735,6 @@
         "type": "object",
         "title": "ResponseModel",
         "description": "API响应基础模型"
-      },
-      "RetryPolicyData": {
-        "properties": {
-          "max_tries": {
-            "type": "integer",
-            "maximum": 10.0,
-            "minimum": 1.0,
-            "title": "Max Tries",
-            "default": 3
-          },
-          "wait_between_tries": {
-            "type": "integer",
-            "maximum": 300.0,
-            "minimum": 1.0,
-            "title": "Wait Between Tries",
-            "default": 5
-          }
-        },
-        "type": "object",
-        "title": "RetryPolicyData",
-        "description": "重试策略数据"
       },
       "SSEEventType": {
         "type": "string",
@@ -2474,6 +6977,278 @@
         "title": "SessionUpdate",
         "description": "会话更新请求模型"
       },
+      "SlackChannelInfo": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "name_normalized": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name Normalized"
+          },
+          "is_channel": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Channel"
+          },
+          "is_private": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Private"
+          },
+          "is_member": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Member"
+          },
+          "is_shared": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Shared"
+          },
+          "is_im": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Im"
+          },
+          "created": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created"
+          },
+          "num_members": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Num Members"
+          },
+          "topic": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "SlackChannelInfo",
+        "description": "Slack channel information returned to the frontend."
+      },
+      "SlackChannelsResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/SlackChannelInfo"
+            },
+            "type": "array",
+            "title": "Channels"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "channels"
+        ],
+        "title": "SlackChannelsResponse",
+        "description": "Slack channels list response."
+      },
+      "SlackUserInfo": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "real_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Real Name"
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id"
+          },
+          "is_bot": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Bot"
+          },
+          "is_app_user": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is App User"
+          },
+          "profile": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Profile",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "SlackUserInfo",
+        "description": "Slack user information for selection lists."
+      },
+      "SlackUsersResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "users": {
+            "items": {
+              "$ref": "#/components/schemas/SlackUserInfo"
+            },
+            "type": "array",
+            "title": "Users"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "users"
+        ],
+        "title": "SlackUsersResponse",
+        "description": "Slack users list response."
+      },
       "SystemStatusResponse": {
         "properties": {
           "success": {
@@ -2550,119 +7325,45 @@
         "title": "SystemStatusResponse",
         "description": "System status response model."
       },
-      "UpdateWorkflowRequest": {
+      "TokenUsage": {
         "properties": {
-          "workflow_id": {
+          "input_tokens": {
+            "type": "integer",
+            "title": "Input Tokens",
+            "description": "输入token数",
+            "default": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "title": "Output Tokens",
+            "description": "输出token数",
+            "default": 0
+          },
+          "total_tokens": {
+            "type": "integer",
+            "title": "Total Tokens",
+            "description": "总token数",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "TokenUsage",
+        "description": "Token使用情况"
+      },
+      "TriggerInfo": {
+        "properties": {
+          "trigger_type": {
             "type": "string",
-            "minLength": 1,
-            "title": "Workflow Id"
+            "title": "Trigger Type",
+            "description": "触发类型"
           },
-          "name": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 255,
-                "minLength": 1
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 1000
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          },
-          "nodes": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/NodeData"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Nodes"
-          },
-          "connections": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Connections"
-          },
-          "settings": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/WorkflowSettingsData"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "static_data": {
-            "anyOf": [
-              {
-                "additionalProperties": {
-                  "type": "string"
-                },
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Static Data"
-          },
-          "tags": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tags"
-          },
-          "active": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Active"
+          "trigger_data": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Trigger Data",
+            "description": "触发数据"
           },
           "user_id": {
-            "type": "string",
-            "minLength": 1,
-            "title": "User Id"
-          },
-          "session_id": {
             "anyOf": [
               {
                 "type": "string"
@@ -2671,16 +7372,66 @@
                 "type": "null"
               }
             ],
-            "title": "Session Id"
+            "title": "User Id",
+            "description": "触发用户"
+          },
+          "external_request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Request Id",
+            "description": "外部请求ID"
+          },
+          "timestamp": {
+            "type": "integer",
+            "title": "Timestamp",
+            "description": "触发时间戳"
           }
         },
         "type": "object",
         "required": [
-          "workflow_id",
-          "user_id"
+          "trigger_type",
+          "timestamp"
         ],
-        "title": "UpdateWorkflowRequest",
-        "description": "更新工作流请求"
+        "title": "TriggerInfo",
+        "description": "触发信息"
+      },
+      "UserIntegrationsResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "user_id": {
+            "type": "string",
+            "title": "User Id"
+          },
+          "integrations": {
+            "items": {
+              "$ref": "#/components/schemas/IntegrationInfo"
+            },
+            "type": "array",
+            "title": "Integrations"
+          },
+          "total_count": {
+            "type": "integer",
+            "title": "Total Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "user_id",
+          "integrations",
+          "total_count"
+        ],
+        "title": "UserIntegrationsResponse",
+        "description": "User integrations response model"
       },
       "ValidationError": {
         "properties": {
@@ -2715,190 +7466,54 @@
         ],
         "title": "ValidationError"
       },
-      "WorkflowEdge": {
+      "Workflow": {
         "properties": {
-          "id": {
-            "type": "string",
-            "title": "Id",
-            "description": "边的唯一标识符"
-          },
-          "source": {
-            "type": "string",
-            "title": "Source",
-            "description": "源节点ID"
-          },
-          "target": {
-            "type": "string",
-            "title": "Target",
-            "description": "目标节点ID"
-          },
-          "condition": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Condition",
-            "description": "边的条件表达式"
-          },
-          "label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Label",
-            "description": "边的标签"
-          }
-        },
-        "type": "object",
-        "required": [
-          "id",
-          "source",
-          "target"
-        ],
-        "title": "WorkflowEdge",
-        "description": "工作流连接边模型"
-      },
-      "WorkflowEntity": {
-        "properties": {
-          "created_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Created At",
-            "description": "创建时间"
-          },
-          "updated_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Updated At",
-            "description": "更新时间"
-          },
-          "id": {
-            "type": "string",
-            "title": "Id",
-            "description": "唯一标识符"
-          },
-          "user_id": {
-            "type": "string",
-            "title": "User Id",
-            "description": "工作流所有者用户ID"
-          },
-          "name": {
-            "type": "string",
-            "title": "Name",
-            "description": "工作流名称"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description",
-            "description": "工作流描述"
-          },
-          "type": {
-            "$ref": "#/components/schemas/WorkflowType",
-            "description": "工作流类型",
-            "default": "sequential"
-          },
-          "status": {
-            "$ref": "#/components/schemas/WorkflowStatus",
-            "description": "工作流状态",
-            "default": "draft"
-          },
-          "version": {
-            "type": "integer",
-            "title": "Version",
-            "description": "工作流版本号",
-            "default": 1
+          "metadata": {
+            "$ref": "#/components/schemas/WorkflowMetadata"
           },
           "nodes": {
             "items": {
-              "$ref": "#/components/schemas/WorkflowNode"
+              "$ref": "#/components/schemas/Node"
             },
             "type": "array",
             "title": "Nodes",
-            "description": "工作流节点列表"
+            "description": "节点列表"
           },
-          "edges": {
+          "connections": {
             "items": {
-              "$ref": "#/components/schemas/WorkflowEdge"
+              "$ref": "#/components/schemas/Connection"
             },
             "type": "array",
-            "title": "Edges",
-            "description": "工作流连接边列表"
+            "title": "Connections",
+            "description": "连接列表"
           },
-          "variables": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Variables",
-            "description": "工作流变量"
-          },
-          "settings": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Settings",
-            "description": "工作流设置"
-          },
-          "tags": {
+          "triggers": {
             "items": {
               "type": "string"
             },
             "type": "array",
-            "title": "Tags",
-            "description": "工作流标签"
-          },
-          "execution_count": {
-            "type": "integer",
-            "title": "Execution Count",
-            "description": "执行次数",
-            "default": 0
-          },
-          "last_execution": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Execution",
-            "description": "最后执行时间"
+            "title": "Triggers",
+            "description": "触发器节点ID列表"
           }
         },
         "type": "object",
         "required": [
-          "user_id",
-          "name"
+          "metadata",
+          "nodes"
         ],
-        "title": "WorkflowEntity",
-        "description": "工作流实体模型\n表示完整的工作流定义"
+        "title": "Workflow",
+        "description": "完整工作流定义"
+      },
+      "WorkflowDeploymentStatus": {
+        "type": "string",
+        "enum": [
+          "UNDEPLOYED",
+          "DEPLOYING",
+          "DEPLOYED",
+          "DEPLOYMENT_FAILED"
+        ],
+        "title": "WorkflowDeploymentStatus",
+        "description": "工作流部署状态 - Simplified to 4 clear statuses"
       },
       "WorkflowExecutionRequest": {
         "properties": {
@@ -2933,6 +7548,24 @@
             ],
             "title": "Metadata",
             "description": "执行元数据"
+          },
+          "start_from_node": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start From Node",
+            "description": "从指定节点开始执行"
+          },
+          "skip_trigger_validation": {
+            "type": "boolean",
+            "title": "Skip Trigger Validation",
+            "description": "是否跳过触发器验证",
+            "default": false
           }
         },
         "type": "object",
@@ -2990,21 +7623,56 @@
         "title": "WorkflowExecutionResponse",
         "description": "工作流执行响应模型"
       },
-      "WorkflowNode": {
+      "WorkflowListResponseModel": {
+        "properties": {
+          "workflows": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowSummary"
+            },
+            "type": "array",
+            "title": "Workflows"
+          },
+          "total_count": {
+            "type": "integer",
+            "title": "Total Count"
+          },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workflows",
+          "total_count",
+          "has_more"
+        ],
+        "title": "WorkflowListResponseModel",
+        "description": "Response model for workflow list"
+      },
+      "WorkflowMetadata": {
         "properties": {
           "id": {
             "type": "string",
             "title": "Id",
-            "description": "节点唯一标识符"
-          },
-          "type": {
-            "$ref": "#/components/schemas/NodeType",
-            "description": "节点类型"
+            "description": "UUID唯一标识符"
           },
           "name": {
             "type": "string",
             "title": "Name",
-            "description": "节点名称"
+            "description": "工作流名称"
+          },
+          "icon_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon Url",
+            "description": "工作流图标链接"
           },
           "description": {
             "anyOf": [
@@ -3016,57 +7684,103 @@
               }
             ],
             "title": "Description",
-            "description": "节点描述"
+            "description": "工作流描述"
           },
-          "config": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Config",
-            "description": "节点配置"
+          "deployment_status": {
+            "$ref": "#/components/schemas/WorkflowDeploymentStatus",
+            "description": "部署状态",
+            "default": "UNDEPLOYED"
           },
-          "position": {
+          "last_execution_status": {
             "anyOf": [
               {
-                "additionalProperties": {
-                  "type": "number"
-                },
-                "type": "object"
+                "$ref": "#/components/schemas/ExecutionStatus"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Position",
-            "description": "节点在画布上的位置 {x, y}"
+            "description": "上次运行状态"
           },
-          "connections": {
+          "last_execution_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Execution Time",
+            "description": "上次运行时间戳（毫秒）"
+          },
+          "tags": {
             "items": {
               "type": "string"
             },
             "type": "array",
-            "title": "Connections",
-            "description": "连接到的下一个节点ID列表"
+            "title": "Tags",
+            "description": "标签列表"
           },
-          "enabled": {
-            "type": "boolean",
-            "title": "Enabled",
-            "description": "节点是否启用",
-            "default": true
+          "created_time": {
+            "type": "integer",
+            "title": "Created Time",
+            "description": "创建时间戳（毫秒）"
+          },
+          "parent_workflow": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Workflow",
+            "description": "模板原始工作流ID"
+          },
+          "statistics": {
+            "$ref": "#/components/schemas/WorkflowStatistics",
+            "description": "统计信息"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "版本号",
+            "default": "1.0"
+          },
+          "created_by": {
+            "type": "string",
+            "title": "Created By",
+            "description": "创建用户ID"
+          },
+          "updated_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated By",
+            "description": "最后更新用户ID"
           }
         },
         "type": "object",
         "required": [
           "id",
-          "type",
-          "name"
+          "name",
+          "created_time",
+          "created_by"
         ],
-        "title": "WorkflowNode",
-        "description": "工作流节点模型"
+        "title": "WorkflowMetadata",
+        "description": "工作流元数据"
       },
       "WorkflowResponse": {
         "properties": {
           "workflow": {
-            "$ref": "#/components/schemas/WorkflowEntity",
+            "$ref": "#/components/schemas/Workflow",
             "description": "工作流信息"
           },
           "message": {
@@ -3080,10 +7794,6 @@
             ],
             "title": "Message",
             "description": "响应消息"
-          },
-          "configuration_status": {
-            "$ref": "#/components/schemas/WorkflowConfigurationStatus",
-            "description": "外部节点配置状态"
           }
         },
         "type": "object",
@@ -3093,147 +7803,162 @@
         "title": "WorkflowResponse",
         "description": "工作流响应模型"
       },
-      "WorkflowSettingsData": {
+      "WorkflowStatistics": {
         "properties": {
-          "timezone": {
-            "additionalProperties": {
+          "total_runs": {
+            "type": "integer",
+            "title": "Total Runs",
+            "description": "总运行次数",
+            "default": 0
+          },
+          "average_duration_ms": {
+            "type": "integer",
+            "title": "Average Duration Ms",
+            "description": "平均耗时（毫秒）",
+            "default": 0
+          },
+          "total_credits": {
+            "type": "integer",
+            "title": "Total Credits",
+            "description": "总消耗的credits",
+            "default": 0
+          },
+          "last_success_time": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success Time",
+            "description": "最后成功时间戳"
+          }
+        },
+        "type": "object",
+        "title": "WorkflowStatistics",
+        "description": "工作流统计信息"
+      },
+      "WorkflowSummary": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "tags": {
+            "items": {
               "type": "string"
             },
-            "type": "object",
-            "title": "Timezone"
+            "type": "array",
+            "title": "Tags",
+            "default": []
           },
-          "save_execution_progress": {
+          "active": {
             "type": "boolean",
-            "title": "Save Execution Progress",
+            "title": "Active",
             "default": true
           },
-          "save_manual_executions": {
-            "type": "boolean",
-            "title": "Save Manual Executions",
-            "default": true
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
           },
-          "timeout": {
-            "type": "integer",
-            "maximum": 86400.0,
-            "minimum": 60.0,
-            "title": "Timeout",
-            "default": 3600
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
           },
-          "error_policy": {
+          "version": {
             "type": "string",
-            "pattern": "^(continue|stop)$",
-            "title": "Error Policy",
-            "default": "continue"
+            "title": "Version",
+            "default": "1.0"
           },
-          "caller_policy": {
-            "type": "string",
-            "pattern": "^(workflow|user)$",
-            "title": "Caller Policy",
-            "default": "workflow"
+          "icon_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon Url"
+          },
+          "deployment_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deployment Status"
+          },
+          "latest_execution_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Execution Status"
+          },
+          "latest_execution_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Execution Time"
           }
         },
         "type": "object",
-        "title": "WorkflowSettingsData",
-        "description": "工作流设置数据"
-      },
-      "WorkflowStatus": {
-        "type": "string",
-        "enum": [
-          "IDLE",
-          "RUNNING",
-          "SUCCESS",
-          "ERROR",
-          "CANCELED",
-          "WAITING_FOR_HUMAN"
-        ],
-        "title": "WorkflowStatus",
-        "description": "工作流状态枚举（与后端一致）"
-      },
-      "WorkflowType": {
-        "type": "string",
-        "enum": [
-          "sequential",
-          "parallel",
-          "conditional",
-          "loop",
-          "hybrid"
-        ],
-        "title": "WorkflowType",
-        "description": "工作流类型枚举"
-      },
-      "WorkflowConfigurationNodeStatus": {
-        "type": "object",
-        "description": "单个外部节点的配置检测结果",
-        "properties": {
-          "node_id": {
-            "type": "string",
-            "description": "节点ID"
-          },
-          "node_type": {
-            "type": "string",
-            "description": "节点类型"
-          },
-          "node_subtype": {
-            "type": "string",
-            "description": "节点子类型"
-          },
-          "token_ready": {
-            "type": "boolean",
-            "description": "授权凭证是否就绪"
-          },
-          "config_ready": {
-            "type": "boolean",
-            "description": "配置字段是否填写完整"
-          },
-          "missing_items": {
-            "type": "array",
-            "description": "仍未填写的配置字段（例如 configurations.database_id）",
-            "items": {
-              "type": "string"
-            }
-          },
-          "missing_tokens": {
-            "type": "array",
-            "description": "缺失的授权提供方（如 notion、slack）",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
         "required": [
-          "node_id",
-          "node_type",
-          "node_subtype",
-          "token_ready",
-          "config_ready",
-          "missing_items"
-        ]
-      },
-      "WorkflowConfigurationStatus": {
-        "type": "object",
-        "description": "工作流外部依赖配置完成情况",
-        "properties": {
-          "is_configured": {
-            "type": "boolean",
-            "description": "所有外部节点是否已完成配置"
-          },
-          "checked_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "状态评估时间"
-          },
-          "nodes": {
-            "type": "array",
-            "description": "各外部节点的配置状态列表",
-            "items": {
-              "$ref": "#/components/schemas/WorkflowConfigurationNodeStatus"
-            }
-          }
-        },
-        "required": [
-          "is_configured",
-          "nodes"
-        ]
+          "name"
+        ],
+        "title": "WorkflowSummary",
+        "description": "Lightweight workflow model for list view - excludes detailed nodes"
       }
     },
     "securitySchemes": {

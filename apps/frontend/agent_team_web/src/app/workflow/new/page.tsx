@@ -21,7 +21,6 @@ import {
 import { useResizablePanel } from "@/hooks";
 import {
   WorkflowData,
-  WorkflowConnection,
 } from "@/types/workflow";
 import { useWorkflowActions } from "@/lib/api/hooks/useWorkflowsApi";
 import { useToast } from "@/hooks/use-toast";
@@ -195,6 +194,7 @@ const NewWorkflowPage = () => {
         handleSendMessage(initialMessage);
       }, 500);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSendMessage = useCallback(
@@ -368,34 +368,59 @@ const NewWorkflowPage = () => {
       setIsSavingWorkflow(true);
 
       try {
-        // Convert connections to backend format
-        const connections: Record<string, { main: WorkflowConnection[][] }> =
-          {};
-        if (workflow.connections) {
-          workflow.connections.forEach((edge) => {
-            const sourceNode = edge.from_node || (edge as any).source;
-            const targetNode = edge.to_node || (edge as any).target;
+        // Convert connections to backend expected format (List of Connection objects)
+        const connections: Array<{
+          id: string;
+          from_node: string;
+          to_node: string;
+          output_key: string;
+        }> = [];
 
-            if (!connections[sourceNode]) {
-              connections[sourceNode] = {
-                main: [[]],
-              };
-            }
-            connections[sourceNode].main[0].push({
-              node: targetNode,
-              type: "main",
-              index: 0,
+        if (workflow.connections) {
+          workflow.connections.forEach((edge, index) => {
+            // Handle both backend format (from_node/to_node) and React Flow format (source/target)
+            const edgeWithSource = edge as {
+              id?: string;
+              from_node?: string;
+              to_node?: string;
+              source?: string;
+              target?: string;
+              output_key?: string;
+            };
+            const sourceNode = edge.from_node || edgeWithSource.source;
+            const targetNode = edge.to_node || edgeWithSource.target;
+
+            if (!sourceNode || !targetNode) return;
+
+            connections.push({
+              id: edgeWithSource.id || `conn_${index}`,
+              from_node: sourceNode,
+              to_node: targetNode,
+              output_key: edgeWithSource.output_key || "result",
             });
           });
         }
 
+        // Extract trigger node IDs from nodes
+        const triggerNodeIds: string[] = [];
+        if (workflow.nodes) {
+          workflow.nodes.forEach((node) => {
+            if (node.type === "TRIGGER") {
+              triggerNodeIds.push(node.id);
+            }
+          });
+        }
+
+        // Prepare metadata according to CreateWorkflowRequest format
         const createData = {
-          name: workflow.name || workflowName,
-          description: workflow.description || workflowDescription,
           nodes: workflow.nodes || [],
           connections: connections,
-          settings: workflow.settings,
-          tags: workflow.tags || [],
+          triggers: triggerNodeIds,
+          metadata: {
+            name: workflow.name || workflowName,
+            description: workflow.description || workflowDescription,
+            tags: workflow.tags || [],
+          },
         };
 
         const newWorkflow = await createWorkflow(createData);
