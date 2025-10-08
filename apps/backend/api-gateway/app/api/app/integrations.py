@@ -13,6 +13,7 @@ from app.core.database_direct import DirectPostgreSQLManager, get_direct_db_depe
 from app.dependencies import AuthenticatedDeps
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
+
 from shared.sdks.notion_sdk.client import NotionClient
 from shared.sdks.notion_sdk.exceptions import (
     NotionAPIError,
@@ -61,6 +62,33 @@ class InstallLinksResponse(BaseModel):
     notion: str
     slack: str
     google_calendar: str
+
+
+class IntegrationMetadata(BaseModel):
+    """Metadata for an available integration"""
+
+    provider: str
+    name: str
+    description: str
+
+
+class IntegrationWithInstallLink(BaseModel):
+    """Available integration with connection status and install link"""
+
+    provider: str
+    name: str
+    description: str
+    install_url: str
+    is_connected: bool
+    connection: Optional[IntegrationInfo] = None
+
+
+class IntegrationsWithStatusResponse(BaseModel):
+    """Response with all available integrations and their connection status"""
+
+    success: bool
+    user_id: str
+    integrations: List[IntegrationWithInstallLink]
 
 
 class SlackChannelInfo(BaseModel):
@@ -300,7 +328,9 @@ def _build_notion_database_summary(database: NotionDatabase) -> NotionDatabaseSu
         icon=database.icon,
         cover=database.cover,
         created_time=database.created_time.isoformat() if database.created_time else None,
-        last_edited_time=database.last_edited_time.isoformat() if database.last_edited_time else None,
+        last_edited_time=database.last_edited_time.isoformat()
+        if database.last_edited_time
+        else None,
         parent=database.parent,
     )
 
@@ -343,31 +373,103 @@ async def _get_provider_token_or_412(
     return token_record
 
 
+def get_available_integrations() -> List[IntegrationMetadata]:
+    """Return metadata for all available integrations."""
+    return [
+        IntegrationMetadata(
+            provider="github",
+            name="GitHub",
+            description="Connect GitHub for repository management and workflow automation",
+        ),
+        IntegrationMetadata(
+            provider="notion",
+            name="Notion",
+            description="Connect Notion for workspace and database integration",
+        ),
+        IntegrationMetadata(
+            provider="slack",
+            name="Slack",
+            description="Connect Slack for team communication and workflow automation",
+        ),
+        IntegrationMetadata(
+            provider="google_calendar",
+            name="Google Calendar",
+            description="Connect Google Calendar for event management and scheduling",
+        ),
+    ]
+
+
+def generate_install_url(provider: str, user_id: str) -> str:
+    """Generate OAuth install URL for a specific provider."""
+    from app.core.config import get_settings
+
+    settings = get_settings()
+
+    if provider == "github":
+        return f"https://github.com/apps/starmates/installations/new?state={user_id}"
+
+    elif provider == "notion":
+        return (
+            f"https://api.notion.com/v1/oauth/authorize"
+            f"?client_id={settings.NOTION_CLIENT_ID}"
+            f"&redirect_uri={settings.NOTION_REDIRECT_URI}"
+            f"&response_type=code"
+            f"&state={user_id}"
+        )
+
+    elif provider == "slack":
+        return (
+            f"https://slack.com/oauth/v2/authorize"
+            f"?client_id={settings.SLACK_CLIENT_ID}"
+            f"&scope=app_mentions:read,assistant:write,calls:read,calls:write,chat:write,channels:read,groups:read,conversations:read,reminders:read,reminders:write,im:read,chat:write.public"
+            f"&user_scope=email,identity.basic"
+            f"&redirect_uri={settings.SLACK_REDIRECT_URI}"
+            f"&response_type=code"
+            f"&state={user_id}"
+        )
+
+    elif provider == "google_calendar":
+        return (
+            f"https://accounts.google.com/o/oauth2/auth"
+            f"?client_id={settings.GOOGLE_CLIENT_ID}"
+            f"&redirect_uri={settings.GOOGLE_REDIRECT_URI}"
+            f"&response_type=code"
+            f"&scope=https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events"
+            f"&access_type=offline"
+            f"&prompt=consent"
+            f"&state={user_id}"
+        )
+
+    else:
+        raise ValueError(f"Unsupported provider: {provider}")
+
+
 @router.get(
     "/integrations",
-    response_model=UserIntegrationsResponse,
-    summary="Get User Integrations",
+    response_model=IntegrationsWithStatusResponse,
+    summary="Get All Integrations with Status",
     description="""
-    Retrieve all integrations (OAuth tokens and app installations) for the authenticated user.
+    Retrieve all available integrations with connection status and install links.
 
-    This includes:
-    - GitHub App installations
-    - Slack workspace connections
-    - Other OAuth-based integrations
+    This endpoint returns:
+    - All available integrations (GitHub, Notion, Slack, Google Calendar)
+    - Connection status for each integration (connected/not connected)
+    - OAuth install URLs for connecting integrations
+    - Full integration details if already connected
 
     Requires authentication via Supabase JWT token.
     """,
 )
 async def get_user_integrations(deps: AuthenticatedDeps = Depends()):
     """
-    Get all integrations for the authenticated user.
+    Get all available integrations with connection status and install links.
 
     Returns:
-        UserIntegrationsResponse with list of user's integrations
+        IntegrationsWithStatusResponse with all integrations and their status
     """
     try:
         user_id = deps.user_data["id"]
-        logger.info(f"🔍 Retrieving integrations for user {user_id}")
+        logger.info(f"🔍 Retrieving integrations with status for user {user_id}")
 
         supabase_admin = get_supabase_admin()
 
@@ -377,7 +479,7 @@ async def get_user_integrations(deps: AuthenticatedDeps = Depends()):
                 detail="Database connection unavailable",
             )
 
-        # Query oauth_tokens with integration details via JOIN (fallback if integrations table missing)
+        # Get user's connected integrations
         try:
             result = (
                 supabase_admin.table("oauth_tokens")
@@ -415,37 +517,55 @@ async def get_user_integrations(deps: AuthenticatedDeps = Depends()):
                 .execute()
             )
 
-        integrations = []
+        # Build mapping of connected providers to their integration details
+        connected_providers: Dict[str, IntegrationInfo] = {}
         for token_data in result.data or []:
             # Handle the joined integration data
-            integration_info = token_data.get("integrations", {}) or {}
+            integration_info_data = token_data.get("integrations", {}) or {}
 
-            integrations.append(
-                IntegrationInfo(
-                    id=token_data["id"],
-                    integration_id=token_data["integration_id"],
-                    provider=token_data["provider"],
-                    integration_type=integration_info.get(
-                        "integration_type", token_data["provider"]
-                    ),
-                    name=integration_info.get(
-                        "name", f"{token_data['provider'].title()} Integration"
-                    ),
-                    description=integration_info.get(
-                        "description", f"OAuth integration for {token_data['provider']}"
-                    ),
-                    is_active=token_data["is_active"],
-                    created_at=token_data["created_at"],
-                    updated_at=token_data["updated_at"],
-                    credential_data=token_data.get("credential_data"),
-                    configuration=integration_info.get("configuration", {}),
+            provider = token_data["provider"]
+            connected_providers[provider] = IntegrationInfo(
+                id=token_data["id"],
+                integration_id=token_data["integration_id"],
+                provider=provider,
+                integration_type=integration_info_data.get("integration_type", provider),
+                name=integration_info_data.get("name", f"{provider.title()} Integration"),
+                description=integration_info_data.get(
+                    "description", f"OAuth integration for {provider}"
+                ),
+                is_active=token_data["is_active"],
+                created_at=token_data["created_at"],
+                updated_at=token_data["updated_at"],
+                credential_data=token_data.get("credential_data"),
+                configuration=integration_info_data.get("configuration", {}),
+            )
+
+        # Build response with all available integrations
+        available_integrations = get_available_integrations()
+        integrations_with_status: List[IntegrationWithInstallLink] = []
+
+        for integration_meta in available_integrations:
+            provider = integration_meta.provider
+            is_connected = provider in connected_providers
+
+            integrations_with_status.append(
+                IntegrationWithInstallLink(
+                    provider=integration_meta.provider,
+                    name=integration_meta.name,
+                    description=integration_meta.description,
+                    install_url=generate_install_url(provider, user_id),
+                    is_connected=is_connected,
+                    connection=connected_providers.get(provider) if is_connected else None,
                 )
             )
 
-        logger.info(f"📋 Found {len(integrations)} integrations for user {user_id}")
+        logger.info(
+            f"📋 Found {len(integrations_with_status)} available integrations "
+            f"({len(connected_providers)} connected) for user {user_id}"
+        )
 
-        return UserIntegrationsResponse(
-            success=True, user_id=user_id, integrations=integrations, total_count=len(integrations)
+        return IntegrationsWithStatusResponse(
+            success=True, user_id=user_id, integrations=integrations_with_status
         )
 
     except HTTPException:
@@ -456,114 +576,6 @@ async def get_user_integrations(deps: AuthenticatedDeps = Depends()):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve user integrations",
-        )
-
-
-@router.get(
-    "/integrations/install-links",
-    response_model=InstallLinksResponse,
-    summary="Get Integration Install Links",
-    description="""
-    Get installation links for integrating external services into the system.
-
-    Currently supports:
-    - GitHub App installation with user context
-    - Notion workspace integration with OAuth flow
-    - Slack workspace integration with OAuth flow
-    - Google Calendar integration with OAuth flow
-
-    The links include the user_id as state parameter for proper OAuth flow.
-
-    Requires authentication via Supabase JWT token.
-    """,
-)
-async def get_install_links(deps: AuthenticatedDeps = Depends()):
-    """
-    Get installation links for external integrations.
-
-    Returns:
-        InstallLinksResponse with installation URLs
-    """
-    try:
-        user_id = deps.user_data["id"]
-        logger.info(f"🔗 Generating install links for user {user_id}")
-
-        # Generate GitHub App installation link with user_id as state
-        github_install_url = f"https://github.com/apps/starmates/installations/new?state={user_id}"
-
-        # Generate Notion OAuth link with user_id as state
-        # Notion OAuth requires these parameters:
-        # - client_id: Your Notion integration's OAuth client ID
-        # - redirect_uri: Must match exactly what's configured in Notion
-        # - response_type: Always "code" for authorization code flow
-        # - owner: "user" (for personal workspaces only) or omit to allow user/organization selection
-        # - state: Optional state parameter for security/user tracking
-
-        from app.core.config import get_settings
-
-        settings = get_settings()
-
-        notion_oauth_url = (
-            f"https://api.notion.com/v1/oauth/authorize"
-            f"?client_id={settings.NOTION_CLIENT_ID}"
-            f"&redirect_uri={settings.NOTION_REDIRECT_URI}"
-            f"&response_type=code"
-            f"&state={user_id}"
-        )
-
-        # Generate Slack OAuth link with user_id as state
-        # Slack OAuth requires these parameters:
-        # - client_id: Your Slack app's client ID
-        # - scope: Permissions requested (comma-separated)
-        # - redirect_uri: Must match exactly what's configured in Slack app
-        # - response_type: Always "code" for authorization code flow
-        # - state: Optional state parameter for security/user tracking
-
-        slack_oauth_url = (
-            f"https://slack.com/oauth/v2/authorize"
-            f"?client_id={settings.SLACK_CLIENT_ID}"
-            f"&scope=app_mentions:read,assistant:write,calls:read,calls:write,chat:write,channels:read,groups:read,conversations:read,reminders:read,reminders:write,im:read,chat:write.public"
-            f"&user_scope=email,identity.basic"
-            f"&redirect_uri={settings.SLACK_REDIRECT_URI}"
-            f"&response_type=code"
-            f"&state={user_id}"
-        )
-
-        # Generate Google Calendar OAuth link with user_id as state
-        # Google OAuth requires these parameters:
-        # - client_id: Your Google OAuth client ID
-        # - redirect_uri: Must match exactly what's configured in Google Console
-        # - response_type: Always "code" for authorization code flow
-        # - scope: Calendar permissions (space-separated or URL-encoded)
-        # - state: Optional state parameter for security/user tracking
-        # - access_type: "offline" to get refresh tokens
-        # - prompt: "consent" to force consent screen (needed for refresh tokens)
-
-        google_calendar_oauth_url = (
-            f"https://accounts.google.com/o/oauth2/auth"
-            f"?client_id={settings.GOOGLE_CLIENT_ID}"
-            f"&redirect_uri={settings.GOOGLE_REDIRECT_URI}"
-            f"&response_type=code"
-            f"&scope=https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events"
-            f"&access_type=offline"
-            f"&prompt=consent"
-            f"&state={user_id}"
-        )
-
-        logger.info(f"✅ Generated install links for user {user_id}")
-
-        return InstallLinksResponse(
-            github=github_install_url,
-            notion=notion_oauth_url,
-            slack=slack_oauth_url,
-            google_calendar=google_calendar_oauth_url,
-        )
-
-    except Exception as e:
-        logger.error(f"❌ Error generating install links: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to generate install links",
         )
 
 
@@ -783,7 +795,9 @@ async def list_notion_databases(
     page_size: int = Query(20, ge=1, le=100, description="返回数量"),
     cursor: Optional[str] = Query(None, description="Notion start_cursor"),
     sort_property: Optional[str] = Query(None, description="排序字段，如 last_edited_time"),
-    sort_direction: Optional[str] = Query(None, regex="^(ascending|descending)$", description="排序方向"),
+    sort_direction: Optional[str] = Query(
+        None, regex="^(ascending|descending)$", description="排序方向"
+    ),
 ):
     """Return accessible Notion databases for current user."""
 
@@ -861,7 +875,9 @@ async def get_notion_database_schema(
         async with NotionClient(auth_token=access_token) as client:
             database = await client.get_database(database_id)
     except NotionObjectNotFoundError:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notion database not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Notion database not found"
+        )
     except NotionAuthError as exc:
         logger.error("❌ Notion auth error while fetching database: %s", exc)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Notion token invalid")

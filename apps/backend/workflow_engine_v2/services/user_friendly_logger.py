@@ -187,12 +187,15 @@ class UserFriendlyLogger:
     def __init__(self):
         self._progress_tracker = NodeProgressTracker()
         self._supabase = None
+        self._redis = None
         self._log_buffer: List[UserFriendlyLogEntry] = []
         self._buffer_lock = Lock()
         self._buffer_size_limit = 100
 
         # Initialize Supabase client
         self._init_supabase()
+        # Initialize Redis client for real-time log streaming
+        self._init_redis()
 
     def _init_supabase(self):
         """Initialize Supabase client for log storage"""
@@ -212,6 +215,27 @@ class UserFriendlyLogger:
         except Exception as e:
             logger.error(f"❌ Failed to initialize Supabase client: {e}")
 
+    def _init_redis(self):
+        """Initialize Redis client for real-time log publishing"""
+        try:
+            import os
+
+            # Try to import redis.asyncio
+            try:
+                import redis.asyncio as redis
+            except ImportError:
+                logger.warning("⚠️ redis.asyncio not available - real-time log streaming disabled")
+                return
+
+            redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+            if redis_url:
+                self._redis = redis.from_url(redis_url, decode_responses=True)
+                logger.info("✅ Redis client initialized for real-time log streaming")
+            else:
+                logger.warning("⚠️ REDIS_URL not configured - real-time log streaming disabled")
+        except Exception as e:
+            logger.warning(f"⚠️ Redis not available for log streaming: {e}")
+
     def log_workflow_start(
         self,
         execution: Execution,
@@ -224,24 +248,21 @@ class UserFriendlyLogger:
             execution.execution_id, total_nodes, workflow_name
         )
 
-        user_message = f"🚀 Started workflow: {workflow_name or 'Unnamed'}"
-        if trigger_info:
-            user_message += f" (triggered by {trigger_info})"
-
+        user_message = f"Started workflow: {workflow_name or 'Unnamed'}"
         if total_nodes > 0:
-            user_message += f" - {total_nodes} steps to execute"
+            user_message += f" ({total_nodes} steps)"
 
         log_entry = UserFriendlyLogEntry(
             execution_id=execution.execution_id,
             created_at=datetime.utcnow().isoformat() + "Z",
             level=LogLevel.INFO,
             event_type=EventType.WORKFLOW_STARTED,
-            message=f"Workflow execution started: {execution.execution_id}",
+            message=user_message,
             user_friendly_message=user_message,
             step_number=0,
             total_steps=total_nodes,
-            display_priority=9,
-            is_milestone=True,
+            display_priority=0,  # Not used in UI
+            is_milestone=False,  # Not used in UI
             data={
                 "workflow_name": workflow_name,
                 "total_nodes": total_nodes,
@@ -265,12 +286,12 @@ class UserFriendlyLogger:
         total = progress.get("total_nodes", 0)
 
         if success:
-            user_message = f"✅ Workflow completed successfully! {completed}/{total} steps completed"
+            user_message = f"Workflow completed ({completed}/{total} steps)"
             if duration_ms:
                 user_message += f" in {duration_ms/1000:.1f}s"
             event_type = EventType.WORKFLOW_COMPLETED
         else:
-            user_message = f"❌ Workflow failed. {completed} steps completed, {failed} failed"
+            user_message = f"Workflow failed ({completed} completed, {failed} failed)"
             event_type = EventType.WORKFLOW_FAILED
 
         log_entry = UserFriendlyLogEntry(
@@ -278,10 +299,10 @@ class UserFriendlyLogger:
             created_at=datetime.utcnow().isoformat() + "Z",
             level=LogLevel.INFO if success else LogLevel.ERROR,
             event_type=event_type,
-            message=f"Workflow execution {'completed' if success else 'failed'}: {execution.execution_id}",
+            message=user_message,
             user_friendly_message=user_message,
-            display_priority=10,
-            is_milestone=True,
+            display_priority=0,  # Not used in UI
+            is_milestone=False,  # Not used in UI
             data={
                 "completed_nodes": completed,
                 "failed_nodes": failed,
@@ -296,36 +317,34 @@ class UserFriendlyLogger:
         # Flush remaining logs
         asyncio.create_task(self._flush_logs())
 
-    def log_node_start(self, execution_id: str, node: Node, input_summary: Optional[str] = None):
+    def log_node_start(
+        self, execution_id: str, node: Node, input_summary: Optional[Dict[str, Any]] = None
+    ):
         """Log node execution start"""
         step_number = self._progress_tracker.start_node(execution_id, node)
         progress = self._progress_tracker.get_execution_progress(execution_id)
         total_steps = progress.get("total_nodes", 0)
 
-        # Create user-friendly node type description
-        node_description = self._get_node_description(node.type, node.subtype)
-
-        user_message = f"⚡ Step {step_number}/{total_steps}: {node.name}"
-        if node_description:
-            user_message += f" ({node_description})"
-
-        if input_summary:
-            user_message += f" - Processing: {input_summary}"
+        user_message = f"Started: {node.name}"
 
         log_entry = UserFriendlyLogEntry(
             execution_id=execution_id,
             created_at=datetime.utcnow().isoformat() + "Z",
             level=LogLevel.INFO,
             event_type=EventType.STEP_STARTED,
-            message=f"Node execution started: {node.name}",
+            message=user_message,
             user_friendly_message=user_message,
             node_id=node.id,
             node_name=node.name,
             node_type=node.type.value if hasattr(node.type, "value") else str(node.type),
             step_number=step_number,
             total_steps=total_steps,
-            display_priority=6,
-            data={"node_subtype": node.subtype, "input_summary": input_summary},
+            display_priority=0,  # Not used in UI
+            data={
+                "node_type": node.type.value if hasattr(node.type, "value") else str(node.type),
+                "node_subtype": node.subtype,
+                "input_params": input_summary if isinstance(input_summary, dict) else {},
+            },
         )
 
         self._add_log_entry(log_entry)
@@ -336,7 +355,7 @@ class UserFriendlyLogger:
         node_id: str,
         success: bool = True,
         duration_ms: Optional[float] = None,
-        output_summary: Optional[str] = None,
+        output_summary: Optional[Dict[str, Any]] = None,
         error_message: Optional[str] = None,
     ):
         """Log node execution completion"""
@@ -351,17 +370,11 @@ class UserFriendlyLogger:
         total_steps = progress.get("total_nodes", 0)
 
         if success:
-            user_message = f"✅ Step {step_number}/{total_steps}: {node_info['node_name']} completed"
-            if duration_ms:
-                user_message += f" ({duration_ms:.0f}ms)"
-            if output_summary:
-                user_message += f" - Result: {output_summary}"
+            user_message = f"Completed: {node_info['node_name']}"
             event_type = EventType.STEP_COMPLETED
             level = LogLevel.INFO
         else:
-            user_message = f"❌ Step {step_number}/{total_steps}: {node_info['node_name']} failed"
-            if error_message:
-                user_message += f" - Error: {error_message}"
+            user_message = f"Failed: {node_info['node_name']}"
             event_type = EventType.STEP_FAILED
             level = LogLevel.ERROR
 
@@ -370,20 +383,51 @@ class UserFriendlyLogger:
             created_at=datetime.utcnow().isoformat() + "Z",
             level=level,
             event_type=event_type,
-            message=f"Node execution {'completed' if success else 'failed'}: {node_info['node_name']}",
+            message=user_message,
             user_friendly_message=user_message,
             node_id=node_id,
             node_name=node_info["node_name"],
             node_type=node_info["node_type"],
             step_number=step_number,
             total_steps=total_steps,
-            display_priority=7 if success else 8,
+            display_priority=0,  # Not used in UI
             data={
                 "success": success,
                 "duration_ms": duration_ms,
-                "output_summary": output_summary,
+                "output_params": output_summary if isinstance(output_summary, dict) else {},
                 "error_message": error_message,
                 "node_subtype": node_info.get("node_subtype"),
+            },
+        )
+
+        self._add_log_entry(log_entry)
+
+    def log_tool_usage(
+        self,
+        execution_id: str,
+        node_id: str,
+        node_name: str,
+        tool_name: str,
+        tool_input: Optional[Dict[str, Any]] = None,
+        tool_output: Optional[Any] = None,
+    ):
+        """Log AI agent tool usage"""
+        user_message = f"Tool: {node_name} used {tool_name}"
+
+        log_entry = UserFriendlyLogEntry(
+            execution_id=execution_id,
+            created_at=datetime.utcnow().isoformat() + "Z",
+            level=LogLevel.INFO,
+            event_type=EventType.DATA_PROCESSING,  # Reuse existing enum
+            message=user_message,
+            user_friendly_message=user_message,
+            node_id=node_id,
+            node_name=node_name,
+            display_priority=0,  # Not used in UI
+            data={
+                "tool_name": tool_name,
+                "tool_input": tool_input,
+                "tool_output": tool_output,
             },
         )
 
@@ -513,10 +557,43 @@ class UserFriendlyLogger:
             (node_type_str, node_subtype), f"{node_subtype} {node_type_str.lower()}"
         )
 
+    async def _publish_to_redis(self, entry: UserFriendlyLogEntry):
+        """Publish log entry to Redis for real-time streaming"""
+        if not self._redis:
+            return
+
+        try:
+            import json
+
+            channel = f"execution_logs:{entry.execution_id}"
+            log_data = {
+                "timestamp": entry.created_at,
+                "node_name": entry.node_name,
+                "event_type": entry.event_type.value,
+                "message": entry.user_friendly_message,
+                "level": entry.level.value.lower(),
+                "data": entry.data or {},
+            }
+
+            # Publish to pub/sub channel
+            await self._redis.publish(channel, json.dumps(log_data))
+
+            # Also add to Redis stream with 10-minute TTL for history
+            stream_key = f"execution_logs_stream:{entry.execution_id}"
+            await self._redis.xadd(stream_key, {"log": json.dumps(log_data)})
+            await self._redis.expire(stream_key, 600)  # 10 minutes
+
+        except Exception as e:
+            logger.debug(f"Failed to publish log to Redis: {e}")
+
     def _add_log_entry(self, entry: UserFriendlyLogEntry):
-        """Add log entry to buffer and flush if needed"""
+        """Add log entry to buffer, publish to Redis, and flush if needed"""
         with self._buffer_lock:
             self._log_buffer.append(entry)
+
+            # Publish to Redis immediately for real-time streaming
+            if self._redis:
+                asyncio.create_task(self._publish_to_redis(entry))
 
             # Flush if buffer is getting full
             if len(self._log_buffer) >= self._buffer_size_limit:

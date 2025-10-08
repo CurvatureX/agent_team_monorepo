@@ -135,26 +135,17 @@ class LogsService:
             count_response = count_query.execute()
             total_count = count_response.count or 0
 
-            # Format logs for API Gateway compatibility
+            # Format logs for API Gateway compatibility (simplified)
             formatted_logs = []
             for log in logs:
                 formatted_log = {
                     "id": log.get("id"),
-                    "execution_id": execution_id,
-                    "timestamp": log.get(
-                        "created_at"
-                    ),  # Map created_at to timestamp for API response
-                    "level": log.get("level", "info").lower(),
-                    "message": log.get("message", ""),
-                    "user_friendly_message": log.get("user_friendly_message", ""),
-                    "event_type": log.get("event_type", "log"),
-                    "node_id": log.get("node_id"),
+                    "timestamp": log.get("created_at"),
                     "node_name": log.get("node_name"),
-                    "display_priority": log.get("display_priority", 5),
-                    "is_milestone": log.get("is_milestone", False),
-                    "data": log.get("data", {}),
-                    "step_number": log.get("step_number"),
-                    "total_steps": log.get("total_steps"),
+                    "event_type": log.get("event_type", "log"),
+                    "message": log.get("user_friendly_message") or log.get("message", ""),
+                    "level": log.get("level", "info").lower(),
+                    "data": log.get("data", {}),  # Contains input_params, output_params, tool info
                 }
                 formatted_logs.append(formatted_log)
 
