@@ -1,21 +1,7 @@
 import { atom } from 'jotai';
 import type { NodeTemplate, NodeCategory } from '@/types/node-template';
 import { searchQueryAtom, selectedCategoryAtom } from './ui';
-
-// Helper function to derive category from node_type
-const getCategoryFromNodeType = (nodeType: string): NodeCategory => {
-  const typeMap: Record<string, NodeCategory> = {
-    'TRIGGER': 'Trigger',
-    'AI_AGENT': 'AI Agents',
-    'ACTION': 'Actions',
-    'EXTERNAL_ACTION': 'Actions',
-    'FLOW': 'Flow Control',
-    'HUMAN_IN_THE_LOOP': 'Human Interaction',
-    'MEMORY': 'Memory',
-    'TOOL': 'Tools',
-  };
-  return typeMap[nodeType.toUpperCase()] || 'Actions';
-};
+import { getCategoryFromNodeType } from '@/utils/nodeHelpers';
 
 // Node templates data
 export const nodeTemplatesAtom = atom<NodeTemplate[]>([]);

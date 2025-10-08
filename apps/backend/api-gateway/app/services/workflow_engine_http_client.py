@@ -142,7 +142,6 @@ class WorkflowEngineHTTPClient:
             if trace_id:
                 headers["X-Trace-ID"] = trace_id
 
-            client = await self._get_client()
             # Convert to v2 creation payload (using spec-driven server-side instance creation)
             v2_nodes: List[Dict[str, Any]] = []
             for nd in nodes or []:
@@ -241,10 +240,13 @@ class WorkflowEngineHTTPClient:
             if settings_dict:
                 v2_payload["settings"] = settings_dict
 
-            response = await client.post(
-                f"{self.base_url}{self._api_prefix}/workflows", json=v2_payload, headers=headers
-            )
-            response.raise_for_status()
+            # Use dedicated client with query_timeout for create operations
+            # Complex workflows with many nodes need longer processing time
+            async with httpx.AsyncClient(timeout=self.query_timeout) as client:
+                response = await client.post(
+                    f"{self.base_url}{self._api_prefix}/workflows", json=v2_payload, headers=headers
+                )
+                response.raise_for_status()
 
             data = response.json()
             log_info(f"✅ Created workflow: {data.get('workflow', {}).get('id', 'unknown')}")
@@ -519,10 +521,12 @@ class WorkflowEngineHTTPClient:
             log_info(f"🐛 DEBUG: Update request JSON: {json.dumps(update_data, indent=2)}")
             log_info(f"🐛 DEBUG: URL: {self.base_url}{self._api_prefix}/workflows/{workflow_id}")
 
-            client = await self._get_client()
-            response = await client.put(
-                f"{self.base_url}{self._api_prefix}/workflows/{workflow_id}", json=update_data
-            )
+            # Use dedicated client with query_timeout for update operations
+            # Complex workflows with many nodes need longer processing time
+            async with httpx.AsyncClient(timeout=self.query_timeout) as client:
+                response = await client.put(
+                    f"{self.base_url}{self._api_prefix}/workflows/{workflow_id}", json=update_data
+                )
 
             # Log response details before checking status
             log_info(f"🐛 DEBUG: Response status: {response.status_code}")

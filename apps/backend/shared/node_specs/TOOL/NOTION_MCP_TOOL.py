@@ -45,6 +45,7 @@ class NotionMCPToolSpec(BaseNodeSpec):
                     "default": "",
                     "description": "默认数据库ID（当operation_type为database或both时使用）",
                     "required": False,
+                    "api_endpoint": "/api/proxy/v1/app/integrations/notion/databases",
                 },
                 "default_page_id": {
                     "type": "string",

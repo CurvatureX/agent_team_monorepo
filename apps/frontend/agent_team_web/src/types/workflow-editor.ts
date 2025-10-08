@@ -5,15 +5,29 @@ import type { WorkflowNode as ApiWorkflowNode } from './workflow';
 // Extended node data for our workflow nodes
 export interface WorkflowNodeData {
   label: string;
+  description?: string;
   template: NodeTemplate;
   parameters: Record<string, unknown>;
   status?: 'idle' | 'running' | 'success' | 'error';
   originalData?: ApiWorkflowNode; // Store original API node data for export
 }
 
-// Our custom node type
+// Extended edge data for workflow connections (stores backend Connection model fields)
+export interface WorkflowEdgeData {
+  // Backend Connection model fields (for round-trip conversion)
+  from_node: string;                    // Source node ID (backend format)
+  to_node: string;                      // Target node ID (backend format)
+  output_key: string;                   // Which output to use (default: "result")
+  conversion_function?: string | null;  // Python code for data transformation
+  // Allow additional properties for flexibility
+  [key: string]: unknown;
+}
+
+// Our custom node and edge types
+// Note: WorkflowEdge extends ReactFlowEdge which has source, target, type, sourceHandle, targetHandle
+// The backend Connection fields are stored in the 'data' property
 export type WorkflowNode = ReactFlowNode<WorkflowNodeData>;
-export type WorkflowEdge = ReactFlowEdge;
+export type WorkflowEdge = ReactFlowEdge<WorkflowEdgeData>;
 
 // UI state types
 export interface EditorUIState {

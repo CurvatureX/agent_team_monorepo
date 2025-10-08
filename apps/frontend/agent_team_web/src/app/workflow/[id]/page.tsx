@@ -6,15 +6,28 @@ import { motion, AnimatePresence } from "framer-motion";
 import { PromptInputBox } from "@/components/ui/ai-prompt-box";
 import { PanelResizer } from "@/components/ui/panel-resizer";
 import { WorkflowEditor } from "@/components/workflow/WorkflowEditor";
-import { User, Bot, Maximize2, StopCircle, RefreshCw, Clock, CheckCircle, XCircle, AlertCircle, ChevronDown, ChevronRight, MessageSquare, History } from "lucide-react";
+import {
+  User,
+  Bot,
+  Maximize2,
+  StopCircle,
+  RefreshCw,
+  Clock,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  ChevronDown,
+  ChevronRight,
+  MessageSquare,
+  History,
+} from "lucide-react";
 import { useResizablePanel } from "@/hooks";
 import { Badge } from "@/components/ui/badge";
 import {
   WorkflowData,
-  WorkflowEdge,
   WorkflowConnection,
   ConnectionType,
-  WorkflowDataStructure
+  WorkflowDataStructure,
 } from "@/types/workflow";
 import { useWorkflowActions } from "@/lib/api/hooks/useWorkflowsApi";
 import { useRecentExecutionLogs } from "@/lib/api/hooks/useExecutionApi";
@@ -29,31 +42,55 @@ import { Skeleton } from "@/components/ui/skeleton";
 interface Message {
   id: string;
   content: string;
-  sender: 'user' | 'assistant';
+  sender: "user" | "assistant";
   timestamp: Date;
 }
 
-
 // Helper function to get status badge variant and icon
 const getExecutionStatusInfo = (status: string | null) => {
-  if (!status) return { variant: 'secondary' as const, icon: AlertCircle, label: 'No runs yet' };
+  if (!status)
+    return {
+      variant: "secondary" as const,
+      icon: AlertCircle,
+      label: "No runs yet",
+    };
 
   const statusLower = status.toLowerCase();
-  if (statusLower === 'success' || statusLower === 'completed') {
-    return { variant: 'default' as const, icon: CheckCircle, label: 'Success', color: 'text-green-600' };
+  if (statusLower === "success" || statusLower === "completed") {
+    return {
+      variant: "default" as const,
+      icon: CheckCircle,
+      label: "Success",
+      color: "text-green-600",
+    };
   }
-  if (statusLower === 'error' || statusLower === 'failed') {
-    return { variant: 'destructive' as const, icon: XCircle, label: 'Failed', color: 'text-red-600' };
+  if (statusLower === "error" || statusLower === "failed") {
+    return {
+      variant: "destructive" as const,
+      icon: XCircle,
+      label: "Failed",
+      color: "text-red-600",
+    };
   }
-  if (statusLower === 'running' || statusLower === 'in_progress') {
-    return { variant: 'outline' as const, icon: RefreshCw, label: 'Running', color: 'text-blue-600' };
+  if (statusLower === "running" || statusLower === "in_progress") {
+    return {
+      variant: "outline" as const,
+      icon: RefreshCw,
+      label: "Running",
+      color: "text-blue-600",
+    };
   }
-  return { variant: 'secondary' as const, icon: AlertCircle, label: status, color: 'text-gray-600' };
+  return {
+    variant: "secondary" as const,
+    icon: AlertCircle,
+    label: status,
+    color: "text-gray-600",
+  };
 };
 
 // Helper function to format execution time
 const formatExecutionTime = (time: string | null) => {
-  if (!time) return 'Never';
+  if (!time) return "Never";
 
   try {
     const date = new Date(time);
@@ -63,7 +100,7 @@ const formatExecutionTime = (time: string | null) => {
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
 
-    if (diffMins < 1) return 'Just now';
+    if (diffMins < 1) return "Just now";
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays < 7) return `${diffDays}d ago`;
@@ -81,16 +118,24 @@ const WorkflowDetailPage = () => {
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowData | null>(null);
+  const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowData | null>(
+    null
+  );
   const [isWorkflowExpanded, setIsWorkflowExpanded] = useState(false);
   const [isSavingWorkflow, setIsSavingWorkflow] = useState(false);
-  const [streamCancelFn, setStreamCancelFn] = useState<(() => void) | null>(null);
+  const [streamCancelFn, setStreamCancelFn] = useState<(() => void) | null>(
+    null
+  );
   const [isStreaming, setIsStreaming] = useState(false);
   const [isLoadingWorkflow, setIsLoadingWorkflow] = useState(true);
-  const [workflowName, setWorkflowName] = useState<string>('');
-  const [workflowDescription, setWorkflowDescription] = useState<string>('');
-  const [latestExecutionStatus, setLatestExecutionStatus] = useState<string | null>(null);
-  const [latestExecutionTime, setLatestExecutionTime] = useState<string | null>(null);
+  const [workflowName, setWorkflowName] = useState<string>("");
+  const [workflowDescription, setWorkflowDescription] = useState<string>("");
+  const [latestExecutionStatus, setLatestExecutionStatus] = useState<
+    string | null
+  >(null);
+  const [latestExecutionTime, setLatestExecutionTime] = useState<string | null>(
+    null
+  );
   const [isChatExpanded, setIsChatExpanded] = useState(false);
   const [isExecutionLogsExpanded, setIsExecutionLogsExpanded] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -101,20 +146,29 @@ const WorkflowDetailPage = () => {
   const { updateWorkflow, getWorkflow } = useWorkflowActions();
 
   // Fetch recent execution logs
-  const { logs: executionLogs, isLoading: isLoadingLogs, refresh: refreshLogs } = useRecentExecutionLogs(workflowId, 10);
+  const {
+    logs: executionLogs,
+    isLoading: isLoadingLogs,
+    refresh: refreshLogs,
+  } = useRecentExecutionLogs(workflowId, 10);
   useLayout();
   const { setCustomTitle } = usePageTitle();
 
   // Use the custom hook for resizable panels
-  const { width: rightPanelWidth, isResizing, resizerProps, overlayProps } = useResizablePanel({
+  const {
+    width: rightPanelWidth,
+    isResizing,
+    resizerProps,
+    overlayProps,
+  } = useResizablePanel({
     initialWidth: 384,
     minWidth: 300,
-    maxWidthRatio: 0.6
+    maxWidthRatio: 0.6,
   });
 
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   useEffect(() => {
@@ -128,7 +182,7 @@ const WorkflowDetailPage = () => {
 
       // Wait for authentication
       if (!session?.access_token) {
-        console.log('Waiting for authentication...');
+        console.log("Waiting for authentication...");
         return;
       }
 
@@ -138,12 +192,12 @@ const WorkflowDetailPage = () => {
 
         // Handle no authentication case
         if (!response) {
-          console.log('No response - user may not be authenticated');
+          console.log("No response - user may not be authenticated");
           setIsLoadingWorkflow(false);
           return;
         }
 
-        console.log('Workflow API response:', response);
+        console.log("Workflow API response:", response);
 
         let workflowData: WorkflowDataStructure | null = null;
 
@@ -153,7 +207,7 @@ const WorkflowDetailPage = () => {
           const workflow = response.workflow;
 
           // Check if workflow_data is a string and needs parsing
-          if (typeof workflow.workflow_data === 'string') {
+          if (typeof workflow.workflow_data === "string") {
             workflowData = JSON.parse(workflow.workflow_data);
           } else if (workflow.nodes && workflow.connections) {
             // workflow already has nodes and connections
@@ -164,7 +218,7 @@ const WorkflowDetailPage = () => {
           }
         } else if (response?.workflow_data) {
           // Direct workflow_data in response
-          if (typeof response.workflow_data === 'string') {
+          if (typeof response.workflow_data === "string") {
             workflowData = JSON.parse(response.workflow_data);
           } else {
             workflowData = response.workflow_data;
@@ -176,83 +230,73 @@ const WorkflowDetailPage = () => {
 
         // Ensure workflowData has required properties
         if (workflowData) {
-          // Convert edges from connections if needed
-          if (!workflowData.edges && workflowData.connections) {
-            workflowData.edges = [];
+          // Don't manually convert connections - let the workflow editor's converter handle it
+          // The apiWorkflowToEditor converter will properly map connections to React Flow edges
+          console.log("📦 Workflow data loaded:", {
+            nodes: workflowData.nodes?.length,
+            connections: Array.isArray(workflowData.connections)
+              ? workflowData.connections.length
+              : "not array",
+            hasEdges: !!workflowData.edges,
+          });
 
-            // Handle array format (new API format with from_node/to_node)
-            if (Array.isArray(workflowData.connections)) {
-              workflowData.connections.forEach((conn: any) => {
-                workflowData.edges!.push({
-                  id: conn.id || `${conn.from_node}-${conn.to_node}`,
-                  source: conn.from_node,
-                  target: conn.to_node,
-                  sourceHandle: conn.output_key || 'source',
-                  targetHandle: 'target'
-                });
-              });
-            } else {
-              // Handle object format (old n8n-style format)
-              Object.entries(workflowData.connections).forEach(([sourceId, conn]) => {
-                const connection = conn as ConnectionType;
-                if (connection?.connection_types?.main?.connections) {
-                  connection.connection_types.main.connections.forEach((target: WorkflowConnection) => {
-                    workflowData.edges!.push({
-                      id: `${sourceId}-${target.node}`,
-                      source: sourceId,
-                      target: target.node,
-                      sourceHandle: 'source',
-                      targetHandle: 'target'
-                    });
-                  });
-                } else if (connection?.main) {
-                  // Alternative structure
-                  connection.main.forEach((connectionGroup: WorkflowConnection[]) => {
-                    connectionGroup.forEach((target: WorkflowConnection) => {
-                      workflowData.edges!.push({
-                        id: `${sourceId}-${target.node}`,
-                        source: sourceId,
-                        target: target.node,
-                        sourceHandle: 'source',
-                        targetHandle: 'target'
-                      });
-                    });
-                  });
-                }
-              });
-            }
-          }
-
-          console.log('Processed workflow data:', workflowData);
+          console.log("Processed workflow data:", workflowData);
           setCurrentWorkflow(workflowData as unknown as WorkflowData);
 
           // Set workflow name and description from metadata or fallback locations
           // Priority: workflow.metadata > workflowData.metadata > workflow direct > workflowData direct
-          const name = response?.workflow?.metadata?.name || workflowData?.metadata?.name || response?.workflow?.name || response?.name || workflowData?.name || 'Untitled Workflow';
-          const description = response?.workflow?.metadata?.description || workflowData?.metadata?.description || response?.workflow?.description || response?.description || workflowData?.description || '';
+          const name =
+            response?.workflow?.metadata?.name ||
+            workflowData?.metadata?.name ||
+            response?.workflow?.name ||
+            response?.name ||
+            workflowData?.name ||
+            "Untitled Workflow";
+          const description =
+            response?.workflow?.metadata?.description ||
+            workflowData?.metadata?.description ||
+            response?.workflow?.description ||
+            response?.description ||
+            workflowData?.description ||
+            "";
 
           setWorkflowName(name);
           setWorkflowDescription(description);
 
-          console.log('Extracted workflow info:', { name, description, metadata: response?.workflow?.metadata });
+          console.log("Extracted workflow info:", {
+            name,
+            description,
+            metadata: response?.workflow?.metadata,
+          });
 
           // Extract execution status and time from response (check metadata first)
-          const executionStatus = response?.workflow?.metadata?.last_execution_status || response?.workflow?.latest_execution_status || response?.latest_execution_status || null;
-          const executionTime = response?.workflow?.metadata?.last_execution_time || response?.workflow?.latest_execution_time || response?.latest_execution_time || null;
+          const executionStatus =
+            response?.workflow?.metadata?.last_execution_status ||
+            response?.workflow?.latest_execution_status ||
+            response?.latest_execution_status ||
+            null;
+          const executionTime =
+            response?.workflow?.metadata?.last_execution_time ||
+            response?.workflow?.latest_execution_time ||
+            response?.latest_execution_time ||
+            null;
 
           setLatestExecutionStatus(executionStatus);
           setLatestExecutionTime(executionTime);
 
           // Update workflow data with name and description if not present
-          if (workflowData && (!workflowData.name || !workflowData.description)) {
+          if (
+            workflowData &&
+            (!workflowData.name || !workflowData.description)
+          ) {
             workflowData.name = name;
             workflowData.description = description;
           }
         } else {
-          throw new Error('Invalid workflow data structure');
+          throw new Error("Invalid workflow data structure");
         }
       } catch (error) {
-        console.error('Failed to fetch workflow:', error);
+        console.error("Failed to fetch workflow:", error);
         toast({
           title: "Error",
           description: "Failed to load workflow details",
@@ -271,14 +315,14 @@ const WorkflowDetailPage = () => {
     const breadcrumbTitle = (
       <div className="flex items-center gap-1 text-sm font-bold">
         <button
-          onClick={() => router.push('/canvas')}
+          onClick={() => router.push("/canvas")}
           className="text-black dark:text-white hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
         >
           Assistants
         </button>
         <span className="text-black/50 dark:text-white/50 px-1">/</span>
         <span className="text-black dark:text-white">
-          {workflowName || 'Loading...'}
+          {workflowName || "Loading..."}
         </span>
       </div>
     );
@@ -295,9 +339,9 @@ const WorkflowDetailPage = () => {
   useEffect(() => {
     const initializeChat = async () => {
       try {
-        console.log('Initializing chat session for workflow...');
+        console.log("Initializing chat session for workflow...");
         const sessionId = await chatService.createNewSession();
-        console.log('Chat session initialized:', sessionId);
+        console.log("Chat session initialized:", sessionId);
 
         // Load chat history if exists
         const history = await chatService.getChatHistory();
@@ -305,124 +349,132 @@ const WorkflowDetailPage = () => {
           const formattedMessages: Message[] = history.messages.map((msg) => ({
             id: msg.id,
             content: msg.content,
-            sender: msg.role === 'user' ? 'user' : 'assistant',
-            timestamp: new Date(msg.created_at)
+            sender: msg.role === "user" ? "user" : "assistant",
+            timestamp: new Date(msg.created_at),
           }));
           setMessages(formattedMessages);
         }
       } catch (error) {
-        console.log('Error initializing chat:', error);
+        console.log("Error initializing chat:", error);
       }
     };
 
     initializeChat();
   }, []);
 
-  const handleSendMessage = useCallback(async (message: string, files?: File[]) => {
-    if (!message.trim()) return;
+  const handleSendMessage = useCallback(
+    async (message: string, files?: File[]) => {
+      if (!message.trim()) return;
 
-    // Cancel any ongoing stream
-    if (streamCancelFn) {
-      streamCancelFn();
-      setStreamCancelFn(null);
-    }
+      // Cancel any ongoing stream
+      if (streamCancelFn) {
+        streamCancelFn();
+        setStreamCancelFn(null);
+      }
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      content: message,
-      sender: 'user',
-      timestamp: new Date()
-    };
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        content: message,
+        sender: "user",
+        timestamp: new Date(),
+      };
 
-    setMessages(prev => [...prev, userMessage]);
-    setIsLoading(true);
-    setIsStreaming(true);
+      setMessages((prev) => [...prev, userMessage]);
+      setIsLoading(true);
+      setIsStreaming(true);
 
-    // Handle file uploads if any
-    if (files && files.length > 0) {
-      console.log('Processing uploaded files:', files);
-    }
+      // Handle file uploads if any
+      if (files && files.length > 0) {
+        console.log("Processing uploaded files:", files);
+      }
 
-    // Prepare AI message placeholder
-    const currentAiMessageId = (Date.now() + 1).toString();
-    let accumulatedContent = '';
-    let hasReceivedContent = false;
+      // Prepare AI message placeholder
+      const currentAiMessageId = (Date.now() + 1).toString();
+      let accumulatedContent = "";
+      let hasReceivedContent = false;
 
-    try {
-      const cancelFn = await chatService.sendChatMessage(
-        message,
-        (event: ChatSSEEvent) => {
-          hasReceivedContent = true;
+      try {
+        const cancelFn = await chatService.sendChatMessage(
+          message,
+          (event: ChatSSEEvent) => {
+            hasReceivedContent = true;
 
-          if (event.type === 'message') {
-            if (event.data?.text) {
-              accumulatedContent += event.data.text;
+            if (event.type === "message") {
+              if (event.data?.text) {
+                accumulatedContent += event.data.text;
 
-              setMessages(prev => {
-                const existingIndex = prev.findIndex(m => m.id === currentAiMessageId);
-                const aiMessage: Message = {
-                  id: currentAiMessageId,
-                  content: accumulatedContent,
-                  sender: 'assistant',
-                  timestamp: new Date()
-                };
+                setMessages((prev) => {
+                  const existingIndex = prev.findIndex(
+                    (m) => m.id === currentAiMessageId
+                  );
+                  const aiMessage: Message = {
+                    id: currentAiMessageId,
+                    content: accumulatedContent,
+                    sender: "assistant",
+                    timestamp: new Date(),
+                  };
 
-                if (existingIndex !== -1) {
-                  const updated = [...prev];
-                  updated[existingIndex] = aiMessage;
-                  return updated;
-                } else {
-                  return [...prev, aiMessage];
-                }
+                  if (existingIndex !== -1) {
+                    const updated = [...prev];
+                    updated[existingIndex] = aiMessage;
+                    return updated;
+                  } else {
+                    return [...prev, aiMessage];
+                  }
+                });
+              }
+            } else if (event.type === "workflow" && event.data) {
+              if (event.data.workflow) {
+                console.log("Received workflow update:", event.data.workflow);
+                setCurrentWorkflow(event.data.workflow);
+              }
+            } else if (event.type === "error") {
+              toast({
+                title: "Error",
+                description:
+                  event.data?.message ||
+                  "An error occurred while processing your message",
+                variant: "destructive",
               });
             }
-          } else if (event.type === 'workflow' && event.data) {
-            if (event.data.workflow) {
-              console.log('Received workflow update:', event.data.workflow);
-              setCurrentWorkflow(event.data.workflow);
+          },
+          (error) => {
+            console.error("Chat API error:", error);
+            if (!hasReceivedContent) {
+              const fallbackMessage: Message = {
+                id: currentAiMessageId,
+                content:
+                  "I'm sorry, I couldn't connect to the AI service. Please check if the backend service is running.",
+                sender: "assistant",
+                timestamp: new Date(),
+              };
+              setMessages((prev) => [...prev, fallbackMessage]);
             }
-          } else if (event.type === 'error') {
+
             toast({
-              title: "Error",
-              description: event.data?.message || "An error occurred while processing your message",
+              title: "Connection Error",
+              description: "Failed to connect to AI service.",
               variant: "destructive",
             });
+            setIsLoading(false);
+            setIsStreaming(false);
+          },
+          () => {
+            setIsLoading(false);
+            setIsStreaming(false);
+            setStreamCancelFn(null);
           }
-        },
-        (error) => {
-          console.error('Chat API error:', error);
-          if (!hasReceivedContent) {
-            const fallbackMessage: Message = {
-              id: currentAiMessageId,
-              content: "I'm sorry, I couldn't connect to the AI service. Please check if the backend service is running.",
-              sender: 'assistant',
-              timestamp: new Date()
-            };
-            setMessages(prev => [...prev, fallbackMessage]);
-          }
+        );
 
-          toast({
-            title: "Connection Error",
-            description: "Failed to connect to AI service.",
-            variant: "destructive",
-          });
-          setIsLoading(false);
-          setIsStreaming(false);
-        },
-        () => {
-          setIsLoading(false);
-          setIsStreaming(false);
-          setStreamCancelFn(null);
-        }
-      );
-
-      setStreamCancelFn(() => cancelFn);
-    } catch (error) {
-      console.error('Failed to send message:', error);
-      setIsLoading(false);
-      setIsStreaming(false);
-    }
-  }, [toast, streamCancelFn]);
+        setStreamCancelFn(() => cancelFn);
+      } catch (error) {
+        console.error("Failed to send message:", error);
+        setIsLoading(false);
+        setIsStreaming(false);
+      }
+    },
+    [toast, streamCancelFn]
+  );
 
   const handleStopStreaming = useCallback(() => {
     if (streamCancelFn) {
@@ -434,11 +486,14 @@ const WorkflowDetailPage = () => {
   }, [streamCancelFn]);
 
   const handleRetryLastMessage = useCallback(() => {
-    const lastUserMessage = [...messages].reverse().find(m => m.sender === 'user');
+    const lastUserMessage = [...messages]
+      .reverse()
+      .find((m) => m.sender === "user");
     if (lastUserMessage) {
-      setMessages(prev => {
-        const lastAiIndex = prev.map((m, i) => m.sender === 'assistant' ? i : -1)
-          .filter(i => i !== -1)
+      setMessages((prev) => {
+        const lastAiIndex = prev
+          .map((m, i) => (m.sender === "assistant" ? i : -1))
+          .filter((i) => i !== -1)
           .pop();
         if (lastAiIndex !== undefined && lastAiIndex > -1) {
           return prev.slice(0, lastAiIndex);
@@ -451,78 +506,78 @@ const WorkflowDetailPage = () => {
 
   const handleWorkflowChange = useCallback((updatedWorkflow: WorkflowData) => {
     setCurrentWorkflow(updatedWorkflow);
-    console.log('Workflow updated:', updatedWorkflow);
+    console.log("Workflow updated:", updatedWorkflow);
   }, []);
 
-  const handleSaveWorkflow = useCallback(async (workflowToSave?: WorkflowData) => {
-    const workflow = workflowToSave || currentWorkflow;
+  const handleSaveWorkflow = useCallback(
+    async (workflowToSave?: WorkflowData) => {
+      const workflow = workflowToSave || currentWorkflow;
 
-    if (!workflow || !workflow.id) {
-      toast({
-        title: "Error",
-        description: "No workflow to save",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsSavingWorkflow(true);
-
-    try {
-      // Convert edges to connections format (n8n style)
-      const connections: Record<string, { main: WorkflowConnection[][] }> = {};
-      if (workflow.edges) {
-        workflow.edges.forEach((edge) => {
-          const workflowEdge: WorkflowEdge = {
-            id: edge.id || `${edge.source}-${edge.target}`,
-            source: edge.source,
-            target: edge.target,
-            sourceHandle: edge.sourceHandle || undefined,
-            targetHandle: edge.targetHandle || undefined
-          };
-          if (!connections[workflowEdge.source]) {
-            connections[workflowEdge.source] = {
-              main: [[]]
-            };
-          }
-          connections[workflowEdge.source].main[0].push({
-            node: workflowEdge.target,
-            type: 'main',
-            index: 0,
-          });
+      if (!workflow || !workflow.id) {
+        toast({
+          title: "Error",
+          description: "No workflow to save",
+          variant: "destructive",
         });
+        return;
       }
 
-      const updateData = {
-        name: workflow.name,
-        description: workflow.description,
-        nodes: workflow.nodes || [],
-        connections: connections,
-        settings: workflow.settings,
-        tags: workflow.tags || [],
-      };
+      setIsSavingWorkflow(true);
 
-      await updateWorkflow(workflow.id, updateData);
+      try {
+        // Convert connections (backend WorkflowEdge[]) to connections format (n8n style)
+        const connections: Record<string, { main: WorkflowConnection[][] }> =
+          {};
+        if (workflow.connections) {
+          workflow.connections.forEach((edge) => {
+            const sourceNode = edge.from_node || (edge as any).source;
+            const targetNode = edge.to_node || (edge as any).target;
 
-      if (workflowToSave) {
-        setCurrentWorkflow(workflowToSave);
+            if (!connections[sourceNode]) {
+              connections[sourceNode] = {
+                main: [[]],
+              };
+            }
+            connections[sourceNode].main[0].push({
+              node: targetNode,
+              type: "main",
+              index: 0,
+            });
+          });
+        }
+
+        const updateData = {
+          name: workflow.name,
+          description: workflow.description,
+          nodes: workflow.nodes || [],
+          connections: connections,
+          settings: workflow.settings,
+          tags: workflow.tags || [],
+        };
+
+        await updateWorkflow(workflow.id, updateData);
+
+        if (workflowToSave) {
+          setCurrentWorkflow(workflowToSave);
+        }
+
+        toast({
+          title: "Success",
+          description: "Workflow saved successfully",
+        });
+      } catch (error) {
+        console.error("Failed to save workflow:", error);
+        toast({
+          title: "Error",
+          description: "Failed to save workflow. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsSavingWorkflow(false);
       }
-
-      toast({
-        title: "Success",
-        description: "Workflow saved successfully",
-      });
-    } catch (error) {
-      console.error('Failed to save workflow:', error);
-      toast({
-        title: "Error",
-        description: "Failed to save workflow. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSavingWorkflow(false);
-    }
-  }, [currentWorkflow, updateWorkflow, toast]);
+    },
+    [currentWorkflow, updateWorkflow, toast]
+  );
 
   // Cleanup on unmount
   useEffect(() => {
@@ -602,7 +657,7 @@ const WorkflowDetailPage = () => {
         <div className="text-center">
           <p className="text-muted-foreground mb-4">Workflow not found</p>
           <button
-            onClick={() => router.push('/canvas')}
+            onClick={() => router.push("/canvas")}
             className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
           >
             Back to Assistants
@@ -632,19 +687,29 @@ const WorkflowDetailPage = () => {
             {/* Workflow Header */}
             {workflowName && (
               <div className="px-4 py-3 bg-background/95 backdrop-blur-sm rounded-t-lg border border-b-0 border-border">
-                <h2 className="text-lg font-semibold text-foreground">{workflowName}</h2>
+                <h2 className="text-lg font-semibold text-foreground">
+                  {workflowName}
+                </h2>
                 {workflowDescription && (
-                  <p className="text-sm text-muted-foreground mt-1">{workflowDescription}</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {workflowDescription}
+                  </p>
                 )}
                 {/* Execution Status and Time */}
                 <div className="flex items-center gap-3 mt-2">
                   {(() => {
-                    const statusInfo = getExecutionStatusInfo(latestExecutionStatus);
+                    const statusInfo = getExecutionStatusInfo(
+                      latestExecutionStatus
+                    );
                     const StatusIcon = statusInfo.icon;
                     return (
                       <div className="flex items-center gap-1.5">
-                        <StatusIcon className={`w-3.5 h-3.5 ${statusInfo.color}`} />
-                        <span className={`text-xs font-medium ${statusInfo.color}`}>
+                        <StatusIcon
+                          className={`w-3.5 h-3.5 ${statusInfo.color}`}
+                        />
+                        <span
+                          className={`text-xs font-medium ${statusInfo.color}`}
+                        >
                           {statusInfo.label}
                         </span>
                       </div>
@@ -680,7 +745,11 @@ const WorkflowDetailPage = () => {
         </motion.div>
 
         {/* Resize Handle */}
-        <PanelResizer isResizing={isResizing} resizerProps={resizerProps} overlayProps={overlayProps} />
+        <PanelResizer
+          isResizing={isResizing}
+          resizerProps={resizerProps}
+          overlayProps={overlayProps}
+        />
 
         {/* Right Side - Info Panel */}
         <motion.div
@@ -694,12 +763,14 @@ const WorkflowDetailPage = () => {
           <div className="flex flex-col border-b border-border/30">
             {/* Execution Logs Header */}
             <button
-              onClick={() => setIsExecutionLogsExpanded(!isExecutionLogsExpanded)}
+              onClick={() =>
+                setIsExecutionLogsExpanded(!isExecutionLogsExpanded)
+              }
               className="flex items-center justify-between p-4 hover:bg-accent/50 transition-colors"
             >
               <div className="flex items-center gap-2">
                 <History className="w-4 h-4" />
-                <h3 className="text-sm font-semibold">Recent Executions</h3>
+                <h3 className="text-sm font-semibold">Last Execution Logs</h3>
               </div>
               {isExecutionLogsExpanded ? (
                 <ChevronDown className="w-4 h-4" />
@@ -713,7 +784,7 @@ const WorkflowDetailPage = () => {
               {isExecutionLogsExpanded && (
                 <motion.div
                   initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
+                  animate={{ height: "auto", opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
                   transition={{ duration: 0.2 }}
                   className="overflow-hidden"
@@ -724,8 +795,14 @@ const WorkflowDetailPage = () => {
                       <div className="flex items-center justify-center py-8">
                         <div className="flex gap-1">
                           <div className="w-2 h-2 bg-primary rounded-full animate-bounce" />
-                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
-                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                          <div
+                            className="w-2 h-2 bg-primary rounded-full animate-bounce"
+                            style={{ animationDelay: "0.1s" }}
+                          />
+                          <div
+                            className="w-2 h-2 bg-primary rounded-full animate-bounce"
+                            style={{ animationDelay: "0.2s" }}
+                          />
                         </div>
                       </div>
                     ) : executionLogs.length === 0 ? (
@@ -743,10 +820,14 @@ const WorkflowDetailPage = () => {
                               className="flex items-center justify-between p-2 rounded-md hover:bg-accent/50 transition-colors cursor-pointer"
                             >
                               <div className="flex items-center gap-2 flex-1 min-w-0">
-                                <StatusIcon className={`w-3.5 h-3.5 flex-shrink-0 ${statusInfo.color}`} />
+                                <StatusIcon
+                                  className={`w-3.5 h-3.5 flex-shrink-0 ${statusInfo.color}`}
+                                />
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2">
-                                    <span className={`text-xs font-medium ${statusInfo.color}`}>
+                                    <span
+                                      className={`text-xs font-medium ${statusInfo.color}`}
+                                    >
                                       {statusInfo.label}
                                     </span>
                                     {log.duration && (
@@ -799,13 +880,16 @@ const WorkflowDetailPage = () => {
               {isChatExpanded && (
                 <motion.div
                   initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
+                  animate={{ height: "auto", opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
                   transition={{ duration: 0.2 }}
                   className="flex flex-col flex-1 min-h-0 overflow-hidden"
                 >
                   {/* Chat Messages */}
-                  <div ref={chatContainerRef} className="flex-1 p-4 overflow-y-auto pt-2">
+                  <div
+                    ref={chatContainerRef}
+                    className="flex-1 p-4 overflow-y-auto pt-2"
+                  >
                     <div className="space-y-4">
                       {messages.map((message) => (
                         <motion.div
@@ -814,20 +898,24 @@ const WorkflowDetailPage = () => {
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -20 }}
                           transition={{ duration: 0.3 }}
-                          className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                          className={`flex ${
+                            message.sender === "user"
+                              ? "justify-end"
+                              : "justify-start"
+                          }`}
                         >
                           <div
                             className={`max-w-[80%] p-3 rounded-2xl ${
-                              message.sender === 'user'
-                                ? 'bg-primary text-primary-foreground ml-4'
-                                : 'bg-muted text-muted-foreground mr-4'
+                              message.sender === "user"
+                                ? "bg-primary text-primary-foreground ml-4"
+                                : "bg-muted text-muted-foreground mr-4"
                             }`}
                           >
                             <div className="flex items-start gap-2">
-                              {message.sender === 'assistant' && (
+                              {message.sender === "assistant" && (
                                 <Bot className="w-4 h-4 mt-0.5 flex-shrink-0" />
                               )}
-                              {message.sender === 'user' && (
+                              {message.sender === "user" && (
                                 <User className="w-4 h-4 mt-0.5 flex-shrink-0" />
                               )}
                               <div>
@@ -854,8 +942,14 @@ const WorkflowDetailPage = () => {
                               <Bot className="w-4 h-4" />
                               <div className="flex gap-1">
                                 <div className="w-2 h-2 bg-current rounded-full animate-bounce" />
-                                <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
-                                <div className="w-2 h-2 bg-current rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                                <div
+                                  className="w-2 h-2 bg-current rounded-full animate-bounce"
+                                  style={{ animationDelay: "0.1s" }}
+                                />
+                                <div
+                                  className="w-2 h-2 bg-current rounded-full animate-bounce"
+                                  style={{ animationDelay: "0.2s" }}
+                                />
                               </div>
                             </div>
                           </div>
@@ -936,7 +1030,7 @@ const WorkflowDetailPage = () => {
                 <button
                   onClick={() => {
                     setIsWorkflowExpanded(false);
-                    router.push('/canvas');
+                    router.push("/canvas");
                   }}
                   className="text-sm text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded hover:bg-accent"
                 >
@@ -944,7 +1038,7 @@ const WorkflowDetailPage = () => {
                 </button>
                 <span className="text-muted-foreground px-1">/</span>
                 <span className="text-sm font-medium px-2 py-1">
-                  {workflowName || 'Untitled Workflow'}
+                  {workflowName || "Untitled Workflow"}
                 </span>
               </div>
               <motion.button

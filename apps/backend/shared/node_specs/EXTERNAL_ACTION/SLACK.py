@@ -45,6 +45,7 @@ class SlackExternalActionSpec(BaseNodeSpec):
                     "default": "{{$placeholder}}",
                     "description": "目标频道（#channel 或 @user 或 channel_id）",
                     "required": True,
+                    "api_endpoint": "/api/proxy/v1/app/integrations/slack/channels",
                 },
                 "bot_token": {
                     "type": "string",

@@ -49,8 +49,8 @@ class StreamResponse(BaseModel):
     timestamp: str
 
 
-# Create router
-router = APIRouter(prefix="/api/v2", tags=["Execution Logs"])
+# Create router (no prefix - already mounted under /v2)
+router = APIRouter(tags=["Execution Logs"])
 
 
 class LogsService:
@@ -100,16 +100,16 @@ class LogsService:
                 self._supabase.table("workflow_execution_logs")
                 .select("*")
                 .eq("execution_id", execution_id)
-                .order("timestamp", desc=False)
+                .order("created_at", desc=False)
             )
 
             # Add filters
             if level:
                 query = query.eq("level", level.upper())
             if start_time:
-                query = query.gte("timestamp", start_time)
+                query = query.gte("created_at", start_time)
             if end_time:
-                query = query.lte("timestamp", end_time)
+                query = query.lte("created_at", end_time)
 
             # Apply pagination
             query = query.range(offset, offset + limit - 1)
@@ -128,9 +128,9 @@ class LogsService:
             if level:
                 count_query = count_query.eq("level", level.upper())
             if start_time:
-                count_query = count_query.gte("timestamp", start_time)
+                count_query = count_query.gte("created_at", start_time)
             if end_time:
-                count_query = count_query.lte("timestamp", end_time)
+                count_query = count_query.lte("created_at", end_time)
 
             count_response = count_query.execute()
             total_count = count_response.count or 0
@@ -141,7 +141,9 @@ class LogsService:
                 formatted_log = {
                     "id": log.get("id"),
                     "execution_id": execution_id,
-                    "timestamp": log.get("timestamp"),
+                    "timestamp": log.get(
+                        "created_at"
+                    ),  # Map created_at to timestamp for API response
                     "level": log.get("level", "info").lower(),
                     "message": log.get("message", ""),
                     "user_friendly_message": log.get("user_friendly_message", ""),

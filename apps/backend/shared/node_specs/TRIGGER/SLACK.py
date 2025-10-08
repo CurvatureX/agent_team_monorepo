@@ -52,6 +52,8 @@ class SlackTriggerSpec(BaseNodeSpec):
                     "default": [],
                     "description": "监听的频道列表（空为所有频道）",
                     "required": False,
+                    "api_endpoint": "/api/proxy/v1/app/integrations/slack/channels",
+                    "multiple": True,
                 },
                 "keywords": {
                     "type": "array",

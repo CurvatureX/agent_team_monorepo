@@ -4,6 +4,7 @@ export type NodeCategory =
   | 'Trigger'
   | 'AI Agents'
   | 'Actions'
+  | 'External Integrations'
   | 'Flow Control'
   | 'Human Interaction'
   | 'Memory'
@@ -13,6 +14,7 @@ export type NodeTypeEnum =
   | 'TRIGGER'
   | 'AI_AGENT'
   | 'ACTION'
+  | 'EXTERNAL_ACTION'
   | 'FLOW'
   | 'HUMAN_IN_THE_LOOP'
   | 'MEMORY'
@@ -26,7 +28,29 @@ export interface ParameterSchema {
 
 export interface SchemaProperty {
   type: 'string' | 'boolean' | 'integer' | 'number' | 'array' | 'object';
-  enum?: string[];
+  description?: string;
+  enum?: string[];  // Dropdown options (from backend "options" field, converted to JSON Schema "enum")
+  default?: unknown;
+
+  // UI/Behavior properties
+  sensitive?: boolean;      // Password field with masking
+  multiline?: boolean;      // Textarea instead of input
+  readonly?: boolean;       // Non-editable display field
+
+  // Validation properties
+  min?: number;             // Min value for numbers, min length for strings
+  max?: number;             // Max value for numbers, max length for strings
+  validation_pattern?: string; // Regex pattern for validation
+
+  // Dynamic dropdown properties
+  api_endpoint?: string;    // API URL to fetch dropdown options
+  multiple?: boolean;       // Multi-select for arrays
+
+  // UI enhancement properties
+  placeholder?: string;     // Input placeholder text
+  help_text?: string;       // Help text/tooltip content
+
+  // Nested schemas
   items?: SchemaProperty;
   properties?: Record<string, SchemaProperty>;
 }

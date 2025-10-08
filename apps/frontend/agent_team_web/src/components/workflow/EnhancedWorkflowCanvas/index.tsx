@@ -56,12 +56,12 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { project } = useReactFlow();
   const { toast } = useToast();
-  
+
   // Execution state
   const { executeWorkflow, isExecuting, executionId } = useWorkflowExecution();
   const { cancelExecution } = useExecutionCancel();
   const [executionStatus, setExecutionStatus] = useState<'idle' | 'running' | 'completed' | 'failed'>('idle');
-  
+
   const {
     nodes,
     edges,
@@ -73,7 +73,7 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
     importWorkflow,
     // exportWorkflow,
   } = useWorkflow();
-  
+
   const {
     showGrid,
     showMinimap,
@@ -82,12 +82,19 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
     isDraggingNode,
     setIsDraggingNode,
   } = useEditorUI();
-  
+
   const { templates } = useNodeTemplates();
 
   // Import workflow data on mount if provided
   useEffect(() => {
     if (workflow && templates.length > 0) {
+      console.log('[WorkflowCanvas] Importing workflow:', {
+        id: workflow.id,
+        name: workflow.name,
+        hasNodes: !!workflow.nodes,
+        nodesCount: workflow.nodes?.length,
+        hasConnections: !!workflow.connections,
+      });
       importWorkflow(workflow, templates);
     }
   }, [workflow, templates, importWorkflow]);
@@ -97,14 +104,14 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
     // Handle both node_executions array and run_data.node_results object
     const nodeResults = executionStatus?.run_data?.node_results || {};
     const nodeExecutions = executionStatus?.node_executions || [];
-    
+
     // If we have run_data.node_results (backend format)
     if (Object.keys(nodeResults).length > 0) {
       setNodes((currentNodes) => {
         return currentNodes.map((node) => {
           // Check if this node has results
           const nodeResult = nodeResults[node.id];
-          
+
           if (nodeResult) {
             console.log(`Updating node ${node.id} status to:`, nodeResult.status);
             return {
@@ -117,7 +124,7 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
               }
             };
           }
-          
+
           return node;
         });
       });
@@ -129,7 +136,7 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
           const nodeExecution = nodeExecutions.find(
             (ne) => ne.node_id === node.id
           );
-          
+
           if (nodeExecution) {
             return {
               ...node,
@@ -141,7 +148,7 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
               }
             };
           }
-          
+
           return node;
         });
       });
@@ -181,20 +188,20 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
       console.log('Execution completed with status:', status);
       setExecutionStatus('completed');
       updateNodeExecutionStatus(status);
-      
+
       // Calculate duration for display
       let duration = 'N/A';
       if (status.start_time && status.end_time) {
         // Handle both timestamp formats (unix timestamp or ISO string)
-        const start = typeof status.start_time === 'number' 
-          ? status.start_time * 1000 
+        const start = typeof status.start_time === 'number'
+          ? status.start_time * 1000
           : new Date(status.start_time).getTime();
         const end = typeof status.end_time === 'number'
           ? status.end_time * 1000
           : new Date(status.end_time).getTime();
         duration = calculateDuration(new Date(start).toISOString(), new Date(end).toISOString());
       }
-      
+
       toast({
         title: "Workflow Execution Completed",
         description: `Execution finished successfully in ${duration}`,
@@ -229,7 +236,7 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
         hasNodeResults: !!(status.run_data?.node_results),
         nodeResultsCount: Object.keys(status.run_data?.node_results || {}).length
       });
-      
+
       if (isPolling) {
         updateNodeExecutionStatus(status);
       }
@@ -259,7 +266,7 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
       clearNodeExecutionStatus();
       setExecutionStatus('running');
       const execId = await executeWorkflow(workflow.id, {});
-      
+
       toast({
         title: "Workflow Execution Started",
         description: `Execution ID: ${execId}`,
@@ -306,7 +313,7 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
       if (readOnly) return;
-      
+
       setNodes((nds) => applyNodeChanges(changes, nds) as WorkflowNode[]);
     },
     [setNodes, readOnly]
@@ -316,7 +323,7 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
       if (readOnly) return;
-      
+
       setEdges((eds) => applyEdgeChanges(changes, eds) as WorkflowEdge[]);
     },
     [setEdges, readOnly]
@@ -326,18 +333,18 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
   const onConnect = useCallback(
     (connection: Connection) => {
       if (readOnly) return;
-      
+
       // Validate connection
       const sourceNode = nodes.find((n) => n.id === connection.source);
       const targetNode = nodes.find((n) => n.id === connection.target);
-      
+
       if (!sourceNode || !targetNode) return;
-      
+
       const isValid = isValidConnection(
         sourceNode.data.template.node_type,
         targetNode.data.template.node_type
       );
-      
+
       if (isValid) {
         addEdge(connection);
       }
@@ -377,8 +384,8 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
       if (!data) return;
 
       try {
-        const { type, template } = JSON.parse(data) as { 
-          type: string; 
+        const { type, template } = JSON.parse(data) as {
+          type: string;
           template: NodeTemplate;
         };
 
@@ -406,7 +413,7 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
     (event: React.MouseEvent, node: Node) => {
       event.preventDefault();
       if (readOnly) return;
-      
+
       // Could show a context menu here
       const shouldDelete = window.confirm(`Delete node "${node.data.label}"?`);
       if (shouldDelete) {
@@ -421,8 +428,8 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
     () => ({
       type: 'default',
       animated: true,
-      style: { 
-        strokeWidth: 2, 
+      style: {
+        strokeWidth: 2,
         stroke: '#6b7280',
       },
     }),
@@ -430,7 +437,7 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
   );
 
   return (
-    <div 
+    <div
       ref={reactFlowWrapper}
       className={cn('w-full h-full', className)}
     >
@@ -458,14 +465,14 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
         )}
       >
         {showGrid && (
-          <Background 
-            variant={BackgroundVariant.Dots} 
-            gap={12} 
+          <Background
+            variant={BackgroundVariant.Dots}
+            gap={12}
             size={1}
             color="#333"
           />
         )}
-        
+
         <CanvasControls
           readOnly={readOnly}
           onSave={handleSaveWithCurrentState}
@@ -476,7 +483,7 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
           executionStatus={executionStatus}
           onToggleFullscreen={onToggleFullscreen}
         />
-        
+
         {showMinimap && (
           <MiniMap
             nodeStrokeColor={(n: Node) => {
@@ -511,7 +518,7 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
           />
         )}
       </ReactFlow>
-      
+
       {/* Execution Status Panel */}
       {(executionId || isPolling) && (
         <ExecutionStatusPanel

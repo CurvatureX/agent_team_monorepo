@@ -112,11 +112,52 @@ class NodeSpecsApiService:
                 "description": param_config.get("description", ""),
             }
 
-            if "enum" in param_config:
+            # Options for dropdowns
+            # Note: Node specs should use "options" field (not "enum")
+            # We convert to "enum" here for JSON Schema compatibility
+            if "options" in param_config:
+                prop_def["enum"] = param_config["options"]
+            elif "enum" in param_config:
+                # Legacy support - prefer "options" in node specs
                 prop_def["enum"] = param_config["enum"]
 
+            # Default value
             if "default" in param_config:
                 prop_def["default"] = param_config["default"]
+
+            # UI/Behavior properties
+            if "sensitive" in param_config:
+                prop_def["sensitive"] = param_config["sensitive"]
+
+            if "multiline" in param_config:
+                prop_def["multiline"] = param_config["multiline"]
+
+            if "readonly" in param_config:
+                prop_def["readonly"] = param_config["readonly"]
+
+            # Validation properties
+            if "min" in param_config:
+                prop_def["min"] = param_config["min"]
+
+            if "max" in param_config:
+                prop_def["max"] = param_config["max"]
+
+            if "validation_pattern" in param_config:
+                prop_def["validation_pattern"] = param_config["validation_pattern"]
+
+            # Dynamic dropdown properties
+            if "api_endpoint" in param_config:
+                prop_def["api_endpoint"] = param_config["api_endpoint"]
+
+            if "multiple" in param_config:
+                prop_def["multiple"] = param_config["multiple"]
+
+            # UI enhancement properties
+            if "placeholder" in param_config:
+                prop_def["placeholder"] = param_config["placeholder"]
+
+            if "help_text" in param_config:
+                prop_def["help_text"] = param_config["help_text"]
 
             parameter_schema["properties"][param_name] = prop_def
 
@@ -155,7 +196,9 @@ class NodeSpecsApiService:
             "integer": "integer",
             "float": "number",
             "boolean": "boolean",
-            "json": "object",
+            "object": "object",  # Direct object type mapping
+            "array": "array",  # Direct array type mapping
+            "json": "object",  # Legacy: json -> object
             "enum": "string",
             "file": "string",
             "url": "string",

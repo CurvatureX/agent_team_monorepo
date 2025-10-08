@@ -12,22 +12,7 @@ import {
 } from '../atoms/nodeTemplates';
 import type { NodeCategory, NodeTemplate } from '@/types/node-template';
 import { useNodeTemplatesApi } from '@/lib/api';
-
-// Map node_type to proper category
-export const getCategoryFromNodeType = (nodeType: string): NodeCategory => {
-  const typeMap: Record<string, NodeCategory> = {
-    'TRIGGER': 'Trigger',
-    'AI_AGENT': 'AI Agents',
-    'ACTION': 'Actions',
-    'EXTERNAL_ACTION': 'Actions',
-    'FLOW': 'Flow Control',
-    'HUMAN_IN_THE_LOOP': 'Human Interaction',
-    'MEMORY': 'Memory',
-    'TOOL': 'Tools',
-  };
-
-  return typeMap[nodeType.toUpperCase()] || 'Actions';
-};
+import { getCategoryFromNodeType } from '@/utils/nodeHelpers';
 
 export const useNodeTemplates = () => {
   const [templates, setTemplates] = useAtom(nodeTemplatesAtom);
@@ -98,6 +83,7 @@ export const useNodeTemplates = () => {
       'Trigger': { primary: '#10b981', secondary: '#d1fae5' },
       'AI Agents': { primary: '#6366f1', secondary: '#e0e7ff' },
       'Actions': { primary: '#f59e0b', secondary: '#fef3c7' },
+      'External Integrations': { primary: '#3b82f6', secondary: '#dbeafe' },
       'Flow Control': { primary: '#8b5cf6', secondary: '#ede9fe' },
       'Human Interaction': { primary: '#ec4899', secondary: '#fce7f3' },
       'Memory': { primary: '#f97316', secondary: '#fed7aa' },
@@ -113,6 +99,7 @@ export const useNodeTemplates = () => {
       'Trigger': 'play',
       'AI Agents': 'bot',
       'Actions': 'zap',
+      'External Integrations': 'plug',
       'Flow Control': 'git-branch',
       'Human Interaction': 'users',
       'Memory': 'database',

@@ -165,7 +165,11 @@ const CanvasPage = () => {
     ? (() => {
         const baseWorker =
           detailedWorkflow || workers.find((w) => w.id === selectedWorkerId);
-        if (baseWorker && detailedWorkflow?.executionHistory && detailedWorkflow.executionHistory.length > 0) {
+        if (
+          baseWorker &&
+          detailedWorkflow?.executionHistory &&
+          detailedWorkflow.executionHistory.length > 0
+        ) {
           // Use fresh execution data from the hook instead of stale data
           return {
             ...baseWorker,
@@ -177,14 +181,16 @@ const CanvasPage = () => {
     : null;
 
   // Auto-select the most recent execution if none is selected
-  const effectiveSelectedExecutionId = selectedExecutionId ||
-    (selectedWorker?.executionHistory && selectedWorker.executionHistory.length > 0
+  const effectiveSelectedExecutionId =
+    selectedExecutionId ||
+    (selectedWorker?.executionHistory &&
+    selectedWorker.executionHistory.length > 0
       ? selectedWorker.executionHistory[0].id
       : null);
 
   // Determine if the selected execution is currently running
   const selectedExecution = selectedWorker?.executionHistory?.find(
-    exec => exec.id === effectiveSelectedExecutionId
+    (exec) => exec.id === effectiveSelectedExecutionId
   );
   const isSelectedExecutionRunning = selectedExecution?.status === "RUNNING";
 
@@ -194,7 +200,9 @@ const CanvasPage = () => {
     isLoading: staticLogsLoading,
     error: staticLogsError,
     clearLogs: clearStaticLogs,
-  } = useExecutionLogs(!isSelectedExecutionRunning ? effectiveSelectedExecutionId : null);
+  } = useExecutionLogs(
+    !isSelectedExecutionRunning ? effectiveSelectedExecutionId : null
+  );
 
   // Use real-time streaming for currently running executions
   const {
@@ -211,9 +219,15 @@ const CanvasPage = () => {
 
   // Determine which logs to display based on execution status
   const allDisplayLogs = isSelectedExecutionRunning ? realtimeLogs : staticLogs;
-  const displayLoading = !isSelectedExecutionRunning ? staticLogsLoading : false;
-  const displayError = isSelectedExecutionRunning ? realtimeLogsError : staticLogsError;
-  const clearDisplayLogs = isSelectedExecutionRunning ? clearRealtimeLogs : clearStaticLogs;
+  const displayLoading = !isSelectedExecutionRunning
+    ? staticLogsLoading
+    : false;
+  const displayError = isSelectedExecutionRunning
+    ? realtimeLogsError
+    : staticLogsError;
+  const clearDisplayLogs = isSelectedExecutionRunning
+    ? clearRealtimeLogs
+    : clearStaticLogs;
 
   // Pagination logic
   const totalPages = Math.ceil(allDisplayLogs.length / logsPerPage);
@@ -623,9 +637,10 @@ const CanvasPage = () => {
                         {selectedWorker.lastRunTime
                           ? (() => {
                               const minsAgo = Math.floor(
-                                (Date.now() - selectedWorker.lastRunTime.getTime()) /
-                                1000 /
-                                60
+                                (Date.now() -
+                                  selectedWorker.lastRunTime.getTime()) /
+                                  1000 /
+                                  60
                               );
                               return minsAgo === 0 ? "<1" : minsAgo.toString();
                             })()
@@ -643,7 +658,8 @@ const CanvasPage = () => {
                   <WorkflowVisualization
                     workflow={selectedWorker}
                     currentExecution={
-                      selectedWorker?.latestExecutionStatus === "RUNNING" && currentExecution
+                      selectedWorker?.latestExecutionStatus === "RUNNING" &&
+                      currentExecution
                         ? currentExecution
                         : undefined
                     }
@@ -656,9 +672,11 @@ const CanvasPage = () => {
               <div className="w-[40%] flex flex-col overflow-hidden border-t border-border bg-card">
                 {/* Header */}
                 <div className="p-4 border-b border-border flex items-center justify-between">
-                  <h4 className="text-sm font-semibold">Recent Executions</h4>
+                  <h4 className="text-sm font-semibold">Last Execution Logs</h4>
                   <button
-                    onClick={() => selectedWorkerId && fetchWorkflowDetail(selectedWorkerId)}
+                    onClick={() =>
+                      selectedWorkerId && fetchWorkflowDetail(selectedWorkerId)
+                    }
                     className="p-1 hover:bg-accent rounded transition-colors"
                     title="Refresh executions"
                   >
@@ -689,7 +707,10 @@ const CanvasPage = () => {
                       {workflowDetailError}
                     </span>
                     <button
-                      onClick={() => selectedWorkerId && fetchWorkflowDetail(selectedWorkerId)}
+                      onClick={() =>
+                        selectedWorkerId &&
+                        fetchWorkflowDetail(selectedWorkerId)
+                      }
                       className="ml-2 px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
                     >
                       Retry
@@ -719,7 +740,9 @@ const CanvasPage = () => {
                       <div
                         onClick={() => {
                           const newSelectedId =
-                            effectiveSelectedExecutionId === exec.id ? null : exec.id;
+                            effectiveSelectedExecutionId === exec.id
+                              ? null
+                              : exec.id;
                           setSelectedExecutionId(newSelectedId);
                           // Clear logs when switching
                           clearStaticLogs();
@@ -833,14 +856,18 @@ const CanvasPage = () => {
                               <div className="p-3 space-y-1">
                                 {displayLogs.map((log, index) => {
                                   const timestamp = new Date(log.timestamp);
-                                  const timeStr = timestamp.toLocaleTimeString();
+                                  const timeStr =
+                                    timestamp.toLocaleTimeString();
 
                                   let messagePrefix = "";
                                   if (log.is_milestone) {
                                     messagePrefix = "🎯 ";
                                   } else if (log.display_priority <= 3) {
                                     messagePrefix = "⚡ ";
-                                  } else if (log.step_number && log.total_steps) {
+                                  } else if (
+                                    log.step_number &&
+                                    log.total_steps
+                                  ) {
                                     messagePrefix = `📋 Step ${log.step_number}/${log.total_steps}: `;
                                   }
 
@@ -885,11 +912,12 @@ const CanvasPage = () => {
                                       <span className="text-gray-100 flex-1 min-w-0 break-words">
                                         {messagePrefix}
                                         {log.message}
-                                        {exec.status === "RUNNING" && log.is_realtime && (
-                                          <span className="ml-2 text-xs text-green-400">
-                                            ●
-                                          </span>
-                                        )}
+                                        {exec.status === "RUNNING" &&
+                                          log.is_realtime && (
+                                            <span className="ml-2 text-xs text-green-400">
+                                              ●
+                                            </span>
+                                          )}
                                       </span>
                                     </div>
                                   );
@@ -929,8 +957,12 @@ const CanvasPage = () => {
                               {/* Log info and clear button */}
                               <div className="flex items-center justify-between">
                                 <span className="text-xs text-muted-foreground">
-                                  Showing {startIndex + 1}-{Math.min(endIndex, allDisplayLogs.length)} of {allDisplayLogs.length} log entries{" "}
-                                  {exec.status === "RUNNING" ? "(real-time)" : "(static)"}
+                                  Showing {startIndex + 1}-
+                                  {Math.min(endIndex, allDisplayLogs.length)} of{" "}
+                                  {allDisplayLogs.length} log entries{" "}
+                                  {exec.status === "RUNNING"
+                                    ? "(real-time)"
+                                    : "(static)"}
                                 </span>
                                 <button
                                   onClick={clearDisplayLogs}
@@ -944,7 +976,11 @@ const CanvasPage = () => {
                               {totalPages > 1 && (
                                 <div className="flex items-center justify-center gap-2">
                                   <button
-                                    onClick={() => setCurrentLogPage(Math.max(1, currentLogPage - 1))}
+                                    onClick={() =>
+                                      setCurrentLogPage(
+                                        Math.max(1, currentLogPage - 1)
+                                      )
+                                    }
                                     disabled={currentLogPage === 1}
                                     className="px-2 py-1 text-xs border border-border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-accent transition-colors"
                                   >
@@ -954,7 +990,11 @@ const CanvasPage = () => {
                                     Page {currentLogPage} of {totalPages}
                                   </span>
                                   <button
-                                    onClick={() => setCurrentLogPage(Math.min(totalPages, currentLogPage + 1))}
+                                    onClick={() =>
+                                      setCurrentLogPage(
+                                        Math.min(totalPages, currentLogPage + 1)
+                                      )
+                                    }
                                     disabled={currentLogPage === totalPages}
                                     className="px-2 py-1 text-xs border border-border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-accent transition-colors"
                                   >
@@ -1007,7 +1047,8 @@ const CanvasPage = () => {
               <WorkflowVisualization
                 workflow={selectedWorker}
                 currentExecution={
-                  selectedWorker?.latestExecutionStatus === "RUNNING" && currentExecution
+                  selectedWorker?.latestExecutionStatus === "RUNNING" &&
+                  currentExecution
                     ? currentExecution
                     : undefined
                 }
