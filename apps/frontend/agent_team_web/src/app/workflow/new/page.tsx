@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { PromptInputBox } from "@/components/ui/ai-prompt-box";
 import { PanelResizer } from "@/components/ui/panel-resizer";
@@ -12,9 +12,6 @@ import {
   Maximize2,
   StopCircle,
   RefreshCw,
-  Clock,
-  CheckCircle,
-  XCircle,
   AlertCircle,
   ChevronDown,
   ChevronRight,
@@ -25,16 +22,13 @@ import { useResizablePanel } from "@/hooks";
 import {
   WorkflowData,
   WorkflowConnection,
-  WorkflowDataStructure,
 } from "@/types/workflow";
 import { useWorkflowActions } from "@/lib/api/hooks/useWorkflowsApi";
-import { useRecentExecutionLogs } from "@/lib/api/hooks/useExecutionApi";
 import { useToast } from "@/hooks/use-toast";
 import { chatService, ChatSSEEvent } from "@/lib/api/chatService";
 import { useLayout } from "@/components/ui/layout-wrapper";
 import { usePageTitle } from "@/contexts/page-title-context";
-import { useAuth } from "@/contexts/auth-context";
-import { Skeleton } from "@/components/ui/skeleton";
+// import { useAuth } from "@/contexts/auth-context";
 
 interface Message {
   id: string;
@@ -44,74 +38,49 @@ interface Message {
 }
 
 // Helper function to get status badge variant and icon
-const getExecutionStatusInfo = (status: string | null) => {
-  if (!status)
-    return {
-      variant: "secondary" as const,
-      icon: AlertCircle,
-      label: "No runs yet",
-    };
+// const getExecutionStatusInfo = (status: string | null) => {
+//   if (!status)
+//     return {
+//       variant: "secondary" as const,
+//       icon: AlertCircle,
+//       label: "No runs yet",
+//     };
 
-  const statusLower = status.toLowerCase();
-  if (statusLower === "success" || statusLower === "completed") {
-    return {
-      variant: "default" as const,
-      icon: CheckCircle,
-      label: "Success",
-      color: "text-green-600",
-    };
-  }
-  if (statusLower === "error" || statusLower === "failed") {
-    return {
-      variant: "destructive" as const,
-      icon: XCircle,
-      label: "Failed",
-      color: "text-red-600",
-    };
-  }
-  if (statusLower === "running" || statusLower === "in_progress") {
-    return {
-      variant: "outline" as const,
-      icon: RefreshCw,
-      label: "Running",
-      color: "text-blue-600",
-    };
-  }
-  return {
-    variant: "secondary" as const,
-    icon: AlertCircle,
-    label: status,
-    color: "text-gray-600",
-  };
-};
+//   const statusLower = status.toLowerCase();
+//   if (statusLower === "success" || statusLower === "completed") {
+//     return {
+//       variant: "default" as const,
+//       icon: CheckCircle,
+//       label: "Success",
+//       color: "text-green-600",
+//     };
+//   }
+//   if (statusLower === "error" || statusLower === "failed") {
+//     return {
+//       variant: "destructive" as const,
+//       icon: XCircle,
+//       label: "Failed",
+//       color: "text-red-600",
+//     };
+//   }
+//   if (statusLower === "running" || statusLower === "in_progress") {
+//     return {
+//       variant: "outline" as const,
+//       icon: RefreshCw,
+//       label: "Running",
+//       color: "text-blue-600",
+//     };
+//   }
+//   return {
+//     variant: "secondary" as const,
+//     icon: AlertCircle,
+//     label: status,
+//     color: "text-gray-600",
+//   };
+// };
 
-// Helper function to format execution time
-const formatExecutionTime = (time: string | null) => {
-  if (!time) return "Never";
-
-  try {
-    const date = new Date(time);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return "Just now";
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays < 7) return `${diffDays}d ago`;
-
-    return date.toLocaleDateString();
-  } catch {
-    return time;
-  }
-};
-
-const WorkflowDetailPage = () => {
-  const params = useParams();
+const NewWorkflowPage = () => {
   const router = useRouter();
-  const workflowId = params?.id as string;
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -124,27 +93,18 @@ const WorkflowDetailPage = () => {
     null
   );
   const [isStreaming, setIsStreaming] = useState(false);
-  const [isLoadingWorkflow, setIsLoadingWorkflow] = useState(true);
-  const [workflowName, setWorkflowName] = useState<string>("");
+  const [workflowName, setWorkflowName] = useState<string>("New Workflow");
   const [workflowDescription, setWorkflowDescription] = useState<string>("");
-  const [latestExecutionStatus, setLatestExecutionStatus] = useState<
-    string | null
-  >(null);
-  const [latestExecutionTime, setLatestExecutionTime] = useState<string | null>(
-    null
-  );
-  const [isChatExpanded, setIsChatExpanded] = useState(false);
-  const [isExecutionLogsExpanded, setIsExecutionLogsExpanded] = useState(true);
+  const [isChatExpanded, setIsChatExpanded] = useState(true);
+  const [isExecutionLogsExpanded, setIsExecutionLogsExpanded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const hasAutoSentMessage = useRef(false);
 
   const { toast } = useToast();
-  const { session } = useAuth();
-  const { updateWorkflow, getWorkflow } = useWorkflowActions();
+  // const { session } = useAuth();
+  const { createWorkflow } = useWorkflowActions();
 
-  // Fetch recent execution logs
-  const { logs: executionLogs, isLoading: isLoadingLogs } =
-    useRecentExecutionLogs(workflowId, 10);
   useLayout();
   const { setCustomTitle } = usePageTitle();
 
@@ -169,142 +129,6 @@ const WorkflowDetailPage = () => {
     scrollToBottom();
   }, [messages]);
 
-  // Fetch workflow details by ID
-  useEffect(() => {
-    const fetchWorkflowDetails = async () => {
-      if (!workflowId) return;
-
-      // Wait for authentication
-      if (!session?.access_token) {
-        console.log("Waiting for authentication...");
-        return;
-      }
-
-      setIsLoadingWorkflow(true);
-      try {
-        const response = await getWorkflow(workflowId);
-
-        // Handle no authentication case
-        if (!response) {
-          console.log("No response - user may not be authenticated");
-          setIsLoadingWorkflow(false);
-          return;
-        }
-
-        console.log("Workflow API response:", response);
-
-        let workflowData: WorkflowDataStructure | null = null;
-
-        // Handle different response structures
-        if (response?.workflow) {
-          // Response has a workflow property
-          const workflow = response.workflow;
-
-          // Check if workflow_data is a string and needs parsing
-          if (typeof workflow.workflow_data === "string") {
-            workflowData = JSON.parse(workflow.workflow_data);
-          } else if (workflow.nodes && workflow.connections) {
-            // workflow already has nodes and connections
-            workflowData = workflow;
-          } else {
-            // workflow_data might be an object
-            workflowData = workflow.workflow_data || workflow;
-          }
-        } else if (response?.workflow_data) {
-          // Direct workflow_data in response
-          if (typeof response.workflow_data === "string") {
-            workflowData = JSON.parse(response.workflow_data);
-          } else {
-            workflowData = response.workflow_data;
-          }
-        } else if (response?.nodes) {
-          // Direct workflow structure
-          workflowData = response;
-        }
-
-        // Ensure workflowData has required properties
-        if (workflowData) {
-          // Don't manually convert connections - let the workflow editor's converter handle it
-          // The apiWorkflowToEditor converter will properly map connections to React Flow edges
-          console.log("📦 Workflow data loaded:", {
-            nodes: workflowData.nodes?.length,
-            connections: Array.isArray(workflowData.connections)
-              ? workflowData.connections.length
-              : "not array",
-            hasEdges: !!workflowData.edges,
-          });
-
-          console.log("Processed workflow data:", workflowData);
-          setCurrentWorkflow(workflowData as unknown as WorkflowData);
-
-          // Set workflow name and description from metadata or fallback locations
-          // Priority: workflow.metadata > workflowData.metadata > workflow direct > workflowData direct
-          const metadata = workflowData?.metadata as { name?: string; description?: string } | undefined;
-          const name =
-            response?.workflow?.metadata?.name ||
-            metadata?.name ||
-            response?.workflow?.name ||
-            response?.name ||
-            workflowData?.name ||
-            "Untitled Workflow";
-          const description =
-            response?.workflow?.metadata?.description ||
-            metadata?.description ||
-            response?.workflow?.description ||
-            response?.description ||
-            workflowData?.description ||
-            "";
-
-          setWorkflowName(name);
-          setWorkflowDescription(description);
-
-          console.log("Extracted workflow info:", {
-            name,
-            description,
-            metadata: response?.workflow?.metadata,
-          });
-
-          // Extract execution status and time from response (check metadata first)
-          const executionStatus =
-            response?.workflow?.metadata?.last_execution_status ||
-            response?.workflow?.latest_execution_status ||
-            response?.latest_execution_status ||
-            null;
-          const executionTime =
-            response?.workflow?.metadata?.last_execution_time ||
-            response?.workflow?.latest_execution_time ||
-            response?.latest_execution_time ||
-            null;
-
-          setLatestExecutionStatus(executionStatus);
-          setLatestExecutionTime(executionTime);
-
-          // Update workflow data with name and description if not present
-          if (
-            workflowData &&
-            (!workflowData.name || !workflowData.description)
-          ) {
-            workflowData.name = name;
-            workflowData.description = description;
-          }
-        } else {
-          throw new Error("Invalid workflow data structure");
-        }
-      } catch (error) {
-        console.error("Failed to fetch workflow:", error);
-        toast({
-          title: "Error",
-          description: "Failed to load workflow details",
-          variant: "destructive",
-        });
-      } finally {
-        setIsLoadingWorkflow(false);
-      }
-    };
-
-    fetchWorkflowDetails();
-  }, [workflowId, getWorkflow, session, toast]);
-
   // Set custom breadcrumb title
   useEffect(() => {
     const breadcrumbTitle = (
@@ -317,7 +141,7 @@ const WorkflowDetailPage = () => {
         </button>
         <span className="text-black/50 dark:text-white/50 px-1">/</span>
         <span className="text-black dark:text-white">
-          {workflowName || "Loading..."}
+          {workflowName}
         </span>
       </div>
     );
@@ -334,7 +158,7 @@ const WorkflowDetailPage = () => {
   useEffect(() => {
     const initializeChat = async () => {
       try {
-        console.log("Initializing chat session for workflow...");
+        console.log("Initializing chat session for new workflow...");
         const sessionId = await chatService.createNewSession();
         console.log("Chat session initialized:", sessionId);
 
@@ -355,6 +179,22 @@ const WorkflowDetailPage = () => {
     };
 
     initializeChat();
+  }, []);
+
+  // Auto-send initial message from sessionStorage
+  useEffect(() => {
+    if (hasAutoSentMessage.current) return;
+
+    const initialMessage = sessionStorage.getItem("initialMessage");
+    if (initialMessage) {
+      hasAutoSentMessage.current = true;
+      sessionStorage.removeItem("initialMessage");
+
+      // Send the message after a brief delay to ensure chat is initialized
+      setTimeout(() => {
+        handleSendMessage(initialMessage);
+      }, 500);
+    }
   }, []);
 
   const handleSendMessage = useCallback(
@@ -422,6 +262,14 @@ const WorkflowDetailPage = () => {
               if (event.data.workflow) {
                 console.log("Received workflow update:", event.data.workflow);
                 setCurrentWorkflow(event.data.workflow);
+
+                // Update workflow name and description if available
+                if (event.data.workflow.name) {
+                  setWorkflowName(event.data.workflow.name);
+                }
+                if (event.data.workflow.description) {
+                  setWorkflowDescription(event.data.workflow.description);
+                }
               }
             } else if (event.type === "error") {
               toast({
@@ -508,7 +356,7 @@ const WorkflowDetailPage = () => {
     async (workflowToSave?: WorkflowData) => {
       const workflow = workflowToSave || currentWorkflow;
 
-      if (!workflow || !workflow.id) {
+      if (!workflow) {
         toast({
           title: "Error",
           description: "No workflow to save",
@@ -520,17 +368,13 @@ const WorkflowDetailPage = () => {
       setIsSavingWorkflow(true);
 
       try {
-        // Convert connections (backend WorkflowEdge[]) to connections format (n8n style)
+        // Convert connections to backend format
         const connections: Record<string, { main: WorkflowConnection[][] }> =
           {};
         if (workflow.connections) {
           workflow.connections.forEach((edge) => {
-            // Handle both backend format (from_node/to_node) and React Flow format (source/target)
-            const edgeWithSource = edge as { from_node?: string; to_node?: string; source?: string; target?: string };
-            const sourceNode = edge.from_node || edgeWithSource.source;
-            const targetNode = edge.to_node || edgeWithSource.target;
-
-            if (!sourceNode || !targetNode) return;
+            const sourceNode = edge.from_node || (edge as any).source;
+            const targetNode = edge.to_node || (edge as any).target;
 
             if (!connections[sourceNode]) {
               connections[sourceNode] = {
@@ -545,37 +389,38 @@ const WorkflowDetailPage = () => {
           });
         }
 
-        const updateData = {
-          name: workflow.name,
-          description: workflow.description,
+        const createData = {
+          name: workflow.name || workflowName,
+          description: workflow.description || workflowDescription,
           nodes: workflow.nodes || [],
           connections: connections,
           settings: workflow.settings,
           tags: workflow.tags || [],
         };
 
-        await updateWorkflow(workflow.id, updateData);
+        const newWorkflow = await createWorkflow(createData);
 
-        if (workflowToSave) {
-          setCurrentWorkflow(workflowToSave);
+        if (newWorkflow && newWorkflow.id) {
+          toast({
+            title: "Success",
+            description: "Workflow created successfully",
+          });
+
+          // Redirect to the new workflow detail page
+          router.push(`/workflow/${newWorkflow.id}`);
         }
-
-        toast({
-          title: "Success",
-          description: "Workflow saved successfully",
-        });
       } catch (error) {
-        console.error("Failed to save workflow:", error);
+        console.error("Failed to create workflow:", error);
         toast({
           title: "Error",
-          description: "Failed to save workflow. Please try again.",
+          description: "Failed to create workflow. Please try again.",
           variant: "destructive",
         });
       } finally {
         setIsSavingWorkflow(false);
       }
     },
-    [currentWorkflow, updateWorkflow, toast]
+    [currentWorkflow, workflowName, workflowDescription, createWorkflow, toast, router]
   );
 
   // Cleanup on unmount
@@ -588,83 +433,6 @@ const WorkflowDetailPage = () => {
   }, [streamCancelFn]);
 
   const leftPanelWidth = `calc(100% - ${rightPanelWidth}px)`;
-
-  if (isLoadingWorkflow) {
-    return (
-      <div className="h-full bg-[#F8F8F8] dark:bg-background transition-colors duration-300">
-        <div className="flex h-full pt-12">
-          {/* Left Side - Full Workflow Canvas Skeleton */}
-          <div className="flex-1 pb-2 pl-2 pr-2 h-full">
-            <div className="h-full flex flex-col">
-              <div className="flex-1 bg-muted/20 rounded-lg border border-border overflow-hidden relative">
-                {/* Control Panel Skeleton in top-right */}
-                <div className="absolute top-4 right-4 z-10">
-                  <div className="bg-background/80 backdrop-blur-sm border border-border rounded-lg p-1 shadow-lg">
-                    <div className="flex items-center gap-1">
-                      <Skeleton className="h-8 w-8 rounded" />
-                      <Skeleton className="h-8 w-8 rounded" />
-                      <Skeleton className="h-8 w-8 rounded" />
-                      <div className="w-px h-6 bg-border mx-1" />
-                      <Skeleton className="h-8 w-8 rounded" />
-                      <Skeleton className="h-8 w-8 rounded" />
-                      <Skeleton className="h-8 w-8 rounded" />
-                    </div>
-                  </div>
-                </div>
-                {/* Canvas Grid Background */}
-                <div className="h-full w-full bg-muted/10" />
-              </div>
-            </div>
-          </div>
-
-          {/* Right Side - Chat Area Skeleton */}
-          <div className="w-96 flex flex-col bg-background/95 backdrop-blur-sm h-full border-l border-t border-border/30 rounded-tl-lg">
-            {/* Chat Header Skeleton */}
-            <div className="p-4 border-b border-border/30">
-              <div className="flex items-center gap-2">
-                <Skeleton className="w-[20px] h-[20px] rounded-full" />
-                <Skeleton className="h-5 w-32" />
-              </div>
-            </div>
-
-            {/* Chat Messages Area Skeleton */}
-            <div className="flex-1 p-4 space-y-4 overflow-hidden">
-              <div className="flex justify-start">
-                <Skeleton className="h-16 w-3/4 rounded-2xl" />
-              </div>
-              <div className="flex justify-end">
-                <Skeleton className="h-12 w-2/3 rounded-2xl" />
-              </div>
-              <div className="flex justify-start">
-                <Skeleton className="h-20 w-3/4 rounded-2xl" />
-              </div>
-            </div>
-
-            {/* Input Area Skeleton */}
-            <div className="p-4 mt-auto">
-              <Skeleton className="h-12 w-full rounded-lg" />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!currentWorkflow) {
-    return (
-      <div className="h-full pt-12 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-muted-foreground mb-4">Workflow not found</p>
-          <button
-            onClick={() => router.push("/canvas")}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-          >
-            Back to Assistants
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="bg-[#F8F8F8] dark:bg-background transition-colors duration-300 h-full">
@@ -684,61 +452,47 @@ const WorkflowDetailPage = () => {
         >
           <div className="h-full flex flex-col">
             {/* Workflow Header */}
-            {workflowName && (
-              <div className="px-4 py-3 bg-background/95 backdrop-blur-sm rounded-t-lg border border-b-0 border-border">
-                <h2 className="text-lg font-semibold text-foreground">
-                  {workflowName}
-                </h2>
-                {workflowDescription && (
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {workflowDescription}
-                  </p>
-                )}
-                {/* Execution Status and Time */}
-                <div className="flex items-center gap-3 mt-2">
-                  {(() => {
-                    const statusInfo = getExecutionStatusInfo(
-                      latestExecutionStatus
-                    );
-                    const StatusIcon = statusInfo.icon;
-                    return (
-                      <div className="flex items-center gap-1.5">
-                        <StatusIcon
-                          className={`w-3.5 h-3.5 ${statusInfo.color}`}
-                        />
-                        <span
-                          className={`text-xs font-medium ${statusInfo.color}`}
-                        >
-                          {statusInfo.label}
-                        </span>
-                      </div>
-                    );
-                  })()}
-                  {latestExecutionTime && (
-                    <>
-                      <span className="text-muted-foreground/30">•</span>
-                      <div className="flex items-center gap-1.5 text-muted-foreground">
-                        <Clock className="w-3.5 h-3.5" />
-                        <span className="text-xs">
-                          Last run: {formatExecutionTime(latestExecutionTime)}
-                        </span>
-                      </div>
-                    </>
-                  )}
+            <div className="px-4 py-3 bg-background/95 backdrop-blur-sm rounded-t-lg border border-b-0 border-border">
+              <h2 className="text-lg font-semibold text-foreground">
+                {workflowName}
+              </h2>
+              {workflowDescription && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  {workflowDescription}
+                </p>
+              )}
+              {/* Status */}
+              <div className="flex items-center gap-3 mt-2">
+                <div className="flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 text-gray-600" />
+                  <span className="text-xs font-medium text-gray-600">
+                    Draft
+                  </span>
                 </div>
               </div>
-            )}
+            </div>
             {/* Workflow Editor */}
             <div className="flex-1 bg-muted/20 rounded-lg border border-border overflow-hidden">
-              <WorkflowEditor
-                initialWorkflow={currentWorkflow}
-                onSave={handleWorkflowChange}
-                onApiSave={handleSaveWorkflow}
-                isSaving={isSavingWorkflow}
-                readOnly={false}
-                className="h-full"
-                onToggleFullscreen={() => setIsWorkflowExpanded(true)}
-              />
+              {currentWorkflow ? (
+                <WorkflowEditor
+                  initialWorkflow={currentWorkflow}
+                  onSave={handleWorkflowChange}
+                  onApiSave={handleSaveWorkflow}
+                  isSaving={isSavingWorkflow}
+                  readOnly={false}
+                  className="h-full"
+                  onToggleFullscreen={() => setIsWorkflowExpanded(true)}
+                />
+              ) : (
+                <div className="h-full flex items-center justify-center text-muted-foreground">
+                  <div className="text-center">
+                    <Bot className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p className="text-sm">
+                      Describe your workflow to get started
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </motion.div>
@@ -758,7 +512,7 @@ const WorkflowDetailPage = () => {
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.6, delay: 0.3 }}
         >
-          {/* Execution Logs Section */}
+          {/* Execution Logs Section - Collapsed by default for new workflow */}
           <div className="flex flex-col border-b border-border/30">
             {/* Execution Logs Header */}
             <button
@@ -769,7 +523,7 @@ const WorkflowDetailPage = () => {
             >
               <div className="flex items-center gap-2">
                 <History className="w-4 h-4" />
-                <h3 className="text-sm font-semibold">Last Execution Logs</h3>
+                <h3 className="text-sm font-semibold">Execution Logs</h3>
               </div>
               {isExecutionLogsExpanded ? (
                 <ChevronDown className="w-4 h-4" />
@@ -789,74 +543,16 @@ const WorkflowDetailPage = () => {
                   className="overflow-hidden"
                 >
                   <div className="px-4 pb-4 max-h-[300px] overflow-y-auto">
-                    {/* Execution logs */}
-                    {isLoadingLogs ? (
-                      <div className="flex items-center justify-center py-8">
-                        <div className="flex gap-1">
-                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" />
-                          <div
-                            className="w-2 h-2 bg-primary rounded-full animate-bounce"
-                            style={{ animationDelay: "0.1s" }}
-                          />
-                          <div
-                            className="w-2 h-2 bg-primary rounded-full animate-bounce"
-                            style={{ animationDelay: "0.2s" }}
-                          />
-                        </div>
-                      </div>
-                    ) : executionLogs.length === 0 ? (
-                      <div className="text-xs text-muted-foreground text-center py-8">
-                        No execution logs yet
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {executionLogs.map((log, index) => {
-                          const statusInfo = getExecutionStatusInfo(log.status);
-                          const StatusIcon = statusInfo.icon;
-                          return (
-                            <div
-                              key={log.execution_id || index}
-                              className="flex items-center justify-between p-2 rounded-md hover:bg-accent/50 transition-colors cursor-pointer"
-                            >
-                              <div className="flex items-center gap-2 flex-1 min-w-0">
-                                <StatusIcon
-                                  className={`w-3.5 h-3.5 flex-shrink-0 ${statusInfo.color}`}
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <span
-                                      className={`text-xs font-medium ${statusInfo.color}`}
-                                    >
-                                      {statusInfo.label}
-                                    </span>
-                                    {log.duration && (
-                                      <span className="text-xs text-muted-foreground">
-                                        {log.duration}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <p className="text-xs text-muted-foreground truncate">
-                                    {formatExecutionTime(log.timestamp)}
-                                  </p>
-                                  {log.error_message && (
-                                    <p className="text-xs text-red-600 dark:text-red-400 truncate mt-0.5">
-                                      {log.error_message}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                    <div className="text-xs text-muted-foreground text-center py-8">
+                      No execution logs yet
+                    </div>
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
 
-          {/* Chat Section */}
+          {/* Chat Section - Expanded by default */}
           <div className="flex flex-col flex-1 min-h-0">
             {/* Chat Header */}
             <button
@@ -1003,7 +699,7 @@ const WorkflowDetailPage = () => {
                     <PromptInputBox
                       onSend={handleSendMessage}
                       isLoading={isLoading}
-                      placeholder="Ask about this workflow..."
+                      placeholder="Describe your workflow or ask for modifications..."
                       className="shadow-sm"
                     />
                   </div>
@@ -1037,7 +733,7 @@ const WorkflowDetailPage = () => {
                 </button>
                 <span className="text-muted-foreground px-1">/</span>
                 <span className="text-sm font-medium px-2 py-1">
-                  {workflowName || "Untitled Workflow"}
+                  {workflowName}
                 </span>
               </div>
               <motion.button
@@ -1069,4 +765,4 @@ const WorkflowDetailPage = () => {
   );
 };
 
-export default WorkflowDetailPage;
+export default NewWorkflowPage;
