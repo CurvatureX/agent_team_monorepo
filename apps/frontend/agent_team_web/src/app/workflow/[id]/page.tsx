@@ -22,11 +22,9 @@ import {
   History,
 } from "lucide-react";
 import { useResizablePanel } from "@/hooks";
-import { Badge } from "@/components/ui/badge";
 import {
   WorkflowData,
   WorkflowConnection,
-  ConnectionType,
   WorkflowDataStructure,
 } from "@/types/workflow";
 import { useWorkflowActions } from "@/lib/api/hooks/useWorkflowsApi";
@@ -36,7 +34,6 @@ import { chatService, ChatSSEEvent } from "@/lib/api/chatService";
 import { useLayout } from "@/components/ui/layout-wrapper";
 import { usePageTitle } from "@/contexts/page-title-context";
 import { useAuth } from "@/contexts/auth-context";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface Message {
@@ -146,11 +143,8 @@ const WorkflowDetailPage = () => {
   const { updateWorkflow, getWorkflow } = useWorkflowActions();
 
   // Fetch recent execution logs
-  const {
-    logs: executionLogs,
-    isLoading: isLoadingLogs,
-    refresh: refreshLogs,
-  } = useRecentExecutionLogs(workflowId, 10);
+  const { logs: executionLogs, isLoading: isLoadingLogs } =
+    useRecentExecutionLogs(workflowId, 10);
   useLayout();
   const { setCustomTitle } = usePageTitle();
 
@@ -245,16 +239,17 @@ const WorkflowDetailPage = () => {
 
           // Set workflow name and description from metadata or fallback locations
           // Priority: workflow.metadata > workflowData.metadata > workflow direct > workflowData direct
+          const metadata = workflowData?.metadata as { name?: string; description?: string } | undefined;
           const name =
             response?.workflow?.metadata?.name ||
-            workflowData?.metadata?.name ||
+            metadata?.name ||
             response?.workflow?.name ||
             response?.name ||
             workflowData?.name ||
             "Untitled Workflow";
           const description =
             response?.workflow?.metadata?.description ||
-            workflowData?.metadata?.description ||
+            metadata?.description ||
             response?.workflow?.description ||
             response?.description ||
             workflowData?.description ||
@@ -530,8 +525,12 @@ const WorkflowDetailPage = () => {
           {};
         if (workflow.connections) {
           workflow.connections.forEach((edge) => {
-            const sourceNode = edge.from_node || (edge as any).source;
-            const targetNode = edge.to_node || (edge as any).target;
+            // Handle both backend format (from_node/to_node) and React Flow format (source/target)
+            const edgeWithSource = edge as { from_node?: string; to_node?: string; source?: string; target?: string };
+            const sourceNode = edge.from_node || edgeWithSource.source;
+            const targetNode = edge.to_node || edgeWithSource.target;
+
+            if (!sourceNode || !targetNode) return;
 
             if (!connections[sourceNode]) {
               connections[sourceNode] = {

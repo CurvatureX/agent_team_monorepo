@@ -10,9 +10,8 @@ import {
   categoryCounts,
   getTemplateByIdAtom,
 } from '../atoms/nodeTemplates';
-import type { NodeCategory, NodeTemplate } from '@/types/node-template';
+import type { NodeCategory } from '@/types/node-template';
 import { useNodeTemplatesApi } from '@/lib/api';
-import { getCategoryFromNodeType } from '@/utils/nodeHelpers';
 
 export const useNodeTemplates = () => {
   const [templates, setTemplates] = useAtom(nodeTemplatesAtom);

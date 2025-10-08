@@ -13,7 +13,7 @@ import {
   ToolSubtype,
 } from '@/types/workflow-enums';
 
-export const exampleWorkflow: Workflow = {
+export const exampleWorkflow = {
   "created_at": new Date().toISOString(),
   "updated_at": new Date().toISOString(),
   "id": "example_workflow",
@@ -232,4 +232,4 @@ export const exampleWorkflow: Workflow = {
     "example",
     "workflow"
   ]
-};
+} as unknown as Workflow;
