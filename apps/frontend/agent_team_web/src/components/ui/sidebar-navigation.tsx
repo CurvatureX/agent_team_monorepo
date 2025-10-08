@@ -35,6 +35,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { LoginDialog } from "@/components/ui/login-dialog";
 import { PricingSectionDialog } from "@/components/ui/pricing-section-dialog";
+import { AgentTeamDialog } from "@/components/ui/agent-team-dialog";
 
 interface NavigationItem {
   title: string;
@@ -59,6 +60,7 @@ export const SidebarNavigation = () => {
   const [showContent, setShowContent] = useState(!isCollapsed);
   const [isLoginDialogOpen, setIsLoginDialogOpen] = useState(false);
   const [isPricingDialogOpen, setIsPricingDialogOpen] = useState(false);
+  const [isAgentTeamDialogOpen, setIsAgentTeamDialogOpen] = useState(false);
 
   React.useEffect(() => {
     setMounted(true);
@@ -207,7 +209,7 @@ export const SidebarNavigation = () => {
             isCollapsed && !isHovered && "px-2"
           )}
           style={{ backgroundColor: "#5780BD" }}
-          onClick={() => console.log("Create new")}
+          onClick={() => setIsAgentTeamDialogOpen(true)}
         >
           <span className={cn(
             "transition-all duration-300 whitespace-nowrap",
@@ -406,6 +408,12 @@ export const SidebarNavigation = () => {
       <PricingSectionDialog
         open={isPricingDialogOpen}
         onOpenChange={setIsPricingDialogOpen}
+      />
+
+      {/* Agent Team Dialog */}
+      <AgentTeamDialog
+        open={isAgentTeamDialogOpen}
+        onOpenChange={setIsAgentTeamDialogOpen}
       />
     </>
   );
