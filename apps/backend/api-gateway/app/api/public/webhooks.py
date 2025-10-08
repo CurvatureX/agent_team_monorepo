@@ -21,6 +21,60 @@ settings = get_settings()
 router = APIRouter()
 
 
+def _is_valid_redirect_uri(redirect_uri: str) -> bool:
+    """
+    Validate redirect URI to prevent open redirect vulnerabilities.
+
+    Args:
+        redirect_uri: The redirect URI to validate
+
+    Returns:
+        bool: True if the redirect URI is valid and safe
+    """
+    from urllib.parse import urlparse
+
+    try:
+        parsed = urlparse(redirect_uri)
+
+        # Must have a scheme and netloc
+        if not parsed.scheme or not parsed.netloc:
+            return False
+
+        # Only allow http and https schemes
+        if parsed.scheme not in ["http", "https"]:
+            return False
+
+        # Whitelist of allowed domains (configurable via settings)
+        allowed_domains = [
+            "localhost",
+            "127.0.0.1",
+            "starmates.ai",
+            "app.starmates.ai",
+            "*.starmates.ai",  # Wildcard support
+        ]
+
+        # Check if domain is in whitelist
+        for allowed_domain in allowed_domains:
+            if allowed_domain.startswith("*."):
+                # Wildcard matching
+                base_domain = allowed_domain[2:]
+                if parsed.netloc.endswith(base_domain) or parsed.netloc == base_domain:
+                    return True
+            else:
+                # Exact matching (including port)
+                if parsed.netloc == allowed_domain or parsed.netloc.startswith(
+                    f"{allowed_domain}:"
+                ):
+                    return True
+
+        logger.warning(f"⚠️ Redirect URI rejected (domain not whitelisted): {redirect_uri}")
+        return False
+
+    except Exception as e:
+        logger.error(f"❌ Error validating redirect URI: {e}")
+        return False
+
+
 @router.post("/webhook/workflow/{workflow_id}")
 async def workflow_webhook(workflow_id: str, request: Request, response: Response):
     """
@@ -443,19 +497,47 @@ async def _handle_slack_commands(form_data) -> Dict[str, Any]:
 async def slack_oauth_callback(
     code: Optional[str] = None,
     state: Optional[str] = None,
+    redirect_uri: Optional[str] = None,
     error: Optional[str] = None,
     error_description: Optional[str] = None,
 ):
     """
     Slack OAuth callback endpoint
-    Handles Slack app installation OAuth flow
+    Handles Slack app installation OAuth flow with optional frontend redirect
+
+    Query Parameters:
+        code: OAuth authorization code from Slack
+        state: User ID passed in OAuth state parameter
+        redirect_uri: Optional frontend URL to redirect to after processing
+        error: OAuth error code (if authorization failed)
+        error_description: Human-readable error description
     """
     try:
-        logger.info(f"Slack OAuth callback received: code={'present' if code else 'missing'}")
+        logger.info(
+            f"Slack OAuth callback received: code={'present' if code else 'missing'}, "
+            f"redirect_uri={redirect_uri}"
+        )
 
         # Check for OAuth errors
         if error:
             logger.error(f"Slack OAuth error: {error} - {error_description}")
+
+            # Redirect with error if redirect_uri provided
+            if redirect_uri and _is_valid_redirect_uri(redirect_uri):
+                from urllib.parse import urlencode
+
+                from fastapi.responses import RedirectResponse
+
+                error_params = {
+                    "success": "false",
+                    "provider": "slack",
+                    "error": error,
+                    "error_description": error_description or "Unknown error",
+                }
+                return RedirectResponse(
+                    url=f"{redirect_uri}?{urlencode(error_params)}", status_code=302
+                )
+
             raise HTTPException(
                 status_code=400,
                 detail=f"Slack OAuth error: {error} - {error_description or 'Unknown error'}",
@@ -478,7 +560,25 @@ async def slack_oauth_callback(
                     f"Slack OAuth callback processed successfully for team: {result.get('team_name')}"
                 )
 
-                # Return success page or redirect
+                # Redirect to frontend if redirect_uri provided
+                if redirect_uri and _is_valid_redirect_uri(redirect_uri):
+                    from urllib.parse import urlencode
+
+                    from fastapi.responses import RedirectResponse
+
+                    success_params = {
+                        "success": "true",
+                        "provider": "slack",
+                        "team_name": result.get("team_name"),
+                        "team_id": result.get("team_id"),
+                        "stored_in_database": str(result.get("stored_in_database", False)).lower(),
+                    }
+                    logger.info(f"✅ Redirecting to frontend: {redirect_uri}")
+                    return RedirectResponse(
+                        url=f"{redirect_uri}?{urlencode(success_params)}", status_code=302
+                    )
+
+                # Fallback: Return JSON response (backward compatibility)
                 return {
                     "success": True,
                     "message": "Slack app installed successfully!",
@@ -642,21 +742,49 @@ async def github_oauth_callback(
     state: Optional[str] = None,
     installation_id: Optional[str] = None,
     setup_action: Optional[str] = None,
+    redirect_uri: Optional[str] = None,
     error: Optional[str] = None,
     error_description: Optional[str] = None,
 ):
     """
     GitHub OAuth callback endpoint
-    Handles GitHub App installation OAuth flow
+    Handles GitHub App installation OAuth flow with optional frontend redirect
+
+    Query Parameters:
+        code: OAuth authorization code from GitHub
+        state: User ID passed in OAuth state parameter
+        installation_id: GitHub App installation ID
+        setup_action: Installation action (install/update)
+        redirect_uri: Optional frontend URL to redirect to after processing
+        error: OAuth error code (if authorization failed)
+        error_description: Human-readable error description
     """
     try:
         logger.info(
-            f"GitHub OAuth callback received: code={'present' if code else 'missing'}, installation_id={installation_id}"
+            f"GitHub OAuth callback received: code={'present' if code else 'missing'}, "
+            f"installation_id={installation_id}, redirect_uri={redirect_uri}"
         )
 
         # Check for OAuth errors
         if error:
             logger.error(f"GitHub OAuth error: {error} - {error_description}")
+
+            # Redirect with error if redirect_uri provided
+            if redirect_uri and _is_valid_redirect_uri(redirect_uri):
+                from urllib.parse import urlencode
+
+                from fastapi.responses import RedirectResponse
+
+                error_params = {
+                    "success": "false",
+                    "provider": "github",
+                    "error": error,
+                    "error_description": error_description or "Unknown error",
+                }
+                return RedirectResponse(
+                    url=f"{redirect_uri}?{urlencode(error_params)}", status_code=302
+                )
+
             raise HTTPException(
                 status_code=400,
                 detail=f"GitHub OAuth error: {error} - {error_description or 'Unknown error'}",
@@ -731,7 +859,27 @@ async def github_oauth_callback(
                         )
                         scheduler_success = True
 
-                        # Return success page or redirect
+                        # Redirect to frontend if redirect_uri provided
+                        if redirect_uri and _is_valid_redirect_uri(redirect_uri):
+                            from urllib.parse import urlencode
+
+                            from fastapi.responses import RedirectResponse
+
+                            success_params = {
+                                "success": "true",
+                                "provider": "github",
+                                "installation_id": result.get("installation_id"),
+                                "account_login": result.get("account_login"),
+                                "stored_in_database": str(
+                                    db_store_success if state else False
+                                ).lower(),
+                            }
+                            logger.info(f"✅ Redirecting to frontend: {redirect_uri}")
+                            return RedirectResponse(
+                                url=f"{redirect_uri}?{urlencode(success_params)}", status_code=302
+                            )
+
+                        # Fallback: Return JSON response (backward compatibility)
                         return {
                             "success": True,
                             "message": "GitHub App installed successfully!",
@@ -758,6 +906,25 @@ async def github_oauth_callback(
                 f"GitHub App installation completed (scheduler_success: {scheduler_success}, db_stored: {db_store_success})"
             )
 
+            # Redirect to frontend if redirect_uri provided
+            if redirect_uri and _is_valid_redirect_uri(redirect_uri):
+                from urllib.parse import urlencode
+
+                from fastapi.responses import RedirectResponse
+
+                success_params = {
+                    "success": "true",
+                    "provider": "github",
+                    "installation_id": installation_id,
+                    "stored_in_database": str(db_store_success if state else False).lower(),
+                    "scheduler_processed": str(scheduler_success).lower(),
+                }
+                logger.info(f"✅ Redirecting to frontend: {redirect_uri}")
+                return RedirectResponse(
+                    url=f"{redirect_uri}?{urlencode(success_params)}", status_code=302
+                )
+
+            # Fallback: Return JSON response (backward compatibility)
             return {
                 "success": True,
                 "message": "GitHub App installed successfully!",
@@ -945,19 +1112,47 @@ async def webhook_status():
 async def notion_oauth_callback(
     code: Optional[str] = None,
     state: Optional[str] = None,
+    redirect_uri: Optional[str] = None,
     error: Optional[str] = None,
     error_description: Optional[str] = None,
 ):
     """
     Notion OAuth callback endpoint
-    Handles Notion integration OAuth flow
+    Handles Notion integration OAuth flow with optional frontend redirect
+
+    Query Parameters:
+        code: OAuth authorization code from Notion
+        state: User ID passed in OAuth state parameter
+        redirect_uri: Optional frontend URL to redirect to after processing
+        error: OAuth error code (if authorization failed)
+        error_description: Human-readable error description
     """
     try:
-        logger.info(f"Notion OAuth callback received: code={'present' if code else 'missing'}")
+        logger.info(
+            f"Notion OAuth callback received: code={'present' if code else 'missing'}, "
+            f"redirect_uri={redirect_uri}"
+        )
 
         # Check for OAuth errors
         if error:
             logger.error(f"Notion OAuth error: {error} - {error_description}")
+
+            # Redirect with error if redirect_uri provided
+            if redirect_uri and _is_valid_redirect_uri(redirect_uri):
+                from urllib.parse import urlencode
+
+                from fastapi.responses import RedirectResponse
+
+                error_params = {
+                    "success": "false",
+                    "provider": "notion",
+                    "error": error,
+                    "error_description": error_description or "Unknown error",
+                }
+                return RedirectResponse(
+                    url=f"{redirect_uri}?{urlencode(error_params)}", status_code=302
+                )
+
             raise HTTPException(
                 status_code=400,
                 detail=f"Notion OAuth error: {error} - {error_description or 'Unknown error'}",
@@ -1062,6 +1257,26 @@ async def notion_oauth_callback(
             except Exception as e:
                 logger.warning(f"Failed to forward to workflow_scheduler: {e}")
 
+            # Redirect to frontend if redirect_uri provided
+            if redirect_uri and _is_valid_redirect_uri(redirect_uri):
+                from urllib.parse import urlencode
+
+                from fastapi.responses import RedirectResponse
+
+                success_params = {
+                    "success": "true",
+                    "provider": "notion",
+                    "workspace_name": workspace_name,
+                    "workspace_id": workspace_id,
+                    "stored_in_database": str(db_store_success if state else False).lower(),
+                    "scheduler_processed": str(scheduler_success).lower(),
+                }
+                logger.info(f"✅ Redirecting to frontend: {redirect_uri}")
+                return RedirectResponse(
+                    url=f"{redirect_uri}?{urlencode(success_params)}", status_code=302
+                )
+
+            # Fallback: Return JSON response (backward compatibility)
             return {
                 "success": True,
                 "message": "Notion integration connected successfully!",
@@ -1235,21 +1450,50 @@ async def _store_notion_integration(
 async def google_oauth_callback(
     code: Optional[str] = None,
     state: Optional[str] = None,
+    redirect_uri: Optional[str] = None,
     error: Optional[str] = None,
     error_description: Optional[str] = None,
     scope: Optional[str] = None,
 ):
     """
     Google OAuth callback endpoint
-    Handles Google OAuth integration flow for all Google services
+    Handles Google OAuth integration flow for all Google services with optional frontend redirect
     (Calendar, Gmail, Drive, etc.)
+
+    Query Parameters:
+        code: OAuth authorization code from Google
+        state: User ID passed in OAuth state parameter
+        redirect_uri: Optional frontend URL to redirect to after processing
+        error: OAuth error code (if authorization failed)
+        error_description: Human-readable error description
+        scope: OAuth scopes granted by the user
     """
     try:
-        logger.info(f"Google OAuth callback received: code={'present' if code else 'missing'}")
+        logger.info(
+            f"Google OAuth callback received: code={'present' if code else 'missing'}, "
+            f"redirect_uri={redirect_uri}"
+        )
 
         # Check for OAuth errors
         if error:
             logger.error(f"Google OAuth error: {error} - {error_description}")
+
+            # Redirect with error if redirect_uri provided
+            if redirect_uri and _is_valid_redirect_uri(redirect_uri):
+                from urllib.parse import urlencode
+
+                from fastapi.responses import RedirectResponse
+
+                error_params = {
+                    "success": "false",
+                    "provider": "google_calendar",
+                    "error": error,
+                    "error_description": error_description or "Unknown error",
+                }
+                return RedirectResponse(
+                    url=f"{redirect_uri}?{urlencode(error_params)}", status_code=302
+                )
+
             raise HTTPException(
                 status_code=400,
                 detail=f"Google OAuth error: {error} - {error_description or 'Unknown error'}",
@@ -1368,6 +1612,26 @@ async def google_oauth_callback(
             except Exception as e:
                 logger.warning(f"Failed to forward to workflow_scheduler: {e}")
 
+            # Redirect to frontend if redirect_uri provided
+            if redirect_uri and _is_valid_redirect_uri(redirect_uri):
+                from urllib.parse import urlencode
+
+                from fastapi.responses import RedirectResponse
+
+                success_params = {
+                    "success": "true",
+                    "provider": "google_calendar",
+                    "user_email": user_info.get("email"),
+                    "user_name": user_info.get("name"),
+                    "stored_in_database": str(db_store_success if state else False).lower(),
+                    "scheduler_processed": str(scheduler_success).lower(),
+                }
+                logger.info(f"✅ Redirecting to frontend: {redirect_uri}")
+                return RedirectResponse(
+                    url=f"{redirect_uri}?{urlencode(success_params)}", status_code=302
+                )
+
+            # Fallback: Return JSON response (backward compatibility)
             return {
                 "success": True,
                 "message": "Google integration connected successfully!",
