@@ -513,7 +513,7 @@ def generate_install_url(provider: str, user_id: str, redirect_uri: Optional[str
         redirect_uri: Optional frontend redirect URL to append to callback URL
 
     Returns:
-        OAuth authorization URL with encoded redirect_uri if provided
+        OAuth authorization URL with encoded return_url if provided
     """
     from urllib.parse import quote, urlencode
 
@@ -521,11 +521,11 @@ def generate_install_url(provider: str, user_id: str, redirect_uri: Optional[str
 
     settings = get_settings()
 
-    # Helper function to append redirect_uri to callback URL
+    # Helper function to append return_url to callback URL (avoid using 'redirect_uri' as param name)
     def build_callback_url(base_url: str) -> str:
         if redirect_uri:
-            # Encode redirect_uri as query parameter
-            return f"{base_url}?redirect_uri={quote(redirect_uri)}"
+            # Use 'return_url' instead of 'redirect_uri' to avoid conflicts with OAuth parameters
+            return f"{base_url}?return_url={quote(redirect_uri)}"
         return base_url
 
     if provider == "github":
@@ -581,27 +581,27 @@ def generate_install_url(provider: str, user_id: str, redirect_uri: Optional[str
     This endpoint returns:
     - All available integrations (GitHub, Notion, Slack, Google Calendar)
     - Connection status for each integration (connected/not connected)
-    - OAuth install URLs for connecting integrations (with optional redirect_uri)
+    - OAuth install URLs for connecting integrations (with optional return_url parameter)
     - Full integration details if already connected
 
     Requires authentication via Supabase JWT token.
 
     Query Parameters:
-    - redirect_uri: Optional frontend URL to redirect to after OAuth completion
+    - redirect_uri: Optional frontend URL to redirect to after OAuth completion (passed as return_url to avoid OAuth conflicts)
     """,
 )
 async def get_user_integrations(
     deps: AuthenticatedDeps = Depends(),
     redirect_uri: Optional[str] = Query(
         None,
-        description="Frontend URL to redirect to after OAuth completion (e.g., https://app.example.com/integrations/callback)",
+        description="Frontend URL to redirect to after OAuth completion (e.g., https://app.example.com/integrations/callback). Will be passed as 'return_url' parameter to avoid OAuth conflicts.",
     ),
 ):
     """
     Get all available integrations with connection status and install links.
 
     Args:
-        redirect_uri: Optional frontend redirect URL after OAuth flow completes
+        redirect_uri: Optional frontend redirect URL after OAuth flow completes (will be encoded as return_url)
 
     Returns:
         IntegrationsWithStatusResponse with all integrations and their status
