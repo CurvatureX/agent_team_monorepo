@@ -690,51 +690,46 @@ const WorkflowDetailPage = () => {
           transition={{ duration: 0.6, delay: 0.2 }}
         >
           <div className="h-full flex flex-col">
-            {/* Workflow Header */}
-            {workflowName && (
-              <div className="px-4 py-3 bg-background/95 backdrop-blur-sm rounded-t-lg border border-b-0 border-border">
-                <h2 className="text-lg font-semibold text-foreground">
-                  {workflowName}
-                </h2>
-                {workflowDescription && (
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {workflowDescription}
-                  </p>
+            {/* Workflow Info */}
+            <div className="px-4 py-3 bg-background/95 backdrop-blur-sm rounded-t-lg border border-b-0 border-border">
+              {workflowDescription && (
+                <p className="text-sm text-muted-foreground">
+                  {workflowDescription}
+                </p>
+              )}
+              {/* Execution Status and Time */}
+              <div className={`flex items-center gap-3 ${workflowDescription ? 'mt-2' : ''}`}>
+                {(() => {
+                  const statusInfo = getExecutionStatusInfo(
+                    latestExecutionStatus
+                  );
+                  const StatusIcon = statusInfo.icon;
+                  return (
+                    <div className="flex items-center gap-1.5">
+                      <StatusIcon
+                        className={`w-3.5 h-3.5 ${statusInfo.color}`}
+                      />
+                      <span
+                        className={`text-xs font-medium ${statusInfo.color}`}
+                      >
+                        {statusInfo.label}
+                      </span>
+                    </div>
+                  );
+                })()}
+                {latestExecutionTime && (
+                  <>
+                    <span className="text-muted-foreground/30">•</span>
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span className="text-xs">
+                        Last run: {formatExecutionTime(latestExecutionTime)}
+                      </span>
+                    </div>
+                  </>
                 )}
-                {/* Execution Status and Time */}
-                <div className="flex items-center gap-3 mt-2">
-                  {(() => {
-                    const statusInfo = getExecutionStatusInfo(
-                      latestExecutionStatus
-                    );
-                    const StatusIcon = statusInfo.icon;
-                    return (
-                      <div className="flex items-center gap-1.5">
-                        <StatusIcon
-                          className={`w-3.5 h-3.5 ${statusInfo.color}`}
-                        />
-                        <span
-                          className={`text-xs font-medium ${statusInfo.color}`}
-                        >
-                          {statusInfo.label}
-                        </span>
-                      </div>
-                    );
-                  })()}
-                  {latestExecutionTime && (
-                    <>
-                      <span className="text-muted-foreground/30">•</span>
-                      <div className="flex items-center gap-1.5 text-muted-foreground">
-                        <Clock className="w-3.5 h-3.5" />
-                        <span className="text-xs">
-                          Last run: {formatExecutionTime(latestExecutionTime)}
-                        </span>
-                      </div>
-                    </>
-                  )}
-                </div>
               </div>
-            )}
+            </div>
             {/* Workflow Editor */}
             <div className="flex-1 bg-muted/20 rounded-lg border border-border overflow-hidden">
               <WorkflowEditor
