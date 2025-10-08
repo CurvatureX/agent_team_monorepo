@@ -373,6 +373,105 @@ async def _get_provider_token_or_412(
     return token_record
 
 
+async def _validate_slack_token(access_token: str) -> bool:
+    """Validate Slack OAuth token by calling auth.test API."""
+    try:
+
+        def _test_auth() -> Dict[str, Any]:
+            with SlackWebClient(token=access_token) as client:
+                return client.test_auth()
+
+        await asyncio.to_thread(_test_auth)
+        return True
+    except (SlackAuthError, SlackAPIError) as e:
+        logger.warning(f"🔐 Slack token validation failed: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"❌ Unexpected error validating Slack token: {e}")
+        return False
+
+
+async def _validate_notion_token(access_token: str) -> bool:
+    """Validate Notion OAuth token by calling users/me API."""
+    try:
+        async with NotionClient(auth_token=access_token) as client:
+            await client.get_me()
+        return True
+    except (NotionAuthError, NotionAPIError) as e:
+        logger.warning(f"🔐 Notion token validation failed: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"❌ Unexpected error validating Notion token: {e}")
+        return False
+
+
+async def _validate_github_token(token_record: Dict[str, Any]) -> bool:
+    """Validate GitHub OAuth token by checking installation access."""
+    try:
+        from app.core.config import get_settings
+
+        from shared.sdks.github_sdk.client import GitHubSDK
+
+        settings = get_settings()
+        installation_id = token_record.get("credential_data", {}).get("installation_id")
+
+        if not installation_id:
+            logger.warning("🔐 GitHub token missing installation_id")
+            return False
+
+        # Use GitHub App credentials to validate installation
+        if not settings.GITHUB_APP_ID or not settings.GITHUB_PRIVATE_KEY:
+            logger.warning("🔐 GitHub App credentials not configured")
+            return True  # Skip validation if not configured
+
+        async with GitHubSDK(
+            app_id=settings.GITHUB_APP_ID,
+            private_key=settings.GITHUB_PRIVATE_KEY,
+        ) as github:
+            # Try to get installation token
+            await github.get_installation_token(int(installation_id))
+        return True
+    except Exception as e:
+        logger.warning(f"🔐 GitHub token validation failed: {e}")
+        return False
+
+
+async def _validate_google_calendar_token(access_token: str) -> bool:
+    """Validate Google Calendar OAuth token by calling calendars API."""
+    try:
+        import httpx
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://www.googleapis.com/calendar/v3/users/me/calendarList",
+                headers={"Authorization": f"Bearer {access_token}"},
+                params={"maxResults": 1},
+            )
+            return response.status_code == 200
+    except Exception as e:
+        logger.warning(f"🔐 Google Calendar token validation failed: {e}")
+        return False
+
+
+async def _validate_integration_token(provider: str, token_record: Dict[str, Any]) -> bool:
+    """Validate OAuth token for any provider."""
+    access_token = token_record.get("access_token")
+    if not access_token:
+        return False
+
+    if provider == "slack":
+        return await _validate_slack_token(access_token)
+    elif provider == "notion":
+        return await _validate_notion_token(access_token)
+    elif provider == "github":
+        return await _validate_github_token(token_record)
+    elif provider == "google_calendar":
+        return await _validate_google_calendar_token(access_token)
+    else:
+        logger.warning(f"⚠️ No validation method for provider: {provider}")
+        return True  # Assume valid if no validation method exists
+
+
 def get_available_integrations() -> List[IntegrationMetadata]:
     """Return metadata for all available integrations."""
     return [
@@ -399,40 +498,62 @@ def get_available_integrations() -> List[IntegrationMetadata]:
     ]
 
 
-def generate_install_url(provider: str, user_id: str) -> str:
-    """Generate OAuth install URL for a specific provider."""
+def generate_install_url(provider: str, user_id: str, redirect_uri: Optional[str] = None) -> str:
+    """Generate OAuth install URL for a specific provider.
+
+    Args:
+        provider: OAuth provider name (github, notion, slack, google_calendar)
+        user_id: User ID to include in state parameter
+        redirect_uri: Optional frontend redirect URL to append to callback URL
+
+    Returns:
+        OAuth authorization URL with encoded redirect_uri if provided
+    """
+    from urllib.parse import quote, urlencode
+
     from app.core.config import get_settings
 
     settings = get_settings()
 
+    # Helper function to append redirect_uri to callback URL
+    def build_callback_url(base_url: str) -> str:
+        if redirect_uri:
+            # Encode redirect_uri as query parameter
+            return f"{base_url}?redirect_uri={quote(redirect_uri)}"
+        return base_url
+
     if provider == "github":
-        return f"https://github.com/apps/starmates/installations/new?state={user_id}"
+        github_callback = build_callback_url("https://github.com/apps/starmates/installations/new")
+        return f"{github_callback}{'&' if redirect_uri else '?'}state={user_id}"
 
     elif provider == "notion":
+        notion_callback = build_callback_url(settings.NOTION_REDIRECT_URI)
         return (
             f"https://api.notion.com/v1/oauth/authorize"
             f"?client_id={settings.NOTION_CLIENT_ID}"
-            f"&redirect_uri={settings.NOTION_REDIRECT_URI}"
+            f"&redirect_uri={quote(notion_callback)}"
             f"&response_type=code"
             f"&state={user_id}"
         )
 
     elif provider == "slack":
+        slack_callback = build_callback_url(settings.SLACK_REDIRECT_URI)
         return (
             f"https://slack.com/oauth/v2/authorize"
             f"?client_id={settings.SLACK_CLIENT_ID}"
             f"&scope=app_mentions:read,assistant:write,calls:read,calls:write,chat:write,channels:read,groups:read,conversations:read,reminders:read,reminders:write,im:read,chat:write.public"
             f"&user_scope=email,identity.basic"
-            f"&redirect_uri={settings.SLACK_REDIRECT_URI}"
+            f"&redirect_uri={quote(slack_callback)}"
             f"&response_type=code"
             f"&state={user_id}"
         )
 
     elif provider == "google_calendar":
+        google_callback = build_callback_url(settings.GOOGLE_REDIRECT_URI)
         return (
             f"https://accounts.google.com/o/oauth2/auth"
             f"?client_id={settings.GOOGLE_CLIENT_ID}"
-            f"&redirect_uri={settings.GOOGLE_REDIRECT_URI}"
+            f"&redirect_uri={quote(google_callback)}"
             f"&response_type=code"
             f"&scope=https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events"
             f"&access_type=offline"
@@ -454,22 +575,37 @@ def generate_install_url(provider: str, user_id: str) -> str:
     This endpoint returns:
     - All available integrations (GitHub, Notion, Slack, Google Calendar)
     - Connection status for each integration (connected/not connected)
-    - OAuth install URLs for connecting integrations
+    - OAuth install URLs for connecting integrations (with optional redirect_uri)
     - Full integration details if already connected
 
     Requires authentication via Supabase JWT token.
+
+    Query Parameters:
+    - redirect_uri: Optional frontend URL to redirect to after OAuth completion
     """,
 )
-async def get_user_integrations(deps: AuthenticatedDeps = Depends()):
+async def get_user_integrations(
+    deps: AuthenticatedDeps = Depends(),
+    redirect_uri: Optional[str] = Query(
+        None,
+        description="Frontend URL to redirect to after OAuth completion (e.g., https://app.example.com/integrations/callback)",
+    ),
+):
     """
     Get all available integrations with connection status and install links.
+
+    Args:
+        redirect_uri: Optional frontend redirect URL after OAuth flow completes
 
     Returns:
         IntegrationsWithStatusResponse with all integrations and their status
     """
     try:
         user_id = deps.user_data["id"]
-        logger.info(f"🔍 Retrieving integrations with status for user {user_id}")
+        logger.info(
+            f"🔍 Retrieving integrations with status for user {user_id}"
+            + (f" with redirect_uri={redirect_uri}" if redirect_uri else "")
+        )
 
         supabase_admin = get_supabase_admin()
 
@@ -491,6 +627,7 @@ async def get_user_integrations(deps: AuthenticatedDeps = Depends()):
                 is_active,
                 created_at,
                 updated_at,
+                access_token,
                 credential_data,
                 integrations!oauth_tokens_integration_id_fkey (
                     integration_type,
@@ -511,19 +648,40 @@ async def get_user_integrations(deps: AuthenticatedDeps = Depends()):
             result = (
                 supabase_admin.table("oauth_tokens")
                 .select(
-                    "id, integration_id, provider, is_active, created_at, updated_at, credential_data"
+                    "id, integration_id, provider, is_active, created_at, updated_at, access_token, credential_data"
                 )
                 .eq("user_id", user_id)
                 .execute()
             )
 
         # Build mapping of connected providers to their integration details
+        # Also prepare for parallel validation
         connected_providers: Dict[str, IntegrationInfo] = {}
+        validation_tasks = []
+        token_data_map = {}
+
         for token_data in result.data or []:
             # Handle the joined integration data
             integration_info_data = token_data.get("integrations", {}) or {}
 
             provider = token_data["provider"]
+            token_id = token_data["id"]
+            token_data_map[provider] = {
+                "token_id": token_id,
+                "token_data": token_data,
+            }
+
+            # Create validation task for this provider
+            validation_tasks.append(
+                _validate_integration_token(
+                    provider,
+                    {
+                        "access_token": token_data.get("access_token"),
+                        "credential_data": token_data.get("credential_data", {}),
+                    },
+                )
+            )
+
             connected_providers[provider] = IntegrationInfo(
                 id=token_data["id"],
                 integration_id=token_data["integration_id"],
@@ -540,6 +698,41 @@ async def get_user_integrations(deps: AuthenticatedDeps = Depends()):
                 configuration=integration_info_data.get("configuration", {}),
             )
 
+        # Validate all tokens in parallel
+        if validation_tasks:
+            logger.info(
+                f"🔐 Validating {len(validation_tasks)} OAuth tokens in parallel for user {user_id}"
+            )
+            validation_results = await asyncio.gather(*validation_tasks, return_exceptions=True)
+
+            # Process validation results and update database for invalid tokens
+            providers_list = list(token_data_map.keys())
+            for idx, (provider, is_valid) in enumerate(zip(providers_list, validation_results)):
+                if isinstance(is_valid, Exception):
+                    logger.error(f"❌ Validation exception for {provider}: {is_valid}")
+                    is_valid = False
+
+                if not is_valid:
+                    token_id = token_data_map[provider]["token_id"]
+                    logger.warning(
+                        f"🔐 Marking {provider} token as inactive for user {user_id} (token_id: {token_id})"
+                    )
+
+                    # Mark token as inactive in database
+                    try:
+                        supabase_admin.table("oauth_tokens").update(
+                            {"is_active": False, "updated_at": "now()"}
+                        ).eq("id", token_id).execute()
+
+                        # Remove from connected_providers so it shows as disconnected
+                        connected_providers.pop(provider, None)
+                    except Exception as e:
+                        logger.error(f"❌ Failed to mark {provider} token as inactive: {e}")
+                else:
+                    logger.debug(f"✅ {provider} token is valid for user {user_id}")
+        else:
+            logger.info(f"📋 No integrations to validate for user {user_id}")
+
         # Build response with all available integrations
         available_integrations = get_available_integrations()
         integrations_with_status: List[IntegrationWithInstallLink] = []
@@ -553,7 +746,7 @@ async def get_user_integrations(deps: AuthenticatedDeps = Depends()):
                     provider=integration_meta.provider,
                     name=integration_meta.name,
                     description=integration_meta.description,
-                    install_url=generate_install_url(provider, user_id),
+                    install_url=generate_install_url(provider, user_id, redirect_uri),
                     is_connected=is_connected,
                     connection=connected_providers.get(provider) if is_connected else None,
                 )
