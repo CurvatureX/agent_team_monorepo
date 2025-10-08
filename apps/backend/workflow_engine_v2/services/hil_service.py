@@ -1,23 +1,21 @@
-"""
-Human-in-the-Loop Service for workflow_engine_v2.
-
-Handles HIL interaction lifecycle including response message sending and
-advanced classification features.
-"""
+"""Human-in-the-Loop service primitives for workflow_engine_v2."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from threading import Lock
+from typing import Any, Dict, List, Optional, Union
+from uuid import uuid4
 
 # Add backend directory to path for absolute imports
 backend_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from shared.models.human_in_loop import HILChannelType, HILInputData, HILInteractionType, HILStatus
+from shared.models.human_in_loop import HILChannelType, HILInteractionType
 from workflow_engine_v2.services.hil_response_classifier import (
     ClassificationResult,
     HILResponseClassifierV2,
@@ -31,7 +29,9 @@ class HILWorkflowServiceV2:
     """Service for managing complete HIL workflow lifecycle with advanced features."""
 
     def __init__(self):
-        self.oauth_integration_service = OAuth2ServiceV2()
+        self.oauth_service = OAuth2ServiceV2()
+        # Backwards compatibility alias for legacy references
+        self.oauth_integration_service = self.oauth_service
         self.hil_response_classifier = HILResponseClassifierV2()
 
         # Initialize Supabase client for interaction storage
@@ -43,13 +43,17 @@ class HILWorkflowServiceV2:
         supabase_key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_KEY")
 
         if supabase_url and supabase_key:
-            self._supabase: Client = create_client(supabase_url, supabase_key)
+            self._supabase: Optional[Client] = create_client(supabase_url, supabase_key)
             logger.info("HIL Service V2: Initialized with Supabase database storage")
         else:
             self._supabase = None
             logger.warning(
-                "HIL Service V2: No Supabase credentials found, interactions will not be persisted"
+                "HIL Service V2: No Supabase credentials found, interactions will be cached in-memory"
             )
+
+        # Local cache so the engine can operate even without Supabase connectivity
+        self._in_memory_store: Dict[str, Dict[str, Any]] = {}
+        self._memory_lock = Lock()
 
         logger.info(
             "HIL Service V2: Initialized with OAuth integration and response classification capabilities"
@@ -172,6 +176,7 @@ class HILWorkflowServiceV2:
             "timeout": "⏰ Your request has timed out and will be processed automatically.",
             "escalated": "🔺 Your request has been escalated for further review.",
             "completed": "✅ Your request has been completed.",
+            "warning": "⏰ Reminder: your approval is still pending and will timeout soon.",
         }
 
         return fallback_templates.get(response_type)
@@ -312,68 +317,238 @@ class HILWorkflowServiceV2:
             logger.warning(f"Template rendering error: {e}")
             return template  # Return original template if rendering fails
 
-    async def create_hil_interaction(
+    async def create_interaction(
         self,
-        workflow_id: str,
-        node_id: str,
-        execution_id: str,
-        interaction_type: HILInteractionType,
-        channel_type: HILChannelType,
-        request_data: HILInputData,
-        user_id: str,
-        priority: str = "normal",
+        interaction_data: Optional[Dict[str, Any]] = None,
+        *,
+        workflow_id: Optional[str] = None,
+        node_id: Optional[str] = None,
+        execution_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        interaction_type: Optional[Union[HILInteractionType, str]] = None,
+        channel_type: Optional[Union[HILChannelType, str]] = None,
+        request_data: Optional[Dict[str, Any]] = None,
         timeout_seconds: Optional[int] = None,
+        priority: str = "normal",
     ) -> str:
-        """
-        Create a new HIL interaction.
+        """Create and persist a new HIL interaction record."""
 
-        Returns:
-            str: Interaction ID
-        """
-        # Store HIL interaction in database
-        import uuid
-        from datetime import datetime
+        merged: Dict[str, Any] = {}
+        if interaction_data:
+            merged.update(interaction_data)
 
-        interaction_id = str(uuid.uuid4())
+        overrides = {
+            "workflow_id": workflow_id,
+            "node_id": node_id,
+            "execution_id": execution_id,
+            "user_id": user_id,
+            "interaction_type": interaction_type,
+            "channel_type": channel_type,
+            "request_data": request_data,
+            "timeout_seconds": timeout_seconds,
+            "priority": priority,
+        }
+        for key, value in overrides.items():
+            if value is not None and merged.get(key) is None:
+                merged[key] = value
+
+        if not merged.get("workflow_id"):
+            raise ValueError("workflow_id is required for HIL interactions")
+        if not merged.get("execution_id"):
+            raise ValueError("execution_id is required for HIL interactions")
+        if not merged.get("node_id"):
+            raise ValueError("node_id is required for HIL interactions")
+        if not merged.get("user_id"):
+            raise ValueError("user_id is required for HIL interactions")
+
+        # Normalise interaction and channel types
+        interaction_value = merged.get("interaction_type") or merged.get("interaction")
+        if interaction_value is None:
+            interaction_value = HILInteractionType.APPROVAL.value
+        interaction_str = (
+            interaction_value.value if isinstance(interaction_value, HILInteractionType) else str(interaction_value)
+        ).lower()
+
+        channel_value = merged.get("channel_type") or merged.get("channel")
+        if channel_value is None:
+            channel_value = HILChannelType.SLACK.value
+        channel_aliases = {"in_app": HILChannelType.APP.value}
+        channel_candidate = (
+            channel_value.value if isinstance(channel_value, HILChannelType) else str(channel_value)
+        ).lower()
+        channel_str = channel_aliases.get(channel_candidate, channel_candidate)
+
+        final_timeout_seconds = merged.get("timeout_seconds")
+        if final_timeout_seconds is None:
+            final_timeout_seconds = 3600
+        try:
+            final_timeout_seconds = int(final_timeout_seconds)
+        except (TypeError, ValueError):
+            raise ValueError("timeout_seconds must be an integer value")
+        final_timeout_seconds = max(60, min(86400, final_timeout_seconds))
+
+        now = datetime.utcnow()
+        timeout_at = now + timedelta(seconds=final_timeout_seconds)
+
+        request_payload = merged.get("request_data") or {}
+        if not request_payload:
+            # Backwards compatibility for simplified payloads
+            request_payload = {
+                "title": merged.get("title") or merged.get("name"),
+                "description": merged.get("description"),
+                "message": merged.get("message"),
+                "approval_options": merged.get("approval_options"),
+                "input_fields": merged.get("input_fields"),
+                "selection_options": merged.get("selection_options"),
+                "timeout_action": merged.get("timeout_action", "fail"),
+            }
+
+        interaction_id = merged.get("id") or str(uuid4())
+
+        record = {
+            "id": interaction_id,
+            "workflow_id": merged["workflow_id"],
+            "execution_id": merged["execution_id"],
+            "node_id": merged["node_id"],
+            "user_id": merged["user_id"],
+            "status": "pending",
+            "priority": merged.get("priority", "normal"),
+            "interaction_type": interaction_str,
+            "channel_type": channel_str,
+            "request_data": request_payload,
+            "timeout_seconds": final_timeout_seconds,
+            "timeout_at": timeout_at.isoformat(),
+            "warning_sent": False,
+            "created_at": now.isoformat(),
+            "updated_at": now.isoformat(),
+        }
+
+        await asyncio.to_thread(self._persist_interaction, record)
+        return interaction_id
+
+    def create_interaction_sync(self, **kwargs: Any) -> str:
+        """Synchronous wrapper so runners can call the async API from sync code."""
+
+        coro = self.create_interaction(**kwargs)
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            future = asyncio.run_coroutine_threadsafe(coro, loop)
+            return future.result()
+
+        new_loop = asyncio.new_event_loop()
+        try:
+            return new_loop.run_until_complete(coro)
+        finally:
+            new_loop.close()
+
+    def get_cached_interaction(self, interaction_id: str) -> Optional[Dict[str, Any]]:
+        """Return the cached interaction record if stored locally."""
+
+        with self._memory_lock:
+            record = self._in_memory_store.get(interaction_id)
+            if record:
+                return dict(record)
+        return None
+
+    def _persist_interaction(self, record: Dict[str, Any]) -> None:
+        """Persist record in Supabase if configured and always mirror it in memory."""
 
         if self._supabase:
             try:
-                interaction_data = {
-                    "id": interaction_id,
-                    "workflow_id": workflow_id,
-                    "execution_id": execution_id,
-                    "node_id": node_id,
-                    "user_id": user_id,
-                    "status": "pending",
-                    "interaction_type": interaction_type.value
-                    if hasattr(interaction_type, "value")
-                    else str(interaction_type),
-                    "channel_type": channel_type.value
-                    if hasattr(channel_type, "value")
-                    else str(channel_type),
-                    "input_data": input_data.dict() if hasattr(input_data, "dict") else input_data,
-                    "timeout_seconds": timeout_seconds,
-                    "created_at": datetime.utcnow().isoformat(),
-                    "updated_at": datetime.utcnow().isoformat(),
-                }
-
-                result = self._supabase.table("hil_interactions").insert(interaction_data).execute()
-
+                result = self._supabase.table("hil_interactions").insert(record).execute()
                 if not result.data:
-                    logger.error(f"Failed to store HIL interaction {interaction_id} in database")
-                else:
-                    logger.info(
-                        f"Created HIL interaction {interaction_id} for workflow {workflow_id} in database"
+                    logger.error(
+                        "Failed to store HIL interaction %s in database; falling back to memory cache",
+                        record["id"],
                     )
+            except Exception as exc:  # pragma: no cover - logging path
+                message = str(exc)
+                if "priority" in message:
+                    fallback_record = dict(record)
+                    fallback_record.pop("priority", None)
+                    try:
+                        result = (
+                            self._supabase.table("hil_interactions")
+                            .insert(fallback_record)
+                            .execute()
+                        )
+                        if not result.data:
+                            logger.error(
+                                "Retry without priority still failed for HIL interaction %s",
+                                record["id"],
+                            )
+                        else:
+                            record = fallback_record
+                            logger.info(
+                                "Stored HIL interaction %s without priority column",
+                                record["id"],
+                            )
+                    except Exception as fallback_exc:
+                        logger.error(
+                            "Error storing HIL interaction %s without priority: %s",
+                            record["id"],
+                            fallback_exc,
+                        )
+                else:
+                    logger.error("Error storing HIL interaction %s: %s", record["id"], exc)
 
-            except Exception as e:
-                logger.error(f"Error storing HIL interaction {interaction_id}: {str(e)}")
-        else:
-            logger.warning(
-                f"Created HIL interaction {interaction_id} for workflow {workflow_id} (not persisted)"
+        with self._memory_lock:
+            self._in_memory_store[record["id"]] = dict(record)
+
+    async def send_system_message(
+        self,
+        interaction: Dict[str, Any],
+        message_type: str,
+        template_context: Optional[Dict[str, Any]] = None,
+    ) -> bool:
+        """Send an internal system notification (warning/timeout) for an interaction."""
+
+        template_context = template_context or {}
+        channel_type = interaction.get("channel_type", "slack")
+        request_data = interaction.get("request_data", {}) or {}
+        channel_config = request_data.get("channel_config", {}) or {}
+
+        # Reuse response templates if provided on the node definition
+        response_templates = request_data.get("response_messages", {}) or {}
+        template = response_templates.get(message_type)
+
+        if not template:
+            defaults = {
+                "warning": (
+                    "⏰ Interaction {interaction_id} will timeout at {timeout_at}. Respond soon to avoid automatic handling."
+                ),
+                "timeout": (
+                    "⛔ Interaction {interaction_id} timed out. Action: {timeout_action_description}"
+                ),
+            }
+            template = defaults.get(
+                message_type, "ℹ️ Workflow update for interaction {interaction_id}."
             )
 
-        return interaction_id
+        context = {
+            **template_context,
+            "interaction_id": interaction.get("id"),
+            "workflow_id": interaction.get("workflow_id"),
+            "timeout_at": interaction.get("timeout_at"),
+        }
+
+        user_id = interaction.get("user_id")
+        if user_id:
+            context.setdefault("user_id", user_id)
+            workflow_ctx = request_data.get("workflow_context") or {}
+            context.setdefault("workflow", {"user_id": workflow_ctx.get("user_id", user_id)})
+
+        node_parameters = {
+            "channel_type": channel_type,
+            "channel_config": channel_config,
+        }
+
+        return await self._send_response_message(message_type, template, context, node_parameters)
+
 
     async def get_pending_interactions(
         self, user_id: Optional[str] = None, workflow_id: Optional[str] = None, limit: int = 50

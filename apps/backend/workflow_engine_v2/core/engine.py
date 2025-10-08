@@ -500,12 +500,18 @@ class ExecutionEngine:
 
                 # Create workflow execution pause record for HIL
                 try:
+                    hil_output = outputs.get("result")
+                    if not hil_output and isinstance(outputs, dict):
+                        hil_output = outputs.get("main")
+                    if not hil_output:
+                        hil_output = {}
+
                     pause_data = {
                         "hil_interaction_id": outputs.get("_hil_interaction_id"),
                         "hil_timeout_seconds": outputs.get("_hil_timeout_seconds"),
                         "hil_node_id": outputs.get("_hil_node_id"),
                         "pause_context": {
-                            "node_output": outputs.get("result", {}),
+                            "node_output": hil_output,
                             "execution_context": {
                                 "execution_id": workflow_execution.execution_id,
                                 "workflow_id": workflow_execution.workflow_id,
@@ -519,7 +525,7 @@ class ExecutionEngine:
                         "type": "human_response",
                         "interaction_id": outputs.get("_hil_interaction_id"),
                         "required_fields": ["response_data", "response_type"],
-                        "timeout_action": outputs.get("result", {}).get("timeout_action", "fail"),
+                        "timeout_action": hil_output.get("timeout_action", "fail"),
                     }
 
                     # Store pause record in database if we have Supabase client
@@ -1350,18 +1356,53 @@ class ExecutionEngine:
             if result.data:
                 return result.data[0]["id"]
 
+        except Exception as e:
+            message = str(e)
+            if "pause_data" in message or "hil_interaction_id" in message or "node_id" in message:
+                try:
+                    fallback_record = {
+                        "execution_id": execution_id,
+                        "paused_node_id": node_id,
+                        "pause_reason": pause_reason,
+                        "resume_conditions": {
+                            "conditions": resume_conditions,
+                            "pause_context": pause_data,
+                        },
+                        "status": "active",
+                        "paused_at": datetime.utcnow().isoformat(),
+                        "resume_trigger": None,
+                    }
+                    result = (
+                        client.table("workflow_execution_pauses")
+                        .insert(fallback_record)
+                        .execute()
+                    )
+                    if result.data:
+                        return result.data[0]["id"]
+                except Exception as fallback_error:
+                    message = f"Fallback pause insert failed: {fallback_error}"
+                    if hasattr(self, "_log"):
+                        self._log.log(
+                            None,
+                            level=LogLevel.ERROR,
+                            message=message,
+                            node_id=node_id,
+                        )
+                    return None
+            else:
+                if hasattr(self, "_log"):
+                    self._log.log(
+                        None,
+                        level=LogLevel.ERROR,
+                        message=f"Failed to create workflow pause record: {message}",
+                        node_id=node_id,
+                    )
+                return None
+
+        else:
             return None
 
-        except Exception as e:
-            # Log error but don't fail execution
-            if hasattr(self, "_log"):
-                self._log.log(
-                    None,
-                    level=LogLevel.ERROR,
-                    message=f"Failed to create workflow pause record: {str(e)}",
-                    node_id=node_id,
-                )
-            return None
+        return None
 
     def resume_timer(
         self, execution_id: str, node_id: str, *, reason: str = "delay", port: str = "main"
