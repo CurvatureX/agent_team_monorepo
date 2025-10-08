@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { Handle, Position, NodeProps } from 'reactflow';
 import { cn } from '@/lib/utils';
 import type { WorkflowNodeData } from '@/types/workflow-editor';
-import { getNodeIcon, getCategoryColor, getCategoryFromNodeType, getParameterPreview, formatSubtype, getNodeTypeDisplayName, getProviderIcon } from '@/utils/nodeHelpers';
+import { getNodeIcon, getCategoryColor, getCategoryFromNodeType, getParameterPreview, formatSubtype, getProviderIcon } from '@/utils/nodeHelpers';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';

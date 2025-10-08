@@ -21,12 +21,9 @@ import {
   getNodeIcon,
   getCategoryColor,
   getCategoryFromNodeType,
-  formatSubtype,
   getProviderIcon,
 } from "@/utils/nodeHelpers";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -49,7 +46,6 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
   const {
     selectedNode,
     updateNodeParameters,
-    updateNodeData,
     deleteNode,
     exportWorkflow,
     metadata,
@@ -65,7 +61,7 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
   const [countdown, setCountdown] = useState(5);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const autoSaveRef = useRef<() => Promise<void>>();
+  const autoSaveRef = useRef<(() => Promise<void>) | undefined>(undefined);
 
   // Auto-save function - always use the latest version
   autoSaveRef.current = async () => {
@@ -205,20 +201,6 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
     [selectedNode, updateNodeParameters]
   );
 
-  const handleLabelChange = useCallback(
-    (newLabel: string) => {
-      if (selectedNode) {
-        updateNodeData({
-          nodeId: selectedNode.id,
-          data: { label: newLabel },
-        });
-        setHasChanges(true);
-        setSaveStatus("idle"); // Reset status when user makes changes
-        setCountdown(5); // Reset countdown display
-      }
-    },
-    [selectedNode, updateNodeData]
-  );
 
   const handleDelete = useCallback(() => {
     if (selectedNode) {
@@ -281,11 +263,9 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
                 </div>
                 <div>
                   <h3 className="font-semibold text-sm">Node Details</h3>
-                  <p className="text-xs text-muted-foreground">
-                    <h4 className="text-sm font-semibold text-foreground">
-                      {selectedNode.data.label}
-                    </h4>
-                  </p>
+                  <div className="text-sm font-semibold text-foreground">
+                    {selectedNode.data.label}
+                  </div>
                 </div>
               </div>
               <Button

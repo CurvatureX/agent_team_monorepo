@@ -41,7 +41,7 @@ export const FormRenderer: React.FC<FormRendererProps> = ({
       name,
       value,
       onChange: (val: unknown) => handleFieldChange(name, val),
-      required: property.required || schema.required?.includes(name),
+      required: (property as any).required || schema.required?.includes(name),
       readonly: property.readonly || false,
       placeholder: property.placeholder,
       error: errors[name],

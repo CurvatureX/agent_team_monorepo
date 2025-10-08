@@ -18,7 +18,7 @@ import type {
   WorkflowEdge as EditorWorkflowEdge
 } from '@/types/workflow-editor';
 import type { NodeTemplate } from '@/types/node-template';
-import { NodeType, NodeSubtypeAliasToCanonical, NodeSubtypeCanonicalToAlias } from '@/types/workflow-enums';
+import { NodeSubtypeAliasToCanonical, NodeSubtypeCanonicalToAlias } from '@/types/workflow-enums';
 
 /**
  * Convert API workflow node to editor workflow node

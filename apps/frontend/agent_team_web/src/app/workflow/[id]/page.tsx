@@ -22,11 +22,9 @@ import {
   History,
 } from "lucide-react";
 import { useResizablePanel } from "@/hooks";
-import { Badge } from "@/components/ui/badge";
 import {
   WorkflowData,
   WorkflowConnection,
-  ConnectionType,
   WorkflowDataStructure,
 } from "@/types/workflow";
 import { useWorkflowActions } from "@/lib/api/hooks/useWorkflowsApi";
@@ -36,7 +34,6 @@ import { chatService, ChatSSEEvent } from "@/lib/api/chatService";
 import { useLayout } from "@/components/ui/layout-wrapper";
 import { usePageTitle } from "@/contexts/page-title-context";
 import { useAuth } from "@/contexts/auth-context";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface Message {
@@ -149,7 +146,6 @@ const WorkflowDetailPage = () => {
   const {
     logs: executionLogs,
     isLoading: isLoadingLogs,
-    refresh: refreshLogs,
   } = useRecentExecutionLogs(workflowId, 10);
   useLayout();
   const { setCustomTitle } = usePageTitle();
@@ -247,14 +243,14 @@ const WorkflowDetailPage = () => {
           // Priority: workflow.metadata > workflowData.metadata > workflow direct > workflowData direct
           const name =
             response?.workflow?.metadata?.name ||
-            workflowData?.metadata?.name ||
+            (workflowData as any)?.metadata?.name ||
             response?.workflow?.name ||
             response?.name ||
             workflowData?.name ||
             "Untitled Workflow";
           const description =
             response?.workflow?.metadata?.description ||
-            workflowData?.metadata?.description ||
+            (workflowData as any)?.metadata?.description ||
             response?.workflow?.description ||
             response?.description ||
             workflowData?.description ||

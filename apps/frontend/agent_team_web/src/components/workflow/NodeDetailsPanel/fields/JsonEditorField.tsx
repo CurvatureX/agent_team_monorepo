@@ -47,7 +47,7 @@ export const JsonEditorField: React.FC<JsonEditorFieldProps> = ({
       try {
         const formatted = JSON.stringify(value || {}, null, 2);
         setTextValue(formatted);
-      } catch (err) {
+      } catch {
         setTextValue('{}');
       }
     }
