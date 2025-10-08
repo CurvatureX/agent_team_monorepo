@@ -18,10 +18,10 @@ import {
   ChevronUp,
   FileText,
   Workflow,
-  Clock,
   Zap,
   PanelLeftClose,
   Shield,
+  UserPlus,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -82,9 +82,9 @@ export const SidebarNavigation = () => {
   const navigationGroups: NavigationGroup[] = [
     {
       items: [
-        { title: "Recent", href: "/", icon: Clock },
+        { title: "Recruit", href: "/", icon: UserPlus },
         { title: "Assistants", href: "/canvas", icon: Bot },
-        { title: "Authorizations", href: "/components", icon: Shield },
+        { title: "Authorizations", href: "/authorizations", icon: Shield },
         { title: "Mock", href: "/themes", icon: Workflow },
         { title: "Mock", href: "/bookmarks", icon: FileText },
       ],
@@ -215,7 +215,7 @@ export const SidebarNavigation = () => {
             "transition-all duration-300 whitespace-nowrap",
             showContent ? "opacity-100 scale-100" : "opacity-0 scale-95 w-0"
           )}>
-            Create new
+            New Recruit
           </span>
         </button>
       </div>

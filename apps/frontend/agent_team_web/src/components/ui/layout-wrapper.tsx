@@ -39,7 +39,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const getPageTitle = () => {
     if (pathname === "/") return "Recent";
     if (pathname === "/canvas") return "Assistants";
-    if (pathname === "/components") return "Authorizations";
+    if (pathname === "/authorizations") return "Authorizations";
     if (pathname === "/themes") return "Themes";
     if (pathname === "/bookmarks") return "Bookmarks";
     if (pathname === "/pricing") return "Pricing";
@@ -78,7 +78,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
             <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
               {isCollapsed && (
                 <button
-                  className="lg:flex hidden p-1 hover:bg-gray-100 dark:hover:bg-muted/50 rounded transition-colors bg-white dark:bg-background"
+                  className="lg:flex hidden p-1 hover:bg-gray-100 dark:hover:bg-muted/50 rounded transition-colors"
                   onClick={() => setIsCollapsed(false)}
                 >
                   <PanelLeft className="h-3.5 w-3.5" />

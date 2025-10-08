@@ -481,9 +481,10 @@ interface PromptInputBoxProps {
   placeholder?: string;
   className?: string;
   textareaClassName?: string;
+  showEnhancedBorder?: boolean;
 }
 export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref: React.Ref<HTMLDivElement>) => {
-  const { onSend = () => {}, isLoading = false, placeholder = "Type your message here...", className, textareaClassName } = props;
+  const { onSend = () => {}, isLoading = false, placeholder = "Type your message here...", className, textareaClassName, showEnhancedBorder = false } = props;
   const [input, setInput] = React.useState("");
   const [files, setFiles] = React.useState<File[]>([]);
   const [filePreviews, setFilePreviews] = React.useState<{ [key: string]: string }>({});
@@ -604,6 +605,7 @@ export const PromptInputBox = React.forwardRef((props: PromptInputBoxProps, ref:
         className={cn(
           "w-full transition-all duration-300 ease-in-out",
           isRecording && "border-red-500/70",
+          showEnhancedBorder && "border-2 border-border/80 bg-card/95 backdrop-blur-sm shadow-2xl ring-1 ring-black/5 dark:ring-white/5 hover:shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] hover:border-primary/30",
           className
         )}
         disabled={isLoading || isRecording}

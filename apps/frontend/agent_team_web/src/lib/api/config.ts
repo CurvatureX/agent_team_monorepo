@@ -23,4 +23,9 @@ export const API_PATHS = {
   EXECUTION: (id: string) => `${API_BASE}/app/executions/${id}`,
   EXECUTION_LOGS: (id: string) => `${API_BASE}/app/executions/${id}/logs`,
   RECENT_LOGS: `${API_BASE}/app/executions/recent_logs`,
+
+  // Integrations
+  INTEGRATIONS: `${API_BASE}/app/integrations`,
+  INTEGRATION_INSTALL_LINKS: `${API_BASE}/app/integrations/install-links`,
+  INTEGRATION_BY_PROVIDER: (provider: string) => `${API_BASE}/app/integrations/${provider}`,
 } as const;
