@@ -21,11 +21,12 @@ import { useWorkflow, useEditorUI, useNodeTemplates } from '@/store/hooks';
 import { CustomNode } from './CustomNode';
 import { CanvasControls } from './CanvasControls';
 import { ExecutionStatusPanel } from '../ExecutionStatusPanel';
+import { RunWorkflowDialog } from '../RunWorkflowDialog';
 import type { Workflow } from '@/types/workflow';
 import type { WorkflowNode, WorkflowEdge } from '@/types/workflow-editor';
 import type { NodeTemplate } from '@/types/node-template';
 import { isValidConnection } from '@/utils/nodeHelpers';
-import { useWorkflowExecution, useExecutionStatus, useExecutionCancel, type ExecutionStatus } from '@/lib/api/hooks/useExecutionApi';
+import { useWorkflowExecution, useExecutionStatus, useExecutionCancel, type ExecutionStatus, type ExecutionRequest } from '@/lib/api/hooks/useExecutionApi';
 import { useToast } from '@/hooks/use-toast';
 
 interface EnhancedWorkflowCanvasProps {
@@ -61,6 +62,7 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
   const { executeWorkflow, isExecuting, executionId } = useWorkflowExecution();
   const { cancelExecution } = useExecutionCancel();
   const [executionStatus, setExecutionStatus] = useState<'idle' | 'running' | 'completed' | 'failed'>('idle');
+  const [isRunDialogOpen, setIsRunDialogOpen] = useState(false);
 
   const {
     nodes,
@@ -250,8 +252,8 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
     }
   }, [onSave]);
 
-  // Handle workflow execution
-  const handleExecute = useCallback(async () => {
+  // Handle workflow execution - opens the run dialog
+  const handleExecute = useCallback(() => {
     if (!workflow?.id) {
       toast({
         title: "Cannot Execute",
@@ -261,11 +263,18 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
       return;
     }
 
+    setIsRunDialogOpen(true);
+  }, [workflow, toast]);
+
+  // Handle actual workflow execution with parameters
+  const handleRunWorkflow = useCallback(async (request: ExecutionRequest) => {
+    if (!workflow?.id) return;
+
     try {
       // Clear previous execution status from nodes
       clearNodeExecutionStatus();
       setExecutionStatus('running');
-      const execId = await executeWorkflow(workflow.id, {});
+      const execId = await executeWorkflow(workflow.id, request);
 
       toast({
         title: "Workflow Execution Started",
@@ -533,6 +542,15 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
           }}
         />
       )}
+
+      {/* Run Workflow Dialog */}
+      <RunWorkflowDialog
+        open={isRunDialogOpen}
+        onOpenChange={setIsRunDialogOpen}
+        workflow={workflow}
+        onRun={handleRunWorkflow}
+        isExecuting={isExecuting}
+      />
     </div>
   );
 };

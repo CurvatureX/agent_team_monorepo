@@ -66,6 +66,8 @@ export interface NodeTemplate {
   default_parameters: Record<string, unknown>;
   required_parameters: string[] | null;
   parameter_schema: ParameterSchema;
+  input_params: ParameterSchema | Record<string, unknown>;  // Input parameters schema
+  output_params: ParameterSchema | Record<string, unknown>; // Output parameters schema
 }
 
 export interface NodeTemplatesData {

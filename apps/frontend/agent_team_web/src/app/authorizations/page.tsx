@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { Suspense } from "react";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import {
@@ -34,7 +34,8 @@ const providerIcons: Record<string, string> = {
   google_calendar: "/icons/google-calendar.svg",
 };
 
-function AuthorizationsPage() {
+// Separate component that uses useSearchParams
+function AuthorizationsContent() {
   const { session, loading: authLoading } = useAuth();
   const { integrations, isLoading, isError, error, mutate } = useIntegrationsApi();
   const searchParams = useSearchParams();
@@ -378,6 +379,22 @@ function AuthorizationsPage() {
 
       </div>
     </div>
+  );
+}
+
+// Main page component with Suspense boundary
+function AuthorizationsPage() {
+  return (
+    <Suspense fallback={
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <RefreshCw className="w-8 h-8 mx-auto mb-4 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    }>
+      <AuthorizationsContent />
+    </Suspense>
   );
 }
 

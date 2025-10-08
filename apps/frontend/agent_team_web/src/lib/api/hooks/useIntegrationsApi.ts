@@ -9,8 +9,8 @@ interface Connection {
   is_active?: boolean;
   created_at?: string;
   updated_at?: string;
-  credential_data?: Record<string, any>;
-  configuration?: Record<string, any>;
+  credential_data?: Record<string, unknown>;
+  configuration?: Record<string, unknown>;
 }
 
 interface Integration {

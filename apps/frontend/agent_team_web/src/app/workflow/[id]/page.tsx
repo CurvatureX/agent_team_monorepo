@@ -132,8 +132,8 @@ const WorkflowDetailPage = () => {
   const [latestExecutionTime, setLatestExecutionTime] = useState<string | null>(
     null
   );
-  const [isChatExpanded, setIsChatExpanded] = useState(false);
-  const [isExecutionLogsExpanded, setIsExecutionLogsExpanded] = useState(true);
+  const [isChatExpanded, setIsChatExpanded] = useState(true);
+  const [isExecutionLogsExpanded, setIsExecutionLogsExpanded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -223,9 +223,15 @@ const WorkflowDetailPage = () => {
 
         // Ensure workflowData has required properties
         if (workflowData) {
+          // Ensure id is included in workflowData
+          if (!workflowData.id) {
+            workflowData.id = response?.workflow?.id || workflowId;
+          }
+
           // Don't manually convert connections - let the workflow editor's converter handle it
           // The apiWorkflowToEditor converter will properly map connections to React Flow edges
           console.log("📦 Workflow data loaded:", {
+            id: workflowData.id,
             nodes: workflowData.nodes?.length,
             connections: Array.isArray(workflowData.connections)
               ? workflowData.connections.length
