@@ -84,7 +84,7 @@ export const SidebarNavigation = () => {
       items: [
         { title: "Recruit", href: "/", icon: UserPlus },
         { title: "Assistants", href: "/canvas", icon: Bot },
-        { title: "Authorizations", href: "/components", icon: Shield },
+        { title: "Authorizations", href: "/authorizations", icon: Shield },
         { title: "Mock", href: "/themes", icon: Workflow },
         { title: "Mock", href: "/bookmarks", icon: FileText },
       ],

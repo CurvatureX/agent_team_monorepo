@@ -39,7 +39,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const getPageTitle = () => {
     if (pathname === "/") return "Recent";
     if (pathname === "/canvas") return "Assistants";
-    if (pathname === "/components") return "Authorizations";
+    if (pathname === "/authorizations") return "Authorizations";
     if (pathname === "/themes") return "Themes";
     if (pathname === "/bookmarks") return "Bookmarks";
     if (pathname === "/pricing") return "Pricing";

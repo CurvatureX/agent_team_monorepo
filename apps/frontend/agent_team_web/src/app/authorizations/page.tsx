@@ -2,6 +2,7 @@
 
 import React from "react";
 import Image from "next/image";
+import { useSearchParams } from "next/navigation";
 import {
   Shield,
   CheckCircle,
@@ -13,6 +14,7 @@ import {
 } from "lucide-react";
 import { useIntegrationsApi } from "@/lib/api/hooks/useIntegrationsApi";
 import { useAuth } from "@/contexts/auth-context";
+import { useToast } from "@/hooks/use-toast";
 import {
   Card,
   CardContent,
@@ -35,6 +37,8 @@ const providerIcons: Record<string, string> = {
 function AuthorizationsPage() {
   const { session, loading: authLoading } = useAuth();
   const { integrations, isLoading, isError, error, mutate } = useIntegrationsApi();
+  const searchParams = useSearchParams();
+  const { toast } = useToast();
 
   const handleRefresh = () => {
     mutate();
@@ -43,6 +47,40 @@ function AuthorizationsPage() {
   const handleConnect = (installUrl: string) => {
     window.location.href = installUrl;
   };
+
+  React.useEffect(() => {
+    const provider = searchParams.get("provider");
+    const success = searchParams.get("success");
+
+    if (provider && success === "true") {
+      toast({
+        title: "Connection Successful",
+        description: `${provider.charAt(0).toUpperCase() + provider.slice(1)} has been connected successfully.`,
+        variant: "default",
+      });
+      mutate();
+      window.history.replaceState({}, "", "/authorizations");
+    } else if (provider && success === "false") {
+      const errorMsg = searchParams.get("error") || "Unknown error";
+      toast({
+        title: "Connection Failed",
+        description: `Failed to connect ${provider}: ${errorMsg}`,
+        variant: "destructive",
+      });
+      window.history.replaceState({}, "", "/authorizations");
+    }
+  }, [searchParams, toast, mutate]);
+
+  React.useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        mutate();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [mutate]);
 
   // Add icon_url to integrations
   const allProviders = React.useMemo(() => {
