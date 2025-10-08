@@ -101,9 +101,55 @@ class NotionExternalAction(BaseExternalAction):
             )
 
         # Validate configuration based on operation_type
-        operation_type = context.node.configurations.get("operation_type", "database")
-        page_id = context.node.configurations.get("page_id", "")
-        database_id = context.node.configurations.get("database_id", "")
+        configuration = context.node.configurations or {}
+        operation_type = configuration.get("operation_type", "database")
+
+        def _extract_database_id(config: Dict[str, Any]) -> str:
+            direct = config.get("database_id")
+            if direct:
+                return direct
+
+            database_cfg = config.get("database_config") or {}
+            for key in ("database_id", "id", "target_id"):
+                value = database_cfg.get(key)
+                if value:
+                    return value
+
+            parent_cfg = database_cfg.get("parent") or {}
+            for key in ("database_id", "page_id", "id"):
+                value = parent_cfg.get(key)
+                if value:
+                    return value
+
+            return ""
+
+        def _extract_page_id(config: Dict[str, Any]) -> str:
+            direct = config.get("page_id")
+            if direct:
+                return direct
+
+            page_cfg = config.get("page_config") or {}
+            for key in ("page_id", "id", "target_id"):
+                value = page_cfg.get(key)
+                if value:
+                    return value
+
+            parent_cfg = page_cfg.get("parent") or {}
+            for key in ("page_id", "database_id", "id"):
+                value = parent_cfg.get(key)
+                if value:
+                    return value
+
+            return ""
+
+        page_id = _extract_page_id(configuration)
+        database_id = _extract_database_id(configuration)
+
+        # Cache resolved IDs so downstream helpers (_build_ai_context/_ensure_parent) can reuse them
+        configuration.setdefault("_resolved_ids", {})
+        configuration["_resolved_ids"].update(
+            {"page_id": page_id, "database_id": database_id}
+        )
 
         if operation_type == "page" and not page_id:
             self.log_execution(
@@ -161,6 +207,7 @@ class NotionExternalAction(BaseExternalAction):
             "discovered_resources": {},
             "schemas_cache": {},  # Cache database schemas
             "completed": False,
+            "failures": [],
         }
 
         # Get Notion OAuth token once
@@ -256,6 +303,13 @@ class NotionExternalAction(BaseExternalAction):
                     round_telemetry.api_result = {"error": str(e)}
 
                     self.log_execution(context, f"❌ {action_type} failed: {str(e)}", "ERROR")
+                    execution_state["failures"].append(
+                        {
+                            "round": round_num,
+                            "action_type": action_type,
+                            "error": str(e),
+                        }
+                    )
                     # Continue to next round despite error
 
                 # Accumulate discovered resources
@@ -280,7 +334,14 @@ class NotionExternalAction(BaseExternalAction):
                 # Check if AI says we're done (after executing the action)
                 if ai_decision.get("completed", False):
                     execution_state["completed"] = True
-                    self.log_execution(context, "✅ AI marked task as completed")
+                    if round_telemetry.api_success:
+                        self.log_execution(context, "✅ AI marked task as completed")
+                    else:
+                        self.log_execution(
+                            context,
+                            "⚠️ AI marked task completed but the last action failed",
+                            "WARNING",
+                        )
                     break
 
                 # Update context for next round
@@ -298,10 +359,14 @@ class NotionExternalAction(BaseExternalAction):
             )
 
         # Return result matching node spec output_params
+        operation_success = (
+            execution_state["completed"] and not execution_state["failures"]
+        )
+
         return NodeExecutionResult(
             status=ExecutionStatus.SUCCESS,
             output_data={
-                "success": execution_state["completed"],
+                "success": operation_success,
                 "resource_id": "",  # No single resource for multi-round execution
                 "resource_url": "",
                 "error_message": "",
@@ -314,6 +379,7 @@ class NotionExternalAction(BaseExternalAction):
                     "hit_round_limit": len(execution_state["rounds"]) == self.MAX_ROUNDS
                     and not execution_state["completed"],
                     "total_duration_ms": total_duration_ms,
+                    "failures": execution_state["failures"],
                 },
                 "discovered_resources": execution_state["discovered_resources"],
             },
@@ -329,11 +395,12 @@ class NotionExternalAction(BaseExternalAction):
         operation_type = context.node.configurations.get("operation_type", "database")
         page_id = context.node.configurations.get("page_id", "")
         database_id = context.node.configurations.get("database_id", "")
+        resolved_ids = context.node.configurations.get("_resolved_ids", {})
 
         ai_context["configuration"] = {
             "operation_type": operation_type,
-            "page_id": page_id,
-            "database_id": database_id,
+            "page_id": resolved_ids.get("page_id") or page_id,
+            "database_id": resolved_ids.get("database_id") or database_id,
         }
 
         return ai_context
@@ -588,7 +655,12 @@ Be efficient - prefer completing in fewer rounds.
             properties = parameters.get("properties", {})
             children = parameters.get("children", [])
 
-            page = await client.create_page(parent=parent, properties=properties, children=children)
+            resolved_parent = self._ensure_parent(parent, context)
+            parameters["parent"] = resolved_parent
+
+            page = await client.create_page(
+                parent=resolved_parent, properties=properties, children=children
+            )
 
             return {
                 "notion_response": asdict(page),
@@ -739,6 +811,52 @@ Be efficient - prefer completing in fewer rounds.
                     "total_failed": len(failed_blocks),
                 },
             }
+
+        raise ValueError(f"Unsupported Notion action_type: {action_type}")
+
+    def _ensure_parent(self, parent: Dict[str, Any], context: NodeExecutionContext) -> Dict[str, Any]:
+        """Ensure parent payload contains database_id/page_id derived from workflow configuration."""
+
+        parent = parent or {}
+        if parent.get("database_id") or parent.get("page_id") or parent.get("workspace"):
+            return parent
+
+        config = context.node.configurations or {}
+        resolved_ids = config.get("_resolved_ids") or {}
+
+        def _sanitize(notion_id: Optional[str]) -> Optional[str]:
+            if not notion_id or not isinstance(notion_id, str):
+                return None
+            return notion_id.replace("-", "")
+
+        database_id = _sanitize(resolved_ids.get("database_id") or config.get("database_id"))
+        page_id = _sanitize(resolved_ids.get("page_id") or config.get("page_id"))
+
+        if database_id:
+            return {"database_id": database_id}
+        if page_id:
+            return {"page_id": page_id}
+
+        page_parent = ((config.get("page_config") or {}).get("parent") or {}).copy()
+        database_parent = ((config.get("database_config") or {}).get("parent") or {}).copy()
+
+        for candidate in (page_parent, database_parent):
+            if not candidate:
+                continue
+            db_id = _sanitize(candidate.get("database_id"))
+            pg_id = _sanitize(candidate.get("page_id"))
+            if db_id or pg_id:
+                payload: Dict[str, Any] = {}
+                if db_id:
+                    payload["database_id"] = db_id
+                if pg_id:
+                    payload["page_id"] = pg_id
+                if candidate.get("type"):
+                    payload["type"] = candidate.get("type")
+                return payload
+
+        # No hint available; return empty dict so upstream error surfaces
+        return parent
 
         elif action_type_normalized == "query_database":
             database_id = parameters.get("database_id", "").replace("-", "")
