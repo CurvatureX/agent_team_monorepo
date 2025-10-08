@@ -232,4 +232,4 @@ export const exampleWorkflow = {
     "example",
     "workflow"
   ]
-} as any as Workflow;
+} as unknown as Workflow;

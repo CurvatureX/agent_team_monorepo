@@ -145,7 +145,8 @@ class OpenAIChatGPTRunner(NodeRunner):
             )
 
         model = configs.get("model", "gpt-5-nano")
-        max_tokens = int(configs.get("max_tokens", 8192))
+        max_tokens_config = configs.get("max_tokens")
+        max_completion_config = configs.get("max_completion_tokens")
         temperature = float(configs.get("temperature", 0.7))
         top_p = float(configs.get("top_p", 1.0))
         frequency_penalty = float(configs.get("frequency_penalty", 0.0))
@@ -167,15 +168,69 @@ class OpenAIChatGPTRunner(NodeRunner):
         messages.append({"role": "user", "content": user_prompt})
 
         # Build request body
+        def _model_requires_completion_tokens(model_name: str) -> bool:
+            normalized = (model_name or "").lower()
+            return normalized.startswith(("gpt-5", "gpt-4.1", "gpt-4o"))
+
+        if _model_requires_completion_tokens(model):
+            if temperature != 1.0:
+                logger.warning(
+                    "⚠️ OpenAI model %s only supports default temperature=1.0; overriding %.3f",
+                    model,
+                    temperature,
+                )
+                temperature = 1.0
+            if top_p != 1.0:
+                logger.warning(
+                    "⚠️ OpenAI model %s only supports default top_p=1.0; overriding %.3f",
+                    model,
+                    top_p,
+                )
+                top_p = 1.0
+            if frequency_penalty != 0.0:
+                logger.warning(
+                    "⚠️ OpenAI model %s only supports default frequency_penalty=0.0; overriding %.3f",
+                    model,
+                    frequency_penalty,
+                )
+                frequency_penalty = 0.0
+            if presence_penalty != 0.0:
+                logger.warning(
+                    "⚠️ OpenAI model %s only supports default presence_penalty=0.0; overriding %.3f",
+                    model,
+                    presence_penalty,
+                )
+                presence_penalty = 0.0
+
         body = {
             "model": model,
             "messages": messages,
-            "max_tokens": max_tokens,
             "temperature": temperature,
             "top_p": top_p,
             "frequency_penalty": frequency_penalty,
             "presence_penalty": presence_penalty,
         }
+
+        if _model_requires_completion_tokens(model):
+            max_completion_tokens = (
+                int(max_completion_config)
+                if max_completion_config is not None
+                else int(max_tokens_config) if max_tokens_config is not None
+                else 8192
+            )
+            body["max_completion_tokens"] = max_completion_tokens
+            effective_max_tokens = max_completion_tokens
+            max_param_used = "max_completion_tokens"
+        else:
+            max_tokens = (
+                int(max_tokens_config)
+                if max_tokens_config is not None
+                else int(max_completion_config) if max_completion_config is not None
+                else 8192
+            )
+            body["max_tokens"] = max_tokens
+            effective_max_tokens = max_tokens
+            max_param_used = "max_tokens"
 
         # Handle response format
         if response_format == "json":
@@ -201,7 +256,9 @@ class OpenAIChatGPTRunner(NodeRunner):
             "Content-Type": "application/json",
         }
 
-        logger.debug(f"🔍 OpenAI API request: model={model}, max_tokens={max_tokens}")
+        logger.debug(
+            f"🔍 OpenAI API request: model={model}, {max_param_used}={effective_max_tokens}"
+        )
 
         try:
             with httpx.Client(timeout=timeout_seconds) as client:

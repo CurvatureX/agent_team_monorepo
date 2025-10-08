@@ -85,51 +85,61 @@ export function editorNodeToApiNode(editorNode: EditorWorkflowNode): ApiWorkflow
  * Convert API workflow edge to editor workflow edge
  * Maps backend Connection format to React Flow Edge format
  */
-export function apiEdgeToEditorEdge(apiEdge: any): EditorWorkflowEdge {
+export function apiEdgeToEditorEdge(apiEdge: ApiWorkflowEdge): EditorWorkflowEdge {
+  // Type assertion for flexible edge format (handles both snake_case and camelCase)
+  const edge = apiEdge as ApiWorkflowEdge & {
+    fromNode?: string;
+    toNode?: string;
+    source?: string;
+    target?: string;
+    outputKey?: string;
+    conversionFunction?: string | null;
+  };
+
   console.log('🔄 Converting edge:', {
     input: apiEdge,
     type: typeof apiEdge,
     keys: Object.keys(apiEdge),
-    from_node: apiEdge.from_node,
-    to_node: apiEdge.to_node,
+    from_node: edge.from_node,
+    to_node: edge.to_node,
   });
 
   // Extract fields with fallbacks for different possible field names
-  const fromNode = apiEdge.from_node || apiEdge.fromNode || apiEdge.source;
-  const toNode = apiEdge.to_node || apiEdge.toNode || apiEdge.target;
-  const outputKey = apiEdge.output_key || apiEdge.outputKey || 'result';
-  const conversionFunction = apiEdge.conversion_function || apiEdge.conversionFunction || null;
+  const fromNode = edge.from_node || edge.fromNode || edge.source;
+  const toNode = edge.to_node || edge.toNode || edge.target;
+  const outputKey = edge.output_key || edge.outputKey || 'result';
+  const conversionFunction = edge.conversion_function || edge.conversionFunction || null;
 
   if (!fromNode || !toNode) {
     console.error('❌ Missing from_node or to_node in edge:', apiEdge);
   }
 
-  const edge = {
-    id: apiEdge.id,
+  const edgeResult: EditorWorkflowEdge = {
+    id: edge.id || `${fromNode}-${toNode}`,
     // React Flow format (REQUIRED for rendering)
-    source: fromNode,
-    target: toNode,
+    source: fromNode || '',
+    target: toNode || '',
     type: 'default',
     sourceHandle: null,
     targetHandle: null,
     // Store backend Connection fields in data for round-trip conversion
     data: {
-      from_node: fromNode,
-      to_node: toNode,
+      from_node: fromNode || '',
+      to_node: toNode || '',
       output_key: outputKey,
       conversion_function: conversionFunction,
     },
   };
 
   console.log('✅ Converted edge result:', {
-    id: edge.id,
-    source: edge.source,
-    target: edge.target,
-    hasSource: !!edge.source,
-    hasTarget: !!edge.target,
+    id: edgeResult.id,
+    source: edgeResult.source,
+    target: edgeResult.target,
+    hasSource: !!edgeResult.source,
+    hasTarget: !!edgeResult.target,
   });
 
-  return edge;
+  return edgeResult;
 }
 
 /**
@@ -233,7 +243,7 @@ export function apiWorkflowToEditor(
         hasToNode: 'to_node' in conn,
         keys: Object.keys(conn),
       });
-      return apiEdgeToEditorEdge(conn as any);
+      return apiEdgeToEditorEdge(conn);
     });
 
     edges.push(...convertedEdges);
@@ -277,7 +287,8 @@ export function apiWorkflowToEditor(
   });
 
   // Extract metadata - check both root level and nested metadata object
-  const workflowMetadata = (apiWorkflow as any).metadata || {};
+  const workflowWithMetadata = apiWorkflow as typeof apiWorkflow & { metadata?: { id?: string; name?: string; description?: string; version?: number | string; created_at?: string; updated_at?: string; tags?: string[] } };
+  const workflowMetadata = workflowWithMetadata.metadata || {};
   const metadata = {
     id: apiWorkflow.id || workflowMetadata.id || '',
     name: apiWorkflow.name || workflowMetadata.name || 'Untitled Workflow',

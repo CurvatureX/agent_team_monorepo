@@ -68,20 +68,22 @@ const WorkflowEditorContent: React.FC<WorkflowEditorProps> = ({
       };
 
       // Merge with initial workflow to preserve all fields (ID, settings, etc.)
+      const currentStateWithEdges = currentState as typeof currentState & { edges?: unknown[] };
       const updatedWorkflow: Workflow = {
         ...initialWorkflow,
         ...metadata,
         nodes: currentState.nodes,
-        edges: (currentState as any).edges || [],
+        edges: currentStateWithEdges.edges || [],
         // Ensure edges is always an array
-        ...((currentState as any).edges && (currentState as any).edges.length > 0 ? { edges: (currentState as any).edges } : {}),
+        ...(currentStateWithEdges.edges && currentStateWithEdges.edges.length > 0 ? { edges: currentStateWithEdges.edges } : {}),
       } as unknown as Workflow;
 
+      const updatedWorkflowWithEdges = updatedWorkflow as typeof updatedWorkflow & { edges?: unknown[] };
       console.log('Updated workflow with edges:', {
         id: updatedWorkflow.id,
         nodesCount: updatedWorkflow.nodes?.length,
-        edgesCount: (updatedWorkflow as any).edges?.length,
-        edges: (updatedWorkflow as any).edges,
+        edgesCount: updatedWorkflowWithEdges.edges?.length,
+        edges: updatedWorkflowWithEdges.edges,
       });
 
       // Update parent component's state
