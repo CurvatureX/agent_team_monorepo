@@ -420,13 +420,19 @@ async def _validate_github_token(token_record: Dict[str, Any]) -> bool:
             return False
 
         # Use GitHub App credentials to validate installation
-        if not settings.GITHUB_APP_ID or not settings.GITHUB_PRIVATE_KEY:
-            logger.warning("🔐 GitHub App credentials not configured")
+        # Use getattr to safely check if credentials are configured
+        github_app_id = getattr(settings, "GITHUB_APP_ID", None)
+        github_private_key = getattr(settings, "GITHUB_PRIVATE_KEY", None)
+
+        if not github_app_id or not github_private_key:
+            logger.info(
+                "🔐 GitHub App credentials not configured in API Gateway - skipping validation"
+            )
             return True  # Skip validation if not configured
 
         async with GitHubSDK(
-            app_id=settings.GITHUB_APP_ID,
-            private_key=settings.GITHUB_PRIVATE_KEY,
+            app_id=github_app_id,
+            private_key=github_private_key,
         ) as github:
             # Try to get installation token
             await github.get_installation_token(int(installation_id))
