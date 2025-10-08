@@ -363,28 +363,24 @@ class ExecutionEngine:
             inputs["_ctx"] = execution_context
 
             # Log node execution start with detailed information
-            input_summary = {k: v for k, v in inputs.items() if not k.startswith("_")}
+            clean_inputs = {k: v for k, v in inputs.items() if not k.startswith("_")}
 
-            # Log to both execution log and console
+            # Backend developer logs (keep verbose with emoji for debugging)
             logger.info("=" * 80)
             logger.info(f"🚀 Executing Node: {node.name}")
             logger.info(f"   Type: {node.type}, Subtype: {node.subtype}")
             logger.info(f"   Node ID: {current_node_id}")
-            logger.info(f"📥 Input Parameters: {input_summary}")
+            logger.info(f"📥 Input Parameters: {clean_inputs}")
             logger.info("=" * 80)
 
-            self._log.log(
-                workflow_execution,
-                level=LogLevel.INFO,
-                message=f"🚀 Executing Node: {node.name} (type={node.type}, subtype={node.subtype})",
-                node_id=current_node_id,
-            )
-            self._log.log(
-                workflow_execution,
-                level=LogLevel.INFO,
-                message=f"📥 Input Parameters: {input_summary}",
-                node_id=current_node_id,
-            )
+            # User-facing logs (concise, no emoji, structured data)
+            if self._user_friendly_logger:
+                self._user_friendly_logger.log_node_start(
+                    execution_id=workflow_execution.execution_id,
+                    node=node,
+                    input_summary=clean_inputs,  # Pass clean dict
+                )
+
             self._events.node_started(workflow_execution, current_node_id, node_execution)
 
             # Simple retry loop
@@ -728,6 +724,25 @@ class ExecutionEngine:
                         setattr(node_execution.execution_details, k, v)
             except Exception:
                 pass
+            # Track AI tool usage for user-facing logs
+            try:
+                if node.type == "AI_AGENT" and isinstance(outputs, dict):
+                    details = outputs.get("_details", {})
+                    tool_calls = details.get("tool_calls", [])
+
+                    if tool_calls and self._user_friendly_logger:
+                        for tool_call in tool_calls:
+                            self._user_friendly_logger.log_tool_usage(
+                                execution_id=workflow_execution.execution_id,
+                                node_id=current_node_id,
+                                node_name=node.name,
+                                tool_name=tool_call.get("name", "unknown"),
+                                tool_input=tool_call.get("input"),
+                                tool_output=tool_call.get("output"),
+                            )
+            except Exception as e:
+                logger.debug(f"Failed to log tool usage: {e}")
+
             # Token usage aggregation
             try:
                 token_info = outputs.get("_tokens") if isinstance(outputs, dict) else None
@@ -760,27 +775,25 @@ class ExecutionEngine:
             node_execution.execution_details.metrics["runs"] = run_counts[current_node_id]
 
             # Log node execution completion with output details
-            output_summary = {k: v for k, v in shaped_outputs.items() if not k.startswith("_")}
+            clean_outputs = {k: v for k, v in shaped_outputs.items() if not k.startswith("_")}
 
-            # Log to both execution log and console
+            # Backend developer logs (keep verbose with emoji for debugging)
             logger.info("=" * 80)
             logger.info(f"✅ Node Completed: {node.name}")
             logger.info(f"   Node ID: {current_node_id}")
-            logger.info(f"📤 Output Parameters: {output_summary}")
+            logger.info(f"📤 Output Parameters: {clean_outputs}")
             logger.info("=" * 80)
 
-            self._log.log(
-                workflow_execution,
-                level=LogLevel.INFO,
-                message=f"✅ Node Completed: {node.name}",
-                node_id=current_node_id,
-            )
-            self._log.log(
-                workflow_execution,
-                level=LogLevel.INFO,
-                message=f"📤 Output Parameters: {output_summary}",
-                node_id=current_node_id,
-            )
+            # User-facing logs (concise, no emoji, structured data)
+            if self._user_friendly_logger:
+                self._user_friendly_logger.log_node_complete(
+                    execution_id=workflow_execution.execution_id,
+                    node_id=current_node_id,
+                    success=True,
+                    duration_ms=node_execution.duration_ms,
+                    output_summary=clean_outputs,  # Pass clean dict
+                )
+
             self._events.node_output_update(workflow_execution, current_node_id, node_execution)
             self._events.node_completed(workflow_execution, current_node_id, node_execution)
             self._persist_execution(workflow_execution)
@@ -1373,9 +1386,7 @@ class ExecutionEngine:
                         "resume_trigger": None,
                     }
                     result = (
-                        client.table("workflow_execution_pauses")
-                        .insert(fallback_record)
-                        .execute()
+                        client.table("workflow_execution_pauses").insert(fallback_record).execute()
                     )
                     if result.data:
                         return result.data[0]["id"]

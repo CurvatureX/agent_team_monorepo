@@ -472,20 +472,26 @@ async def get_workflow_execution_history(
 
 @router.get("/executions/{execution_id}/logs/stream")
 async def stream_execution_logs(
-    execution_id: str, follow: bool = False, sse_deps: SSEDeps = Depends()
+    execution_id: str, follow: bool = True, sse_deps: SSEDeps = Depends()
 ) -> StreamingResponse:
     """
     Stream execution logs in real-time via Server-Sent Events (SSE)
     通过SSE实时流式传输执行日志
 
+    - If execution is RUNNING: streams logs in real-time via database polling every 1 second
+    - If execution is FINISHED: returns all logs from database
+    - Auto-detects execution status
+
     Args:
         execution_id: The execution ID to stream logs for
-        follow: Whether to follow live logs (default: False - returns existing logs and closes)
+        follow: Whether to follow live logs (default: True for real-time updates)
     """
 
     async def log_stream():
         """Generate SSE events for execution logs"""
         try:
+            import time
+
             # Use SSEDeps for authentication (supports both header and URL param for SSE)
             token = sse_deps.access_token
             user = sse_deps.current_user
@@ -495,124 +501,174 @@ async def stream_execution_logs(
             # Get HTTP client
             http_client = await get_workflow_engine_client()
 
-            # First, get existing logs from database
+            # Check execution status to determine streaming mode
             try:
-                existing_logs = await http_client.get_execution_logs(execution_id, token)
+                execution_status_data = await http_client.get_execution_status(execution_id)
+                execution_status = execution_status_data.get("status", "UNKNOWN")
+            except Exception:
+                execution_status = "UNKNOWN"
 
-                if existing_logs:
-                    # Send existing logs first
-                    for log_entry in existing_logs:
-                        log_event = create_sse_event(
-                            event_type=SSEEventType.LOG,
-                            data={
-                                "execution_id": execution_id,
-                                "timestamp": log_entry.get("timestamp", ""),
-                                "level": log_entry.get("level", "info"),
-                                "message": log_entry.get("user_friendly_message")
-                                or log_entry.get("message", ""),
-                                "node_id": log_entry.get("node_id"),
-                                "event_type": log_entry.get("event_type", "log"),
-                                "display_priority": log_entry.get("display_priority", 5),
-                                "is_milestone": log_entry.get("is_milestone", False),
-                                "step_number": log_entry.get("data", {}).get("step_number"),
-                                "total_steps": log_entry.get("data", {}).get("total_steps"),
-                            },
-                            session_id=execution_id,
-                            is_final=False,
-                        )
-                        yield format_sse_event(log_event.model_dump())
+            is_running = execution_status in ["NEW", "RUNNING", "WAITING_FOR_HUMAN", "PAUSED"]
 
-                        # Small delay to prevent overwhelming the client
-                        await asyncio.sleep(0.01)
+            logger.info(
+                f"📊 Execution {execution_id} status: {execution_status} (is_running: {is_running})"
+            )
 
-                # Send initial completion event if not following
-                if not follow:
-                    completion_event = create_sse_event(
-                        event_type=SSEEventType.COMPLETE,
-                        data={
-                            "execution_id": execution_id,
-                            "message": "Historical logs retrieved",
-                            "total_logs": len(existing_logs) if existing_logs else 0,
-                        },
+            # Track sent log IDs to avoid duplicates
+            sent_log_ids = set()
+
+            # Helper to format log entry
+            def format_log_entry(log_entry: Dict[str, Any]) -> Dict[str, Any]:
+                return {
+                    "id": log_entry.get("id"),
+                    "timestamp": log_entry.get("timestamp") or log_entry.get("created_at"),
+                    "node_name": log_entry.get("node_name"),
+                    "event_type": log_entry.get("event_type"),
+                    "message": log_entry.get("user_friendly_message") or log_entry.get("message"),
+                    "level": log_entry.get("level"),
+                    "data": log_entry.get("data", {}),
+                }
+
+            # Get initial logs from database
+            try:
+                initial_logs_response = await http_client.get_execution_logs(
+                    execution_id, token, {"limit": 1000, "offset": 0}
+                )
+                existing_logs = initial_logs_response.get("logs", [])
+
+                # Send initial logs
+                for log_entry in existing_logs:
+                    log_id = log_entry.get("id")
+                    if log_id:
+                        sent_log_ids.add(log_id)
+
+                    log_event = create_sse_event(
+                        event_type=SSEEventType.LOG,
+                        data=format_log_entry(log_entry),
                         session_id=execution_id,
-                        is_final=True,
+                        is_final=False,
                     )
-                    yield format_sse_event(completion_event.model_dump())
-                    return
+                    yield format_sse_event(log_event.model_dump())
+                    await asyncio.sleep(0.01)  # Small delay
+
+                logger.info(
+                    f"✅ Sent {len(existing_logs)} initial logs for execution {execution_id}"
+                )
 
             except Exception as e:
-                logger.error(f"❌ Error retrieving existing logs for {execution_id}: {e}")
+                logger.warning(f"⚠️ Error retrieving initial logs for {execution_id}: {e}")
+                # Continue anyway, will try to poll
 
-                # Send error event
-                error_event = create_sse_event(
-                    event_type=SSEEventType.ERROR,
+            # Real-time streaming mode: poll database while execution is running
+            if is_running and follow:
+                logger.info(f"📡 Real-time streaming mode for {execution_id}")
+
+                poll_interval = 1.0  # 1 second
+                last_poll_time = time.time()
+                max_poll_duration = 3600  # 1 hour maximum
+                start_time = time.time()
+
+                while True:
+                    # Check if we've been polling too long
+                    if time.time() - start_time > max_poll_duration:
+                        logger.warning(f"⏱️ Max polling duration reached for {execution_id}")
+                        break
+
+                    current_time = time.time()
+
+                    # Poll database every second for new logs
+                    if current_time - last_poll_time >= poll_interval:
+                        try:
+                            # Get latest logs
+                            new_logs_response = await http_client.get_execution_logs(
+                                execution_id, token, {"limit": 100, "offset": 0}
+                            )
+                            new_logs = new_logs_response.get("logs", [])
+
+                            # Send new logs that haven't been sent yet
+                            new_count = 0
+                            for log_entry in new_logs:
+                                log_id = log_entry.get("id")
+                                if log_id and log_id not in sent_log_ids:
+                                    sent_log_ids.add(log_id)
+                                    new_count += 1
+
+                                    log_event = create_sse_event(
+                                        event_type=SSEEventType.LOG,
+                                        data={
+                                            **format_log_entry(log_entry),
+                                            "is_realtime": True,
+                                        },
+                                        session_id=execution_id,
+                                        is_final=False,
+                                    )
+                                    yield format_sse_event(log_event.model_dump())
+
+                            if new_count > 0:
+                                logger.debug(f"📨 Sent {new_count} new logs for {execution_id}")
+
+                            # Check if execution finished
+                            status_check = await http_client.get_execution_status(execution_id)
+                            current_status = status_check.get("status", "UNKNOWN")
+
+                            if current_status not in [
+                                "NEW",
+                                "RUNNING",
+                                "WAITING_FOR_HUMAN",
+                                "PAUSED",
+                            ]:
+                                logger.info(
+                                    f"✅ Execution {execution_id} finished with status: {current_status}"
+                                )
+
+                                # Send completion event
+                                completion_event = create_sse_event(
+                                    event_type=SSEEventType.COMPLETE,
+                                    data={
+                                        "execution_id": execution_id,
+                                        "status": current_status,
+                                        "message": "Execution completed",
+                                        "total_logs": len(sent_log_ids),
+                                    },
+                                    session_id=execution_id,
+                                    is_final=True,
+                                )
+                                yield format_sse_event(completion_event.model_dump())
+                                break
+
+                            last_poll_time = current_time
+
+                        except asyncio.CancelledError:
+                            logger.info(f"🛑 Log stream cancelled for {execution_id}")
+                            return
+                        except Exception as poll_error:
+                            logger.error(f"❌ Polling error for {execution_id}: {poll_error}")
+                            # Continue polling despite errors
+
+                    # Small sleep to prevent tight loop
+                    await asyncio.sleep(0.1)
+
+            else:
+                # Historical mode: execution is finished, send completion event
+                logger.info(f"📚 Historical mode for {execution_id}")
+                completion_event = create_sse_event(
+                    event_type=SSEEventType.COMPLETE,
                     data={
                         "execution_id": execution_id,
-                        "error": f"Failed to retrieve logs: {str(e)}",
-                        "error_type": "log_retrieval_error",
+                        "status": execution_status,
+                        "message": "Historical logs retrieved",
+                        "total_logs": len(sent_log_ids),
                     },
                     session_id=execution_id,
                     is_final=True,
                 )
-                yield format_sse_event(error_event.model_dump())
-                return
-
-            # If following, set up real-time streaming
-            if follow:
-                logger.info(f"📡 Setting up real-time log streaming for execution {execution_id}")
-
-                # Connect to workflow engine's log stream
-                try:
-                    async for log_chunk in http_client.stream_execution_logs(execution_id, token):
-                        if log_chunk:
-                            # Process each log entry from the stream
-                            log_data = (
-                                log_chunk if isinstance(log_chunk, dict) else json.loads(log_chunk)
-                            )
-
-                            # Create SSE event for real-time log
-                            realtime_event = create_sse_event(
-                                event_type=SSEEventType.LOG,
-                                data={
-                                    "execution_id": execution_id,
-                                    "timestamp": log_data.get("timestamp", ""),
-                                    "level": log_data.get("level", "info"),
-                                    "message": log_data.get("user_friendly_message")
-                                    or log_data.get("message", ""),
-                                    "node_id": log_data.get("node_id"),
-                                    "event_type": log_data.get("event_type", "log"),
-                                    "display_priority": log_data.get("display_priority", 5),
-                                    "is_milestone": log_data.get("is_milestone", False),
-                                    "step_number": log_data.get("data", {}).get("step_number"),
-                                    "total_steps": log_data.get("data", {}).get("total_steps"),
-                                    "is_realtime": True,
-                                },
-                                session_id=execution_id,
-                                is_final=False,
-                            )
-                            yield format_sse_event(realtime_event.model_dump())
-
-                except asyncio.CancelledError:
-                    logger.info(f"🛑 Log stream cancelled for execution {execution_id}")
-                    return
-                except Exception as e:
-                    logger.error(f"❌ Error in real-time log streaming for {execution_id}: {e}")
-
-                    # Send error event
-                    stream_error_event = create_sse_event(
-                        event_type=SSEEventType.ERROR,
-                        data={
-                            "execution_id": execution_id,
-                            "error": f"Real-time streaming error: {str(e)}",
-                            "error_type": "stream_error",
-                        },
-                        session_id=execution_id,
-                        is_final=True,
-                    )
-                    yield format_sse_event(stream_error_event.model_dump())
+                yield format_sse_event(completion_event.model_dump())
 
         except Exception as e:
             logger.error(f"❌ Fatal error in log stream for {execution_id}: {e}")
+            import traceback
+
+            logger.error(f"❌ Traceback: {traceback.format_exc()}")
 
             # Send fatal error event
             fatal_error_event = create_sse_event(

@@ -87,21 +87,8 @@ async def execute_workflow_by_id(
         workflow, user_id = workflow_result
         logger.info(f"📋 [v2] Retrieved workflow {workflow_id} for user {user_id}")
 
-        # Check if workflow is deployed before execution
-        from shared.models.workflow import WorkflowDeploymentStatus
-
-        if workflow.metadata.deployment_status != WorkflowDeploymentStatus.DEPLOYED:
-            error_msg = (
-                f"Workflow {workflow_id} is not deployed (status: {workflow.metadata.deployment_status}). "
-                f"Only deployed workflows can be executed."
-            )
-            logger.error(f"❌ [v2] {error_msg}")
-            return ExecuteWorkflowResponse(
-                success=False,
-                execution_id="",
-                execution=None,
-                error=error_msg,
-            )
+        # Deployment status check removed - workflows can be executed without deployment
+        # This allows manual execution via API regardless of deployment status
 
         # Determine trigger type from payload if provided
         incoming_type = (
@@ -225,19 +212,8 @@ async def execute_workflow(request: ExecuteWorkflowRequest, background_tasks: Ba
             connections=workflow_dict.get("connections", []),
         )
 
-        # Check if workflow is deployed before execution
-        if workflow.metadata.deployment_status != WorkflowDeploymentStatus.DEPLOYED:
-            error_msg = (
-                f"Workflow {workflow.metadata.id} is not deployed (status: {workflow.metadata.deployment_status}). "
-                f"Only deployed workflows can be executed."
-            )
-            logger.error(f"❌ [v2] {error_msg}")
-            return ExecuteWorkflowResponse(
-                success=False,
-                execution_id="",
-                execution=None,
-                error=error_msg,
-            )
+        # Deployment status check removed - workflows can be executed without deployment
+        # This allows manual execution via API regardless of deployment status
 
         # Create TriggerInfo object
         trigger = TriggerInfo(
