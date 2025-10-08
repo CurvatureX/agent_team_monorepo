@@ -21,12 +21,9 @@ import {
   getNodeIcon,
   getCategoryColor,
   getCategoryFromNodeType,
-  formatSubtype,
   getProviderIcon,
 } from "@/utils/nodeHelpers";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -49,7 +46,6 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
   const {
     selectedNode,
     updateNodeParameters,
-    updateNodeData,
     deleteNode,
     exportWorkflow,
     metadata,
@@ -65,28 +61,31 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
   const [countdown, setCountdown] = useState(5);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const autoSaveRef = useRef<() => Promise<void>>();
+  const autoSaveRef = useRef<(() => Promise<void>) | undefined>(undefined);
 
   // Auto-save function - always use the latest version
   autoSaveRef.current = async () => {
-    console.log('[Auto-save] Function called');
+    console.log("[Auto-save] Function called");
 
     if (!metadata.id || !session?.access_token) {
-      console.warn("[Auto-save] Cannot auto-save: missing workflow ID or auth token", {
-        hasWorkflowId: !!metadata.id,
-        hasToken: !!session?.access_token
-      });
+      console.warn(
+        "[Auto-save] Cannot auto-save: missing workflow ID or auth token",
+        {
+          hasWorkflowId: !!metadata.id,
+          hasToken: !!session?.access_token,
+        }
+      );
       return;
     }
 
     try {
-      console.log('[Auto-save] Starting save for workflow:', metadata.id);
+      console.log("[Auto-save] Starting save for workflow:", metadata.id);
       setSaveStatus("saving");
       const workflowData = exportWorkflow();
 
-      console.log('[Auto-save] Workflow data exported:', {
+      console.log("[Auto-save] Workflow data exported:", {
         nodes: workflowData.nodes.length,
-        connections: workflowData.connections.length
+        connections: workflowData.connections.length,
       });
 
       await apiRequest(
@@ -102,7 +101,7 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
         }
       );
 
-      console.log('[Auto-save] Save successful');
+      console.log("[Auto-save] Save successful");
       setSaveStatus("saved");
       setHasChanges(false);
 
@@ -120,7 +119,10 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
   // Debounced auto-save effect with countdown (5 seconds after last change)
   useEffect(() => {
     if (hasChanges && metadata.id) {
-      console.log('[Auto-save] Setting 5-second countdown for workflow:', metadata.id);
+      console.log(
+        "[Auto-save] Setting 5-second countdown for workflow:",
+        metadata.id
+      );
 
       // Clear existing intervals and timeouts
       if (saveTimeoutRef.current) {
@@ -148,14 +150,19 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
 
       // Trigger save after 5 seconds
       saveTimeoutRef.current = setTimeout(() => {
-        console.log('[Auto-save] Timeout triggered, calling autoSaveRef.current');
+        console.log(
+          "[Auto-save] Timeout triggered, calling autoSaveRef.current"
+        );
         if (countdownIntervalRef.current) {
           clearInterval(countdownIntervalRef.current);
         }
         autoSaveRef.current?.();
       }, 5000);
     } else {
-      console.log('[Auto-save] Conditions not met:', { hasChanges, workflowId: metadata.id });
+      console.log("[Auto-save] Conditions not met:", {
+        hasChanges,
+        workflowId: metadata.id,
+      });
       // Clear countdown if conditions not met
       if (countdownIntervalRef.current) {
         clearInterval(countdownIntervalRef.current);
@@ -192,7 +199,7 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
   const handleParameterChange = useCallback(
     (newParameters: Record<string, unknown>) => {
       if (selectedNode) {
-        console.log('[Auto-save] Parameter changed for node:', selectedNode.id);
+        console.log("[Auto-save] Parameter changed for node:", selectedNode.id);
         updateNodeParameters({
           nodeId: selectedNode.id,
           parameters: newParameters,
@@ -203,21 +210,6 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
       }
     },
     [selectedNode, updateNodeParameters]
-  );
-
-  const handleLabelChange = useCallback(
-    (newLabel: string) => {
-      if (selectedNode) {
-        updateNodeData({
-          nodeId: selectedNode.id,
-          data: { label: newLabel },
-        });
-        setHasChanges(true);
-        setSaveStatus("idle"); // Reset status when user makes changes
-        setCountdown(5); // Reset countdown display
-      }
-    },
-    [selectedNode, updateNodeData]
   );
 
   const handleDelete = useCallback(() => {
@@ -281,11 +273,9 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
                 </div>
                 <div>
                   <h3 className="font-semibold text-sm">Node Details</h3>
-                  <p className="text-xs text-muted-foreground">
-                    <h4 className="text-sm font-semibold text-foreground">
-                      {selectedNode.data.label}
-                    </h4>
-                  </p>
+                  <div className="text-sm font-semibold text-foreground">
+                    {selectedNode.data.label}
+                  </div>
                 </div>
               </div>
               <Button

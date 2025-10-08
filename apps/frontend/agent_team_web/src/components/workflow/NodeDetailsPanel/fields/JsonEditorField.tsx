@@ -1,16 +1,16 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { AlertCircle, Check, Code2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { humanizeKey } from '@/utils/nodeHelpers';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import React, { useState, useEffect, useMemo } from "react";
+import { AlertCircle, Check, Code2 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { humanizeKey } from "@/utils/nodeHelpers";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 interface JsonEditorFieldProps {
   name: string;
-  value: Record<string, any> | null;
-  onChange: (value: Record<string, any>) => void;
+  value: Record<string, unknown> | null;
+  onChange: (value: Record<string, unknown>) => void;
   label?: string;
   placeholder?: string;
   required?: boolean;
@@ -37,7 +37,7 @@ export const JsonEditorField: React.FC<JsonEditorFieldProps> = ({
   const displayLabel = label || humanizeKey(name);
 
   // Track the text value separately for editing
-  const [textValue, setTextValue] = useState('');
+  const [textValue, setTextValue] = useState("");
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [hasEdited, setHasEdited] = useState(false);
 
@@ -47,8 +47,8 @@ export const JsonEditorField: React.FC<JsonEditorFieldProps> = ({
       try {
         const formatted = JSON.stringify(value || {}, null, 2);
         setTextValue(formatted);
-      } catch (err) {
-        setTextValue('{}');
+      } catch {
+        setTextValue("{}");
       }
     }
   }, [value, hasEdited]);
@@ -65,7 +65,7 @@ export const JsonEditorField: React.FC<JsonEditorFieldProps> = ({
       onChange(parsed);
     } catch (err) {
       // Set error but don't update the value
-      setJsonError(err instanceof Error ? err.message : 'Invalid JSON');
+      setJsonError(err instanceof Error ? err.message : "Invalid JSON");
     }
   };
 
@@ -79,13 +79,13 @@ export const JsonEditorField: React.FC<JsonEditorFieldProps> = ({
       onChange(parsed);
     } catch (err) {
       // If can't parse, don't format
-      setJsonError(err instanceof Error ? err.message : 'Invalid JSON');
+      setJsonError(err instanceof Error ? err.message : "Invalid JSON");
     }
   };
 
   // Count lines for display
   const lineCount = useMemo(() => {
-    return textValue.split('\n').length;
+    return textValue.split("\n").length;
   }, [textValue]);
 
   // Character count
@@ -95,7 +95,7 @@ export const JsonEditorField: React.FC<JsonEditorFieldProps> = ({
   const isValid = jsonError === null;
 
   return (
-    <div className={cn('space-y-2', className)}>
+    <div className={cn("space-y-2", className)}>
       <div className="flex items-center justify-between">
         <Label htmlFor={name}>
           {displayLabel}
@@ -146,9 +146,9 @@ export const JsonEditorField: React.FC<JsonEditorFieldProps> = ({
         placeholder={placeholder || '{\n  "key": "value"\n}'}
         disabled={readonly}
         className={cn(
-          'font-mono text-sm resize-y',
-          jsonError && 'border-destructive',
-          readonly && 'bg-muted cursor-not-allowed'
+          "font-mono text-sm resize-y",
+          jsonError && "border-destructive",
+          readonly && "bg-muted cursor-not-allowed"
         )}
         style={{ minHeight: `${minHeight}px` }}
       />
@@ -158,7 +158,9 @@ export const JsonEditorField: React.FC<JsonEditorFieldProps> = ({
         <div className="flex items-start gap-2 p-2 rounded bg-destructive/10 border border-destructive/20">
           <AlertCircle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
           <div className="flex-1">
-            <p className="text-xs font-medium text-destructive">JSON Syntax Error</p>
+            <p className="text-xs font-medium text-destructive">
+              JSON Syntax Error
+            </p>
             <p className="text-xs text-destructive/80 mt-1">{jsonError}</p>
           </div>
         </div>
@@ -171,9 +173,13 @@ export const JsonEditorField: React.FC<JsonEditorFieldProps> = ({
 
       {/* Info footer */}
       <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>{lineCount} lines • {charCount} characters</span>
+        <span>
+          {lineCount} lines • {charCount} characters
+        </span>
         {placeholder && !hasEdited && (
-          <span className="text-muted-foreground/60">Press Format to prettify</span>
+          <span className="text-muted-foreground/60">
+            Press Format to prettify
+          </span>
         )}
       </div>
     </div>

@@ -131,23 +131,16 @@ export function generateWorkflowFromDescription(
     nodes.push({
       id: nodeId,
       name: step.name,
+      description: step.description || '',
       type: (step.type as NodeType),
       subtype: step.subtype,
-      type_version: 1,
       position: {
         x: 200 + (index * 300),
         y: 200 + (index % 2 === 0 ? -50 : 50), // Staggered layout
       },
-      disabled: false,
-      parameters: {},
-      credentials: {},
-      on_error: ErrorPolicy.Stop,
-      retry_policy: {
-        max_tries: 1,
-        wait_between_tries: 0,
-      },
-      notes: {},
-      webhooks: [],
+      configurations: {},
+      input_params: {},
+      output_params: {},
     });
 
     // Create edges (linear connections)
@@ -155,9 +148,9 @@ export function generateWorkflowFromDescription(
       const prevNodeId = `${steps[index - 1].type}_${index - 1}`;
       edges.push({
         id: `e-${prevNodeId}-${nodeId}`,
-        source: prevNodeId,
-        target: nodeId,
-        type: 'default',
+        from_node: prevNodeId,
+        to_node: nodeId,
+        output_key: 'result',
       });
     }
   });
@@ -171,7 +164,7 @@ export function generateWorkflowFromDescription(
     status: WorkflowStatus.Idle,
     version: 1,
     nodes,
-    edges,
+    connections: edges,  // WorkflowEntity uses 'connections' not 'edges'
     variables: {},
     settings: {
       timezone: { default: 'UTC' },

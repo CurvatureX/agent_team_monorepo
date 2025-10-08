@@ -38,8 +38,8 @@ interface NotionDatabaseInfo {
   title: string;
   description?: string;
   url: string;
-  icon?: Record<string, any>;
-  cover?: Record<string, any>;
+  icon?: Record<string, unknown>;
+  cover?: Record<string, unknown>;
   created_time?: string;
   last_edited_time?: string;
 }
@@ -67,6 +67,7 @@ interface DynamicMultiSelectFieldProps {
 }
 
 // Debounce utility
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function useDebouncedCallback<T extends (...args: any[]) => any>(
   callback: T,
   delay: number
@@ -193,9 +194,10 @@ export const DynamicMultiSelectField: React.FC<DynamicMultiSelectFieldProps> = (
     setIsLoadingMore(true);
     try {
       const cursorParam = nextCursor ? `${apiEndpoint.includes('?') ? '&' : '?'}cursor=${nextCursor}` : '';
+      const windowWithAuth = window as typeof window & { authToken?: string };
       const response = await fetch(`${apiEndpoint}${cursorParam}`, {
         headers: {
-          'Authorization': `Bearer ${(window as any).authToken || ''}`,
+          'Authorization': `Bearer ${windowWithAuth.authToken || ''}`,
         },
       });
 
@@ -248,7 +250,8 @@ export const DynamicMultiSelectField: React.FC<DynamicMultiSelectFieldProps> = (
   const availableOptions = allOptions.filter((opt) => !selectedValues.includes(opt.value));
 
   // Check for specific error types
-  const errorStatus = (fetchError as any)?.status;
+  const errorWithStatus = fetchError as Error & { status?: number };
+  const errorStatus = errorWithStatus?.status;
   const isOAuthError = errorStatus === 412;
   const isAuthExpired = errorStatus === 401;
 

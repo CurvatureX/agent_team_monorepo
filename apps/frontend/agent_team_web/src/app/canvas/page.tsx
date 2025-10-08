@@ -6,7 +6,6 @@ import Image from "next/image";
 import {
   Bot,
   Activity,
-  Clock,
   AlertTriangle,
   Pause,
   CheckCircle,

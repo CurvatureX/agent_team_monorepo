@@ -1,6 +1,6 @@
 import React from 'react';
 import { NodeProps } from 'reactflow';
-import { GitBranch, Filter, ToggleLeft } from 'lucide-react';
+import { GitBranch, Filter } from 'lucide-react';
 import BaseNode from './BaseNode';
 
 const FlowNode: React.FC<NodeProps> = (props) => {
