@@ -138,10 +138,32 @@ function AuthorizationsPage() {
     return (
       <div className="h-full">
         <div className="px-6 pt-16 pb-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <SkeletonCard key={i} />
-            ))}
+          {/* Connected Section Skeleton */}
+          <div className="mb-8">
+            <div className="flex items-center gap-2 mb-4">
+              <CheckCircle className="w-4 h-4 text-green-500" />
+              <div className="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+              <div className="h-5 w-6 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {[1, 2, 3].map((i) => (
+                <SkeletonCard key={i} />
+              ))}
+            </div>
+          </div>
+
+          {/* Available Section Skeleton */}
+          <div className="mb-8">
+            <div className="flex items-center gap-2 mb-4">
+              <XCircle className="w-4 h-4 text-gray-500" />
+              <div className="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+              <div className="h-5 w-6 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {[1, 2, 3].map((i) => (
+                <SkeletonCard key={i} />
+              ))}
+            </div>
           </div>
         </div>
       </div>
