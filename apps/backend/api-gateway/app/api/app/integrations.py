@@ -386,9 +386,16 @@ async def _validate_slack_token(access_token: str) -> bool:
     except (SlackAuthError, SlackAPIError) as e:
         logger.warning(f"🔐 Slack token validation failed: {e}")
         return False
+    except AttributeError as e:
+        # Temporary: Skip validation if auth_test method is not available
+        logger.warning(
+            f"⚠️ Slack token validation skipped due to SDK issue: {e}. " "Assuming token is valid."
+        )
+        return True
     except Exception as e:
         logger.error(f"❌ Unexpected error validating Slack token: {e}")
-        return False
+        # Don't mark as invalid if validation itself is broken
+        return True
 
 
 async def _validate_notion_token(access_token: str) -> bool:

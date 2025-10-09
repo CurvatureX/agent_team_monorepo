@@ -236,6 +236,10 @@ resource "aws_ecs_task_definition" "api_gateway" {
           valueFrom = aws_ssm_parameter.notion_client_id.arn
         },
         {
+          name      = "NOTION_CLIENT_SECRET"
+          valueFrom = aws_ssm_parameter.notion_client_secret.arn
+        },
+        {
           name      = "NOTION_REDIRECT_URI"
           valueFrom = aws_ssm_parameter.notion_redirect_uri.arn
         },
@@ -798,6 +802,18 @@ resource "aws_ecs_task_definition" "workflow_scheduler" {
         {
           name      = "GOOGLE_REDIRECT_URI"
           valueFrom = aws_ssm_parameter.google_redirect_uri.arn
+        },
+        {
+          name      = "NOTION_CLIENT_ID"
+          valueFrom = aws_ssm_parameter.notion_client_id.arn
+        },
+        {
+          name      = "NOTION_CLIENT_SECRET"
+          valueFrom = aws_ssm_parameter.notion_client_secret.arn
+        },
+        {
+          name      = "NOTION_REDIRECT_URI"
+          valueFrom = aws_ssm_parameter.notion_redirect_uri.arn
         },
         {
           name      = "DNS_DOMAIN_NAME"
