@@ -48,6 +48,7 @@ class NotionActionSpec(BaseNodeSpec):
                     "default": "",
                     "description": "目标页面ID（当operation_type为page或both时使用）",
                     "required": False,
+                    "search_endpoint": "/api/proxy/v1/app/integrations/notion/search",
                 },
                 "database_config": {
                     "type": "object",

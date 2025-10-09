@@ -93,11 +93,21 @@ export const useWorkflow = () => {
 
   // Export workflow
   const exportWorkflow = useCallback(() => {
+    console.log('[exportWorkflow] Starting export with nodes:', nodes.length);
+
     // Export nodes with all original data preserved
     const exportedNodes = nodes.map((node) => {
+      console.log(`[exportWorkflow] Processing node ${node.id}:`, {
+        type: node.data.template.node_type,
+        subtype: node.data.template.node_subtype,
+        hasOriginalData: !!node.data.originalData,
+        currentParameters: node.data.parameters,
+        originalConfigurations: node.data.originalData?.configurations,
+      });
+
       // If we have original node data, use it as base and update position
       if (node.data.originalData) {
-        return {
+        const exportedNode = {
           ...node.data.originalData,
           name: node.data.label || node.data.originalData.name,
           description: node.data.description || node.data.originalData.description,
@@ -107,10 +117,12 @@ export const useWorkflow = () => {
             ...node.data.parameters, // Merge any updated parameters
           },
         };
+        console.log(`[exportWorkflow] Exported node ${node.id} with merged configurations:`, exportedNode.configurations);
+        return exportedNode;
       }
 
       // Fallback: construct node data from template (clean backend format)
-      return {
+      const exportedNode = {
         id: node.id,
         name: node.data.label || node.id,
         description: node.data.description || node.data.template.description,
@@ -121,18 +133,23 @@ export const useWorkflow = () => {
         input_params: {},
         output_params: {},
       };
+      console.log(`[exportWorkflow] Exported node ${node.id} (from template) with configurations:`, exportedNode.configurations);
+      return exportedNode;
     });
 
-    // Export edges in backend Connection format
-    const exportedEdges = edges.map((edge) => ({
-      id: edge.id,
-      from_node: edge.data?.from_node || edge.source,
-      to_node: edge.data?.to_node || edge.target,
-      output_key: edge.data?.output_key || 'result',
-      conversion_function: edge.data?.conversion_function || null,
-    }));
+    // Export edges in backend Connection format (exclude attachment edges)
+    // Attachment edges are represented in the attached_nodes field of AI_AGENT nodes
+    const exportedEdges = edges
+      .filter((edge) => !edge.data?.isAttachment) // Filter out attachment edges
+      .map((edge) => ({
+        id: edge.id,
+        from_node: edge.data?.from_node || edge.source,
+        to_node: edge.data?.to_node || edge.target,
+        output_key: edge.data?.output_key || 'result',
+        conversion_function: edge.data?.conversion_function || null,
+      }));
 
-    console.log('Exporting workflow - nodes:', exportedNodes.length, 'edges:', exportedEdges.length);
+    console.log('Exporting workflow - nodes:', exportedNodes.length, 'edges:', exportedEdges.length, '(excluded attachment edges)');
     console.log('Exported edges:', exportedEdges);
 
     return {
@@ -145,18 +162,34 @@ export const useWorkflow = () => {
   // Import workflow
   const importWorkflow = useCallback(
     (workflowData: Workflow, templates: NodeTemplate[]) => {
+      console.log('[importWorkflow] Starting import with workflow:', {
+        hasId: !!workflowData.id,
+        id: workflowData.id,
+        name: workflowData.name,
+      });
+
       // Clear existing workflow
       clearWorkflow();
 
       // Use the converter to transform API format to editor format
       const { nodes: editorNodes, edges: editorEdges, metadata } = apiWorkflowToEditor(workflowData, templates);
 
+      console.log('[importWorkflow] Converter returned metadata:', {
+        id: metadata.id,
+        name: metadata.name,
+        hasId: !!metadata.id,
+      });
+
       // Set metadata
       setMetadata(metadata);
+
+      console.log('[importWorkflow] Metadata set in store:', metadata);
 
       // Set nodes and edges
       setNodes(editorNodes);
       setEdges(editorEdges);
+
+      console.log('[importWorkflow] Import complete - Workflow ID:', metadata.id);
     },
     [clearWorkflow, setMetadata, setNodes, setEdges]
   );

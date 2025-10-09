@@ -19,6 +19,7 @@ export interface WorkflowEdgeData {
   to_node: string;                      // Target node ID (backend format)
   output_key: string;                   // Which output to use (default: "result")
   conversion_function?: string | null;  // Python code for data transformation
+  isAttachment?: boolean;               // Flag to identify attachment edges (AI_AGENT -> TOOL/MEMORY)
   // Allow additional properties for flexibility
   [key: string]: unknown;
 }

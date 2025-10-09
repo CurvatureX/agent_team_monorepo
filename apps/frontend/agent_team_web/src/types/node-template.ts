@@ -44,6 +44,7 @@ export interface SchemaProperty {
 
   // Dynamic dropdown properties
   api_endpoint?: string;    // API URL to fetch dropdown options
+  search_endpoint?: string; // API URL to search and fetch options (for searchable fields)
   multiple?: boolean;       // Multi-select for arrays
 
   // UI enhancement properties

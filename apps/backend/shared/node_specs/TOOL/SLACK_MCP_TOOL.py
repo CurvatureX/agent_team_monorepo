@@ -64,8 +64,15 @@ class SlackMCPToolSpec(BaseNodeSpec):
                 },
                 "default_channel": {
                     "type": "string",
-                    "default": "",
+                    "default": "{{$placeholder}}",
                     "description": "默认频道ID或名称",
+                    "required": False,
+                    "api_endpoint": "/api/proxy/v1/app/integrations/slack/channels",
+                },
+                "use_oauth": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "使用OAuth认证（推荐）",
                     "required": False,
                 },
                 "message_limit": {

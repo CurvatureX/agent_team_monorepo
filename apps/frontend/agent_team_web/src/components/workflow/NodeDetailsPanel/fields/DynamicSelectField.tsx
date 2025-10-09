@@ -282,7 +282,7 @@ export const DynamicSelectField: React.FC<DynamicSelectFieldProps> = ({
           <AlertCircle className="h-4 w-4" />
           <AlertDescription className="flex items-center justify-between">
             <span>{provider} not connected. Please connect your account first.</span>
-            <Link href="/integrations" className="flex items-center gap-1 text-sm underline">
+            <Link href="/authorizations" className="flex items-center gap-1 text-sm underline">
               Connect <ExternalLink className="h-3 w-3" />
             </Link>
           </AlertDescription>

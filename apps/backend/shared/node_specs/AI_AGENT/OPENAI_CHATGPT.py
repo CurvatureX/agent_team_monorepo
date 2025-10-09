@@ -74,13 +74,6 @@ class OpenAIChatGPTSpec(BaseNodeSpec):
                     "description": "Encourage new topics",
                     "required": False,
                 },
-                "response_format": {
-                    "type": "string",
-                    "default": "text",
-                    "description": "Desired response format",
-                    "required": False,
-                    "options": ["text", "json", "schema"],
-                },
                 # Shared configs (timeouts, retries, logging, etc.)
                 **COMMON_CONFIGS,
             },
@@ -132,7 +125,6 @@ class OpenAIChatGPTSpec(BaseNodeSpec):
                             "'sentiment', 'score', 'themes', 'recommendations'."
                         ),
                         "temperature": 0.3,
-                        "response_format": "json",
                     },
                     "input_example": {
                         "message": "The new UI looks great, but it's still a bit slow to load.",

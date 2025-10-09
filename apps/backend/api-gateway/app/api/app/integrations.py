@@ -544,10 +544,25 @@ def generate_install_url(provider: str, user_id: str, redirect_uri: Optional[str
 
     elif provider == "slack":
         slack_callback = build_callback_url(settings.SLACK_REDIRECT_URI)
+        # Bot scopes - matching EXACTLY what's configured in Slack app settings
+        # Messages & Mentions:
+        # - app_mentions:read, assistant:write, chat:write, chat:write.public
+        # Public Channels:
+        # - channels:read, channels:history, channels:manage, channels:join
+        # - channels:write.invites, channels:write.topic
+        # Private Channels:
+        # - groups:read, groups:history, groups:write
+        # - groups:write.invites, groups:write.topic
+        # Direct Messages:
+        # - im:read, im:history, im:write, im:write.topic
+        # Other:
+        # - calls:read, calls:write, reactions:read, reactions:write
+        # - files:read, files:write, reminders:read, reminders:write
+        # - emoji:read
         return (
             f"https://slack.com/oauth/v2/authorize"
             f"?client_id={settings.SLACK_CLIENT_ID}"
-            f"&scope=app_mentions:read,assistant:write,calls:read,calls:write,chat:write,channels:read,groups:read,conversations:read,reminders:read,reminders:write,im:read,chat:write.public"
+            f"&scope=app_mentions:read,assistant:write,calls:read,calls:write,channels:history,channels:join,channels:manage,channels:read,channels:write.invites,channels:write.topic,chat:write,chat:write.public,emoji:read,files:read,files:write,groups:history,groups:read,groups:write,groups:write.invites,groups:write.topic,im:history,im:read,im:write,im:write.topic,reactions:read,reactions:write,reminders:read,reminders:write"
             f"&user_scope=email,identity.basic"
             f"&redirect_uri={quote(slack_callback)}"
             f"&response_type=code"

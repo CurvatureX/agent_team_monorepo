@@ -495,6 +495,7 @@ async def _handle_slack_commands(form_data) -> Dict[str, Any]:
 
 @router.get("/webhooks/slack/auth")
 async def slack_oauth_callback(
+    request: Request,
     code: Optional[str] = None,
     state: Optional[str] = None,
     return_url: Optional[str] = None,
@@ -551,10 +552,21 @@ async def slack_oauth_callback(
         if not code:
             raise HTTPException(status_code=400, detail="Missing authorization code")
 
+        # Reconstruct the full OAuth redirect_uri (must match the one used in authorization request)
+        # Slack requires EXACT match including query parameters
+        from urllib.parse import quote
+
+        oauth_redirect_uri = settings.SLACK_REDIRECT_URI
+        if return_url:
+            # Add return_url as query parameter to match authorization request
+            oauth_redirect_uri = f"{settings.SLACK_REDIRECT_URI}?return_url={quote(return_url)}"
+
+        logger.info(f"🔧 Reconstructed OAuth redirect_uri for token exchange: {oauth_redirect_uri}")
+
         # Forward to workflow_scheduler to handle the OAuth exchange
         scheduler_url = f"{settings.workflow_scheduler_http_url}/api/v1/auth/slack/callback"
 
-        oauth_data = {"code": code, "state": state}
+        oauth_data = {"code": code, "state": state, "redirect_uri": oauth_redirect_uri}
 
         async with httpx.AsyncClient() as client:
             scheduler_response = await client.post(scheduler_url, json=oauth_data, timeout=30.0)

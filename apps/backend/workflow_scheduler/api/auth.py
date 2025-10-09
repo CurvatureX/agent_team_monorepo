@@ -29,6 +29,7 @@ class SlackOAuthData(BaseModel):
 
     code: str
     state: Optional[str] = None
+    redirect_uri: Optional[str] = None  # Full redirect_uri from authorization request
 
 
 class GoogleOAuthData(BaseModel):
@@ -126,15 +127,20 @@ async def slack_oauth_callback(
         # Exchange authorization code for access tokens
         token_url = "https://slack.com/api/oauth.v2.access"
 
+        # Use the provided redirect_uri (which includes return_url parameter) or fall back to settings
+        # OAuth 2.0 spec requires EXACT match with the authorization request redirect_uri
+        redirect_uri_for_exchange = oauth_data.redirect_uri or settings.slack_redirect_uri
+
         token_data = {
             "client_id": settings.slack_client_id,
             "client_secret": settings.slack_client_secret,
             "code": oauth_data.code,
-            "redirect_uri": settings.slack_redirect_uri,
+            "redirect_uri": redirect_uri_for_exchange,
         }
 
         logger.info(
-            f"🔧 Slack OAuth token exchange request - client_id: {settings.slack_client_id}, redirect_uri: {settings.slack_redirect_uri}"
+            f"🔧 Slack OAuth token exchange request - client_id: {settings.slack_client_id}, "
+            f"redirect_uri: {redirect_uri_for_exchange}"
         )
 
         headers = {

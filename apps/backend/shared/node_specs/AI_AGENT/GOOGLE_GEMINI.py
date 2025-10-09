@@ -86,13 +86,6 @@ class GoogleGeminiSpec(BaseNodeSpec):
                     "description": "Gemini function calling (tools API)",
                     "required": False,
                 },
-                "response_format": {
-                    "type": "string",
-                    "default": "text",
-                    "description": "Response format (Gemini supports text/json/schema)",
-                    "required": False,
-                    "options": ["text", "json", "schema"],
-                },
                 # Add shared/common configs (timeouts, retries, etc.)
                 **COMMON_CONFIGS,
             },
@@ -170,7 +163,6 @@ class GoogleGeminiSpec(BaseNodeSpec):
                             "sexually_explicit": "BLOCK_MEDIUM_AND_ABOVE",
                             "dangerous_content": "BLOCK_MEDIUM_AND_ABOVE",
                         },
-                        "response_format": "text",
                     },
                     "input_example": {
                         "user_input": {

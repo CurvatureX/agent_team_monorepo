@@ -31,7 +31,7 @@ export const useEditorUI = () => {
   const [showGrid, setShowGrid] = useAtom(showGridAtom);
   const [showMinimap, setShowMinimap] = useAtom(showMinimapAtom);
   const [editorMode, setEditorMode] = useAtom(editorModeAtom);
-  
+
   const isAnyPanelOpen = useAtomValue(isAnyPanelOpenAtom);
   const toggleSidebar = useSetAtom(toggleSidebarAtom);
   const toggleDetailsPanel = useSetAtom(toggleDetailsPanelAtom);
@@ -43,16 +43,18 @@ export const useEditorUI = () => {
       setSelectedNodeId(nodeId);
       if (nodeId) {
         setDetailsPanelOpen(true);
+        setSidebarCollapsed(true); // Hide Node Library when showing Node Details
       }
     },
-    [setSelectedNodeId, setDetailsPanelOpen]
+    [setSelectedNodeId, setDetailsPanelOpen, setSidebarCollapsed]
   );
 
   // Clear selection
   const clearSelection = useCallback(() => {
     setSelectedNodeId(null);
     setDetailsPanelOpen(false);
-  }, [setSelectedNodeId, setDetailsPanelOpen]);
+    setSidebarCollapsed(false); // Show Node Library when hiding Node Details
+  }, [setSelectedNodeId, setDetailsPanelOpen, setSidebarCollapsed]);
 
   // Set canvas view
   const setCanvasView = useCallback(
@@ -82,18 +84,18 @@ export const useEditorUI = () => {
         event.preventDefault();
         toggleSidebar();
       }
-      
+
       // Toggle details panel: Cmd/Ctrl + D
       if ((event.metaKey || event.ctrlKey) && event.key === 'd') {
         event.preventDefault();
         toggleDetailsPanel();
       }
-      
+
       // Clear selection: Escape
       if (event.key === 'Escape') {
         clearSelection();
       }
-      
+
       // Search focus: Cmd/Ctrl + K
       if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
         event.preventDefault();
@@ -101,6 +103,15 @@ export const useEditorUI = () => {
       }
     },
     [toggleSidebar, toggleDetailsPanel, clearSelection]
+  );
+
+  // Custom setter for details panel that also toggles sidebar
+  const setDetailsPanelOpenWithSidebar = useCallback(
+    (open: boolean) => {
+      setDetailsPanelOpen(open);
+      setSidebarCollapsed(open); // When details panel opens, hide sidebar; when it closes, show sidebar
+    },
+    [setDetailsPanelOpen, setSidebarCollapsed]
   );
 
   return {
@@ -117,7 +128,7 @@ export const useEditorUI = () => {
     showMinimap,
     editorMode,
     isAnyPanelOpen,
-    
+
     // Actions
     selectNode,
     clearSelection,
@@ -128,11 +139,11 @@ export const useEditorUI = () => {
     toggleDetailsPanel,
     resetUI,
     handleKeyboardShortcuts,
-    
+
     // Setters
     setSelectedNodeId,
     setSidebarCollapsed,
-    setDetailsPanelOpen,
+    setDetailsPanelOpen: setDetailsPanelOpenWithSidebar, // Use custom setter that handles sidebar
     setSearchQuery,
     setSelectedCategory,
     setCanvasZoom,

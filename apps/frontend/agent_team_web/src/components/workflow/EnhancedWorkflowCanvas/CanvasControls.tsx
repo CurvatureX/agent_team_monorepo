@@ -14,7 +14,8 @@ import {
   Square,
   RefreshCw,
   Maximize2,
-  Library
+  Library,
+  Rocket
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useEditorUI } from '@/store/hooks';
@@ -25,6 +26,8 @@ interface CanvasControlsProps {
   readOnly?: boolean;
   onSave?: () => void;
   isSaving?: boolean;
+  onDeploy?: () => void;
+  isDeploying?: boolean;
   onExecute?: () => void;
   onStopExecution?: () => void;
   isExecuting?: boolean;
@@ -36,6 +39,8 @@ export const CanvasControls: React.FC<CanvasControlsProps> = ({
   readOnly = false,
   onSave,
   isSaving = false,
+  onDeploy,
+  isDeploying = false,
   onExecute,
   onStopExecution,
   isExecuting = false,
@@ -87,9 +92,9 @@ export const CanvasControls: React.FC<CanvasControlsProps> = ({
             icon={Fullscreen}
             title="Fit View"
           />
-          
+
           <Separator orientation="vertical" className="h-6 mx-1" />
-          
+
           {/* View controls */}
           <ControlButton
             onClick={() => setShowGrid(!showGrid)}
@@ -144,6 +149,24 @@ export const CanvasControls: React.FC<CanvasControlsProps> = ({
                   {isSaving ? 'Saving...' : 'Save'}
                 </Button>
               </motion.div>
+              {onDeploy && (
+                <motion.div
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={onDeploy}
+                    disabled={isDeploying}
+                    title="Deploy Workflow"
+                    className="h-8 px-3 bg-yellow-500 hover:bg-yellow-600 text-black ml-1"
+                  >
+                    <Rocket className="w-4 h-4 mr-1" />
+                    {isDeploying ? 'Deploying...' : 'Deploy'}
+                  </Button>
+                </motion.div>
+              )}
             </>
           )}
 
@@ -206,7 +229,7 @@ export const CanvasControls: React.FC<CanvasControlsProps> = ({
               )}
             </>
           )}
-          
+
           {readOnly && (
             <>
               <Separator orientation="vertical" className="h-6 mx-1" />

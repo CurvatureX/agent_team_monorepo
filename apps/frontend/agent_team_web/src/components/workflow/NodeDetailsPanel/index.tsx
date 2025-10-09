@@ -50,7 +50,7 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
     exportWorkflow,
     metadata,
   } = useWorkflow();
-  const { detailsPanelOpen, setDetailsPanelOpen } = useEditorUI();
+  const { detailsPanelOpen, setDetailsPanelOpen, setSidebarCollapsed } = useEditorUI();
   const { session } = useAuth();
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [hasChanges, setHasChanges] = useState(false);
@@ -65,18 +65,27 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
 
   // Auto-save function - always use the latest version
   autoSaveRef.current = async () => {
-    console.log("[Auto-save] Function called");
+    console.log("[Auto-save] Function called", {
+      workflowId: metadata.id,
+      workflowName: metadata.name,
+      hasId: !!metadata.id,
+      hasToken: !!session?.access_token,
+    });
 
     if (!metadata.id || !session?.access_token) {
       console.warn(
-        "[Auto-save] Cannot auto-save: missing workflow ID or auth token",
+        "[Auto-save] ❌ Cannot auto-save: missing workflow ID or auth token",
         {
+          workflowId: metadata.id,
           hasWorkflowId: !!metadata.id,
           hasToken: !!session?.access_token,
+          reason: !metadata.id ? "No workflow ID - workflow must be saved first!" : "No auth token",
         }
       );
       return;
     }
+
+    console.log("[Auto-save] ✓ Prerequisites met, proceeding with save for workflow:", metadata.id);
 
     try {
       console.log("[Auto-save] Starting save for workflow:", metadata.id);
@@ -88,20 +97,24 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
         connections: workflowData.connections.length,
       });
 
-      await apiRequest(
+      const payload = {
+        name: workflowData.metadata.name,
+        description: workflowData.metadata.description,
+        nodes: workflowData.nodes,
+        connections: workflowData.connections,
+        tags: workflowData.metadata.tags,
+      };
+
+      console.log("[Auto-save] Sending API request with payload:", JSON.stringify(payload, null, 2));
+
+      const response = await apiRequest(
         `/api/proxy/v1/app/workflows/${metadata.id}`,
         session.access_token,
         "PUT",
-        {
-          name: workflowData.metadata.name,
-          description: workflowData.metadata.description,
-          nodes: workflowData.nodes,
-          connections: workflowData.connections,
-          tags: workflowData.metadata.tags,
-        }
+        payload
       );
 
-      console.log("[Auto-save] Save successful");
+      console.log("[Auto-save] Save successful, response:", response);
       setSaveStatus("saved");
       setHasChanges(false);
 
@@ -162,7 +175,11 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
       console.log("[Auto-save] Conditions not met:", {
         hasChanges,
         workflowId: metadata.id,
+        reason: !hasChanges ? "No changes detected" : !metadata.id ? "Workflow not saved yet (no ID)" : "Unknown",
       });
+      if (!metadata.id && hasChanges) {
+        console.warn("[Auto-save] ⚠️ Workflow must be saved first before auto-save can work. Please save the workflow manually.");
+      }
       // Clear countdown if conditions not met
       if (countdownIntervalRef.current) {
         clearInterval(countdownIntervalRef.current);
@@ -182,6 +199,7 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
 
   const handleClose = useCallback(() => {
     setDetailsPanelOpen(false);
+    setSidebarCollapsed(false); // Show Node Library when closing Node Details
     setFormErrors({});
     setHasChanges(false);
     setSaveStatus("idle");
@@ -194,12 +212,24 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
     }
-  }, [setDetailsPanelOpen]);
+  }, [setDetailsPanelOpen, setSidebarCollapsed]);
 
   const handleParameterChange = useCallback(
     (newParameters: Record<string, unknown>) => {
       if (selectedNode) {
-        console.log("[Auto-save] Parameter changed for node:", selectedNode.id);
+        console.log("[Auto-save] Parameter changed for node:", selectedNode.id, {
+          oldParameters: selectedNode.data.parameters,
+          newParameters: newParameters,
+          diff: Object.keys(newParameters).reduce((acc, key) => {
+            if (selectedNode.data.parameters[key] !== newParameters[key]) {
+              acc[key] = {
+                old: selectedNode.data.parameters[key],
+                new: newParameters[key],
+              };
+            }
+            return acc;
+          }, {} as Record<string, any>),
+        });
         updateNodeParameters({
           nodeId: selectedNode.id,
           parameters: newParameters,
@@ -245,7 +275,7 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
       {detailsPanelOpen && (
         <motion.div
           initial={{ width: 0, opacity: 0 }}
-          animate={{ width: 350, opacity: 1 }}
+          animate={{ width: 550, opacity: 1 }}
           exit={{ width: 0, opacity: 0 }}
           transition={{ duration: 0.2 }}
           className={cn(
@@ -289,46 +319,45 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
             </div>
           </div>
 
-          {/* Node info */}
-          <div className="p-4 bg-muted/30">
-            <div className="space-y-2">
-              {/* Node description */}
-              {selectedNode.data.description && (
-                <div>
-                  <p className="text-xs text-muted-foreground font-medium">
-                    Description:
-                  </p>
-                  <p className="text-sm text-foreground mt-1">
-                    {selectedNode.data.description}
-                  </p>
-                </div>
-              )}
-
-              {/* Template info */}
-              <div
-                className={cn(
-                  "flex items-start gap-2",
-                  selectedNode.data.description && "pt-2 border-t"
-                )}
-              >
-                <Info className="w-3 h-3 text-muted-foreground mt-0.5 flex-shrink-0" />
-                <div className="flex-1 text-xs text-muted-foreground">
-                  <p className="mt-1 opacity-70">
-                    Version: {selectedNode.data.template.version} • Type:{" "}
-                    {selectedNode.data.template.node_type}
-                    {"-"}
-                    {selectedNode.data.template.node_subtype}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Parameters form */}
+          {/* Content area - Node info + Parameters (scrollable together) */}
           <div className="flex-1 overflow-hidden">
             <ScrollArea className="h-full">
+              {/* Node info */}
+              <div className="p-4 bg-muted/30 border-b">
+                <div className="space-y-2">
+                  {/* Node description */}
+                  {selectedNode.data.description && (
+                    <div>
+                      <p className="text-xs text-muted-foreground font-medium">
+                        Description:
+                      </p>
+                      <p className="text-sm text-foreground mt-1">
+                        {selectedNode.data.description}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Template info */}
+                  <div
+                    className={cn(
+                      "flex items-start gap-2",
+                      selectedNode.data.description && "pt-2 border-t"
+                    )}
+                  >
+                    <Info className="w-3 h-3 text-muted-foreground mt-0.5 flex-shrink-0" />
+                    <div className="flex-1 text-xs text-muted-foreground">
+                      <p className="mt-1 opacity-70">
+                        Version: {selectedNode.data.template.version} • Type:{" "}
+                        {selectedNode.data.template.node_type}
+                        {"-"}
+                        {selectedNode.data.template.node_subtype}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Parameters form */}
               <div className="p-4">
                 <h4 className="text-sm font-medium mb-4">Parameters</h4>
                 {selectedNode.data.template.parameter_schema ? (
@@ -414,10 +443,16 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
                   <span>Failed to save</span>
                 </div>
               )}
-              {saveStatus === "idle" && hasChanges && (
+              {saveStatus === "idle" && hasChanges && metadata.id && (
                 <div className="text-muted-foreground/60 flex items-center justify-center gap-1">
                   <Save className="w-3 h-3" />
                   <span>Auto-saving in {countdown}s...</span>
+                </div>
+              )}
+              {saveStatus === "idle" && hasChanges && !metadata.id && (
+                <div className="text-amber-600 flex items-center justify-center gap-1">
+                  <Info className="w-3 h-3" />
+                  <span>Save workflow first to enable auto-save</span>
                 </div>
               )}
             </div>

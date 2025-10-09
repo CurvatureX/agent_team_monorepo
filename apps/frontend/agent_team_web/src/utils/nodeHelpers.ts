@@ -335,3 +335,53 @@ export const generateNodeId = (nodeType: NodeTypeEnum): string => {
   const random = Math.floor(Math.random() * 1000);
   return `${nodeType.toLowerCase()}_${timestamp}_${random}`;
 };
+
+// Check if a value is empty or a placeholder
+export const isValueIncomplete = (value: unknown): boolean => {
+  // Check for null, undefined, empty string
+  if (value === null || value === undefined || value === '') {
+    return true;
+  }
+
+  // Check for placeholder patterns like {{$placeholder}}, {{placeholder}}, $placeholder
+  if (typeof value === 'string') {
+    const placeholderPatterns = [
+      /^\{\{.*\}\}$/,           // {{anything}}
+      /^\$[a-zA-Z_][a-zA-Z0-9_]*$/, // $variable
+      /^<.*>$/,                 // <anything>
+    ];
+    return placeholderPatterns.some(pattern => pattern.test(value.trim()));
+  }
+
+  // Check for empty arrays
+  if (Array.isArray(value) && value.length === 0) {
+    return true;
+  }
+
+  // Check for empty objects
+  if (typeof value === 'object' && Object.keys(value).length === 0) {
+    return true;
+  }
+
+  return false;
+};
+
+// Validate node parameters against required fields
+export const validateNodeParameters = (
+  parameters: Record<string, unknown>,
+  requiredFields: string[]
+): { isValid: boolean; missingFields: string[] } => {
+  const missingFields: string[] = [];
+
+  for (const field of requiredFields) {
+    const value = parameters[field];
+    if (isValueIncomplete(value)) {
+      missingFields.push(field);
+    }
+  }
+
+  return {
+    isValid: missingFields.length === 0,
+    missingFields,
+  };
+};

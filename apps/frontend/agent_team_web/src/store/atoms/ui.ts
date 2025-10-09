@@ -61,8 +61,8 @@ export const resetUIStateAtom = atom(
   null,
   (get, set) => {
     set(selectedNodeIdAtom, null);
-    set(sidebarCollapsedAtom, false);
-    set(detailsPanelOpenAtom, false);
+    set(sidebarCollapsedAtom, false); // Show Node Library by default
+    set(detailsPanelOpenAtom, false); // Hide Node Details by default
     set(searchQueryAtom, '');
     set(selectedCategoryAtom, null);
     set(canvasZoomAtom, 1);

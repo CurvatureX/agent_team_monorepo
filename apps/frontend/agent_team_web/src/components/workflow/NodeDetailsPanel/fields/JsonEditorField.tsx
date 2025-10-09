@@ -20,7 +20,7 @@ interface JsonEditorFieldProps {
   minHeight?: number;
 }
 
-const DEFAULT_MIN_HEIGHT = 120; // Reduced from 200 to 120
+const DEFAULT_MIN_HEIGHT = 125;
 
 export const JsonEditorField: React.FC<JsonEditorFieldProps> = ({
   name,
@@ -96,24 +96,24 @@ export const JsonEditorField: React.FC<JsonEditorFieldProps> = ({
 
   return (
     <div className={cn("space-y-2", className)}>
-      <div className="flex items-center justify-between">
-        <Label htmlFor={name}>
+      <div className="flex items-start justify-between gap-2 flex-wrap">
+        <Label htmlFor={name} className="flex-shrink-0">
           {displayLabel}
           {required && <span className="text-destructive ml-1">*</span>}
         </Label>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           {/* Validation indicator */}
           {hasEdited && (
-            <div className="flex items-center gap-1 text-xs">
+            <div className="flex items-center gap-1 text-xs whitespace-nowrap">
               {isValid ? (
                 <>
                   <Check className="h-3 w-3 text-green-600" />
-                  <span className="text-green-600">Valid JSON</span>
+                  <span className="text-green-600">Valid</span>
                 </>
               ) : (
                 <>
                   <AlertCircle className="h-3 w-3 text-destructive" />
-                  <span className="text-destructive">Invalid JSON</span>
+                  <span className="text-destructive">Invalid</span>
                 </>
               )}
             </div>
@@ -126,7 +126,7 @@ export const JsonEditorField: React.FC<JsonEditorFieldProps> = ({
               onClick={handleFormat}
               disabled={!isValid}
               className={cn(
-                "flex items-center gap-1 px-2 py-1 text-xs rounded border",
+                "flex items-center gap-1 px-2 py-1 text-xs rounded border flex-shrink-0",
                 "hover:bg-muted transition-colors",
                 !isValid && "opacity-50 cursor-not-allowed"
               )}
@@ -139,19 +139,36 @@ export const JsonEditorField: React.FC<JsonEditorFieldProps> = ({
       </div>
 
       {/* JSON Editor */}
-      <Textarea
-        id={name}
-        value={textValue}
-        onChange={(e) => handleChange(e.target.value)}
-        placeholder={placeholder || '{\n  "key": "value"\n}'}
-        disabled={readonly}
-        className={cn(
-          "font-mono text-sm resize-y",
-          jsonError && "border-destructive",
-          readonly && "bg-muted cursor-not-allowed"
-        )}
-        style={{ minHeight: `${minHeight}px` }}
-      />
+      <div className="relative">
+        <Textarea
+          id={name}
+          value={textValue}
+          onChange={(e) => handleChange(e.target.value)}
+          placeholder={placeholder || '{\n  "key": "value"\n}'}
+          disabled={readonly}
+          className={cn(
+            "font-mono text-xs resize-y !w-full",
+            jsonError && "border-destructive",
+            readonly && "bg-muted cursor-not-allowed"
+          )}
+          style={{
+            minHeight: `${minHeight}px`,
+            maxHeight: "500px",
+            overflowX: "auto",
+            overflowY: "auto",
+            whiteSpace: "pre",
+            overflowWrap: "normal",
+            wordBreak: "normal",
+            wordWrap: "normal",
+            paddingRight: "32px",
+            paddingLeft: "12px",
+            paddingTop: "12px",
+            paddingBottom: "12px",
+            boxSizing: "border-box"
+          }}
+          rows={Math.max(10, lineCount)}
+        />
+      </div>
 
       {/* Error message */}
       {jsonError && (

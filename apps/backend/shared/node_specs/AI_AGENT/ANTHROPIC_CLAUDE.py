@@ -58,13 +58,6 @@ class AnthropicClaudeSpec(BaseNodeSpec):
                     "description": "Top-p采样参数",
                     "required": False,
                 },
-                "response_format": {
-                    "type": "string",
-                    "default": "text",
-                    "description": "响应格式（仅支持 'text' 与 'json'；'markdown'/'structured'/'code' 属于封装层后处理）",
-                    "required": False,
-                    "options": ["text", "json"],
-                },
                 "multimodal_config": {
                     "type": "object",
                     "default": {
@@ -186,7 +179,6 @@ class AnthropicClaudeSpec(BaseNodeSpec):
                         "system_prompt": "You are an expert software engineer and security analyst. Perform comprehensive code reviews focusing on:\n1. Code quality and best practices\n2. Security vulnerabilities\n3. Performance optimizations\n4. Maintainability improvements\n5. Testing recommendations\n\nProvide specific, actionable feedback with code examples.",
                         "max_tokens": 8192,
                         "temperature": 0.3,
-                        "response_format": "json",
                         "output_processing": {
                             "parse_json": True,
                             "validate_output": True,

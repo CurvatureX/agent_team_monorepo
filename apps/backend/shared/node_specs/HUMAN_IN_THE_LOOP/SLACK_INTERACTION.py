@@ -33,9 +33,10 @@ class SlackInteractionSpec(BaseNodeSpec):
             configurations={
                 "channel": {
                     "type": "string",
-                    "default": "#general",
+                    "default": "{{$placeholder}}",
                     "description": "目标Slack频道或用户（#channel, @user, 或 user_id）",
                     "required": True,
+                    "api_endpoint": "/api/proxy/v1/app/integrations/slack/channels",
                 },
                 "bot_token": {
                     "type": "string",
@@ -43,6 +44,12 @@ class SlackInteractionSpec(BaseNodeSpec):
                     "description": "Slack Bot Token (xoxb-...)",
                     "required": True,
                     "sensitive": True,
+                },
+                "use_oauth": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "使用OAuth认证（推荐）",
+                    "required": False,
                 },
                 "message_template": {
                     "type": "string",

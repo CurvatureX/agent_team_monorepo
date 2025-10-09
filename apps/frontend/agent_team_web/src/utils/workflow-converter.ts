@@ -42,11 +42,13 @@ export function apiNodeToEditorNode(
       description: apiNode.description || '',
       template,
       // Merge configurations: template defaults + actual config values
+      // NOTE: DO NOT merge output_params - those are runtime outputs, not configuration!
+      // Merging output_params would overwrite saved configurations with empty default values
       parameters: {
         ...template.default_parameters,
         ...apiNode.configurations,  // Real values override placeholders
         ...apiNode.input_params,
-        ...apiNode.output_params,
+        // output_params are NOT merged - they are runtime values set during execution
       },
       status: 'idle',
       // Store the original API node data for later export
@@ -252,6 +254,58 @@ export function apiWorkflowToEditor(
   } else {
     console.warn('⚠️ No connections array found in API workflow data');
   }
+
+  // Add edges for attached nodes (AI_AGENT -> TOOL/MEMORY relationships)
+  console.log('🔗 Processing attached nodes...');
+  apiWorkflow.nodes.forEach((apiNode) => {
+    if (apiNode.attached_nodes && Array.isArray(apiNode.attached_nodes)) {
+      console.log(`🔗 Node ${apiNode.id} has ${apiNode.attached_nodes.length} attached nodes:`, apiNode.attached_nodes);
+
+      // Get AI_AGENT node position
+      const aiAgentPosition = apiNode.position || { x: 0, y: 0 };
+
+      apiNode.attached_nodes.forEach((attachedNodeId) => {
+        // Find the attached node to determine its position
+        const attachedNode = apiWorkflow.nodes.find(node => node.id === attachedNodeId);
+        const attachedPosition = attachedNode?.position || { x: 0, y: 0 };
+
+        // Determine which handles to use based on vertical position
+        // If attached node is ABOVE AI_AGENT: use attached node's BOTTOM -> AI_AGENT's TOP
+        // If attached node is BELOW AI_AGENT: use attached node's TOP -> AI_AGENT's BOTTOM
+        const isAbove = attachedPosition.y < aiAgentPosition.y;
+        const sourceHandle = isAbove ? 'attachment-bottom' : 'attachment-top';
+        const targetHandle = isAbove ? 'attachment-top' : 'attachment-bottom';
+
+        console.log(`🔗 Attached node ${attachedNodeId} position:`, attachedPosition, 'AI_AGENT position:', aiAgentPosition, `${isAbove ? 'ABOVE' : 'BELOW'}`, 'Using handles:', sourceHandle, '->', targetHandle);
+
+        // Create edge from attached node to AI_AGENT node
+        const attachmentEdge: EditorWorkflowEdge = {
+          id: `attachment_${attachedNodeId}_${apiNode.id}`,
+          source: attachedNodeId,
+          target: apiNode.id,
+          type: 'default',
+          sourceHandle: sourceHandle,
+          targetHandle: targetHandle,
+          // Mark this as an attachment edge with special styling
+          style: {
+            strokeWidth: 2,
+            stroke: '#8b5cf6', // Purple color for attachment edges
+            strokeDasharray: '5,5' // Dashed line to distinguish from regular connections
+          },
+          animated: true,
+          data: {
+            from_node: attachedNodeId,
+            to_node: apiNode.id,
+            output_key: 'attachment',
+            conversion_function: null,
+            isAttachment: true, // Flag to identify attachment edges
+          },
+        };
+        edges.push(attachmentEdge);
+        console.log(`✅ Created attachment edge: ${attachedNodeId} -> ${apiNode.id} (${sourceHandle} -> ${targetHandle})`);
+      });
+    }
+  });
 
   // If no edges were found, try to infer connections from node positions (workflow sequence)
   if (edges.length === 0 && nodes.length > 1) {

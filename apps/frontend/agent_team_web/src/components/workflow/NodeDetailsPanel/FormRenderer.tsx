@@ -14,6 +14,9 @@ import {
   DynamicSelectField,
   DynamicMultiSelectField,
   JsonEditorField,
+  SearchableSelectField,
+  CronExpressionField,
+  TimezoneField,
 } from "./fields";
 
 interface FormRendererProps {
@@ -30,6 +33,11 @@ export const FormRenderer: React.FC<FormRendererProps> = ({
   errors = {},
 }) => {
   const handleFieldChange = (fieldName: string, fieldValue: unknown) => {
+    console.log(`[FormRenderer] Field "${fieldName}" changed:`, {
+      oldValue: values[fieldName],
+      newValue: fieldValue,
+      allValues: values,
+    });
     onChange({
       ...values,
       [fieldName]: fieldValue,
@@ -51,6 +59,20 @@ export const FormRenderer: React.FC<FormRendererProps> = ({
       error: errors[name],
     };
 
+    // Cron expression field (special handling for cron schedules)
+    if (name === "cron_expression" && property.type === "string") {
+      return (
+        <CronExpressionField {...commonProps} value={value ? String(value) : ""} />
+      );
+    }
+
+    // Timezone field (special handling for timezone selection)
+    if (name === "timezone" && property.type === "string") {
+      return (
+        <TimezoneField {...commonProps} value={value ? String(value) : ""} />
+      );
+    }
+
     // Password fields (sensitive strings)
     if (property.type === "string" && property.sensitive) {
       return (
@@ -66,6 +88,17 @@ export const FormRenderer: React.FC<FormRendererProps> = ({
           value={value ? String(value) : ""}
           min={property.min}
           max={property.max}
+        />
+      );
+    }
+
+    // Searchable select fields (API-driven search)
+    if ((property as SchemaProperty & { search_endpoint?: string }).search_endpoint) {
+      return (
+        <SearchableSelectField
+          {...commonProps}
+          value={value ? String(value) : ""}
+          searchEndpoint={(property as SchemaProperty & { search_endpoint?: string }).search_endpoint!}
         />
       );
     }

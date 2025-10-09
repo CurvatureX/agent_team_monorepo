@@ -25,9 +25,12 @@ import { RunWorkflowDialog } from '../RunWorkflowDialog';
 import type { Workflow } from '@/types/workflow';
 import type { WorkflowNode, WorkflowEdge } from '@/types/workflow-editor';
 import type { NodeTemplate } from '@/types/node-template';
-import { isValidConnection } from '@/utils/nodeHelpers';
+import { isValidConnection, humanizeKey } from '@/utils/nodeHelpers';
 import { useWorkflowExecution, useExecutionStatus, useExecutionCancel, type ExecutionStatus, type ExecutionRequest } from '@/lib/api/hooks/useExecutionApi';
+import { useWorkflowActions } from '@/lib/api/hooks/useWorkflowsApi';
 import { useToast } from '@/hooks/use-toast';
+import { useAtomValue } from 'jotai';
+import { workflowValidationAtom } from '@/store/atoms/workflow';
 
 interface EnhancedWorkflowCanvasProps {
   workflow?: Workflow;
@@ -58,11 +61,16 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
   const { project } = useReactFlow();
   const { toast } = useToast();
 
+  // Workflow validation
+  const workflowValidation = useAtomValue(workflowValidationAtom);
+
   // Execution state
   const { executeWorkflow, isExecuting, executionId } = useWorkflowExecution();
   const { cancelExecution } = useExecutionCancel();
+  const { deployWorkflow } = useWorkflowActions();
   const [executionStatus, setExecutionStatus] = useState<'idle' | 'running' | 'completed' | 'failed'>('idle');
   const [isRunDialogOpen, setIsRunDialogOpen] = useState(false);
+  const [isDeploying, setIsDeploying] = useState(false);
 
   const {
     nodes,
@@ -263,8 +271,86 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
       return;
     }
 
+    // Validate all nodes have required fields filled
+    if (workflowValidation.invalidNodes.length > 0) {
+      toast({
+        title: "Missing Required Fields",
+        description: (
+          <div className="space-y-2">
+            <p>Please fill in all required fields before running:</p>
+            <ul className="list-disc list-inside space-y-1">
+              {workflowValidation.invalidNodes.map(node => {
+                const fields = node.missingFields.map(f => humanizeKey(f)).join(', ');
+                return (
+                  <li key={node.id}>
+                    <span className="font-medium">{node.name}:</span> {fields}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ),
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsRunDialogOpen(true);
-  }, [workflow, toast]);
+  }, [workflow, workflowValidation, toast]);
+
+  // Handle workflow deployment
+  const handleDeploy = useCallback(async () => {
+    if (!workflow?.id) {
+      toast({
+        title: "Cannot Deploy",
+        description: "Please save the workflow before deploying",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate all nodes have required fields filled
+    if (workflowValidation.invalidNodes.length > 0) {
+      toast({
+        title: "Missing Required Fields",
+        description: (
+          <div className="space-y-2">
+            <p>Please fill in all required fields before deploying:</p>
+            <ul className="list-disc list-inside space-y-1">
+              {workflowValidation.invalidNodes.map(node => {
+                const fields = node.missingFields.map(f => humanizeKey(f)).join(', ');
+                return (
+                  <li key={node.id}>
+                    <span className="font-medium">{node.name}:</span> {fields}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsDeploying(true);
+    try {
+      await deployWorkflow(workflow.id);
+      toast({
+        title: "Deployment Successful",
+        description: "Workflow has been deployed successfully",
+      });
+    } catch (error) {
+      console.error('Deploy error:', error);
+      toast({
+        title: "Deployment Failed",
+        description: error instanceof Error ? error.message : "Failed to deploy workflow",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeploying(false);
+    }
+  }, [workflow, workflowValidation, deployWorkflow, toast]);
 
   // Handle actual workflow execution with parameters
   const handleRunWorkflow = useCallback(async (request: ExecutionRequest) => {
@@ -486,6 +572,8 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
           readOnly={readOnly}
           onSave={handleSaveWithCurrentState}
           isSaving={isSaving}
+          onDeploy={handleDeploy}
+          isDeploying={isDeploying}
           onExecute={handleExecute}
           onStopExecution={handleStopExecution}
           isExecuting={isExecuting || isPolling}

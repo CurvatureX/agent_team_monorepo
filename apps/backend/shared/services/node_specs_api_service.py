@@ -149,6 +149,9 @@ class NodeSpecsApiService:
             if "api_endpoint" in param_config:
                 prop_def["api_endpoint"] = param_config["api_endpoint"]
 
+            if "search_endpoint" in param_config:
+                prop_def["search_endpoint"] = param_config["search_endpoint"]
+
             if "multiple" in param_config:
                 prop_def["multiple"] = param_config["multiple"]
 
@@ -250,6 +253,8 @@ class NodeSpecsApiService:
             # Dynamic dropdown properties
             if "api_endpoint" in param_config:
                 prop_def["api_endpoint"] = param_config["api_endpoint"]
+            if "search_endpoint" in param_config:
+                prop_def["search_endpoint"] = param_config["search_endpoint"]
             if "multiple" in param_config:
                 prop_def["multiple"] = param_config["multiple"]
 

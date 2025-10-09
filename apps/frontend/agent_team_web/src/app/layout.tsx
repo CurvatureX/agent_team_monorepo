@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { SidebarNavigation } from "@/components/ui/sidebar-navigation";
 import { LayoutWrapper } from "@/components/ui/layout-wrapper";
@@ -8,9 +8,19 @@ import { AuthProvider } from "@/contexts/auth-context";
 import { PageTitleProvider } from "@/contexts/page-title-context";
 import { Toaster } from "@/components/ui/toaster";
 
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
+const nunito = localFont({
+  src: [
+    {
+      path: "../../public/fonts/nunito/Nunito-VariableFont_wght.ttf",
+      style: "normal",
+    },
+    {
+      path: "../../public/fonts/nunito/Nunito-Italic-VariableFont_wght.ttf",
+      style: "italic",
+    },
+  ],
+  variable: "--font-nunito",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -26,7 +36,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${inter.variable} antialiased`}
+        className={`${nunito.variable} antialiased`}
       >
         <ThemeProvider
           attribute="class"
