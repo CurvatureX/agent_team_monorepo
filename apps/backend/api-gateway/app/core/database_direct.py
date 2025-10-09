@@ -420,7 +420,14 @@ async def get_direct_pg_manager() -> DirectPostgreSQLManager:
     global _direct_pg_manager
     if _direct_pg_manager is None:
         _direct_pg_manager = DirectPostgreSQLManager()
-        await _direct_pg_manager.initialize_pool()
+        success = await _direct_pg_manager.initialize_pool()
+        if not success:
+            # Don't cache a failed manager - let it retry on next call
+            _direct_pg_manager = None
+            raise Exception(
+                "Failed to initialize PostgreSQL connection pool. "
+                "Check DATABASE_URL or SUPABASE_DB_PASSWORD environment variables."
+            )
     return _direct_pg_manager
 
 
@@ -433,6 +440,13 @@ async def close_direct_pg_manager():
 
 
 # FastAPI Dependency
-async def get_direct_db_dependency() -> DirectPostgreSQLManager:
-    """FastAPI dependency for direct database access"""
-    return await get_direct_pg_manager()
+async def get_direct_db_dependency() -> Optional[DirectPostgreSQLManager]:
+    """
+    FastAPI dependency for direct database access
+    Returns None if pool initialization fails (allows fallback to REST API)
+    """
+    try:
+        return await get_direct_pg_manager()
+    except Exception as e:
+        logger.warning(f"⚠️ Direct PostgreSQL manager not available: {e}")
+        return None

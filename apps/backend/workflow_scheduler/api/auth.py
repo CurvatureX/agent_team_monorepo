@@ -45,6 +45,17 @@ class GoogleOAuthData(BaseModel):
     token_data: Dict[str, Any] = {}
 
 
+class NotionOAuthData(BaseModel):
+    """Notion OAuth callback data"""
+
+    access_token: str
+    workspace_id: str
+    workspace_name: str
+    bot_id: str
+    user_id: Optional[str] = None
+    token_data: Dict[str, Any] = {}
+
+
 @router.post("/github/callback", response_model=Dict[str, Any])
 async def github_installation_callback(
     installation_data: GitHubInstallationData,
@@ -712,4 +723,208 @@ async def _store_google_integration(
 
     except Exception as e:
         logger.error(f"❌ Error storing Google Calendar integration data: {str(e)}", exc_info=True)
+        return False
+
+
+@router.post("/notion/callback", response_model=Dict[str, Any])
+async def notion_oauth_callback(
+    oauth_data: NotionOAuthData,
+    trigger_manager: TriggerManager = Depends(get_trigger_manager),
+):
+    """
+    Handle Notion OAuth callback from API Gateway
+    Processes Notion workspace authorization and stores tokens
+    """
+    try:
+        logger.info(
+            f"Notion OAuth callback received: workspace={oauth_data.workspace_name}, "
+            f"workspace_id={oauth_data.workspace_id}, user_id={oauth_data.user_id}"
+        )
+
+        # Store the integration data if user_id provided
+        db_store_success = False
+        if oauth_data.user_id:
+            logger.info(
+                f"🔄 Attempting to store Notion integration for user_id: {oauth_data.user_id}"
+            )
+            try:
+                db_store_success = await _store_notion_integration(
+                    oauth_data.user_id,
+                    oauth_data.access_token,
+                    oauth_data.workspace_id,
+                    oauth_data.workspace_name,
+                    oauth_data.bot_id,
+                    oauth_data.token_data,
+                )
+                if not db_store_success:
+                    logger.warning(
+                        f"⚠️ Failed to store Notion integration data for user {oauth_data.user_id}"
+                    )
+                else:
+                    logger.info(
+                        f"✅ Successfully stored Notion integration for user {oauth_data.user_id}"
+                    )
+            except Exception as e:
+                logger.error(f"❌ Error storing Notion integration: {e}", exc_info=True)
+        else:
+            logger.warning("⚠️ No user_id provided in OAuth callback - cannot store integration")
+
+        result = {
+            "workspace_name": oauth_data.workspace_name,
+            "workspace_id": oauth_data.workspace_id,
+            "bot_id": oauth_data.bot_id,
+            "user_id": oauth_data.user_id,
+            "status": "processed",
+            "message": "Notion OAuth processed successfully",
+            "stored_in_database": db_store_success,
+        }
+
+        logger.info(
+            f"Notion OAuth processed successfully: workspace={oauth_data.workspace_name}, user_id={oauth_data.user_id}"
+        )
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error processing Notion OAuth callback: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Notion OAuth callback processing failed: {str(e)}"
+        )
+
+
+async def _store_notion_integration(
+    user_id: str,
+    access_token: str,
+    workspace_id: str,
+    workspace_name: str,
+    bot_id: str,
+    token_data: dict,
+) -> bool:
+    """
+    Store Notion integration data in oauth_tokens table
+
+    Args:
+        user_id: User ID who authorized the integration
+        access_token: Notion access token
+        workspace_id: Notion workspace ID
+        workspace_name: Notion workspace name
+        bot_id: Notion bot ID
+        token_data: Full token response from Notion
+
+    Returns:
+        bool: True if stored successfully, False otherwise
+    """
+    try:
+        supabase = get_supabase_client()
+        if not supabase:
+            logger.error("❌ Supabase client not available for Notion integration storage")
+            return False
+
+        # First, ensure the Notion integration exists
+        notion_integration_result = (
+            supabase.table("integrations").select("*").eq("integration_id", "notion").execute()
+        )
+
+        if not notion_integration_result.data:
+            # Create the Notion integration if it doesn't exist
+            logger.info("📝 Creating Notion integration entry")
+            integration_data = {
+                "integration_id": "notion",
+                "integration_type": "notion",
+                "name": "Notion Integration",
+                "description": "Notion workspace integration for pages, databases, and blocks",
+                "version": "1.0",
+                "configuration": {
+                    "api_version": "2022-06-28",
+                    "callback_url": "/api/v1/public/webhooks/notion/auth",
+                    "scopes": ["read", "insert", "update"],
+                },
+                "supported_operations": [
+                    "pages:read",
+                    "pages:write",
+                    "databases:read",
+                    "databases:write",
+                    "blocks:read",
+                    "blocks:write",
+                ],
+                "required_scopes": ["read", "insert", "update"],
+                "active": True,
+                "verified": True,
+            }
+
+            integration_result = supabase.table("integrations").insert(integration_data).execute()
+
+            if not integration_result.data:
+                logger.error("❌ Failed to create Notion integration")
+                return False
+
+        # Check if this user already has a Notion integration token
+        existing_token_result = (
+            supabase.table("oauth_tokens")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("integration_id", "notion")
+            .execute()
+        )
+
+        # Prepare the token data
+        import datetime
+
+        oauth_token_data = {
+            "user_id": user_id,
+            "integration_id": "notion",
+            "provider": "notion",
+            "access_token": access_token,
+            "token_type": "bearer",
+            "credential_data": {
+                "workspace_id": workspace_id,
+                "workspace_name": workspace_name,
+                "bot_id": bot_id,
+                "owner": token_data.get("owner", {}),
+                "duplicated_template_id": token_data.get("duplicated_template_id"),
+                "request_id": token_data.get("request_id"),
+                "callback_timestamp": datetime.datetime.utcnow().isoformat(),
+            },
+            "is_active": True,
+        }
+
+        if existing_token_result.data:
+            # Update existing record
+            logger.info(f"🔄 Updating existing Notion integration for user {user_id}")
+
+            update_result = (
+                supabase.table("oauth_tokens")
+                .update(oauth_token_data)
+                .eq("user_id", user_id)
+                .eq("integration_id", "notion")
+                .execute()
+            )
+
+            if not update_result.data:
+                logger.error("❌ Failed to update Notion integration record")
+                return False
+
+            logger.info(
+                f"✅ Notion integration updated successfully - workspace: {workspace_name}, user_id: {user_id}"
+            )
+        else:
+            # Insert new record
+            logger.info(f"➕ Creating new Notion integration record for user {user_id}")
+
+            insert_result = supabase.table("oauth_tokens").insert(oauth_token_data).execute()
+
+            if not insert_result.data:
+                logger.error("❌ Failed to store Notion integration record")
+                return False
+
+            logger.info(
+                f"✅ Notion integration stored successfully - workspace: {workspace_name}, user_id: {user_id}"
+            )
+
+        return True
+
+    except Exception as e:
+        logger.error(f"❌ Error storing Notion integration data: {str(e)}", exc_info=True)
         return False

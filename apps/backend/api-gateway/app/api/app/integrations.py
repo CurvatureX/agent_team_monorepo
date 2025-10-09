@@ -354,12 +354,45 @@ def _parse_notion_user(user: NotionUser) -> NotionUserInfo:
 async def _get_provider_token_or_412(
     user_id: str,
     provider: str,
-    direct_db: DirectPostgreSQLManager,
+    direct_db: Optional[DirectPostgreSQLManager],
 ) -> Dict[str, Any]:
-    """Fetch provider token or raise 412 if integration not connected."""
+    """Fetch provider token or raise 412 if integration not connected.
 
-    token_record = await direct_db.get_oauth_token_fast(user_id, provider)
-    if not token_record or not token_record.get("access_token"):
+    Falls back to Supabase REST API if direct database connection is unavailable.
+    """
+
+    # Try direct database first (faster)
+    if direct_db:
+        try:
+            token_record = await direct_db.get_oauth_token_fast(user_id, provider)
+            if token_record and token_record.get("access_token"):
+                return token_record
+        except Exception as e:
+            logger.warning(f"⚠️ Fast token retrieval failed, falling back to REST API: {e}")
+
+    # Fallback to Supabase REST API
+    logger.info(f"🔄 Using Supabase REST API for {provider} token retrieval (user: {user_id})")
+    supabase_admin = get_supabase_admin()
+    if not supabase_admin:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database connection unavailable",
+        )
+
+    result = (
+        supabase_admin.table("oauth_tokens")
+        .select(
+            "id, user_id, provider, integration_id, access_token, refresh_token, credential_data, expires_at, token_type, is_active"
+        )
+        .eq("user_id", user_id)
+        .eq("provider", provider)
+        .eq("is_active", True)
+        .order("updated_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+
+    if not result.data or not result.data[0].get("access_token"):
         logger.warning(
             "🔐 Missing %s token for user %s when attempting to fetch configuration",
             provider,
@@ -370,7 +403,7 @@ async def _get_provider_token_or_412(
             detail=f"{provider.title()} integration not connected",
         )
 
-    return token_record
+    return result.data[0]
 
 
 async def _validate_slack_token(access_token: str) -> bool:
@@ -837,7 +870,7 @@ async def get_user_integrations(
 )
 async def list_slack_channels(
     deps: AuthenticatedDeps = Depends(),
-    direct_db: DirectPostgreSQLManager = Depends(get_direct_db_dependency),
+    direct_db: Optional[DirectPostgreSQLManager] = Depends(get_direct_db_dependency),
     types: str = Query("public_channel,private_channel", description="Slack channel types"),
     limit: int = Query(100, ge=1, le=1000, description="Number of channels to fetch"),
     cursor: Optional[str] = Query(None, description="Slack pagination cursor"),
@@ -893,7 +926,7 @@ async def list_slack_channels(
 )
 async def list_slack_users(
     deps: AuthenticatedDeps = Depends(),
-    direct_db: DirectPostgreSQLManager = Depends(get_direct_db_dependency),
+    direct_db: Optional[DirectPostgreSQLManager] = Depends(get_direct_db_dependency),
     limit: int = Query(100, ge=1, le=200, description="Number of users to fetch"),
     cursor: Optional[str] = Query(None, description="Slack pagination cursor"),
 ):
@@ -948,7 +981,7 @@ async def list_slack_users(
 )
 async def search_notion_resources(
     deps: AuthenticatedDeps = Depends(),
-    direct_db: DirectPostgreSQLManager = Depends(get_direct_db_dependency),
+    direct_db: Optional[DirectPostgreSQLManager] = Depends(get_direct_db_dependency),
     query: Optional[str] = Query(None, description="关键字，可选"),
     filter_type: Optional[str] = Query(None, regex="^(page|database)$", description="过滤对象类型"),
     page_size: int = Query(20, ge=1, le=100, description="返回数量"),
@@ -1037,7 +1070,7 @@ async def search_notion_resources(
 )
 async def list_notion_databases(
     deps: AuthenticatedDeps = Depends(),
-    direct_db: DirectPostgreSQLManager = Depends(get_direct_db_dependency),
+    direct_db: Optional[DirectPostgreSQLManager] = Depends(get_direct_db_dependency),
     query: Optional[str] = Query(None, description="关键字，可选"),
     page_size: int = Query(20, ge=1, le=100, description="返回数量"),
     cursor: Optional[str] = Query(None, description="Notion start_cursor"),
@@ -1108,7 +1141,7 @@ async def list_notion_databases(
 async def get_notion_database_schema(
     database_id: str,
     deps: AuthenticatedDeps = Depends(),
-    direct_db: DirectPostgreSQLManager = Depends(get_direct_db_dependency),
+    direct_db: Optional[DirectPostgreSQLManager] = Depends(get_direct_db_dependency),
 ):
     """Fetch Notion database metadata and schema."""
 
@@ -1157,7 +1190,7 @@ async def get_notion_database_schema(
 )
 async def list_notion_users(
     deps: AuthenticatedDeps = Depends(),
-    direct_db: DirectPostgreSQLManager = Depends(get_direct_db_dependency),
+    direct_db: Optional[DirectPostgreSQLManager] = Depends(get_direct_db_dependency),
     page_size: int = Query(50, ge=1, le=100, description="返回数量"),
     cursor: Optional[str] = Query(None, description="Notion start_cursor"),
 ):
