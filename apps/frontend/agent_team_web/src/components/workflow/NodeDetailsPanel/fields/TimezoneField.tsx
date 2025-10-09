@@ -31,7 +31,7 @@ export const TimezoneField: React.FC<TimezoneFieldProps> = ({
   value,
   onChange,
   label,
-  placeholder,
+  placeholder: _placeholder,
   required,
   readonly,
   error,

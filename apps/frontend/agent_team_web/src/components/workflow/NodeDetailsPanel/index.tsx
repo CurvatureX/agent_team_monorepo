@@ -228,7 +228,7 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
               };
             }
             return acc;
-          }, {} as Record<string, any>),
+          }, {} as Record<string, { old: unknown; new: unknown }>),
         });
         updateNodeParameters({
           nodeId: selectedNode.id,

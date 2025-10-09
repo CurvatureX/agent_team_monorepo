@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from "react";
 import { Calendar, Clock, Globe } from "lucide-react";
-import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -21,7 +20,7 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { getUserTimezone, getTimezoneWithOffset } from "@/utils/timezone";
+import { getTimezoneWithOffset } from "@/utils/timezone";
 
 interface CronBuilderDialogProps {
   open: boolean;
