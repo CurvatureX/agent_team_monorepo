@@ -379,7 +379,7 @@ async def _validate_slack_token(access_token: str) -> bool:
 
         def _test_auth() -> Dict[str, Any]:
             with SlackWebClient(token=access_token) as client:
-                return client.test_auth()
+                return client.auth_test()
 
         await asyncio.to_thread(_test_auth)
         return True
@@ -533,13 +533,21 @@ def generate_install_url(provider: str, user_id: str, redirect_uri: Optional[str
         return f"{github_callback}{'&' if redirect_uri else '?'}state={user_id}"
 
     elif provider == "notion":
-        notion_callback = build_callback_url(settings.NOTION_REDIRECT_URI)
+        # Encode user_id and return_url into state parameter (Notion requires exact redirect_uri match)
+        import base64
+        import json
+
+        state_data = {"user_id": user_id}
+        if redirect_uri:
+            state_data["return_url"] = redirect_uri
+        encoded_state = base64.urlsafe_b64encode(json.dumps(state_data).encode()).decode()
+
         return (
             f"https://api.notion.com/v1/oauth/authorize"
             f"?client_id={settings.NOTION_CLIENT_ID}"
-            f"&redirect_uri={quote(notion_callback)}"
+            f"&redirect_uri={quote(settings.NOTION_REDIRECT_URI)}"
             f"&response_type=code"
-            f"&state={user_id}"
+            f"&state={encoded_state}"
         )
 
     elif provider == "slack":
@@ -733,8 +741,10 @@ async def get_user_integrations(
                     logger.error(f"❌ Validation exception for {provider}: {is_valid}")
                     is_valid = False
 
+                token_id = token_data_map[provider]["token_id"]
+                was_active = token_data_map[provider]["token_data"].get("is_active", True)
+
                 if not is_valid:
-                    token_id = token_data_map[provider]["token_id"]
                     logger.warning(
                         f"🔐 Marking {provider} token as inactive for user {user_id} (token_id: {token_id})"
                     )
@@ -751,6 +761,22 @@ async def get_user_integrations(
                         logger.error(f"❌ Failed to mark {provider} token as inactive: {e}")
                 else:
                     logger.debug(f"✅ {provider} token is valid for user {user_id}")
+
+                    # Reactivate token if it was previously inactive but is now valid
+                    if not was_active:
+                        logger.info(
+                            f"🔄 Reactivating previously inactive {provider} token for user {user_id} (token_id: {token_id})"
+                        )
+                        try:
+                            supabase_admin.table("oauth_tokens").update(
+                                {"is_active": True, "updated_at": "now()"}
+                            ).eq("id", token_id).execute()
+
+                            # Update the connected_providers entry to reflect active status
+                            if provider in connected_providers:
+                                connected_providers[provider].is_active = True
+                        except Exception as e:
+                            logger.error(f"❌ Failed to reactivate {provider} token: {e}")
         else:
             logger.info(f"📋 No integrations to validate for user {user_id}")
 

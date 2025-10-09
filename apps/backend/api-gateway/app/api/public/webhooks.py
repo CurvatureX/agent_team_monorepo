@@ -1145,19 +1145,38 @@ async def notion_oauth_callback(
 
     Query Parameters:
         code: OAuth authorization code from Notion
-        state: User ID passed in OAuth state parameter
-        return_url: Optional frontend URL to redirect to after processing (preferred)
+        state: Encoded state parameter containing user_id and optional return_url
+        return_url: Optional frontend URL to redirect to after processing (backward compatibility)
         redirect_uri: Optional frontend URL (backward compatibility, use return_url instead)
         error: OAuth error code (if authorization failed)
         error_description: Human-readable error description
     """
     try:
-        # Use return_url if provided, fall back to redirect_uri for backward compatibility
-        final_redirect = return_url or redirect_uri
+        # Decode state parameter to extract user_id and return_url
+        user_id = None
+        state_return_url = None
+
+        if state:
+            try:
+                import base64
+                import json
+
+                decoded_state = base64.urlsafe_b64decode(state.encode()).decode()
+                state_data = json.loads(decoded_state)
+                user_id = state_data.get("user_id")
+                state_return_url = state_data.get("return_url")
+                logger.info(f"Decoded state: user_id={user_id}, return_url={state_return_url}")
+            except Exception as e:
+                logger.warning(f"Failed to decode state parameter, using as user_id: {e}")
+                # Fallback: treat state as plain user_id for backward compatibility
+                user_id = state
+
+        # Use return_url priority: state > query parameter > redirect_uri (backward compatibility)
+        final_redirect = state_return_url or return_url or redirect_uri
 
         logger.info(
             f"Notion OAuth callback received: code={'present' if code else 'missing'}, "
-            f"return_url={final_redirect}"
+            f"user_id={user_id}, return_url={final_redirect}"
         )
 
         # Check for OAuth errors
@@ -1237,16 +1256,16 @@ async def notion_oauth_callback(
 
             logger.info(f"Notion OAuth successful for workspace: {workspace_name}")
 
-            # Store the integration data if user_id provided in state
+            # Store the integration data if user_id provided
             db_store_success = False
-            if state:
+            if user_id:
                 try:
                     db_store_success = await _store_notion_integration(
-                        state, access_token, workspace_id, workspace_name, bot_id, token_result
+                        user_id, access_token, workspace_id, workspace_name, bot_id, token_result
                     )
                     if not db_store_success:
                         logger.warning(
-                            f"⚠️ Failed to store Notion integration data for user {state}"
+                            f"⚠️ Failed to store Notion integration data for user {user_id}"
                         )
                 except Exception as e:
                     logger.error(f"❌ Error storing Notion integration: {e}")
@@ -1263,7 +1282,7 @@ async def notion_oauth_callback(
                     "workspace_id": workspace_id,
                     "workspace_name": workspace_name,
                     "bot_id": bot_id,
-                    "user_id": state,
+                    "user_id": user_id,
                     "token_data": token_result,
                 }
 
@@ -1295,7 +1314,7 @@ async def notion_oauth_callback(
                     "provider": "notion",
                     "workspace_name": workspace_name,
                     "workspace_id": workspace_id,
-                    "stored_in_database": str(db_store_success if state else False).lower(),
+                    "stored_in_database": str(db_store_success if user_id else False).lower(),
                     "scheduler_processed": str(scheduler_success).lower(),
                 }
                 logger.info(f"✅ Redirecting to frontend: {final_redirect}")
@@ -1310,8 +1329,8 @@ async def notion_oauth_callback(
                 "workspace_name": workspace_name,
                 "workspace_id": workspace_id,
                 "bot_id": bot_id,
-                "user_id": state if state else None,
-                "stored_in_database": db_store_success if state else False,
+                "user_id": user_id if user_id else None,
+                "stored_in_database": db_store_success if user_id else False,
                 "scheduler_processed": scheduler_success,
             }
 
