@@ -17,7 +17,7 @@ interface WorkflowEditorProps {
   isSaving?: boolean;      // 添加保存状态
   readOnly?: boolean;
   className?: string;
-  onExecute?: (workflowId: string) => void;  // 执行回调
+  onExecute?: (workflowId: string, executionId: string) => void;  // 执行回调，传递workflow和execution ID
   onToggleFullscreen?: () => void;  // 全屏切换回调
 }
 

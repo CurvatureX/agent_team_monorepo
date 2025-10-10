@@ -64,6 +64,38 @@ export const addNodeAtom = atom(
   }
 );
 
+// Helper function to check if a node is Slack-related
+const isSlackNode = (node: WorkflowNode): boolean => {
+  const subtype = node.data.template.node_subtype;
+  return (
+    subtype === 'SLACK' ||
+    subtype === 'SLACK_INTERACTION' ||
+    subtype === 'SLACK_MCP_TOOL' ||
+    subtype.includes('SLACK')
+  );
+};
+
+// Helper function to check if a node is Notion-related
+const isNotionNode = (node: WorkflowNode): boolean => {
+  const subtype = node.data.template.node_subtype;
+  return (
+    subtype === 'NOTION' ||
+    subtype === 'NOTION_MCP_TOOL' ||
+    subtype.includes('NOTION')
+  );
+};
+
+// Helper function to check if a value is empty
+const isEmptyValue = (value: unknown): boolean => {
+  return (
+    value === null ||
+    value === undefined ||
+    value === '' ||
+    (typeof value === 'string' && value.trim() === '') ||
+    (typeof value === 'string' && /^\{\{.*\}\}$|^\$placeholder.*$|^<.*>$/.test(value.trim()))
+  );
+};
+
 // Update node parameters action atom
 export const updateNodeParametersAtom = atom(
   null,
@@ -76,8 +108,104 @@ export const updateNodeParametersAtom = atom(
       const node = draft.find((n) => n.id === nodeId);
       if (node) {
         console.log('[updateNodeParametersAtom] Found node, old parameters:', node.data.parameters);
+
+        // Store old parameters to detect what changed
+        const oldParameters = node.data.parameters || {};
         node.data.parameters = parameters;
         console.log('[updateNodeParametersAtom] Updated node parameters:', node.data.parameters);
+
+        // Auto-fill feature: propagate Slack channel and Notion database_id/page_id to other nodes
+        const autoFillUpdates: Array<{ nodeId: string; field: string; value: unknown }> = [];
+
+        // Check for Slack channel updates
+        if (isSlackNode(node) && parameters.channel && !isEmptyValue(parameters.channel)) {
+          const oldChannel = oldParameters.channel;
+          // Only propagate if the channel actually changed
+          if (oldChannel !== parameters.channel) {
+            draft.forEach((otherNode) => {
+              if (otherNode.id !== nodeId && isSlackNode(otherNode)) {
+                const otherParams = otherNode.data.parameters || {};
+                // Only update if the other node has an empty channel
+                if (isEmptyValue(otherParams.channel)) {
+                  otherNode.data.parameters = {
+                    ...otherParams,
+                    channel: parameters.channel,
+                  };
+                  autoFillUpdates.push({
+                    nodeId: otherNode.id,
+                    field: 'channel',
+                    value: parameters.channel,
+                  });
+                }
+              }
+            });
+          }
+        }
+
+        // Check for Notion database_id updates
+        if (isNotionNode(node) && parameters.database_id && !isEmptyValue(parameters.database_id)) {
+          const oldDatabaseId = oldParameters.database_id;
+          // Only propagate if the database_id actually changed
+          if (oldDatabaseId !== parameters.database_id) {
+            draft.forEach((otherNode) => {
+              if (otherNode.id !== nodeId && isNotionNode(otherNode)) {
+                const otherParams = otherNode.data.parameters || {};
+                // Only update if the other node has an empty database_id
+                if (isEmptyValue(otherParams.database_id)) {
+                  otherNode.data.parameters = {
+                    ...otherParams,
+                    database_id: parameters.database_id,
+                  };
+                  autoFillUpdates.push({
+                    nodeId: otherNode.id,
+                    field: 'database_id',
+                    value: parameters.database_id,
+                  });
+                }
+              }
+            });
+          }
+        }
+
+        // Check for Notion page_id updates
+        if (isNotionNode(node) && parameters.page_id && !isEmptyValue(parameters.page_id)) {
+          const oldPageId = oldParameters.page_id;
+          // Only propagate if the page_id actually changed
+          if (oldPageId !== parameters.page_id) {
+            draft.forEach((otherNode) => {
+              if (otherNode.id !== nodeId && isNotionNode(otherNode)) {
+                const otherParams = otherNode.data.parameters || {};
+                // Only update if the other node has an empty page_id or database_id
+                // (page_id can be used instead of database_id)
+                if (isEmptyValue(otherParams.page_id) || isEmptyValue(otherParams.database_id)) {
+                  const updates: Record<string, unknown> = {};
+                  if (isEmptyValue(otherParams.page_id)) {
+                    updates.page_id = parameters.page_id;
+                  }
+                  if (isEmptyValue(otherParams.database_id)) {
+                    updates.database_id = parameters.page_id;
+                  }
+                  otherNode.data.parameters = {
+                    ...otherParams,
+                    ...updates,
+                  };
+                  Object.entries(updates).forEach(([field, value]) => {
+                    autoFillUpdates.push({
+                      nodeId: otherNode.id,
+                      field,
+                      value,
+                    });
+                  });
+                }
+              }
+            });
+          }
+        }
+
+        // Log auto-fill updates if any occurred
+        if (autoFillUpdates.length > 0) {
+          console.log('[updateNodeParametersAtom] Auto-filled parameters in other nodes:', autoFillUpdates);
+        }
       } else {
         console.error('[updateNodeParametersAtom] Node not found:', nodeId);
       }

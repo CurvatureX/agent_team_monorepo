@@ -79,9 +79,17 @@ class HILRunner(NodeRunner):
                     or "unknown"
                 )
 
-            logger.info(
-                f"Created HIL interaction {interaction_id} for workflow {workflow_log_id}"
+            logger.info(f"Created HIL interaction {interaction_id} for workflow {workflow_log_id}")
+
+            # Send initial Slack message to notify user
+            message_sent = self._send_initial_hil_message(
+                interaction_id, user_id, hil_config, inputs
             )
+
+            if not message_sent:
+                logger.warning(
+                    f"⚠️ Failed to send initial HIL message for interaction {interaction_id} - interaction created but user not notified"
+                )
 
             # Return workflow pause signals
             timeout_at = (
@@ -121,7 +129,8 @@ class HILRunner(NodeRunner):
             "timeout_seconds": int(config.get("timeout_seconds", 3600)),  # 1 hour default
             "title": config.get("title", "Human Input Required"),
             "description": config.get("description", "Please provide your response"),
-            "message": config.get("message"),
+            # Support both 'message' and 'message_template' (per SLACK_INTERACTION spec)
+            "message": config.get("message_template") or config.get("message"),
             "approval_options": config.get("approval_options", ["approve", "reject"]),
             "input_fields": config.get("input_fields", []),
             "selection_options": config.get("selection_options", []),
@@ -132,8 +141,12 @@ class HILRunner(NodeRunner):
                 "timeout_action", "fail"
             ),  # fail, continue, default_response
             "channel_config": config.get("channel_config", {}),
-            "priority": config.get("priority", "normal"),
         }
+
+        # Extract channel from top-level configuration (per SLACK_INTERACTION spec)
+        if "channel" in config and not hil_config["channel_config"].get("channel"):
+            hil_config["channel_config"]["channel"] = config["channel"]
+            logger.debug(f"Extracted channel from config: {config['channel']}")
 
         channel_aliases = {"in_app": "app"}
         channel_key = str(hil_config["channel_type"]).lower()
@@ -280,7 +293,6 @@ class HILRunner(NodeRunner):
                 channel_type=channel_type,
                 request_data=request_data,
                 timeout_seconds=hil_config["timeout_seconds"],
-                priority=hil_config.get("priority", "normal"),
             )
 
             return interaction_id
@@ -288,6 +300,76 @@ class HILRunner(NodeRunner):
         except Exception as e:
             logger.error(f"Failed to create HIL interaction: {str(e)}")
             return None
+
+    def _send_initial_hil_message(
+        self,
+        interaction_id: str,
+        user_id: str,
+        hil_config: Dict[str, Any],
+        inputs: Dict[str, Any],
+    ) -> bool:
+        """
+        Send the initial HIL interaction message to notify the user.
+
+        Args:
+            interaction_id: HIL interaction ID
+            user_id: User to send notification to
+            hil_config: HIL configuration with channel and message details
+            inputs: Input data with template variables
+
+        Returns:
+            bool: True if message sent successfully, False otherwise
+        """
+        try:
+            import asyncio
+
+            # Prepare message template
+            message_template = hil_config.get("message") or hil_config.get("description", "")
+
+            if not message_template:
+                # Build default message from configuration
+                message_template = f"{hil_config.get('title', 'Human Input Required')}\n\n{hil_config.get('description', 'Please provide your response.')}"
+
+            # Extract template variables from inputs
+            template_variables = inputs.get("variables", {})
+            if inputs.get("content"):
+                template_variables["content"] = inputs.get("content")
+
+            # Get channel configuration
+            channel_config = hil_config.get("channel_config", {})
+            channel_type = hil_config.get("channel_type", "slack")
+
+            logger.info(
+                f"📨 Preparing to send HIL message: channel_type={channel_type}, channel={channel_config.get('channel', 'default')}"
+            )
+            logger.debug(f"Message template: {message_template[:100]}...")
+
+            # Call async send method
+            coro = self.hil_service.send_initial_interaction_request(
+                interaction_id=interaction_id,
+                user_id=user_id,
+                channel_type=channel_type,
+                channel_config=channel_config,
+                message_template=message_template,
+                template_variables=template_variables,
+            )
+
+            # Run in event loop
+            try:
+                loop = asyncio.get_running_loop()
+                future = asyncio.run_coroutine_threadsafe(coro, loop)
+                return future.result(timeout=30)
+            except RuntimeError:
+                # No running loop, create new one
+                loop = asyncio.new_event_loop()
+                try:
+                    return loop.run_until_complete(coro)
+                finally:
+                    loop.close()
+
+        except Exception as e:
+            logger.error(f"❌ Error sending initial HIL message: {str(e)}", exc_info=True)
+            return False
 
     def _error_response(
         self, message: str, error_code: str, details: Optional[Dict[str, Any]] = None

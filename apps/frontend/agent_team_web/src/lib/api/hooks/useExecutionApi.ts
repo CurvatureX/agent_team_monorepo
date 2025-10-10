@@ -352,3 +352,64 @@ export function useRecentExecutionLogs(workflowId: string | null, limit: number 
     refresh: fetchLogs,
   };
 }
+
+// Hook for streaming execution logs from a specific execution
+export interface ExecutionLogEntry {
+  timestamp: string;
+  level: string;
+  message: string;
+  node_id?: string;
+  execution_id?: string;
+  [key: string]: unknown;
+}
+
+export function useExecutionLogsStream(executionId: string | null) {
+  const { session } = useAuth();
+  const [logs, setLogs] = useState<ExecutionLogEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchLogs = useCallback(async () => {
+    if (!session?.access_token || !executionId) {
+      setLogs([]);
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const result = await apiRequest(
+        API_PATHS.EXECUTION_LOGS_STREAM(executionId),
+        session.access_token,
+        'GET'
+      );
+
+      // The API should return an array of log entries
+      setLogs(result.logs || result || []);
+    } catch (err) {
+      const error = err as Error;
+      const errorMsg = error.message || 'Failed to fetch execution logs';
+      setError(errorMsg);
+      console.error('Error fetching execution logs:', err);
+      setLogs([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [session, executionId]);
+
+  useEffect(() => {
+    if (executionId) {
+      fetchLogs();
+    } else {
+      setLogs([]);
+    }
+  }, [executionId, fetchLogs]);
+
+  return {
+    logs,
+    isLoading,
+    error,
+    refresh: fetchLogs,
+  };
+}

@@ -27,7 +27,7 @@ import {
   WorkflowDataStructure,
 } from "@/types/workflow";
 import { useWorkflowActions } from "@/lib/api/hooks/useWorkflowsApi";
-import { useRecentExecutionLogs } from "@/lib/api/hooks/useExecutionApi";
+import { useExecutionLogsStream } from "@/lib/api/hooks/useExecutionApi";
 import { useToast } from "@/hooks/use-toast";
 import { chatService, ChatSSEEvent } from "@/lib/api/chatService";
 import { useLayout } from "@/components/ui/layout-wrapper";
@@ -132,6 +132,9 @@ const WorkflowDetailPage = () => {
   const [latestExecutionTime, setLatestExecutionTime] = useState<string | null>(
     null
   );
+  const [latestExecutionId, setLatestExecutionId] = useState<string | null>(
+    null
+  );
   const [isChatExpanded, setIsChatExpanded] = useState(true);
   const [isExecutionLogsExpanded, setIsExecutionLogsExpanded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -141,9 +144,9 @@ const WorkflowDetailPage = () => {
   const { session } = useAuth();
   const { updateWorkflow, getWorkflow } = useWorkflowActions();
 
-  // Fetch recent execution logs
+  // Fetch execution logs for the latest execution
   const { logs: executionLogs, isLoading: isLoadingLogs } =
-    useRecentExecutionLogs(workflowId, 10);
+    useExecutionLogsStream(latestExecutionId);
   useLayout();
   const { setCustomTitle } = usePageTitle();
 
@@ -269,7 +272,7 @@ const WorkflowDetailPage = () => {
             metadata: response?.workflow?.metadata,
           });
 
-          // Extract execution status and time from response (check metadata first)
+          // Extract execution status, time, and ID from response (check metadata first)
           const executionStatus =
             response?.workflow?.metadata?.last_execution_status ||
             response?.workflow?.latest_execution_status ||
@@ -280,9 +283,15 @@ const WorkflowDetailPage = () => {
             response?.workflow?.latest_execution_time ||
             response?.latest_execution_time ||
             null;
+          const executionId =
+            response?.workflow?.metadata?.last_execution_id ||
+            response?.workflow?.latest_execution_id ||
+            response?.latest_execution_id ||
+            null;
 
           setLatestExecutionStatus(executionStatus);
           setLatestExecutionTime(executionTime);
+          setLatestExecutionId(executionId);
 
           // Update workflow data with name and description if not present
           if (
@@ -746,6 +755,11 @@ const WorkflowDetailPage = () => {
                 readOnly={false}
                 className="h-full"
                 onToggleFullscreen={() => setIsWorkflowExpanded(true)}
+                onExecute={(workflowId, executionId) => {
+                  // Workflow execution started - update the execution ID to show live logs
+                  console.log("Workflow execution started:", workflowId, executionId);
+                  setLatestExecutionId(executionId);
+                }}
               />
             </div>
           </div>
@@ -812,46 +826,43 @@ const WorkflowDetailPage = () => {
                           />
                         </div>
                       </div>
+                    ) : !latestExecutionId ? (
+                      <div className="text-xs text-muted-foreground text-center py-8">
+                        No executions yet
+                      </div>
                     ) : executionLogs.length === 0 ? (
                       <div className="text-xs text-muted-foreground text-center py-8">
-                        No execution logs yet
+                        No logs for this execution
                       </div>
                     ) : (
-                      <div className="space-y-2">
+                      <div className="space-y-1 font-mono text-xs">
                         {executionLogs.map((log, index) => {
-                          const statusInfo = getExecutionStatusInfo(log.status);
-                          const StatusIcon = statusInfo.icon;
+                          const levelColor =
+                            log.level === 'ERROR' ? 'text-red-600 dark:text-red-400' :
+                            log.level === 'WARNING' ? 'text-yellow-600 dark:text-yellow-400' :
+                            log.level === 'INFO' ? 'text-blue-600 dark:text-blue-400' :
+                            'text-muted-foreground';
+
                           return (
                             <div
-                              key={log.execution_id || index}
-                              className="flex items-center justify-between p-2 rounded-md hover:bg-accent/50 transition-colors cursor-pointer"
+                              key={index}
+                              className="p-2 rounded-md hover:bg-accent/50 transition-colors"
                             >
-                              <div className="flex items-center gap-2 flex-1 min-w-0">
-                                <StatusIcon
-                                  className={`w-3.5 h-3.5 flex-shrink-0 ${statusInfo.color}`}
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <span
-                                      className={`text-xs font-medium ${statusInfo.color}`}
-                                    >
-                                      {statusInfo.label}
-                                    </span>
-                                    {log.duration && (
-                                      <span className="text-xs text-muted-foreground">
-                                        {log.duration}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <p className="text-xs text-muted-foreground truncate">
-                                    {formatExecutionTime(log.timestamp)}
-                                  </p>
-                                  {log.error_message && (
-                                    <p className="text-xs text-red-600 dark:text-red-400 truncate mt-0.5">
-                                      {log.error_message}
-                                    </p>
-                                  )}
-                                </div>
+                              <div className="flex items-start gap-2">
+                                <span className="text-muted-foreground whitespace-nowrap">
+                                  {new Date(log.timestamp).toLocaleTimeString()}
+                                </span>
+                                <span className={`font-medium whitespace-nowrap ${levelColor}`}>
+                                  [{log.level}]
+                                </span>
+                                {log.node_id && (
+                                  <span className="text-muted-foreground whitespace-nowrap">
+                                    {log.node_id}:
+                                  </span>
+                                )}
+                                <span className="flex-1 break-words">
+                                  {log.message}
+                                </span>
                               </div>
                             </div>
                           );
@@ -1068,6 +1079,10 @@ const WorkflowDetailPage = () => {
                 readOnly={false}
                 className="h-full"
                 onToggleFullscreen={() => setIsWorkflowExpanded(false)}
+                onExecute={(workflowId, executionId) => {
+                  console.log("Workflow execution started (fullscreen):", workflowId, executionId);
+                  setLatestExecutionId(executionId);
+                }}
               />
             </div>
           </motion.div>

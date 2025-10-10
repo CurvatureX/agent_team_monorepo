@@ -126,9 +126,25 @@ For the given intent: "{{ intent_summary }}"
 
 **Special Check for Approval Workflows:**
 If the user mentions "confirmation", "approval", "wait for user", or similar concepts:
-- You MUST include a HUMAN_IN_THE_LOOP node to wait for user response
+- You MUST include a HUMAN_IN_THE_LOOP interaction node to wait for user response
 - You MUST include the final action node that executes after approval
-- Example flow: Trigger → Process → Send confirmation → HUMAN_IN_THE_LOOP → Final action
+- Example flow: Trigger → Process → HUMAN_IN_THE_LOOP (sends message + waits) → Final action
+- **CRITICAL**: DO NOT add a separate EXTERNAL_ACTION node before the HIL node to send messages
+  - HIL interaction nodes (SLACK_INTERACTION, GMAIL_INTERACTION, DISCORD_INTERACTION, etc.) already send messages/emails themselves
+  - The message is configured in the HIL node's `message_template` or `email_template` parameter
+  - Adding EXTERNAL_ACTION before HIL is redundant and incorrect
+
+**Example of CORRECT approval workflow:**
+```
+Trigger → AI_AGENT (process data) → HUMAN_IN_THE_LOOP:SLACK_INTERACTION → EXTERNAL_ACTION:NOTION (final action)
+```
+
+**Example of INCORRECT approval workflow (DO NOT DO THIS):**
+```
+Trigger → AI_AGENT → EXTERNAL_ACTION:SLACK → HUMAN_IN_THE_LOOP:SLACK_INTERACTION → ACTION
+                     ^^^^^^^^^^^^^^^^^^^^^^^^
+                     This is wrong! The HIL node already sends to Slack!
+```
 
 **🚨 CRITICAL - Connections Are Required:**
 Your workflow MUST include connections that link the nodes together into a coherent flow:

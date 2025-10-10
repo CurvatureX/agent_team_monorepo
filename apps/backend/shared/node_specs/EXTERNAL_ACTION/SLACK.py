@@ -152,6 +152,18 @@ class SlackExternalActionSpec(BaseNodeSpec):
                     "description": "Whether Slack API operation succeeded",
                     "required": False,
                 },
+                "action": {
+                    "type": "string",
+                    "default": "",
+                    "description": "The action that was performed (e.g., send_message, create_channel)",
+                    "required": False,
+                },
+                "content": {
+                    "type": "string",
+                    "default": "",
+                    "description": "The content that was sent (e.g., message text, file name)",
+                    "required": False,
+                },
                 "message_ts": {
                     "type": "string",
                     "default": "",
@@ -164,12 +176,6 @@ class SlackExternalActionSpec(BaseNodeSpec):
                     "description": "Channel ID where the message was sent",
                     "required": False,
                 },
-                "response_data": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Parsed response payload from Slack API",
-                    "required": False,
-                },
                 "error_message": {
                     "type": "string",
                     "default": "",
@@ -179,7 +185,7 @@ class SlackExternalActionSpec(BaseNodeSpec):
                 "api_response": {
                     "type": "object",
                     "default": {},
-                    "description": "Raw response payload from Slack API",
+                    "description": "Parsed response payload from Slack API",
                     "required": False,
                 },
             },  # Metadata

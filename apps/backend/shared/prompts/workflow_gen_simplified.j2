@@ -85,6 +85,44 @@ You are creating a new workflow based on an existing one.
 ## Node Types (from MCP)
 - TRIGGER, EXTERNAL_ACTION, AI_AGENT, ACTION, FLOW, HUMAN_IN_THE_LOOP, TOOL, MEMORY
 
+## HUMAN_IN_THE_LOOP Nodes - Special Behavior
+**CRITICAL**: HUMAN_IN_THE_LOOP interaction nodes are SELF-CONTAINED. They send messages/emails AND wait for responses.
+
+**HIL Interaction Node Types:**
+- SLACK_INTERACTION: Sends Slack messages + waits for reply
+- GMAIL_INTERACTION: Sends emails + waits for reply
+- OUTLOOK_INTERACTION: Sends Outlook emails + waits for reply
+- DISCORD_INTERACTION: Sends Discord messages + waits for reply
+- TELEGRAM_INTERACTION: Sends Telegram messages + waits for reply
+
+**CRITICAL RULE: DO NOT use EXTERNAL_ACTION before HIL nodes!**
+
+**Correct Pattern:**
+```
+[Previous Node] → [HUMAN_IN_THE_LOOP:SLACK_INTERACTION] → [Next Node based on response]
+```
+
+**WRONG Patterns (DO NOT DO THIS):**
+```
+[Previous Node] → [EXTERNAL_ACTION:SLACK] → [HUMAN_IN_THE_LOOP:SLACK_INTERACTION]
+                  ^^^^^^^^^^^^^^^^^^^^^^^^
+                  This is redundant! HIL node already sends messages!
+
+[Previous Node] → [EXTERNAL_ACTION:GMAIL] → [HUMAN_IN_THE_LOOP:GMAIL_INTERACTION]
+                  ^^^^^^^^^^^^^^^^^^^^^^^^
+                  This is redundant! HIL node already sends emails!
+```
+
+**When to Use EXTERNAL_ACTION (Slack/Email/Discord/etc.):**
+- Use it when you need to send a one-way message WITHOUT waiting for a response
+- Use it for notifications, alerts, or informational messages
+- DO NOT use it before a HIL node - the HIL node handles messaging itself
+
+**When to Use HUMAN_IN_THE_LOOP Interaction Nodes:**
+- Use it when you need to send a message/email AND wait for user approval/response
+- It combines sending + waiting in one node
+- Configure the message in `message_template` or `email_template`, not in a separate action node
+
 ## Attached Nodes (AI_AGENT only)
 - AI_AGENT nodes can have `attached_nodes`: array of TOOL and MEMORY node IDs
 - TOOL and MEMORY nodes MUST NOT appear in connections array

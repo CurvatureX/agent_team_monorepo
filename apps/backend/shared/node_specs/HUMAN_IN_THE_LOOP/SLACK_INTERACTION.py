@@ -16,7 +16,7 @@ Key Features:
 
 from typing import Any, Dict, List
 
-from shared.models.node_enums import HumanLoopSubtype, NodeType
+from shared.models.node_enums import HumanLoopSubtype, NodeType, OpenAIModel
 from shared.node_specs.base import COMMON_CONFIGS, BaseNodeSpec
 
 
@@ -51,7 +51,7 @@ class SlackInteractionSpec(BaseNodeSpec):
                     "description": "使用OAuth认证（推荐）",
                     "required": False,
                 },
-                "message_template": {
+                "clarification_question_template": {
                     "type": "string",
                     "default": "Please review: {{content}}\\n\\nRespond with 'yes' to approve or 'no' to reject.",
                     "description": "发送给用户的消息模板，支持变量替换",
@@ -72,18 +72,12 @@ class SlackInteractionSpec(BaseNodeSpec):
                     "description": "自动在thread中收集响应",
                     "required": False,
                 },
-                "require_reaction": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "是否接受emoji反应作为响应",
-                    "required": False,
-                },
                 "ai_analysis_model": {
                     "type": "string",
-                    "default": "gpt-4",
+                    "default": OpenAIModel.GPT_5_MINI.value,
                     "description": "用于响应分析的AI模型",
                     "required": False,
-                    "options": ["gpt-4", "gpt-3.5-turbo", "claude-3-haiku", "claude-3-sonnet"],
+                    "options": [OpenAIModel.GPT_5_MINI.value, OpenAIModel.GPT_5_NANO.value],
                 },
                 "custom_analysis_prompt": {
                     "type": "string",
@@ -97,23 +91,11 @@ class SlackInteractionSpec(BaseNodeSpec):
             # Parameter schemas (preferred over legacy defaults)
             input_params={
                 "content": {
-                    "type": "string",
+                    "type": "object",
                     "default": "",
-                    "description": "Content to include in the Slack message",
+                    "description": "The content that need to be reviewed",
                     "required": False,
                     "multiline": True,
-                },
-                "context": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Additional context for templating",
-                    "required": False,
-                },
-                "variables": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Template variables",
-                    "required": False,
                 },
                 "user_mention": {
                     "type": "string",
@@ -121,19 +103,12 @@ class SlackInteractionSpec(BaseNodeSpec):
                     "description": "User to mention (e.g., @john)",
                     "required": False,
                 },
-                "urgency": {
-                    "type": "string",
-                    "default": "normal",
-                    "description": "Urgency level for the request",
-                    "required": False,
-                    "options": ["low", "normal", "high"],
-                },
             },
             output_params={
-                "response_received": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Whether a response was received",
+                "content": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Pass-through content from input_params (unchanged)",
                     "required": False,
                 },
                 "ai_classification": {
@@ -143,39 +118,17 @@ class SlackInteractionSpec(BaseNodeSpec):
                     "required": False,
                     "options": ["confirmed", "rejected", "unrelated", "timeout"],
                 },
-                "original_response": {
+                "user_response": {
                     "type": "string",
                     "default": "",
-                    "description": "Original user response text",
-                    "required": False,
-                },
-                "response_timestamp": {
-                    "type": "string",
-                    "default": "",
-                    "description": "ISO-8601 timestamp when response received",
-                    "required": False,
-                },
-                "timeout_occurred": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Whether the interaction timed out",
-                    "required": False,
-                },
-                "human_feedback": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Structured feedback extracted from the response",
-                    "required": False,
-                },
-                "user_id": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Slack user ID of the responder",
+                    "description": "The actual text response from the human",
                     "required": False,
                 },
             },
-            # Port definitions - HIL nodes have multiple output ports based on AI analysis            # Metadata
-            tags=["human-interaction", "slack", "approval", "ai-analysis", "built-in-intelligence"],
+            # System prompt appendix for AI guidance
+            system_prompt_appendix="""
+This HUMAN_IN_THE_LOOP:SLACK_INTERACTION node handles BOTH sending messages to Slack AND waiting for user responses.
+""",
             # Examples
             examples=[
                 {
@@ -183,21 +136,27 @@ class SlackInteractionSpec(BaseNodeSpec):
                     "description": "Basic approval workflow with AI response analysis",
                     "configurations": {
                         "channel": "#approvals",
-                        "message_template": "Please approve this expense: ${{amount}} for {{description}}\\n\\nReply 'yes' to approve or 'no' to reject.",
+                        "clarification_question_template": "Please approve this expense: ${{amount}} for {{description}}\\n\\nReply 'yes' to approve or 'no' to reject.",
                         "timeout_minutes": 30,
-                        "ai_analysis_model": "gpt-4",
+                        "ai_analysis_model": OpenAIModel.GPT_5_MINI.value,
                     },
                     "input_example": {
-                        "content": "Expense approval needed",
-                        "variables": {"amount": "250", "description": "Office supplies"},
-                        "urgency": "normal",
+                        "content": {
+                            "type": "expense_approval",
+                            "amount": 250,
+                            "description": "Office supplies",
+                        },
+                        "user_mention": "@finance_manager",
                     },
                     "expected_outputs": {
                         "confirmed": {
+                            "content": {
+                                "type": "expense_approval",
+                                "amount": 250,
+                                "description": "Office supplies",
+                            },
+                            "ai_classification": "confirmed",
                             "user_response": "yes, approved for office supplies",
-                            "analysis_result": "confirmed",
-                            "confidence": 0.95,
-                            "response_time": 300,
                             "user_id": "U1234567890",
                         }
                     },
@@ -207,23 +166,30 @@ class SlackInteractionSpec(BaseNodeSpec):
                     "description": "Detailed review request with custom AI analysis",
                     "configurations": {
                         "channel": "@manager_sarah",
-                        "message_template": "Code review required for {{feature_name}}:\\n\\n{{code_summary}}\\n\\nPlease review and respond with your decision and any feedback.",
+                        "clarification_question_template": "Code review required for {{feature_name}}:\\n\\n{{code_summary}}\\n\\nPlease review and respond with your decision and any feedback.",
                         "timeout_minutes": 120,
+                        "ai_analysis_model": OpenAIModel.GPT_5_MINI.value,
                         "custom_analysis_prompt": "Analyze if the response indicates code approval, rejection, or requests changes. Look for technical feedback and decision indicators.",
                     },
                     "input_example": {
-                        "content": "Code review needed",
-                        "variables": {
+                        "content": {
+                            "type": "code_review",
                             "feature_name": "User Authentication",
                             "code_summary": "Added OAuth 2.0 integration with proper error handling",
+                            "pr_url": "https://github.com/org/repo/pull/123",
                         },
+                        "user_mention": "@manager_sarah",
                     },
                     "expected_outputs": {
                         "confirmed": {
+                            "content": {
+                                "type": "code_review",
+                                "feature_name": "User Authentication",
+                                "code_summary": "Added OAuth 2.0 integration with proper error handling",
+                                "pr_url": "https://github.com/org/repo/pull/123",
+                            },
+                            "ai_classification": "confirmed",
                             "user_response": "Looks good! The OAuth implementation follows best practices. Approved for merge.",
-                            "analysis_result": "confirmed",
-                            "confidence": 0.92,
-                            "response_time": 1800,
                             "user_id": "U9876543210",
                         }
                     },
@@ -233,24 +199,31 @@ class SlackInteractionSpec(BaseNodeSpec):
                     "description": "High-priority approval with short timeout",
                     "configurations": {
                         "channel": "@oncall_engineer",
-                        "message_template": "🚨 URGENT: Server deployment approval needed for {{service_name}}\\n\\nIssue: {{issue_description}}\\n\\nApprove deployment? (yes/no)",
+                        "clarification_question_template": "🚨 URGENT: Server deployment approval needed for {{service_name}}\\n\\nIssue: {{issue_description}}\\n\\nApprove deployment? (yes/no)",
                         "timeout_minutes": 10,
-                        "require_reaction": True,
+                        "ai_analysis_model": OpenAIModel.GPT_5_NANO.value,
                     },
                     "input_example": {
-                        "content": "Emergency deployment approval",
-                        "variables": {
+                        "content": {
+                            "type": "emergency_deployment",
                             "service_name": "API Gateway",
                             "issue_description": "Memory leak causing 500 errors",
+                            "severity": "critical",
+                            "incident_id": "INC-2025-001",
                         },
-                        "urgency": "high",
+                        "user_mention": "@oncall_engineer",
                     },
                     "expected_outputs": {
                         "confirmed": {
-                            "user_response": "✅ (thumbs up reaction)",
-                            "analysis_result": "confirmed",
-                            "confidence": 1.0,
-                            "response_time": 45,
+                            "content": {
+                                "type": "emergency_deployment",
+                                "service_name": "API Gateway",
+                                "issue_description": "Memory leak causing 500 errors",
+                                "severity": "critical",
+                                "incident_id": "INC-2025-001",
+                            },
+                            "ai_classification": "confirmed",
+                            "user_response": "yes, deploy immediately",
                             "user_id": "U5555555555",
                         }
                     },

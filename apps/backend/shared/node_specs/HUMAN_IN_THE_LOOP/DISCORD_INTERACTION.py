@@ -10,8 +10,8 @@ Do NOT add separate AI_AGENT or IF nodes for response handling.
 
 from typing import Any, Dict, List
 
-from ...models.node_enums import HumanLoopSubtype, NodeType
-from ..base import COMMON_CONFIGS, BaseNodeSpec
+from shared.models.node_enums import HumanLoopSubtype, NodeType, OpenAIModel
+from shared.node_specs.base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class DiscordInteractionSpec(BaseNodeSpec):
@@ -52,34 +52,36 @@ class DiscordInteractionSpec(BaseNodeSpec):
                     "description": "响应超时时间（秒）",
                     "required": False,
                 },
+                "ai_analysis_model": {
+                    "type": "string",
+                    "default": OpenAIModel.GPT_5_MINI.value,
+                    "description": "AI响应分析模型",
+                    "required": False,
+                    "options": [OpenAIModel.GPT_5_MINI.value, OpenAIModel.GPT_5_NANO.value],
+                },
                 **COMMON_CONFIGS,
             },
             # Parameter schemas (preferred over legacy defaults)
             input_params={
-                "context": {
+                "content": {
                     "type": "object",
-                    "default": {},
-                    "description": "Additional context for templating",
+                    "default": "",
+                    "description": "The content that need to be reviewed",
                     "required": False,
+                    "multiline": True,
                 },
-                "variables": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Template variables",
-                    "required": False,
-                },
-                "user_data": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Arbitrary user data to include",
+                "user_mention": {
+                    "type": "string",
+                    "default": "",
+                    "description": "User to mention (e.g., @john)",
                     "required": False,
                 },
             },
             output_params={
-                "response_received": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Whether a response was received",
+                "content": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Pass-through content from input_params (unchanged)",
                     "required": False,
                 },
                 "ai_classification": {
@@ -89,46 +91,10 @@ class DiscordInteractionSpec(BaseNodeSpec):
                     "required": False,
                     "options": ["confirmed", "rejected", "unrelated", "timeout"],
                 },
-                "original_response": {
+                "user_response": {
                     "type": "string",
                     "default": "",
-                    "description": "Original user response text",
-                    "required": False,
-                },
-                "response_timestamp": {
-                    "type": "string",
-                    "default": "",
-                    "description": "ISO-8601 timestamp when response received",
-                    "required": False,
-                },
-                "execution_path": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Downstream execution path determined",
-                    "required": False,
-                },
-                "timeout_occurred": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Whether the interaction timed out",
-                    "required": False,
-                },
-                "discord_message_id": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Discord message ID of the interaction",
-                    "required": False,
-                },
-                "responding_user": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Information about the responder",
-                    "required": False,
-                },
-                "human_feedback": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Structured feedback extracted from the response",
+                    "description": "The actual text response from the human",
                     "required": False,
                 },
             },
@@ -147,38 +113,32 @@ class DiscordInteractionSpec(BaseNodeSpec):
                         "response_timeout": 7200,
                     },
                     "input_example": {
-                        "context": {
+                        "content": {
+                            "type": "tournament_approval",
                             "tournament_name": "Winter Championship 2025",
                             "tournament_date": "February 15-16, 2025",
                             "prize_amount": "5,000",
                             "participant_count": "64 players",
                             "tournament_details": "Two-day esports tournament featuring multiple game modes. Registration opens January 25th.",
-                        },
-                        "user_data": {
                             "organizer": "TournamentBot#1234",
                             "organizer_role": "event_coordinator",
                         },
+                        "user_mention": "@EventMod",
                     },
                     "expected_outputs": {
                         "confirmed": {
-                            "response_received": True,
-                            "ai_classification": "CONFIRMED",
-                            "original_response": "✅ Approved! This tournament looks well-organized. Make sure to coordinate with @EventTeam for venue setup. Good luck!",
-                            "response_timestamp": "2025-01-20T14:30:00Z",
-                            "execution_path": "confirmed",
-                            "discord_message_id": "1234567890123456789",
-                            "responding_user": {
-                                "id": "user_mod_456",
-                                "username": "ModeratorSarah",
-                                "discriminator": "7890",
-                                "roles": ["moderator"],
+                            "content": {
+                                "type": "tournament_approval",
+                                "tournament_name": "Winter Championship 2025",
+                                "tournament_date": "February 15-16, 2025",
+                                "prize_amount": "5,000",
+                                "participant_count": "64 players",
+                                "tournament_details": "Two-day esports tournament featuring multiple game modes. Registration opens January 25th.",
+                                "organizer": "TournamentBot#1234",
+                                "organizer_role": "event_coordinator",
                             },
-                            "human_feedback": {
-                                "decision": "approved",
-                                "comments": "This tournament looks well-organized. Make sure to coordinate with @EventTeam for venue setup. Good luck!",
-                                "response_method": "text_reply",
-                                "response_time_minutes": 25,
-                            },
+                            "ai_classification": "confirmed",
+                            "user_response": "✅ Approved! This tournament looks well-organized. Make sure to coordinate with @EventTeam for venue setup. Good luck!",
                         }
                     },
                 },
@@ -196,32 +156,26 @@ class DiscordInteractionSpec(BaseNodeSpec):
                         "target_roles": ["verified_member", "supporter", "moderator"],
                     },
                     "input_example": {
-                        "context": {
+                        "content": {
+                            "type": "rule_vote",
                             "rule_change": "No NSFW content in general channels",
                             "change_reason": "To maintain a welcoming environment for all ages",
                             "effective_date": "February 1, 2025",
                             "voting_duration": "24",
-                        }
+                        },
+                        "user_mention": "@everyone",
                     },
                     "expected_outputs": {
                         "confirmed": {
-                            "response_received": True,
-                            "ai_classification": "CONFIRMED",
-                            "original_response": "✅",
-                            "response_timestamp": "2025-01-20T18:45:00Z",
-                            "execution_path": "confirmed",
-                            "discord_message_id": "9876543210987654321",
-                            "responding_user": {
-                                "id": "user_community_789",
-                                "username": "CommunityVoice",
-                                "discriminator": "1357",
-                                "roles": ["verified_member"],
+                            "content": {
+                                "type": "rule_vote",
+                                "rule_change": "No NSFW content in general channels",
+                                "change_reason": "To maintain a welcoming environment for all ages",
+                                "effective_date": "February 1, 2025",
+                                "voting_duration": "24",
                             },
-                            "human_feedback": {
-                                "decision": "approved",
-                                "response_method": "reaction",
-                                "reaction_emoji": "✅",
-                            },
+                            "ai_classification": "confirmed",
+                            "user_response": "✅",
                         }
                     },
                 },
@@ -239,27 +193,26 @@ class DiscordInteractionSpec(BaseNodeSpec):
                         "allowed_response_patterns": ["^(APPROVE|REJECT|DISCUSS).*$"],
                     },
                     "input_example": {
-                        "context": {
+                        "content": {
+                            "type": "feature_request",
                             "feature_name": "Automated Backup System",
                             "feature_description": "Daily automatic backup of server settings and user data",
                             "requester_id": "user_requester_101",
                             "priority_level": "Medium",
-                        }
+                        },
+                        "user_mention": "<@dev_lead_001> <@bot_maintainer_002>",
                     },
                     "expected_outputs": {
                         "timeout": {
-                            "response_received": False,
-                            "ai_classification": "",
-                            "original_response": "",
-                            "response_timestamp": "",
-                            "execution_path": "timeout",
-                            "timeout_occurred": True,
-                            "discord_message_id": "5678901234567890123",
-                            "human_feedback": {
-                                "timeout_reason": "no_response_from_development_team",
-                                "escalation_required": True,
-                                "awaiting_users": ["dev_lead_001", "bot_maintainer_002"],
+                            "content": {
+                                "type": "feature_request",
+                                "feature_name": "Automated Backup System",
+                                "feature_description": "Daily automatic backup of server settings and user data",
+                                "requester_id": "user_requester_101",
+                                "priority_level": "Medium",
                             },
+                            "ai_classification": "timeout",
+                            "user_response": "",
                         }
                     },
                 },

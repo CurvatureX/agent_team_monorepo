@@ -39,7 +39,7 @@ interface EnhancedWorkflowCanvasProps {
   isSaving?: boolean;
   readOnly?: boolean;
   className?: string;
-  onExecute?: (workflowId: string) => void;
+  onExecute?: (workflowId: string, executionId: string) => void;
   onToggleFullscreen?: () => void;
 }
 
@@ -367,9 +367,9 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
         description: `Execution ID: ${execId}`,
       });
 
-      // Optional: Call parent callback
+      // Optional: Call parent callback with execution ID
       if (onExecute) {
-        onExecute(workflow.id);
+        onExecute(workflow.id, execId);
       }
     } catch (error) {
       const err = error as Error;

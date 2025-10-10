@@ -10,8 +10,8 @@ Do NOT add separate AI_AGENT or IF nodes for response handling.
 
 from typing import Any, Dict, List
 
-from ...models.node_enums import HumanLoopSubtype, NodeType
-from ..base import COMMON_CONFIGS, BaseNodeSpec
+from shared.models.node_enums import HumanLoopSubtype, NodeType, OpenAIModel
+from shared.node_specs.base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class OutlookInteractionSpec(BaseNodeSpec):
@@ -67,15 +67,10 @@ class OutlookInteractionSpec(BaseNodeSpec):
                 },
                 "ai_analysis_model": {
                     "type": "string",
-                    "default": "claude-3-5-haiku-20241022",
+                    "default": OpenAIModel.GPT_5_MINI.value,
                     "description": "AI响应分析模型",
                     "required": False,
-                    "options": [
-                        "gpt-4",
-                        "gpt-3.5-turbo",
-                        "claude-3-5-haiku-20241022",
-                        "claude-sonnet-4-20250514",
-                    ],
+                    "options": [OpenAIModel.GPT_5_MINI.value, OpenAIModel.GPT_5_NANO.value],
                 },
                 "response_analysis_prompt": {
                     "type": "string",
@@ -146,30 +141,25 @@ class OutlookInteractionSpec(BaseNodeSpec):
             },
             # Parameter schemas (preferred over legacy defaults)
             input_params={
-                "context": {
+                "content": {
                     "type": "object",
-                    "default": {},
-                    "description": "Additional context for templating",
+                    "default": "",
+                    "description": "The content that need to be reviewed",
                     "required": False,
+                    "multiline": True,
                 },
-                "variables": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Template variables",
-                    "required": False,
-                },
-                "user_data": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Arbitrary user data to include",
+                "user_mention": {
+                    "type": "string",
+                    "default": "",
+                    "description": "User to mention (e.g., @john)",
                     "required": False,
                 },
             },
             output_params={
-                "response_received": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Whether a response was received",
+                "content": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Pass-through content from input_params (unchanged)",
                     "required": False,
                 },
                 "ai_classification": {
@@ -179,40 +169,10 @@ class OutlookInteractionSpec(BaseNodeSpec):
                     "required": False,
                     "options": ["confirmed", "rejected", "unrelated", "timeout"],
                 },
-                "original_response": {
+                "user_response": {
                     "type": "string",
                     "default": "",
-                    "description": "Original user response text",
-                    "required": False,
-                },
-                "response_timestamp": {
-                    "type": "string",
-                    "default": "",
-                    "description": "ISO-8601 timestamp when response received",
-                    "required": False,
-                },
-                "execution_path": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Downstream execution path determined",
-                    "required": False,
-                },
-                "timeout_occurred": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Whether the interaction timed out",
-                    "required": False,
-                },
-                "email_metadata": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Email metadata including headers",
-                    "required": False,
-                },
-                "human_feedback": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Structured feedback extracted from the response",
+                    "description": "The actual text response from the human",
                     "required": False,
                 },
             },
@@ -239,37 +199,30 @@ class OutlookInteractionSpec(BaseNodeSpec):
                         "delivery_receipt": True,
                     },
                     "input_example": {
-                        "context": {
+                        "content": {
+                            "type": "policy_approval",
                             "policy_name": "Remote Work Guidelines 2025",
                             "effective_date": "February 1, 2025",
                             "changes_summary": "Added flexibility for hybrid work schedules and updated equipment allowances",
-                        },
-                        "user_data": {
                             "requester": "policy.admin@company.com",
                             "department": "human_resources",
                             "urgency": "high",
                         },
+                        "user_mention": "hr-manager@company.com",
                     },
                     "expected_outputs": {
                         "confirmed": {
-                            "response_received": True,
-                            "ai_classification": "CONFIRMED",
-                            "original_response": "APPROVE - The updated remote work guidelines look comprehensive and address current needs. I approve implementation starting February 1st. Please ensure all employees receive training on the new guidelines.",
-                            "response_timestamp": "2025-01-20T14:30:00Z",
-                            "execution_path": "confirmed",
-                            "email_metadata": {
-                                "sender": "hr-manager@company.com",
-                                "subject": "RE: Policy Approval Required - Remote Work Guidelines 2025",
-                                "received_date": "2025-01-20T14:30:00Z",
-                                "priority": "high",
-                                "has_attachments": False,
+                            "content": {
+                                "type": "policy_approval",
+                                "policy_name": "Remote Work Guidelines 2025",
+                                "effective_date": "February 1, 2025",
+                                "changes_summary": "Added flexibility for hybrid work schedules and updated equipment allowances",
+                                "requester": "policy.admin@company.com",
+                                "department": "human_resources",
+                                "urgency": "high",
                             },
-                            "human_feedback": {
-                                "decision": "approved",
-                                "comments": "The updated remote work guidelines look comprehensive and address current needs. I approve implementation starting February 1st. Please ensure all employees receive training on the new guidelines.",
-                                "response_time_hours": 18.5,
-                                "approval_conditions": ["employee_training_required"],
-                            },
+                            "ai_classification": "confirmed",
+                            "user_response": "APPROVE - The updated remote work guidelines look comprehensive and address current needs. I approve implementation starting February 1st. Please ensure all employees receive training on the new guidelines.",
                         }
                     },
                 },
@@ -294,36 +247,28 @@ class OutlookInteractionSpec(BaseNodeSpec):
                         },
                     },
                     "input_example": {
-                        "context": {
+                        "content": {
+                            "type": "contract_review",
                             "contract_type": "Software Licensing Agreement",
                             "vendor_name": "TechSoft Solutions Inc.",
                             "contract_value": "75,000",
                             "contract_term": "3 years",
                             "review_deadline": "January 28, 2025",
-                        }
+                        },
+                        "user_mention": "legal-counsel@company.com",
                     },
                     "expected_outputs": {
                         "rejected": {
-                            "response_received": True,
-                            "ai_classification": "REJECTED",
-                            "original_response": "REJECT - After review, the contract contains several problematic clauses in sections 8.3 and 12.1 regarding liability and data ownership. Vendor needs to revise these terms before we can approve. See attached marked-up version with specific concerns.",
-                            "response_timestamp": "2025-01-22T16:45:00Z",
-                            "execution_path": "rejected",
-                            "email_metadata": {
-                                "sender": "legal-counsel@company.com",
-                                "subject": "RE: Contract Review - Software Licensing Agreement with TechSoft Solutions Inc.",
-                                "priority": "normal",
-                                "has_attachments": True,
+                            "content": {
+                                "type": "contract_review",
+                                "contract_type": "Software Licensing Agreement",
+                                "vendor_name": "TechSoft Solutions Inc.",
+                                "contract_value": "75,000",
+                                "contract_term": "3 years",
+                                "review_deadline": "January 28, 2025",
                             },
-                            "human_feedback": {
-                                "decision": "rejected",
-                                "legal_concerns": [
-                                    "liability_clause_section_8.3",
-                                    "data_ownership_section_12.1",
-                                ],
-                                "revision_required": True,
-                                "marked_up_version_attached": True,
-                            },
+                            "ai_classification": "rejected",
+                            "user_response": "REJECT - After review, the contract contains several problematic clauses in sections 8.3 and 12.1 regarding liability and data ownership. Vendor needs to revise these terms before we can approve. See attached marked-up version with specific concerns.",
                         }
                     },
                 },
@@ -341,7 +286,8 @@ class OutlookInteractionSpec(BaseNodeSpec):
                         "read_receipt": True,
                     },
                     "input_example": {
-                        "context": {
+                        "content": {
+                            "type": "security_approval",
                             "change_type": "Firewall Rule Update",
                             "system_name": "Production Web Server",
                             "risk_level": "Medium",
@@ -349,25 +295,23 @@ class OutlookInteractionSpec(BaseNodeSpec):
                             "implementation_date": "January 25, 2025",
                             "change_description": "Opening port 8080 for new API endpoint",
                             "security_impact": "Limited exposure to external traffic on specific port",
-                        }
+                        },
+                        "user_mention": "security-team@company.com",
                     },
                     "expected_outputs": {
                         "timeout": {
-                            "response_received": False,
-                            "ai_classification": "",
-                            "original_response": "",
-                            "response_timestamp": "",
-                            "execution_path": "timeout",
-                            "timeout_occurred": True,
-                            "human_feedback": {
-                                "timeout_reason": "no_response_from_security_team",
-                                "escalation_required": True,
-                                "escalation_recipients": [
-                                    "ciso@company.com",
-                                    "it-director@company.com",
-                                ],
-                                "impact_assessment": "security_review_blocking_production_deployment",
+                            "content": {
+                                "type": "security_approval",
+                                "change_type": "Firewall Rule Update",
+                                "system_name": "Production Web Server",
+                                "risk_level": "Medium",
+                                "requester": "DevOps Team",
+                                "implementation_date": "January 25, 2025",
+                                "change_description": "Opening port 8080 for new API endpoint",
+                                "security_impact": "Limited exposure to external traffic on specific port",
                             },
+                            "ai_classification": "timeout",
+                            "user_response": "",
                         }
                     },
                 },

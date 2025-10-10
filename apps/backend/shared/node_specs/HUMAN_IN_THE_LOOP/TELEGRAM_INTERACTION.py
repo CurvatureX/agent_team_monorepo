@@ -10,8 +10,8 @@ Do NOT add separate AI_AGENT or IF nodes for response handling.
 
 from typing import Any, Dict, List
 
-from ...models.node_enums import HumanLoopSubtype, NodeType
-from ..base import COMMON_CONFIGS, BaseNodeSpec
+from shared.models.node_enums import HumanLoopSubtype, NodeType, OpenAIModel
+from shared.node_specs.base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class TelegramInteractionSpec(BaseNodeSpec):
@@ -61,15 +61,10 @@ class TelegramInteractionSpec(BaseNodeSpec):
                 },
                 "ai_analysis_model": {
                     "type": "string",
-                    "default": "claude-3-5-haiku-20241022",
+                    "default": OpenAIModel.GPT_5_MINI.value,
                     "description": "AI响应分析模型",
                     "required": False,
-                    "options": [
-                        "gpt-4",
-                        "gpt-3.5-turbo",
-                        "claude-3-5-haiku-20241022",
-                        "claude-sonnet-4-20250514",
-                    ],
+                    "options": [OpenAIModel.GPT_5_MINI.value, OpenAIModel.GPT_5_NANO.value],
                 },
                 "response_analysis_prompt": {
                     "type": "string",
@@ -146,30 +141,25 @@ class TelegramInteractionSpec(BaseNodeSpec):
             },
             # Parameter schemas (preferred over legacy defaults)
             input_params={
-                "context": {
+                "content": {
                     "type": "object",
-                    "default": {},
-                    "description": "Additional context for templating",
+                    "default": "",
+                    "description": "The content that need to be reviewed",
                     "required": False,
+                    "multiline": True,
                 },
-                "variables": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Template variables",
-                    "required": False,
-                },
-                "user_data": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Arbitrary user data to include",
+                "user_mention": {
+                    "type": "string",
+                    "default": "",
+                    "description": "User to mention (e.g., @john)",
                     "required": False,
                 },
             },
             output_params={
-                "response_received": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Whether a response was received",
+                "content": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Pass-through content from input_params (unchanged)",
                     "required": False,
                 },
                 "ai_classification": {
@@ -179,46 +169,10 @@ class TelegramInteractionSpec(BaseNodeSpec):
                     "required": False,
                     "options": ["confirmed", "rejected", "unrelated", "timeout"],
                 },
-                "original_response": {
+                "user_response": {
                     "type": "string",
                     "default": "",
-                    "description": "Original user response text",
-                    "required": False,
-                },
-                "response_timestamp": {
-                    "type": "string",
-                    "default": "",
-                    "description": "ISO-8601 timestamp when response received",
-                    "required": False,
-                },
-                "execution_path": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Downstream execution path determined",
-                    "required": False,
-                },
-                "timeout_occurred": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Whether the interaction timed out",
-                    "required": False,
-                },
-                "telegram_message_id": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Telegram message ID of the interaction",
-                    "required": False,
-                },
-                "responding_user": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Information about the responder",
-                    "required": False,
-                },
-                "human_feedback": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Structured feedback extracted from the response",
+                    "description": "The actual text response from the human",
                     "required": False,
                 },
             },
@@ -244,41 +198,36 @@ class TelegramInteractionSpec(BaseNodeSpec):
                         "disable_notification": False,
                     },
                     "input_example": {
-                        "context": {
+                        "content": {
+                            "type": "trading_confirmation",
                             "symbol": "AAPL",
                             "action": "BUY",
                             "quantity": "500 shares",
                             "price": "185.50",
                             "risk_level": "Medium",
                             "market_analysis": "Strong bullish momentum with positive earnings outlook. RSI indicates good entry point.",
-                        },
-                        "user_data": {
                             "strategy": "momentum_trading",
                             "portfolio_impact": "2.3%",
                             "stop_loss": "175.00",
                         },
+                        "user_mention": "@trader_001 @risk_manager_002",
                     },
                     "expected_outputs": {
                         "confirmed": {
-                            "response_received": True,
-                            "ai_classification": "CONFIRMED",
-                            "original_response": "Execute - Good entry point based on technical analysis. Proceed with the trade.",
-                            "response_timestamp": "2025-01-20T14:30:00Z",
-                            "execution_path": "confirmed",
-                            "telegram_message_id": "12345",
-                            "responding_user": {
-                                "id": "trader_001",
-                                "username": "lead_trader_mike",
-                                "first_name": "Mike",
-                                "last_name": "Johnson",
+                            "content": {
+                                "type": "trading_confirmation",
+                                "symbol": "AAPL",
+                                "action": "BUY",
+                                "quantity": "500 shares",
+                                "price": "185.50",
+                                "risk_level": "Medium",
+                                "market_analysis": "Strong bullish momentum with positive earnings outlook. RSI indicates good entry point.",
+                                "strategy": "momentum_trading",
+                                "portfolio_impact": "2.3%",
+                                "stop_loss": "175.00",
                             },
-                            "human_feedback": {
-                                "decision": "approved",
-                                "comments": "Good entry point based on technical analysis. Proceed with the trade.",
-                                "response_method": "inline_button",
-                                "callback_data": "execute",
-                                "response_time_minutes": 5.2,
-                            },
+                            "ai_classification": "confirmed",
+                            "user_response": "Execute - Good entry point based on technical analysis. Proceed with the trade.",
                         }
                     },
                 },
@@ -296,36 +245,30 @@ class TelegramInteractionSpec(BaseNodeSpec):
                         "parse_mode": "Markdown",
                     },
                     "input_example": {
-                        "context": {
+                        "content": {
+                            "type": "maintenance_approval",
                             "system_name": "Production Database Cluster",
                             "maintenance_type": "Security Patch Update",
                             "scheduled_time": "Saturday, January 25, 2025 02:00 AM UTC",
                             "estimated_duration": "2-3 hours",
                             "service_impact": "Brief 5-minute downtime during restart",
                             "maintenance_details": "Applying critical security patches for PostgreSQL 14.10. Rolling update planned with minimal downtime.",
-                        }
+                        },
+                        "user_mention": "@ops_team",
                     },
                     "expected_outputs": {
                         "rejected": {
-                            "response_received": True,
-                            "ai_classification": "REJECTED",
-                            "original_response": "REJECT - This conflicts with the weekend product launch. Can we reschedule to Sunday night instead?",
-                            "response_timestamp": "2025-01-20T16:45:00Z",
-                            "execution_path": "rejected",
-                            "telegram_message_id": "67890",
-                            "responding_user": {
-                                "id": "ops_lead_003",
-                                "username": "ops_sarah",
-                                "first_name": "Sarah",
-                                "last_name": "Chen",
+                            "content": {
+                                "type": "maintenance_approval",
+                                "system_name": "Production Database Cluster",
+                                "maintenance_type": "Security Patch Update",
+                                "scheduled_time": "Saturday, January 25, 2025 02:00 AM UTC",
+                                "estimated_duration": "2-3 hours",
+                                "service_impact": "Brief 5-minute downtime during restart",
+                                "maintenance_details": "Applying critical security patches for PostgreSQL 14.10. Rolling update planned with minimal downtime.",
                             },
-                            "human_feedback": {
-                                "decision": "rejected",
-                                "comments": "This conflicts with the weekend product launch. Can we reschedule to Sunday night instead?",
-                                "response_method": "text_message",
-                                "conflict_reason": "product_launch_weekend",
-                                "suggested_alternative": "Sunday_night",
-                            },
+                            "ai_classification": "rejected",
+                            "user_response": "REJECT - This conflicts with the weekend product launch. Can we reschedule to Sunday night instead?",
                         }
                     },
                 },
@@ -352,29 +295,28 @@ class TelegramInteractionSpec(BaseNodeSpec):
                         "disable_notification": False,
                     },
                     "input_example": {
-                        "context": {
+                        "content": {
+                            "type": "emergency_authorization",
                             "incident_id": "INC-2025-0120-001",
                             "severity_level": "CRITICAL",
                             "affected_systems": "Primary payment processing, User authentication",
                             "impact_assessment": "100% service outage affecting all customers",
                             "proposed_action": "Immediate failover to backup datacenter in us-west-2 region",
-                        }
+                        },
+                        "user_mention": "@incident_commander_001",
                     },
                     "expected_outputs": {
                         "timeout": {
-                            "response_received": False,
-                            "ai_classification": "",
-                            "original_response": "",
-                            "response_timestamp": "",
-                            "execution_path": "timeout",
-                            "timeout_occurred": True,
-                            "human_feedback": {
-                                "timeout_reason": "no_response_from_incident_commander",
-                                "escalation_required": True,
-                                "escalation_recipients": ["cto_emergency", "vp_engineering"],
-                                "automatic_action": "proceed_with_emergency_protocol",
-                                "severity_impact": "critical_service_outage",
+                            "content": {
+                                "type": "emergency_authorization",
+                                "incident_id": "INC-2025-0120-001",
+                                "severity_level": "CRITICAL",
+                                "affected_systems": "Primary payment processing, User authentication",
+                                "impact_assessment": "100% service outage affecting all customers",
+                                "proposed_action": "Immediate failover to backup datacenter in us-west-2 region",
                             },
+                            "ai_classification": "timeout",
+                            "user_response": "",
                         }
                     },
                 },

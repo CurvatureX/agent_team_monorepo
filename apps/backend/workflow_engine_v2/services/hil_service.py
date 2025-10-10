@@ -252,6 +252,9 @@ class HILWorkflowServiceV2:
             # Get channel from config
             channel = channel_config.get("channel", "#general")
 
+            logger.info(f"📤 Sending Slack message to channel: {channel}")
+            logger.debug(f"📝 Message content (first 200 chars): {message[:200]}...")
+
             # Send message using Slack API
             import httpx
 
@@ -277,14 +280,16 @@ class HILWorkflowServiceV2:
 
             result = response.json()
             if result.get("ok", False):
-                logger.info("HIL response message sent via Slack successfully")
+                message_ts = result.get("ts", "")
+                logger.info(f"✅ Slack message sent successfully to {channel} (ts: {message_ts})")
                 return True
             else:
-                logger.error(f"Slack API error: {result.get('error', 'unknown')}")
+                error_msg = result.get("error", "unknown")
+                logger.error(f"❌ Slack API error for channel {channel}: {error_msg}")
                 return False
 
         except Exception as e:
-            logger.error(f"Error sending Slack HIL response: {e}")
+            logger.error(f"❌ Error sending Slack message: {e}", exc_info=True)
             return False
 
     async def _send_email_message(
@@ -329,7 +334,6 @@ class HILWorkflowServiceV2:
         channel_type: Optional[Union[HILChannelType, str]] = None,
         request_data: Optional[Dict[str, Any]] = None,
         timeout_seconds: Optional[int] = None,
-        priority: str = "normal",
     ) -> str:
         """Create and persist a new HIL interaction record."""
 
@@ -346,7 +350,6 @@ class HILWorkflowServiceV2:
             "channel_type": channel_type,
             "request_data": request_data,
             "timeout_seconds": timeout_seconds,
-            "priority": priority,
         }
         for key, value in overrides.items():
             if value is not None and merged.get(key) is None:
@@ -366,7 +369,9 @@ class HILWorkflowServiceV2:
         if interaction_value is None:
             interaction_value = HILInteractionType.APPROVAL.value
         interaction_str = (
-            interaction_value.value if isinstance(interaction_value, HILInteractionType) else str(interaction_value)
+            interaction_value.value
+            if isinstance(interaction_value, HILInteractionType)
+            else str(interaction_value)
         ).lower()
 
         channel_value = merged.get("channel_type") or merged.get("channel")
@@ -412,7 +417,6 @@ class HILWorkflowServiceV2:
             "node_id": merged["node_id"],
             "user_id": merged["user_id"],
             "status": "pending",
-            "priority": merged.get("priority", "normal"),
             "interaction_type": interaction_str,
             "channel_type": channel_str,
             "request_data": request_payload,
@@ -465,39 +469,78 @@ class HILWorkflowServiceV2:
                         "Failed to store HIL interaction %s in database; falling back to memory cache",
                         record["id"],
                     )
-            except Exception as exc:  # pragma: no cover - logging path
-                message = str(exc)
-                if "priority" in message:
-                    fallback_record = dict(record)
-                    fallback_record.pop("priority", None)
-                    try:
-                        result = (
-                            self._supabase.table("hil_interactions")
-                            .insert(fallback_record)
-                            .execute()
-                        )
-                        if not result.data:
-                            logger.error(
-                                "Retry without priority still failed for HIL interaction %s",
-                                record["id"],
-                            )
-                        else:
-                            record = fallback_record
-                            logger.info(
-                                "Stored HIL interaction %s without priority column",
-                                record["id"],
-                            )
-                    except Exception as fallback_exc:
-                        logger.error(
-                            "Error storing HIL interaction %s without priority: %s",
-                            record["id"],
-                            fallback_exc,
-                        )
                 else:
-                    logger.error("Error storing HIL interaction %s: %s", record["id"], exc)
+                    logger.info(f"✅ Stored HIL interaction {record['id']} in database")
+            except Exception as exc:
+                logger.error(
+                    "Error storing HIL interaction %s: %s", record["id"], exc, exc_info=True
+                )
 
         with self._memory_lock:
             self._in_memory_store[record["id"]] = dict(record)
+
+    async def send_initial_interaction_request(
+        self,
+        interaction_id: str,
+        user_id: str,
+        channel_type: str,
+        channel_config: Dict[str, Any],
+        message_template: str,
+        template_variables: Dict[str, Any] = None,
+    ) -> bool:
+        """
+        Send the initial HIL interaction request message to the user.
+
+        This is called when the HIL interaction is first created to notify the user
+        that their input is required.
+
+        Args:
+            interaction_id: HIL interaction ID
+            user_id: User to send notification to
+            channel_type: Channel type (slack, email, etc.)
+            channel_config: Channel configuration (channel name, etc.)
+            message_template: Message template with variables
+            template_variables: Variables to populate in template
+
+        Returns:
+            bool: Success status
+        """
+        try:
+            logger.info(f"📬 Sending initial HIL interaction request for {interaction_id}")
+
+            # Prepare template context
+            context = {
+                "interaction_id": interaction_id,
+                "user_id": user_id,
+                "workflow": {"user_id": user_id},
+                **(template_variables or {}),
+            }
+
+            # Render message from template
+            rendered_message = self._render_template(message_template, context)
+
+            # Send via appropriate channel
+            node_parameters = {
+                "channel_type": channel_type,
+                "channel_config": channel_config,
+            }
+
+            success = await self._send_response_message(
+                "initial_request", rendered_message, context, node_parameters
+            )
+
+            if success:
+                logger.info(f"✅ Initial HIL interaction request sent for {interaction_id}")
+            else:
+                logger.error(
+                    f"❌ Failed to send initial HIL interaction request for {interaction_id}"
+                )
+
+            return success
+
+        except Exception as e:
+            logger.error(f"❌ Error sending initial HIL interaction request: {e}", exc_info=True)
+            return False
 
     async def send_system_message(
         self,
@@ -548,7 +591,6 @@ class HILWorkflowServiceV2:
         }
 
         return await self._send_response_message(message_type, template, context, node_parameters)
-
 
     async def get_pending_interactions(
         self, user_id: Optional[str] = None, workflow_id: Optional[str] = None, limit: int = 50

@@ -10,8 +10,8 @@ Do NOT add separate AI_AGENT or IF nodes for response handling.
 
 from typing import Any, Dict, List
 
-from ...models.node_enums import HumanLoopSubtype, NodeType
-from ..base import COMMON_CONFIGS, BaseNodeSpec
+from shared.models.node_enums import HumanLoopSubtype, NodeType, OpenAIModel
+from shared.node_specs.base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class GmailInteractionSpec(BaseNodeSpec):
@@ -67,15 +67,10 @@ class GmailInteractionSpec(BaseNodeSpec):
                 },
                 "ai_analysis_model": {
                     "type": "string",
-                    "default": "claude-3-5-haiku-20241022",
+                    "default": OpenAIModel.GPT_5_MINI.value,
                     "description": "AI响应分析模型",
                     "required": False,
-                    "options": [
-                        "gpt-4",
-                        "gpt-3.5-turbo",
-                        "claude-3-5-haiku-20241022",
-                        "claude-sonnet-4-20250514",
-                    ],
+                    "options": [OpenAIModel.GPT_5_MINI.value, OpenAIModel.GPT_5_NANO.value],
                 },
                 "response_analysis_prompt": {
                     "type": "string",
@@ -111,30 +106,25 @@ class GmailInteractionSpec(BaseNodeSpec):
             },
             # Parameter schemas (preferred over legacy defaults)
             input_params={
-                "context": {
+                "content": {
                     "type": "object",
-                    "default": {},
-                    "description": "Additional context for templating",
+                    "default": "",
+                    "description": "The content that need to be reviewed",
                     "required": False,
+                    "multiline": True,
                 },
-                "variables": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Template variables",
-                    "required": False,
-                },
-                "user_data": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Arbitrary user data to include",
+                "user_mention": {
+                    "type": "string",
+                    "default": "",
+                    "description": "User to mention (e.g., @john)",
                     "required": False,
                 },
             },
             output_params={
-                "response_received": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Whether a response was received",
+                "content": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Pass-through content from input_params (unchanged)",
                     "required": False,
                 },
                 "ai_classification": {
@@ -144,34 +134,10 @@ class GmailInteractionSpec(BaseNodeSpec):
                     "required": False,
                     "options": ["confirmed", "rejected", "unrelated", "timeout"],
                 },
-                "original_response": {
+                "user_response": {
                     "type": "string",
                     "default": "",
-                    "description": "Original user response text",
-                    "required": False,
-                },
-                "response_timestamp": {
-                    "type": "string",
-                    "default": "",
-                    "description": "ISO-8601 timestamp when response received",
-                    "required": False,
-                },
-                "execution_path": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Downstream execution path determined",
-                    "required": False,
-                },
-                "timeout_occurred": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Whether the interaction timed out",
-                    "required": False,
-                },
-                "human_feedback": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Structured feedback extracted from the response",
+                    "description": "The actual text response from the human",
                     "required": False,
                 },
             },
@@ -193,34 +159,37 @@ class GmailInteractionSpec(BaseNodeSpec):
                         "email_subject": "Budget Approval Request - Q1 Marketing Campaign",
                         "email_template": "Hi {{manager_name}},\\n\\nI need your approval for the Q1 marketing campaign budget of ${{amount}}.\\n\\nCampaign Details:\\n- Duration: {{duration}}\\n- Target Audience: {{audience}}\\n- Expected ROI: {{roi}}\\n\\nPlease reply with 'APPROVE' or 'REJECT' along with any comments.\\n\\nBest regards,\\nWorkflow System",
                         "response_timeout": 86400,
-                        "ai_analysis_model": "claude-3-5-haiku-20241022",
+                        "ai_analysis_model": OpenAIModel.GPT_5_MINI.value,
                     },
                     "input_example": {
-                        "context": {
+                        "content": {
+                            "type": "budget_approval",
                             "manager_name": "Sarah Johnson",
                             "amount": "$25,000",
                             "duration": "3 months",
                             "audience": "Tech professionals aged 25-45",
                             "roi": "150%",
-                        },
-                        "user_data": {
                             "requester": "john.doe@company.com",
                             "department": "marketing",
                             "urgency": "high",
                         },
+                        "user_mention": "manager@company.com",
                     },
                     "expected_outputs": {
                         "confirmed": {
-                            "response_received": True,
-                            "ai_classification": "CONFIRMED",
-                            "original_response": "APPROVE - This looks like a solid campaign plan. Please proceed with the budget allocation. Let me know if you need any additional resources.",
-                            "response_timestamp": "2025-01-20T10:30:00Z",
-                            "execution_path": "confirmed",
-                            "human_feedback": {
-                                "decision": "approved",
-                                "comments": "This looks like a solid campaign plan. Please proceed with the budget allocation. Let me know if you need any additional resources.",
-                                "response_time_hours": 4.5,
+                            "content": {
+                                "type": "budget_approval",
+                                "manager_name": "Sarah Johnson",
+                                "amount": "$25,000",
+                                "duration": "3 months",
+                                "audience": "Tech professionals aged 25-45",
+                                "roi": "150%",
+                                "requester": "john.doe@company.com",
+                                "department": "marketing",
+                                "urgency": "high",
                             },
+                            "ai_classification": "confirmed",
+                            "user_response": "APPROVE - This looks like a solid campaign plan. Please proceed with the budget allocation. Let me know if you need any additional resources.",
                         }
                     },
                 },
@@ -237,28 +206,26 @@ class GmailInteractionSpec(BaseNodeSpec):
                         "auto_reply_enabled": True,
                     },
                     "input_example": {
-                        "context": {
+                        "content": {
+                            "type": "legal_review",
                             "document_type": "Software License Agreement",
                             "document_name": "SaaS-License-v2.1.pdf",
                             "review_deadline": "January 25, 2025",
                             "priority_level": "High",
-                        }
+                        },
+                        "user_mention": "legal-team@company.com",
                     },
                     "expected_outputs": {
                         "rejected": {
-                            "response_received": True,
-                            "ai_classification": "REJECTED",
-                            "original_response": "After review, we found several concerning clauses in sections 4.2 and 7.1 that need revision before approval. Please see attached comments.",
-                            "response_timestamp": "2025-01-21T14:20:00Z",
-                            "execution_path": "rejected",
-                            "human_feedback": {
-                                "decision": "rejected",
-                                "concerns": [
-                                    "Section 4.2 liability clause",
-                                    "Section 7.1 termination terms",
-                                ],
-                                "attachments_included": True,
+                            "content": {
+                                "type": "legal_review",
+                                "document_type": "Software License Agreement",
+                                "document_name": "SaaS-License-v2.1.pdf",
+                                "review_deadline": "January 25, 2025",
+                                "priority_level": "High",
                             },
+                            "ai_classification": "rejected",
+                            "user_response": "After review, we found several concerning clauses in sections 4.2 and 7.1 that need revision before approval. Please see attached comments.",
                         }
                     },
                 },
@@ -276,26 +243,26 @@ class GmailInteractionSpec(BaseNodeSpec):
                         },
                     },
                     "input_example": {
-                        "context": {
+                        "content": {
+                            "type": "expense_approval",
                             "employee_name": "Alice Chen",
                             "total_amount": "842.50",
                             "submission_date": "January 18, 2025",
                             "categories": "Travel, Meals, Office Supplies",
-                        }
+                        },
+                        "user_mention": "finance-manager@company.com",
                     },
                     "expected_outputs": {
                         "timeout": {
-                            "response_received": False,
-                            "ai_classification": "",
-                            "original_response": "",
-                            "response_timestamp": "",
-                            "execution_path": "timeout",
-                            "timeout_occurred": True,
-                            "human_feedback": {
-                                "timeout_reason": "no_response_within_timeframe",
-                                "escalation_required": True,
-                                "escalation_recipients": ["senior-management@company.com"],
+                            "content": {
+                                "type": "expense_approval",
+                                "employee_name": "Alice Chen",
+                                "total_amount": "842.50",
+                                "submission_date": "January 18, 2025",
+                                "categories": "Travel, Meals, Office Supplies",
                             },
+                            "ai_classification": "timeout",
+                            "user_response": "",
                         }
                     },
                 },

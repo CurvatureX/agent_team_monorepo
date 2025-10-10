@@ -10,8 +10,8 @@ Do NOT add separate AI_AGENT or IF nodes for response handling.
 
 from typing import Any, Dict, List
 
-from ...models.node_enums import HumanLoopSubtype, NodeType
-from ..base import COMMON_CONFIGS, BaseNodeSpec
+from shared.models.node_enums import HumanLoopSubtype, NodeType, OpenAIModel
+from shared.node_specs.base import COMMON_CONFIGS, BaseNodeSpec
 
 
 class ManualReviewSpec(BaseNodeSpec):
@@ -108,15 +108,10 @@ class ManualReviewSpec(BaseNodeSpec):
                 },
                 "ai_analysis_model": {
                     "type": "string",
-                    "default": "claude-3-5-haiku-20241022",
+                    "default": OpenAIModel.GPT_5_MINI.value,
                     "description": "AI响应分析模型",
                     "required": False,
-                    "options": [
-                        "gpt-4",
-                        "gpt-3.5-turbo",
-                        "claude-3-5-haiku-20241022",
-                        "claude-sonnet-4-20250514",
-                    ],
+                    "options": [OpenAIModel.GPT_5_MINI.value, OpenAIModel.GPT_5_NANO.value],
                 },
                 "require_evidence": {
                     "type": "boolean",
@@ -150,97 +145,38 @@ class ManualReviewSpec(BaseNodeSpec):
             },
             # Parameter schemas (preferred over legacy defaults)
             input_params={
-                "context": {
+                "content": {
                     "type": "object",
-                    "default": {},
-                    "description": "Additional context for review",
+                    "default": "",
+                    "description": "The content that need to be reviewed",
                     "required": False,
+                    "multiline": True,
                 },
-                "review_subject": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Subject/object under review",
-                    "required": True,
-                },
-                "attachments": {
-                    "type": "array",
-                    "default": [],
-                    "description": "Supporting attachments",
-                    "required": False,
-                },
-                "metadata": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Arbitrary metadata",
+                "user_mention": {
+                    "type": "string",
+                    "default": "",
+                    "description": "User to mention (e.g., @john)",
                     "required": False,
                 },
             },
             output_params={
-                "review_completed": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Whether the review is completed",
+                "content": {
+                    "type": "object",
+                    "default": {},
+                    "description": "Pass-through content from input_params (unchanged)",
                     "required": False,
                 },
                 "ai_classification": {
                     "type": "string",
                     "default": "",
-                    "description": "AI classification outcome",
+                    "description": "AI classification of the response",
                     "required": False,
                     "options": ["confirmed", "rejected", "unrelated", "timeout"],
                 },
-                "review_decision": {
+                "user_response": {
                     "type": "string",
                     "default": "",
-                    "description": "Final decision from reviewer(s)",
-                    "required": False,
-                },
-                "review_score": {
-                    "type": "number",
-                    "default": None,
-                    "description": "Optional numeric score",
-                    "required": False,
-                },
-                "reviewer_comments": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Reviewer comments",
-                    "required": False,
-                },
-                "review_timestamp": {
-                    "type": "string",
-                    "default": "",
-                    "description": "ISO-8601 timestamp of review completion",
-                    "required": False,
-                },
-                "execution_path": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Downstream execution path determined",
-                    "required": False,
-                },
-                "timeout_occurred": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Whether review timed out",
-                    "required": False,
-                },
-                "reviewer_info": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Information about reviewer(s)",
-                    "required": False,
-                },
-                "evidence_provided": {
-                    "type": "array",
-                    "default": [],
-                    "description": "Evidence supplied during review",
-                    "required": False,
-                },
-                "human_feedback": {
-                    "type": "object",
-                    "default": {},
-                    "description": "Structured human feedback",
+                    "description": "The actual text response from the human",
                     "required": False,
                 },
             },
@@ -276,63 +212,36 @@ class ManualReviewSpec(BaseNodeSpec):
                         "review_deadline": 86400,
                     },
                     "input_example": {
-                        "context": {
+                        "content": {
+                            "type": "code_review",
                             "pull_request_id": "PR-2025-0145",
                             "repository": "customer-portal",
                             "branch": "feature/user-auth",
                             "author": "developer_jane",
-                        },
-                        "review_subject": {
                             "files_changed": 15,
                             "lines_added": 342,
                             "lines_deleted": 28,
                             "test_files": 8,
                             "commits": 7,
                         },
-                        "attachments": [
-                            {"type": "code_diff", "url": "https://github.com/repo/pull/145.diff"},
-                            {
-                                "type": "test_report",
-                                "url": "https://ci.example.com/reports/test-145",
-                            },
-                        ],
+                        "user_mention": "@senior_dev_001 @tech_lead_002",
                     },
                     "expected_outputs": {
                         "confirmed": {
-                            "review_completed": True,
-                            "ai_classification": "CONFIRMED",
-                            "review_decision": "approved",
-                            "review_score": None,
-                            "reviewer_comments": "✅ Code review passed. Well-structured implementation with good test coverage. Minor suggestions for optimization added as inline comments. Approved for merge.",
-                            "review_timestamp": "2025-01-20T16:45:00Z",
-                            "execution_path": "confirmed",
-                            "reviewer_info": {
-                                "reviewer_id": "senior_dev_001",
-                                "name": "Sarah Chen",
-                                "role": "senior_developer",
+                            "content": {
+                                "type": "code_review",
+                                "pull_request_id": "PR-2025-0145",
+                                "repository": "customer-portal",
+                                "branch": "feature/user-auth",
+                                "author": "developer_jane",
+                                "files_changed": 15,
+                                "lines_added": 342,
+                                "lines_deleted": 28,
+                                "test_files": 8,
+                                "commits": 7,
                             },
-                            "evidence_provided": [
-                                {
-                                    "criterion": "Test coverage",
-                                    "evidence": "Coverage report shows 85% line coverage",
-                                },
-                                {
-                                    "criterion": "Security check",
-                                    "evidence": "No vulnerabilities found in security scan",
-                                },
-                                {
-                                    "criterion": "Code style",
-                                    "evidence": "All linting checks passed",
-                                },
-                            ],
-                            "human_feedback": {
-                                "decision": "approved",
-                                "quality_score": "high",
-                                "improvement_suggestions": [
-                                    "Consider caching for user lookup queries"
-                                ],
-                                "estimated_review_time_minutes": 45,
-                            },
+                            "ai_classification": "confirmed",
+                            "user_response": "✅ Code review passed. Well-structured implementation with good test coverage. Minor suggestions for optimization added as inline comments. Approved for merge.",
                         }
                     },
                 },
@@ -357,40 +266,34 @@ class ManualReviewSpec(BaseNodeSpec):
                         "review_deadline": 3600,
                     },
                     "input_example": {
-                        "context": {
+                        "content": {
+                            "type": "content_moderation",
                             "content_id": "post_789012",
                             "author": "user_community_456",
                             "platform": "discussion_forum",
                             "content_type": "forum_post",
-                        },
-                        "review_subject": {
                             "title": "New Product Feature Suggestions",
-                            "content": "I think the app could benefit from dark mode and better notification settings. Also, the search function needs improvement.",
-                            "attachments": [],
-                            "reported_by": ["user_reporter_123"],
+                            "content_text": "I think the app could benefit from dark mode and better notification settings. Also, the search function needs improvement.",
+                            "reported_by": "user_reporter_123",
                             "report_reason": "spam",
                         },
+                        "user_mention": "@content_mod_001 @content_mod_002",
                     },
                     "expected_outputs": {
                         "rejected": {
-                            "review_completed": True,
-                            "ai_classification": "REJECTED",
-                            "review_decision": "content_violation",
-                            "reviewer_comments": "Content contains promotional links disguised as suggestions. Violates community guidelines against spam and promotional content.",
-                            "review_timestamp": "2025-01-20T12:30:00Z",
-                            "execution_path": "rejected",
-                            "reviewer_info": {
-                                "reviewer_id": "content_mod_001",
-                                "name": "Alex Rodriguez",
-                                "role": "content_moderator",
+                            "content": {
+                                "type": "content_moderation",
+                                "content_id": "post_789012",
+                                "author": "user_community_456",
+                                "platform": "discussion_forum",
+                                "content_type": "forum_post",
+                                "title": "New Product Feature Suggestions",
+                                "content_text": "I think the app could benefit from dark mode and better notification settings. Also, the search function needs improvement.",
+                                "reported_by": "user_reporter_123",
+                                "report_reason": "spam",
                             },
-                            "human_feedback": {
-                                "decision": "content_violation",
-                                "violation_type": "promotional_spam",
-                                "action_taken": "content_removed",
-                                "user_notified": True,
-                                "appeal_allowed": True,
-                            },
+                            "ai_classification": "rejected",
+                            "user_response": "Content contains promotional links disguised as suggestions. Violates community guidelines against spam and promotional content.",
                         }
                     },
                 },
@@ -421,40 +324,26 @@ class ManualReviewSpec(BaseNodeSpec):
                         },
                     },
                     "input_example": {
-                        "context": {
+                        "content": {
+                            "type": "financial_audit",
                             "report_period": "Q4 2024",
                             "department": "Finance",
                             "total_revenue": 2450000.00,
                             "prepared_by": "finance_analyst_007",
                         },
-                        "attachments": [
-                            {
-                                "type": "financial_report",
-                                "filename": "Q4-2024-Financial-Report.xlsx",
-                            },
-                            {
-                                "type": "supporting_docs",
-                                "filename": "Q4-2024-Supporting-Documentation.zip",
-                            },
-                        ],
+                        "user_mention": "@auditor_lead_003",
                     },
                     "expected_outputs": {
                         "timeout": {
-                            "review_completed": False,
-                            "ai_classification": "",
-                            "review_decision": "",
-                            "review_score": None,
-                            "reviewer_comments": "",
-                            "review_timestamp": "",
-                            "execution_path": "timeout",
-                            "timeout_occurred": True,
-                            "human_feedback": {
-                                "timeout_reason": "auditor_unavailable_within_deadline",
-                                "escalation_triggered": True,
-                                "escalated_to": ["audit_director", "cfo"],
-                                "impact_assessment": "regulatory_filing_at_risk",
-                                "alternative_reviewers_contacted": True,
+                            "content": {
+                                "type": "financial_audit",
+                                "report_period": "Q4 2024",
+                                "department": "Finance",
+                                "total_revenue": 2450000.00,
+                                "prepared_by": "finance_analyst_007",
                             },
+                            "ai_classification": "timeout",
+                            "user_response": "",
                         }
                     },
                 },

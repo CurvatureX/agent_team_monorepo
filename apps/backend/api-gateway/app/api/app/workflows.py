@@ -71,6 +71,12 @@ PROVIDER_ALIAS_MAP: Dict[str, Set[str]] = {
     "google_calendar": {"google_calendar"},
     "discord_action": {"discord"},
     "telegram_action": {"telegram"},
+    # HUMAN_IN_THE_LOOP interaction nodes
+    "slack_interaction": {"slack"},
+    "gmail_interaction": {"gmail"},
+    "outlook_interaction": {"outlook"},
+    "discord_interaction": {"discord"},
+    "telegram_interaction": {"telegram"},
 }
 
 
@@ -93,7 +99,11 @@ def _build_external_node_requirements() -> Dict[Tuple[str, str], Dict[str, Any]]
             continue
 
         try:
-            if node_type_value != NodeType.EXTERNAL_ACTION.value:
+            # Include both EXTERNAL_ACTION and HUMAN_IN_THE_LOOP nodes that require OAuth
+            if node_type_value not in [
+                NodeType.EXTERNAL_ACTION.value,
+                NodeType.HUMAN_IN_THE_LOOP.value,
+            ]:
                 continue
         except Exception:
             continue
@@ -647,6 +657,71 @@ async def _inject_oauth_credentials(workflow_data: Dict[str, Any], user_id: str)
                 # Note: WEBHOOK and CRON triggers typically don't need OAuth credentials
                 # MANUAL triggers are user-initiated and don't need external credentials
 
+            # Handle TOOL nodes - MCP tools attached to AI_AGENT nodes
+            elif node_type == "TOOL":
+                # Initialize configurations if not present
+                if "configurations" not in node:
+                    node["configurations"] = {}
+
+                token_injected = False
+
+                if node_subtype == "SLACK_MCP_TOOL" and "slack" in provider_tokens:
+                    # Slack MCP tools use access_token in configurations
+                    node["configurations"]["access_token"] = provider_tokens["slack"][
+                        "access_token"
+                    ]
+                    # Also inject workspace_id if available
+                    slack_data = provider_tokens["slack"]["credential_data"]
+                    if "workspace_id" in slack_data:
+                        node["configurations"]["workspace_id"] = slack_data["workspace_id"]
+                    token_injected = True
+
+                # Add more MCP tool types here as needed
+                # elif node_subtype == "GITHUB_MCP_TOOL" and "github" in provider_tokens:
+                #     node["configurations"]["access_token"] = provider_tokens["github"]["access_token"]
+                #     token_injected = True
+
+                if token_injected:
+                    injected_count += 1
+                    logger.info(
+                        f"🔐 Injected {node_subtype} MCP tool credentials for node {node.get('node_id', 'unknown')}"
+                    )
+
+            # Handle HUMAN_IN_THE_LOOP nodes
+            elif node_type == "HUMAN_IN_THE_LOOP":
+                # Initialize configurations if not present
+                if "configurations" not in node:
+                    node["configurations"] = {}
+
+                token_injected = False
+
+                if node_subtype == "SLACK_INTERACTION" and "slack" in provider_tokens:
+                    # Slack HIL nodes use bot_token in configurations
+                    node["configurations"]["bot_token"] = provider_tokens["slack"]["access_token"]
+                    # Also inject workspace_id if available
+                    slack_data = provider_tokens["slack"]["credential_data"]
+                    if "workspace_id" in slack_data:
+                        node["configurations"]["workspace_id"] = slack_data["workspace_id"]
+                    token_injected = True
+
+                elif node_subtype == "GMAIL_INTERACTION" and "gmail" in provider_tokens:
+                    # Gmail HIL nodes use gmail_credentials in configurations
+                    node["configurations"]["gmail_credentials"] = {
+                        "access_token": provider_tokens["gmail"]["access_token"]
+                    }
+                    token_injected = True
+
+                # Add more HIL interaction types here as needed
+                # elif node_subtype == "DISCORD_INTERACTION" and "discord" in provider_tokens:
+                #     node["configurations"]["bot_token"] = provider_tokens["discord"]["access_token"]
+                #     token_injected = True
+
+                if token_injected:
+                    injected_count += 1
+                    logger.info(
+                        f"🔐 Injected {node_subtype} HIL credentials for node {node.get('node_id', 'unknown')}"
+                    )
+
         logger.info(f"✅ OAuth credential injection completed: {injected_count} nodes updated")
         return updated_workflow
 
@@ -814,40 +889,153 @@ async def _inject_credentials_into_configurations(
         node_type = node.get("type") or node.get("node_type")
         node_subtype = node.get("subtype") or node.get("node_subtype")
 
-        if node_type != "EXTERNAL_ACTION":
-            continue
-
         # Initialize configurations if not present
         if "configurations" not in node:
             node["configurations"] = {}
 
         configurations = node["configurations"]
 
-        # Map node subtype to token field and provider
-        token_field = None
-        provider_key = None
+        # Handle EXTERNAL_ACTION nodes
+        if node_type == "EXTERNAL_ACTION":
+            # Map node subtype to token field and provider
+            token_field = None
+            provider_key = None
 
-        if node_subtype == "NOTION":
-            token_field = "notion_token"
-            provider_key = "notion"
-        elif node_subtype == "SLACK":
-            token_field = "bot_token"
-            provider_key = "slack"
-        elif node_subtype == "GITHUB":
-            token_field = "github_token"
-            provider_key = "github"
+            if node_subtype == "NOTION":
+                token_field = "notion_token"
+                provider_key = "notion"
+            elif node_subtype == "SLACK":
+                token_field = "bot_token"
+                provider_key = "slack"
+            elif node_subtype == "GITHUB":
+                token_field = "github_token"
+                provider_key = "github"
 
-        # Inject credential if available and different
-        if token_field and provider_key and provider_key in provider_tokens:
-            new_token = provider_tokens[provider_key]
-            current_token = configurations.get(token_field, "")
+            # Inject credential if available and different
+            if token_field and provider_key and provider_key in provider_tokens:
+                new_token = provider_tokens[provider_key]
+                current_token = configurations.get(token_field, "")
 
-            if current_token != new_token:
-                configurations[token_field] = new_token
-                credentials_changed = True
-                logger.info(
-                    f"🔐 Updated {node_subtype} credential in node {node.get('id', 'unknown')}"
-                )
+                if current_token != new_token:
+                    configurations[token_field] = new_token
+                    credentials_changed = True
+                    logger.info(
+                        f"🔐 Updated {node_subtype} credential in node {node.get('id', 'unknown')}"
+                    )
+
+        # Handle TOOL nodes (MCP tools attached to AI_AGENT)
+        elif node_type == "TOOL":
+            token_field = None
+            provider_key = None
+
+            if node_subtype == "SLACK_MCP_TOOL":
+                token_field = "access_token"
+                provider_key = "slack"
+            # Add more TOOL node types here as needed
+            # elif node_subtype == "GITHUB_MCP_TOOL":
+            #     token_field = "access_token"
+            #     provider_key = "github"
+
+            # Inject credential if available and different
+            if token_field and provider_key and provider_key in provider_tokens:
+                new_token = provider_tokens[provider_key]
+                current_token = configurations.get(token_field, "")
+
+                if current_token != new_token:
+                    configurations[token_field] = new_token
+                    credentials_changed = True
+                    logger.info(
+                        f"🔐 Updated {node_subtype} MCP tool credential in node {node.get('id', 'unknown')}"
+                    )
+
+        # Handle TRIGGER nodes
+        elif node_type == "TRIGGER":
+            if node_subtype == "SLACK":
+                if "slack" in provider_tokens:
+                    # Find the Slack token record from oauth_tokens
+                    slack_token_record = None
+                    for token in oauth_tokens:
+                        provider_key = _normalize_provider_key(
+                            token.get("provider"), token.get("integration_id")
+                        )
+                        if provider_key == "slack":
+                            slack_token_record = token
+                            break
+
+                    if slack_token_record:
+                        # Inject bot_token
+                        new_token = provider_tokens["slack"]
+                        current_token = configurations.get("bot_token", "")
+                        if current_token != new_token:
+                            configurations["bot_token"] = new_token
+                            credentials_changed = True
+
+                        # Inject workspace_id from credential_data
+                        credential_data = slack_token_record.get("credential_data") or {}
+                        if "workspace_id" in credential_data:
+                            current_workspace_id = configurations.get("workspace_id", "")
+                            new_workspace_id = credential_data["workspace_id"]
+                            if current_workspace_id != new_workspace_id:
+                                configurations["workspace_id"] = new_workspace_id
+                                credentials_changed = True
+
+                        if credentials_changed:
+                            logger.info(
+                                f"🔐 Updated Slack trigger credentials in node {node.get('id', 'unknown')}"
+                            )
+
+            # Add more trigger types here as needed
+            # elif node_subtype == "GITHUB":
+            #     if "github" in provider_tokens:
+            #         configurations["github_token"] = provider_tokens["github"]
+            #         credentials_changed = True
+
+        # Handle HUMAN_IN_THE_LOOP nodes
+        elif node_type == "HUMAN_IN_THE_LOOP":
+            if node_subtype == "SLACK_INTERACTION":
+                if "slack" in provider_tokens:
+                    # Find the Slack token record from oauth_tokens
+                    slack_token_record = None
+                    for token in oauth_tokens:
+                        provider_key = _normalize_provider_key(
+                            token.get("provider"), token.get("integration_id")
+                        )
+                        if provider_key == "slack":
+                            slack_token_record = token
+                            break
+
+                    if slack_token_record:
+                        # Inject bot_token (only if current value is empty or placeholder)
+                        current_token = configurations.get("bot_token", "")
+                        if _is_missing_config_value(current_token):
+                            new_token = provider_tokens["slack"]
+                            configurations["bot_token"] = new_token
+                            credentials_changed = True
+                            logger.info(
+                                f"🔐 Injected Slack bot_token for HIL node {node.get('id', 'unknown')}"
+                            )
+
+            elif node_subtype == "GMAIL_INTERACTION":
+                if "gmail" in provider_tokens:
+                    # Inject gmail credentials (only if current value is empty or placeholder)
+                    current_creds = configurations.get("gmail_credentials", {})
+                    if not current_creds or _is_missing_config_value(current_creds):
+                        # For Gmail, we need the full credential object
+                        configurations["gmail_credentials"] = {
+                            "access_token": provider_tokens["gmail"]
+                        }
+                        credentials_changed = True
+                        logger.info(
+                            f"🔐 Injected Gmail credentials for HIL node {node.get('id', 'unknown')}"
+                        )
+
+            # Add more HIL interaction types here as needed
+            # elif node_subtype == "DISCORD_INTERACTION":
+            #     if "discord" in provider_tokens:
+            #         current_token = configurations.get("bot_token", "")
+            #         if _is_missing_config_value(current_token):
+            #             configurations["bot_token"] = provider_tokens["discord"]
+            #             credentials_changed = True
 
     return workflow_data, credentials_changed
 

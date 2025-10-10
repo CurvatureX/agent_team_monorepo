@@ -22,6 +22,7 @@ export const API_PATHS = {
   // Executions
   EXECUTION: (id: string) => `${API_BASE}/app/executions/${id}`,
   EXECUTION_LOGS: (id: string) => `${API_BASE}/app/executions/${id}/logs`,
+  EXECUTION_LOGS_STREAM: (id: string) => `${API_BASE}/app/executions/${id}/logs/stream`,
   RECENT_LOGS: `${API_BASE}/app/executions/recent_logs`,
 
   // Integrations
