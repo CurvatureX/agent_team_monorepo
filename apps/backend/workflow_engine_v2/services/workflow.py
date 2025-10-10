@@ -99,6 +99,11 @@ class WorkflowServiceV2:
                 self.logger.warning(f"Failed to generate icon URL: {e}, using None")
                 icon_url = None
 
+        # Extract session_id from metadata if provided
+        session_id = metadata.get("session_id") if metadata else None
+        if session_id:
+            self.logger.info(f"🔗 Creating workflow with session_id: {session_id}")
+
         meta = WorkflowMetadata(
             id=workflow_id,
             name=name,
@@ -108,6 +113,7 @@ class WorkflowServiceV2:
             icon_url=icon_url,
             tags=tags or [],
             parent_workflow=parent_workflow,
+            session_id=session_id,  # Add session_id to metadata
         )
 
         # Convert user dictionaries to Node objects, preserving their data exactly

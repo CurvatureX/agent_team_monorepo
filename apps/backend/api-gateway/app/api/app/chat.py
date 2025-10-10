@@ -46,7 +46,7 @@ router = APIRouter()
                     "schema": {
                         "type": "string",
                         "format": "event-stream",
-                        "example": 'data: {"type":"message","data":{"text":"Hello","role":"assistant"},"session_id":"123","timestamp":"2025-07-31T00:00:00Z"}\n\n',
+                        "example": 'data: {"type":"message","data":{"text":"Hello","message_type":"assistant"},"session_id":"123","timestamp":"2025-07-31T00:00:00Z"}\n\n',
                     }
                 }
             },
@@ -70,6 +70,11 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
     try:
         logger.info(f"💬 Starting chat stream for session {chat_request.session_id}")
 
+        # Get admin client first - needed for all database operations
+        admin_client = deps.db_manager.supabase_admin
+        if not admin_client:
+            raise HTTPException(status_code=500, detail="Failed to create database client")
+
         # Session validation - OPTIMIZED with direct PostgreSQL
         session_result = None
         try:
@@ -88,10 +93,6 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
             logger.warning(f"⚠️ Direct SQL failed, falling back to REST API: {direct_error}")
 
             # Fallback to Supabase REST API
-            admin_client = deps.db_manager.supabase_admin
-            if not admin_client:
-                raise HTTPException(status_code=500, detail="Failed to create database client")
-
             session_query_result = (
                 admin_client.table("sessions")
                 .select("*")
@@ -139,11 +140,12 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                 stored_user_message = await direct_db.insert_chat_message_fast(
                     session_id=chat_request.session_id,
                     role="user",
-                    content=chat_request.message,
+                    content=chat_request.user_message,  # Fixed: was chat_request.message
                     user_id=deps.current_user.sub,
+                    sequence_number=next_sequence,
                 )
                 if stored_user_message:
-                    logger.info(f"✅ Direct SQL: Stored chat message")
+                    logger.info(f"✅ Direct SQL: Stored user message (seq: {next_sequence})")
             except Exception as direct_error:
                 logger.warning(f"⚠️ Direct SQL failed for chat, falling back: {direct_error}")
 
@@ -273,7 +275,7 @@ async def chat_stream(chat_request: ChatRequest, deps: AuthenticatedDeps = Depen
                         # Build SSE response
                         message_event = create_sse_event(
                             event_type=SSEEventType.MESSAGE,
-                            data={"text": message_content, "role": "assistant"},
+                            data={"text": message_content, "message_type": "assistant"},
                             session_id=chat_request.session_id,
                             is_final=response.get("is_final", False),
                         )

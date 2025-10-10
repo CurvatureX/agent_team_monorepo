@@ -377,6 +377,10 @@ class WorkflowAgentNodes:
         metadata.setdefault("created_by", state.get("user_id", "workflow_agent"))
         metadata.setdefault("created_time", int(time.time() * 1000))
 
+        # Add session_id to metadata so frontend can reuse the same session
+        if state.get("session_id"):
+            metadata["session_id"] = state.get("session_id")
+
         workflow["metadata"] = metadata
         workflow["id"] = metadata["id"]
 
@@ -883,13 +887,8 @@ Do NOT generate configuration parameters - that's handled automatically."""
         if "version" not in workflow:
             workflow["version"] = "1.0"
 
-        # Generate unique ID if not present
-        if "id" not in workflow:
-            import re
-
-            # Create ID from name
-            name = workflow.get("name", "workflow")
-            workflow["id"] = re.sub(r"[^a-z0-9-]", "-", name.lower())[:50]
+        # Note: ID generation is handled by _ensure_workflow_metadata with UUID
+        # Do NOT generate ID here to avoid creating slug IDs from workflow names
 
         return workflow
 

@@ -5,10 +5,10 @@ import { WorkflowData } from '@/types/workflow';
 export interface ChatMessage {
   id: string;
   content: string;
-  role: 'user' | 'assistant';
+  message_type: 'user' | 'assistant';  // Aligned with backend database schema
   session_id: string;
   user_id?: string;
-  message_type?: 'text' | 'system' | 'workflow' | 'error';
+  sequence_number?: number;
   created_at: string;
 }
 
@@ -30,7 +30,7 @@ export interface ChatSSEEvent {
     workflow?: WorkflowData;
     message?: string;
     status?: string;
-    role?: 'assistant' | 'user';
+    message_type?: 'assistant' | 'user';  // Aligned with backend
     previous_stage?: string;
     current_stage?: string;
     stage_state?: Record<string, unknown>;
@@ -46,6 +46,7 @@ class ChatService {
   private baseUrl: string;
   private sessionId: string | null = null;
   private supabase = createClient();
+  private sessionInitPromise: Promise<string> | null = null; // Lock to prevent concurrent session creation
 
   constructor() {
     // Use the proxy API route that forwards to backend
@@ -127,15 +128,33 @@ class ChatService {
 
   /**
    * Get current session ID, creating one if needed
+   * Uses a lock mechanism to prevent concurrent session creation (React StrictMode safe)
    */
   async getSessionId(): Promise<string> {
-    if (!this.sessionId) {
-      console.log('No session ID found, creating new session...');
-      await this.initSession();
-    } else {
-      console.log('Using existing session ID:', this.sessionId);
+    // If session already exists, return it immediately
+    if (this.sessionId) {
+      console.log('[ChatService] Using existing session ID:', this.sessionId);
+      return this.sessionId;
     }
-    return this.sessionId!;
+
+    // If session creation is already in progress, wait for it
+    if (this.sessionInitPromise) {
+      console.log('[ChatService] Session creation already in progress, waiting...');
+      return this.sessionInitPromise;
+    }
+
+    // Start new session creation with lock
+    console.log('[ChatService] No session ID found, creating new session...');
+    this.sessionInitPromise = this.initSession();
+
+    try {
+      const sessionId = await this.sessionInitPromise;
+      console.log('[ChatService] Created session ID:', sessionId);
+      return sessionId;
+    } finally {
+      // Clear the lock after completion
+      this.sessionInitPromise = null;
+    }
   }
 
   /**
@@ -164,8 +183,9 @@ class ChatService {
       user_message: message
     };
 
-    console.log('Sending chat request to:', `${this.baseUrl}/v1/app/chat/stream`);
-    console.log('Request body:', requestBody);
+    console.log('[ChatService] Sending chat request to:', `${this.baseUrl}/v1/app/chat/stream`);
+    console.log('[ChatService] Using session ID:', sessionId);
+    console.log('[ChatService] Request body:', requestBody);
 
     try {
       // Get auth token from Supabase
@@ -270,6 +290,9 @@ class ChatService {
   async getChatHistory(sessionId?: string, limit: number = 50, offset: number = 0): Promise<ChatHistory> {
     const sid = sessionId || await this.getSessionId();
 
+    console.log('[ChatService] Fetching chat history for session:', sid);
+    console.log('[ChatService] Current internal session ID:', this.sessionId);
+
     try {
       const authToken = await this.getAuthToken();
       const headers: HeadersInit = {
@@ -280,25 +303,40 @@ class ChatService {
         headers['Authorization'] = `Bearer ${authToken}`;
       }
 
-      const response = await fetch(
-        `${this.baseUrl}/v1/app/chat/${sid}/history?limit=${limit}&offset=${offset}`,
-        {
-          method: 'GET',
-          headers,
-          credentials: 'include',
-        }
-      );
+      const url = `${this.baseUrl}/v1/app/chat/${sid}/history?limit=${limit}&offset=${offset}`;
+      console.log('[ChatService] Fetching from URL:', url);
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+      });
+
+      console.log('[ChatService] History response status:', response.status);
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
+      console.log('[ChatService] Chat history received:', {
+        messageCount: data.messages?.length || 0,
+        sessionId: data.session_id,
+        totalCount: data.total_count
+      });
       return data;
     } catch (error) {
-      console.error('Failed to fetch chat history:', error);
+      console.error('[ChatService] Failed to fetch chat history:', error);
       throw error;
     }
+  }
+
+  /**
+   * Set an existing session ID (for reusing sessions)
+   */
+  setSessionId(sessionId: string) {
+    console.log('[ChatService] Setting session ID:', sessionId, '(previous:', this.sessionId, ')');
+    this.sessionId = sessionId;
   }
 
   /**
@@ -306,6 +344,7 @@ class ChatService {
    */
   clearSession() {
     this.sessionId = null;
+    this.sessionInitPromise = null; // Clear any pending initialization
   }
 
   /**

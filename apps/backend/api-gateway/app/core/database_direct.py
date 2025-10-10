@@ -271,7 +271,12 @@ class DirectPostgreSQLManager:
 
     # Chat Management (High Performance)
     async def insert_chat_message_fast(
-        self, session_id: str, role: str, content: str, user_id: str
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        user_id: str,
+        sequence_number: Optional[int] = None,
     ) -> Optional[Dict[str, Any]]:
         """Insert chat message with direct SQL (5x faster than REST API)"""
         if not self.pool:
@@ -279,12 +284,27 @@ class DirectPostgreSQLManager:
 
         try:
             async with self.pool.acquire() as conn:
+                # Map role to message_type and get next sequence if not provided
+                message_type = role  # "user" or "assistant"
+
+                if sequence_number is None:
+                    # Get next sequence number
+                    seq_query = """
+                        SELECT COALESCE(MAX(sequence_number), 0) + 1 AS next_seq
+                        FROM chats
+                        WHERE session_id = $1
+                    """
+                    seq_row = await conn.fetchrow(seq_query, session_id)
+                    sequence_number = seq_row["next_seq"] if seq_row else 1
+
                 query = """
-                    INSERT INTO chats (session_id, role, content, user_id, created_at, updated_at)
-                    VALUES ($1, $2, $3, $4, NOW(), NOW())
-                    RETURNING id, session_id, role, content, user_id, created_at, updated_at
+                    INSERT INTO chats (session_id, message_type, content, user_id, sequence_number, created_at)
+                    VALUES ($1, $2, $3, $4, $5, NOW())
+                    RETURNING id, session_id, message_type, content, user_id, sequence_number, created_at
                 """
-                row = await conn.fetchrow(query, session_id, role, content, user_id)
+                row = await conn.fetchrow(
+                    query, session_id, message_type, content, user_id, sequence_number
+                )
 
                 return dict(row) if row else None
 
@@ -304,7 +324,7 @@ class DirectPostgreSQLManager:
                 if user_id:
                     # RLS-style filtering
                     query = """
-                        SELECT id, session_id, role, content, user_id, created_at, updated_at
+                        SELECT id, session_id, message_type, content, user_id, sequence_number, created_at
                         FROM chats
                         WHERE session_id = $1 AND user_id = $2
                         ORDER BY created_at ASC
@@ -314,7 +334,7 @@ class DirectPostgreSQLManager:
                 else:
                     # Admin access
                     query = """
-                        SELECT id, session_id, role, content, user_id, created_at, updated_at
+                        SELECT id, session_id, message_type, content, user_id, sequence_number, created_at
                         FROM chats
                         WHERE session_id = $1
                         ORDER BY created_at ASC

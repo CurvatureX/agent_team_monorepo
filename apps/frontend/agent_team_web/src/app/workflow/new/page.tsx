@@ -7,8 +7,6 @@ import { PromptInputBox } from "@/components/ui/ai-prompt-box";
 import { PanelResizer } from "@/components/ui/panel-resizer";
 import { WorkflowEditor } from "@/components/workflow/WorkflowEditor";
 import {
-  User,
-  Bot,
   Maximize2,
   StopCircle,
   RefreshCw,
@@ -17,7 +15,9 @@ import {
   ChevronRight,
   MessageSquare,
   History,
+  Bot,
 } from "lucide-react";
+import Image from "next/image";
 import { useResizablePanel } from "@/hooks";
 import {
   WorkflowData,
@@ -94,6 +94,7 @@ const NewWorkflowPage = () => {
   const [isStreaming, setIsStreaming] = useState(false);
   const [workflowName, setWorkflowName] = useState<string>("New Workflow");
   const [workflowDescription, setWorkflowDescription] = useState<string>("");
+  const [workflowId, setWorkflowId] = useState<string | null>(null);
   const [isChatExpanded, setIsChatExpanded] = useState(true);
   const [isExecutionLogsExpanded, setIsExecutionLogsExpanded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -153,27 +154,38 @@ const NewWorkflowPage = () => {
     };
   }, [setCustomTitle, workflowName, router]);
 
-  // Initialize chat session
+  // Initialize chat session (only once)
   useEffect(() => {
     const initializeChat = async () => {
       try {
-        console.log("Initializing chat session for new workflow...");
-        const sessionId = await chatService.createNewSession();
-        console.log("Chat session initialized:", sessionId);
+        console.log("[NewWorkflow] Initializing chat session...");
+        // Check if chatService singleton already has a session
+        // This prevents React StrictMode from creating multiple sessions
+        const existingSessionId = await chatService.getSessionId();
 
-        // Load chat history if exists
-        const history = await chatService.getChatHistory();
-        if (history.messages && history.messages.length > 0) {
-          const formattedMessages: Message[] = history.messages.map((msg) => ({
-            id: msg.id,
-            content: msg.content,
-            sender: msg.role === "user" ? "user" : "assistant",
-            timestamp: new Date(msg.created_at),
-          }));
-          setMessages(formattedMessages);
+        if (existingSessionId) {
+          console.log("[NewWorkflow] Got session ID:", existingSessionId);
+
+          // Load chat history if exists
+          const history = await chatService.getChatHistory();
+          console.log("[NewWorkflow] Chat history loaded:", {
+            sessionId: history.session_id,
+            messageCount: history.messages?.length || 0
+          });
+
+          if (history.messages && history.messages.length > 0) {
+            const formattedMessages: Message[] = history.messages.map((msg) => ({
+              id: msg.id,
+              content: msg.content,
+              sender: msg.message_type === "user" ? "user" : "assistant",
+              timestamp: new Date(msg.created_at),
+            }));
+            setMessages(formattedMessages);
+            console.log("[NewWorkflow] Loaded", formattedMessages.length, "messages from history");
+          }
         }
       } catch (error) {
-        console.log("Error initializing chat:", error);
+        console.error("[NewWorkflow] Error initializing chat:", error);
       }
     };
 
@@ -260,15 +272,41 @@ const NewWorkflowPage = () => {
               }
             } else if (event.type === "workflow" && event.data) {
               if (event.data.workflow) {
-                console.log("Received workflow update:", event.data.workflow);
-                setCurrentWorkflow(event.data.workflow);
+                console.log("[NewWorkflow] Received workflow update from stream");
+                console.log("[NewWorkflow] Stream event session_id:", event.session_id);
+                console.log("[NewWorkflow] Workflow metadata session_id:", event.data.workflow?.metadata?.session_id);
+                console.log("[NewWorkflow] Full workflow data:", event.data.workflow);
+                const workflowData = event.data.workflow;
+                setCurrentWorkflow(workflowData);
 
-                // Update workflow name and description if available
-                if (event.data.workflow.name) {
-                  setWorkflowName(event.data.workflow.name);
+                // Update workflow name and description if available (consistent pattern)
+                if (workflowData.name) {
+                  setWorkflowName(workflowData.name);
                 }
-                if (event.data.workflow.description) {
-                  setWorkflowDescription(event.data.workflow.description);
+                if (workflowData.description) {
+                  setWorkflowDescription(workflowData.description);
+                }
+
+                // Extract the actual database workflow ID from the response
+                // The AI agent saves the workflow and returns workflow_id
+                const savedWorkflowId = workflowData.workflow_id ||  // Root level workflow_id (actual DB ID)
+                                       event.data.workflow_id ||
+                                       workflowData.id ||              // Fallback to structure ID
+                                       event.data.id;
+
+                console.log("[NewWorkflow] Workflow ID extraction:", {
+                  'workflow.workflow_id': workflowData.workflow_id,
+                  'event.data.workflow_id': event.data.workflow_id,
+                  'workflow.id': workflowData.id,
+                  'event.data.id': event.data.id,
+                  'selectedId': savedWorkflowId
+                });
+
+                if (savedWorkflowId) {
+                  console.log("[NewWorkflow] Using workflow ID:", savedWorkflowId);
+                  setWorkflowId(savedWorkflowId);
+                } else {
+                  console.warn("[NewWorkflow] No workflow ID found in response:", event.data);
                 }
               }
             } else if (event.type === "error") {
@@ -318,6 +356,20 @@ const NewWorkflowPage = () => {
     },
     [toast, streamCancelFn]
   );
+
+  // Redirect to workflow detail page when workflow ID is received
+  // The AI agent already saves the workflow to the database and returns the ID
+  useEffect(() => {
+    if (workflowId && currentWorkflow) {
+      console.log("Workflow received from AI, redirecting to detail page:", workflowId);
+      // Small delay to ensure any async operations complete
+      const timer = setTimeout(() => {
+        router.replace(`/workflow/${workflowId}`);
+      }, 500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [workflowId, currentWorkflow, router]);
 
   const handleStopStreaming = useCallback(() => {
     if (streamCancelFn) {
@@ -633,10 +685,22 @@ const NewWorkflowPage = () => {
                           >
                             <div className="flex items-start gap-2">
                               {message.sender === "assistant" && (
-                                <Bot className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                <Image
+                                  src="/icons/bot.svg"
+                                  alt="Assistant"
+                                  width={25}
+                                  height={25}
+                                  className="mt-0.5 flex-shrink-0"
+                                />
                               )}
                               {message.sender === "user" && (
-                                <User className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                <Image
+                                  src="/icons/user.svg"
+                                  alt="User"
+                                  width={25}
+                                  height={25}
+                                  className="mt-0.5 flex-shrink-0"
+                                />
                               )}
                               <div>
                                 <p className="text-sm">{message.content}</p>
@@ -659,7 +723,12 @@ const NewWorkflowPage = () => {
                         >
                           <div className="bg-muted text-muted-foreground p-3 rounded-2xl mr-4">
                             <div className="flex items-center gap-2">
-                              <Bot className="w-4 h-4" />
+                              <Image
+                                src="/icons/bot.svg"
+                                alt="Assistant"
+                                width={25}
+                                height={25}
+                              />
                               <div className="flex gap-1">
                                 <div className="w-2 h-2 bg-current rounded-full animate-bounce" />
                                 <div

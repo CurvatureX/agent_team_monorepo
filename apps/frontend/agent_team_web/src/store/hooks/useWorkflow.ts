@@ -93,31 +93,22 @@ export const useWorkflow = () => {
 
   // Export workflow
   const exportWorkflow = useCallback(() => {
-    console.log('[exportWorkflow] Starting export with nodes:', nodes.length);
-
     // Export nodes with all original data preserved
     const exportedNodes = nodes.map((node) => {
-      console.log(`[exportWorkflow] Processing node ${node.id}:`, {
-        type: node.data.template.node_type,
-        subtype: node.data.template.node_subtype,
-        hasOriginalData: !!node.data.originalData,
-        currentParameters: node.data.parameters,
-        originalConfigurations: node.data.originalData?.configurations,
-      });
-
       // If we have original node data, use it as base and update position
       if (node.data.originalData) {
+        // CRITICAL: Merge configurations properly to preserve all fields including action_type
+        const originalConfigs = node.data.originalData?.configurations || {};
+        const currentParams = node.data.parameters || {};
+        const mergedConfigs = { ...originalConfigs, ...currentParams };
+
         const exportedNode = {
           ...node.data.originalData,
           name: node.data.label || node.data.originalData.name,
           description: node.data.description || node.data.originalData.description,
           position: node.position, // Update position from editor
-          configurations: {
-            ...(node.data.originalData?.configurations || {}),
-            ...node.data.parameters, // Merge any updated parameters
-          },
+          configurations: mergedConfigs,
         };
-        console.log(`[exportWorkflow] Exported node ${node.id} with merged configurations:`, exportedNode.configurations);
         return exportedNode;
       }
 
@@ -133,7 +124,6 @@ export const useWorkflow = () => {
         input_params: {},
         output_params: {},
       };
-      console.log(`[exportWorkflow] Exported node ${node.id} (from template) with configurations:`, exportedNode.configurations);
       return exportedNode;
     });
 
@@ -149,9 +139,6 @@ export const useWorkflow = () => {
         conversion_function: edge.data?.conversion_function || null,
       }));
 
-    console.log('Exporting workflow - nodes:', exportedNodes.length, 'edges:', exportedEdges.length, '(excluded attachment edges)');
-    console.log('Exported edges:', exportedEdges);
-
     return {
       metadata,
       nodes: exportedNodes,
@@ -162,34 +149,18 @@ export const useWorkflow = () => {
   // Import workflow
   const importWorkflow = useCallback(
     (workflowData: Workflow, templates: NodeTemplate[]) => {
-      console.log('[importWorkflow] Starting import with workflow:', {
-        hasId: !!workflowData.id,
-        id: workflowData.id,
-        name: workflowData.name,
-      });
-
       // Clear existing workflow
       clearWorkflow();
 
       // Use the converter to transform API format to editor format
       const { nodes: editorNodes, edges: editorEdges, metadata } = apiWorkflowToEditor(workflowData, templates);
 
-      console.log('[importWorkflow] Converter returned metadata:', {
-        id: metadata.id,
-        name: metadata.name,
-        hasId: !!metadata.id,
-      });
-
       // Set metadata
       setMetadata(metadata);
-
-      console.log('[importWorkflow] Metadata set in store:', metadata);
 
       // Set nodes and edges
       setNodes(editorNodes);
       setEdges(editorEdges);
-
-      console.log('[importWorkflow] Import complete - Workflow ID:', metadata.id);
     },
     [clearWorkflow, setMetadata, setNodes, setEdges]
   );

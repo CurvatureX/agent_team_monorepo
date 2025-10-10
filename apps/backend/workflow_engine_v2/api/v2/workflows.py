@@ -58,7 +58,7 @@ async def create_workflow(request: CreateWorkflowRequest):
             tags=request.tags,
             parent_workflow=request.parent_workflow,
             icon_url=request.icon_url,
-            metadata={},
+            metadata=request.metadata or {},  # Use provided metadata (includes session_id)
         )
 
         logger.info(f"✅ [v2] Workflow created: {workflow_id}")

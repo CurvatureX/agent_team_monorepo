@@ -111,8 +111,9 @@ export const updateNodeParametersAtom = atom(
 
         // Store old parameters to detect what changed
         const oldParameters = node.data.parameters || {};
-        node.data.parameters = parameters;
-        console.log('[updateNodeParametersAtom] Updated node parameters:', node.data.parameters);
+        // IMPORTANT: Merge parameters instead of replacing to preserve all configuration fields
+        node.data.parameters = { ...oldParameters, ...parameters };
+        console.log('[updateNodeParametersAtom] Updated node parameters (merged):', node.data.parameters);
 
         // Auto-fill feature: propagate Slack channel and Notion database_id/page_id to other nodes
         const autoFillUpdates: Array<{ nodeId: string; field: string; value: unknown }> = [];

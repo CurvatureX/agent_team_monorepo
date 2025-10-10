@@ -179,8 +179,18 @@ class WorkflowEngineClient:
                 icon_url = generate_random_icon_url()
                 logger.info(f"🎨 Generated random icon_url: {icon_url}")
 
+                # Extract workflow ID from metadata or top-level
+                workflow_id = workflow_copy.get("id") or workflow_copy.get("metadata", {}).get("id")
+                if workflow_id:
+                    logger.info(f"📋 Using existing workflow ID: {workflow_id}")
+                else:
+                    logger.warning(
+                        "⚠️ No workflow ID found in workflow data, engine will generate one"
+                    )
+
                 # Prepare the request data according to CreateWorkflowRequest model
                 request_data = {
+                    "workflow_id": workflow_id,  # Pass existing workflow ID to preserve it
                     "name": workflow_copy.get("name", "Automated Workflow"),
                     "description": workflow_copy.get("description", ""),
                     "nodes": nodes,  # Use the modified nodes
@@ -193,16 +203,28 @@ class WorkflowEngineClient:
                     "icon_url": icon_url,  # Add random icon URL
                 }
 
-                # Add session_id if provided
-                if session_id:
-                    request_data["session_id"] = session_id
-
+                # Prepare metadata dict and add session_id if provided
                 metadata = workflow_copy.get("metadata")
                 if metadata:
                     metadata = dict(metadata)
                     metadata.pop("status", None)
                     metadata.pop("deployment_status", None)
+                else:
+                    metadata = {}
+
+                # Add session_id to metadata (not to top-level request_data!)
+                if session_id:
+                    metadata["session_id"] = session_id
+                    logger.info(f"✅ Added session_id to metadata: {session_id}")
+
+                # Only add metadata to request if it's not empty
+                if metadata:
                     request_data["metadata"] = metadata
+                    logger.info(f"🔍 DEBUG: Sending metadata to workflow_engine: {metadata}")
+                    if "session_id" in metadata:
+                        logger.info(f"✅ DEBUG: session_id IS in metadata: {metadata['session_id']}")
+                    else:
+                        logger.warning(f"⚠️ DEBUG: session_id is NOT in metadata!")
 
                     # Surface name/description from metadata when top-level values are missing
                     if not workflow_copy.get("name"):

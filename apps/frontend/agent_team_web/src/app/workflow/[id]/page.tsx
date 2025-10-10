@@ -7,8 +7,6 @@ import { PromptInputBox } from "@/components/ui/ai-prompt-box";
 import { PanelResizer } from "@/components/ui/panel-resizer";
 import { WorkflowEditor } from "@/components/workflow/WorkflowEditor";
 import {
-  User,
-  Bot,
   Maximize2,
   StopCircle,
   RefreshCw,
@@ -21,6 +19,7 @@ import {
   MessageSquare,
   History,
 } from "lucide-react";
+import Image from "next/image";
 import { useResizablePanel } from "@/hooks";
 import {
   WorkflowData,
@@ -137,6 +136,7 @@ const WorkflowDetailPage = () => {
   );
   const [isChatExpanded, setIsChatExpanded] = useState(true);
   const [isExecutionLogsExpanded, setIsExecutionLogsExpanded] = useState(false);
+  const [workflowSessionId, setWorkflowSessionId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -211,6 +211,12 @@ const WorkflowDetailPage = () => {
           } else {
             // workflow_data might be an object
             workflowData = workflow.workflow_data || workflow;
+          }
+
+          // CRITICAL: Preserve metadata from response.workflow.metadata
+          if (workflowData && response.workflow.metadata) {
+            console.log("Preserving metadata from response (includes session_id)");
+            workflowData.metadata = response.workflow.metadata;
           }
         } else if (response?.workflow_data) {
           // Direct workflow_data in response
@@ -344,32 +350,50 @@ const WorkflowDetailPage = () => {
     };
   }, [setCustomTitle, workflowName, router]);
 
-  // Initialize chat session
+  // Initialize chat session - reuse existing session from workflow metadata
   useEffect(() => {
     const initializeChat = async () => {
       try {
-        console.log("Initializing chat session for workflow...");
-        const sessionId = await chatService.createNewSession();
-        console.log("Chat session initialized:", sessionId);
+        // Get session_id from workflow metadata if available
+        const metadataSessionId = currentWorkflow?.metadata?.session_id as string | undefined;
 
-        // Load chat history if exists
+        let sessionId: string;
+        if (metadataSessionId && typeof metadataSessionId === 'string') {
+          // Reuse existing session from workflow metadata
+          console.log("Reusing session from workflow metadata:", metadataSessionId);
+          chatService.setSessionId(metadataSessionId);
+          sessionId = metadataSessionId;
+        } else {
+          // Create new session (this shouldn't normally happen after workflow creation)
+          console.log("No session in metadata, creating new session for workflow:", workflowId);
+          sessionId = await chatService.createNewSession();
+          console.log("New session created:", sessionId);
+        }
+
+        setWorkflowSessionId(sessionId);
+
+        // Load chat history for this session
         const history = await chatService.getChatHistory();
         if (history.messages && history.messages.length > 0) {
           const formattedMessages: Message[] = history.messages.map((msg) => ({
             id: msg.id,
             content: msg.content,
-            sender: msg.role === "user" ? "user" : "assistant",
+            sender: msg.message_type === "user" ? "user" : "assistant",
             timestamp: new Date(msg.created_at),
           }));
           setMessages(formattedMessages);
+          console.log(`Loaded ${formattedMessages.length} messages from session history`);
         }
       } catch (error) {
         console.log("Error initializing chat:", error);
       }
     };
 
-    initializeChat();
-  }, []);
+    // Only initialize chat after workflow is loaded
+    if (currentWorkflow) {
+      initializeChat();
+    }
+  }, [currentWorkflow, workflowId]);
 
   const handleSendMessage = useCallback(
     async (message: string, files?: File[]) => {
@@ -931,10 +955,22 @@ const WorkflowDetailPage = () => {
                           >
                             <div className="flex items-start gap-2">
                               {message.sender === "assistant" && (
-                                <Bot className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                <Image
+                                  src="/icons/bot.svg"
+                                  alt="Assistant"
+                                  width={25}
+                                  height={25}
+                                  className="mt-0.5 flex-shrink-0"
+                                />
                               )}
                               {message.sender === "user" && (
-                                <User className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                <Image
+                                  src="/icons/user.svg"
+                                  alt="User"
+                                  width={25}
+                                  height={25}
+                                  className="mt-0.5 flex-shrink-0"
+                                />
                               )}
                               <div>
                                 <p className="text-sm">{message.content}</p>
@@ -957,7 +993,12 @@ const WorkflowDetailPage = () => {
                         >
                           <div className="bg-muted text-muted-foreground p-3 rounded-2xl mr-4">
                             <div className="flex items-center gap-2">
-                              <Bot className="w-4 h-4" />
+                              <Image
+                                src="/icons/bot.svg"
+                                alt="Assistant"
+                                width={25}
+                                height={25}
+                              />
                               <div className="flex gap-1">
                                 <div className="w-2 h-2 bg-current rounded-full animate-bounce" />
                                 <div

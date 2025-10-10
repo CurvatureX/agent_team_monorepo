@@ -254,9 +254,9 @@ class TestIntegration:
 
         # Verify message structure
         for message in messages:
-            assert "role" in message
+            assert "message_type" in message
             assert "content" in message
-            assert message["role"] in ["user", "assistant"]
+            assert message["message_type"] in ["user", "assistant"]
 
     def test_unauthorized_access(self):
         """Test that endpoints require authentication"""

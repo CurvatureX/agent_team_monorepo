@@ -21,6 +21,55 @@ import type { NodeTemplate } from '@/types/node-template';
 import { NodeSubtypeAliasToCanonical, NodeSubtypeCanonicalToAlias } from '@/types/workflow-enums';
 
 /**
+ * Helper function to check if a value is empty/placeholder
+ */
+function isEmptyOrPlaceholder(value: unknown): boolean {
+  if (value === null || value === undefined) return true;
+  if (value === '') return true;
+  if (value === '{{$placeholder}}') return true;
+  if (Array.isArray(value) && value.length === 0) return true;
+  if (typeof value === 'object' && Object.keys(value as object).length === 0) return true;
+  return false;
+}
+
+/**
+ * Smart merge parameters with priority: configurations > input_params > defaults
+ * Filters out empty/placeholder values to prevent overwriting real data
+ */
+function mergeNodeParameters(
+  templateDefaults: Record<string, unknown> = {},
+  configurations: Record<string, unknown> = {},
+  inputParams: Record<string, unknown> = {}
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+
+  // Collect all unique keys from all sources
+  const allKeys = new Set([
+    ...Object.keys(templateDefaults),
+    ...Object.keys(configurations),
+    ...Object.keys(inputParams),
+  ]);
+
+  // For each key, use the first non-empty value in priority order
+  allKeys.forEach((key) => {
+    const configValue = configurations[key];
+    const inputValue = inputParams[key];
+    const defaultValue = templateDefaults[key];
+
+    // Priority: configurations (if non-empty) > input_params (if non-empty) > defaults
+    if (!isEmptyOrPlaceholder(configValue)) {
+      result[key] = configValue;
+    } else if (!isEmptyOrPlaceholder(inputValue)) {
+      result[key] = inputValue;
+    } else if (defaultValue !== undefined) {
+      result[key] = defaultValue;
+    }
+  });
+
+  return result;
+}
+
+/**
  * Convert API workflow node to editor workflow node
  * Maps backend Node format to React Flow node format
  */
@@ -33,6 +82,13 @@ export function apiNodeToEditorNode(
     return null;
   }
 
+  // Smart merge: configurations take priority over input_params, empty values are filtered
+  const mergedParameters = mergeNodeParameters(
+    template.default_parameters || {},
+    apiNode.configurations || {},
+    apiNode.input_params || {}
+  );
+
   return {
     id: apiNode.id,
     type: 'custom', // React Flow custom node type
@@ -41,15 +97,10 @@ export function apiNodeToEditorNode(
       label: apiNode.name || template.name,
       description: apiNode.description || '',
       template,
-      // Merge configurations: template defaults + actual config values
-      // NOTE: DO NOT merge output_params - those are runtime outputs, not configuration!
-      // Merging output_params would overwrite saved configurations with empty default values
-      parameters: {
-        ...template.default_parameters,
-        ...apiNode.configurations,  // Real values override placeholders
-        ...apiNode.input_params,
-        // output_params are NOT merged - they are runtime values set during execution
-      },
+      // CRITICAL: Use smart merge that filters empty values and prioritizes configurations
+      // Priority: configurations (real values) > input_params (runtime) > template defaults
+      // Empty strings, null, undefined, and placeholders are filtered out
+      parameters: mergedParameters,
       status: 'idle',
       // Store the original API node data for later export
       originalData: apiNode,

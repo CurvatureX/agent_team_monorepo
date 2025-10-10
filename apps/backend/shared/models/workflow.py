@@ -120,6 +120,7 @@ class WorkflowMetadata(BaseModel):
     version: str = Field(default="1.0", description="版本号")
     created_by: str = Field(..., description="创建用户ID")
     updated_by: Optional[str] = Field(default=None, description="最后更新用户ID")
+    session_id: Optional[str] = Field(default=None, description="关联的会话ID，用于前端复用会话")
 
 
 # ============================================================================

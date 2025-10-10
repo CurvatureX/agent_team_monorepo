@@ -74,7 +74,7 @@ class MessageEventData(BaseModel):
     """消息事件数据"""
 
     text: str = Field(description="消息文本内容")
-    role: str = Field(default="assistant", description="消息角色")
+    message_type: str = Field(default="assistant", description="消息类型: user 或 assistant")
     status: Optional[str] = Field(default=None, description="处理状态")
     message: Optional[str] = Field(default=None, description="状态消息")
 
@@ -149,7 +149,7 @@ class ChatSSEEvent(BaseModel):
                     "type": "message",
                     "data": {
                         "text": "What specific conditions should trigger the sync?",
-                        "role": "assistant",
+                        "message_type": "assistant",
                     },
                     "session_id": "2800ed2b-d902-4151-b68d-5c3381d06e46",
                     "timestamp": "2025-07-31T06:48:08.473674+00:00",

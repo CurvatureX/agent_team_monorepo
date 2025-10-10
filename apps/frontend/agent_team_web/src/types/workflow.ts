@@ -126,6 +126,7 @@ export interface WorkflowEntity {
   variables?: Record<string, unknown>;  // 工作流变量
   settings?: Record<string, unknown>;   // 工作流设置
   tags?: string[];                      // 标签列表
+  metadata?: Record<string, unknown>;   // 工作流元数据 (包含 session_id 等)
 
   // Execution info
   execution_count: number;              // 执行次数

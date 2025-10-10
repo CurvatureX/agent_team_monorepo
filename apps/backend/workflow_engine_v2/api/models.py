@@ -29,6 +29,7 @@ class CreateWorkflowRequest(BaseModel):
     tags: Optional[List[str]] = None
     parent_workflow: Optional[str] = None
     icon_url: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None  # Generic metadata field (includes session_id)
 
 
 class CreateWorkflowResponse(BaseModel):
