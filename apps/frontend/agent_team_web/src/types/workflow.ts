@@ -103,9 +103,9 @@ export interface WorkflowSettingsData {
 
 // 工作流实体模型 (based on WorkflowEntity from API)
 export interface WorkflowEntity {
-  // Timestamps
-  created_at?: string | null;           // 创建时间
-  updated_at?: string | null;           // 更新时间
+  // Timestamps (epoch milliseconds)
+  created_at?: number | null;           // 创建时间（毫秒）
+  updated_at?: number | null;           // 更新时间（毫秒）
 
   // Basic info
   id: string;                           // 唯一标识符

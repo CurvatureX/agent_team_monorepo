@@ -352,6 +352,10 @@ resource "aws_ecs_task_definition" "workflow_engine" {
           value = "http://api-gateway.${local.name_prefix}.local:8000"
         },
         {
+          name  = "REDIS_URL"
+          value = "redis://${aws_elasticache_cluster.redis.cache_nodes[0].address}:6379/2"
+        },
+        {
           name  = "ENVIRONMENT"
           value = var.environment
         },

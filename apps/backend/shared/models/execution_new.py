@@ -12,7 +12,7 @@ This module provides comprehensive execution tracking with:
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # ============================================================================
 # EXECUTION STATUS ENUMS - Enhanced from original
@@ -256,9 +256,46 @@ class Execution(BaseModel):
     credits_consumed: int = Field(default=0, description="消耗的credits")
     tokens_used: Optional[TokenUsage] = Field(default=None, description="Token使用情况")
 
-    # Timestamps (maintaining compatibility)
-    created_at: Optional[str] = Field(default=None, description="创建时间")
-    updated_at: Optional[str] = Field(default=None, description="更新时间")
+    # Timestamps (exposed consistently as epoch milliseconds)
+    created_at: Optional[int] = Field(default=None, description="创建时间 (毫秒时间戳)")
+    updated_at: Optional[int] = Field(default=None, description="更新时间 (毫秒时间戳)")
+
+    @field_validator("created_at", "updated_at", mode="before")
+    @classmethod
+    def _coerce_timestamp_ms(cls, v: Any) -> Optional[int]:
+        """Coerce various timestamp inputs to epoch milliseconds.
+
+        Accepts:
+        - int/float (assumed ms if > 10 digits, otherwise seconds)
+        - ISO-8601 strings (e.g., 2025-10-11T04:06:12Z or with offset)
+        - numeric strings (seconds or ms)
+        """
+        if v is None:
+            return None
+        # Already numeric
+        if isinstance(v, (int, float)):
+            iv = int(v)
+            # Heuristic: values <= 10 digits are seconds
+            if iv < 1_000_000_000_0:
+                return iv * 1000
+            return iv
+        # Try numeric string
+        if isinstance(v, str):
+            s = v.strip()
+            if s.isdigit():
+                iv = int(s)
+                return iv if iv >= 1_000_000_000_0 else iv * 1000
+            # ISO-8601 parse
+            try:
+                from datetime import datetime
+
+                # Support trailing Z
+                dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+                return int(dt.timestamp() * 1000)
+            except Exception:
+                return None
+        # Unknown type
+        return None
 
 
 # ============================================================================

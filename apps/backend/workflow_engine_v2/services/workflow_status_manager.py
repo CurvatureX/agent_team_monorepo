@@ -125,6 +125,68 @@ class WorkflowStatusManagerV2:
             self.logger.error(f"Error updating execution status: {e}")
             return False
 
+    async def create_initial_execution_status(
+        self,
+        execution_id: str,
+        workflow_id: str,
+        status: ExecutionStatus,
+        start_time: int,
+    ) -> bool:
+        """
+        Create initial execution status record BEFORE workflow execution starts.
+        This prevents race condition where log streaming checks status before it exists.
+
+        Args:
+            execution_id: Execution identifier
+            workflow_id: Workflow identifier
+            status: Initial execution status (usually RUNNING)
+            start_time: Execution start timestamp (epoch ms) - for cache/logging only
+
+        Returns:
+            bool: Success status
+        """
+        try:
+            timestamp = datetime.utcnow()
+
+            # Prepare initial status record (match update_execution_status schema)
+            status_info = {
+                "execution_id": execution_id,
+                "workflow_id": workflow_id,
+                "status": status.value,
+                "current_node_id": None,
+                "progress_data": {},
+                "error_message": None,
+                "created_at": timestamp.isoformat(),
+                "updated_at": timestamp.isoformat(),
+            }
+
+            # Update cache immediately
+            self.status_cache[execution_id] = status_info
+
+            # Persist to database if available
+            if self.supabase:
+                try:
+                    result = self.supabase.table("execution_status").insert(status_info).execute()
+
+                    if not result.data:
+                        self.logger.warning(
+                            f"Failed to persist initial status for execution {execution_id}"
+                        )
+                        return False
+
+                    self.logger.debug(f"Created initial status for execution {execution_id}")
+                    return True
+
+                except Exception as e:
+                    self.logger.error(f"Error persisting initial status: {e}")
+                    return False
+
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Error creating initial execution status: {e}")
+            return False
+
     async def get_execution_status(self, execution_id: str) -> Optional[Dict[str, Any]]:
         """Get current status of an execution."""
         try:

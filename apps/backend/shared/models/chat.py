@@ -68,6 +68,8 @@ class SSEEventType(str, Enum):
     WORKFLOW = "workflow"
     ERROR = "error"
     DEBUG = "debug"
+    LOG = "log"
+    COMPLETE = "complete"
 
 
 class MessageEventData(BaseModel):

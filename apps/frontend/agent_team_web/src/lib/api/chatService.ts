@@ -75,7 +75,7 @@ class ChatService {
   /**
    * Initialize a new chat session by creating it on the backend
    */
-  async initSession(): Promise<string> {
+  private async initSession(): Promise<string> {
     try {
       const authToken = await this.getAuthToken();
       const headers: HeadersInit = {
@@ -161,8 +161,22 @@ class ChatService {
    * Force create a new session
    */
   async createNewSession(): Promise<string> {
-    this.sessionId = null; // Clear existing session
-    return await this.initSession();
+    // If a session creation is already in progress, reuse it
+    if (this.sessionInitPromise) {
+      console.log('[ChatService] Session creation already in progress (force), waiting...');
+      return this.sessionInitPromise;
+    }
+
+    // Clear existing session id and start a new, locked initialization
+    this.sessionId = null;
+    this.sessionInitPromise = this.initSession();
+    try {
+      const sessionId = await this.sessionInitPromise;
+      console.log('[ChatService] Created session ID:', sessionId);
+      return sessionId;
+    } finally {
+      this.sessionInitPromise = null;
+    }
   }
 
   /**
@@ -343,8 +357,10 @@ class ChatService {
    * Clear current session
    */
   clearSession() {
+    // Intentionally do NOT clear an in-flight initialization promise here,
+    // as callers in React StrictMode might call clearSession() before immediately
+    // triggering a new creation; clearing the lock would lead to duplicate sessions.
     this.sessionId = null;
-    this.sessionInitPromise = null; // Clear any pending initialization
   }
 
   /**

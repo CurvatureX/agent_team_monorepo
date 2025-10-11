@@ -14,8 +14,8 @@ import {
 } from '@/types/workflow-enums';
 
 export const exampleWorkflow = {
-  "created_at": new Date().toISOString(),
-  "updated_at": new Date().toISOString(),
+  "created_at": Date.now(),
+  "updated_at": Date.now(),
   "id": "example_workflow",
   "user_id": "user_123",
   "name": "Example Workflow",

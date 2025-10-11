@@ -202,13 +202,18 @@ const EnhancedWorkflowCanvasContent: React.FC<EnhancedWorkflowCanvasProps> = ({
       // Calculate duration for display
       let duration = 'N/A';
       if (status.start_time && status.end_time) {
-        // Handle both timestamp formats (unix timestamp or ISO string)
-        const start = typeof status.start_time === 'number'
-          ? status.start_time * 1000
-          : new Date(status.start_time).getTime();
-        const end = typeof status.end_time === 'number'
-          ? status.end_time * 1000
-          : new Date(status.end_time).getTime();
+        // Handle both timestamp formats (seconds/ms or ISO string)
+        const toMs = (v: string | number) => {
+          if (typeof v === 'number') return v < 1_000_000_000_000 ? v * 1000 : v;
+          const s = v.trim();
+          if (/^\d+$/.test(s)) {
+            const iv = parseInt(s, 10);
+            return iv < 1_000_000_000_000 ? iv * 1000 : iv;
+          }
+          return new Date(s).getTime();
+        };
+        const start = toMs(status.start_time as string | number);
+        const end = toMs(status.end_time as string | number);
         duration = calculateDuration(new Date(start).toISOString(), new Date(end).toISOString());
       }
 

@@ -231,8 +231,8 @@ export function apiWorkflowToEditor(
     name: string;
     description: string;
     version: string;
-    created_at: string;
-    updated_at: string;
+    created_at: number; // epoch ms
+    updated_at: number; // epoch ms
     tags: string[];
   };
 } {
@@ -392,15 +392,29 @@ export function apiWorkflowToEditor(
   });
 
   // Extract metadata - check both root level and nested metadata object
-  const workflowWithMetadata = apiWorkflow as typeof apiWorkflow & { metadata?: { id?: string; name?: string; description?: string; version?: number | string; created_at?: string; updated_at?: string; tags?: string[] } };
+  const workflowWithMetadata = apiWorkflow as typeof apiWorkflow & { metadata?: { id?: string; name?: string; description?: string; version?: number | string; created_at?: string | number; updated_at?: string | number; tags?: string[] } };
   const workflowMetadata = workflowWithMetadata.metadata || {};
+  const toMs = (v: unknown): number => {
+    if (v === null || v === undefined) return Date.now();
+    if (typeof v === 'number') return v < 1_000_000_000_000 ? v * 1000 : v;
+    if (typeof v === 'string') {
+      const s = v.trim();
+      if (/^\d+$/.test(s)) {
+        const iv = parseInt(s, 10);
+        return iv < 1_000_000_000_000 ? iv * 1000 : iv;
+      }
+      const t = new Date(s).getTime();
+      return isNaN(t) ? Date.now() : t;
+    }
+    return Date.now();
+  };
   const metadata = {
     id: apiWorkflow.id || workflowMetadata.id || '',
     name: apiWorkflow.name || workflowMetadata.name || 'Untitled Workflow',
     description: apiWorkflow.description || workflowMetadata.description || '',
     version: String(apiWorkflow.version || workflowMetadata.version || '1'),
-    created_at: apiWorkflow.created_at || workflowMetadata.created_at || new Date().toISOString(),
-    updated_at: apiWorkflow.updated_at || workflowMetadata.updated_at || new Date().toISOString(),
+    created_at: toMs(apiWorkflow.created_at || workflowMetadata.created_at || Date.now()),
+    updated_at: toMs(apiWorkflow.updated_at || workflowMetadata.updated_at || Date.now()),
     tags: apiWorkflow.tags || workflowMetadata.tags || [],
   };
 

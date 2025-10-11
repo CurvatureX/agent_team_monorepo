@@ -268,7 +268,8 @@ async def get_execution_status(execution_id: str, deps: AuthenticatedDeps = Depe
     获取执行状态（支持用户访问控制）
     """
     try:
-        logger.info(f"📊 Getting execution status {execution_id} for user {deps.current_user.sub}")
+        # Use DEBUG level for frequent polling operations
+        logger.debug(f"📊 Getting execution status {execution_id} for user {deps.current_user.sub}")
 
         # Get HTTP client
         settings = get_settings()
@@ -280,7 +281,7 @@ async def get_execution_status(execution_id: str, deps: AuthenticatedDeps = Depe
         if not result or result.get("error"):
             raise NotFoundError("Execution")
 
-        logger.info(f"✅ Execution status retrieved: {execution_id}")
+        logger.debug(f"✅ Execution status retrieved: {execution_id}")
 
         # The result from workflow-engine should already match the Execution model
         # since both use the same shared models
@@ -505,8 +506,10 @@ async def stream_execution_logs(
             try:
                 execution_status_data = await http_client.get_execution_status(execution_id)
                 execution_status = execution_status_data.get("status", "UNKNOWN")
-            except Exception:
+                logger.info(f"🐛 DEBUG: Status data from workflow engine: {execution_status_data}")
+            except Exception as e:
                 execution_status = "UNKNOWN"
+                logger.error(f"🐛 DEBUG: Exception getting status: {e}")
 
             is_running = execution_status in ["NEW", "RUNNING", "WAITING_FOR_HUMAN", "PAUSED"]
 
@@ -535,6 +538,9 @@ async def stream_execution_logs(
                     execution_id, token, {"limit": 1000, "offset": 0}
                 )
                 existing_logs = initial_logs_response.get("logs", [])
+                logger.info(
+                    f"🐛 DEBUG: Logs response: total_count={initial_logs_response.get('total_count')}, logs_length={len(existing_logs)}"
+                )
 
                 # Send initial logs
                 for log_entry in existing_logs:
@@ -563,20 +569,36 @@ async def stream_execution_logs(
             if is_running and follow:
                 logger.info(f"📡 Real-time streaming mode for {execution_id}")
 
-                poll_interval = 1.0  # 1 second
+                poll_interval = 0.5  # 500ms for responsive real-time updates
                 last_poll_time = time.time()
-                max_poll_duration = 3600  # 1 hour maximum
+                last_new_log_time = time.time()  # Track when we last received new logs
+                inactivity_timeout = 300  # 5 minutes of no new logs before disconnect
                 start_time = time.time()
 
                 while True:
-                    # Check if we've been polling too long
-                    if time.time() - start_time > max_poll_duration:
-                        logger.warning(f"⏱️ Max polling duration reached for {execution_id}")
+                    # Check if no new logs for 5 minutes - disconnect
+                    if time.time() - last_new_log_time > inactivity_timeout:
+                        logger.info(
+                            f"⏱️ No new logs for {inactivity_timeout}s, disconnecting stream for {execution_id}"
+                        )
+                        # Send timeout completion event
+                        timeout_event = create_sse_event(
+                            event_type=SSEEventType.COMPLETE,
+                            data={
+                                "execution_id": execution_id,
+                                "message": f"No new logs for {inactivity_timeout//60} minutes",
+                                "total_logs": len(sent_log_ids),
+                                "reason": "inactivity_timeout",
+                            },
+                            session_id=execution_id,
+                            is_final=True,
+                        )
+                        yield format_sse_event(timeout_event.model_dump())
                         break
 
                     current_time = time.time()
 
-                    # Poll database every second for new logs
+                    # Poll database every 3 seconds for new logs
                     if current_time - last_poll_time >= poll_interval:
                         try:
                             # Get latest logs
@@ -606,6 +628,8 @@ async def stream_execution_logs(
 
                             if new_count > 0:
                                 logger.debug(f"📨 Sent {new_count} new logs for {execution_id}")
+                                # Update last new log time since we received new logs
+                                last_new_log_time = time.time()
 
                             # Check if execution finished
                             status_check = await http_client.get_execution_status(execution_id)
@@ -621,7 +645,42 @@ async def stream_execution_logs(
                                     f"✅ Execution {execution_id} finished with status: {current_status}"
                                 )
 
-                                # Send completion event
+                                # CRITICAL: Wait for flush_sync() to complete by polling one more time
+                                # The workflow engine flushes logs at the end of execution,
+                                # but we need to give it time to complete
+                                await asyncio.sleep(0.5)  # Brief delay for flush
+
+                                # Final poll to get any remaining logs that were just flushed
+                                try:
+                                    final_logs_response = await http_client.get_execution_logs(
+                                        execution_id, token, {"limit": 100, "offset": 0}
+                                    )
+                                    final_logs = final_logs_response.get("logs", [])
+
+                                    # Send any new logs that appeared after the status change
+                                    for log_entry in final_logs:
+                                        log_id = log_entry.get("id")
+                                        if log_id and log_id not in sent_log_ids:
+                                            sent_log_ids.add(log_id)
+
+                                            log_event = create_sse_event(
+                                                event_type=SSEEventType.LOG,
+                                                data={
+                                                    **format_log_entry(log_entry),
+                                                    "is_realtime": True,
+                                                },
+                                                session_id=execution_id,
+                                                is_final=False,
+                                            )
+                                            yield format_sse_event(log_event.model_dump())
+
+                                    logger.info(
+                                        f"📨 Final poll found {len(final_logs) - (len(sent_log_ids) - len(final_logs))} additional logs"
+                                    )
+                                except Exception as final_poll_error:
+                                    logger.warning(f"⚠️ Final poll failed: {final_poll_error}")
+
+                                # Send completion event with updated log count
                                 completion_event = create_sse_event(
                                     event_type=SSEEventType.COMPLETE,
                                     data={

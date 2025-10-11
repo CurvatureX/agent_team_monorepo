@@ -29,6 +29,7 @@ def create_sse_response(generator: AsyncGenerator[Dict[str, Any], None]) -> Stre
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering for immediate SSE delivery
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Headers": "Cache-Control",
         },

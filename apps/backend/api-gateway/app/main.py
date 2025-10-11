@@ -29,6 +29,10 @@ if shared_path and shared_path not in sys.path:
 # 工具 - Use custom logging
 import logging
 
+# Reduce verbosity of noisy loggers
+logging.getLogger("httpx").setLevel(logging.WARNING)  # Reduce HTTP request logs
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)  # Reduce HTTP access logs
+
 # 遥测组件
 try:
     from shared.telemetry import (  # type: ignore[assignment]

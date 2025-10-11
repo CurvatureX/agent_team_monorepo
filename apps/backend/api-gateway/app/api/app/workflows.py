@@ -1343,13 +1343,13 @@ async def execute_workflow(
             or str(uuid.uuid4())
         )
 
-        # Default status/message favoring queued async execution semantics
+        # Default status/message for async execution
         status = execution_payload.get("status") or (
-            "running" if engine_response.get("success", True) else "queued"
+            "running" if engine_response.get("success", True) else "failed"
         )
         message = engine_response.get("message") or engine_response.get("error")
         if not message:
-            message = "Workflow execution queued"
+            message = "Workflow execution started"
 
         started_at = execution_payload.get("start_time")
         if started_at is not None:
@@ -1357,10 +1357,10 @@ async def execute_workflow(
 
         if not engine_response.get("success", True):
             logger.warning(
-                f"⚠️ Workflow {workflow_id} queued with warnings: {engine_response.get('error', 'unknown issue')}"
+                f"⚠️ Workflow {workflow_id} execution failed to start: {engine_response.get('error', 'unknown issue')}"
             )
         else:
-            logger.info(f"✅ Workflow execution queued: {execution_id}")
+            logger.info(f"✅ Workflow execution started: {execution_id}")
 
         return WorkflowExecutionResponse(
             execution_id=execution_id,

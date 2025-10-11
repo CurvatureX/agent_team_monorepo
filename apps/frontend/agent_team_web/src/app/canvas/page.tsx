@@ -186,19 +186,31 @@ function CanvasPage() {
           workflow.deployment_status || WorkflowDeploymentStatus.Undeployed,
         lastExecutionStatus: workflow.latest_execution_status || "pending",
         lastRunTime: workflow.latest_execution_time
-          ? typeof workflow.latest_execution_time === "number"
-            ? new Date(workflow.latest_execution_time * 1000)
-            : new Date(workflow.latest_execution_time)
+          ? new Date(
+              typeof workflow.latest_execution_time === "number"
+                ? (workflow.latest_execution_time < 1_000_000_000_000
+                    ? workflow.latest_execution_time * 1000
+                    : workflow.latest_execution_time)
+                : Date.parse(workflow.latest_execution_time)
+            )
           : null,
         createdAt: workflow.created_at
-          ? typeof workflow.created_at === "number"
-            ? new Date(workflow.created_at * 1000)
-            : new Date(workflow.created_at)
+          ? new Date(
+              typeof workflow.created_at === "number"
+                ? (workflow.created_at < 1_000_000_000_000
+                    ? workflow.created_at * 1000
+                    : workflow.created_at)
+                : Date.parse(workflow.created_at)
+            )
           : new Date(),
         updatedAt: workflow.updated_at
-          ? typeof workflow.updated_at === "number"
-            ? new Date(workflow.updated_at * 1000)
-            : new Date(workflow.updated_at)
+          ? new Date(
+              typeof workflow.updated_at === "number"
+                ? (workflow.updated_at < 1_000_000_000_000
+                    ? workflow.updated_at * 1000
+                    : workflow.updated_at)
+                : Date.parse(workflow.updated_at)
+            )
           : new Date(),
         executionCount: workflow.execution_count || 0,
         successRate: workflow.success_rate || 0,

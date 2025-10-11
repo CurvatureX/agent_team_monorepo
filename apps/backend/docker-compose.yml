@@ -197,6 +197,7 @@ services:
     environment:
       PYTHONPATH: "/app"
       PYTHONUNBUFFERED: "1"
+      REDIS_URL: "redis://redis:6379/2"  # Use DB 2 for workflow-engine-v2 (0=agent, 1=scheduler, 2=engine-v2)
       SERVICE_NAME: "workflow-engine-v2"
       API_GATEWAY_URL: "http://api-gateway:8000"
       OTEL_SDK_DISABLED: "true"
@@ -204,6 +205,9 @@ services:
       OTEL_EXPORTER_OTLP_INSECURE: "true"
       OTEL_SERVICE_NAME: "workflow-engine-v2"
       OTEL_RESOURCE_ATTRIBUTES: "service.namespace=agent-team,deployment.environment=development"
+    depends_on:
+      redis:
+        condition: service_healthy
     volumes:
       - workflow_engine_v2_logs:/app/logs
     healthcheck:

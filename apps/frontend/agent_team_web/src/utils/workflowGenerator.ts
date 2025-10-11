@@ -176,7 +176,7 @@ export function generateWorkflowFromDescription(
     },
     tags: ['auto-generated'],
     execution_count: 0,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
+    created_at: Date.now(),
+    updated_at: Date.now(),
   };
 }

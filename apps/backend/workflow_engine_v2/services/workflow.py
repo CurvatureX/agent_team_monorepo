@@ -171,17 +171,24 @@ class WorkflowServiceV2:
         try:
             result = (
                 self.supabase.table("workflows")
-                .select("workflow_data, user_id, deployment_status, name, description")
+                .select(
+                    "workflow_data, user_id, deployment_status, name, description, latest_execution_status, latest_execution_time, latest_execution_id, icon_url"
+                )
                 .eq("id", workflow_id)
                 .eq("active", True)
                 .execute()
             )
             if result.data:
-                workflow_data = result.data[0].get("workflow_data")
-                deployment_status = result.data[0].get("deployment_status")
+                row = result.data[0]
+                workflow_data = row.get("workflow_data")
+                deployment_status = row.get("deployment_status")
                 # Fetch top-level name and description for sync
-                db_name = result.data[0].get("name")
-                db_description = result.data[0].get("description")
+                db_name = row.get("name")
+                db_description = row.get("description")
+                latest_exec_status = row.get("latest_execution_status")
+                latest_exec_time = row.get("latest_execution_time")
+                latest_exec_id = row.get("latest_execution_id")
+                icon_url = row.get("icon_url")
 
                 if workflow_data:
                     # Debug: Log the actual workflow data structure
@@ -219,6 +226,29 @@ class WorkflowServiceV2:
                         else:
                             # Set default if column is None
                             metadata["deployment_status"] = "UNDEPLOYED"
+                        # Merge last execution fields from top-level columns into metadata
+                        try:
+                            if latest_exec_status:
+                                metadata["last_execution_status"] = str(latest_exec_status).upper()
+                            if latest_exec_time is not None:
+                                if isinstance(latest_exec_time, (int, float)):
+                                    t_ms = int(latest_exec_time)
+                                    metadata["last_execution_time"] = (
+                                        t_ms if t_ms >= 1_000_000_000_000 else t_ms * 1000
+                                    )
+                                elif isinstance(latest_exec_time, str):
+                                    from datetime import datetime
+
+                                    dt = datetime.fromisoformat(
+                                        latest_exec_time.replace("Z", "+00:00")
+                                    )
+                                    metadata["last_execution_time"] = int(dt.timestamp() * 1000)
+                            if latest_exec_id:
+                                metadata["last_execution_id"] = latest_exec_id
+                            if icon_url:
+                                metadata["icon_url"] = icon_url
+                        except Exception:
+                            pass
                         # Normalize status fields to expected enum values
                         try:
                             if "deployment_status" in metadata and isinstance(
@@ -232,6 +262,12 @@ class WorkflowServiceV2:
                             ):
                                 metadata["latest_execution_status"] = metadata[
                                     "latest_execution_status"
+                                ].upper()
+                            if "last_execution_status" in metadata and isinstance(
+                                metadata["last_execution_status"], str
+                            ):
+                                metadata["last_execution_status"] = metadata[
+                                    "last_execution_status"
                                 ].upper()
                         except Exception:
                             # Gracefully ignore normalization issues

@@ -4,6 +4,7 @@ V2 Execution Endpoints (Modern API)
 Modern workflow execution endpoints with comprehensive logging and progress tracking.
 """
 
+import asyncio
 import logging
 import time
 import uuid
@@ -74,7 +75,10 @@ async def execute_workflow_by_id(
             logger.info(f"📥 [v2] trigger_data for start node: {trigger_data}")
 
         # Retrieve the actual workflow and user_id from the workflow service
-        workflow_result = workflow_service.get_workflow_with_user_id(workflow_id)
+        # Use asyncio.to_thread to avoid blocking the event loop
+        workflow_result = await asyncio.to_thread(
+            workflow_service.get_workflow_with_user_id, workflow_id
+        )
         if not workflow_result:
             logger.error(f"❌ [v2] Workflow {workflow_id} not found")
             return ExecuteWorkflowResponse(
@@ -114,6 +118,23 @@ async def execute_workflow_by_id(
             execution_id = str(uuid.uuid4())
             logger.info(f"⚡ [v2] ASYNC: Starting background execution for {execution_id}")
 
+            # CRITICAL: Create initial execution status BEFORE background task starts
+            # This prevents race condition where /logs/stream checks status before it exists
+            try:
+                status_manager = WorkflowStatusManagerV2()
+                current_time = int(time.time() * 1000)
+                await status_manager.create_initial_execution_status(
+                    execution_id=execution_id,
+                    workflow_id=workflow_id,
+                    status=ExecutionStatus.RUNNING,
+                    start_time=current_time,
+                )
+                logger.info(f"✅ [v2] Created initial execution status for {execution_id}")
+            except Exception as status_error:
+                logger.warning(
+                    f"⚠️ [v2] Failed to create initial status (non-fatal): {status_error}"
+                )
+
             async def execute_in_background():
                 try:
                     logger.info(f"🚀 [v2] Background execution started for {execution_id}")
@@ -131,6 +152,9 @@ async def execute_workflow_by_id(
                     )
                 except Exception as e:
                     logger.error(f"❌ [v2] Background execution failed for {execution_id}: {e}")
+                    import traceback
+
+                    logger.error(f"❌ [v2] Full traceback: {traceback.format_exc()}")
 
             background_tasks.add_task(execute_in_background)
 

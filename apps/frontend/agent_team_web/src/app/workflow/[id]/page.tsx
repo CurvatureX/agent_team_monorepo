@@ -33,6 +33,7 @@ import { useLayout } from "@/components/ui/layout-wrapper";
 import { usePageTitle } from "@/contexts/page-title-context";
 import { useAuth } from "@/contexts/auth-context";
 import { Skeleton } from "@/components/ui/skeleton";
+import { JsonViewer } from "@/components/ui/json-viewer";
 
 interface Message {
   id: string;
@@ -139,6 +140,8 @@ const WorkflowDetailPage = () => {
   const [workflowSessionId, setWorkflowSessionId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const logsEndRef = useRef<HTMLDivElement>(null);
+  const logsContainerRef = useRef<HTMLDivElement>(null);
 
   const { toast } = useToast();
   const { session } = useAuth();
@@ -149,6 +152,15 @@ const WorkflowDetailPage = () => {
     useExecutionLogsStream(latestExecutionId);
   useLayout();
   const { setCustomTitle } = usePageTitle();
+
+  // Auto-open logs panel when logs arrive
+  useEffect(() => {
+    if (executionLogs && executionLogs.length > 0 && !isExecutionLogsExpanded) {
+      setIsExecutionLogsExpanded(true);
+    }
+  }, [executionLogs, isExecutionLogsExpanded]);
+
+  // Rely on workflow metadata.last_execution_id; avoid extra API calls
 
   // Use the custom hook for resizable panels
   const {
@@ -170,6 +182,19 @@ const WorkflowDetailPage = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Auto-scroll logs to bottom when new logs arrive
+  const scrollLogsToBottom = () => {
+    if (logsEndRef.current && logsContainerRef.current) {
+      logsEndRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
+  };
+
+  useEffect(() => {
+    if (executionLogs && executionLogs.length > 0) {
+      scrollLogsToBottom();
+    }
+  }, [executionLogs]);
 
   // Fetch workflow details by ID
   useEffect(() => {
@@ -279,20 +304,19 @@ const WorkflowDetailPage = () => {
           });
 
           // Extract execution status, time, and ID from response (check metadata first)
+          // Support both envelope ({ workflow }) and direct workflow object
+          const workflow_object = response?.workflow || response;
           const executionStatus =
-            response?.workflow?.metadata?.last_execution_status ||
-            response?.workflow?.latest_execution_status ||
-            response?.latest_execution_status ||
+            workflow_object?.metadata?.last_execution_status ||
+            workflow_object?.latest_execution_status ||
             null;
           const executionTime =
-            response?.workflow?.metadata?.last_execution_time ||
-            response?.workflow?.latest_execution_time ||
-            response?.latest_execution_time ||
+            workflow_object?.metadata?.last_execution_time ||
+            workflow_object?.latest_execution_time ||
             null;
           const executionId =
-            response?.workflow?.metadata?.last_execution_id ||
-            response?.workflow?.latest_execution_id ||
-            response?.latest_execution_id ||
+            workflow_object?.metadata?.last_execution_id ||
+            workflow_object?.latest_execution_id ||
             null;
 
           setLatestExecutionStatus(executionStatus);
@@ -834,7 +858,7 @@ const WorkflowDetailPage = () => {
                   transition={{ duration: 0.2 }}
                   className="overflow-hidden"
                 >
-                  <div className="px-4 pb-4 max-h-[300px] overflow-y-auto">
+                  <div ref={logsContainerRef} className="px-4 pb-4 max-h-[300px] overflow-y-auto">
                     {/* Execution logs */}
                     {isLoadingLogs ? (
                       <div className="flex items-center justify-center py-8">
@@ -859,7 +883,7 @@ const WorkflowDetailPage = () => {
                         No logs for this execution
                       </div>
                     ) : (
-                      <div className="space-y-1 font-mono text-xs">
+                      <div className="space-y-2 font-mono text-xs">
                         {executionLogs.map((log, index) => {
                           const levelColor =
                             log.level === 'ERROR' ? 'text-red-600 dark:text-red-400' :
@@ -867,30 +891,94 @@ const WorkflowDetailPage = () => {
                             log.level === 'INFO' ? 'text-blue-600 dark:text-blue-400' :
                             'text-muted-foreground';
 
+                          // Extract data fields for structured display
+                          const logData = log.data as Record<string, unknown> | undefined;
+
+                          // Filter out metadata fields we don't want to display
+                          const metadataFieldsToExclude = new Set([
+                            'token_usage',
+                            'metadata',
+                            'node_type',
+                            'node_subtype',
+                            'success',
+                            'duration_ms',
+                          ]);
+
+                          const inputParams = logData?.input_params as Record<string, unknown> | undefined;
+                          const outputParams = logData?.output_params as Record<string, unknown> | undefined;
+                          const errorMessage = logData?.error_message as string | undefined;
+
+                          // Filter input and output params to exclude metadata
+                          const filteredInputParams = inputParams && Object.keys(inputParams).length > 0
+                            ? Object.fromEntries(
+                                Object.entries(inputParams).filter(([key]) => !metadataFieldsToExclude.has(key))
+                              )
+                            : undefined;
+
+                          const filteredOutputParams = outputParams && Object.keys(outputParams).length > 0
+                            ? Object.fromEntries(
+                                Object.entries(outputParams).filter(([key]) => !metadataFieldsToExclude.has(key))
+                              )
+                            : undefined;
+
                           return (
                             <div
                               key={index}
-                              className="p-2 rounded-md hover:bg-accent/50 transition-colors"
+                              className="p-2 rounded-md hover:bg-accent/50 transition-colors border border-border/30 overflow-x-auto"
                             >
-                              <div className="flex items-start gap-2">
+                              {/* Timestamp and Level on one line */}
+                              <div className="flex items-center gap-2 mb-1">
                                 <span className="text-muted-foreground whitespace-nowrap">
-                                  {new Date(log.timestamp).toLocaleTimeString()}
+                                  {new Date(log.timestamp || Date.now()).toLocaleTimeString()}
                                 </span>
                                 <span className={`font-medium whitespace-nowrap ${levelColor}`}>
-                                  [{log.level}]
+                                  [{log.level || 'INFO'}]
                                 </span>
-                                {log.node_id && (
-                                  <span className="text-muted-foreground whitespace-nowrap">
-                                    {log.node_id}:
-                                  </span>
-                                )}
-                                <span className="flex-1 break-words">
+                              </div>
+
+                              {/* Message on separate line */}
+                              <div className="mb-1 overflow-x-auto">
+                                <span className="break-words">
                                   {log.message}
                                 </span>
                               </div>
+
+                              {/* Input Parameters (collapsible) */}
+                              {filteredInputParams && Object.keys(filteredInputParams).length > 0 && (
+                                <div className="mt-2 pl-2 border-l-2 border-blue-500/30 overflow-x-auto">
+                                  <div className="text-blue-600 dark:text-blue-400 font-semibold mb-1">
+                                    Input:
+                                  </div>
+                                  <JsonViewer data={filteredInputParams} initialExpanded={false} />
+                                </div>
+                              )}
+
+                              {/* Output Parameters (collapsible) */}
+                              {filteredOutputParams && Object.keys(filteredOutputParams).length > 0 && (
+                                <div className="mt-2 pl-2 border-l-2 border-green-500/30 overflow-x-auto">
+                                  <div className="text-green-600 dark:text-green-400 font-semibold mb-1">
+                                    Output:
+                                  </div>
+                                  <JsonViewer data={filteredOutputParams} initialExpanded={false} />
+                                </div>
+                              )}
+
+                              {/* Error Message (if present) */}
+                              {errorMessage && (
+                                <div className="mt-2 pl-2 border-l-2 border-red-500/30 overflow-x-auto">
+                                  <div className="text-red-600 dark:text-red-400 font-semibold mb-1">
+                                    Error:
+                                  </div>
+                                  <div className="text-red-600 dark:text-red-400 break-words">
+                                    {errorMessage}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           );
                         })}
+                        {/* Auto-scroll anchor */}
+                        <div ref={logsEndRef} />
                       </div>
                     )}
                   </div>

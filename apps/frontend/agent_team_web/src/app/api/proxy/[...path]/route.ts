@@ -180,27 +180,37 @@ async function handler(
 
     // For JSON responses, parse and return
     if (contentType?.includes('application/json')) {
-      const data = await response.text();
-      const jsonResponse = NextResponse.json(JSON.parse(data), {
-        status: response.status
-      });
+      // Pass-through JSON stream and preserve important headers to avoid devtools preview issues
+      const headersOut = new Headers();
+      headersOut.set('Content-Type', contentType);
+      const backendCache = response.headers.get('cache-control');
+      const etag = response.headers.get('etag');
+      const encoding = response.headers.get('content-encoding');
+      if (backendCache) headersOut.set('Cache-Control', backendCache);
+      else if (request.method === 'GET' && response.status === 200)
+        headersOut.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=30');
+      if (etag) headersOut.set('ETag', etag);
+      if (encoding) headersOut.set('Content-Encoding', encoding);
 
-      // Add cache headers for GET requests
-      if (request.method === 'GET' && response.status === 200) {
-        jsonResponse.headers.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=30');
+      // If the body is not available, fall back to reading as text
+      if (response.body) {
+        return new NextResponse(response.body, { status: response.status, headers: headersOut });
       }
 
-      return jsonResponse;
+      const data = await response.text();
+      return new NextResponse(data, { status: response.status, headers: headersOut });
     }
 
     // For non-JSON, stream the response (faster for large responses)
     if (response.body) {
-      return new NextResponse(response.body, {
-        status: response.status,
-        headers: {
-          'Content-Type': contentType || 'text/plain',
-        }
-      });
+      // Preserve content-encoding for streamed bodies (e.g., SSE, gzip)
+      const headersOut = new Headers();
+      if (contentType) headersOut.set('Content-Type', contentType);
+      const encoding = response.headers.get('content-encoding');
+      if (encoding) headersOut.set('Content-Encoding', encoding);
+      const cache = response.headers.get('cache-control');
+      if (cache) headersOut.set('Cache-Control', cache);
+      return new NextResponse(response.body, { status: response.status, headers: headersOut });
     }
 
     // Fallback for responses without body

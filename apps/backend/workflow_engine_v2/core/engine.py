@@ -185,10 +185,10 @@ class ExecutionEngine:
         if enable_user_friendly_logging:
             try:
                 from workflow_engine_v2.services.user_friendly_logger import (
-                    get_user_friendly_logger,
+                    get_async_user_friendly_logger,
                 )
 
-                self._user_friendly_logger = get_user_friendly_logger()
+                self._user_friendly_logger = get_async_user_friendly_logger()
             except ImportError:
                 pass
 
@@ -243,7 +243,11 @@ class ExecutionEngine:
             start_from_node: Optional node ID to start execution from (skips upstream nodes)
             skip_trigger_validation: Whether to skip trigger validation when using start_from_node
         """
+        logger.info(
+            f"🟢 ENTERED run() method for execution_id={execution_id}, workflow_id={workflow_id}"
+        )
         self.validate_against_specs(workflow)
+        logger.info(f"🟢 Validation complete for {execution_id}")
 
         exec_id = execution_id or str(uuid.uuid4())
         trace_id = trace_id or str(uuid.uuid4())
@@ -271,10 +275,16 @@ class ExecutionEngine:
                 total_nodes=len(workflow.nodes),
                 trigger_info=self._format_trigger_description(trigger),
             )
+            # NOTE: Do NOT call _flush_logs() here - it makes blocking database calls
+            # The background OutboxFlusher thread will handle flushing automatically
 
+        logger.info(f"🔵 About to log execution started")
         self._log.log(workflow_execution, level=LogLevel.INFO, message="Execution started")
+        logger.info(f"🔵 About to publish execution_started event")
         self._events.execution_started(workflow_execution)
+        logger.info(f"🔵 About to persist execution to database")
         self._persist_execution(workflow_execution)
+        logger.info(f"🔵 Execution persisted successfully")
 
         # Update workflow's latest_execution_time and latest_execution_id when execution starts
         self._update_workflow_execution_fields(
@@ -456,7 +466,9 @@ class ExecutionEngine:
                     if node_execution.start_time
                     else None
                 )
+                node_execution.status = NodeExecutionStatus.FAILED
                 workflow_execution.status = ExecutionStatus.ERROR
+                error_msg = str(last_exc)
                 self._log.log(
                     workflow_execution,
                     level=LogLevel.ERROR,
@@ -469,7 +481,7 @@ class ExecutionEngine:
                     # NodeError and ExecutionError already imported above
                     node_execution.error = NodeError(
                         error_code="NODE_EXEC_ERROR",
-                        error_message=str(last_exc),
+                        error_message=error_msg,
                         error_details={"attempt": attempt, "node_id": current_node_id},
                         is_retryable=(attempt <= max_retries),
                         timestamp=_now_ms(),
@@ -485,6 +497,28 @@ class ExecutionEngine:
                 except Exception:
                     pass
                 self._persist_execution(we)
+
+                # CRITICAL: Log completion BEFORE breaking to capture exception details
+                if self._user_friendly_logger:
+                    try:
+                        # Capture input params for error logging
+                        clean_inputs = {k: v for k, v in inputs.items() if not k.startswith("_")}
+                        self._user_friendly_logger.log_node_complete(
+                            execution_id=workflow_execution.execution_id,
+                            node_id=current_node_id,
+                            success=False,
+                            duration_ms=node_execution.duration_ms,
+                            output_summary={
+                                "input_params": clean_inputs,
+                                "error": error_msg,
+                            },
+                            error_message=error_msg,
+                        )
+                        # Background flusher will handle persistence
+                        logger.info(f"✅ Logged error for exception-failed node {current_node_id}")
+                    except Exception as log_err:
+                        logger.error(f"❌ Failed to log node exception: {log_err}")
+
                 break
 
             # HIL (Human-in-the-Loop) Wait handling with database persistence
@@ -708,6 +742,33 @@ class ExecutionEngine:
                         )
                         self._events.execution_failed(workflow_execution)
                         self._persist_execution(workflow_execution)
+
+                        # CRITICAL: Log completion BEFORE breaking to capture error details
+                        if self._user_friendly_logger:
+                            try:
+                                clean_outputs = {
+                                    k: v for k, v in shaped_outputs.items() if not k.startswith("_")
+                                }
+                                clean_inputs = {
+                                    k: v for k, v in inputs.items() if not k.startswith("_")
+                                }
+                                self._user_friendly_logger.log_node_complete(
+                                    execution_id=workflow_execution.execution_id,
+                                    node_id=current_node_id,
+                                    success=False,
+                                    duration_ms=node_execution.duration_ms,
+                                    output_summary={
+                                        "input_params": clean_inputs,
+                                        "output_params": clean_outputs,
+                                        "error": error_msg,
+                                    },
+                                    error_message=error_msg,
+                                )
+                                # Background flusher will handle persistence
+                                logger.info(f"✅ Logged error for failed node {current_node_id}")
+                            except Exception as log_err:
+                                logger.error(f"❌ Failed to log node failure: {log_err}")
+
                         node_failed = True
                         break  # Stop checking other ports
             except Exception as check_err:
@@ -781,112 +842,163 @@ class ExecutionEngine:
             logger.info("=" * 80)
             logger.info(f"✅ Node Completed: {node.name}")
             logger.info(f"   Node ID: {current_node_id}")
+            logger.info(f"📥 Input Parameters: {clean_inputs}")
             logger.info(f"📤 Output Parameters: {clean_outputs}")
             logger.info("=" * 80)
+            logger.info(
+                f"🟢 POST-COMPLETION: Starting post-node-completion processing for {current_node_id}"
+            )
 
-            # User-facing logs (concise, no emoji, structured data)
-            if self._user_friendly_logger:
-                self._user_friendly_logger.log_node_complete(
-                    execution_id=workflow_execution.execution_id,
-                    node_id=current_node_id,
-                    success=True,
-                    duration_ms=node_execution.duration_ms,
-                    output_summary=clean_outputs,  # Pass clean dict
-                )
-
-            self._events.node_output_update(workflow_execution, current_node_id, node_execution)
-            self._events.node_completed(workflow_execution, current_node_id, node_execution)
-            self._persist_execution(workflow_execution)
-            # Update node outputs context (by id and by name)
-            execution_context.node_outputs[current_node_id] = shaped_outputs
             try:
-                node_name = node.name
-                execution_context.node_outputs_by_name[node_name] = shaped_outputs
-            except Exception:
-                pass
-
-            # Record node run (append copy)
-            try:
-                # Deep copy NodeExecution for run record
-                run_record = NodeExecution(**node_execution.model_dump())
-                workflow_execution.node_runs.setdefault(current_node_id, []).append(run_record)
-            except Exception:
-                pass
-
-            # Propagate, including fan-out
-            # BFS: Only propagate if the required output_key exists in the node's outputs
-            for (
-                successor_node,
-                output_key,
-                conversion_function,
-            ) in graph.successors(current_node_id):
-                # Check if output_key exists in node outputs
-                # If output_key is not present, skip this connection (conditional flow)
-                value = shaped_outputs.get(output_key)
-
-                # Special case: "iteration" for fan-out (LOOP nodes)
-                if output_key == "iteration" and isinstance(value, list):
-                    for item in value:
-                        item_value = item
-                        # Apply conversion function if provided
-                        if conversion_function and isinstance(conversion_function, str):
-                            try:
-                                converted_data = execute_conversion_function_flexible(
-                                    conversion_function, {"value": item_value, "data": item_value}
-                                )
-                                item_value = converted_data
-                            except Exception as e:
-                                print(f"Conversion function failed for iteration: {e}")
-                                # Keep original value on error
-                        queue.append(
-                            {
-                                "node_id": successor_node,
-                                "override": {"result": item_value},  # Default to result input
-                                "parent_activation_id": node_execution.activation_id,
-                            }
+                # User-facing logs (concise, no emoji, structured data)
+                logger.info(f"🟡 POST-COMPLETION: About to call user-friendly logger")
+                try:
+                    if self._user_friendly_logger:
+                        self._user_friendly_logger.log_node_complete(
+                            execution_id=workflow_execution.execution_id,
+                            node_id=current_node_id,
+                            success=True,
+                            duration_ms=node_execution.duration_ms,
+                            output_summary={
+                                "input_params": clean_inputs,
+                                "output_params": clean_outputs,
+                            },
                         )
-                    continue
+                        # Background flusher will handle persistence (no blocking flush needed)
+                        logger.info(f"✅ Logged completion for node {current_node_id}")
+                except Exception as log_err:
+                    logger.error(f"❌ User-friendly logger failed: {log_err}")
+                    import traceback
 
-                # If output_key is None, skip this connection entirely (conditional execution)
-                if value is None:
-                    # Try fallback to "result" only if output_key was "result"
-                    if output_key == "result":
-                        value = shaped_outputs.get("result", shaped_outputs)
-                    else:
-                        # Output key doesn't exist, skip this connection
+                    logger.error(f"Traceback: {traceback.format_exc()}")
+
+                logger.info(f"🔍 Before events for node {current_node_id}")
+                try:
+                    self._events.node_output_update(
+                        workflow_execution, current_node_id, node_execution
+                    )
+                    logger.info(f"✓ node_output_update complete")
+                    self._events.node_completed(workflow_execution, current_node_id, node_execution)
+                    logger.info(f"✓ node_completed event complete")
+                except Exception as event_err:
+                    logger.error(f"❌ Event publishing failed: {event_err}")
+                    import traceback
+
+                    logger.error(f"Traceback: {traceback.format_exc()}")
+
+                logger.info(f"🔍 About to persist execution for node {current_node_id}")
+                self._persist_execution(workflow_execution)
+                logger.info(f"✓ Persist complete for node {current_node_id}")
+                # Update node outputs context (by id and by name)
+                execution_context.node_outputs[current_node_id] = shaped_outputs
+                try:
+                    node_name = node.name
+                    execution_context.node_outputs_by_name[node_name] = shaped_outputs
+                except Exception:
+                    pass
+
+                # Record node run (append copy)
+                try:
+                    # Deep copy NodeExecution for run record
+                    run_record = NodeExecution(**node_execution.model_dump())
+                    workflow_execution.node_runs.setdefault(current_node_id, []).append(run_record)
+                    logger.info(f"✓ Recorded node run for {current_node_id}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to record node run: {e}")
+                    pass
+
+                logger.info(f"🚦 Starting successor propagation for node {current_node_id}")
+                # Propagate, including fan-out
+                # BFS: Only propagate if the required output_key exists in the node's outputs
+                successors_list = list(graph.successors(current_node_id))
+                logger.info(
+                    f"🔗 Found {len(successors_list)} successor(s) for node {current_node_id}: {successors_list}"
+                )
+                for (
+                    successor_node,
+                    output_key,
+                    conversion_function,
+                ) in successors_list:
+                    logger.info(
+                        f"📍 Processing successor: {successor_node}, output_key: {output_key}"
+                    )
+                    # Check if output_key exists in node outputs
+                    # If output_key is not present, skip this connection (conditional flow)
+                    value = shaped_outputs.get(output_key)
+                    logger.info(f"📊 Value for output_key '{output_key}': {value is not None}")
+
+                    # Special case: "iteration" for fan-out (LOOP nodes)
+                    if output_key == "iteration" and isinstance(value, list):
+                        for item in value:
+                            item_value = item
+                            # Apply conversion function if provided
+                            if conversion_function and isinstance(conversion_function, str):
+                                try:
+                                    converted_data = execute_conversion_function_flexible(
+                                        conversion_function,
+                                        {"value": item_value, "data": item_value},
+                                    )
+                                    item_value = converted_data
+                                except Exception as e:
+                                    print(f"Conversion function failed for iteration: {e}")
+                                    # Keep original value on error
+                            queue.append(
+                                {
+                                    "node_id": successor_node,
+                                    "override": {"result": item_value},  # Default to result input
+                                    "parent_activation_id": node_execution.activation_id,
+                                }
+                            )
                         continue
 
-                successor_node_inputs = pending_inputs.setdefault(successor_node, {})
+                    # If output_key is None, skip this connection entirely (conditional execution)
+                    if value is None:
+                        # Try fallback to "result" only if output_key was "result"
+                        if output_key == "result":
+                            value = shaped_outputs.get("result", shaped_outputs)
+                        else:
+                            # Output key doesn't exist, skip this connection
+                            continue
 
-                # Apply conversion function if provided
-                if conversion_function and isinstance(conversion_function, str):
-                    try:
-                        # Use raw output for conversion function (not shaped)
-                        raw_value = raw_outputs.get(output_key)
-                        if raw_value is None:
-                            raw_value = raw_outputs.get("result", raw_outputs)
+                    successor_node_inputs = pending_inputs.setdefault(successor_node, {})
 
-                        converted_data = execute_conversion_function_flexible(
-                            conversion_function,
-                            {"value": raw_value, "data": raw_value, "output": raw_value},
-                        )
-                        value = converted_data
-                    except Exception as e:
-                        print(f"Conversion function failed: {e}")
-                        # Keep original value on error
-                # Input to successor node (use "main" as default input key)
-                input_key = "result"
-                if input_key in successor_node_inputs:
-                    existing = successor_node_inputs[input_key]
-                    if isinstance(existing, list):
-                        existing.append(value)
-                        successor_node_inputs[input_key] = existing
+                    # Apply conversion function if provided
+                    if conversion_function and isinstance(conversion_function, str):
+                        try:
+                            # Use raw output for conversion function (not shaped)
+                            raw_value = raw_outputs.get(output_key)
+                            if raw_value is None:
+                                raw_value = raw_outputs.get("result", raw_outputs)
+
+                            converted_data = execute_conversion_function_flexible(
+                                conversion_function,
+                                {"value": raw_value, "data": raw_value, "output": raw_value},
+                            )
+                            value = converted_data
+                        except Exception as e:
+                            print(f"Conversion function failed: {e}")
+                            # Keep original value on error
+                    # Input to successor node (use "main" as default input key)
+                    input_key = "result"
+                    if input_key in successor_node_inputs:
+                        existing = successor_node_inputs[input_key]
+                        if isinstance(existing, list):
+                            existing.append(value)
+                            successor_node_inputs[input_key] = existing
+                        else:
+                            successor_node_inputs[input_key] = [existing, value]
                     else:
-                        successor_node_inputs[input_key] = [existing, value]
-                else:
-                    successor_node_inputs[input_key] = value
-                if self._is_node_ready(graph, successor_node, pending_inputs):
-                    queue.append({"node_id": successor_node, "override": None})
+                        successor_node_inputs[input_key] = value
+                    if self._is_node_ready(graph, successor_node, pending_inputs):
+                        queue.append({"node_id": successor_node, "override": None})
+            except Exception as post_completion_err:
+                logger.error(
+                    f"❌❌❌ CRITICAL: Post-completion processing failed for {current_node_id}: {post_completion_err}"
+                )
+                import traceback
+
+                logger.error(f"Full traceback: {traceback.format_exc()}")
+                raise  # Re-raise to trigger fail-fast
 
             workflow_execution.execution_sequence.append(current_node_id)
             if not is_fanout_run:
@@ -906,6 +1018,22 @@ class ExecutionEngine:
             self._events.execution_completed(workflow_execution)
             self._persist_execution(workflow_execution)
 
+            # User-friendly workflow completion log
+            if self._user_friendly_logger:
+                try:
+                    self._user_friendly_logger.log_workflow_complete(
+                        execution=workflow_execution,
+                        success=True,
+                        duration_ms=workflow_execution.duration_ms,
+                        summary={
+                            "total_nodes": len(workflow.nodes),
+                            "executed_nodes": len(workflow_execution.execution_sequence),
+                        },
+                    )
+                    # Background flusher will handle persistence
+                except Exception as log_err:
+                    logger.error(f"❌ Failed to log workflow completion: {log_err}")
+
             # Update workflow's latest_execution_status when execution completes successfully
             self._update_workflow_execution_fields(
                 workflow_id=workflow_id,
@@ -922,6 +1050,24 @@ class ExecutionEngine:
                 execution_time=workflow_execution.end_time or _now_ms(),
             )
         else:
+            # User-friendly workflow failure log
+            if self._user_friendly_logger:
+                try:
+                    error_summary = {"total_nodes": len(workflow.nodes)}
+                    if workflow_execution.error:
+                        error_summary["error_message"] = workflow_execution.error.error_message
+                        error_summary["error_node"] = workflow_execution.error.error_node_id
+
+                    self._user_friendly_logger.log_workflow_complete(
+                        execution=workflow_execution,
+                        success=False,
+                        duration_ms=workflow_execution.duration_ms,
+                        summary=error_summary,
+                    )
+                    # Background flusher will handle persistence
+                except Exception as log_err:
+                    logger.error(f"❌ Failed to log workflow failure: {log_err}")
+
             # Update workflow's latest_execution_status when execution fails
             self._update_workflow_execution_fields(
                 workflow_id=workflow_id,
@@ -937,6 +1083,14 @@ class ExecutionEngine:
                 success=False,
                 execution_time=workflow_execution.end_time or _now_ms(),
             )
+
+        # CRITICAL: Flush all pending logs before returning
+        if self._user_friendly_logger:
+            try:
+                self._user_friendly_logger.flush_sync(timeout=2.0)
+                logger.info("✅ Flushed user-friendly logs before execution return")
+            except Exception as flush_err:
+                logger.error(f"⚠️ Failed to flush logs: {flush_err}")
 
         return self._snapshot_execution(workflow_execution)
 
@@ -1287,7 +1441,12 @@ class ExecutionEngine:
         latest_execution_time: Optional[int] = None,
         latest_execution_id: Optional[str] = None,
     ) -> bool:
-        """Update workflow's latest_execution_status, latest_execution_time, and latest_execution_id fields."""
+        """Update workflow's latest/last execution fields.
+
+        Persists top-level columns (latest_execution_*) and also mirrors into
+        workflow_data.metadata as last_execution_* so API consumers can rely on
+        metadata without additional lookups. Updates occur on start, success, or error.
+        """
         try:
             # Create Supabase client for database operations
             supabase_url = os.getenv("SUPABASE_URL")
@@ -1299,7 +1458,7 @@ class ExecutionEngine:
 
             client = create_client(supabase_url, supabase_key)
 
-            # Build update data
+            # Build update data for top-level workflow columns
             update_data = {}
             if latest_execution_status is not None:
                 update_data["latest_execution_status"] = latest_execution_status
@@ -1321,6 +1480,50 @@ class ExecutionEngine:
 
             if result.data:
                 logger.info(f"✅ Updated workflow {workflow_id} execution fields: {update_data}")
+                # Also mirror into workflow_data.metadata.last_execution_* for consistency
+                try:
+                    # Determine a sensible ms timestamp if not provided (e.g., completion/error)
+                    import time as _time
+
+                    last_time_ms = (
+                        latest_execution_time
+                        if isinstance(latest_execution_time, (int, float))
+                        else int(_time.time() * 1000)
+                    )
+
+                    wf_sel = (
+                        client.table("workflows")
+                        .select("workflow_data")
+                        .eq("id", workflow_id)
+                        .limit(1)
+                        .execute()
+                    )
+                    if wf_sel.data:
+                        wf_data = wf_sel.data[0].get("workflow_data") or {}
+                        # Ensure dict
+                        if isinstance(wf_data, dict):
+                            metadata = wf_data.get("metadata") or {}
+                            if not isinstance(metadata, dict):
+                                metadata = {}
+                            if latest_execution_status is not None:
+                                try:
+                                    metadata["last_execution_status"] = str(
+                                        latest_execution_status
+                                    ).upper()
+                                except Exception:
+                                    metadata["last_execution_status"] = latest_execution_status
+                            # Always update time to reflect this event
+                            metadata["last_execution_time"] = int(last_time_ms)
+                            if latest_execution_id is not None:
+                                metadata["last_execution_id"] = latest_execution_id
+                            wf_data["metadata"] = metadata
+                            client.table("workflows").update({"workflow_data": wf_data}).eq(
+                                "id", workflow_id
+                            ).execute()
+                except Exception as mirror_err:  # pragma: no cover - best effort
+                    logger.warning(
+                        f"⚠️ Failed to mirror last_execution_* into metadata for {workflow_id}: {mirror_err}"
+                    )
                 return True
 
             return False

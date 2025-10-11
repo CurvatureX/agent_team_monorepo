@@ -10,12 +10,15 @@ Features:
 - Real-time log streaming
 - Direct Supabase integration
 - Clean, professional API organization
+- Graceful shutdown with log flushing
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import signal
+import sys
 
 import uvicorn
 from fastapi import FastAPI
@@ -28,6 +31,13 @@ from workflow_engine_v2.api import router as api_router
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Reduce verbosity of noisy loggers
+logging.getLogger("httpx").setLevel(logging.WARNING)  # Reduce Supabase HTTP request logs
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)  # Reduce HTTP access logs
+
+# Global flag for shutdown
+_shutdown_requested = False
 
 
 # Create FastAPI app
@@ -55,16 +65,62 @@ async def startup_event():
     """Application startup event"""
     logger.info("🚀 Workflow Engine V2 starting up...")
     logger.info("✅ Modern execution engine initialized")
-    logger.info("✅ User-friendly logging system active")
+
+    # Start async user-friendly logger
+    try:
+        from workflow_engine_v2.services.user_friendly_logger import get_async_user_friendly_logger
+
+        async_logger = get_async_user_friendly_logger()
+        await async_logger.start()
+        logger.info("✅ Async user-friendly logging system started")
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to start async logger: {e}")
+
     logger.info("✅ API endpoints ready")
     logger.info("   - Health: /health")
     logger.info("   - API: /v2/*")
 
+    # Register signal handlers for graceful shutdown
+    signal.signal(signal.SIGTERM, _handle_shutdown_signal)
+    signal.signal(signal.SIGINT, _handle_shutdown_signal)
+    logger.info("✅ Signal handlers registered (SIGTERM, SIGINT)")
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Application shutdown event"""
+    """Application shutdown event - drain all pending logs"""
+    global _shutdown_requested
+    _shutdown_requested = True
+
     logger.info("🛑 Workflow Engine V2 shutting down...")
+    logger.info("💾 Draining pending logs...")
+
+    try:
+        # Stop async user-friendly logger and drain queue
+        from workflow_engine_v2.services.user_friendly_logger import get_async_user_friendly_logger
+
+        async_logger = get_async_user_friendly_logger()
+        await async_logger.stop(timeout=5.0)
+        logger.info("✅ All pending logs drained successfully")
+    except Exception as e:
+        logger.error(f"❌ Error draining logs during shutdown: {e}")
+
+    logger.info("👋 Shutdown complete")
+
+
+def _handle_shutdown_signal(signum, frame):
+    """Handle shutdown signals (SIGTERM, SIGINT)"""
+    global _shutdown_requested
+    signal_name = "SIGTERM" if signum == signal.SIGTERM else "SIGINT"
+    logger.warning(f"⚠️ Received {signal_name} signal - initiating graceful shutdown...")
+    _shutdown_requested = True
+
+    # Note: Async logger will be drained in shutdown_event()
+    # Signal handler cannot run async code, so we just exit
+    logger.info("📝 Async logs will be drained in shutdown event")
+
+    # Let uvicorn handle the actual shutdown
+    sys.exit(0)
 
 
 @app.exception_handler(Exception)

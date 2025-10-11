@@ -100,6 +100,7 @@ const NewWorkflowPage = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const hasAutoSentMessage = useRef(false);
+  const hasInitializedSession = useRef(false);
 
   const { toast } = useToast();
   // const { session } = useAuth();
@@ -154,42 +155,41 @@ const NewWorkflowPage = () => {
     };
   }, [setCustomTitle, workflowName, router]);
 
-  // Initialize chat session (only once)
+  // Initialize chat session (only once) - ALWAYS create a new session for new workflows
   useEffect(() => {
+    // Prevent duplicate session creation in React StrictMode
+    if (hasInitializedSession.current) {
+      console.log("[NewWorkflow] Session already initialized, skipping...");
+      return;
+    }
+
     const initializeChat = async () => {
       try {
-        console.log("[NewWorkflow] Initializing chat session...");
-        // Check if chatService singleton already has a session
-        // This prevents React StrictMode from creating multiple sessions
-        const existingSessionId = await chatService.getSessionId();
+        hasInitializedSession.current = true;
+        console.log("[NewWorkflow] Creating new chat session for new workflow...");
+        // IMPORTANT: Always clear existing session and create a fresh one for new workflows
+        // This ensures we don't reuse sessions from other workflows
+        chatService.clearSession();
 
-        if (existingSessionId) {
-          console.log("[NewWorkflow] Got session ID:", existingSessionId);
+        // Create a brand new session
+        const newSessionId = await chatService.createNewSession();
+        console.log("[NewWorkflow] Created new session ID:", newSessionId);
 
-          // Load chat history if exists
-          const history = await chatService.getChatHistory();
-          console.log("[NewWorkflow] Chat history loaded:", {
-            sessionId: history.session_id,
-            messageCount: history.messages?.length || 0
-          });
-
-          if (history.messages && history.messages.length > 0) {
-            const formattedMessages: Message[] = history.messages.map((msg) => ({
-              id: msg.id,
-              content: msg.content,
-              sender: msg.message_type === "user" ? "user" : "assistant",
-              timestamp: new Date(msg.created_at),
-            }));
-            setMessages(formattedMessages);
-            console.log("[NewWorkflow] Loaded", formattedMessages.length, "messages from history");
-          }
-        }
+        // New workflow should start with empty chat history
+        setMessages([]);
       } catch (error) {
         console.error("[NewWorkflow] Error initializing chat:", error);
+        // Reset flag on error so user can retry
+        hasInitializedSession.current = false;
       }
     };
 
     initializeChat();
+
+    // Reset flag on unmount so a fresh session is created if user returns
+    return () => {
+      hasInitializedSession.current = false;
+    };
   }, []);
 
   // Auto-send initial message from sessionStorage

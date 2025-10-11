@@ -113,6 +113,7 @@ class WorkflowMetadata(BaseModel):
     )
     last_execution_status: Optional[ExecutionStatus] = Field(default=None, description="上次运行状态")
     last_execution_time: Optional[int] = Field(default=None, description="上次运行时间戳（毫秒）")
+    last_execution_id: Optional[str] = Field(default=None, description="上次运行执行ID")
     tags: List[str] = Field(default_factory=list, description="标签列表")
     created_time: int = Field(..., description="创建时间戳（毫秒）")
     parent_workflow: Optional[str] = Field(default=None, description="模板原始工作流ID")
@@ -376,8 +377,30 @@ class WorkflowExecution(BaseModel):
 
     # 元数据
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="执行元数据")
-    created_at: Optional[str] = Field(default=None, description="创建时间")
-    updated_at: Optional[str] = Field(default=None, description="更新时间")
+    created_at: Optional[int] = Field(default=None, description="创建时间（毫秒）")
+    updated_at: Optional[int] = Field(default=None, description="更新时间（毫秒）")
+
+    @field_validator("created_at", "updated_at", mode="before")
+    @classmethod
+    def _coerce_timestamp_ms(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, (int, float)):
+            iv = int(v)
+            return iv if iv >= 1_000_000_000_0 else iv * 1000
+        if isinstance(v, str):
+            s = v.strip()
+            if s.isdigit():
+                iv = int(s)
+                return iv if iv >= 1_000_000_000_0 else iv * 1000
+            try:
+                from datetime import datetime
+
+                dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+                return int(dt.timestamp() * 1000)
+            except Exception:
+                return None
+        return None
 
 
 # ============================================================================

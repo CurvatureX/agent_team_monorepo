@@ -104,11 +104,15 @@ class SupabaseExecutionRepositoryV2(ExecutionRepository):
                 "updated_at": now_iso,
             }
 
+            self.logger.info(
+                f"🟣 About to upsert execution {execution.execution_id} to {self._table}"
+            )
             result = (
                 self._client.table(self._table)
                 .upsert(execution_payload, on_conflict="execution_id")
                 .execute()
             )
+            self.logger.info(f"🟣 Upsert to {self._table} completed for {execution.execution_id}")
 
             if not result.data:
                 self.logger.warning(

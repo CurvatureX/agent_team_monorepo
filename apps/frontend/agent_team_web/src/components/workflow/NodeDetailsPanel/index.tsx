@@ -62,6 +62,17 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const autoSaveRef = useRef<(() => Promise<void>) | undefined>(undefined);
+  const hasChangesRef = useRef(false);
+  const saveTriggeredRef = useRef(false);
+  const metadataIdRef = useRef<string | null>(null);
+
+  // Keep refs in sync with latest state for unmount/close handling
+  useEffect(() => {
+    hasChangesRef.current = hasChanges;
+  }, [hasChanges]);
+  useEffect(() => {
+    metadataIdRef.current = metadata?.id || null;
+  }, [metadata?.id]);
 
   // Auto-save function - always use the latest version
   autoSaveRef.current = async () => {
@@ -169,7 +180,11 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
         if (countdownIntervalRef.current) {
           clearInterval(countdownIntervalRef.current);
         }
-        autoSaveRef.current?.();
+        // Mark as triggered to avoid duplicate saves on close/unmount
+        if (!saveTriggeredRef.current) {
+          saveTriggeredRef.current = true;
+          autoSaveRef.current?.();
+        }
       }, 5000);
     } else {
       console.log("[Auto-save] Conditions not met:", {
@@ -186,18 +201,27 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
       }
     }
 
-    // Cleanup on unmount
+    // Cleanup on unmount or dependencies change
     return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
+      // If we are about to unmount/close and there are pending changes, force a save
+      // Ensure we haven't already triggered it (from timeout or explicit close)
+      if (hasChangesRef.current && metadataIdRef.current && !saveTriggeredRef.current) {
+        console.log('[Auto-save] Component cleanup with pending changes — forcing save now');
+        saveTriggeredRef.current = true;
+        autoSaveRef.current?.();
       }
-      if (countdownIntervalRef.current) {
-        clearInterval(countdownIntervalRef.current);
-      }
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
     };
   }, [hasChanges, metadata.id]);
 
   const handleClose = useCallback(() => {
+    // If there are unsaved changes, force a save before closing the panel
+    if (hasChangesRef.current && metadataIdRef.current && !saveTriggeredRef.current) {
+      console.log('[Auto-save] Close action with pending changes — forcing save now');
+      saveTriggeredRef.current = true;
+      autoSaveRef.current?.();
+    }
     setDetailsPanelOpen(false);
     setSidebarCollapsed(false); // Show Node Library when closing Node Details
     setFormErrors({});
@@ -235,6 +259,8 @@ export const NodeDetailsPanel: React.FC<NodeDetailsPanelProps> = ({
           parameters: newParameters,
         });
         setHasChanges(true);
+        // New changes detected — allow a new auto-save to trigger
+        saveTriggeredRef.current = false;
         setSaveStatus("idle"); // Reset status when user makes changes
         setCountdown(5); // Reset countdown display
       }

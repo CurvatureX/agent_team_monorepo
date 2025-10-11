@@ -1,16 +1,11 @@
 """
-User-Friendly Workflow Execution Logger for V2 Engine
+Simplified Async User-Friendly Logger (V2)
 
-This logger creates user-friendly log entries that are exposed through the API Gateway's
-/api/v1/app/executions/{execution_id}/logs endpoint. It focuses on meaningful progress
-updates that users care about, with detailed node execution tracking.
-
-Key Features:
-- User-friendly messages with clear progress indicators
-- Input/output parameter summaries
-- Milestone and step tracking
-- Performance metrics
-- Direct integration with Supabase logs table
+Clean, lock-free async logging system:
+- asyncio.Queue for non-blocking log collection
+- Async batch writes to Supabase every 1 second
+- Redis pub/sub for real-time streaming (optional)
+- No SQLite, no threads, no locks, no deadlocks
 """
 
 from __future__ import annotations
@@ -18,22 +13,20 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import sys
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from threading import Lock
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional
 
 # Add backend directory to path for absolute imports
 backend_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(backend_dir))
 
 from shared.models.execution_new import Execution
-
-# Use absolute imports
 from shared.models.workflow import Node
 
 logger = logging.getLogger(__name__)
@@ -42,10 +35,10 @@ logger = logging.getLogger(__name__)
 class LogCategory(str, Enum):
     """Categories for log entries"""
 
-    BUSINESS = "business"  # User-facing business logic logs
-    TECHNICAL = "technical"  # Technical details for debugging
-    MILESTONE = "milestone"  # Important workflow milestones
-    PROGRESS = "progress"  # Step-by-step progress updates
+    BUSINESS = "business"
+    TECHNICAL = "technical"
+    MILESTONE = "milestone"
+    PROGRESS = "progress"
 
 
 class EventType(str, Enum):
@@ -78,7 +71,7 @@ class UserFriendlyLogEntry:
     """User-friendly log entry for API consumption"""
 
     execution_id: str
-    created_at: str  # ISO format - matches database column
+    created_at: str  # ISO format
     level: LogLevel
     event_type: EventType
     message: str
@@ -90,14 +83,12 @@ class UserFriendlyLogEntry:
     node_type: Optional[str] = None
     step_number: Optional[int] = None
     total_steps: Optional[int] = None
-    display_priority: int = 5  # 1-10, higher = more important
+    display_priority: int = 5
     is_milestone: bool = False
-
-    # Structured data
     data: Optional[Dict[str, Any]] = None
 
     def to_supabase_row(self) -> Dict[str, Any]:
-        """Convert to Supabase table row format using direct enum values."""
+        """Convert to Supabase table row format"""
         level_value = self.level.value
         if level_value == "WARN":
             level_value = "WARNING"
@@ -181,27 +172,36 @@ class NodeProgressTracker:
         return self._execution_context.get(execution_id, {})
 
 
-class UserFriendlyLogger:
-    """User-friendly logger for workflow execution"""
+class AsyncUserFriendlyLogger:
+    """Simplified async user-friendly logger (V2)"""
 
     def __init__(self):
         self._progress_tracker = NodeProgressTracker()
-        self._supabase = None
+        self._log_queue: Optional[asyncio.Queue] = None
+        self._writer_task: Optional[asyncio.Task] = None
         self._redis = None
-        self._log_buffer: List[UserFriendlyLogEntry] = []
-        self._buffer_lock = Lock()
-        self._buffer_size_limit = 100
+        self._supabase = None
+        self._shutdown = False
 
-        # Initialize Supabase client
-        self._init_supabase()
-        # Initialize Redis client for real-time log streaming
+        # Initialize clients
         self._init_redis()
+        self._init_supabase()
+
+    def _init_redis(self):
+        """Initialize Redis client for real-time streaming (optional)"""
+        try:
+            import redis
+
+            redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/2")
+            if redis_url:
+                self._redis = redis.from_url(redis_url, decode_responses=True)
+                logger.info(f"✅ Redis initialized for log streaming: {redis_url}")
+        except Exception as e:
+            logger.warning(f"⚠️ Redis not available for log streaming: {e}")
 
     def _init_supabase(self):
-        """Initialize Supabase client for log storage"""
+        """Initialize async Supabase client"""
         try:
-            import os
-
             from supabase import create_client
 
             url = os.getenv("SUPABASE_URL")
@@ -209,32 +209,155 @@ class UserFriendlyLogger:
 
             if url and key:
                 self._supabase = create_client(url, key)
-                logger.info("✅ Supabase client initialized for user-friendly logging")
+                logger.info("✅ Supabase client initialized for async logging")
             else:
                 logger.warning("⚠️ Supabase credentials not found - logs will be buffered only")
         except Exception as e:
             logger.error(f"❌ Failed to initialize Supabase client: {e}")
 
-    def _init_redis(self):
-        """Initialize Redis client for real-time log publishing"""
+    async def start(self):
+        """Start the async log writer"""
+        if self._writer_task is not None:
+            logger.warning("Async log writer already running")
+            return
+
+        self._log_queue = asyncio.Queue(maxsize=1000)
+        self._shutdown = False
+        self._writer_task = asyncio.create_task(self._background_writer())
+        logger.info("✅ Async log writer started")
+
+    async def stop(self, timeout: float = 5.0):
+        """Stop the async log writer and drain remaining logs"""
+        if self._writer_task is None:
+            return
+
+        logger.info("🛑 Stopping async log writer...")
+        self._shutdown = True
+
         try:
-            import os
-
-            # Try to import redis.asyncio
+            await asyncio.wait_for(self._writer_task, timeout=timeout)
+            logger.info("✅ Async log writer stopped cleanly")
+        except asyncio.TimeoutError:
+            logger.warning(f"⚠️ Log writer did not finish within {timeout}s, canceling...")
+            self._writer_task.cancel()
             try:
-                import redis.asyncio as redis
-            except ImportError:
-                logger.warning("⚠️ redis.asyncio not available - real-time log streaming disabled")
-                return
+                await self._writer_task
+            except asyncio.CancelledError:
+                pass
 
-            redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
-            if redis_url:
-                self._redis = redis.from_url(redis_url, decode_responses=True)
-                logger.info("✅ Redis client initialized for real-time log streaming")
-            else:
-                logger.warning("⚠️ REDIS_URL not configured - real-time log streaming disabled")
+    def flush_sync(self, timeout: float = 2.0):
+        """Synchronously flush all pending logs to database (for use in sync code)"""
+        if self._log_queue is None or self._log_queue.empty():
+            return
+
+        logger.info(f"🔄 Flushing {self._log_queue.qsize()} pending logs...")
+
+        # Collect all queued logs
+        batch = []
+        while not self._log_queue.empty():
+            try:
+                entry = self._log_queue.get_nowait()
+                batch.append(entry.to_supabase_row())
+            except Exception:
+                break
+
+        # Write batch synchronously
+        if batch and self._supabase:
+            try:
+                self._supabase.table("workflow_execution_logs").insert(batch).execute()
+                logger.info(f"✅ Flushed {len(batch)} logs to database")
+            except Exception as e:
+                logger.error(f"❌ Failed to flush logs: {e}")
+
+    def log_entry(self, entry: UserFriendlyLogEntry):
+        """Add log entry to queue (thread-safe, non-blocking)"""
+        if self._log_queue is None:
+            logger.warning("Log queue not initialized, dropping log entry")
+            return
+
+        # Publish to Redis for real-time streaming (best-effort)
+        if self._redis:
+            try:
+                channel = f"execution_logs:{entry.execution_id}"
+                log_data = {
+                    "timestamp": entry.created_at,
+                    "node_name": entry.node_name,
+                    "event_type": entry.event_type.value,
+                    "message": entry.user_friendly_message,
+                    "level": entry.level.value.lower(),
+                    "data": entry.data or {},
+                }
+                self._redis.publish(channel, json.dumps(log_data))
+            except Exception as e:
+                logger.debug(f"Failed to publish log to Redis: {e}")
+
+        # Add to async queue
+        try:
+            self._log_queue.put_nowait(entry)
+        except asyncio.QueueFull:
+            # Drop oldest log if queue full
+            try:
+                self._log_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+            self._log_queue.put_nowait(entry)
+
+    async def _background_writer(self):
+        """Background task that batches writes to Supabase"""
+        batch = []
+        batch_size = 100
+        flush_interval = 1.0  # 1 second
+
+        logger.info("📝 Background log writer started (batch_size=100, interval=1s)")
+
+        while not self._shutdown or not self._log_queue.empty():
+            try:
+                # Collect logs for up to 1 second
+                entry = await asyncio.wait_for(self._log_queue.get(), timeout=flush_interval)
+                batch.append(entry.to_supabase_row())
+
+                # Drain queue up to batch limit
+                while len(batch) < batch_size:
+                    try:
+                        entry = self._log_queue.get_nowait()
+                        batch.append(entry.to_supabase_row())
+                    except asyncio.QueueEmpty:
+                        break
+
+                # Write batch to Supabase (async, non-blocking)
+                if batch and self._supabase:
+                    await self._write_batch(batch)
+                    batch = []
+
+            except asyncio.TimeoutError:
+                # Flush partial batch every second
+                if batch and self._supabase:
+                    await self._write_batch(batch)
+                    batch = []
+            except Exception as e:
+                logger.error(f"Log writer error: {e}")
+                batch = []  # Clear batch on error
+
+        # Final flush on shutdown
+        if batch and self._supabase:
+            await self._write_batch(batch)
+
+        logger.info("📝 Background log writer stopped")
+
+    async def _write_batch(self, batch: list):
+        """Write batch of logs to Supabase (async)"""
+        try:
+            # Use thread pool for sync Supabase call
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,
+                lambda: self._supabase.table("workflow_execution_logs").insert(batch).execute(),
+            )
+            logger.debug(f"✅ Wrote {len(batch)} logs to Supabase")
         except Exception as e:
-            logger.warning(f"⚠️ Redis not available for log streaming: {e}")
+            logger.error(f"❌ Failed to write {len(batch)} logs to Supabase: {e}")
+
+    # Logging methods (same interface as old logger)
 
     def log_workflow_start(
         self,
@@ -261,8 +384,8 @@ class UserFriendlyLogger:
             user_friendly_message=user_message,
             step_number=0,
             total_steps=total_nodes,
-            display_priority=0,  # Not used in UI
-            is_milestone=False,  # Not used in UI
+            display_priority=0,
+            is_milestone=False,
             data={
                 "workflow_name": workflow_name,
                 "total_nodes": total_nodes,
@@ -270,7 +393,7 @@ class UserFriendlyLogger:
             },
         )
 
-        self._add_log_entry(log_entry)
+        self.log_entry(log_entry)
 
     def log_workflow_complete(
         self,
@@ -301,8 +424,8 @@ class UserFriendlyLogger:
             event_type=event_type,
             message=user_message,
             user_friendly_message=user_message,
-            display_priority=0,  # Not used in UI
-            is_milestone=False,  # Not used in UI
+            display_priority=0,
+            is_milestone=False,
             data={
                 "completed_nodes": completed,
                 "failed_nodes": failed,
@@ -313,9 +436,7 @@ class UserFriendlyLogger:
             },
         )
 
-        self._add_log_entry(log_entry)
-        # Flush remaining logs
-        asyncio.create_task(self._flush_logs())
+        self.log_entry(log_entry)
 
     def log_node_start(
         self, execution_id: str, node: Node, input_summary: Optional[Dict[str, Any]] = None
@@ -325,7 +446,18 @@ class UserFriendlyLogger:
         progress = self._progress_tracker.get_execution_progress(execution_id)
         total_steps = progress.get("total_nodes", 0)
 
+        # Build user-friendly message (no inline JSON)
         user_message = f"Started: {node.name}"
+
+        # Store input params in data field for structured access
+        data_field = {
+            "node_type": node.type.value if hasattr(node.type, "value") else str(node.type),
+            "node_subtype": node.subtype,
+        }
+
+        # Add input_params if available
+        if input_summary and isinstance(input_summary, dict) and input_summary:
+            data_field["input_params"] = input_summary
 
         log_entry = UserFriendlyLogEntry(
             execution_id=execution_id,
@@ -339,15 +471,11 @@ class UserFriendlyLogger:
             node_type=node.type.value if hasattr(node.type, "value") else str(node.type),
             step_number=step_number,
             total_steps=total_steps,
-            display_priority=0,  # Not used in UI
-            data={
-                "node_type": node.type.value if hasattr(node.type, "value") else str(node.type),
-                "node_subtype": node.subtype,
-                "input_params": input_summary if isinstance(input_summary, dict) else {},
-            },
+            display_priority=0,
+            data=data_field,
         )
 
-        self._add_log_entry(log_entry)
+        self.log_entry(log_entry)
 
     def log_node_complete(
         self,
@@ -363,18 +491,41 @@ class UserFriendlyLogger:
         node_info = self._progress_tracker.get_node_info(node_id)
 
         if not node_info:
+            logger.warning(
+                f"⚠️ log_node_complete called for node {node_id} but node info not found"
+            )
             return
 
         step_number = node_info.get("step_number", 0)
         progress = self._progress_tracker.get_execution_progress(execution_id)
         total_steps = progress.get("total_nodes", 0)
 
+        # Prepare data field for structured access
+        data_field = {
+            "success": success,
+            "duration_ms": duration_ms,
+            "node_subtype": node_info.get("node_subtype"),
+        }
+
         if success:
             user_message = f"Completed: {node_info['node_name']}"
+
+            # Store output params in data field if available
+            if output_summary and isinstance(output_summary, dict):
+                # Extract output_params from the summary
+                output_params = output_summary.get("output_params", {})
+                if output_params and isinstance(output_params, dict):
+                    data_field["output_params"] = output_params
+
             event_type = EventType.STEP_COMPLETED
             level = LogLevel.INFO
         else:
             user_message = f"Failed: {node_info['node_name']}"
+
+            # Store error message in data field
+            if error_message:
+                data_field["error_message"] = error_message
+
             event_type = EventType.STEP_FAILED
             level = LogLevel.ERROR
 
@@ -390,17 +541,11 @@ class UserFriendlyLogger:
             node_type=node_info["node_type"],
             step_number=step_number,
             total_steps=total_steps,
-            display_priority=0,  # Not used in UI
-            data={
-                "success": success,
-                "duration_ms": duration_ms,
-                "output_params": output_summary if isinstance(output_summary, dict) else {},
-                "error_message": error_message,
-                "node_subtype": node_info.get("node_subtype"),
-            },
+            display_priority=0,
+            data=data_field,
         )
 
-        self._add_log_entry(log_entry)
+        self.log_entry(log_entry)
 
     def log_tool_usage(
         self,
@@ -418,12 +563,12 @@ class UserFriendlyLogger:
             execution_id=execution_id,
             created_at=datetime.utcnow().isoformat() + "Z",
             level=LogLevel.INFO,
-            event_type=EventType.DATA_PROCESSING,  # Reuse existing enum
+            event_type=EventType.DATA_PROCESSING,
             message=user_message,
             user_friendly_message=user_message,
             node_id=node_id,
             node_name=node_name,
-            display_priority=0,  # Not used in UI
+            display_priority=0,
             data={
                 "tool_name": tool_name,
                 "tool_input": tool_input,
@@ -431,219 +576,27 @@ class UserFriendlyLogger:
             },
         )
 
-        self._add_log_entry(log_entry)
-
-    def log_node_phase(
-        self, execution_id: str, node_id: str, phase: str, details: Optional[str] = None
-    ):
-        """Log node execution phase (for detailed tracking)"""
-        node_info = self._progress_tracker.get_node_info(node_id)
-        if not node_info:
-            return
-
-        phase_messages = {
-            "VALIDATING_INPUTS": "Validating inputs",
-            "PROCESSING": "Processing request",
-            "WAITING_HUMAN": "Waiting for human input",
-            "COMPLETING": "Finalizing results",
-        }
-
-        phase_description = phase_messages.get(phase, phase.lower().replace("_", " "))
-        user_message = f"🔄 {node_info['node_name']}: {phase_description}"
-        if details:
-            user_message += f" - {details}"
-
-        log_entry = UserFriendlyLogEntry(
-            execution_id=execution_id,
-            created_at=datetime.utcnow().isoformat() + "Z",
-            level=LogLevel.DEBUG,
-            event_type=EventType.WORKFLOW_PROGRESS,
-            message=f"Node phase change: {node_info['node_name']} -> {phase}",
-            user_friendly_message=user_message,
-            node_id=node_id,
-            node_name=node_info["node_name"],
-            node_type=node_info["node_type"],
-            step_number=node_info.get("step_number"),
-            display_priority=3,
-            data={"phase": phase, "details": details},
-        )
-
-        self._add_log_entry(log_entry)
-
-    def log_human_interaction(
-        self,
-        execution_id: str,
-        node_id: str,
-        interaction_type: str,
-        message: str,
-        timeout_minutes: Optional[int] = None,
-    ):
-        """Log human interaction requests"""
-        node_info = self._progress_tracker.get_node_info(node_id)
-        node_name = node_info["node_name"] if node_info else "Human Input"
-
-        user_message = f"👤 {node_name}: {message}"
-        if timeout_minutes:
-            user_message += f" (timeout: {timeout_minutes}min)"
-
-        log_entry = UserFriendlyLogEntry(
-            execution_id=execution_id,
-            created_at=datetime.utcnow().isoformat() + "Z",
-            level=LogLevel.INFO,
-            event_type=EventType.HUMAN_INTERACTION,
-            message=f"Human interaction required: {interaction_type}",
-            user_friendly_message=user_message,
-            node_id=node_id,
-            node_name=node_name,
-            display_priority=8,
-            data={"interaction_type": interaction_type, "timeout_minutes": timeout_minutes},
-        )
-
-        self._add_log_entry(log_entry)
-
-    def log_custom_milestone(
-        self,
-        execution_id: str,
-        message: str,
-        user_message: str,
-        level: LogLevel = LogLevel.INFO,
-        data: Optional[Dict[str, Any]] = None,
-    ):
-        """Log a custom milestone"""
-        log_entry = UserFriendlyLogEntry(
-            execution_id=execution_id,
-            created_at=datetime.utcnow().isoformat() + "Z",
-            level=level,
-            event_type=EventType.WORKFLOW_PROGRESS,
-            message=message,
-            user_friendly_message=user_message,
-            display_priority=7,
-            is_milestone=True,
-            data=data,
-        )
-
-        self._add_log_entry(log_entry)
-
-    def _get_node_description(self, node_type: Any, node_subtype: str) -> str:
-        """Get user-friendly description of node type"""
-        node_type_str = node_type.value if hasattr(node_type, "value") else str(node_type)
-
-        descriptions = {
-            ("TRIGGER", "MANUAL"): "Manual trigger",
-            ("TRIGGER", "WEBHOOK"): "Webhook trigger",
-            ("TRIGGER", "CRON"): "Scheduled trigger",
-            ("TRIGGER", "SLACK"): "Slack trigger",
-            ("TRIGGER", "EMAIL"): "Email trigger",
-            ("AI_AGENT", "OPENAI_CHATGPT"): "ChatGPT AI",
-            ("AI_AGENT", "ANTHROPIC_CLAUDE"): "Claude AI",
-            ("AI_AGENT", "OPENAI"): "OpenAI",
-            ("ACTION", "HTTP_REQUEST"): "HTTP request",
-            ("ACTION", "EMAIL_SEND"): "Send email",
-            ("ACTION", "FILE_OPERATION"): "File operation",
-            ("EXTERNAL_ACTION", "SLACK"): "Slack action",
-            ("EXTERNAL_ACTION", "NOTION"): "Notion action",
-            ("EXTERNAL_ACTION", "GITHUB"): "GitHub action",
-            ("EXTERNAL_ACTION", "AIRTABLE"): "Airtable action",
-            ("FLOW", "IF"): "Conditional logic",
-            # ("FLOW", "SWITCH"): "Switch logic",  # SWITCH removed
-            ("FLOW", "LOOP"): "Loop logic",
-            ("HUMAN_IN_THE_LOOP", "SLACK_INTERACTION"): "Slack approval",
-            ("HUMAN_IN_THE_LOOP", "EMAIL_INTERACTION"): "Email approval",
-            ("TOOL", "NOTION_MCP_TOOL"): "Notion tool execution",
-            ("MEMORY", "VECTOR_STORE"): "Vector memory",
-        }
-
-        return descriptions.get(
-            (node_type_str, node_subtype), f"{node_subtype} {node_type_str.lower()}"
-        )
-
-    async def _publish_to_redis(self, entry: UserFriendlyLogEntry):
-        """Publish log entry to Redis for real-time streaming"""
-        if not self._redis:
-            return
-
-        try:
-            import json
-
-            channel = f"execution_logs:{entry.execution_id}"
-            log_data = {
-                "timestamp": entry.created_at,
-                "node_name": entry.node_name,
-                "event_type": entry.event_type.value,
-                "message": entry.user_friendly_message,
-                "level": entry.level.value.lower(),
-                "data": entry.data or {},
-            }
-
-            # Publish to pub/sub channel
-            await self._redis.publish(channel, json.dumps(log_data))
-
-            # Also add to Redis stream with 10-minute TTL for history
-            stream_key = f"execution_logs_stream:{entry.execution_id}"
-            await self._redis.xadd(stream_key, {"log": json.dumps(log_data)})
-            await self._redis.expire(stream_key, 600)  # 10 minutes
-
-        except Exception as e:
-            logger.debug(f"Failed to publish log to Redis: {e}")
-
-    def _add_log_entry(self, entry: UserFriendlyLogEntry):
-        """Add log entry to buffer, publish to Redis, and flush if needed"""
-        with self._buffer_lock:
-            self._log_buffer.append(entry)
-
-            # Publish to Redis immediately for real-time streaming
-            if self._redis:
-                asyncio.create_task(self._publish_to_redis(entry))
-
-            # Flush if buffer is getting full
-            if len(self._log_buffer) >= self._buffer_size_limit:
-                asyncio.create_task(self._flush_logs())
-
-    async def _flush_logs(self):
-        """Flush log buffer to Supabase"""
-        if not self._supabase:
-            return
-
-        # Get logs to flush
-        logs_to_flush = []
-        with self._buffer_lock:
-            if self._log_buffer:
-                logs_to_flush = self._log_buffer.copy()
-                self._log_buffer.clear()
-
-        if not logs_to_flush:
-            return
-
-        try:
-            # Convert to Supabase format
-            rows = [entry.to_supabase_row() for entry in logs_to_flush]
-
-            # Insert into workflow_execution_logs table
-            result = self._supabase.table("workflow_execution_logs").insert(rows).execute()
-            logger.info(f"✅ Flushed {len(logs_to_flush)} log entries to Supabase")
-
-        except Exception as e:
-            logger.error(f"❌ Failed to flush logs to Supabase: {e}")
-            # Put logs back in buffer for retry
-            with self._buffer_lock:
-                self._log_buffer.extend(logs_to_flush)
+        self.log_entry(log_entry)
 
 
 # Global instance
-_user_friendly_logger = UserFriendlyLogger()
+_async_logger: Optional[AsyncUserFriendlyLogger] = None
 
 
-def get_user_friendly_logger() -> UserFriendlyLogger:
-    """Get the global user-friendly logger instance"""
-    return _user_friendly_logger
+def get_async_user_friendly_logger() -> AsyncUserFriendlyLogger:
+    """Get the global async user-friendly logger instance"""
+    global _async_logger
+    if _async_logger is None:
+        _async_logger = AsyncUserFriendlyLogger()
+    return _async_logger
 
 
 __all__ = [
-    "UserFriendlyLogger",
+    "AsyncUserFriendlyLogger",
     "UserFriendlyLogEntry",
     "LogCategory",
     "EventType",
     "LogLevel",
     "NodeProgressTracker",
-    "get_user_friendly_logger",
+    "get_async_user_friendly_logger",
 ]

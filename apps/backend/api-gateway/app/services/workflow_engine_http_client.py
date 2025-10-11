@@ -402,7 +402,12 @@ class WorkflowEngineHTTPClient:
             await self.connect()
 
         try:
-            log_info(f"📨 HTTP request to get execution status: {execution_id}")
+            # Use DEBUG level for frequent polling operations
+            import logging
+
+            logging.getLogger(__name__).debug(
+                f"📨 HTTP request to get execution status: {execution_id}"
+            )
 
             async with httpx.AsyncClient(timeout=self.query_timeout) as client:
                 response = await client.get(
@@ -411,7 +416,7 @@ class WorkflowEngineHTTPClient:
                 response.raise_for_status()
 
                 data = response.json()
-                log_info(f"✅ Retrieved execution status: {execution_id}")
+                logging.getLogger(__name__).debug(f"✅ Retrieved execution status: {execution_id}")
                 return data
 
         except httpx.HTTPStatusError as e:
@@ -639,7 +644,10 @@ class WorkflowEngineHTTPClient:
     ) -> Optional[Dict[str, Any]]:
         """Get execution logs from database with user access control"""
         try:
-            log_info(f"📋 Getting execution logs for: {execution_id}")
+            # Use DEBUG level for frequent polling operations
+            import logging
+
+            logging.getLogger(__name__).debug(f"📋 Getting execution logs for: {execution_id}")
 
             client = await self._get_client()
             headers = {}
@@ -662,7 +670,7 @@ class WorkflowEngineHTTPClient:
             response.raise_for_status()
             result = response.json()
 
-            log_info(f"✅ Retrieved execution logs for {execution_id}")
+            logging.getLogger(__name__).debug(f"✅ Retrieved execution logs for {execution_id}")
             return result
 
         except httpx.HTTPStatusError as e:

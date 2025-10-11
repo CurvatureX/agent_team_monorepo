@@ -90,14 +90,23 @@ export const ExecutionStatusPanel: React.FC<ExecutionStatusPanelProps> = ({
     }
   };
 
+  const toMs = (v?: string | number) => {
+    if (v === undefined || v === null) return undefined;
+    if (typeof v === 'number') return v < 1_000_000_000_000 ? v * 1000 : v;
+    const s = v.trim();
+    if (/^\d+$/.test(s)) {
+      const iv = parseInt(s, 10);
+      return iv < 1_000_000_000_000 ? iv * 1000 : iv;
+    }
+    const t = new Date(s).getTime();
+    return isNaN(t) ? undefined : t;
+  };
+
   const formatTime = (time?: string | number) => {
     if (!time) return "N/A";
-    // Handle both Unix timestamp (seconds) and ISO string
-    const date =
-      typeof time === "number"
-        ? new Date(time * 1000) // Unix timestamp in seconds
-        : new Date(time);
-    return date.toLocaleTimeString();
+    const ms = toMs(time);
+    if (ms === undefined) return "N/A";
+    return new Date(ms).toLocaleTimeString();
   };
 
   const calculateDuration = (
@@ -106,15 +115,9 @@ export const ExecutionStatusPanel: React.FC<ExecutionStatusPanelProps> = ({
   ) => {
     if (!start) return "N/A";
 
-    // Handle both Unix timestamp (seconds) and ISO string
-    const startTime =
-      typeof start === "number" ? start * 1000 : new Date(start).getTime();
-
-    const endTime = end
-      ? typeof end === "number"
-        ? end * 1000
-        : new Date(end).getTime()
-      : Date.now();
+    const startTime = toMs(start);
+    const endTime = end ? toMs(end) : Date.now();
+    if (startTime === undefined || endTime === undefined) return "N/A";
 
     const duration = endTime - startTime;
 
