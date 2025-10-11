@@ -116,9 +116,9 @@ export function useExecutionStatus(
   const pausedRef = useRef<boolean>(false);
 
   // Keep latest callbacks in refs to avoid re-creating polling effect
-  const onCompleteRef = useRef<typeof options.onComplete>();
-  const onErrorRef = useRef<typeof options.onError>();
-  const onTimeoutRef = useRef<typeof options.onTimeout>();
+  const onCompleteRef = useRef<((status: ExecutionStatus) => void) | undefined>(undefined);
+  const onErrorRef = useRef<((error: string) => void) | undefined>(undefined);
+  const onTimeoutRef = useRef<(() => void) | undefined>(undefined);
 
   const {
     interval = 2000,

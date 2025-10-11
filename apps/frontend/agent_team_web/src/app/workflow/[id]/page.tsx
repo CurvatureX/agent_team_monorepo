@@ -137,7 +137,7 @@ const WorkflowDetailPage = () => {
   );
   const [isChatExpanded, setIsChatExpanded] = useState(true);
   const [isExecutionLogsExpanded, setIsExecutionLogsExpanded] = useState(false);
-  const [workflowSessionId, setWorkflowSessionId] = useState<string | null>(null);
+  const [_workflowSessionId, setWorkflowSessionId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);

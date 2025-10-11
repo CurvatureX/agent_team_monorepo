@@ -289,16 +289,19 @@ const NewWorkflowPage = () => {
 
                 // Extract the actual database workflow ID from the response
                 // The AI agent saves the workflow and returns workflow_id
-                const savedWorkflowId = workflowData.workflow_id ||  // Root level workflow_id (actual DB ID)
-                                       event.data.workflow_id ||
+                // Use type assertion to access workflow_id which may exist at runtime but isn't in the type definition
+                const workflowDataAny = workflowData as unknown as Record<string, unknown>;
+                const eventDataAny = event.data as unknown as Record<string, unknown>;
+                const savedWorkflowId = (workflowDataAny.workflow_id as string | undefined) ||  // Root level workflow_id (actual DB ID)
+                                       (eventDataAny.workflow_id as string | undefined) ||
                                        workflowData.id ||              // Fallback to structure ID
-                                       event.data.id;
+                                       (eventDataAny.id as string | undefined);
 
                 console.log("[NewWorkflow] Workflow ID extraction:", {
-                  'workflow.workflow_id': workflowData.workflow_id,
-                  'event.data.workflow_id': event.data.workflow_id,
+                  'workflow.workflow_id': workflowDataAny.workflow_id,
+                  'event.data.workflow_id': eventDataAny.workflow_id,
                   'workflow.id': workflowData.id,
-                  'event.data.id': event.data.id,
+                  'event.data.id': eventDataAny.id,
                   'selectedId': savedWorkflowId
                 });
 
