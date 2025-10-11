@@ -1,808 +1,907 @@
-# Workflow执行日志API设计
+# Workflow Execution Log API Technical Design
 
-## 概述
+## 1. Executive Summary
 
-为了支持前端实时显示用户友好的workflow运行日志,我们需要设计两套API接口:
+### Purpose
+The Workflow Execution Log API provides comprehensive logging capabilities for AI-powered workflow executions, serving both technical debugging needs and user-friendly progress tracking.
 
-1. **流式接口** - 用于返回运行中的workflow的实时日志
-2. **普通接口** - 用于返回历史运行记录的日志
+### Key Features
+- **Dual-Purpose Logging**: Technical debugging logs and user-friendly business logs in unified storage
+- **Real-time Streaming**: Server-Sent Events (SSE) for live execution monitoring
+- **REST API**: Historical log queries with advanced filtering and pagination
+- **High Performance**: Optimized database indexes and connection pooling for sub-second response times
 
-## 技术架构
+### Technology Stack
+- **Backend**: FastAPI (Python 3.11+) with asyncio
+- **Database**: PostgreSQL (Supabase) with Row Level Security (RLS)
+- **Transport**: HTTP/REST + SSE streaming
+- **Client**: httpx with HTTP/2 and connection pooling
 
-### 核心组件
+## 2. System Architecture
+
+### 2.1 High-Level Architecture
 
 ```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Frontend      │───▶│  FastAPI Routes  │───▶│ ExecutionLog    │
-│   (Vue/React)   │    │  (WebSocket/HTTP)│    │ Service         │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-        │                        │                      │
-        │                        │                      │
-        ▼                        ▼                      ▼
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│  WebSocket/SSE  │    │   HTTP REST      │    │     Redis       │
-│  实时推送      │    │   历史查询      │    │   (实时缓存)    │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-                                                        │
-                                                        ▼
-                                               ┌─────────────────┐
-                                               │   PostgreSQL    │
-                                               │   (历史存储)    │
-                                               └─────────────────┘
+┌─────────────────────┐        ┌─────────────────────┐        ┌──────────────────────┐
+│   Frontend Client   │───────▶│   API Gateway       │───────▶│  Workflow Engine V2  │
+│   (React/Next.js)   │  HTTPS │   (Port 8000)       │  HTTP  │   (Port 8002)        │
+└─────────────────────┘        └─────────────────────┘        └──────────────────────┘
+         │                              │                                │
+         │ SSE Stream                   │ JWT Auth                       │ Direct Query
+         │                              │                                │
+         ▼                              ▼                                ▼
+┌─────────────────────┐        ┌─────────────────────┐        ┌──────────────────────┐
+│  SSE Event Stream   │        │  Supabase Auth      │        │  Supabase PostgreSQL │
+│  Real-time Logs     │        │  JWT Verification   │        │  workflow_execution  │
+└─────────────────────┘        └─────────────────────┘        │  _logs (RLS)         │
+                                                                └──────────────────────┘
 ```
 
-### 数据流设计
+### 2.2 Component Architecture
 
-1. **执行时数据流**:
-   ```
-   Workflow Execution → Business Logger → ExecutionLogService
+**API Gateway (Port 8000)**:
+- Endpoint: `/api/v1/app/executions/{execution_id}/logs`
+- Endpoint: `/api/v1/app/executions/{execution_id}/logs/stream`
+- Authentication: Supabase JWT token validation
+- Function: Request routing, SSE streaming, token forwarding
+
+**Workflow Engine V2 (Port 8002)**:
+- Endpoint: `/v2/workflows/executions/{execution_id}/logs`
+- Endpoint: `/v2/executions/{execution_id}/logs/stream`
+- Authentication: Bearer token (optional for RLS)
+- Function: Database queries, log formatting, SSE generation
+
+### 2.3 Data Flow
+
+**Log Creation Flow**:
+```
+Workflow Execution → User Friendly Logger → Supabase workflow_execution_logs table
          ↓
-   Redis Cache (实时) + Database (持久化) + WebSocket推送
-   ```
+   Business logs (user-friendly_message, display_priority, is_milestone)
+   Technical logs (stack_trace, technical_details, performance_metrics)
+```
 
-2. **查询时数据流**:
-   ```
-   前端请求 → API路由 → ExecutionLogService
+**Log Query Flow**:
+```
+Frontend Request → API Gateway → Workflow Engine V2 → Supabase (RLS enforced)
          ↓
-   Redis (优先) → Memory Cache (备选) → Database (历史)
-   ```
+   JWT token forwarded for user access control
+         ↓
+   Filtered logs returned (user can only see their own workflow logs)
+```
 
-## API接口设计
+## 3. Data Architecture
 
-### 1. 流式接口 (实时日志推送)
+### 3.1 Database Schema
 
-#### 1.1 WebSocket接口
+**Table**: `workflow_execution_logs`
 
-**接口地址**: `ws://localhost:8002/v1/workflows/executions/{execution_id}/logs/stream`
+```sql
+CREATE TABLE workflow_execution_logs (
+    -- Primary key
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-**连接参数**:
-- `execution_id`: 执行ID
-- `auth_token`: 认证token (查询参数)
+    -- Execution reference
+    execution_id VARCHAR(255) NOT NULL,
 
-**消息格式**:
+    -- Log categorization
+    log_category VARCHAR(20) NOT NULL DEFAULT 'technical',
+
+    -- Core log content
+    event_type log_event_type_enum NOT NULL,
+    level log_level_enum NOT NULL DEFAULT 'INFO',
+    message TEXT NOT NULL,
+
+    -- Structured data
+    data JSONB DEFAULT '{}',
+
+    -- Node context
+    node_id VARCHAR(255),
+    node_name VARCHAR(255),
+    node_type VARCHAR(100),
+
+    -- Progress tracking
+    step_number INTEGER,
+    total_steps INTEGER,
+    progress_percentage DECIMAL(5,2),
+    duration_seconds INTEGER,
+
+    -- User-friendly display
+    user_friendly_message TEXT,
+    display_priority INTEGER NOT NULL DEFAULT 5,
+    is_milestone BOOLEAN NOT NULL DEFAULT FALSE,
+
+    -- Technical debugging
+    technical_details JSONB DEFAULT '{}',
+    stack_trace TEXT,
+    performance_metrics JSONB DEFAULT '{}',
+
+    -- Timestamps
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+**Enums**:
+- `log_level_enum`: DEBUG, INFO, WARNING, ERROR, CRITICAL
+- `log_event_type_enum`: workflow_started, workflow_completed, workflow_progress, step_started, step_input, step_output, step_completed, step_error, separator
+
+### 3.2 Indexes for Performance
+
+**Single Column Indexes**:
+- `idx_execution_logs_execution_id` - Primary query filter
+- `idx_execution_logs_category` - Log category filtering
+- `idx_execution_logs_event_type` - Event type filtering
+- `idx_execution_logs_level` - Log level filtering
+- `idx_execution_logs_priority` - Display priority sorting
+- `idx_execution_logs_milestone` - Milestone filtering
+- `idx_execution_logs_created_at` - Time-based ordering
+
+**Composite Indexes**:
+```sql
+-- Business logs query optimization
+CREATE INDEX idx_execution_logs_business_query
+ON workflow_execution_logs(execution_id, log_category, display_priority)
+WHERE log_category = 'business';
+
+-- Technical logs query optimization
+CREATE INDEX idx_execution_logs_technical_query
+ON workflow_execution_logs(execution_id, log_category, level)
+WHERE log_category = 'technical';
+
+-- Milestone tracking optimization
+CREATE INDEX idx_execution_logs_milestones
+ON workflow_execution_logs(execution_id, is_milestone, display_priority)
+WHERE is_milestone = TRUE;
+
+-- Recent logs query optimization (30-day window)
+CREATE INDEX idx_execution_logs_recent
+ON workflow_execution_logs(execution_id, created_at, log_category)
+WHERE created_at >= NOW() - INTERVAL '30 days';
+```
+
+### 3.3 Row Level Security (RLS)
+
+**Policy 1: User Access**
+```sql
+-- Users can only view logs from their own workflow executions
+CREATE POLICY "Users can view their own execution logs" ON workflow_execution_logs
+FOR SELECT USING (
+    EXISTS (
+        SELECT 1
+        FROM workflow_executions we
+        JOIN workflows w ON w.id = we.workflow_id
+        WHERE we.execution_id = workflow_execution_logs.execution_id
+        AND w.user_id = auth.uid()
+    )
+);
+```
+
+**Policy 2: Service Access**
+```sql
+-- Only service role can insert/update logs
+CREATE POLICY "Service can insert execution logs" ON workflow_execution_logs
+FOR INSERT WITH CHECK (auth.role() = 'service_role');
+
+CREATE POLICY "Service can update execution logs" ON workflow_execution_logs
+FOR UPDATE USING (auth.role() = 'service_role');
+```
+
+## 4. API Implementation Details
+
+### 4.1 REST API for Historical Logs
+
+#### Endpoint: GET /api/v1/app/executions/{execution_id}/logs
+
+**API Gateway Implementation** (`api-gateway/app/api/app/executions.py`):
+```python
+@router.get("/executions/{execution_id}/logs")
+async def get_execution_logs(
+    execution_id: str,
+    limit: int = 100,
+    offset: int = 0,
+    level: Optional[str] = None,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    deps: AuthenticatedDeps = Depends(),
+):
+    """
+    Get execution logs (static API endpoint)
+
+    Args:
+        execution_id: The execution ID to get logs for
+        limit: Maximum number of logs to return (default: 100)
+        offset: Number of logs to skip (default: 0)
+        level: Filter by log level (optional)
+        start_time: Filter logs after this time (optional)
+        end_time: Filter logs before this time (optional)
+    """
+```
+
+**Workflow Engine V2 Implementation** (`workflow_engine_v2/api/v2/logs.py`):
+```python
+@router.get("/workflows/executions/{execution_id}/logs")
+async def get_execution_logs(
+    execution_id: str = PathParam(...),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    level: Optional[str] = Query(None),
+    start_time: Optional[str] = Query(None),
+    end_time: Optional[str] = Query(None),
+    authorization: Optional[str] = Header(None),
+):
+    """Get execution logs with filtering and pagination"""
+
+    # Extract access token for RLS
+    access_token = None
+    if authorization and authorization.startswith("Bearer "):
+        access_token = authorization[7:]
+
+    # Query Supabase with RLS enforcement
+    query = (
+        supabase.table("workflow_execution_logs")
+        .select("*")
+        .eq("execution_id", execution_id)
+        .order("created_at", desc=False)
+    )
+
+    # Apply filters
+    if level:
+        query = query.eq("level", level.upper())
+    if start_time:
+        query = query.gte("created_at", start_time)
+    if end_time:
+        query = query.lte("created_at", end_time)
+
+    # Apply pagination
+    query = query.range(offset, offset + limit - 1)
+
+    response = query.execute()
+    logs = response.data or []
+
+    # Format for frontend
+    formatted_logs = [
+        {
+            "id": log.get("id"),
+            "timestamp": log.get("created_at"),
+            "node_name": log.get("node_name"),
+            "event_type": log.get("event_type", "log"),
+            "message": log.get("user_friendly_message") or log.get("message"),
+            "level": log.get("level", "info").lower(),
+            "data": log.get("data", {}),
+        }
+        for log in logs
+    ]
+
+    return {
+        "execution_id": execution_id,
+        "logs": formatted_logs,
+        "total_count": total_count,
+        "pagination": {
+            "limit": limit,
+            "offset": offset,
+            "has_more": total_count > offset + len(formatted_logs),
+        },
+    }
+```
+
+#### Request Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| execution_id | string | Yes | - | Unique execution identifier |
+| limit | integer | No | 100 | Maximum logs to return (1-1000) |
+| offset | integer | No | 0 | Number of logs to skip for pagination |
+| level | string | No | - | Filter by log level (DEBUG, INFO, WARNING, ERROR, CRITICAL) |
+| start_time | string | No | - | ISO 8601 timestamp for start time filter |
+| end_time | string | No | - | ISO 8601 timestamp for end time filter |
+
+#### Response Format
+
 ```typescript
-interface LogStreamMessage {
+interface LogsResponse {
   execution_id: string;
-  event_type: "workflow_started" | "step_started" | "step_input" |
-             "step_output" | "step_completed" | "step_error" |
-             "workflow_progress" | "workflow_completed" | "separator";
-  timestamp: string;
-  message: string;
-  level: "INFO" | "ERROR" | "DEBUG";
-  data?: {
-    step_name?: string;
-    step_number?: number;
-    total_steps?: number;
-    progress_percentage?: number;
-    key_inputs?: Record<string, any>;
-    key_outputs?: Record<string, any>;
-    error_details?: string;
-    performance_stats?: Record<string, any>;
-  };
-}
-```
-
-**连接示例**:
-```javascript
-const ws = new WebSocket('ws://localhost:8002/v1/workflows/executions/exec-123/logs/stream?auth_token=xxx');
-
-ws.onmessage = function(event) {
-  const logEntry = JSON.parse(event.data);
-  console.log('实时日志:', logEntry.message);
-
-  // 根据事件类型更新UI
-  switch(logEntry.event_type) {
-    case 'workflow_started':
-      updateWorkflowStatus('running');
-      break;
-    case 'step_started':
-      updateStepStatus(logEntry.data.step_number, 'running');
-      break;
-    case 'step_completed':
-      updateStepStatus(logEntry.data.step_number, 'completed');
-      break;
-    case 'workflow_progress':
-      updateProgressBar(logEntry.data.progress_percentage);
-      break;
-  }
-};
-```
-
-#### 1.2 Server-Sent Events (SSE) 接口
-
-**接口地址**: `GET /v1/workflows/executions/{execution_id}/logs/stream`
-
-**请求头**:
-```
-Accept: text/event-stream
-Cache-Control: no-cache
-Authorization: Bearer <token>
-```
-
-**响应格式**:
-```
-Content-Type: text/event-stream
-
-event: log_entry
-data: {"execution_id":"exec-123","event_type":"step_started",...}
-
-event: log_entry
-data: {"execution_id":"exec-123","event_type":"step_completed",...}
-
-event: close
-data: {"reason":"workflow_completed"}
-```
-
-### 2. 普通接口 (历史日志查询)
-
-#### 2.1 获取执行日志列表
-
-**接口地址**: `GET /v1/workflows/executions/{execution_id}/logs`
-
-**请求参数**:
-```typescript
-interface LogQueryParams {
-  // 分页参数
-  limit?: number;        // 每页条数，范围1-100，默认50
-  page?: number;         // 页码，从1开始，默认1
-  cursor?: string;       // 游标分页，用于大数据集
-
-  // 排序参数
-  sort_order?: 'asc' | 'desc';  // 时间排序，默认asc (最早到最新)
-
-  // 过滤参数
-  log_category?: 'business' | 'technical';  // 日志分类
-  level?: 'INFO' | 'ERROR' | 'DEBUG';       // 日志级别过滤
-  event_type?: string;                      // 事件类型过滤
-  min_priority?: number;                    // 最小显示优先级 (1-10)
-  milestones_only?: boolean;                // 只返回里程碑事件
-
-  // 时间范围过滤
-  start_time?: string;   // 开始时间 (ISO8601)
-  end_time?: string;     // 结束时间 (ISO8601)
-}
-```
-
-**响应格式**:
-```typescript
-interface LogQueryResponse {
-  execution_id: string;
-  total_count: number;
-  filtered_count: number;    // 过滤后的总数
   logs: LogEntry[];
+  total_count: number;
   pagination: PaginationInfo;
-}
-
-interface PaginationInfo {
-  current_page: number;      // 当前页码
-  total_pages: number;       // 总页数
-  page_size: number;         // 每页大小
-  has_next: boolean;         // 是否有下一页
-  has_prev: boolean;         // 是否有上一页
-  next_cursor?: string;      // 下一页游标 (游标分页)
-  prev_cursor?: string;      // 上一页游标 (游标分页)
 }
 
 interface LogEntry {
-  id: string;                // 日志记录唯一ID
-  execution_id: string;
-  log_category: 'business' | 'technical';
-  event_type: string;
-  timestamp: string;         // ISO8601格式，用于排序
-  message: string;
-  user_friendly_message?: string;  // 业务日志的友好消息
-  level: string;
-  display_priority?: number;
-  is_milestone?: boolean;
+  id: string;                    // Unique log entry ID
+  timestamp: string;             // ISO 8601 timestamp
+  node_name?: string;            // Node name if applicable
+  event_type: string;            // workflow_started, step_completed, etc.
+  message: string;               // User-friendly message or technical message
+  level: string;                 // debug, info, warning, error, critical
+  data: Record<string, any>;     // Additional structured data
 
-  // 节点信息
+  // Optional fields
   node_id?: string;
-  node_name?: string;
   node_type?: string;
-
-  // 进度信息
   step_number?: number;
   total_steps?: number;
-  progress_percentage?: number;
-  duration_seconds?: number;
+  display_priority?: number;
+  is_milestone?: boolean;
+}
 
-  // 扩展数据
-  data?: Record<string, any>;
-  technical_details?: Record<string, any>;  // 技术日志详情
-  performance_metrics?: Record<string, any>;
+interface PaginationInfo {
+  limit: number;        // Requested page size
+  offset: number;       // Current offset
+  has_more: boolean;    // Whether more logs exist
 }
 ```
 
-**请求示例**:
+#### Example Request
+
 ```bash
-# 基本查询 - 第一页，默认50条，按时间升序
-GET /v1/workflows/executions/exec-123/logs
+# Get first 50 logs
+curl -X GET "http://localhost:8000/api/v1/app/executions/exec-123/logs?limit=50&offset=0" \
+  -H "Authorization: Bearer <jwt_token>"
 
-# 指定页码和每页数量
-GET /v1/workflows/executions/exec-123/logs?page=2&limit=20
+# Get error logs only
+curl -X GET "http://localhost:8000/api/v1/app/executions/exec-123/logs?level=ERROR" \
+  -H "Authorization: Bearer <jwt_token>"
 
-# 查询业务日志，按时间降序（最新在前）
-GET /v1/workflows/executions/exec-123/logs?log_category=business&sort_order=desc
-
-# 查询错误日志，高优先级
-GET /v1/workflows/executions/exec-123/logs?level=ERROR&min_priority=7
-
-# 游标分页（推荐用于大数据集）
-GET /v1/workflows/executions/exec-123/logs?cursor=eyJpZCI6InV1aWQtMTIzIiwidGltZXN0YW1wIjoiMjAyNS0wOS0wOFQxMDowMDowMFoifQ==
-
-# 时间范围查询
-GET /v1/workflows/executions/exec-123/logs?start_time=2025-09-08T10:00:00Z&end_time=2025-09-08T11:00:00Z
-
-# 只查询里程碑事件
-GET /v1/workflows/executions/exec-123/logs?milestones_only=true
+# Get logs within time range
+curl -X GET "http://localhost:8000/api/v1/app/executions/exec-123/logs?start_time=2025-01-10T00:00:00Z&end_time=2025-01-10T23:59:59Z" \
+  -H "Authorization: Bearer <jwt_token>"
 ```
 
-## 分页机制详细设计
+### 4.2 SSE Streaming API for Real-time Logs
 
-### 1. 双重分页策略
+#### Endpoint: GET /api/v1/app/executions/{execution_id}/logs/stream
 
-我们支持两种分页方式来适应不同的使用场景：
+**API Gateway SSE Implementation** (`api-gateway/app/api/app/executions.py`):
+```python
+@router.get("/executions/{execution_id}/logs/stream")
+async def stream_execution_logs(
+    execution_id: str,
+    follow: bool = True,
+    sse_deps: SSEDeps = Depends()
+) -> StreamingResponse:
+    """
+    Stream execution logs in real-time via Server-Sent Events (SSE)
 
-#### 1.1 传统页码分页 (Offset-based Pagination)
-- **适用场景**: 少量数据（&lt;10,000条）、需要跳页、显示总页数
-- **参数**: `page` + `limit`
-- **优点**: 简单直观，支持跳页
-- **缺点**: 大数据集性能差，可能出现数据重复/遗漏
+    - If execution is RUNNING: streams logs in real-time via database polling every 1 second
+    - If execution is FINISHED: returns all logs from database
+    - Auto-detects execution status
+    """
 
-```sql
--- 实现方式
-SELECT * FROM workflow_execution_logs
-WHERE execution_id = 'exec-123'
-ORDER BY created_at ASC
-LIMIT 50 OFFSET 100;  -- 第3页，每页50条
+    async def log_stream():
+        """Generate SSE events for execution logs"""
+        try:
+            # Use SSEDeps for authentication (supports both header and URL param)
+            token = sse_deps.access_token
+            user = sse_deps.current_user
+
+            # Get HTTP client
+            http_client = await get_workflow_engine_client()
+
+            # Check execution status
+            execution_status_data = await http_client.get_execution_status(execution_id)
+            execution_status = execution_status_data.get("status", "UNKNOWN")
+            is_running = execution_status in ["NEW", "RUNNING", "WAITING_FOR_HUMAN", "PAUSED"]
+
+            # Track sent log IDs to avoid duplicates
+            sent_log_ids = set()
+
+            # Get initial logs from database
+            initial_logs_response = await http_client.get_execution_logs(
+                execution_id, token, {"limit": 1000, "offset": 0}
+            )
+            existing_logs = initial_logs_response.get("logs", [])
+
+            # Send initial logs
+            for log_entry in existing_logs:
+                log_id = log_entry.get("id")
+                if log_id:
+                    sent_log_ids.add(log_id)
+
+                log_event = create_sse_event(
+                    event_type=SSEEventType.LOG,
+                    data=format_log_entry(log_entry),
+                    session_id=execution_id,
+                    is_final=False,
+                )
+                yield format_sse_event(log_event.model_dump())
+                await asyncio.sleep(0.01)
+
+            # Real-time streaming mode: poll database while execution is running
+            if is_running and follow:
+                poll_interval = 1.0  # 1 second
+                max_poll_duration = 3600  # 1 hour maximum
+                start_time = time.time()
+
+                while True:
+                    # Check max duration
+                    if time.time() - start_time > max_poll_duration:
+                        break
+
+                    # Poll database for new logs
+                    new_logs_response = await http_client.get_execution_logs(
+                        execution_id, token, {"limit": 100, "offset": 0}
+                    )
+                    new_logs = new_logs_response.get("logs", [])
+
+                    # Send new logs that haven't been sent yet
+                    for log_entry in new_logs:
+                        log_id = log_entry.get("id")
+                        if log_id and log_id not in sent_log_ids:
+                            sent_log_ids.add(log_id)
+
+                            log_event = create_sse_event(
+                                event_type=SSEEventType.LOG,
+                                data={**format_log_entry(log_entry), "is_realtime": True},
+                                session_id=execution_id,
+                                is_final=False,
+                            )
+                            yield format_sse_event(log_event.model_dump())
+
+                    # Check if execution finished
+                    status_check = await http_client.get_execution_status(execution_id)
+                    current_status = status_check.get("status", "UNKNOWN")
+
+                    if current_status not in ["NEW", "RUNNING", "WAITING_FOR_HUMAN", "PAUSED"]:
+                        # Send completion event
+                        completion_event = create_sse_event(
+                            event_type=SSEEventType.COMPLETE,
+                            data={
+                                "execution_id": execution_id,
+                                "status": current_status,
+                                "message": "Execution completed",
+                                "total_logs": len(sent_log_ids),
+                            },
+                            session_id=execution_id,
+                            is_final=True,
+                        )
+                        yield format_sse_event(completion_event.model_dump())
+                        break
+
+                    await asyncio.sleep(0.1)
+            else:
+                # Historical mode: execution finished, send completion
+                completion_event = create_sse_event(
+                    event_type=SSEEventType.COMPLETE,
+                    data={
+                        "execution_id": execution_id,
+                        "status": execution_status,
+                        "message": "Historical logs retrieved",
+                        "total_logs": len(sent_log_ids),
+                    },
+                    session_id=execution_id,
+                    is_final=True,
+                )
+                yield format_sse_event(completion_event.model_dump())
+
+        except Exception as e:
+            # Send fatal error event
+            fatal_error_event = create_sse_event(
+                event_type=SSEEventType.ERROR,
+                data={
+                    "execution_id": execution_id,
+                    "error": f"Fatal streaming error: {str(e)}",
+                    "error_type": "fatal_error",
+                },
+                session_id=execution_id,
+                is_final=True,
+            )
+            yield format_sse_event(fatal_error_event.model_dump())
+
+    return create_sse_response(log_stream())
 ```
 
-#### 1.2 游标分页 (Cursor-based Pagination)
-- **适用场景**: 大量数据、实时数据流、追求一致性
-- **参数**: `cursor` + `limit`
-- **优点**: 性能稳定，数据一致性好
-- **缺点**: 不支持跳页，不能显示总页数
+#### SSE Event Types
 
-```sql
--- 实现方式
-SELECT * FROM workflow_execution_logs
-WHERE execution_id = 'exec-123'
-  AND (created_at, id) > ('2025-09-08T10:30:00Z', 'last-uuid')
-ORDER BY created_at ASC, id ASC
-LIMIT 50;
-```
+| Event Type | Description | When Emitted |
+|------------|-------------|--------------|
+| LOG | Individual log entry | For each log in database |
+| COMPLETE | Execution finished | When workflow completes or historical mode |
+| ERROR | Fatal streaming error | On exceptions during streaming |
 
-### 2. 游标编码设计
-
-游标包含排序字段和唯一标识符，确保分页一致性：
+#### SSE Event Format
 
 ```typescript
-interface CursorData {
-  timestamp: string;  // 排序字段：created_at
-  id: string;         // 唯一标识：记录ID
-  direction: 'next' | 'prev';  // 分页方向
+interface SSEEvent {
+  event: string;           // "message" for standard SSE
+  data: EventData;         // JSON payload
+  id?: string;             // Optional event ID
+  retry?: number;          // Optional reconnection time
 }
 
-// 游标编码示例
-const cursor = btoa(JSON.stringify({
-  timestamp: "2025-09-08T10:30:00.123Z",
-  id: "550e8400-e29b-41d4-a716-446655440000",
-  direction: "next"
-}));
-// 结果: eyJ0aW1lc3RhbXAiOiIyMDI1LTA5LTA4VDEwOjMwOjAwLjEyM1oiLCJpZCI6IjU1MGU4NDAwLWUyOWItNDFkNC1hNzE2LTQ0NjY1NTQ0MDAwMCIsImRpcmVjdGlvbiI6Im5leHQifQ==
-```
-
-### 3. 时间排序策略
-
-#### 3.1 主排序字段
-- **主要**: `created_at` (时间戳)
-- **次要**: `id` (UUID) - 确保相同时间记录的稳定排序
-
-#### 3.2 排序选项
-```typescript
-type SortOrder = 'asc' | 'desc';
-
-// asc: 最早到最新 (默认) - 适合查看执行过程
-// desc: 最新到最早 - 适合查看最新状态
-```
-
-#### 3.3 索引优化
-```sql
--- 复合索引优化排序和分页性能
-CREATE INDEX idx_logs_execution_time_id
-ON workflow_execution_logs (execution_id, created_at, id);
-
--- 分类查询优化索引
-CREATE INDEX idx_logs_category_time
-ON workflow_execution_logs (execution_id, log_category, created_at, id);
-```
-
-### 4. 响应格式详解
-
-```typescript
-interface PaginatedResponse {
-  execution_id: string;
-  total_count: number;        // 未过滤的总记录数
-  filtered_count: number;     // 应用过滤条件后的总数
-  logs: LogEntry[];          // 当前页的日志记录
-  pagination: {
-    // 页码分页信息
-    current_page: number;     // 当前页码 (1-based)
-    total_pages: number;      // 总页数 (仅页码分页)
-    page_size: number;        // 每页大小
-    has_next: boolean;        // 是否有下一页
-    has_prev: boolean;        // 是否有上一页
-
-    // 游标分页信息
-    next_cursor?: string;     // 下一页游标
-    prev_cursor?: string;     // 上一页游标
-
-    // 元数据
-    sort_order: 'asc' | 'desc';
-    filters_applied: string[]; // 已应用的过滤器列表
-  };
-}
-```
-
-### 5. 分页性能优化
-
-#### 5.1 查询优化策略
-```sql
--- 1. 使用复合索引避免排序
-CREATE INDEX idx_execution_logs_optimal
-ON workflow_execution_logs (
-  execution_id,      -- 过滤条件
-  log_category,      -- 分类过滤
-  created_at,        -- 排序字段
-  id                 -- 稳定排序
-) WHERE log_category = 'business';  -- 部分索引
-
--- 2. 分区表（大数据集）
--- 按执行ID或时间分区，提升查询性能
-```
-
-#### 5.2 缓存策略
-```typescript
-interface CacheStrategy {
-  // Redis缓存热点数据
-  recent_logs: string;        // "logs:recent:exec-123" -> 最近100条
-  page_cache: string;         // "logs:page:exec-123:1" -> 第1页数据
-  count_cache: string;        // "logs:count:exec-123" -> 总数缓存
-
-  // 缓存过期策略
-  recent_ttl: 300;           // 5分钟
-  page_ttl: 60;              // 1分钟
-  count_ttl: 180;            // 3分钟
-}
-```
-
-### 6. 前端集成示例
-
-#### 6.1 React Hook实现
-```typescript
-interface UsePaginatedLogsOptions {
-  executionId: string;
-  pageSize?: number;
-  sortOrder?: 'asc' | 'desc';
-  filters?: LogQueryParams;
-  useCursor?: boolean;  // 是否使用游标分页
+interface EventData {
+  event_type: "LOG" | "COMPLETE" | "ERROR";
+  session_id: string;      // execution_id
+  is_final: boolean;       // Whether this is the last event
+  data: LogData | CompletionData | ErrorData;
+  timestamp: string;       // ISO 8601 timestamp
 }
 
-const usePaginatedLogs = (options: UsePaginatedLogsOptions) => {
-  const [currentPage, setCurrentPage] = useState(1);
-  const [cursor, setCursor] = useState<string>();
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [pagination, setPagination] = useState<PaginationInfo>();
-  const [loading, setLoading] = useState(false);
-
-  const fetchLogs = async (page?: number, nextCursor?: string) => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-
-      if (options.useCursor && nextCursor) {
-        params.append('cursor', nextCursor);
-      } else if (!options.useCursor && page) {
-        params.append('page', page.toString());
-      }
-
-      params.append('limit', (options.pageSize || 50).toString());
-      params.append('sort_order', options.sortOrder || 'asc');
-
-      // 添加过滤参数
-      if (options.filters) {
-        Object.entries(options.filters).forEach(([key, value]) => {
-          if (value !== undefined) params.append(key, value.toString());
-        });
-      }
-
-      const response = await fetch(
-        `/v1/workflows/executions/${options.executionId}/logs?${params}`
-      );
-
-      const data: LogQueryResponse = await response.json();
-
-      setLogs(data.logs);
-      setPagination(data.pagination);
-
-      if (options.useCursor) {
-        setCursor(data.pagination.next_cursor);
-      } else {
-        setCurrentPage(data.pagination.current_page);
-      }
-
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const nextPage = () => {
-    if (options.useCursor && pagination?.next_cursor) {
-      fetchLogs(undefined, pagination.next_cursor);
-    } else if (!options.useCursor && pagination?.has_next) {
-      fetchLogs(currentPage + 1);
-    }
-  };
-
-  const prevPage = () => {
-    if (options.useCursor && pagination?.prev_cursor) {
-      fetchLogs(undefined, pagination.prev_cursor);
-    } else if (!options.useCursor && pagination?.has_prev) {
-      fetchLogs(currentPage - 1);
-    }
-  };
-
-  const goToPage = (page: number) => {
-    if (!options.useCursor) {
-      fetchLogs(page);
-    }
-  };
-
-  return {
-    logs,
-    pagination,
-    loading,
-    nextPage,
-    prevPage,
-    goToPage,
-    refresh: () => fetchLogs(options.useCursor ? undefined : 1)
-  };
-};
-```
-
-#### 6.2 分页组件示例
-```typescript
-const PaginationControls: React.FC<{
-  pagination: PaginationInfo;
-  onPageChange: (page: number) => void;
-  onNext: () => void;
-  onPrev: () => void;
-}> = ({ pagination, onPageChange, onNext, onPrev }) => {
-  return (
-    <div className="flex items-center justify-between mt-4">
-      <div className="text-sm text-gray-600">
-        显示 {((pagination.current_page - 1) * pagination.page_size) + 1} - {' '}
-        {Math.min(pagination.current_page * pagination.page_size, pagination.filtered_count)}
-        {' '} 条，共 {pagination.filtered_count} 条记录
-      </div>
-
-      <div className="flex items-center space-x-2">
-        {/* 上一页按钮 */}
-        <button
-          onClick={onPrev}
-          disabled={!pagination.has_prev}
-          className="px-3 py-1 border rounded disabled:opacity-50"
-        >
-          上一页
-        </button>
-
-        {/* 页码选择（仅页码分页） */}
-        {pagination.total_pages && (
-          <div className="flex space-x-1">
-            {Array.from({ length: Math.min(5, pagination.total_pages) }, (_, i) => {
-              const page = i + Math.max(1, pagination.current_page - 2);
-              return (
-                <button
-                  key={page}
-                  onClick={() => onPageChange(page)}
-                  className={`px-3 py-1 border rounded ${
-                    page === pagination.current_page ? 'bg-blue-500 text-white' : ''
-                  }`}
-                >
-                  {page}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {/* 下一页按钮 */}
-        <button
-          onClick={onNext}
-          disabled={!pagination.has_next}
-          className="px-3 py-1 border rounded disabled:opacity-50"
-        >
-          下一页
-        </button>
-      </div>
-    </div>
-  );
-};
-```
-
-### 7. 错误处理和边界情况
-
-```typescript
-interface PaginationErrors {
-  INVALID_PAGE: "页码必须大于0";
-  INVALID_LIMIT: "每页条数必须在1-100之间";
-  INVALID_CURSOR: "游标格式无效或已过期";
-  EXECUTION_NOT_FOUND: "执行记录不存在";
-  NO_MORE_DATA: "已到达数据末尾";
-}
-
-// 边界情况处理
-const handlePaginationEdgeCases = {
-  // 1. 空结果集
-  emptyResult: {
-    logs: [],
-    pagination: {
-      current_page: 1,
-      total_pages: 0,
-      page_size: 50,
-      has_next: false,
-      has_prev: false
-    }
-  },
-
-  // 2. 单页结果
-  singlePage: {
-    has_next: false,
-    has_prev: false,
-    total_pages: 1
-  },
-
-  // 3. 超出范围的页码
-  outOfRange: "自动重定向到最后一页或第一页",
-
-  // 4. 过期的游标
-  expiredCursor: "返回错误，要求重新从第一页开始"
-};
-```
-
-这个设计支持了你要求的所有功能：
-- ✅ 每页最多100条记录
-- ✅ 支持页码和游标两种分页方式
-- ✅ 按时间顺序排序（升序/降序）
-- ✅ 完整的分页元数据
-- ✅ 性能优化和缓存策略
-- ✅ 前端集成友好
-
-#### 2.2 获取活跃执行列表
-
-**接口地址**: `GET /v1/workflows/executions/active`
-
-**响应格式**:
-```typescript
-interface ActiveExecutionsResponse {
-  executions: ActiveExecution[];
-  total_count: number;
-}
-
-interface ActiveExecution {
-  execution_id: string;
-  workflow_name: string;
-  status: "RUNNING" | "PAUSED" | "SUCCESS" | "ERROR";
-  started_at: string;
-  last_activity: string;
-  current_step?: string;
-  progress_percentage?: number;
-}
-```
-
-#### 2.3 获取执行统计信息
-
-**接口地址**: `GET /v1/workflows/executions/{execution_id}/stats`
-
-**响应格式**:
-```typescript
-interface ExecutionStats {
-  execution_id: string;
-  workflow_name: string;
-  total_steps: number;
-  completed_steps: number;
-  failed_steps: number;
-  total_duration: number;
-  average_step_time: number;
-  slowest_step: {
-    name: string;
-    duration: number;
-  };
-  performance_metrics: Record<string, any>;
-}
-```
-
-### 3. 管理接口
-
-#### 3.1 清理历史日志
-
-**接口地址**: `DELETE /v1/workflows/executions/logs/cleanup`
-
-**请求参数**:
-```typescript
-interface CleanupParams {
-  before_date: string;    // 删除此日期前的日志
-  keep_recent?: number;   // 保留最近N条执行的日志
-}
-```
-
-#### 3.2 获取日志统计
-
-**接口地址**: `GET /v1/workflows/logs/stats`
-
-**响应格式**:
-```typescript
-interface LogStats {
-  total_executions: number;
-  active_executions: number;
-  total_log_entries: number;
-  log_size_mb: number;
-  cache_hit_rate: number;
-}
-```
-
-## 错误处理
-
-### 标准错误响应
-
-```typescript
-interface ErrorResponse {
-  error: {
-    code: string;
-    message: string;
-    details?: any;
-  };
-  request_id: string;
+interface LogData {
+  id: string;
   timestamp: string;
+  node_name?: string;
+  event_type: string;
+  message: string;
+  level: string;
+  data: Record<string, any>;
+  is_realtime?: boolean;   // True if from real-time poll
+}
+
+interface CompletionData {
+  execution_id: string;
+  status: string;
+  message: string;
+  total_logs: number;
+}
+
+interface ErrorData {
+  execution_id: string;
+  error: string;
+  error_type: string;
 }
 ```
 
-### 常见错误码
+#### Example Client Implementation (JavaScript)
 
-- `EXECUTION_NOT_FOUND`: 执行ID不存在
-- `UNAUTHORIZED`: 认证失败
-- `RATE_LIMITED`: 请求过于频繁
-- `WEBSOCKET_CONNECTION_FAILED`: WebSocket连接失败
-- `LOG_SERVICE_UNAVAILABLE`: 日志服务不可用
+```javascript
+const eventSource = new EventSource(
+  `http://localhost:8000/api/v1/app/executions/${executionId}/logs/stream?access_token=${jwt_token}`
+);
 
-## 性能考虑
+eventSource.addEventListener("message", (event) => {
+  const data = JSON.parse(event.data);
 
-### 1. 缓存策略
-- **Redis缓存**: 实时日志24小时过期
-- **内存缓存**: 最近1000条日志备选
-- **数据库**: 历史日志持久化存储
+  switch (data.event_type) {
+    case "LOG":
+      console.log("📝 Log:", data.data.message);
+      updateLogDisplay(data.data);
+      break;
 
-### 2. 并发控制
-- **WebSocket连接限制**: 每个执行最多10个连接
-- **请求频率限制**: 每秒最多20次查询请求
-- **日志大小限制**: 单条日志最大10KB
+    case "COMPLETE":
+      console.log("✅ Execution completed:", data.data.status);
+      eventSource.close();
+      break;
 
-### 3. 数据清理
-- **自动清理**: 超过30天的日志自动删除
-- **大小限制**: Redis缓存总大小限制1GB
-- **压缩存储**: 历史日志采用压缩存储
+    case "ERROR":
+      console.error("❌ Streaming error:", data.data.error);
+      eventSource.close();
+      break;
+  }
+});
 
-## 安全考虑
-
-### 1. 认证授权
-- **JWT Token**: API访问需要有效token
-- **权限控制**: 只能访问自己的执行日志
-- **WebSocket认证**: 连接时验证token
-
-### 2. 数据保护
-- **敏感信息过滤**: 自动过滤密码、API密钥
-- **日志脱敏**: PII数据自动脱敏
-- **传输加密**: HTTPS/WSS强制加密
-
-## 前端集成指南
-
-### 1. React Hook示例
-
-```typescript
-// useWorkflowLogs.ts
-import { useState, useEffect, useRef } from 'react';
-
-export const useWorkflowLogs = (executionId: string) => {
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [status, setStatus] = useState<'connecting' | 'connected' | 'error'>('connecting');
-  const wsRef = useRef<WebSocket | null>(null);
-
-  useEffect(() => {
-    const ws = new WebSocket(`ws://localhost:8002/v1/workflows/executions/${executionId}/logs/stream`);
-    wsRef.current = ws;
-
-    ws.onopen = () => setStatus('connected');
-    ws.onerror = () => setStatus('error');
-    ws.onmessage = (event) => {
-      const logEntry = JSON.parse(event.data);
-      setLogs(prev => [...prev, logEntry]);
-    };
-
-    return () => ws.close();
-  }, [executionId]);
-
-  return { logs, status };
-};
+eventSource.addEventListener("error", (error) => {
+  console.error("SSE connection error:", error);
+  eventSource.close();
+});
 ```
 
-### 2. Vue Composition API示例
+### 4.3 Additional API Endpoints
 
+#### GET /api/v1/app/executions/recent_logs
+
+**Purpose**: Get the latest execution with detailed logs for a workflow
+
+**Parameters**:
+- `workflow_id` (required): Workflow ID
+- `limit` (optional, default=100): Max logs to return
+- `include_all_executions` (optional, default=false): Return multiple recent executions
+
+**Response**:
 ```typescript
-// useWorkflowLogs.ts
-import { ref, onMounted, onUnmounted } from 'vue';
-
-export const useWorkflowLogs = (executionId: string) => {
-  const logs = ref<LogEntry[]>([]);
-  const status = ref<'connecting' | 'connected' | 'error'>('connecting');
-  let ws: WebSocket | null = null;
-
-  onMounted(() => {
-    ws = new WebSocket(`ws://localhost:8002/v1/workflows/executions/${executionId}/logs/stream`);
-
-    ws.onopen = () => status.value = 'connected';
-    ws.onerror = () => status.value = 'error';
-    ws.onmessage = (event) => {
-      const logEntry = JSON.parse(event.data);
-      logs.value.push(logEntry);
-    };
-  });
-
-  onUnmounted(() => {
-    ws?.close();
-  });
-
-  return { logs, status };
-};
+interface RecentLogsResponse {
+  workflow_id: string;
+  latest_execution: {
+    execution_id: string;
+    status: string;
+    start_time: string;
+    end_time?: string;
+    duration?: string;
+    error_message?: string;
+  };
+  logs: LogEntry[];
+  summary: {
+    total_logs: number;
+    error_count: number;
+    warning_count: number;
+    milestone_count: number;
+  };
+  other_executions?: ExecutionSummary[];  // If include_all_executions=true
+  total_executions?: number;
+}
 ```
 
-## 测试计划
+#### GET /v2/executions/{execution_id}/logs/summary
 
-### 1. 单元测试
-- ExecutionLogService的各个方法
-- Redis连接和缓存逻辑
-- WebSocket连接管理
-- 日志格式化和过滤
+**Purpose**: Get execution logs summary including counts and milestones
 
-### 2. 集成测试
-- 完整workflow执行的日志记录
-- WebSocket实时推送准确性
-- 历史日志查询性能
-- 错误场景的处理
+**Response**:
+```typescript
+interface LogsSummaryResponse {
+  execution_id: string;
+  total_logs: number;
+  log_levels: Record<string, number>;      // { "info": 45, "error": 2 }
+  event_types: Record<string, number>;     // { "step_completed": 10, "step_started": 10 }
+  milestones: Milestone[];
+  nodes: Record<string, NodeSummary>;
+  timeline: {
+    first_log: string;
+    last_log: string;
+    duration_estimate?: number;
+  };
+}
 
-### 3. 性能测试
-- 1000个并发WebSocket连接
-- 大量历史日志查询
-- Redis缓存命中率测试
-- 内存使用量监控
+interface Milestone {
+  timestamp: string;
+  message: string;
+  event_type: string;
+}
 
-## 实现优先级
+interface NodeSummary {
+  node_name: string;
+  logs_count: number;
+  step_number: number;
+  status: "running" | "completed" | "failed";
+}
+```
 
-### Phase 1 (高优先级)
-- [ ] ExecutionLogService核心实现
-- [ ] Redis缓存机制
-- [ ] 基础WebSocket流式接口
-- [ ] 历史日志查询接口
+## 5. System Interactions
 
-### Phase 2 (中优先级)
-- [ ] SSE流式接口实现
-- [ ] 完整的错误处理
-- [ ] 性能优化和缓存策略
-- [ ] 前端集成示例
+### 5.1 Internal Interactions
 
-### Phase 3 (低优先级)
-- [ ] 高级查询和过滤
-- [ ] 日志管理和清理
-- [ ] 监控和统计接口
-- [ ] 安全加固和审计
+**API Gateway ↔ Workflow Engine V2**:
+- **Protocol**: HTTP/REST
+- **Connection**: httpx.AsyncClient with connection pooling (10 keepalive, 20 max connections)
+- **Timeouts**:
+  - Connect: 5 seconds
+  - Query: 60 seconds
+  - Logs: 90 seconds (extended for large log queries)
+- **HTTP/2**: Enabled for multiplexing
 
-这个设计提供了完整的实时和历史日志API,支持高性能的前端实时显示需求。
+**Workflow Engine V2 ↔ Supabase**:
+- **Protocol**: PostgreSQL wire protocol
+- **Library**: supabase-py client
+- **Authentication**: Service role key OR user JWT token
+- **RLS**: Enforced when using user JWT tokens
+
+### 5.2 External Integrations
+
+**Frontend Client Integration**:
+- **REST API**: Standard fetch() or axios calls with JWT token
+- **SSE Streaming**: EventSource API with token in query parameter
+- **Authentication**: Supabase JWT token in Authorization header
+
+**Authentication Flow**:
+```
+1. Frontend authenticates with Supabase → receives JWT token
+2. Frontend includes JWT in Authorization: Bearer <token> header
+3. API Gateway validates JWT with Supabase
+4. API Gateway forwards token to Workflow Engine V2
+5. Workflow Engine V2 includes token when querying Supabase
+6. Supabase RLS enforces user access control
+```
+
+## 6. Non-Functional Requirements
+
+### 6.1 Performance
+
+**Performance Targets**:
+- REST API Response Time: \< 1 second (95th percentile)
+- SSE Initial Connection: \< 2 seconds
+- SSE Log Delivery Latency: \< 1 second from database write
+- Database Query Performance: \< 500ms for 1000 logs
+
+**Optimization Strategies**:
+- Connection pooling for database and HTTP clients
+- Composite indexes for common query patterns
+- Partial indexes for recent logs (30-day window)
+- HTTP/2 multiplexing for concurrent requests
+- Limit log entry sizes (max 10KB per log)
+
+**Caching Strategies**:
+- No caching implemented currently (real-time data priority)
+- Future: Redis cache for completed execution logs (5-minute TTL)
+
+### 6.2 Scalability
+
+**Scaling Approach**: Horizontal scaling of API Gateway and Workflow Engine V2
+
+**Load Balancing**: AWS Application Load Balancer distributes traffic
+
+**Resource Considerations**:
+- Database connections: 10 per service instance
+- HTTP connections: 20 per client instance
+- Memory: ~200MB per service instance
+- CPU: Asyncio event loop for high concurrency
+
+**Capacity Limits**:
+- Max concurrent SSE streams per instance: ~100
+- Max logs per execution: Unlimited (paginated queries)
+- Max log retention: 30 days (automatic cleanup)
+
+### 6.3 Security
+
+**Authentication**:
+- Supabase JWT token validation at API Gateway
+- Token forwarding to Workflow Engine V2
+- RLS enforcement at database level
+
+**Authorization**:
+- Users can only access logs from their own workflows
+- RLS policies verify workflow ownership via JOIN query
+- Service role bypasses RLS for system operations
+
+**Data Protection**:
+- No sensitive data logging policy (must be enforced at application level)
+- TLS/HTTPS encryption in transit
+- Database encryption at rest (Supabase default)
+
+### 6.4 Reliability
+
+**Error Handling**:
+- Graceful degradation: Return empty logs on database errors
+- Retry logic: None (client should retry on connection errors)
+- Timeout handling: Dedicated timeouts per operation type
+
+**Failure Recovery**:
+- SSE auto-reconnect: Client implements EventSource reconnection
+- Database connection pool recovery: Automatic reconnection
+- Service health checks: `/health` endpoint every 10 seconds
+
+**Monitoring and Logging**:
+- Structured logging with emoji indicators (📋, ✅, ❌, 🐛)
+- Request ID tracking via `X-Request-ID` header
+- Performance metrics logged for all database queries
+
+### 6.5 Testing & Observability
+
+#### Testing Strategy
+
+**Unit Testing**:
+- API endpoint handlers (pytest with FastAPI TestClient)
+- Database query functions (pytest with pytest-asyncio)
+- SSE event formatting (test event stream generation)
+- RLS policy enforcement (test with different user contexts)
+
+**Integration Testing**:
+- End-to-end log creation and retrieval flow
+- SSE streaming with real execution
+- Authentication and authorization flows
+- Database performance with large log volumes
+
+**Test Data Management**:
+- Test fixtures for sample log entries
+- Mock Supabase client for unit tests
+- Dedicated test database for integration tests
+
+**Testing Automation**:
+- GitHub Actions CI/CD pipeline
+- Automated tests on PR and merge to main
+- Coverage target: 80% for critical paths
+
+#### Observability
+
+**Key Metrics**:
+- **Latency**: REST API response time, SSE connection time, database query time
+- **Throughput**: Requests per second, logs retrieved per request
+- **Error Rates**: HTTP 5xx errors, database errors, authentication failures
+- **Resource Utilization**: Memory usage, CPU usage, database connections
+
+**Logging Strategy**:
+- Log Level: INFO for normal operations, DEBUG for detailed debugging
+- Structured Logging: JSON format with consistent fields
+- Log Aggregation: CloudWatch Logs for AWS ECS deployments
+
+**Distributed Tracing**:
+- Trace ID propagation via `X-Trace-ID` header
+- OpenTelemetry integration (future enhancement)
+- Correlation of logs across API Gateway and Workflow Engine V2
+
+**Application Performance Monitoring (APM)**:
+- Custom metrics: Database query performance, SSE connection count
+- Health checks: `/health` endpoint for service availability
+- Alerting: CloudWatch Alarms for error rate and latency
+
+**Business Metrics and KPIs**:
+- Execution log completeness: % of executions with logs
+- Average logs per execution
+- Most common error event types
+
+#### Monitoring & Alerting
+
+**Dashboard Design**:
+- API Gateway request rate and latency
+- Workflow Engine V2 database query performance
+- SSE active connections and throughput
+- Error rate trends by endpoint
+
+**Alert Thresholds**:
+- Error Rate: \> 5% of requests return 5xx errors (5-minute window)
+- Latency: p95 response time \> 2 seconds (10-minute window)
+- Database: Connection pool exhaustion or query timeout rate \> 1%
+
+**SLIs and SLOs**:
+- **Availability SLI**: 99.5% of requests succeed (HTTP 2xx)
+- **Latency SLI**: 95% of REST API requests complete in \< 1 second
+- **Streaming SLI**: 99% of SSE connections deliver logs within 1 second
+
+**Incident Response Procedures**:
+1. Alert triggered → Slack notification
+2. On-call engineer investigates logs and metrics
+3. Check health endpoints: `/api/v1/public/health`, `/health`
+4. Review CloudWatch Logs for error patterns
+5. Escalate to database team if Supabase connectivity issues
+6. Post-incident: Update runbooks and improve monitoring
+
+## 7. Technical Debt and Future Considerations
+
+### Known Limitations
+- No cursor-based pagination (only offset-based, performance degrades for large offsets)
+- No client-side log caching (every request hits database)
+- SSE reconnection logic is client-side only (no server-side resume)
+- No log aggregation across multiple executions
+- No full-text search capabilities on log messages
+
+### Areas for Improvement
+- Implement cursor-based pagination for better performance with large datasets
+- Add Redis caching layer for completed execution logs (5-minute TTL)
+- Implement server-side SSE resume with last event ID
+- Add Elasticsearch integration for advanced log search and analytics
+- Implement log compression for storage optimization
+- Add batch log ingestion endpoint for high-throughput scenarios
+
+### Planned Enhancements
+- **Log Aggregation API**: Query logs across multiple executions for a workflow
+- **Real-time Pub/Sub**: Replace polling with PostgreSQL LISTEN/NOTIFY for real-time log streaming
+- **Log Analytics Dashboard**: Pre-aggregated statistics and trend analysis
+- **Export Functionality**: Download logs in CSV/JSON format for external analysis
+- **Log Retention Policies**: Configurable retention periods per workflow or user tier
+
+### Migration Paths
+- **From Polling to Pub/Sub**: Gradual rollout with feature flag, maintain polling as fallback
+- **From Offset to Cursor Pagination**: Add cursor parameters while keeping offset support for backward compatibility
+- **From Direct DB to Cache Layer**: Transparent caching with cache-aside pattern, no API changes required
+
+## 8. Appendices
+
+### A. Glossary
+
+| Term | Definition |
+|------|------------|
+| **SSE** | Server-Sent Events - HTTP-based unidirectional streaming protocol |
+| **RLS** | Row Level Security - PostgreSQL feature for fine-grained access control |
+| **JWT** | JSON Web Token - Authentication token format used by Supabase |
+| **httpx** | Modern async HTTP client library for Python |
+| **Supabase** | Open-source Firebase alternative with PostgreSQL database |
+| **Workflow Engine V2** | New FastAPI-based workflow execution service (replaces V1) |
+| **API Gateway** | Three-layer FastAPI service (Public/App/MCP APIs) |
+| **Event Type** | Categorization of log events (workflow_started, step_completed, etc.) |
+| **Log Category** | Business (user-friendly) vs Technical (debugging) classification |
+| **Milestone** | Important log entry marked for progress tracking (is_milestone=true) |
+| **Display Priority** | Log importance ranking (1=low, 10=high) for UI filtering |
+
+### B. References
+
+**Internal Documentation**:
+- [Workflow Engine Architecture](workflow-engine-architecure.md)
+- [API Gateway Architecture](api-gateway-architecture.md)
+- [New Workflow Specification](new_workflow_spec.md)
+- [Node Structure](node-structure.md)
+
+**External Resources**:
+- [Server-Sent Events Specification](https://html.spec.whatwg.org/multipage/server-sent-events.html)
+- [PostgreSQL Row Level Security](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)
+- [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- [httpx Documentation](https://www.python-httpx.org/)
+- [Supabase Documentation](https://supabase.com/docs)
+
+**Code Locations**:
+- API Gateway logs endpoints: `apps/backend/api-gateway/app/api/app/executions.py`
+- Workflow Engine V2 logs API: `apps/backend/workflow_engine_v2/api/v2/logs.py`
+- HTTP client implementation: `apps/backend/api-gateway/app/services/workflow_engine_http_client.py`
+- Database migration: `supabase/migrations/20250913000001_create_workflow_execution_logs.sql`
+
+---
+
+**Document Version**: 2.0
+**Last Updated**: 2025-01-11
+**Author**: Technical Design Documentation Specialist
+**Status**: Current Implementation

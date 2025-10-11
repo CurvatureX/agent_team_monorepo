@@ -1,640 +1,846 @@
-# Workflow Engine: Architecture & Execution Flow
+# Workflow Engine V2: Technical Design Document
 
-## 1. Overview & Business Purpose
+## 1. Executive Summary
 
-The **Workflow Engine** is the core execution component of the platform, designed to run automated workflows defined via a structured, Protobuf-based format. Its primary business purpose is to provide a **reliable, scalable, and observable environment** for executing complex processes, with a special emphasis on supporting AI-driven tasks.
+The **Workflow Engine V2** (workflow_engine_v2) is a modern, spec-driven execution engine designed to run complex AI-powered workflows with precision, reliability, and comprehensive observability. Built with FastAPI, it provides a robust foundation for executing node-based workflows with advanced features including Human-in-the-Loop (HIL) interactions, attached node patterns, and real-time execution tracking.
 
-Unlike traditional workflow systems, it is built to handle the intricate data flows required by modern AI Agents, such as providing specific "tools" or "memory" contexts to a node. Furthermore, it captures extremely detailed execution telemetry, enabling advanced features like **AI-powered automatic debugging and process optimization**.
+### Key Architectural Decisions
 
-## 2. High-Level Architecture
+- **Spec-Driven Validation**: All nodes validated against centralized specifications in `shared/node_specs/`
+- **Graph-Based Execution**: Workflows executed using topological sort with cycle detection
+- **Runner Factory Pattern**: Dynamic node executor dispatch based on node type/subtype
+- **Attached Nodes Pattern**: AI_AGENT nodes support TOOL and MEMORY attachments for enhanced capabilities
+- **State Persistence**: Complete execution state preserved in Supabase for pause/resume operations
 
-The engine is built on a modular, service-oriented architecture. A gRPC server exposes all functionality, which is internally delegated to specialized services that manage the lifecycle and execution of workflows.
+### Technology Stack
 
-```mermaid
-graph TD
-    subgraph "API Layer"
-        GRPC_SERVER[gRPC Server: main.py]
-        REST_API[FastAPI Endpoints]
-        RESUME_API[Resume API: /executions/{id}/resume]
-    end
+- **Framework**: FastAPI 0.104+ (HTTP/REST API)
+- **Database**: PostgreSQL via Supabase (execution state, workflow definitions)
+- **ORM**: Pydantic models with direct Supabase client integration
+- **Validation**: Centralized node specifications with automatic type coercion
+- **AI Providers**: OpenAI, Anthropic, Google Gemini with unified interface
+- **Deployment**: Docker + AWS ECS Fargate (linux/amd64)
 
-    subgraph "Service Layer (services/)"
-        MAIN_SERVICE[MainWorkflowService]
-        WORKFLOW_SERVICE[WorkflowService: CRUD]
-        EXECUTION_SERVICE[ExecutionService: Lifecycle]
-        VALIDATION_SERVICE[ValidationService: Static Analysis]
-        HIL_SERVICE[HIL Service: Human Interactions]
-    end
+## 2. System Architecture
 
-    subgraph "Execution Core"
-        EXECUTION_ENGINE[EnhancedWorkflowExecutionEngine]
-        PAUSE_MANAGER[Pause/Resume Manager]
-        NODE_FACTORY[NodeExecutorFactory]
-        NODE_EXECUTORS[Node Executors]
-        HIL_NODE[HIL Node Executor]
-    end
+### 2.1 High-Level Architecture
 
-    subgraph "External Integrations"
-        SLACK_API[Slack Notifications]
-        EMAIL_SERVICE[Email Service]
-        WEB_DASHBOARD[Web Dashboard]
-    end
-
-    subgraph "Data Persistence (models/)"
-        POSTGRES[(PostgreSQL Database)]
-        PAUSE_CONTEXT[(Pause Context Storage)]
-        HIL_INTERACTIONS[(HIL Interactions Table)]
-    end
-
-    %% API Layer Connections
-    GRPC_SERVER --> MAIN_SERVICE
-    REST_API --> EXECUTION_SERVICE
-    RESUME_API --> EXECUTION_SERVICE
-
-    %% Service Layer Connections
-    MAIN_SERVICE --> WORKFLOW_SERVICE
-    MAIN_SERVICE --> EXECUTION_SERVICE
-    MAIN_SERVICE --> VALIDATION_SERVICE
-    EXECUTION_SERVICE --> HIL_SERVICE
-
-    %% Execution Core Connections
-    EXECUTION_SERVICE --> EXECUTION_ENGINE
-    EXECUTION_ENGINE --> PAUSE_MANAGER
-    EXECUTION_ENGINE --> NODE_FACTORY
-    NODE_FACTORY --> NODE_EXECUTORS
-    NODE_FACTORY --> HIL_NODE
-    HIL_NODE --> HIL_SERVICE
-
-    %% External Integration Connections
-    HIL_SERVICE --> SLACK_API
-    HIL_SERVICE --> EMAIL_SERVICE
-    HIL_SERVICE --> WEB_DASHBOARD
-
-    %% Database Connections
-    EXECUTION_ENGINE --> POSTGRES
-    PAUSE_MANAGER --> PAUSE_CONTEXT
-    HIL_SERVICE --> HIL_INTERACTIONS
-    WORKFLOW_SERVICE --> POSTGRES
-
-    %% HIL Flow (dotted lines for pause/resume)
-    HIL_NODE -.-> PAUSE_MANAGER
-    PAUSE_MANAGER -.-> POSTGRES
-    RESUME_API -.-> PAUSE_MANAGER
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         API Layer (FastAPI)                          │
+├──────────────────────┬──────────────────────┬──────────────────────┤
+│  Health Endpoint     │  V2 Execution API    │  V2 Workflow API     │
+│  /health             │  /v2/executions/*    │  /v2/workflows/*     │
+└──────────────────────┴──────────────────────┴──────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Core Execution Engine                         │
+├──────────────────────┬──────────────────────┬──────────────────────┤
+│  ExecutionEngine     │  WorkflowGraph       │  ExecutionContext    │
+│  - run()             │  - topo_order()      │  - node_outputs      │
+│  - run_async()       │  - cycle detection   │  - pending_inputs    │
+│  - resume_*()        │  - attached nodes    │  - execution state   │
+└──────────────────────┴──────────────────────┴──────────────────────┘
+                                │
+                ┌───────────────┼───────────────┐
+                ▼               ▼               ▼
+┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐
+│  Node Runners    │  │  Services        │  │  Persistence     │
+├──────────────────┤  ├──────────────────┤  ├──────────────────┤
+│ AIAgentRunner    │  │ HILService       │  │ Supabase Repo    │
+│ ActionRunner     │  │ MemoryService    │  │ - executions     │
+│ FlowRunner       │  │ EventPublisher   │  │ - workflows      │
+│ ExternalAction   │  │ LoggingService   │  │ - hil_interact.  │
+│ HILRunner        │  │ AI Providers     │  │ - pauses         │
+│ MemoryRunner     │  │ Timer Service    │  │                  │
+│ ToolRunner       │  │ Credential Encr. │  │                  │
+└──────────────────┘  └──────────────────┘  └──────────────────┘
+                                │
+                                ▼
+                      ┌──────────────────┐
+                      │  External APIs   │
+                      ├──────────────────┤
+                      │ OpenAI           │
+                      │ Anthropic        │
+                      │ Google Gemini    │
+                      │ Slack            │
+                      │ GitHub           │
+                      │ Notion           │
+                      │ Firecrawl        │
+                      └──────────────────┘
 ```
 
-## 3. The Lifecycle of a Workflow: From Creation to Execution
+### 2.2 Component Architecture
 
-To understand the system, it's best to follow the journey of a single workflow.
+#### Execution Engine (`core/engine.py`)
+- **ExecutionEngine**: Main orchestrator for workflow execution
+  - Validates workflows against node specifications
+  - Builds execution graph with attached node filtering
+  - Manages execution lifecycle (NEW → RUNNING → SUCCESS/ERROR/PAUSED)
+  - Handles retry logic with exponential backoff
+  - Implements timeout enforcement per node
+  - Provides pause/resume for HIL interactions
+  - Tracks token usage and credits consumption
 
-### 3.1. Workflow Creation & Persistence
+#### Runner Factory (`runners/factory.py`)
+- **default_runner_for(node)**: Dispatcher function
+  - Routes nodes to appropriate runner based on type/subtype
+  - Supports 7 core node types: TRIGGER, AI_AGENT, ACTION, EXTERNAL_ACTION, FLOW, HUMAN_IN_THE_LOOP, MEMORY, TOOL
+  - Enforces explicit AI provider selection (no fallback to generic AI)
+  - Returns PassthroughRunner for unknown types (graceful degradation)
 
-A workflow's life begins when a client sends a `CreateWorkflow` request to the gRPC server.
+#### Node Runners (`runners/*.py`)
+- **Base Runners**:
+  - `NodeRunner` (ABC): Defines `run(node, inputs, trigger) -> outputs` interface
+  - `TriggerRunner`: Passes through trigger data to downstream nodes
+  - `PassthroughRunner`: Default fallback, passes inputs through unchanged
 
-1.  **Delegation**: The `MainWorkflowService` receives the request and delegates it to the `WorkflowService`.
-2.  **Data Modeling**: The `WorkflowService` is responsible for persistence. A key design decision is how workflows are stored: the entire Protobuf `Workflow` message, including all its nodes and connections, is serialized into a single JSON object.
-3.  **Storage**: This JSON object is then saved into the `workflows` table in a `JSONB` column named `workflow_data`. This provides flexibility, as new node types or parameters can be added without requiring database schema migrations.
+- **AI Agent Runners**:
+  - `AIAgentRunner`: Enhanced AI execution with memory/tool integration
+  - `AnthropicClaudeRunner`: Anthropic Claude-specific implementation
+  - `OpenAIChatGPTRunner`: OpenAI GPT-specific implementation
+  - `GoogleGeminiRunner`: Google Gemini-specific implementation
+
+- **Flow Control Runners**:
+  - `IfRunner`: Conditional branching based on expression evaluation
+  - `MergeRunner`: Combines multiple inputs into single output
+  - `SplitRunner`: Splits data into multiple outputs
+  - `FilterRunner`: Filters data based on conditions
+  - `SortRunner`: Sorts data collections
+  - `WaitRunner`: Waits for external events or timeouts
+  - `DelayRunner`: Introduces delays in execution
+  - `TimeoutRunner`: Enforces execution time limits
+  - `LoopRunner`: Repeats execution for collections
+  - `ForEachRunner`: Fan-out execution for each item
+
+- **Action Runners**:
+  - `HttpRequestRunner`: HTTP API calls
+  - `DataTransformationRunner`: Data manipulation and transformation
+
+- **Integration Runners**:
+  - `ExternalActionRunner`: Routes to service-specific external actions
+  - `MemoryRunner`: Manages conversation history and context storage
+  - `ToolRunner`: MCP tool discovery and invocation
+  - `HILRunner`: Human-in-the-loop interaction management
+
+## 3. Data Architecture
+
+### 3.1 Data Models
+
+#### Core Execution Models (from `shared/models/`)
+
+**Workflow**:
+```python
+class Workflow(BaseModel):
+    metadata: WorkflowMetadata
+    nodes: List[Node]
+    connections: List[Connection]
+    triggers: List[str]  # Node IDs that can initiate execution
+    variables: Dict[str, Any]
+```
+
+**Node**:
+```python
+class Node(BaseModel):
+    id: str
+    name: str
+    type: NodeType  # TRIGGER, AI_AGENT, ACTION, EXTERNAL_ACTION, FLOW, HUMAN_IN_THE_LOOP, MEMORY, TOOL
+    subtype: str    # Provider/action-specific subtype
+    configurations: Dict[str, Any]
+    input_params: Dict[str, Any]
+    output_params: Dict[str, Any]
+    input_ports: List[Port]
+    output_ports: List[Port]
+    attached_nodes: List[str]  # For AI_AGENT: attached TOOL/MEMORY node IDs
+    position: Optional[Position]
+```
+
+**Execution**:
+```python
+class Execution(BaseModel):
+    id: str
+    execution_id: str
+    workflow_id: str
+    workflow_version: str
+    status: ExecutionStatus  # NEW, RUNNING, SUCCESS, ERROR, PAUSED, WAITING_FOR_HUMAN, CANCELED, TIMEOUT
+    start_time: int  # epoch milliseconds
+    end_time: Optional[int]
+    duration_ms: Optional[int]
+    trigger_info: TriggerInfo
+    node_executions: Dict[str, NodeExecution]  # keyed by node_id
+    node_runs: Dict[str, List[NodeExecution]]  # for fan-out tracking
+    execution_sequence: List[str]  # ordered node execution history
+    current_node_id: Optional[str]  # for paused workflows
+    error: Optional[ExecutionError]
+    tokens_used: Optional[TokenUsage]
+    credits_consumed: int
+    run_data: Optional[Dict[str, Any]]  # snapshot for API responses
+```
+
+**NodeExecution**:
+```python
+class NodeExecution(BaseModel):
+    node_id: str
+    node_name: str
+    node_type: str
+    node_subtype: str
+    status: NodeExecutionStatus  # PENDING, RUNNING, COMPLETED, FAILED, WAITING_INPUT, RETRYING
+    start_time: Optional[int]
+    end_time: Optional[int]
+    duration_ms: Optional[int]
+    input_data: Dict[str, Any]
+    output_data: Dict[str, Any]
+    error: Optional[NodeError]
+    execution_details: NodeExecutionDetails
+    activation_id: Optional[str]  # for tracking fan-out executions
+    parent_activation_id: Optional[str]
+    credits_consumed: int
+```
+
+### 3.2 Data Flow
+
+#### Standard Node Execution Flow
+
+1. **Input Aggregation**: Engine merges outputs from predecessor nodes
+   - Inputs keyed by port name (default: "result")
+   - Multiple inputs to same port are collected in a list
+   - Conversion functions applied during propagation
+
+2. **Node Execution**: Runner processes inputs and produces outputs
+   - Context object (`_ctx`) provides access to execution state
+   - Outputs structured as `{port_name: payload}` dictionary
+   - Special control keys (prefixed with `_`) control engine behavior
+
+3. **Output Shaping**: Outputs validated against node spec output_params
+   - Only declared output parameters included in final output
+   - Undeclared fields filtered out for data consistency
+   - Fallback to defaults for missing declared parameters
+
+4. **Output Propagation**: Shaped outputs flow to successor nodes
+   - Connection `output_key` determines which port to use
+   - Conversion functions transform data during propagation
+   - Fan-out supported via "iteration" output key
+
+#### Attached Node Flow (AI_AGENT only)
+
+AI_AGENT nodes can attach TOOL and MEMORY nodes for enhanced capabilities:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    AI_AGENT Node Execution                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  1. PRE-EXECUTION: Load Context                                 │
+│     ┌──────────────────────────────────────────────────────┐   │
+│     │ Attached MEMORY Nodes                                 │   │
+│     │ - Query conversation history                          │   │
+│     │ - Retrieve relevant context                           │   │
+│     │ - Enhance system prompt with memory                   │   │
+│     └──────────────────────────────────────────────────────┘   │
+│                                                                  │
+│  2. PRE-EXECUTION: Discover Tools                               │
+│     ┌──────────────────────────────────────────────────────┐   │
+│     │ Attached TOOL Nodes                                   │   │
+│     │ - List available MCP functions                        │   │
+│     │ - Register tools with AI provider                     │   │
+│     │ - Enable tool calling during generation               │   │
+│     └──────────────────────────────────────────────────────┘   │
+│                                                                  │
+│  3. EXECUTION: AI Generation                                    │
+│     ┌──────────────────────────────────────────────────────┐   │
+│     │ AI Provider (OpenAI/Anthropic/Gemini)                 │   │
+│     │ - Generate response with enhanced prompt              │   │
+│     │ - Invoke tools if needed                              │   │
+│     │ - Return structured response                          │   │
+│     └──────────────────────────────────────────────────────┘   │
+│                                                                  │
+│  4. POST-EXECUTION: Store Conversation                          │
+│     ┌──────────────────────────────────────────────────────┐   │
+│     │ Attached MEMORY Nodes                                 │   │
+│     │ - Store user message                                  │   │
+│     │ - Store AI response                                   │   │
+│     │ - Update conversation context                         │   │
+│     └──────────────────────────────────────────────────────┘   │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Key Points**:
+- Attached nodes do NOT appear in workflow execution sequence
+- No separate NodeExecution records for attached nodes
+- All attachment logic handled within AIAgentRunner
+- Results tracked in AI node's execution_details
+
+## 4. Implementation Details
+
+### 4.1 Core Components
+
+#### ExecutionEngine.run()
+
+The main execution loop implements a sophisticated task-queue based system:
 
 ```python
-// In services/workflow_service.py
-class WorkflowService:
-    def create_workflow(...):
-        # ...
-        # Convert protobuf to JSON for JSONB storage
-        from google.protobuf.json_format import MessageToDict
-        workflow_json = MessageToDict(workflow)
+def run(self, workflow: Workflow, trigger: TriggerInfo, workflow_id: str) -> Execution:
+    # 1. Validation
+    self.validate_against_specs(workflow)  # Validates nodes against spec registry
 
-        db_workflow = WorkflowModel(
-            id=workflow.id,
-            # ...
-            workflow_data=workflow_json,  // Store protobuf as JSONB
-            tags=list(workflow.tags)      // Store tags as native array
-        )
-        db.add(db_workflow)
-        db.commit()
-        # ...
+    # 2. Graph Construction
+    graph = WorkflowGraph(workflow)  # Filters out attached nodes
+    _ = graph.topo_order()  # Raises CycleError if cycle detected
+
+    # 3. Initialize Execution State
+    workflow_execution = Execution(status=ExecutionStatus.RUNNING, ...)
+    pending_inputs = {node_id: {} for node_id in graph.nodes.keys()}
+    execution_context = ExecutionContext(workflow, graph, workflow_execution, pending_inputs)
+
+    # 4. Task Queue Execution
+    queue = [{"node_id": tid, "override": None} for tid in self._get_initial_ready_nodes(graph)]
+    executed_main = set()
+
+    while queue:
+        task = queue.pop(0)
+        node_id = task["node_id"]
+
+        # Skip if already executed (unless fan-out)
+        if task["override"] is None and node_id in executed_main:
+            continue
+
+        # 5. Node Execution with Retry
+        max_retries = node.configurations.get("retry_attempts", 0)
+        for attempt in range(max_retries + 1):
+            try:
+                runner = default_runner_for(node)
+                outputs = runner.run(node, inputs, trigger)
+                break
+            except Exception as e:
+                if attempt == max_retries:
+                    # Fail workflow
+                    workflow_execution.status = ExecutionStatus.ERROR
+                    break
+                # Exponential backoff
+                time.sleep(backoff * (backoff_factor ** attempt))
+
+        # 6. Handle Special Outputs
+        if outputs.get("_hil_wait"):
+            # Pause workflow for Human-in-the-Loop
+            workflow_execution.status = ExecutionStatus.WAITING_FOR_HUMAN
+            return workflow_execution
+
+        if outputs.get("_wait") or outputs.get("_delay_ms"):
+            # Schedule timer for delayed continuation
+            self._timers.schedule(...)
+            return workflow_execution
+
+        # 7. Fail-Fast on Node Failure
+        if any(port.get("success") is False for port in outputs.values()):
+            workflow_execution.status = ExecutionStatus.ERROR
+            break
+
+        # 8. Output Shaping and Propagation
+        shaped_outputs = {port: _shape_payload(payload) for port, payload in outputs.items()}
+
+        for successor, output_key, conversion_fn in graph.successors(node_id):
+            value = shaped_outputs.get(output_key)
+
+            # Apply conversion function if specified
+            if conversion_fn:
+                value = execute_conversion_function_flexible(conversion_fn, value)
+
+            # Handle fan-out for "iteration" port
+            if output_key == "iteration" and isinstance(value, list):
+                for item in value:
+                    queue.append({"node_id": successor, "override": {"result": item}})
+            else:
+                pending_inputs[successor]["result"] = value
+                if self._is_node_ready(graph, successor, pending_inputs):
+                    queue.append({"node_id": successor, "override": None})
+
+        executed_main.add(node_id)
+
+    # 9. Finalization
+    workflow_execution.status = ExecutionStatus.SUCCESS
+    workflow_execution.end_time = _now_ms()
+    return workflow_execution
 ```
 
-### 3.2. Triggering an Execution
+### 4.2 Technical Decisions
 
-When a client calls `ExecuteWorkflow`:
+#### Node Specification System
 
-1.  **Delegation**: The request is passed from `MainWorkflowService` to `ExecutionService`.
-2.  **Record Creation**: The `ExecutionService` immediately creates a new record in the `workflow_executions` table with a status of `NEW`. This provides an immutable log of every execution attempt.
-3.  **Engine Invocation**: The `ExecutionService` then invokes the `EnhancedWorkflowExecutionEngine`, passing it the workflow definition and initial input data.
+**Centralized Validation**: All node types defined in `shared/node_specs/`
+- Type-safe configuration schemas with default values
+- Automatic type coercion for inputs/outputs
+- Runtime validation before execution
+- Supports optional parameters with fallback defaults
 
-### 3.3. The Execution Engine in Action
-
-This is the core of the system, orchestrated by `EnhancedWorkflowExecutionEngine`. The process is deterministic and observable.
-
-```mermaid
-sequenceDiagram
-    participant ES as ExecutionService
-    participant EE as ExecutionEngine
-    participant NF as NodeFactory
-    participant Node as NodeExecutor
-    participant DB as Database
-
-    ES->>EE: execute_workflow(workflow_def)
-    EE->>EE: _calculate_execution_order() (Topological Sort)
-    loop For each node in order
-        EE->>EE: _prepare_node_input_data()
-        Note over EE: Aggregates data from parent nodes based on Connection Types (MAIN, AI_TOOL, etc.)
-        EE->>NF: get_executor(node_type)
-        NF-->>EE: Return correct executor instance
-        EE->>Node: execute(context)
-        Node-->>EE: Return NodeExecutionResult (success/error, output_data)
-        EE->>EE: _record_execution_path_step()
-        Note over EE: Captures input, output, status, and timing for debugging.
-    end
-    EE-->>ES: Final execution state
-    ES->>DB: Update workflow_executions record with final status and detailed run_data
-```
-
-**Execution Steps:**
-
-1.  **Planning (`_calculate_execution_order`)**: The engine first performs a **topological sort** on the workflow's `ConnectionsMap` to determine the precise, dependency-aware order in which to execute the nodes.
-2.  **Iterative Execution**: The engine loops through the sorted list of nodes. For each node:
-    a.  **Data Aggregation (`_prepare_node_input_data_with_tracking`)**: This is a critical step. The engine inspects the `ConnectionsMap` to find all parent nodes connecting to the current node. It intelligently aggregates their outputs based on the **connection type**. For example, data from a `MAIN` connection is merged directly into the input, while data from an `AI_TOOL` connection is nested under an `ai_tool` key. This allows nodes (especially AI Agents) to receive complex, structured inputs from multiple sources.
-    b.  **Node Dispatch**: It uses the `NodeExecutorFactory` to instantiate the correct executor class for the node's type (e.g., `AIAgentNodeExecutor`).
-    c.  **Execution**: It calls the executor's `execute()` method, passing a `NodeExecutionContext` object that contains the aggregated input data, credentials, and other metadata.
-    d.  **Telemetry Capture**: After the node returns a result, the engine captures a comprehensive snapshot of the operation—including the inputs, outputs, status, and performance metrics—and appends it to the `execution_path`.
-3.  **Completion**: Once all nodes have run (or if a node fails and the error policy is to stop), the engine returns the final state to the `ExecutionService`.
-4.  **Persistence**: The `ExecutionService` updates the corresponding `workflow_executions` record in the database, setting the final status and saving the entire detailed execution trace into the `run_data` JSONB column.
-
-## 4. Core Component Deep Dive
-
-### 4.1. The Pluggable Node System
-
-The engine's functionality is defined by its library of nodes. The system is designed to be easily extended with new nodes.
-
--   **`BaseNodeExecutor` (`base.py`)**: This abstract class defines the contract for all nodes, requiring them to implement an `execute()` and `validate()` method. This ensures all nodes behave predictably.
--   **`NodeExecutorFactory` (`factory.py`)**: This factory holds a registry of all available node types. On startup, it's populated with the default executors. To add a new node, a developer simply creates a new executor class and registers it with the factory.
-
+**Example Spec**:
 ```python
-// In nodes/action_node.py - A simplified example
-class ActionNodeExecutor(BaseNodeExecutor):
-    def get_supported_subtypes(self) -> List[str]:
-        return ["HTTP_REQUEST", "RUN_CODE"]
+class SlackExternalActionSpec(NodeSpecificationBase):
+    node_type: str = "EXTERNAL_ACTION"
+    subtype: str = "SLACK"
 
-    def execute(self, context: NodeExecutionContext) -> NodeExecutionResult:
-        if context.node.subtype == "HTTP_REQUEST":
-            # ... logic to make an HTTP call ...
-            return self._create_success_result(output_data={"status_code": 200})
-        # ...
-```
-
-### 4.2. The AI Agent Architecture Revolution
-
-The workflow engine has undergone a fundamental transformation in how it handles AI Agent nodes, moving from hardcoded roles to a flexible, provider-based architecture.
-
-#### Legacy Approach (Before v2.0) ❌
-Previously, AI agents were defined by rigid, hardcoded subtypes:
-- `AI_ROUTER_AGENT` - Limited to routing decisions
-- `AI_TASK_ANALYZER` - Only capable of task analysis
-- `AI_DATA_INTEGRATOR` - Fixed data integration logic
-- `AI_REPORT_GENERATOR` - Restricted to report generation
-
-This approach required new code for each AI role and limited customization capabilities.
-
-#### Provider-Based Architecture (v2.0+) ✅
-The new architecture introduces three universal AI agent providers where **functionality is entirely defined by system prompts**:
-
-```python
-// In nodes/ai_agent_node.py - New implementation
-class AIAgentNodeExecutor(BaseNodeExecutor):
-    def get_supported_subtypes(self) -> List[str]:
-        return [
-            "GEMINI_NODE",      # Google Gemini provider
-            "OPENAI_NODE",      # OpenAI GPT provider
-            "CLAUDE_NODE"       # Anthropic Claude provider
-        ]
-
-    def execute(self, context: NodeExecutionContext) -> NodeExecutionResult:
-        subtype = context.node.subtype
-
-        if subtype == "GEMINI_NODE":
-            return self._execute_gemini_agent(context, logs, start_time)
-        elif subtype == "OPENAI_NODE":
-            return self._execute_openai_agent(context, logs, start_time)
-        elif subtype == "CLAUDE_NODE":
-            return self._execute_claude_agent(context, logs, start_time)
-```
-
-**Key Benefits:**
-- **Unlimited Functionality**: Any AI task can be achieved through system prompts
-- **Easy Customization**: Simply modify the system prompt parameter
-- **Provider Optimization**: Leverage unique capabilities of each AI provider
-- **Simplified Codebase**: Three providers instead of dozens of hardcoded roles
-- **Rapid Experimentation**: Test new AI behaviors instantly
-
-#### System Prompt Examples
-
-**Data Analysis Agent (Gemini)**:
-```json
-{
-  "type": "AI_AGENT_NODE",
-  "subtype": "GEMINI_NODE",
-  "parameters": {
-    "system_prompt": "You are a senior data analyst. Analyze datasets and provide statistical insights, trend analysis, and business recommendations in structured JSON format.",
-    "model_version": "gemini-pro",
-    "temperature": 0.3
-  }
-}
-```
-
-**Customer Service Router (OpenAI)**:
-```json
-{
-  "type": "AI_AGENT_NODE",
-  "subtype": "OPENAI_NODE",
-  "parameters": {
-    "system_prompt": "You are an intelligent customer service routing system. Analyze inquiries and route to appropriate departments (billing/technical/sales/general) with confidence scoring.",
-    "model_version": "gpt-4",
-    "temperature": 0.1
-  }
-}
-```
-
-### 4.3. The `ConnectionsMap`: A System for AI Data Flows
-
-A standout feature is the `ConnectionsMap`, which goes beyond simple linear connections. It supports **13 distinct connection types**, allowing a workflow to model sophisticated data flows.
-
--   **Purpose**: Different connection types allow a node to understand the *semantic meaning* of its inputs. An AI Agent node, for example, can distinguish between its main data input (`MAIN`), a tool it can use (`AI_TOOL`), and a memory source it can query (`AI_MEMORY`).
--   **Implementation**: The `_prepare_node_input_data_with_tracking` method in the execution engine is responsible for interpreting these types and structuring the input data accordingly.
-
-```json
-// Example of a ConnectionsMap for a Provider-Based AI Agent
-"Customer Analysis Agent": {
-  "connection_types": {
-    "ai_tool": {
-      "connections": [{"node": "Customer Database Tool", "type": "AI_TOOL"}]
-    },
-    "ai_memory": {
-      "connections": [{"node": "Customer Interaction History", "type": "AI_MEMORY"}]
-    },
-    "main": {
-      "connections": [{"node": "Data Ingestion", "type": "MAIN"}]
+    configurations: Dict[str, Any] = {
+        "action": {"type": "string", "options": ["send_message", "create_channel"]},
+        "channel": {"type": "string", "required": True},
+        "message": {"type": "string", "default": ""},
     }
-  }
-}
+
+    input_params: Dict[str, Any] = {
+        "channel": None,
+        "message": None,
+    }
+
+    output_params: Dict[str, Any] = {
+        "success": False,
+        "message_ts": None,
+        "channel_id": None,
+    }
 ```
 
-## 5. Extensibility
+#### Runner Factory Pattern
 
-### 5.1. Traditional Node Extension
-Adding new non-AI capabilities to the engine follows the established pattern:
+**Dynamic Dispatch**: Removes need for large if/elif chains
+- Cleaner codebase with separation of concerns
+- Easy to add new node types without modifying core engine
+- Type-safe dispatch with Enum-based routing
 
-1.  **Create a New Node Executor**: Write a new Python class in the `nodes/` directory that inherits from `BaseNodeExecutor`.
-2.  **Implement the Logic**: Implement the `execute()` and `validate()` methods.
-3.  **Register the Executor**: Add the new executor to the `register_default_executors()` function in `nodes/factory.py`.
+**Trade-off**: Requires explicit registration in factory.py, but provides compile-time safety and clear documentation of supported node types.
 
-### 5.2. AI Agent Extension (Revolutionary Approach)
-With the provider-based architecture, adding new AI capabilities is dramatically simpler:
+#### Graph-Based Execution
 
-**No Code Required**: Simply create a new workflow with a different `system_prompt`:
-```json
+**Topological Sort**: Ensures correct execution order
+- Detects cycles at graph construction time (fail-fast)
+- Supports conditional execution via output port selection
+- Handles fan-out with activation tracking
+
+**Attached Node Filtering**: WorkflowGraph excludes attached nodes
+- Prevents double execution of TOOL/MEMORY nodes
+- Maintains clean separation between workflow graph and attachment logic
+- Attached nodes managed by parent AI_AGENT runner
+
+#### Fail-Fast Error Handling
+
+**Philosophy**: "Fail Fast with Clear Feedback" (from CLAUDE.md)
+- Never return mock responses or silent failures
+- Structured errors with error_code, error_message, error_details
+- Actionable solutions provided in error responses
+
+**Example Error Response**:
+```python
 {
-  "type": "AI_AGENT_NODE",
-  "subtype": "CLAUDE_NODE",
-  "parameters": {
-    "system_prompt": "You are a cybersecurity analyst. Review code for vulnerabilities, classify risks by CVSS scoring, and provide detailed remediation steps with secure code examples.",
-    "model_version": "claude-3-opus",
-    "temperature": 0.2
-  }
-}
-```
-
-**Adding New AI Providers**: To add support for new AI providers (e.g., `LLAMA_NODE`):
-1. Add the new subtype to `get_supported_subtypes()` in `AIAgentNodeExecutor`
-2. Implement a new `_execute_llama_agent()` method
-3. Update the protobuf schema and regenerate
-
-This approach has **revolutionized development velocity** - new AI functionalities can be created in minutes rather than hours or days.
-
-## 6. Human-in-the-Loop (HIL) & Workflow Pause/Resume Architecture
-
-### 6.1. Overview of HIL System
-
-The workflow engine includes a sophisticated **Human-in-the-Loop (HIL)** system that enables workflows to pause execution and await human interaction before continuing. This is essential for workflows requiring approvals, confirmations, data input, or human decision-making.
-
-**Key Capabilities:**
-- ✅ **Seamless Workflow Pause**: HIL nodes pause execution at precise points
-- ✅ **Complete Context Preservation**: All execution state is preserved during pause
-- ✅ **Multiple Pause Support**: Workflows can pause multiple times
-- ✅ **Re-trigger Prevention**: Paused workflows block new triggers
-- ✅ **Resume API**: REST endpoints for continuing paused workflows
-- ✅ **Multi-channel Support**: Slack, email, and web-based interactions
-
-### 6.2. HIL Node Architecture
-
-The `HUMAN_IN_THE_LOOP_NODE` is a specialized node executor that implements sophisticated pause/resume functionality:
-
-```python
-// In nodes/human_loop_node.py
-class HumanLoopNodeExecutor(BaseNodeExecutor):
-    def get_supported_subtypes(self) -> List[str]:
-        return [
-            "HIL_CONFIRMATION",    # Simple approval/rejection
-            "HIL_DATA_INPUT",      # Collect data from human
-            "HIL_DECISION",        # Multiple choice decisions
-            "HIL_REVIEW"           # Document/content review
-        ]
-
-    def execute(self, context: NodeExecutionContext) -> NodeExecutionResult:
-        # Create interaction request
-        interaction = await self._create_hil_interaction(context)
-
-        # Send notification (Slack, email, etc.)
-        await self._send_interaction_notification(interaction)
-
-        # Return PAUSED status to halt workflow execution
-        return self._create_pause_result(interaction, logs, execution_time)
-```
-
-**HIL Node Parameters:**
-- `question`: The question or prompt for the human
-- `timeout_minutes`: How long to wait for human response
-- `channel_type`: Notification method (slack, email, web)
-- `required_approvers`: List of users who can respond
-- `approval_threshold`: Number of approvals needed
-
-### 6.3. Workflow Pause/Resume Execution Flow
-
-```mermaid
-sequenceDiagram
-    participant WF as Workflow
-    participant EE as ExecutionEngine
-    participant HIL as HIL Node
-    participant DB as Database
-    participant API as Resume API
-    participant Human as Human User
-
-    Note over WF,Human: Normal execution until HIL node
-    WF->>EE: Execute workflow
-    EE->>HIL: Execute HIL node
-    HIL->>HIL: Create interaction
-    HIL->>Human: Send notification (Slack/Email)
-    HIL-->>EE: Return PAUSED status
-
-    Note over EE,DB: Pause mechanism activated
-    EE->>EE: Detect PAUSED status
-    EE->>EE: Store complete pause context
-    EE->>DB: Update execution status to PAUSED
-    EE-->>WF: Return PAUSED execution state
-
-    Note over Human,API: Human responds via UI/Slack
-    Human->>API: POST /executions/{id}/resume
-    API->>EE: Resume with human data
-    EE->>EE: Restore complete context
-    EE->>EE: Update paused node with response
-    EE->>EE: Continue remaining nodes
-    EE-->>API: Return final status
-```
-
-### 6.4. Complete Context Preservation
-
-When a workflow pauses, the engine stores a **comprehensive pause context** that enables seamless resume:
-
-```python
-pause_context = {
-    "execution_id": "exec_12345",
-    "workflow_id": "wf_67890",
-    "paused_at": "2024-01-15T10:30:00Z",
-    "paused_node_id": "hil_confirmation",
-    "remaining_nodes": ["node_3", "node_4", "node_5"],
-
-    # Complete execution state snapshot
-    "execution_state_snapshot": {
-        "status": "PAUSED",
-        "start_time": "2024-01-15T10:25:00Z",
-        "node_results": {
-            "node_1": {"status": "SUCCESS", "output_data": {...}},
-            "node_2": {"status": "PAUSED", "interaction_id": "hil_123"}
-        },
-        "execution_order": ["node_1", "node_2", "node_3", "node_4"],
-        "execution_context": {"initial_data": {...}},
-        "performance_metrics": {"total_time": 15000},
-        "execution_path": [...],
-        "data_flow": {...}
-    },
-
-    # Complete workflow context for resume
-    "workflow_context": {
-        "workflow_definition": {...},  # Full workflow JSON
-        "initial_data": {...},         # Original trigger data
-        "credentials": {...},          # Encrypted credentials
-        "user_id": "user_456"
-    },
-
-    # Resume metadata
-    "resume_metadata": {
-        "pause_reason": "human_interaction",
-        "interaction_id": "hil_123",
-        "timeout_at": "2024-01-15T11:30:00Z",
-        "resume_ready": true
+    "success": False,
+    "error_code": "missing_oauth_token",
+    "error_message": "Slack OAuth token not found",
+    "error_details": {
+        "reason": "missing_oauth_token",
+        "solution": "Connect Slack account in integrations settings",
+        "oauth_flow_url": "/integrations/connect/slack"
     }
 }
 ```
 
-### 6.5. Re-trigger Prevention System
+## 5. System Interactions
 
-The trigger system includes intelligent **pause detection** to prevent concurrent executions:
+### 5.1 Internal Interactions
 
-```python
-// In triggers/base.py - Enhanced trigger logic
-async def _trigger_workflow(self, trigger_data):
-    # Check for existing paused executions
-    paused_check = await self._check_for_paused_executions()
-    if paused_check["has_paused"]:
-        logger.warning(f"Workflow {self.workflow_id} has {paused_check['count']} paused execution(s)")
-        return ExecutionResult(
-            status="skipped",
-            message="Workflow has paused execution(s) - new triggers blocked"
-        )
+#### API Gateway → Workflow Engine
 
-    # Proceed with normal execution
-    return await self._execute_workflow(execution_id, trigger_data)
-```
+**Execute Workflow**:
+```http
+POST /v2/workflows/{workflow_id}/execute
+Content-Type: application/json
 
-**Prevention Logic:**
-- 🚫 **Block New Triggers**: Workflows with `PAUSED` executions cannot be triggered again
-- 📊 **Multi-Execution Support**: Handles multiple concurrent paused executions
-- 🛡️ **Fail-Safe Behavior**: Falls back gracefully if pause check fails
-- ⚡ **Performance Optimized**: Quick database queries to check status
-
-### 6.6. Resume API & Human Response Handling
-
-The workflow engine exposes REST endpoints for resuming paused workflows:
-
-```bash
-POST /v1/executions/{execution_id}/resume
-```
-
-**Request Examples:**
-
-```json
-// Simple approval/rejection
 {
-  "approved": true,
-  "resume_data": {
-    "comment": "Approved by manager",
-    "timestamp": "2024-01-15T10:45:00Z"
+  "trigger_data": {"user_input": "Hello!"},
+  "async_execution": true,
+  "start_from_node": null
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "execution_id": "exec_123",
+  "execution": {
+    "id": "exec_123",
+    "workflow_id": "wf_456",
+    "status": "RUNNING",
+    "start_time": 1705000000000
   }
 }
+```
 
-// Custom data input
+#### Resume HIL Workflow
+
+**Flow**:
+1. User responds to HIL interaction (Slack/Email/Web)
+2. Response processed by API Gateway
+3. API Gateway calls Workflow Engine resume endpoint
+4. Engine restores execution context from database
+5. Engine updates paused node with user response
+6. Engine continues workflow from next nodes
+
+**Resume Endpoint**:
+```http
+POST /v2/executions/{execution_id}/resume
+Content-Type: application/json
+
 {
-  "resume_data": {
-    "budget_amount": 50000,
-    "project_priority": "high",
-    "assigned_team": "engineering"
+  "node_id": "hil_node_1",
+  "user_response": {
+    "approved": true,
+    "comment": "Looks good!"
+  }
+}
+```
+
+### 5.2 External Integrations
+
+#### AI Providers
+
+**Unified Interface** (`services/ai_providers.py`):
+```python
+class AIProvider(ABC):
+    def generate(self, prompt: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate AI response with provider-specific implementation"""
+        pass
+
+# Implementations:
+# - OpenAIProvider: Uses openai SDK
+# - AnthropicProvider: Uses anthropic SDK
+# - GeminiProvider: Uses google.generativeai SDK
+```
+
+**Provider Configuration**:
+- Model selection via node configuration
+- Temperature, max_tokens, top_p customizable per node
+- Tool calling support for MCP integration
+- Streaming support (chunked responses)
+
+#### External Action Services
+
+**OAuth-Based Integrations**:
+- Slack: send_message, create_channel, update_message
+- GitHub: create_issue, create_pr, add_comment
+- Notion: create_page, update_page, query_database
+- Google Calendar: create_event, update_event, list_events
+
+**Authentication Flow**:
+1. User connects account via API Gateway OAuth flow
+2. OAuth tokens stored in Supabase with encryption
+3. Workflow Engine retrieves tokens via credential service
+4. Tokens automatically refreshed when expired
+
+## 6. Non-Functional Requirements
+
+### 6.1 Performance
+
+**Targets**:
+- Workflow execution initiation: \< 100ms
+- Simple node execution (no external calls): \< 50ms
+- AI node execution: \< 5s (depends on AI provider)
+- Database query latency: \< 100ms
+- Full workflow execution: \< 30s for typical workflows
+
+**Optimization Strategies**:
+- Supabase connection pooling for database operations
+- Async execution with FastAPI background tasks
+- Caching of node specifications
+- Efficient graph traversal algorithms
+- Minimal serialization overhead with Pydantic
+
+**Caching**:
+- Node specs cached in memory after first load
+- Workflow definitions cached per execution
+- AI provider clients reused across executions
+
+### 6.2 Scalability
+
+**Horizontal Scaling**:
+- Stateless API layer (FastAPI)
+- Execution state stored in Supabase (shared across instances)
+- Background task processing via FastAPI BackgroundTasks
+- Ready for message queue integration (future: Celery/RQ)
+
+**Resource Considerations**:
+- Memory: ~200MB per instance (base)
+- CPU: 0.25 vCPU per instance (ECS Fargate)
+- Database connections: 10 per instance (Supabase pool)
+- Concurrent executions: Limited by ECS task count
+
+### 6.3 Security
+
+**Authentication**:
+- JWT tokens from Supabase Auth
+- Row-level security (RLS) for multi-tenant isolation
+- API key authentication for MCP endpoints
+
+**Data Encryption**:
+- OAuth tokens encrypted at rest (credential_encryption service)
+- TLS for all external API calls
+- Environment variables for secrets (AWS SSM Parameters)
+
+**Input Validation**:
+- Pydantic models for all API requests
+- Node spec validation before execution
+- SQL injection prevention via parameterized queries
+
+### 6.4 Reliability
+
+**Error Handling**:
+- Per-node retry with exponential backoff
+- Structured error responses with error codes
+- Execution state persisted after each node
+- Graceful degradation for external service failures
+
+**Failure Recovery**:
+- Automatic retry for transient failures (network, timeout)
+- Manual retry capability for failed nodes
+- Workflow pause/resume for long-running executions
+- Complete execution history for debugging
+
+**Monitoring & Logging**:
+- Structured logging with log levels (INFO, WARNING, ERROR)
+- Execution events published to event system
+- User-friendly logs for frontend display
+- Backend developer logs with detailed diagnostics
+
+### 6.5 Testing & Observability
+
+#### Testing Strategy
+
+**Unit Testing**:
+- Runner tests: Verify node execution logic
+- Graph tests: Cycle detection, topological sort
+- Spec tests: Validation and type coercion
+- Service tests: HIL service, memory service, AI providers
+
+**Integration Testing**:
+- End-to-end workflow execution
+- HIL pause/resume flows
+- External action integration tests
+- Database persistence verification
+
+**Test Coverage**:
+- Target: \>= 80% code coverage
+- Critical paths: \>= 95% coverage (execution engine, runners)
+- Edge cases: Cycle detection, error handling, retry logic
+
+**Testing Automation**:
+- pytest with async support
+- GitHub Actions CI/CD pipeline
+- Pre-deployment integration tests
+
+#### Observability
+
+**Key Metrics**:
+- **Latency**: Node execution time, workflow duration
+- **Throughput**: Workflows executed per minute, nodes per second
+- **Error Rates**: Failed executions, failed nodes, retry counts
+- **Resource Utilization**: Memory usage, CPU usage, database connections
+
+**Logging Strategy**:
+- **INFO**: Workflow start/end, node execution milestones
+- **WARNING**: Retry attempts, timeout warnings
+- **ERROR**: Execution failures, external API errors
+- **DEBUG**: Detailed input/output data, graph construction
+
+**Application Performance Monitoring**:
+- Execution traces with unique trace_id
+- Per-node performance tracking
+- Database query performance
+- External API latency tracking
+
+#### Monitoring & Alerting
+
+**Dashboards**:
+- Real-time execution status
+- Node execution timeline
+- Error rate trends
+- Resource utilization graphs
+
+**Alert Thresholds**:
+- Error rate \> 5% over 5 minutes
+- Average execution time \> 60s
+- Database connection pool exhaustion
+- External API failure rate \> 10%
+
+**SLIs and SLOs**:
+- **Availability**: \>= 99.9% uptime
+- **Latency**: p95 \< 10s for workflow execution
+- **Success Rate**: \>= 95% successful executions
+
+**Incident Response**:
+1. Automatic alerts via PagerDuty/Slack
+2. Execution logs retrieved from Supabase
+3. Retry failed workflows manually
+4. Escalate to on-call engineer if needed
+
+## 7. Human-in-the-Loop (HIL) Architecture
+
+### 7.1 HIL Workflow Pattern
+
+**5-Phase Execution Flow**:
+
+1. **HIL Node Startup**:
+   - Extract configuration (interaction_type, channel_type, timeout_seconds)
+   - Validate parameters against HIL spec
+   - Extract user_id from trigger/execution context
+   - Return `_hil_wait: true` to signal pause
+
+2. **Workflow Pause**:
+   - ExecutionEngine detects `_hil_wait` flag
+   - Creates record in `hil_interactions` table
+   - Creates record in `workflow_execution_pauses` table
+   - Updates workflow status to WAITING_FOR_HUMAN
+   - Stores complete execution context for resume
+
+3. **Interaction Request**:
+   - HILService sends notification via configured channel
+   - Slack: Interactive message with action buttons
+   - Email: Email with approval links
+   - App: In-app notification with form
+
+4. **Human Response**:
+   - User responds via Slack/Email/Web interface
+   - Response webhook received by API Gateway
+   - AI classification (8-factor analysis):
+     - `relevant` (score \>= 0.7): Process response
+     - `filtered` (score \<= 0.3): Ignore spam
+     - `uncertain` (0.3 \< score \< 0.7): Log for review
+   - Update `hil_interactions.status` to "completed"
+
+5. **Workflow Resume**:
+   - API Gateway calls `/v2/executions/{id}/resume`
+   - ExecutionEngine restores context from database
+   - HIL node output includes user response data
+   - Workflow continues from successor nodes
+   - Update `workflow_execution_pauses.status` to "resumed"
+
+### 7.2 HIL Configuration
+
+**Node Configuration**:
+```python
+{
+  "interaction_type": "approval",  # approval|input|selection|review
+  "channel_type": "slack",         # slack|email|webhook|app
+  "timeout_seconds": 3600,         # 60 to 86400 (1 hour to 24 hours)
+  "message": "Please approve this request",
+  "approval_options": ["approve", "reject"],
+  "channel_config": {
+    "channel": "#approvals",       # Slack channel
   },
-  "output_port": "approved"
-}
-
-// Multi-option decision
-{
-  "resume_data": {
-    "selected_option": "escalate_to_senior",
-    "reasoning": "Requires director approval"
-  },
-  "output_port": "escalate"
+  "timeout_action": "fail"         # fail|continue|default_response
 }
 ```
 
-**Response Format:**
-```json
-{
-  "execution_id": "exec_12345",
-  "status": "completed",        // or "paused" if paused again
-  "message": "Workflow resumed and completed successfully",
-  "completed": true,
-  "paused_again": false,
-  "remaining_nodes": []
-}
-```
+### 7.3 Database Schema
 
-### 6.7. Multi-Channel HIL Notifications
-
-The HIL system supports multiple notification channels:
-
-#### Slack Integration
-```python
-// Slack notification with interactive buttons
-await slack_client.send_message(
-    channel=hil_config.slack_channel,
-    blocks=[
-        SlackBlockBuilder.header("🤖 Approval Required"),
-        SlackBlockBuilder.section(f"**Question:** {question}"),
-        SlackBlockBuilder.actions([
-            {"text": "✅ Approve", "value": "approve"},
-            {"text": "❌ Reject", "value": "reject"}
-        ])
-    ]
-)
-```
-
-#### Email Notifications
-```python
-// Email with approval links
-email_content = {
-    "subject": f"Workflow Approval Required: {workflow_name}",
-    "html_body": generate_approval_email_template(
-        question=question,
-        approve_link=f"{base_url}/approve/{interaction_id}",
-        reject_link=f"{base_url}/reject/{interaction_id}"
-    )
-}
-```
-
-#### Web Dashboard
-- Real-time pending approvals list
-- Embedded approval forms
-- Workflow execution timeline
-- Mobile-responsive interface
-
-### 6.8. Advanced HIL Features
-
-#### Timeout Handling
-```python
-// Automatic workflow continuation on timeout
-if datetime.now() > interaction.timeout_at:
-    if hil_config.timeout_action == "auto_approve":
-        resume_data = {"approved": True, "timeout": True}
-    elif hil_config.timeout_action == "auto_reject":
-        resume_data = {"approved": False, "timeout": True}
-    else:  # fail
-        resume_data = {"error": "Human interaction timeout"}
-
-    await self.resume_workflow_execution(execution_id, resume_data)
-```
-
-#### Multi-Approver Support
-```python
-// Require multiple approvals
-hil_config = {
-    "required_approvers": ["manager@company.com", "director@company.com"],
-    "approval_threshold": 2,  # Both must approve
-    "rejection_threshold": 1   # Any can reject
-}
-```
-
-#### Conditional HIL Nodes
-```python
-// Only pause for high-value transactions
-hil_config = {
-    "condition": "{{transaction_amount}} > 10000",
-    "question": "Approve transaction of ${{transaction_amount}}?",
-    "auto_approve_below": 1000
-}
-```
-
-### 6.9. Database Schema for HIL
-
-The HIL system extends the existing database schema:
-
+**hil_interactions**:
 ```sql
--- Enhanced workflow_executions table
-ALTER TABLE workflow_executions
-ADD COLUMN pause_data JSONB,
-ADD COLUMN paused_at TIMESTAMP,
-ADD COLUMN resume_count INTEGER DEFAULT 0;
-
--- HIL interactions table
 CREATE TABLE hil_interactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    execution_id VARCHAR(255) NOT NULL,
     workflow_id UUID NOT NULL,
+    execution_id VARCHAR(255) NOT NULL,
     node_id VARCHAR(255) NOT NULL,
-    question TEXT NOT NULL,
+    user_id VARCHAR(255) NOT NULL,
+    interaction_type VARCHAR(50) NOT NULL,
     channel_type VARCHAR(50) NOT NULL,
+    request_data JSONB NOT NULL,
     status VARCHAR(50) DEFAULT 'pending',
     timeout_at TIMESTAMP NOT NULL,
     created_at TIMESTAMP DEFAULT NOW(),
     responded_at TIMESTAMP,
-    response_data JSONB,
-    approver_id VARCHAR(255)
+    response_data JSONB
 );
 ```
 
-### 6.10. HIL System Benefits
+**workflow_execution_pauses**:
+```sql
+CREATE TABLE workflow_execution_pauses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    execution_id VARCHAR(255) NOT NULL,
+    paused_node_id VARCHAR(255) NOT NULL,
+    pause_reason VARCHAR(255) NOT NULL,
+    resume_conditions JSONB NOT NULL,
+    status VARCHAR(50) DEFAULT 'active',
+    paused_at TIMESTAMP DEFAULT NOW(),
+    resumed_at TIMESTAMP,
+    hil_interaction_id UUID
+);
+```
 
-**For Business Operations:**
-- ✅ **Compliance**: Audit trails for all human decisions
-- ✅ **Risk Management**: Human oversight for critical operations
-- ✅ **Flexibility**: Workflows adapt to business rules and thresholds
-- ✅ **Accountability**: Clear tracking of who approved what and when
+## 8. Technical Debt and Future Considerations
 
-**For Technical Implementation:**
-- ✅ **Reliability**: Workflows never lose state during pause
-- ✅ **Scalability**: Supports thousands of concurrent paused workflows
-- ✅ **Observability**: Detailed logging and metrics for HIL interactions
-- ✅ **Integration**: Works seamlessly with existing workflow patterns
+### Known Limitations
 
-**For User Experience:**
-- ✅ **Multi-Channel**: Users receive notifications where they work
-- ✅ **Context Rich**: Full workflow context provided with requests
-- ✅ **Mobile Friendly**: Approve requests from any device
-- ✅ **Real-time**: Instant workflow continuation after approval
+**Current State**:
+- In-memory execution store has no persistence between restarts (mitigated by Supabase repository)
+- Limited support for distributed execution (single-instance design)
+- No built-in workflow versioning or rollback
+- Manual OAuth token refresh (not fully automated)
 
-This HIL architecture transforms the workflow engine from a purely automated system into a **hybrid human-AI collaboration platform**, enabling sophisticated business processes that require the best of both human judgment and automated efficiency.
+### Areas for Improvement
+
+**Short-Term (Next Quarter)**:
+- [ ] Implement workflow version control with rollback
+- [ ] Add distributed tracing with OpenTelemetry
+- [ ] Enhance error recovery with automatic retry policies
+- [ ] Implement workflow debugging tools (breakpoints, step-through)
+
+**Medium-Term (6-12 Months)**:
+- [ ] Support for parallel execution of independent nodes
+- [ ] Workflow optimization recommendations based on execution history
+- [ ] Advanced monitoring dashboards with custom metrics
+- [ ] Workflow testing framework for pre-deployment validation
+
+**Long-Term (12+ Months)**:
+- [ ] Distributed execution with message queue (Celery/RabbitMQ)
+- [ ] Workflow analytics and intelligence layer
+- [ ] Auto-scaling based on execution volume
+- [ ] Multi-region deployment support
+
+### Migration Paths
+
+**From V1 to V2**:
+- Gradual migration with parallel execution support
+- Workflow conversion tool for V1 → V2 format
+- Backward compatibility layer for V1 API endpoints
+- Deprecation timeline: 6 months after V2 GA
+
+## 9. Appendices
+
+### A. Glossary
+
+- **Attached Node**: TOOL or MEMORY node attached to AI_AGENT node, executed as part of AI context enhancement (not as separate workflow step)
+- **Conversion Function**: Python code snippet that transforms data during connection propagation
+- **Execution Context**: Complete runtime state including node outputs, pending inputs, and workflow definition
+- **Fan-out**: Executing a node multiple times with different inputs (via LOOP/FOR_EACH nodes)
+- **HIL (Human-in-the-Loop)**: Workflow pause pattern requiring human interaction before continuation
+- **Node Spec**: Centralized specification defining node configuration schema, inputs, outputs, and validation rules
+- **Output Port**: Named output channel from a node (e.g., "result", "true", "false", "iteration")
+- **Runner**: Executor class responsible for running a specific node type
+- **Topological Sort**: Graph ordering algorithm ensuring nodes execute after all dependencies
+- **Workflow Graph**: Directed acyclic graph (DAG) representing node dependencies
+
+### B. References
+
+**Internal Documentation**:
+- `/docs/tech-design/new_workflow_spec.md`: Complete workflow data model specification
+- `/apps/backend/workflow_engine_v2/README.md`: Service-specific setup and development guide
+- `/apps/backend/CLAUDE.md`: Backend architecture and development patterns
+- `/shared/node_specs/README.md`: Node specification system documentation
+
+**External Resources**:
+- FastAPI Documentation: https://fastapi.tiangolo.com/
+- Pydantic Models: https://docs.pydantic.dev/
+- Supabase Python Client: https://supabase.com/docs/reference/python
+- OpenAI API: https://platform.openai.com/docs
+- Anthropic Claude API: https://docs.anthropic.com/
+- Google Gemini API: https://ai.google.dev/docs
+
+**Code Examples**:
+- `/apps/backend/workflow_engine_v2/examples/`: Example workflows and usage patterns
+- `/apps/backend/workflow_engine_v2/tests/`: Comprehensive test suite with examples

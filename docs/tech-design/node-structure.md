@@ -1,519 +1,824 @@
-# Node Structure Definition
+# Node Structure Technical Design
 
-## 参数配置说明
+## 1. Executive Summary
 
-**重要区分：节点配置参数 vs 运行时数据**
+This document describes the comprehensive node structure and data models used in the 24/7 AI Teams workflow execution system. The system implements a sophisticated node-based workflow architecture with 8 core node types, each with multiple specialized subtypes. The design emphasizes type safety, runtime flexibility, and advanced patterns like attached nodes for AI agents and human-in-the-loop interactions.
 
-### 📝 节点配置参数 (Node Configuration Parameters)
+### Key Architectural Decisions
 
-- **静态配置**：在设计工作流时设置，定义节点的行为方式
-- **包含内容**：
-  - 认证信息 (API keys, tokens, credentials)
-  - 行为设置 (操作类型、超时时间、重试次数)
-  - 默认值和模板 (可被运行时数据覆盖)
-  - 连接配置 (存储类型、服务器地址)
-  - 处理选项 (是否启用某功能、输出格式)
+- **Node-Based Workflow Architecture**: All workflow logic is composed of discrete, reusable node types
+- **Output Key Routing**: Connections use output keys (e.g., "result", "true", "false") instead of port numbers for flexible data routing
+- **Attached Nodes Pattern**: AI_AGENT nodes support attached TOOL and MEMORY nodes that execute within the same context
+- **Schema-Driven Configuration**: Node specifications use JSON Schema-compatible definitions for validation and UI generation
+- **Centralized Validation**: Node type/subtype combinations are validated through a centralized enum system
 
-### 🔄 运行时数据 (Runtime Data)
+### Technology Stack
 
-- **动态数据**：每次执行时通过工作流数据流传递
-- **包含内容**：
-  - 具体的业务数据 (用户 ID、文件路径、消息内容)
-  - 从上游节点传入的处理结果
-  - 基于条件动态确定的值
+- **Data Models**: Pydantic v2 with BaseModel for type safety and validation
+- **Database**: PostgreSQL via Supabase for persistence
+- **Node Specifications**: Python dataclasses with JSON Schema support
+- **Runtime Execution**: Tracked through WorkflowExecution and NodeExecution models
 
-### 💡 设计原则
+## 2. System Architecture
 
-- 节点参数只包含**如何执行**的配置信息
-- 具体**执行什么内容**的数据通过工作流传递
-- 支持模板表达式 (如 `{{$json.field}}`) 来动态引用运行时数据
+### 2.1 High-Level Architecture
 
----
-
-## 节点类型概览
-
-工作流系统包含以下 8 种核心节点类型：
-
-## 1. Trigger Node (触发器节点)
-
-**形状**: Semi-rounded box
-
-### 子节点类型:
-
-#### Chat Trigger
-
-**参数配置:**
-
-- `channel`: string - 聊天频道标识符（如 Slack/Discord/Teams 频道 ID）
-- `allowedUsers`: `array&lt;string&gt;` - 允许触发的用户 ID 列表
-- `triggerPhrase`: string - 触发短语或关键词
-- `supportedMediaTypes`: `array&lt;enum&gt;` - 支持的媒体类型 (text/image/audio/video/file)
-- `maxFileSize`: integer - 最大文件大小（MB，适用于所有媒体类型）-
-- `enableOCR`: boolean - 是否启用图片 OCR 文字识别
-- `enableSpeechToText`: boolean - 是否启用音频语音转文字
-- `enableVideoAnalysis`: boolean - 是否启用视频内容分析
-- `maxDuration`: integer - 最大媒体时长（秒，适用于音频/视频）
-- `autoReply`: boolean - 是否自动回复
-- `responseFormat`: enum - 响应格式 (text/json/structured)
-
-#### Webhook Trigger
-
-**参数配置:**
-
-- `httpMethod`: enum - HTTP 方法 (GET/POST/PUT/DELETE/PATCH)
-- `path`: string - 监听路径（如 /webhook/my-trigger）
-- `authentication`: enum - 认证方式 (none/basic_auth/header_auth/query_auth)
-- `authUsername`: string - 基础认证用户名
-- `authPassword`: string - 基础认证密码
-- `authHeaderName`: string - 认证头名称
-- `authHeaderValue`: string - 认证头值
-- `respond`: enum - 响应方式 (immediately/when_last_node_finishes/using_respond_node)
-- `responseCode`: integer - HTTP 响应状态码 (默认 200)
-- `responseHeaders`: `map&lt;string, string&gt;` - 响应头
-- `responseBody`: string - 立即响应的内容
-- `responseData`: enum - 响应数据格式，仅在 respond 为 when_last_node_finishes 时生效
-  - `first_entry_json` - 返回最后节点的第一个数据项作为 JSON 对象
-  - `all_entries_array` - 返回最后节点的所有数据项作为 JSON 数组
-  - `last_node_data` - 返回最后节点的完整数据结构
-
-#### Cron Trigger
-
-**参数配置:**
-
-- `cron_expression`: string - Cron 表达式
-- `timezone`: string - 时区
-- `max_executions`: integer - 最大执行次数
-- `start_date`: datetime - 开始日期
-- `end_date`: datetime - 结束日期
-- `description`: string - 任务描述
-
----
-
-## 2. AI Agent Node (AI 代理节点)
-
-**形状**: Rectangle node featuring two connection points, linkable to Memory and Tool components
-
-**架构革新**: 从硬编码角色转向灵活的提供商驱动架构
-
-### 子节点类型 (Provider-Based Architecture):
-
-#### Gemini Node (AI_GEMINI_NODE)
-Google Gemini AI 代理，功能完全由系统提示词定义
-
-**参数配置:**
-- `system_prompt`: text - **核心参数**：定义AI代理的角色、行为和指令
-- `model_version`: enum - 模型版本 (gemini-pro/gemini-pro-vision/gemini-ultra)
-- `temperature`: float - 创造性参数 (0.0-1.0)
-- `max_tokens`: integer - 最大生成 token 数
-- `top_p`: float - 核采样参数 (0.0-1.0)
-- `top_k`: integer - 候选词数量限制
-- `safety_settings`: object - 安全设置配置
-- `response_format`: enum - 响应格式 (text/json/structured)
-- `timeout_seconds`: integer - 请求超时时间
-- `retry_attempts`: integer - 重试次数
-
-#### OpenAI Node (AI_OPENAI_NODE)
-OpenAI GPT AI 代理，功能完全由系统提示词定义
-
-**参数配置:**
-- `system_prompt`: text - **核心参数**：定义AI代理的角色、行为和指令
-- `model_version`: enum - 模型版本 (gpt-4/gpt-4-turbo/gpt-3.5-turbo/gpt-4-vision-preview)
-- `temperature`: float - 创造性参数 (0.0-2.0)
-- `max_tokens`: integer - 最大生成 token 数
-- `top_p`: float - 核采样参数 (0.0-1.0)
-- `presence_penalty`: float - 存在惩罚 (-2.0-2.0)
-- `frequency_penalty`: float - 频率惩罚 (-2.0-2.0)
-- `response_format`: enum - 响应格式 (text/json/structured)
-- `timeout_seconds`: integer - 请求超时时间
-- `retry_attempts`: integer - 重试次数
-
-#### Claude Node (AI_CLAUDE_NODE)
-Anthropic Claude AI 代理，功能完全由系统提示词定义
-
-**参数配置:**
-- `system_prompt`: text - **核心参数**：定义AI代理的角色、行为和指令
-- `model_version`: enum - 模型版本 (claude-3-opus/claude-3-sonnet/claude-3-haiku/claude-2.1)
-- `temperature`: float - 创造性参数 (0.0-1.0)
-- `max_tokens`: integer - 最大生成 token 数
-- `top_p`: float - 核采样参数 (0.0-1.0)
-- `top_k`: integer - 候选词数量限制
-- `stop_sequences`: array&lt;string&gt; - 停止序列
-- `response_format`: enum - 响应格式 (text/json/structured)
-- `timeout_seconds`: integer - 请求超时时间
-- `retry_attempts`: integer - 重试次数
-
-### 通用连接配置:
-- `memory_connection`: string - 连接的 Memory 节点 ID
-- `tool_connections`: array&lt;string&gt; - 连接的 Tool 节点 ID 列表
-- `streaming`: boolean - 是否流式响应
-- `on_error`: enum - 节点执行失败时的操作 (stop_workflow/continue)
-
-### 系统提示词示例:
-
-**数据分析代理 (使用 Gemini)**:
 ```
-您是一名高级数据分析师，专精统计分析和商业智能。
-
-任务：分析提供的数据集并提供可操作的洞察。
-
-分析要求：
-1. 统计概览：均值、中位数、标准差、四分位数
-2. 趋势分析：识别模式、季节性和异常值
-3. 相关性分析：变量间的关键关系
-4. 商业洞察：模式对商业决策的意义
-5. 数据质量：完整性、准确性、潜在问题
-6. 建议：具体的、可操作的下一步
-
-输出格式：结构化 JSON，包含上述各个要求的章节。
-置信水平：为每个洞察包含置信分数 (0-1)。
+┌─────────────────────────────────────────────────────────────┐
+│                    Workflow Definition                       │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │  Metadata + Nodes[] + Connections[] + Triggers[]      │  │
+│  └───────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│                 Node Structure Components                    │
+│                                                               │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │     Node     │  │  Connection  │  │  Position    │      │
+│  │              │  │              │  │              │      │
+│  │ • id         │  │ • from_node  │  │ • x: float   │      │
+│  │ • name       │  │ • to_node    │  │ • y: float   │      │
+│  │ • type       │  │ • output_key │  │              │      │
+│  │ • subtype    │  │ • conversion │  │              │      │
+│  │ • configs    │  │              │  │              │      │
+│  │ • input[]    │  └──────────────┘  └──────────────┘      │
+│  │ • output[]   │                                           │
+│  │ • attached[] │  (AI_AGENT only)                          │
+│  └──────────────┘                                           │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│              Execution Tracking (Runtime)                    │
+│                                                               │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │         WorkflowExecution                             │   │
+│  │  • execution_id                                       │   │
+│  │  • status: NEW → RUNNING → SUCCESS/ERROR             │   │
+│  │  • node_executions: Dict[node_id, NodeExecution]     │   │
+│  │  • execution_sequence: List[node_id]                 │   │
+│  │  • current_node_id                                    │   │
+│  └──────────────────────────────────────────────────────┘   │
+│                                                               │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │         NodeExecution                                 │   │
+│  │  • node_id, node_name, node_type, node_subtype       │   │
+│  │  • status: pending → running → completed/failed      │   │
+│  │  • input_data, output_data                           │   │
+│  │  • execution_details (type-specific)                 │   │
+│  │  • attached_executions (AI_AGENT only)               │   │
+│  └──────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**客户服务路由代理 (使用 OpenAI)**:
+### 2.2 Component Architecture
+
+#### Core Components
+
+1. **Node Model** (`shared/models/workflow.py`): Base workflow node definition
+2. **Node Enums** (`shared/models/node_enums.py`): Type system and validation
+3. **Node Specifications** (`shared/node_specs/`): Schema definitions for each node subtype
+4. **Execution Models** (`shared/models/execution_new.py`): Runtime tracking structures
+5. **Connection Model** (`shared/models/workflow.py`): Data flow between nodes
+
+#### Component Relationships
+
+- **Node ← Node Specification**: Specifications define the schema; nodes are instances
+- **Node → Connection**: Connections reference nodes via IDs and output keys
+- **WorkflowExecution → NodeExecution**: One-to-many relationship tracking all node executions
+- **AI_AGENT Node → Attached Nodes**: AI agents can have child TOOL/MEMORY nodes
+
+## 3. Data Architecture
+
+### 3.1 Data Models
+
+#### Base Node Model
+
+```python
+class Node(BaseModel):
+    """节点定义 - Core workflow building block"""
+
+    # Identification
+    id: str                                    # Unique identifier
+    name: str                                  # No spaces allowed
+    description: str                           # One-line summary
+
+    # Type information
+    type: str                                  # NodeType enum value
+    subtype: str                               # Specific node subtype
+
+    # Configuration and parameters
+    configurations: Dict[str, Any]             # Static config set at design time
+    input_params: Dict[str, Any]               # Runtime input parameters
+    output_params: Dict[str, Any]              # Runtime output parameters
+
+    # UI and positioning
+    position: Optional[Dict[str, float]]       # {x: float, y: float}
+
+    # AI_AGENT specific
+    attached_nodes: Optional[List[str]]        # IDs of TOOL/MEMORY nodes
 ```
-您是一个智能客户服务路由系统。
 
-任务：分析客户询问并路由到适当的部门。
+**Field Details:**
 
-路由规则：
-- "billing" → 付款问题、发票、退款、订阅问题
-- "technical" → 产品错误、功能问题、集成帮助
-- "sales" → 新购买、升级、价格咨询
-- "general" → 一般问题、反馈、投诉
+- **configurations**: Static parameters that define node behavior (API keys, timeouts, model versions)
+- **input_params**: Dynamic runtime data received from upstream nodes
+- **output_params**: Dynamic runtime data sent to downstream nodes
+- **position**: Canvas coordinates for UI visualization (`{x: 100.0, y: 200.0}`)
+- **attached_nodes**: Only for AI_AGENT nodes; references TOOL and MEMORY nodes by ID
 
-分析过程：
-1. 从客户消息中提取关键意图和实体
-2. 考虑紧急程度 (low/medium/high/critical)
-3. 识别客户等级 (basic/premium/enterprise)
-4. 应用路由规则并给出置信分数
+#### Connection Model
 
-响应格式：
+```python
+class Connection(BaseModel):
+    """连接定义 - Directed data flow between nodes"""
+
+    id: str                                    # Connection unique identifier
+    from_node: str                             # Source node ID
+    to_node: str                               # Target node ID
+    output_key: str = "result"                 # Output port identifier
+    conversion_function: Optional[str] = None  # Python code for data transformation
+```
+
+**Output Key Patterns:**
+
+- **Standard nodes**: `"result"` (default)
+- **Conditional nodes (IF)**: `"true"`, `"false"`
+- **Multi-branch nodes (SWITCH)**: `"case_0"`, `"case_1"`, ..., `"default"`
+- **HIL nodes**: `"confirmed"`, `"rejected"`, `"unrelated"`, `"timeout"`
+
+**Conversion Function Example:**
+
+```python
+conversion_function = """def convert(input_data: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "message": input_data.get("output", ""),
+        "timestamp": str(input_data.get("timestamp", ""))
+    }"""
+```
+
+### 3.2 Node Type System
+
+#### Core Node Types (8 Categories)
+
+```python
+class NodeType(str, Enum):
+    TRIGGER = "TRIGGER"                        # Workflow entry points
+    AI_AGENT = "AI_AGENT"                      # AI model integrations
+    EXTERNAL_ACTION = "EXTERNAL_ACTION"        # Third-party service calls
+    ACTION = "ACTION"                          # Core system actions
+    FLOW = "FLOW"                              # Control flow logic
+    HUMAN_IN_THE_LOOP = "HUMAN_IN_THE_LOOP"   # Human interaction points
+    TOOL = "TOOL"                              # External tools (MCP)
+    MEMORY = "MEMORY"                          # LLM context storage
+```
+
+#### Node Subtypes (Selected Examples)
+
+**TRIGGER Subtypes:**
+- `MANUAL`: User-initiated execution
+- `WEBHOOK`: HTTP endpoint triggers
+- `CRON`: Time-based scheduling
+- `SLACK`: Slack message/event triggers
+- `GITHUB`: GitHub webhook events
+
+**AI_AGENT Subtypes:**
+- `OPENAI_CHATGPT`: OpenAI GPT models (GPT-5, GPT-4.1)
+- `ANTHROPIC_CLAUDE`: Anthropic Claude models (Sonnet 4, Haiku 3.5)
+- `GOOGLE_GEMINI`: Google Gemini models (2.5 Pro, Flash, Flash-Lite)
+
+**HUMAN_IN_THE_LOOP Subtypes:**
+- `SLACK_INTERACTION`: Slack-based approvals/input
+- `GMAIL_INTERACTION`: Email-based interactions
+- `IN_APP_APPROVAL`: Web application approvals
+
+**TOOL Subtypes:**
+- `NOTION_MCP_TOOL`: Notion Model Context Protocol tools
+- `GOOGLE_CALENDAR_MCP_TOOL`: Calendar MCP tools
+- `SLACK_MCP_TOOL`: Slack MCP tools
+
+**MEMORY Subtypes:**
+- `CONVERSATION_BUFFER`: Recent conversation storage
+- `VECTOR_DATABASE`: Semantic search memory
+- `KEY_VALUE_STORE`: Simple key-value persistence
+
+### 3.3 Node Specifications
+
+#### BaseNodeSpec Structure
+
+```python
+class BaseNodeSpec(BaseModel):
+    """Base class for all node specifications"""
+
+    # Core identification
+    type: NodeType                             # Main category
+    subtype: str                               # Specific variant
+    name: str                                  # Display name
+    description: str                           # Human-readable description
+
+    # Schema definitions
+    configurations: Dict[str, Any]             # Config parameter schemas
+    input_params: Dict[str, Any]               # Input parameter schemas
+    output_params: Dict[str, Any]              # Output parameter schemas
+
+    # Legacy compatibility
+    default_input_params: Dict[str, Any]       # Default runtime inputs
+    default_output_params: Dict[str, Any]      # Default runtime outputs
+
+    # Metadata
+    version: str = "1.0"                       # Spec version
+    tags: List[str]                            # Categorization tags
+    examples: Optional[List[Dict[str, Any]]]   # Usage examples
+
+    # AI guidance
+    system_prompt_appendix: Optional[str]      # AI integration hints
+```
+
+#### Configuration Schema Format
+
+Each configuration parameter follows this schema:
+
+```python
 {
-  "department": "billing|technical|sales|general",
-  "confidence": 0.95,
-  "urgency": "low|medium|high|critical",
-  "reasoning": "路由决策的简要解释",
-  "suggested_response": "推荐给客户的首次回复"
+    "parameter_name": {
+        "type": "string|integer|float|boolean|enum|json|array",
+        "default": <default_value>,
+        "description": "Human-readable description",
+        "required": True|False,
+
+        # Optional constraints
+        "min": <min_value>,               # For numeric types
+        "max": <max_value>,               # For numeric types
+        "options": ["opt1", "opt2"],      # For enum/select types
+        "multiline": True|False,          # For string types
+    }
 }
 ```
 
----
-
-## 3. External Action Node (外部动作节点)
-
-**形状**: Square node
-
-### 子节点类型:
-
-#### GitHub Node
-
-**参数配置:**
-
-- `github_token`: string - GitHub 访问令牌
-- `repository`: string - 仓库名 (owner/repo)
-- `action_type`: enum - 操作类型 (create_issue/create_pr/comment/merge/close)
-- `timeout`: integer - 请求超时时间（秒）
-
-#### Google Calendar Node
-
-**参数配置:**
-
-- `google_credentials`: string - Google 凭证
-- `calendar_id`: string - 日历 ID
-- `action_type`: enum - 操作类型 (create_event/update_event/delete_event/list_events)
-- `timezone`: string - 默认时区
-- `timeout`: integer - 请求超时时间（秒）
-
-#### Trello Node
-
-**参数配置:**
-
-- `trello_api_key`: string - Trello API 密钥
-- `trello_token`: string - Trello 令牌
-- `action_type`: enum - 操作类型 (create_card/update_card/move_card/delete_card)
-- `default_board_id`: string - 默认看板 ID（可被运行时数据覆盖）
-- `timeout`: integer - 请求超时时间（秒）
-
-#### Email Node
-
-**参数配置:**
-
-- `email_provider`: enum - 邮件提供商 (gmail/outlook/smtp)
-- `smtp_server`: string - SMTP 服务器
-- `smtp_port`: integer - SMTP 端口
-- `username`: string - 用户名
-- `password`: string - 密码
-- `default_from_email`: string - 默认发件人邮箱
-- `use_html`: boolean - 是否支持 HTML 格式
-- `enable_attachments`: boolean - 是否启用附件功能
-- `timeout`: integer - 发送超时时间（秒）
-
-#### Slack Node
-
-**参数配置:**
-
-- `slack_token`: string - Slack 机器人令牌
-- `actionType`: enum - 操作类型 (send_message/upload_file/create_channel/invite_user)
-- `default_channel`: string - 默认频道名或 ID（可被运行时数据覆盖）
-- `asUser`: boolean - 是否以用户身份发送
-- `timeout`: integer - 请求超时时间（秒）
-
----
-
-## 4. Action Node (动作节点)
-
-**形状**: Square node
-
-### 子节点类型:
-
-#### Run Code Node
-
-**参数配置:**
-
-- `language`: enum - 编程语言 (python/javascript/java/golang)
-- `code`: text - 要执行的代码
-- `timeout`: integer - 执行超时时间（秒）
-- `environment_variables`: `map&lt;string, string&gt;` - 环境变量
-- `input_data`: text - 输入数据
-- `continue_on_fail`: boolean - 失败时是否继续
-
-#### Send HTTP Request Node
-
-**参数配置:**
-
-- `url`: string - 请求 URL
-- `method`: enum - HTTP 方法 (GET/POST/PUT/DELETE/PATCH)
-- `headers`: `map&lt;string, string&gt;` - 请求头
-- `query_parameters`: `map&lt;string, string&gt;` - 查询参数
-- `body`: text - 请求体
-- `body_type`: enum - 请求体类型 (json/form/raw/binary)
-- `authentication`: enum - 认证方式 (none/api_key/bearer_token/basic_auth/oauth)
-- `api_key`: string - API 密钥
-- `bearer_token`: string - Bearer 令牌
-- `username`: string - 基础认证用户名
-- `password`: string - 基础认证密码
-- `timeout`: integer - 请求超时时间（秒）
-- `follow_redirects`: boolean - 是否跟随重定向
-- `verify_ssl`: boolean - 是否验证 SSL 证书
-
-#### Parse Media Node
-
-**参数配置:**
-
-- `mediaSource`: enum - 媒体源类型 (url/file/base64/chat_upload)
-- `parseType`: enum - 解析类型 (ocr/object_detection/speech_to_text/scene_analysis/extract_text)
-- `language`: string - 默认识别语言（OCR/语音识别用）
-- `confidenceThreshold`: float - 置信度阈值 (0.0-1.0)
-- `extractFrames`: boolean - 是否提取视频关键帧
-- `frameInterval`: integer - 帧提取间隔（秒）
-- `extractMetadata`: boolean - 是否提取文件元数据
-- `outputFormat`: enum - 输出格式 (text/json/structured)
-- `timeout`: integer - 处理超时时间（秒）
-
-#### Web Search Node
-
-**参数配置:**
-
-- `search_engine`: enum - 搜索引擎 (google/bing/duckduckgo)
-- `api_key`: string - 搜索引擎 API 密钥
-- `query`: string - 搜索查询
-- `result_count`: integer - 返回结果数量
-- `language`: string - 搜索语言
-- `region`: string - 搜索地区
-- `safe_search`: enum - 安全搜索 (off/moderate/strict)
-- `result_type`: enum - 结果类型 (web/images/videos/news)
-- `time_filter`: enum - 时间过滤 (all/day/week/month/year)
-
-#### File Operations Node
-
-**参数配置:**
-
-- `operationType`: enum - 操作类型 (upload/download/convert/compress/extract/metadata)
-- `sourcePath`: string - 源文件路径
-- `destinationPath`: string - 目标路径
-- `storageType`: enum - 存储类型 (local/s3/gcs/azure/dropbox/google_drive)
-- `bucketName`: string - 存储桶名称（云存储用）
-- `accessKey`: string - 访问密钥
-- `targetFormat`: string - 目标格式（转换操作用）
-- `compressionLevel`: integer - 压缩级别 (1-9)
-- `maxFileSize`: integer - 最大文件大小（MB）
-- `allowedTypes`: `array&lt;string&gt;` - 允许的文件类型
-- `virusScan`: boolean - 是否进行病毒扫描
-- `extractMetadata`: boolean - 是否提取元数据
-- `enableBackup`: boolean - 是否启用备份
-
----
-
-## 5. Flow Node (流程控制节点)
-
-**形状**: Rectangle node
-
-### 子节点类型:
-
-#### If Node
-
-**参数配置:**
-
-- `condition_type`: enum - 条件类型 (javascript/jsonpath/simple)
-- `condition_expression`: string - 条件表达式
-- `true_branch`: string - 条件为真时的分支
-- `false_branch`: string - 条件为假时的分支
-- `comparison_operation`: enum - 比较操作 (equals/not_equals/greater/less/contains/regex)
-- `value1`: string - 比较值 1
-- `value2`: string - 比较值 2
-
-#### Filter Node
-
-**参数配置:**
-
-- `filter_type`: enum - 过滤类型 (javascript/jsonpath/simple)
-- `filter_expression`: string - 过滤表达式
-- `keep_only_set`: boolean - 是否仅保留匹配项
-- `condition`: string - 过滤条件
-
-#### Loop Node
-
-**参数配置:**
-
-- `loop_type`: enum - 循环类型 (for_each/while/times)
-- `input_data`: string - 输入数据路径
-- `max_iterations`: integer - 最大迭代次数
-- `break_condition`: string - 跳出条件
-- `batch_size`: integer - 批处理大小
-
-#### Merge Node
-
-**参数配置:**
-
-- `merge_type`: enum - 合并类型 (append/merge/multiplex)
-- `output_format`: enum - 输出格式 (array/object)
-- `merge_key`: string - 合并键
-- `wait_for_all`: boolean - 是否等待所有输入
-
-#### Switch Node
-
-**参数配置:**
-
-- `mode`: enum - 模式 (expression/rules)
-- `expression`: string - 切换表达式
-- `rules`: `array&lt;object&gt;` - 规则配置
-- `fallback_output`: integer - 默认输出端口
-
-#### Wait Node
-
-**参数配置:**
-
-- `wait_type`: enum - 等待类型 (fixed_time/until_time/webhook)
-- `duration`: integer - 等待时长（秒）
-- `until_time`: datetime - 等待到指定时间
-- `webhook_url`: string - 等待 Webhook URL
-- `max_wait_time`: integer - 最大等待时间（秒）
-
----
-
-## 6. Human-In-The-Loop Node (人机交互节点)
-
-**形状**: 待定义
-
-### 子节点类型:
-
-#### Gmail Node
-
-**参数配置:**
-
-- `gmail_credentials`: string - Gmail 凭证
-- `approval_subject`: string - 审批邮件主题
-- `approval_body`: text - 审批邮件内容
-- `approver_emails`: `array&lt;string&gt;` - 审批人邮箱
-- `timeout_hours`: integer - 审批超时时间（小时）
-- `auto_approve_after_timeout`: boolean - 超时后是否自动批准
-- `response_format`: enum - 响应格式 (simple/detailed)
-
-#### Slack Node
-
-**参数配置:**
-
-- `slack_token`: string - Slack 机器人令牌
-- `approval_channel`: string - 审批频道
-- `approver_users`: `array&lt;string&gt;` - 审批用户
-- `approval_message`: text - 审批消息
-- `approval_buttons`: `array&lt;string&gt;` - 审批按钮选项
-- `timeout_minutes`: integer - 审批超时时间（分钟）
-- `auto_approve_after_timeout`: boolean - 超时后是否自动批准
-
-#### Discord Node
-
-**参数配置:**
-
-- `discord_token`: string - Discord 机器人令牌
-- `guild_id`: string - 服务器 ID
-- `channel_id`: string - 频道 ID
-- `approval_message`: text - 审批消息
-- `approver_roles`: `array&lt;string&gt;` - 审批角色
-- `approval_reactions`: `array&lt;string&gt;` - 审批表情
-- `timeout_minutes`: integer - 审批超时时间（分钟）
-
-#### Telegram Node
-
-**参数配置:**
-
-- `telegram_token`: string - Telegram 机器人令牌
-- `chat_id`: string - 聊天 ID
-- `approval_message`: text - 审批消息
-- `inline_keyboard`: `array&lt;object&gt;` - 内联键盘选项
-- `timeout_minutes`: integer - 审批超时时间（分钟）
-
-#### App Node
-
-**参数配置:**
-
-- `app_webhook_url`: string - 应用 Webhook URL
-- `approval_form_url`: string - 审批表单 URL
-- `approval_data`: object - 审批所需数据
-- `callback_url`: string - 回调 URL
-- `timeout_minutes`: integer - 审批超时时间（分钟）
-
----
-
-## 7. Tool Node (工具节点)
-
-**形状**: Circle
-
-### 子节点类型:
-
-#### Google Calendar MCP Node
-
-**参数配置:**
-
-- `mcp_server_url`: string - MCP 服务器 URL
-- `google_credentials`: string - Google 凭证
-- `default_calendar_id`: string - 默认日历 ID
-- `timezone`: string - 时区
-- `max_results`: integer - 最大结果数
-
-#### Notion MCP Node
-
-**参数配置:**
-
-- `mcp_server_url`: string - MCP 服务器 URL
-- `notion_token`: string - Notion 集成令牌
-- `database_id`: string - 数据库 ID
-- `page_id`: string - 页面 ID
-- `property_mappings`: `map&lt;string, string&gt;` - 属性映射
-
----
-
-## 8. Memory Node (记忆节点)
-
-**形状**: Circle
-
-### 子节点类型:
-
-#### Simple Memory
-
-**参数配置:**
-
-- `memory_type`: enum - 内存类型 (session/persistent/temporary)
-- `storage_duration`: integer - 存储时长（秒）
-- `max_memory_size`: integer - 最大内存大小（KB）
-- `clear_on_restart`: boolean - 重启时是否清空
-- `encryption_enabled`: boolean - 是否加密存储
+**Example: OpenAI ChatGPT Configuration**
+
+```python
+configurations = {
+    "model": {
+        "type": "string",
+        "default": "gpt-5-nano",
+        "description": "OpenAI model version",
+        "required": True,
+        "options": ["gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-4.1"]
+    },
+    "system_prompt": {
+        "type": "string",
+        "default": "You are a helpful AI assistant.",
+        "description": "System prompt defining AI behavior",
+        "required": True,
+        "multiline": True
+    },
+    "temperature": {
+        "type": "float",
+        "default": 0.7,
+        "min": 0.0,
+        "max": 2.0,
+        "description": "Controls randomness of outputs",
+        "required": False
+    }
+}
+```
+
+## 4. Implementation Details
+
+### 4.1 Core Components
+
+#### Node Instance Creation
+
+Node instances are created from specifications:
+
+```python
+# From BaseNodeSpec.create_node_instance()
+def create_node_instance(
+    self,
+    node_id: str,
+    position: Optional[Dict[str, float]] = None,
+    attached_nodes: Optional[List[str]] = None,
+) -> Node:
+    """Create a Node instance from specification"""
+
+    # Extract default values from schema definitions
+    runtime_configurations = {
+        key: spec.get("default")
+        for key, spec in self.configurations.items()
+    }
+
+    return Node(
+        id=node_id,
+        name=self.name,
+        description=self.description,
+        type=self.type,
+        subtype=self.subtype,
+        configurations=runtime_configurations,
+        input_params=self.default_input_params,
+        output_params=self.default_output_params,
+        position=position,
+        attached_nodes=attached_nodes  # AI_AGENT only
+    )
+```
+
+#### Node Type Validation
+
+```python
+# From shared/models/node_enums.py
+VALID_SUBTYPES: Dict[NodeType, Set[str]] = {
+    NodeType.TRIGGER: {"MANUAL", "WEBHOOK", "CRON", "SLACK", ...},
+    NodeType.AI_AGENT: {"OPENAI_CHATGPT", "ANTHROPIC_CLAUDE", ...},
+    # ... all other node types
+}
+
+def is_valid_node_subtype_combination(node_type: str, subtype: str) -> bool:
+    """Validate if a node_type/subtype combination is valid"""
+    try:
+        node_type_enum = NodeType(node_type)
+        return subtype in VALID_SUBTYPES[node_type_enum]
+    except ValueError:
+        return False
+```
+
+### 4.2 Attached Nodes Pattern (AI_AGENT)
+
+AI_AGENT nodes can attach TOOL and MEMORY nodes that execute within the AI's context:
+
+```python
+# Node definition with attached nodes
+ai_agent_node = {
+    "id": "ai_1",
+    "type": "AI_AGENT",
+    "subtype": "OPENAI_CHATGPT",
+    "configurations": {
+        "model": "gpt-5-nano",
+        "system_prompt": "You are a calendar management assistant."
+    },
+    "attached_nodes": [
+        "tool_calendar_1",    # TOOL: Google Calendar MCP
+        "memory_buffer_1"     # MEMORY: Conversation Buffer
+    ]
+}
+
+# Attached TOOL node
+tool_node = {
+    "id": "tool_calendar_1",
+    "type": "TOOL",
+    "subtype": "GOOGLE_CALENDAR_MCP_TOOL",
+    "configurations": {
+        "calendar_id": "primary"
+    }
+}
+
+# Attached MEMORY node
+memory_node = {
+    "id": "memory_buffer_1",
+    "type": "MEMORY",
+    "subtype": "CONVERSATION_BUFFER",
+    "configurations": {
+        "max_messages": 10
+    }
+}
+```
+
+**Execution Flow:**
+
+1. **Pre-execution**: Load memory context from MEMORY nodes
+2. **Tool Discovery**: Register tools from TOOL nodes with AI provider
+3. **AI Execution**: Generate response with enhanced context and tools
+4. **Post-execution**: Store conversation to MEMORY nodes
+5. **Result**: Attached node executions stored in `attached_executions` field
+
+**Important**: Attached nodes do NOT appear in workflow execution sequence or connections.
+
+### 4.3 Connection Output Key Routing
+
+Connections use output keys to route data from specific node outputs:
+
+```python
+# Standard node connection (default output)
+{
+    "id": "conn_1",
+    "from_node": "ai_agent_1",
+    "to_node": "slack_action_1",
+    "output_key": "result"  # Default output
+}
+
+# Conditional node connection (IF node)
+{
+    "id": "conn_2",
+    "from_node": "if_node_1",
+    "to_node": "approval_action",
+    "output_key": "true"  # True branch
+}
+
+{
+    "id": "conn_3",
+    "from_node": "if_node_1",
+    "to_node": "rejection_action",
+    "output_key": "false"  # False branch
+}
+
+# Human-in-the-loop node connection
+{
+    "id": "conn_4",
+    "from_node": "hil_slack_1",
+    "to_node": "process_approval",
+    "output_key": "confirmed"  # User confirmed
+}
+```
+
+### 4.4 Node Execution Tracking
+
+#### WorkflowExecution Model
+
+```python
+class WorkflowExecution(BaseModel):
+    """Complete workflow execution state"""
+
+    # Identity
+    execution_id: str                          # Unique execution instance
+    workflow_id: str                           # Source workflow
+    workflow_version: str = "1.0"              # Workflow version
+
+    # Status and timing
+    status: ExecutionStatus                    # Overall execution state
+    start_time: Optional[int]                  # Epoch milliseconds
+    end_time: Optional[int]                    # Epoch milliseconds
+    duration_ms: Optional[int]                 # Total duration
+
+    # Trigger information
+    trigger_info: TriggerInfo                  # What started this execution
+
+    # Execution tracking
+    node_executions: Dict[str, NodeExecution]  # All node execution details
+    execution_sequence: List[str]              # Ordered node IDs
+    current_node_id: Optional[str]             # Currently executing node
+    next_nodes: List[str]                      # Pending nodes
+
+    # Error handling
+    error: Optional[ExecutionError]            # Execution-level errors
+
+    # Resource tracking
+    credits_consumed: int = 0                  # Total credits used
+    tokens_used: Optional[TokenUsage]          # AI token consumption
+
+    # Metadata
+    metadata: Optional[Dict[str, Any]]         # Additional context
+    created_at: Optional[str]                  # ISO timestamp
+    updated_at: Optional[str]                  # ISO timestamp
+```
+
+#### NodeExecution Model
+
+```python
+class NodeExecution(BaseModel):
+    """Individual node execution details"""
+
+    # Node identity
+    node_id: str                               # References Node.id
+    node_name: str                             # For display
+    node_type: str                             # NodeType value
+    node_subtype: str                          # Specific subtype
+
+    # Execution state
+    status: NodeExecutionStatus                # pending → running → completed/failed
+    start_time: Optional[int]                  # When started
+    end_time: Optional[int]                    # When finished
+    duration_ms: Optional[int]                 # Execution time
+
+    # Data flow
+    input_data: Dict[str, Any]                 # Received parameters
+    output_data: Dict[str, Any]                # Produced results
+
+    # Type-specific details
+    execution_details: NodeExecutionDetails    # AI responses, API calls, etc.
+
+    # Error handling
+    error: Optional[NodeError]                 # Node-level errors
+    retry_count: int = 0                       # Retry attempts
+    max_retries: int = 3                       # Max retry limit
+
+    # Resource tracking
+    credits_consumed: int = 0                  # Credits used by this node
+
+    # AI_AGENT specific
+    attached_executions: Optional[Dict[str, NodeExecution]]  # Tool/Memory executions
+```
+
+#### NodeExecutionDetails (Type-Specific)
+
+```python
+class NodeExecutionDetails(BaseModel):
+    """Node type-specific execution information"""
+
+    # AI_AGENT fields
+    ai_model: Optional[str]                    # "gpt-5-nano"
+    prompt_tokens: Optional[int]               # Input tokens
+    completion_tokens: Optional[int]           # Output tokens
+    model_response: Optional[str]              # AI response text
+
+    # EXTERNAL_ACTION fields
+    api_endpoint: Optional[str]                # "https://slack.com/api/chat.postMessage"
+    http_method: Optional[str]                 # "POST"
+    request_headers: Optional[Dict[str, str]]  # Request headers
+    response_status: Optional[int]             # 200
+    response_headers: Optional[Dict[str, str]] # Response headers
+
+    # TOOL fields
+    tool_name: Optional[str]                   # "create_event"
+    tool_parameters: Optional[Dict[str, Any]]  # Tool input params
+    tool_result: Optional[Any]                 # Tool output
+
+    # HUMAN_IN_THE_LOOP fields
+    user_prompt: Optional[str]                 # Message to user
+    user_response: Optional[Any]               # User's response
+    waiting_since: Optional[int]               # Wait start time
+
+    # FLOW fields
+    condition_result: Optional[bool]           # IF node result
+    branch_taken: Optional[str]                # "true" or "false"
+
+    # Common fields
+    logs: List[LogEntry]                       # Execution logs
+    metrics: Optional[Dict[str, Any]]          # Custom metrics
+```
+
+### 4.5 Execution Status Enums
+
+#### WorkflowExecution Status
+
+```python
+class ExecutionStatus(str, Enum):
+    IDLE = "IDLE"                              # Never executed (default)
+    NEW = "NEW"                                # Created but not started
+    PENDING = "PENDING"                        # Waiting to start
+    RUNNING = "RUNNING"                        # Currently executing
+    PAUSED = "PAUSED"                          # Temporarily halted
+    SUCCESS = "SUCCESS"                        # Completed successfully
+    ERROR = "ERROR"                            # Failed with error
+    CANCELED = "CANCELED"                      # User-canceled
+    WAITING = "WAITING"                        # Generic wait state
+    TIMEOUT = "TIMEOUT"                        # Execution timeout
+    WAITING_FOR_HUMAN = "WAITING_FOR_HUMAN"   # HIL pause
+```
+
+#### NodeExecution Status
+
+```python
+class NodeExecutionStatus(str, Enum):
+    PENDING = "pending"                        # Not started
+    RUNNING = "running"                        # Currently executing
+    WAITING_INPUT = "waiting_input"            # HIL waiting for user
+    COMPLETED = "completed"                    # Successfully finished
+    FAILED = "failed"                          # Execution error
+    SKIPPED = "skipped"                        # Bypassed in flow
+    RETRYING = "retrying"                      # Retry in progress
+```
+
+## 5. System Interactions
+
+### 5.1 Internal Interactions
+
+#### Node Creation Workflow
+
+```
+User Request
+    ↓
+API Gateway: POST /api/v1/app/workflows
+    ↓
+Create Workflow with Nodes
+    ↓
+Validate Node Type/Subtype Combinations
+    ↓
+Load Node Specifications
+    ↓
+Apply Default Configurations
+    ↓
+Store in Database (Supabase)
+    ↓
+Return Workflow Definition
+```
+
+#### Workflow Execution Flow
+
+```
+Trigger Event
+    ↓
+Workflow Scheduler: Create WorkflowExecution
+    ↓
+Workflow Engine: Initialize Execution Context
+    ↓
+For Each Node in Sequence:
+    ├─ Create NodeExecution (status: pending)
+    ├─ Load Node Configuration
+    ├─ Get Input Data from Upstream Connections
+    ├─ Execute Node Logic
+    │   ├─ AI_AGENT: Load attached TOOL/MEMORY → Execute → Store results
+    │   ├─ HUMAN_IN_THE_LOOP: Pause execution → Wait for response
+    │   ├─ FLOW: Evaluate condition → Route via output_key
+    │   └─ Other: Execute action → Return result
+    ├─ Update NodeExecution (status: completed/failed)
+    └─ Route Output via Connections (using output_key)
+    ↓
+Update WorkflowExecution (status: SUCCESS/ERROR)
+    ↓
+Send WebSocket Events
+```
+
+### 5.2 Connection Output Routing
+
+Output keys determine data flow paths:
+
+```python
+# Example workflow with conditional routing
+nodes = [
+    {"id": "trigger_1", "type": "TRIGGER", "subtype": "MANUAL"},
+    {"id": "ai_1", "type": "AI_AGENT", "subtype": "OPENAI_CHATGPT"},
+    {"id": "if_1", "type": "FLOW", "subtype": "IF"},
+    {"id": "action_true", "type": "EXTERNAL_ACTION", "subtype": "SLACK"},
+    {"id": "action_false", "type": "EXTERNAL_ACTION", "subtype": "SLACK"}
+]
+
+connections = [
+    # Trigger to AI
+    {
+        "from_node": "trigger_1",
+        "to_node": "ai_1",
+        "output_key": "result"
+    },
+    # AI to IF
+    {
+        "from_node": "ai_1",
+        "to_node": "if_1",
+        "output_key": "result"
+    },
+    # IF true branch
+    {
+        "from_node": "if_1",
+        "to_node": "action_true",
+        "output_key": "true"  # Only follows if condition is true
+    },
+    # IF false branch
+    {
+        "from_node": "if_1",
+        "to_node": "action_false",
+        "output_key": "false"  # Only follows if condition is false
+    }
+]
+```
+
+## 6. Non-Functional Requirements
+
+### 6.1 Performance
+
+**Node Validation Performance:**
+- Specification lookup: O(1) via registry dictionary
+- Type validation: O(1) enum membership check
+- Configuration validation: O(n) where n = number of parameters
+
+**Execution Tracking Performance:**
+- Node execution updates: O(1) dictionary access
+- Execution sequence tracking: O(1) list append
+- Attached node lookup: O(1) dictionary access
+
+### 6.2 Scalability
+
+**Node Type Extensibility:**
+- New node types: Add enum value + specification
+- New subtypes: Add to VALID_SUBTYPES mapping
+- Custom configurations: Extend BaseNodeSpec
+
+**Workflow Complexity:**
+- Nodes per workflow: No hard limit (tested up to 100+)
+- Connections per workflow: No hard limit
+- Attached nodes per AI_AGENT: Recommended \< 10
+
+### 6.3 Reliability
+
+**Error Handling:**
+- Invalid node type/subtype: Validation error before workflow creation
+- Missing required configuration: Caught at node creation time
+- Execution errors: Captured in NodeError with retry logic
+- Attached node failures: Isolated from main AI execution
+
+**Data Integrity:**
+- Node ID uniqueness: Enforced by Pydantic validation
+- Connection validity: Validated against node existence
+- Type safety: Pydantic models prevent invalid data
+
+### 6.4 Testing & Observability
+
+#### Testing Strategy
+
+**Unit Tests:**
+- Node model validation (Pydantic schema tests)
+- Node specification instantiation
+- Connection output key routing
+- Attached nodes pattern validation
+
+**Integration Tests:**
+- Workflow creation with mixed node types
+- Execution tracking across multiple nodes
+- HIL pause/resume with execution state
+- AI_AGENT with attached TOOL/MEMORY nodes
+
+**Test Coverage Targets:**
+- Node models: \>= 90%
+- Execution tracking: \>= 85%
+- Node specifications: \>= 80%
+
+#### Observability
+
+**Key Metrics:**
+- Node execution duration by type/subtype
+- Configuration validation errors
+- Attached node execution count
+- Output key routing success rate
+
+**Logging Strategy:**
+- Node creation: INFO level with type/subtype
+- Execution start/end: INFO level with node_id
+- Configuration errors: ERROR level with validation details
+- Attached node executions: DEBUG level
+
+**Monitoring & Alerting:**
+- Alert on node validation failures \> 5% of workflows
+- Track execution duration percentiles (p50, p95, p99)
+- Monitor attached node execution failures
+- Dashboard: Node type distribution, execution success rate
+
+## 7. Technical Debt and Future Considerations
+
+### 7.1 Known Limitations
+
+1. **Configuration Schema Complexity**: Some node types have \>20 configuration parameters, making UI generation complex
+2. **Attached Nodes Isolation**: Attached node errors can fail the entire AI_AGENT execution
+3. **Output Key Naming**: No formal validation for custom output key names (beyond "result", "true", "false")
+4. **Node Name Constraints**: No spaces allowed, but no length limits enforced
+
+### 7.2 Areas for Improvement
+
+1. **Schema Simplification**: Group related configurations into sub-objects
+2. **Attached Node Resilience**: Allow AI execution to continue even if attached nodes fail
+3. **Output Key Registry**: Formal registry of valid output keys per node type
+4. **Node Name Validation**: Add length limits and additional character restrictions
+
+### 7.3 Planned Enhancements
+
+1. **Visual Node Builder**: UI component for graphical node configuration
+2. **Node Templates Library**: Pre-configured node instances for common use cases
+3. **Advanced Validation**: Cross-field validation (e.g., if model=X, then temperature \< Y)
+4. **Dynamic Schema Updates**: Hot-reload node specifications without redeployment
+
+### 7.4 Migration Paths
+
+**From Legacy Port-Based Routing:**
+- Update all connections to use output_key field
+- Remove InputPort/OutputPort models
+- Update UI to show output key selection
+
+**From Hardcoded AI Roles:**
+- Migrate to provider-based AI agents (OPENAI_CHATGPT, etc.)
+- Convert role-specific configs to system_prompt
+- Update workflow templates with new AI node structure
+
+## 8. Appendices
+
+### A. Glossary
+
+- **Node**: Basic building block of a workflow; represents a single operation
+- **Node Type**: One of 8 core categories (TRIGGER, AI_AGENT, etc.)
+- **Node Subtype**: Specific variant within a type (e.g., OPENAI_CHATGPT)
+- **Configuration**: Static parameters set at workflow design time
+- **Input Parameters**: Runtime data received from upstream nodes
+- **Output Parameters**: Runtime data sent to downstream nodes
+- **Output Key**: Identifier for a specific output port (e.g., "result", "true")
+- **Attached Nodes**: TOOL/MEMORY nodes linked to an AI_AGENT node
+- **Node Specification**: Schema definition for a node type/subtype
+- **Connection**: Directed edge between two nodes with optional data transformation
+- **WorkflowExecution**: Runtime instance tracking complete workflow execution
+- **NodeExecution**: Runtime instance tracking single node execution
+
+### B. References
+
+#### Internal Documentation
+- `/apps/backend/shared/models/workflow.py` - Node and Connection models
+- `/apps/backend/shared/models/execution_new.py` - Execution tracking models
+- `/apps/backend/shared/models/node_enums.py` - Node type system
+- `/apps/backend/shared/node_specs/base.py` - Node specification base classes
+- `/docs/tech-design/new_workflow_spec.md` - Complete workflow specification
+
+#### Node Specification Examples
+- `/apps/backend/shared/node_specs/AI_AGENT/OPENAI_CHATGPT.py` - OpenAI agent spec
+- `/apps/backend/shared/node_specs/TRIGGER/WEBHOOK.py` - Webhook trigger spec
+- `/apps/backend/shared/node_specs/FLOW/IF.py` - Conditional flow spec
+- `/apps/backend/shared/node_specs/HUMAN_IN_THE_LOOP/SLACK_INTERACTION.py` - HIL spec
+
+#### External Resources
+- Pydantic Documentation: https://docs.pydantic.dev/
+- JSON Schema Specification: https://json-schema.org/
+- Supabase PostgreSQL: https://supabase.com/docs/guides/database

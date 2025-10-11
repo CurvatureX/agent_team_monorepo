@@ -1,14 +1,28 @@
 # Human-in-the-Loop Node Data Formats Specification
 
-**Document Version**: 1.0
+**Document Version**: 1.1
 **Created**: 2025-01-15
+**Last Updated**: 2025-10-11
 **Author**: Claude Code
-**Status**: Specification
+**Status**: Updated to match current implementation
 **Related**: [HIL Node System Technical Design](./human-in-loop-node-system.md)
 
 ## 📋 Overview
 
 This document defines the standard input and output data formats for Human-in-the-Loop (HIL) nodes in the workflow engine. These standardized formats ensure consistent data exchange between HIL nodes and other workflow components, enabling seamless integration and reliable operation.
+
+**Version 1.1 Updates** (2025-10-11):
+- ✅ Updated AI classification to use **Gemini 1.5 Flash** (not Gemini 2.5 Flash Lite)
+- ✅ Changed timeout configuration from `timeout_hours` to `timeout_seconds` (60s-86400s range)
+- ✅ Updated timeout behavior from `continue_on_timeout` to `timeout_action` ("fail", "continue", "default_response")
+- ✅ Added detailed **7-phase workflow pause/resume cycle** documentation
+- ✅ Updated database schema with actual table structures (`hil_interactions`, `hil_responses`, `workflow_execution_pauses`)
+- ✅ Documented **8-factor AI classification analysis** with score thresholds (relevant \>= 0.7, filtered \<= 0.3, uncertain 0.3-0.7)
+- ✅ Added **heuristic fallback classification** when Gemini is unavailable
+- ✅ Updated channel configuration with actual SLACK_INTERACTION parameters (`channel`, `use_oauth`, `auto_thread`)
+- ✅ Added practical configuration example based on node specification
+- ✅ Updated all example timeout values to use seconds instead of hours
+- ✅ Clarified `HILResponseClassifierV2` implementation details
 
 ## 🎯 Design Principles
 
@@ -102,9 +116,9 @@ class HILInputData(BaseModel):
 
     # Workflow execution control
     workflow_context: Optional[Dict[str, Any]] = None
-    timeout_hours: int = 24                          # Timeout before workflow action
-    continue_on_timeout: bool = True                 # Whether to continue or fail on timeout
-    timeout_default_response: Optional[Dict[str, Any]] = None  # Default response for timeout
+    timeout_seconds: int = 3600                      # Timeout in seconds (default: 1 hour, min: 60s, max: 86400s/24h)
+    timeout_action: str = "fail"                     # Timeout action: "fail", "continue", "default_response"
+    timeout_default_response: Optional[Dict[str, Any]] = None  # Default response for timeout when timeout_action="default_response"
 
     # Configuration
     priority: HILPriority = HILPriority.NORMAL       # low, normal, high, critical
@@ -120,40 +134,105 @@ This data format specification integrates with the [HIL Node System Technical De
 
 ### Workflow Pause/Resume Cycle
 
-1. **Input Reception**: Previous node provides `HILInputData`
-2. **Workflow Pause**: HIL node executor pauses workflow execution
-3. **Channel Communication**: Send request through configured channel
-4. **Response Processing**: AI classifies incoming webhook responses
-5. **Workflow Resume**: Continue with `HILOutputData` result
+The HIL runner implements a complete workflow pause/resume cycle:
+
+1. **Input Reception & Validation**:
+   - Extract HIL configuration from node parameters
+   - Validate interaction type, channel type, timeout bounds (60s-86400s)
+   - Extract user context from trigger or execution context
+
+2. **Interaction Creation**:
+   - Create record in `hil_interactions` table with status='pending'
+   - Store complete request data (title, description, options, fields, etc.)
+   - Calculate `timeout_at` timestamp based on `timeout_seconds`
+   - Generate unique `interaction_id`
+
+3. **Workflow Pause Signal**:
+   - Return special pause signals: `_hil_wait=True`, `_hil_interaction_id`, `_hil_timeout_seconds`, `_hil_node_id`
+   - Workflow engine detects pause signal and persists execution state
+   - Create record in `workflow_execution_pauses` table with status='active'
+   - Workflow execution halts at HIL node
+
+4. **Channel Communication**:
+   - Send initial interaction request via configured channel (Slack, email, etc.)
+   - Use OAuth token for Slack authentication
+   - Render message template with workflow context variables
+   - Post message to target channel/user
+
+5. **Response Processing**:
+   - Receive incoming webhook response
+   - AI classification (Gemini 1.5 Flash) determines relevance (0.0-1.0 score)
+   - Store response in `hil_responses` table with classification results
+   - If relevant (\>= 0.7), update `hil_interactions` status to 'responded'
+   - Store parsed response data in `response_data` field
+
+6. **Workflow Resume**:
+   - Update `workflow_execution_pauses` status to 'resumed'
+   - Workflow engine restores execution state
+   - HIL node outputs response data through appropriate port (approved/rejected/completed)
+   - Workflow continues to next connected nodes
+
+7. **Timeout Handling**:
+   - Background service monitors `hil_interactions` for expired timeouts
+   - Warning notification sent 15 minutes before timeout (if `warning_sent=false`)
+   - On timeout: Execute `timeout_action` ("fail", "continue", "default_response")
+   - Update interaction status to 'timeout'
+   - Resume workflow with timeout result or error
 
 ### Database Integration
 
-- **`human_interactions` table** stores the interaction state
-- **`hil_responses` table** captures all incoming HIL responses
-- **`workflow_execution_pauses` table** tracks workflow pause state
+The HIL system uses three core database tables:
+
+**`hil_interactions` table**:
+- Stores interaction state, request data, response data
+- Fields: id, workflow_id, execution_id, node_id, user_id, status, interaction_type, channel_type
+- Status values: 'pending', 'responded', 'timeout', 'cancelled'
+- Timeout management: timeout_seconds, timeout_at, warning_sent
+- Response tracking: request_data (JSONB), response_data (JSONB), responded_at
+
+**`hil_responses` table**:
+- Captures all incoming webhook responses with AI classification
+- Fields: raw_payload (JSONB), source_channel, ai_relevance_score, ai_reasoning, ai_classification
+- Links to matched interaction: matched_interaction_id
+- Processing status: processed, processed_at, human_verified
+- Classification values: 'relevant', 'filtered', 'uncertain'
+
+**`workflow_execution_pauses` table**:
+- Tracks workflow pause/resume lifecycle
+- Fields: execution_id, node_id, pause_reason, pause_data (JSONB), resume_data (JSONB)
+- Status values: 'active', 'resumed', 'cancelled'
+- Links to HIL: hil_interaction_id (references hil_interactions)
 
 ### AI Response Classification
 
-The HIL system uses Gemini 2.5 Flash Lite to filter and classify incoming webhook responses:
+The HIL system uses Gemini 1.5 Flash to filter and classify incoming webhook responses:
 
 ```python
-class HILResponseClassifier:
+class HILResponseClassifierV2:
     """AI-powered response classification for HIL interactions using Gemini."""
 
-    def __init__(self):
-        self.model = GoogleGeminiModel.GEMINI_2_5_FLASH_LITE
+    def __init__(self, relevance_threshold: float = 0.7):
+        """Initialize classifier with configurable relevance threshold."""
+        self.relevance_threshold = relevance_threshold
+        self.gemini_client = GeminiProvider(gemini_api_key)
 
-    async def classify_response(self,
-                              interaction: HumanInteraction,
-                              webhook_payload: Dict[str, Any]) -> ClassificationResult:
+    async def classify_response_relevance(self,
+                                         interaction: Dict[str, Any],
+                                         webhook_payload: Dict[str, Any]) -> ClassificationResult:
         """
-        Uses Gemini 2.5 Flash Lite to determine if webhook response is relevant to the HIL interaction.
-        Returns confidence score (0.0-1.0) and reasoning.
+        Uses Gemini 1.5 Flash to determine if webhook response is relevant to the HIL interaction.
+        Returns confidence score (0.0-1.0), reasoning, and classification.
 
-        Benefits of Gemini 2.5 Flash Lite:
-        - Cost-effective: $0.10 input, $0.40 output per MTok
+        Classification Result:
+        - relevance_score: 0.0-1.0 confidence score
+        - reasoning: AI explanation of decision
+        - is_relevant: True if score >= threshold (default 0.7)
+        - classification: 'relevant', 'filtered', or 'uncertain'
+
+        Gemini 1.5 Flash Benefits:
         - Fast response times for webhook processing
-        - Built for scale and high-volume operations
+        - Cost-effective for high-volume operations
+        - Structured JSON output for reliable parsing
         """
 ```
 
@@ -162,9 +241,10 @@ class HILResponseClassifier:
 The updated HIL input format provides comprehensive control over workflow execution:
 
 #### Timeout Behavior Configuration
-- **`continue_on_timeout: True`** - Workflow continues with default response
-- **`continue_on_timeout: False`** - Workflow fails with timeout error
-- **`timeout_default_response`** - Specific response data to use when timeout occurs
+- **`timeout_action: "fail"`** - Workflow fails with timeout error (default)
+- **`timeout_action: "continue"`** - Workflow continues execution after timeout
+- **`timeout_action: "default_response"`** - Use `timeout_default_response` data when timeout occurs
+- **`timeout_default_response`** - Specific response data to use when timeout_action is "default_response"
 
 #### Workflow Context Preservation
 - **`workflow_context`** - Passes data from previous nodes to maintain execution state
@@ -174,8 +254,8 @@ The updated HIL input format provides comprehensive control over workflow execut
 ```json
 {
   "interaction_type": "approval",
-  "timeout_hours": 12,
-  "continue_on_timeout": true,
+  "timeout_seconds": 43200,
+  "timeout_action": "default_response",
   "timeout_default_response": {
     "approved": false,
     "approval_option": "Auto-Rejected",
@@ -228,8 +308,8 @@ class HILApprovalRequest(BaseModel):
     "previous_node_output": "Budget analysis completed",
     "campaign_id": "camp_2025_q1_001"
   },
-  "timeout_hours": 48,
-  "continue_on_timeout": false,
+  "timeout_seconds": 172800,
+  "timeout_action": "fail",
   "priority": "high",
   "correlation_id": "approval_req_12345"
 }
@@ -290,7 +370,7 @@ class HILInputField(BaseModel):
       }
     ]
   },
-  "timeout_hours": 72
+  "timeout_seconds": 259200
 }
 ```
 
@@ -355,8 +435,10 @@ class HILChannelConfig(BaseModel):
     channel_type: HILChannelType             # slack, email, app, webhook, etc.
 
     # Slack configuration
-    slack_channel: Optional[str] = None      # Channel ID or name
-    slack_user_ids: Optional[List[str]] = None  # Specific users to notify
+    channel: Optional[str] = None            # Slack channel ID or name (#channel, @user, or user_id)
+    use_oauth: bool = True                   # Use OAuth authentication (recommended)
+    bot_token: Optional[str] = None          # Slack Bot Token (xoxb-...) if not using OAuth
+    auto_thread: bool = True                 # Automatically collect responses in thread
 
     # Email configuration
     email_recipients: Optional[List[str]] = None
@@ -368,6 +450,38 @@ class HILChannelConfig(BaseModel):
     # Webhook configuration
     webhook_url: Optional[str] = None
     webhook_headers: Optional[Dict[str, str]] = None
+```
+
+**Practical Configuration Example (Slack Interaction)**:
+
+Based on the actual SLACK_INTERACTION node specification:
+
+```json
+{
+  "type": "HUMAN_IN_THE_LOOP",
+  "subtype": "SLACK_INTERACTION",
+  "configurations": {
+    "channel": "#approvals",
+    "use_oauth": true,
+    "clarification_question_template": "Please review: {{content}}\n\nRespond with 'yes' to approve or 'no' to reject.",
+    "timeout_minutes": 60,
+    "auto_thread": true,
+    "ai_analysis_model": "gpt-5-mini"
+  },
+  "input_params": {
+    "content": {
+      "type": "deployment_request",
+      "service": "api-gateway",
+      "version": "v2.1.0"
+    },
+    "user_mention": "@devops_team"
+  },
+  "output_params": {
+    "ai_classification": "confirmed|rejected|unrelated|timeout",
+    "user_response": "actual text response from human",
+    "content": "pass-through from input_params"
+  }
+}
 ```
 
 ## 📤 Output Data Format
@@ -445,7 +559,7 @@ class HILTimeoutData(BaseModel):
     interaction_id: str                      # Interaction identifier
     interaction_type: HILInteractionType    # Type of interaction
     timeout: bool = True                     # Timeout indicator
-    timeout_hours: float                     # Hours waited before timeout
+    timeout_hours: float                     # Hours waited before timeout (computed from timeout_seconds)
 
     # Timing
     requested_at: datetime                   # When requested
@@ -578,11 +692,21 @@ def determine_output_port(interaction_type: HILInteractionType,
 
 When HIL node receives a webhook response:
 
-1. **AI Classification**: Gemini 2.5 Flash Lite analyzes relevance (0.0-1.0 score)
-2. **Routing Decision**:
-   - **Score < 0.7**: Route to `filtered` port → Handle as unrelated message
-   - **Score ≥ 0.7**: Process as valid HIL response → Route to `approved`/`rejected`
-3. **Three Simple Outputs**: `approved`, `rejected`, or `filtered` - no complexity
+1. **AI Classification**: Gemini 1.5 Flash analyzes relevance (0.0-1.0 score)
+2. **8-Factor Analysis**:
+   - Content Relevance: Does response relate to interaction title/message?
+   - Expected Response Pattern: Matches approval/rejection/input patterns?
+   - Channel Consistency: From expected communication channel?
+   - User Context: Appropriate responder for this interaction?
+   - Timing: Reasonable timing for human interaction?
+   - Response Quality: Meaningful human response vs automated/bot?
+   - Thread Context: Properly threaded or associated with original request?
+   - Action Keywords: Contains approval keywords (approve, yes, reject, no)?
+3. **Routing Decision**:
+   - **Score \>= 0.7** (relevant): Process as valid HIL response → Route to `approved`/`rejected`/`completed`
+   - **Score \<= 0.3** (filtered): Route to `filtered` port → Handle as unrelated message
+   - **0.3 \< Score \< 0.7** (uncertain): Log only, may require human verification
+4. **Fallback**: If Gemini unavailable, heuristic classification based on channel matching, user context, timing, and content relevance
 
 ## 🔗 Integration Examples
 
@@ -672,7 +796,7 @@ When HIL node receives a webhook response:
             "title": "Deploy to Production?",
             "description": "Build {{build_app.build_id}} is ready for production deployment"
           },
-          "timeout_hours": 4
+          "timeout_seconds": 14400
         }
       },
       {
@@ -909,7 +1033,7 @@ async def test_end_to_end_approval_flow():
             title="Test Approval",
             description="End-to-end test approval"
         ),
-        timeout_hours=1
+        timeout_seconds=3600
     )
 
     # 2. Execute HIL node
