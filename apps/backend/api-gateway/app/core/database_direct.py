@@ -413,7 +413,11 @@ class DirectPostgreSQLManager:
             raise
 
     async def get_user_oauth_tokens_fast(self, user_id: str) -> List[Dict[str, Any]]:
-        """Fetch all active OAuth tokens for a user with direct SQL."""
+        """Fetch all active OAuth tokens for a user with direct SQL.
+
+        Ensures JSON fields (e.g., credential_data) are returned as Python dicts
+        to match Supabase REST client behavior and avoid downstream type issues.
+        """
         if not self.pool:
             raise Exception("Database pool not initialized")
 
@@ -425,7 +429,21 @@ class DirectPostgreSQLManager:
                     WHERE user_id = $1 AND is_active = TRUE
                 """
                 rows = await conn.fetch(query, user_id)
-                return [dict(r) for r in rows]
+
+                # Normalize JSON fields from text to dict for compatibility
+                import json as _json
+
+                result: List[Dict[str, Any]] = []
+                for r in rows:
+                    rec = dict(r)
+                    cred = rec.get("credential_data")
+                    if isinstance(cred, str):
+                        try:
+                            rec["credential_data"] = _json.loads(cred) or {}
+                        except Exception:
+                            rec["credential_data"] = {}
+                    result.append(rec)
+                return result
         except Exception as e:
             logger.error(f"❌ Fast user OAuth tokens fetch failed: {e}")
             raise

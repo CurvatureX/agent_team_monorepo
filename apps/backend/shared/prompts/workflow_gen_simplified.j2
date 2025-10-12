@@ -173,10 +173,63 @@ You are creating a new workflow based on an existing one.
 }
 ```
 
-## AI Agent Configuration
+## AI Agent Configuration - CRITICAL JSON MODE REQUIREMENTS
 - Use `configurations.model` from MCP options
 - Put system prompt in `configurations.system_prompt`
-- When connecting to action nodes, specify required output format in system prompt
+
+**MANDATORY JSON OUTPUT FORMAT:**
+When an AI_AGENT node connects to ANY other node (EXTERNAL_ACTION, ACTION, FLOW, etc.), the system_prompt MUST include these EXACT requirements:
+
+```
+CRITICAL OUTPUT REQUIREMENT:
+You MUST respond with ONLY a valid JSON object. No explanations, no markdown, no text before or after.
+
+Your JSON response must contain these EXACT fields:
+{
+  "field1": "value1",  // Replace with actual required fields from downstream node
+  "field2": "value2"   // Use the exact field names expected by the connected node
+}
+
+DO NOT include any text outside the JSON object. The response will be parsed as JSON and any non-JSON content will cause workflow failure.
+```
+
+**Field Mapping Rules - CRITICAL DISTINCTION:**
+
+🚨 **CONFIGURATIONS vs INPUT_PARAMS:**
+- **configurations**: Node-level settings (API tokens, database IDs, timeouts, retry settings)
+  - These are SET when configuring the node
+  - AI Agents should NEVER generate these
+  - Examples: `notion_token`, `operation_type`, `database_id`, `timeout`, `retry_attempts`
+
+- **input_params**: Runtime data that flows between nodes
+  - This is WHAT the AI should generate in its JSON response
+  - These fields receive data from previous nodes
+  - Examples: `instruction`, `context`, `message`, `content`, `user_input`
+
+**AI Agent Output Rules:**
+1. Query MCP to get the downstream node's `input_params` (NOT configurations)
+2. The AI Agent's JSON output should ONLY contain fields matching `input_params`
+3. NEVER include configuration fields in the AI's JSON output
+4. Use EXACT field names from the downstream node's `input_params`
+
+**Example - Notion External Action:**
+- ❌ WRONG: Include `notion_token`, `operation_type`, `database_id` (these are CONFIGURATIONS)
+- ✅ CORRECT: Only include `instruction`, `context` (these are INPUT_PARAMS)
+
+Correct system_prompt for AI Agent → Notion:
+```
+Your response must be a JSON object with these exact fields (INPUT_PARAMS ONLY):
+{
+  "instruction": "natural language instruction for Notion operation",
+  "context": {
+    "database_id": "...",  // This goes in context data, not as a top-level config
+    "task_name": "...",
+    "status": "..."
+  }
+}
+
+DO NOT INCLUDE: notion_token, operation_type, timeout, retry_attempts (these are node configurations)
+```
 
 
 ## Final Checklist

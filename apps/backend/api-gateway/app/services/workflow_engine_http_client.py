@@ -281,6 +281,18 @@ class WorkflowEngineHTTPClient:
                 response = await client.get(f"{self.base_url}{path}", headers=headers)
                 response.raise_for_status()
                 data = response.json()
+
+                # Debug: Check the type of data returned
+                log_info(
+                    f"🐛 DEBUG HTTP Client: data type = {type(data)}, is_dict = {isinstance(data, dict)}"
+                )
+                if isinstance(data, str):
+                    log_info(
+                        f"🐛 DEBUG HTTP Client: data is a string, length = {len(data)}, first 100 chars = {data[:100]}"
+                    )
+                elif isinstance(data, dict):
+                    log_info(f"🐛 DEBUG HTTP Client: data keys = {list(data.keys())}")
+
                 log_info(f"✅ Retrieved workflow: {workflow_id}")
                 return data
 

@@ -508,22 +508,78 @@ Next node's purpose: {next_node.get('name', 'Unknown')}
 """
 
             if node_spec:
-                # Add spec details if available
-                parameters = node_spec.get("parameters", [])
-                if parameters:
-                    enhancement_prompt += "Next node expects these parameters:\n"
-                    for param in parameters[:10]:  # Limit to first 10 params
-                        enhancement_prompt += f"- {param.get('name')} ({param.get('type')}): {param.get('description', 'N/A')}\n"
+                # Add spec details if available - but ONLY input_params, not configurations
+                input_params = node_spec.get("input_params", {})
+                if input_params:
+                    enhancement_prompt += (
+                        "Next node expects these INPUT PARAMETERS (runtime data):\n"
+                    )
+                    for param_name, param_info in list(input_params.items())[:10]:  # Limit to 10
+                        param_type = (
+                            param_info.get("type", "string")
+                            if isinstance(param_info, dict)
+                            else "string"
+                        )
+                        param_desc = (
+                            param_info.get("description", "N/A")
+                            if isinstance(param_info, dict)
+                            else "N/A"
+                        )
+                        is_required = (
+                            param_info.get("required", False)
+                            if isinstance(param_info, dict)
+                            else False
+                        )
+                        req_str = " (REQUIRED)" if is_required else " (optional)"
+                        enhancement_prompt += (
+                            f"- {param_name} ({param_type}){req_str}: {param_desc}\n"
+                        )
+                elif node_spec.get("parameters"):
+                    # Fallback to parameters but filter out configurations
+                    enhancement_prompt += (
+                        "Next node expects these INPUT PARAMETERS (runtime data):\n"
+                    )
+                    parameters = node_spec.get("parameters", [])
+                    for param in parameters[:10]:
+                        param_name = param.get("name", "")
+                        # Skip configuration-like parameters
+                        is_config = any(
+                            [
+                                param_name.endswith("_token"),
+                                param_name.endswith("_key"),
+                                param_name.endswith("_secret"),
+                                param_name.endswith("_config"),
+                                param_name
+                                in ["timeout", "retry_attempts", "enabled", "operation_type"],
+                                param.get("sensitive", False),
+                            ]
+                        )
+                        if not is_config:
+                            enhancement_prompt += f"- {param.get('name')} ({param.get('type')}): {param.get('description', 'N/A')}\n"
 
             enhancement_prompt += """
 CRITICAL: The AI Agent should focus ONLY on its core task. Do NOT generate configuration data for downstream nodes - that's handled by conversion functions.
 
 Please enhance the system prompt to:
 1. Keep the core functionality (summarization, analysis, etc.)
-2. Use simple, clean JSON output with only the essential fields
-3. Focus on the AI's primary task, not downstream node requirements
-4. For summarization tasks, output should contain: summary, original_message, sender, timestamp
+2. ENFORCE STRICT JSON MODE OUTPUT:
+   - Add: "Return ONLY valid JSON. No explanations, no markdown, no code fences."
+   - Add: "The output must start with `{` and end with `}`."
+3. Specify EXACT field names that the downstream node expects (from parameters above)
+4. Focus on the AI's primary task, not downstream node requirements
 5. Avoid generating technical configuration fields (tokens, operation_types, etc.)
+
+MANDATORY JSON OUTPUT FORMAT SECTION to add:
+```
+OUTPUT FORMAT REQUIREMENT:
+Return ONLY valid JSON. No explanations, no markdown, no code fences.
+The output must start with `{` and end with `}`.
+
+Required fields:
+- field1 (type): description
+- field2 (type): description
+[... list all required fields from downstream node's input_params ...]
+```
 
 Enhanced prompt should be concise and focused on the AI's actual job.
 
@@ -643,6 +699,10 @@ Return ONLY the enhanced system prompt, no explanations."""
 
         # Fallback: Generic prompt for unknown nodes
         return """
+OUTPUT FORMAT REQUIREMENT:
+Return ONLY valid JSON. No explanations, no markdown, no code fences.
+The output must start with `{` and end with `}`.
+
 Your output should be structured data that the next node can process.
 Check the node's expected input format and structure your response accordingly.
 """
@@ -650,43 +710,86 @@ Check the node's expected input format and structure your response accordingly.
     def _add_format_requirements_to_prompt(
         self, current_prompt: str, format_prompt: str, next_node: dict
     ) -> str:
-        """Add format requirements to the existing prompt."""
+        """Add format requirements to the existing prompt.
+
+        ALWAYS adds format requirements to ensure strict JSON mode compliance,
+        even if the prompt already mentions JSON. This ensures the exact field
+        names and structure are specified.
+        """
         if not format_prompt:
             return current_prompt
 
-        # Add simple format requirements
+        # ALWAYS add format requirements for connected AI agents
+        # Even if the prompt mentions "json", it might not specify the exact fields
         enhanced_prompt = current_prompt
 
-        # Check if prompt already has format requirements
-        if "json" not in current_prompt.lower():
-            enhanced_prompt += f"\n\n{format_prompt}"
+        # Add a separator if the prompt doesn't end with newline
+        if not current_prompt.endswith("\n"):
+            enhanced_prompt += "\n"
+
+        enhanced_prompt += f"\n{format_prompt}"
 
         return enhanced_prompt
 
     def _generate_format_from_mcp_spec(
         self, node_spec: dict, node_type: str, node_subtype: str
     ) -> str:
-        """Generate JSON format prompt with exact field names from downstream node's input_params."""
+        """Generate JSON format prompt with exact field names from downstream node's input_params.
+
+        CRITICAL: Only extracts input_params, NOT configurations. Configurations are node-level
+        settings (like API tokens, database IDs) that should NOT be generated by AI agents.
+        Input params are runtime data that flows between nodes.
+        """
 
         # Extract input parameters from the node spec
         input_params = {}
 
-        # Try multiple paths to get input parameters
-        if "input_params_schema" in node_spec and isinstance(
+        # PRIORITY 1: Try input_params dict (the actual field used in node specs)
+        if "input_params" in node_spec and isinstance(node_spec["input_params"], dict):
+            input_params = node_spec["input_params"]
+            logger.debug(f"Using input_params for {node_type}:{node_subtype}")
+        # PRIORITY 2: Try input_params_schema (alternative format)
+        elif "input_params_schema" in node_spec and isinstance(
             node_spec["input_params_schema"], dict
         ):
             input_params = node_spec["input_params_schema"]
-        elif "input_params" in node_spec and isinstance(node_spec["input_params"], dict):
-            input_params = node_spec["input_params"]
+            logger.debug(f"Using input_params_schema for {node_type}:{node_subtype}")
+        # PRIORITY 3: Try to extract from parameters list, but ONLY if they're marked as input params
         elif "parameters" in node_spec and isinstance(node_spec["parameters"], list):
-            # Convert parameters list to dict format
+            # Filter parameters to ONLY include input params, exclude configurations
+            logger.debug(
+                f"Attempting to extract input_params from parameters list for {node_type}:{node_subtype}"
+            )
             for param in node_spec["parameters"]:
                 if isinstance(param, dict) and param.get("name"):
-                    input_params[param["name"]] = {
-                        "type": param.get("type", "string"),
-                        "description": param.get("description", ""),
-                        "required": param.get("required", False),
-                    }
+                    param_name = param.get("name")
+                    # CRITICAL: Skip configuration-like parameters
+                    # Common config field patterns: *_token, *_key, *_id (when in configs), *_config, timeout, retry, enabled
+                    is_likely_config = any(
+                        [
+                            param_name.endswith("_token"),
+                            param_name.endswith("_key"),
+                            param_name.endswith("_secret"),
+                            param_name.endswith("_config"),
+                            param_name
+                            in ["timeout", "retry_attempts", "enabled", "operation_type"],
+                            # Only skip *_id if it's clearly a configuration (not data)
+                            # Keep database_id/page_id if they're in context data, but skip if direct configs
+                            param.get("sensitive", False),  # Skip sensitive fields
+                        ]
+                    )
+
+                    if not is_likely_config:
+                        input_params[param_name] = {
+                            "type": param.get("type", "string"),
+                            "description": param.get("description", ""),
+                            "required": param.get("required", False),
+                        }
+                        logger.debug(f"Including parameter '{param_name}' as input_param")
+                    else:
+                        logger.debug(
+                            f"Skipping configuration parameter '{param_name}' (not an input_param)"
+                        )
 
         # If we found input params, generate specific JSON schema
         if input_params:
@@ -718,15 +821,44 @@ Check the node's expected input format and structure your response accordingly.
 
             if json_fields:
                 json_structure = ",\n".join(json_fields)
-                return f"""Your response must be a JSON object with these EXACT field names:
+                return f"""
+🚨 CRITICAL OUTPUT REQUIREMENT - JSON MODE ONLY 🚨
+
+You MUST respond with ONLY a valid JSON object. No explanations, no markdown code blocks, no text before or after the JSON.
+
+Your JSON response must contain these EXACT field names (INPUT DATA ONLY):
 {{
 {json_structure}
 }}
 
-CRITICAL: Use the exact field names shown above. The downstream node '{node_type}:{node_subtype}' expects these specific fields."""
+STRICT REQUIREMENTS:
+1. Response must be ONLY JSON - no text, no explanations, no markdown
+2. Use the EXACT field names shown above (case-sensitive)
+3. All required fields must be present in your response
+4. The downstream node '{node_type}:{node_subtype}' expects these specific INPUT FIELDS
+5. Any non-JSON content will cause workflow execution to FAIL
+
+IMPORTANT - DO NOT GENERATE CONFIGURATION FIELDS:
+❌ Do NOT include: API tokens, API keys, secrets, database_id, operation_type, timeout, retry_attempts, enabled
+❌ These are node CONFIGURATIONS managed externally, NOT runtime data
+✅ ONLY include: The runtime INPUT DATA fields listed above
+
+CORRECT Example:
+{{"instruction": "...", "context": {{...}}}}
+
+INCORRECT Examples:
+❌ Here's the JSON: {{"instruction": "..."}}  (has extra text)
+❌ ```json\n{{"instruction": "..."}}\n```  (has markdown code block)
+❌ {{"notion_token": "...", "instruction": "..."}}  (includes config fields)
+❌ {{"wrong_field": "value"}}  (uses wrong field names)"""
 
         # Fallback for nodes without clear input_params
-        return """Your response must be a JSON object. Structure your output based on the task requirements."""
+        return """
+OUTPUT FORMAT REQUIREMENT:
+Return ONLY valid JSON. No explanations, no markdown, no code fences.
+The output must start with `{` and end with `}`.
+
+Structure your JSON output based on the task requirements and what makes sense for the downstream node."""
 
     def _get_example_for_param_type(self, param_type: str, param_name: str) -> str:
         """Generate an example value for a parameter based on its type."""

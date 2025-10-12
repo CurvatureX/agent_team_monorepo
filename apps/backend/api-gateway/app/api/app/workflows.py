@@ -278,7 +278,33 @@ def _is_missing_config_value(value: Any) -> bool:
 async def _compute_workflow_configuration_status(
     workflow: Dict[str, Any], user_id: str
 ) -> Dict[str, Any]:
+    import json as _json
+
+    # Defensive: Parse workflow if it's a string
+    if isinstance(workflow, str):
+        try:
+            workflow = _json.loads(workflow)
+        except Exception as e:
+            logger.error(f"❌ workflow is a string but not valid JSON: {e}")
+            return {
+                "is_configured": False,
+                "checked_at": datetime.utcnow().isoformat() + "Z",
+                "nodes": [],
+            }
+
+    # Defensive: Parse nested workflow["workflow_data"] if it's a string
+    if "workflow_data" in workflow and isinstance(workflow["workflow_data"], str):
+        try:
+            workflow["workflow_data"] = _json.loads(workflow["workflow_data"])
+        except Exception as e:
+            logger.warning(f"⚠️ workflow['workflow_data'] is a string but not valid JSON: {e}")
+
     nodes = workflow.get("nodes") or workflow.get("workflow_data", {}).get("nodes", [])
+    if isinstance(nodes, str):
+        try:
+            nodes = _json.loads(nodes)
+        except Exception:
+            nodes = []
 
     oauth_tokens = await _fetch_oauth_tokens_with_retry(user_id)
     provider_tokens: Dict[str, List[Dict[str, Any]]] = {}
@@ -293,12 +319,27 @@ async def _compute_workflow_configuration_status(
     node_statuses: List[Dict[str, Any]] = []
 
     for node in nodes:
+        if isinstance(node, str):
+            try:
+                node = _json.loads(node)
+            except Exception:
+                # Skip malformed node entries
+                continue
+        if not isinstance(node, dict):
+            continue
         node_type = node.get("type") or node.get("node_type")
         node_subtype = node.get("subtype") or node.get("node_subtype")
         if not node_type or not node_subtype:
             continue
 
-        configurations = node.get("configurations") or {}
+        cfg = node.get("configurations")
+        if isinstance(cfg, str):
+            try:
+                configurations = _json.loads(cfg) or {}
+            except Exception:
+                configurations = {}
+        else:
+            configurations = cfg or {}
 
         requirement = EXTERNAL_NODE_REQUIREMENTS.get((node_type, node_subtype))
         if requirement is None:
@@ -866,6 +907,23 @@ async def _inject_credentials_into_configurations(
     Returns:
         Tuple[Dict[str, Any], bool]: (updated_workflow_data, credentials_changed)
     """
+    import json as _json
+
+    # Defensive: Parse workflow_data if it's a string
+    if isinstance(workflow_data, str):
+        try:
+            workflow_data = _json.loads(workflow_data)
+        except Exception as e:
+            logger.error(f"❌ workflow_data is a string but not valid JSON: {e}")
+            return workflow_data, False
+
+    # Defensive: Parse nested workflow_data["workflow_data"] if it's a string
+    if "workflow_data" in workflow_data and isinstance(workflow_data["workflow_data"], str):
+        try:
+            workflow_data["workflow_data"] = _json.loads(workflow_data["workflow_data"])
+        except Exception as e:
+            logger.warning(f"⚠️ workflow_data['workflow_data'] is a string but not valid JSON: {e}")
+
     # Build provider -> token mapping
     provider_tokens = {}
     for token_record in oauth_tokens:
@@ -881,6 +939,11 @@ async def _inject_credentials_into_configurations(
 
     # Get nodes from workflow_data
     nodes = workflow_data.get("nodes") or workflow_data.get("workflow_data", {}).get("nodes", [])
+    if isinstance(nodes, str):
+        try:
+            nodes = _json.loads(nodes)
+        except Exception:
+            nodes = []
     if not nodes:
         return workflow_data, False
 
@@ -888,12 +951,26 @@ async def _inject_credentials_into_configurations(
 
     # Process each node
     for node in nodes:
+        if isinstance(node, str):
+            try:
+                node = _json.loads(node)
+            except Exception:
+                # Skip malformed node entries
+                continue
+        if not isinstance(node, dict):
+            continue
         node_type = node.get("type") or node.get("node_type")
         node_subtype = node.get("subtype") or node.get("node_subtype")
 
         # Initialize configurations if not present
         if "configurations" not in node:
             node["configurations"] = {}
+        # Normalize stringified configurations
+        if isinstance(node["configurations"], str):
+            try:
+                node["configurations"] = _json.loads(node["configurations"]) or {}
+            except Exception:
+                node["configurations"] = {}
 
         configurations = node["configurations"]
 
@@ -1062,19 +1139,128 @@ async def get_workflow(workflow_id: str, deps: AuthenticatedDeps = Depends()):
 
         # Get workflow via HTTP with JWT token for RLS
         result = await http_client.get_workflow(workflow_id, deps.access_token)
+
+        # Debug logging to diagnose the issue
+        try:
+            logger.info(
+                f"🐛 DEBUG: Result type: {type(result)}, Result keys: {result.keys() if isinstance(result, dict) else 'N/A'}"
+            )
+        except Exception:
+            pass
+
+        # Normalize possibly stringified JSON from the engine/gateway boundary
+        if isinstance(result, str):
+            import json
+
+            logger.warning("⚠️ Result is a string, attempting to parse as JSON")
+            try:
+                result = json.loads(result)
+            except Exception:
+                logger.error("❌ Failed to parse engine result JSON string")
+                raise HTTPException(
+                    status_code=500, detail="Invalid response format from workflow engine"
+                )
+
+        if not isinstance(result, dict):
+            logger.error(f"❌ Result is not a dict: {type(result)}")
+            raise HTTPException(
+                status_code=500, detail="Invalid response format from workflow engine"
+            )
+
         if not result.get("found", False) or not result.get("workflow"):
             raise NotFoundError("Workflow")
+
+        # Normalize workflow payload shapes to avoid treating strings like dicts
+        workflow_data = result["workflow"]
+        import json as _json
+
+        # Some backends may double-encode the workflow payload
+        if isinstance(workflow_data, str):
+            try:
+                workflow_data = _json.loads(workflow_data)
+            except Exception:
+                logger.error("❌ Workflow payload is a string but not valid JSON; rejecting")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Invalid workflow payload format from workflow engine",
+                )
+
+        # Ensure nodes list is in a normalized structure
+        nodes = []
+        raw_nodes = None
+        if isinstance(workflow_data, dict):
+            raw_nodes = workflow_data.get("nodes")
+            if raw_nodes is None and isinstance(workflow_data.get("workflow_data"), dict):
+                raw_nodes = workflow_data["workflow_data"].get("nodes")
+
+        # If nodes were delivered as a JSON string, parse them
+        if isinstance(raw_nodes, str):
+            try:
+                raw_nodes = _json.loads(raw_nodes)
+            except Exception:
+                logger.warning("⚠️ Nodes are string but not JSON; defaulting to empty list")
+                raw_nodes = []
+
+        if isinstance(raw_nodes, list):
+            for nd in raw_nodes:
+                # Coerce node to dict
+                if isinstance(nd, str):
+                    try:
+                        nd = _json.loads(nd)
+                    except Exception:
+                        # Skip malformed node
+                        continue
+
+                if not isinstance(nd, dict):
+                    continue
+
+                # Ensure configurations is a dict (not a string)
+                cfg = nd.get("configurations")
+                if isinstance(cfg, str):
+                    try:
+                        nd["configurations"] = _json.loads(cfg)
+                    except Exception:
+                        nd["configurations"] = {}
+                elif cfg is None:
+                    nd["configurations"] = {}
+
+                nodes.append(nd)
+
+            # Write normalized nodes back
+            if "nodes" in workflow_data:
+                workflow_data["nodes"] = nodes
+            elif "workflow_data" in workflow_data and isinstance(
+                workflow_data["workflow_data"], dict
+            ):
+                workflow_data["workflow_data"]["nodes"] = nodes
+
+        # Store normalized workflow back into result for downstream flow
+        result["workflow"] = workflow_data
 
         logger.info(f"✅ Workflow retrieved: {workflow_id}")
 
         # Fetch OAuth tokens
         oauth_tokens = await _fetch_oauth_tokens_with_retry(deps.current_user.sub)
+        try:
+            sample = oauth_tokens[0] if isinstance(oauth_tokens, list) and oauth_tokens else None
+            sample_keys = list(sample.keys()) if isinstance(sample, dict) else None
+            logger.info(
+                f"🐛 DEBUG: OAuth tokens type={type(oauth_tokens)}, count={len(oauth_tokens) if isinstance(oauth_tokens, list) else 'N/A'}, sample_type={type(sample)}, sample_keys={sample_keys}"
+            )
+        except Exception:
+            pass
 
         # Inject credentials and check if they changed
         workflow_data = result["workflow"]
-        updated_workflow, credentials_changed = await _inject_credentials_into_configurations(
-            workflow_data, oauth_tokens
-        )
+        try:
+            updated_workflow, credentials_changed = await _inject_credentials_into_configurations(
+                workflow_data, oauth_tokens
+            )
+        except Exception as ex:
+            logger.error(
+                f"❌ Credential injection failed: {type(ex).__name__}: {ex}",
+            )
+            raise
 
         # Only update database if credentials actually changed
         if credentials_changed:
@@ -1098,14 +1284,30 @@ async def get_workflow(workflow_id: str, deps: AuthenticatedDeps = Depends()):
 
                 # Refetch to get updated version
                 result = await http_client.get_workflow(workflow_id, deps.access_token)
+
+                # Apply same defensive parsing for refetched workflow
+                if (
+                    not isinstance(result, dict)
+                    or not result.get("found", False)
+                    or not result.get("workflow")
+                ):
+                    logger.error(f"❌ Invalid result after refetch for workflow {workflow_id}")
+                    raise HTTPException(
+                        status_code=500, detail="Invalid response from workflow engine after update"
+                    )
+
                 workflow_data = result["workflow"]
         else:
             logger.info(f"🔐 Credentials unchanged, skipping database update for {workflow_id}")
             workflow_data = updated_workflow
 
-        configuration_status = await _compute_workflow_configuration_status(
-            workflow_data, deps.current_user.sub
-        )
+        try:
+            configuration_status = await _compute_workflow_configuration_status(
+                workflow_data, deps.current_user.sub
+            )
+        except Exception as ex:
+            logger.error(f"❌ Configuration status computation failed: {type(ex).__name__}: {ex}")
+            raise
 
         return {**result, "configuration_status": configuration_status}
 

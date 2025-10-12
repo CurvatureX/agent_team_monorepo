@@ -71,6 +71,86 @@ class WorkflowServiceV2:
         metadata.setdefault("created_by", metadata.get("created_by", ""))
         metadata.setdefault("version", "1.0")
 
+    @staticmethod
+    def _ensure_dict(value: Any) -> Dict[str, Any]:
+        """Coerce a value to dict; parse JSON strings when possible."""
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+                return parsed if isinstance(parsed, dict) else {}
+            except Exception:
+                return {}
+        return {}
+
+    @staticmethod
+    def _ensure_list(value: Any) -> List[Any]:
+        """Coerce a value to list; parse JSON strings when possible."""
+        if isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+                return parsed if isinstance(parsed, list) else []
+            except Exception:
+                return []
+        return []
+
+    def _normalize_shapes(self, workflow_data: Dict[str, Any]) -> None:
+        """Normalize common shape issues (stringified JSON for nodes/configs)."""
+        if not isinstance(workflow_data, dict):
+            return
+
+        # Handle double-encoded top-level structures
+        for key in ("workflow_data", "metadata"):
+            if key in workflow_data and isinstance(workflow_data[key], str):
+                try:
+                    parsed = json.loads(workflow_data[key])
+                    if isinstance(parsed, dict):
+                        workflow_data[key] = parsed
+                except Exception:
+                    pass
+
+        # Determine nodes container
+        nodes_ref = None
+        if isinstance(workflow_data.get("nodes"), (list, str)):
+            nodes_ref = (workflow_data, "nodes")
+        elif isinstance(workflow_data.get("workflow_data"), dict) and isinstance(
+            workflow_data["workflow_data"].get("nodes"), (list, str)
+        ):
+            nodes_ref = (workflow_data["workflow_data"], "nodes")
+
+        if nodes_ref:
+            container, key = nodes_ref
+            raw_nodes = container.get(key)
+            raw_nodes = self._ensure_list(raw_nodes)
+            normalized_nodes: List[Dict[str, Any]] = []
+            for nd in raw_nodes:
+                if isinstance(nd, str):
+                    try:
+                        nd = json.loads(nd)
+                    except Exception:
+                        continue
+                if not isinstance(nd, dict):
+                    continue
+                # Ensure nested dict fields are dicts
+                nd["configurations"] = self._ensure_dict(nd.get("configurations"))
+                nd["input_params"] = self._ensure_dict(nd.get("input_params"))
+                nd["output_params"] = self._ensure_dict(nd.get("output_params"))
+                normalized_nodes.append(nd)
+            container[key] = normalized_nodes
+
+        # Connections may also be stringified
+        if "connections" in workflow_data:
+            workflow_data["connections"] = self._ensure_list(workflow_data.get("connections"))
+        elif (
+            isinstance(workflow_data.get("workflow_data"), dict)
+            and "connections" in workflow_data["workflow_data"]
+        ):
+            wd = workflow_data["workflow_data"]
+            wd["connections"] = self._ensure_list(wd.get("connections"))
+
     def create_workflow(
         self,
         *,
@@ -275,6 +355,13 @@ class WorkflowServiceV2:
                         if "version" in metadata and isinstance(metadata["version"], int):
                             metadata["version"] = str(metadata["version"])
                         workflow_data["metadata"] = metadata
+
+                    # Normalize any stringified JSON shapes to concrete types
+                    try:
+                        self._normalize_shapes(workflow_data)
+                    except Exception:
+                        # Avoid failing retrieval due to normalization issues
+                        pass
 
                     return Workflow(**workflow_data)
             return None

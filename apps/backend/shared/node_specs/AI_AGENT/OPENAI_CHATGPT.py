@@ -31,8 +31,14 @@ class OpenAIChatGPTSpec(BaseNodeSpec):
                 },
                 "system_prompt": {
                     "type": "string",
-                    "default": "You are a helpful AI assistant. Analyze the input and provide a clear, accurate response.",
-                    "description": "System prompt defining AI behavior and role",
+                    "default": """You are a helpful AI assistant. Analyze the input and provide a clear, accurate response.
+
+OUTPUT FORMAT REQUIREMENT:
+Return ONLY valid JSON. No explanations, no markdown, no code fences.
+The output must start with `{` and end with `}`.
+
+Your JSON response should contain the results of your analysis in a structured format.""",
+                    "description": "System prompt defining AI behavior and role. Must enforce JSON output format when connecting to downstream nodes.",
                     "required": True,
                     "multiline": True,
                 },
@@ -121,8 +127,15 @@ class OpenAIChatGPTSpec(BaseNodeSpec):
                         "model": OpenAIModel.GPT_5_NANO.value,
                         "system_prompt": (
                             "You are a text analysis expert. Analyze the text for sentiment, "
-                            "themes, and actionable insights. Output JSON with fields: "
-                            "'sentiment', 'score', 'themes', 'recommendations'."
+                            "themes, and actionable insights.\n\n"
+                            "OUTPUT FORMAT REQUIREMENT:\n"
+                            "Return ONLY valid JSON. No explanations, no markdown, no code fences.\n"
+                            "The output must start with `{` and end with `}`.\n\n"
+                            "Required fields:\n"
+                            "- sentiment (string): overall sentiment (positive/negative/mixed/neutral)\n"
+                            "- score (float): sentiment score between 0 and 1\n"
+                            "- themes (array): key themes identified in the text\n"
+                            "- recommendations (array): actionable insights based on the analysis"
                         ),
                         "temperature": 0.3,
                     },
