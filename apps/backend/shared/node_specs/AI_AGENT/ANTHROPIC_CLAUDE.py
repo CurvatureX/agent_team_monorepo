@@ -146,26 +146,26 @@ class AnthropicClaudeSpec(BaseNodeSpec):
             output_params={
                 "content": {
                     "type": "object",
-                    "default": "",
-                    "description": "The model response content includes fields that match the input parameters of connected nodes. When passing values to connected nodes, use these matching fields so the values are delivered correctly.",
+                    "default": {},
+                    "description": "AI model JSON response containing structured data that matches the input parameters of downstream connected nodes. The AI is instructed to produce a JSON object with fields matching the exact parameter names expected by connected nodes (e.g., {'instruction': '...', 'context': {...}} for Notion append action). This enables direct data flow without complex conversion functions.",
                     "required": True,
                 },
                 "metadata": {
                     "type": "object",
                     "default": {},
-                    "description": "Additional metadata returned with the response",
+                    "description": "Additional metadata returned with the response (model version, stop reason, etc.)",
                     "required": False,
                 },
                 "token_usage": {
                     "type": "object",
                     "default": {},
-                    "description": "Token usage statistics (input/output/total)",
+                    "description": "Token usage statistics (input_tokens, output_tokens, total_tokens)",
                     "required": True,
                 },
                 "function_calls": {
                     "type": "array",
                     "default": [],
-                    "description": "List of function/tool calls invoked by the model",
+                    "description": "List of function/tool calls invoked by the model during execution",
                     "required": False,
                 },
             },  # Examples
@@ -208,17 +208,53 @@ class AnthropicClaudeSpec(BaseNodeSpec):
                         },
                     },
                     "expected_outputs": {
-                        "content": "# Code Analysis Results\n\n## Overall Assessment\n**Rating:** Needs Significant Improvement\n\n## Critical Security Issues\n1. **Broad Exception Handling**: The bare `except:` clause masks all exceptions...",
+                        "content": {
+                            "overall_rating": "Needs Significant Improvement",
+                            "security_issues": [
+                                {
+                                    "severity": "critical",
+                                    "issue": "Broad Exception Handling",
+                                    "description": "The bare `except:` clause masks all exceptions including KeyboardInterrupt and SystemExit",
+                                    "recommendation": "Use specific exception types: `except jwt.InvalidTokenError:` and `except jwt.ExpiredSignatureError:`",
+                                },
+                                {
+                                    "severity": "high",
+                                    "issue": "Missing Token Validation",
+                                    "description": "No validation of token format before decoding",
+                                    "recommendation": "Validate token is properly formatted JWT before decoding",
+                                },
+                            ],
+                            "performance_issues": [
+                                {
+                                    "severity": "medium",
+                                    "issue": "Database Query Per Request",
+                                    "description": "get_user_by_id() called on every request without caching",
+                                    "recommendation": "Implement Redis caching for user data with 5-minute TTL",
+                                }
+                            ],
+                            "best_practice_violations": [
+                                "Missing type hints for return value",
+                                "No logging of authentication failures",
+                                "Missing docstring",
+                            ],
+                            "improvement_suggestions": [
+                                "Add comprehensive logging for security auditing",
+                                "Implement rate limiting for failed authentication attempts",
+                                "Use async/await for database queries",
+                            ],
+                            "positive_aspects": [
+                                "Clean function signature",
+                                "Handles None token case gracefully",
+                            ],
+                        },
                         "metadata": {
                             "model_version": "claude-sonnet-4-20250514",
-                            "processing_time": 3.2,
+                            "stop_reason": "end_turn",
                         },
-                        "format_type": "json",
                         "token_usage": {
                             "input_tokens": 245,
                             "output_tokens": 1580,
                             "total_tokens": 1825,
-                            "cost_usd": 0.0234,
                         },
                         "function_calls": [],
                     },
@@ -257,17 +293,43 @@ class AnthropicClaudeSpec(BaseNodeSpec):
                         ],
                     },
                     "expected_outputs": {
-                        "content": "# Financial Document Analysis\n\n## Executive Summary\nThis Q4 2024 financial report demonstrates strong performance...",
+                        "content": {
+                            "executive_summary": "This Q4 2024 financial report demonstrates strong performance with 23% YoY revenue growth to $156M, indicating robust market demand and effective execution.",
+                            "key_findings": [
+                                {
+                                    "category": "Revenue",
+                                    "finding": "23% YoY growth to $156M",
+                                    "sentiment": "positive",
+                                    "confidence": "high",
+                                },
+                                {
+                                    "category": "Profitability",
+                                    "finding": "EBITDA margin expanded from revenue chart analysis",
+                                    "sentiment": "positive",
+                                    "confidence": "medium",
+                                },
+                                {
+                                    "category": "Balance Sheet",
+                                    "finding": "Strong liquidity position evident from balance sheet summary",
+                                    "sentiment": "positive",
+                                    "confidence": "high",
+                                },
+                            ],
+                            "risk_factors": [
+                                "Need to review detailed expense breakdown",
+                                "Customer concentration not visible in provided data",
+                            ],
+                            "investment_recommendation": "Positive outlook warranting further due diligence",
+                            "charts_analyzed": ["Revenue growth chart", "Balance sheet summary"],
+                        },
                         "metadata": {
                             "model_version": "claude-sonnet-4-20250514",
-                            "processing_time": 4.7,
+                            "stop_reason": "end_turn",
                         },
-                        "format_type": "text",
                         "token_usage": {
                             "input_tokens": 1850,
                             "output_tokens": 2240,
                             "total_tokens": 4090,
-                            "cost_usd": 0.0891,
                         },
                         "function_calls": [],
                     },

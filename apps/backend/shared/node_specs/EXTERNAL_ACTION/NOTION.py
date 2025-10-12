@@ -250,16 +250,6 @@ class NotionActionSpec(BaseNodeSpec):
                     },
                 },
             ],
-            # System prompt appendix for AI guidance
-            system_prompt_appendix="""Output `instruction` with a natural language description of what to do in Notion (e.g., "Create a new task page with high priority"), and optionally provide `context` with any relevant data like content or metadata that helps complete the task.
-
-Configuration Guidelines:
-- Set `operation_type` to "database" for database operations (query, create items, etc.)
-- Set `operation_type` to "page" for page operations (update content, get page info, etc.)
-- Set `operation_type` to "both" if you need to work with both pages and databases
-- For database operations, provide `database_id` in configuration
-- For page operations, provide `page_id` in configuration
-- The AI will automatically determine whether to use the configured database_id or page_id based on the instruction""",
         )
 
 

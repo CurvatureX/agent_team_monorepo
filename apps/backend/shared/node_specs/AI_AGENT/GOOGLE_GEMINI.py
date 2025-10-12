@@ -107,26 +107,26 @@ class GoogleGeminiSpec(BaseNodeSpec):
             output_params={
                 "content": {
                     "type": "object",
-                    "default": "",
-                    "description": "The model response content includes fields that match the input parameters of connected nodes. When passing values to connected nodes, use these matching fields so the values are delivered correctly.",
+                    "default": {},
+                    "description": "AI model JSON response containing structured data that matches the input parameters of downstream connected nodes. The AI is instructed to produce a JSON object with fields matching the exact parameter names expected by connected nodes (e.g., {'instruction': '...', 'context': {...}} for Notion append action). This enables direct data flow without complex conversion functions.",
                     "required": True,
                 },
                 "metadata": {
                     "type": "object",
                     "default": {},
-                    "description": "Additional metadata returned with the response",
+                    "description": "Additional metadata returned with the response (model version, stop reason, etc.)",
                     "required": False,
                 },
                 "token_usage": {
                     "type": "object",
                     "default": {},
-                    "description": "Token usage statistics (input/output/total)",
+                    "description": "Token usage statistics (input_tokens, output_tokens, total_tokens)",
                     "required": False,
                 },
                 "function_calls": {
                     "type": "array",
                     "default": [],
-                    "description": "List of function/tool calls invoked by the model",
+                    "description": "List of function/tool calls invoked by the model during execution",
                     "required": False,
                 },
             },
@@ -172,17 +172,17 @@ class GoogleGeminiSpec(BaseNodeSpec):
                         }
                     },
                     "expected_outputs": {
-                        "content": (
-                            "Meet the Aurora Smart Lamp — a stylish and intelligent addition to any space. "
-                            "With effortless voice control, a spectrum of over 16 million colors, and "
-                            "adaptive brightness, it transforms your environment with ease. Whether "
-                            "you're working late or relaxing, Aurora adapts seamlessly to your lifestyle."
-                        ),
-                        "metadata": {
-                            "model_version": "gemini-2.5-flash",
-                            "processing_time": 1.4,
+                        "content": {
+                            "product_description": "Meet the Aurora Smart Lamp — a stylish and intelligent addition to any space. With effortless voice control, a spectrum of over 16 million colors, and adaptive brightness, it transforms your environment with ease. Whether you're working late or relaxing, Aurora adapts seamlessly to your lifestyle.",
+                            "key_benefits": [
+                                "Voice-controlled convenience",
+                                "Personalized ambiance with 16M colors",
+                                "Intelligent auto-adjustment",
+                                "Modern aesthetic",
+                            ],
+                            "target_appeal": "Perfect for tech-savvy young professionals seeking smart home integration",
                         },
-                        "format_type": "text",
+                        "metadata": {"model_version": "gemini-2.5-flash", "stop_reason": "STOP"},
                         "token_usage": {
                             "input_tokens": 55,
                             "output_tokens": 94,

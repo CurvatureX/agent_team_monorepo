@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CONVERSION_FUNCTION = (
     "def convert(input_data: Dict[str, Any]) -> Dict[str, Any]:\n"
-    "    return input_data.get('data', {}).get('result', input_data)"
+    "    return input_data.get('value', input_data)"
 )
 
 
@@ -666,26 +666,67 @@ Check the node's expected input format and structure your response accordingly.
     def _generate_format_from_mcp_spec(
         self, node_spec: dict, node_type: str, node_subtype: str
     ) -> str:
-        """Generate simple format prompt focused on AI's core task, not downstream node requirements."""
+        """Generate JSON format prompt with exact field names from downstream node's input_params."""
 
-        # For EXTERNAL_ACTION nodes, we should NOT require the AI to generate configuration
-        # The conversion function should handle the mapping from AI output to node input
-        if node_type == "EXTERNAL_ACTION":
-            return """Return simple JSON with your analysis/processing results:
-{
-  "content": "your main output/result",
-  "metadata": {"additional_info": "if needed"}
-}
+        # Extract input parameters from the node spec
+        input_params = {}
 
-Do NOT generate configuration parameters - that's handled automatically."""
+        # Try multiple paths to get input parameters
+        if "input_params_schema" in node_spec and isinstance(
+            node_spec["input_params_schema"], dict
+        ):
+            input_params = node_spec["input_params_schema"]
+        elif "input_params" in node_spec and isinstance(node_spec["input_params"], dict):
+            input_params = node_spec["input_params"]
+        elif "parameters" in node_spec and isinstance(node_spec["parameters"], list):
+            # Convert parameters list to dict format
+            for param in node_spec["parameters"]:
+                if isinstance(param, dict) and param.get("name"):
+                    input_params[param["name"]] = {
+                        "type": param.get("type", "string"),
+                        "description": param.get("description", ""),
+                        "required": param.get("required", False),
+                    }
 
-        # For other node types, keep it simple
-        return """Return JSON with your processing results:
-{
-  "content": "your main output",
-  "summary": "if applicable",
-  "data": "processed information"
-}"""
+        # If we found input params, generate specific JSON schema
+        if input_params:
+            json_fields = []
+            for param_name, param_info in input_params.items():
+                if isinstance(param_info, dict):
+                    param_type = param_info.get("type", "string")
+                    param_desc = param_info.get("description", "")
+                    required_str = (
+                        " (required)" if param_info.get("required", False) else " (optional)"
+                    )
+
+                    # Generate field example based on type
+                    if param_type in ["object", "dict", "json"]:
+                        example = "{...}"
+                    elif param_type in ["array", "list"]:
+                        example = "[...]"
+                    elif param_type in ["integer", "int"]:
+                        example = "0"
+                    elif param_type in ["boolean", "bool"]:
+                        example = "true/false"
+                    else:
+                        example = '"text"'
+
+                    field_line = f'  "{param_name}": {example}  // {param_type}{required_str}'
+                    if param_desc:
+                        field_line += f" - {param_desc}"
+                    json_fields.append(field_line)
+
+            if json_fields:
+                json_structure = ",\n".join(json_fields)
+                return f"""Your response must be a JSON object with these EXACT field names:
+{{
+{json_structure}
+}}
+
+CRITICAL: Use the exact field names shown above. The downstream node '{node_type}:{node_subtype}' expects these specific fields."""
+
+        # Fallback for nodes without clear input_params
+        return """Your response must be a JSON object. Structure your output based on the task requirements."""
 
     def _get_example_for_param_type(self, param_type: str, param_name: str) -> str:
         """Generate an example value for a parameter based on its type."""

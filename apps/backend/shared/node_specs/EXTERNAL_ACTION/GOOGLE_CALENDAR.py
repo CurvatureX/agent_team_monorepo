@@ -622,43 +622,6 @@ class GoogleCalendarActionSpec(BaseNodeSpec):
                     },
                 },
             ],
-            # System prompt appendix for AI guidance
-            system_prompt_appendix="""Output `action_type` to dynamically control Google Calendar operations. **If you don't know calendar_id/event_id, use "primary" for main calendar or leave blank.**
-
-**All Action Types:**
-
-**Events:**
-- `create_event`: New event - needs summary (title), start time, end time, optional attendees/description/location
-- `update_event`: Modify event - needs event_id, optional summary/start/end changes
-- `delete_event`: Remove event - needs event_id
-- `get_event`: Get event details - needs event_id
-- `list_events`: Get events - optional calendar_id (default: primary), time_min/time_max filters, max_results limit
-- `search_events`: Find events by text - needs query, optional calendar_id
-
-**Calendars:**
-- `list_calendars`: Get all user calendars
-- `create_calendar`: New calendar - needs summary (name), optional timezone
-- `get_calendar`: Calendar details - needs calendar_id
-
-**Quick:**
-- `quick_add`: Natural language event - needs text like "Dinner with Bob tomorrow 7pm"
-
-**Webhooks:**
-- `watch_events`: Monitor changes - needs calendar_id, webhook_url
-- `stop_watching`: Stop monitoring - needs channel_id
-
-**Time Formats:**
-- Specific time: `{"dateTime": "2025-01-20T14:00:00-05:00", "timeZone": "America/New_York"}`
-- All-day: `{"date": "2025-01-20"}`
-
-**Attendees:** `[{"email": "user@example.com"}, {"email": "another@example.com"}]`
-**Recurrence:** `["RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR"]` for recurring (weekly Mon/Wed/Fri)
-
-**Example:**
-```json
-{"action_type": "create_event", "summary": "Team Meeting", "start": {"dateTime": "2025-01-20T10:00:00-05:00"}, "end": {"dateTime": "2025-01-20T11:00:00-05:00"}, "attendees": [{"email": "team@company.com"}]}
-```
-""",
         )
 
 

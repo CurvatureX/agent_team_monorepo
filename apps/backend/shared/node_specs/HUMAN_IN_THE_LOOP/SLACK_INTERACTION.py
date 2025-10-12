@@ -125,10 +125,6 @@ class SlackInteractionSpec(BaseNodeSpec):
                     "required": False,
                 },
             },
-            # System prompt appendix for AI guidance
-            system_prompt_appendix="""
-This HUMAN_IN_THE_LOOP:SLACK_INTERACTION node handles BOTH sending messages to Slack AND waiting for user responses.
-""",
             # Examples
             examples=[
                 {

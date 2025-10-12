@@ -311,12 +311,6 @@ class BaseNodeSpec(BaseModel):
     # Examples and documentation
     examples: Optional[List[Dict[str, Any]]] = Field(default=None, description="使用示例")
 
-    # AI guidance for upstream nodes (especially AI_AGENT nodes)
-    system_prompt_appendix: Optional[str] = Field(
-        default=None,
-        description="AI-readable guidance for using this node (automatically appended to preceding AI_AGENT system prompts)",
-    )
-
     def create_node_instance(
         self,
         node_id: str,

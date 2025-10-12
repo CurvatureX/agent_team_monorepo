@@ -2,16 +2,24 @@
 
 You are a Python expert generating data transformation functions for the workflow engine.
 
+**IMPORTANT - Simplified Approach for AI Agents**:
+When the source node is an AI_AGENT, the conversion function can be very simple because:
+- The AI agent has been instructed to output JSON with fields matching the downstream node's input_params
+- The `content` field contains a JSON object (not a string) with the correct field names
+- You just need to extract fields from `content` and return them in the expected format
+
 **Rules**:
 - Implement a function named `convert` that accepts a single argument `input_data: Dict[str, Any]`.
 - `input_data` is a dictionary that always contains these keys:
-  - `"data"`: contains `{"result": actual_node_output}` - the wrapped output from the source node.
-  - `"value"` and `"output"`: aliases that contain the same wrapped data.
+  - `"value"`: The extracted output from the source node (using output_key)
+  - `"output"`: Alias for the same extracted output
+  - `"data"`: Contains `{"result": extracted_output}` - legacy nested format (avoid using this)
+- **IMPORTANT**: Use `input_data.get("value")` or `input_data.get("output")` to access the extracted node output. Do NOT use `input_data.get("data", {}).get("result")` - that's unnecessary nested extraction.
 - Prefer the simplest possible mapping: reuse existing values, avoid loops, error handling, helper utilities, or class definitions.
-- Do **not** add `import` statements or rely on external libraries/constants.
+- Do **not** add `import` statements or rely on external libraries/constants (except for backward compatibility with legacy string-based content).
 - The function must be pure Python, deterministic, and safe if keys are missing; fall back to `None` when a field is unavailable.
 - Always use the `def convert(input_data: Dict[str, Any]) -> Dict[str, Any]:` structure with a return statement.
-- If no transformation is required, use `return input_data.get("data", {}).get("result", input_data)`.
+- If no transformation is required, use `return input_data.get("value", input_data)`.
 - Output **only** the Python function. No explanations. No markdown.
 
 ---
@@ -42,26 +50,41 @@ You are a Python expert generating data transformation functions for the workflo
 
 {% if source_context.type == "AI_AGENT" %}
 **AI Agent Special Handling**:
-- AI agents typically output their response in a `content` field containing JSON or text
-- Modern AI agents use simplified output format: `{"content": "main response", "summary": "if applicable", "metadata": {}}`
-- Extract the actual data from the AI's response and map to target node inputs
+- AI agents output their response in a `content` field as a JSON object (not a string)
+- The AI agent has been instructed to produce JSON output with fields matching the exact input_params expected by the downstream node
+- In most cases, you can directly extract fields from the content object and pass them through
 - Do NOT expect configuration fields from AI agents - those are handled by node configurations
 
-**Common AI Output Patterns**:
+**Modern AI Output Pattern** (content is already a JSON object):
 ```python
-# Standard AI response
-result = input_data.get("data", {}).get("result", {})
-content = result.get("content", "")  # Main AI response
+# Extract the AI response using the direct accessor (NOT nested extraction)
+ai_output = input_data.get("value", {})  # This contains the ENTIRE AI node output
+content = ai_output.get("content", {})  # Already a dict, not a string
 
-# If content is JSON string, parse it
-try:
-    import json
-    parsed_content = json.loads(content) if isinstance(content, str) else content
-    summary = parsed_content.get("summary", "")
-    original_text = parsed_content.get("original_message", "")
-except:
-    # Fallback to raw content
-    summary = content
+# Direct field mapping - AI was instructed to output fields matching target input_params
+{% if target_context.actual_input_params %}
+# Target node expects: {{ target_context.actual_input_params | join(', ') }}
+# Simply extract these fields from content:
+return {
+    {% for param in target_context.actual_input_params %}"{{ param }}": content.get("{{ param }}"),{% if not loop.last %}
+    {% endif %}{% endfor %}
+
+}
+{% else %}
+# Fallback if target params not known - pass through relevant fields
+return content
+{% endif %}
+```
+
+**Backward Compatibility** (only needed for legacy AI agents that might return strings):
+```python
+# If content is unexpectedly a string (legacy format), try parsing it
+if isinstance(content, str):
+    try:
+        import json
+        content = json.loads(content)
+    except:
+        pass  # Keep as string if parsing fails
 ```
 {% endif %}
 

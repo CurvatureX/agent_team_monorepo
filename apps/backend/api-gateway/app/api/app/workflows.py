@@ -617,19 +617,21 @@ async def _inject_oauth_credentials(workflow_data: Dict[str, Any], user_id: str)
 
             # Handle Trigger nodes - these need credentials for webhook setup and event processing
             elif node_type == "TRIGGER":
+                # Initialize configurations if not present
+                if "configurations" not in node:
+                    node["configurations"] = {}
+
                 if node_subtype == "SLACK":
-                    # Slack triggers don't directly execute with bot tokens during runtime
-                    # but may need workspace info for webhook registration
+                    # Slack triggers need workspace_id in configurations (not parameters)
                     if "slack" in provider_tokens:
                         slack_data = provider_tokens["slack"]["credential_data"]
-                        if "workspace_id" in slack_data:
-                            node["parameters"]["workspace_id"] = slack_data["workspace_id"]
+                        # Slack stores workspace_id as "team_id" in credential_data
                         if "team_id" in slack_data:
-                            node["parameters"]["team_id"] = slack_data["team_id"]
-                        injected_count += 1
-                        logger.info(
-                            f"🔐 Injected Slack workspace info for trigger node {node.get('node_id', 'unknown')}"
-                        )
+                            node["configurations"]["workspace_id"] = slack_data["team_id"]
+                            injected_count += 1
+                            logger.info(
+                                f"🔐 Injected Slack workspace_id for trigger node {node.get('node_id', 'unknown')}"
+                            )
 
                 elif node_subtype == "GITHUB":
                     # GitHub triggers use GitHub App installation managed by scheduler
@@ -670,10 +672,10 @@ async def _inject_oauth_credentials(workflow_data: Dict[str, Any], user_id: str)
                     node["configurations"]["access_token"] = provider_tokens["slack"][
                         "access_token"
                     ]
-                    # Also inject workspace_id if available
+                    # Also inject workspace_id if available (stored as team_id in OAuth tokens)
                     slack_data = provider_tokens["slack"]["credential_data"]
-                    if "workspace_id" in slack_data:
-                        node["configurations"]["workspace_id"] = slack_data["workspace_id"]
+                    if "team_id" in slack_data:
+                        node["configurations"]["workspace_id"] = slack_data["team_id"]
                     token_injected = True
 
                 # Add more MCP tool types here as needed
@@ -698,10 +700,10 @@ async def _inject_oauth_credentials(workflow_data: Dict[str, Any], user_id: str)
                 if node_subtype == "SLACK_INTERACTION" and "slack" in provider_tokens:
                     # Slack HIL nodes use bot_token in configurations
                     node["configurations"]["bot_token"] = provider_tokens["slack"]["access_token"]
-                    # Also inject workspace_id if available
+                    # Also inject workspace_id if available (stored as team_id in OAuth tokens)
                     slack_data = provider_tokens["slack"]["credential_data"]
-                    if "workspace_id" in slack_data:
-                        node["configurations"]["workspace_id"] = slack_data["workspace_id"]
+                    if "team_id" in slack_data:
+                        node["configurations"]["workspace_id"] = slack_data["team_id"]
                     token_injected = True
 
                 elif node_subtype == "GMAIL_INTERACTION" and "gmail" in provider_tokens:
@@ -970,14 +972,18 @@ async def _inject_credentials_into_configurations(
                             configurations["bot_token"] = new_token
                             credentials_changed = True
 
-                        # Inject workspace_id from credential_data
+                        # Inject workspace_id from credential_data (stored as team_id in OAuth tokens)
                         credential_data = slack_token_record.get("credential_data") or {}
-                        if "workspace_id" in credential_data:
+                        # Slack stores workspace_id as "team_id" in credential_data
+                        if "team_id" in credential_data:
                             current_workspace_id = configurations.get("workspace_id", "")
-                            new_workspace_id = credential_data["workspace_id"]
+                            new_workspace_id = credential_data["team_id"]
                             if current_workspace_id != new_workspace_id:
                                 configurations["workspace_id"] = new_workspace_id
                                 credentials_changed = True
+                                logger.info(
+                                    f"🔐 Updated Slack trigger workspace_id in node {node.get('id', 'unknown')}"
+                                )
 
                         if credentials_changed:
                             logger.info(

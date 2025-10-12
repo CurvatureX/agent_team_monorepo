@@ -934,9 +934,16 @@ class ExecutionEngine:
                             # Apply conversion function if provided
                             if conversion_function and isinstance(conversion_function, str):
                                 try:
+                                    # Engine has already extracted the iteration item
+                                    # Conversion function receives the extracted value directly
+                                    wrapped_input = {
+                                        "value": item_value,  # ✅ Direct access
+                                        "output": item_value,  # ✅ Alias
+                                        "data": {"result": item_value},  # Legacy (deprecated)
+                                    }
                                     converted_data = execute_conversion_function_flexible(
                                         conversion_function,
-                                        {"value": item_value, "data": item_value},
+                                        wrapped_input,
                                     )
                                     item_value = converted_data
                                 except Exception as e:
@@ -965,14 +972,23 @@ class ExecutionEngine:
                     # Apply conversion function if provided
                     if conversion_function and isinstance(conversion_function, str):
                         try:
-                            # Use raw output for conversion function (not shaped)
+                            # RESPONSIBILITY: Extract the specific output using output_key from connection
+                            # The conversion function receives the ALREADY EXTRACTED value, not the full node output
                             raw_value = raw_outputs.get(output_key)
                             if raw_value is None:
                                 raw_value = raw_outputs.get("result", raw_outputs)
 
+                            # Wrap extracted value for conversion function access
+                            # Conversion functions should use input_data["value"] or input_data["output"]
+                            # to access the already-extracted output (NOT nested extraction)
+                            wrapped_input = {
+                                "value": raw_value,  # ✅ Direct access to extracted output
+                                "output": raw_value,  # ✅ Alias for extracted output
+                                "data": {"result": raw_value},  # Legacy nested format (deprecated)
+                            }
                             converted_data = execute_conversion_function_flexible(
                                 conversion_function,
-                                {"value": raw_value, "data": raw_value, "output": raw_value},
+                                wrapped_input,
                             )
                             value = converted_data
                         except Exception as e:
@@ -1200,8 +1216,15 @@ class ExecutionEngine:
             # Apply conversion function if provided
             if conversion_function and isinstance(conversion_function, str):
                 try:
+                    # Engine extracted value using output_key
+                    # Conversion function receives already-extracted value
+                    wrapped_input = {
+                        "value": value,  # ✅ Direct access to extracted output
+                        "output": value,  # ✅ Alias
+                        "data": {"result": value},  # Legacy (deprecated)
+                    }
                     converted_data = execute_conversion_function_flexible(
-                        conversion_function, {"value": value, "data": value, "output": value}
+                        conversion_function, wrapped_input
                     )
                     value = converted_data
                 except Exception as e:
@@ -1658,7 +1681,14 @@ class ExecutionEngine:
             value = outputs.get(output_key) or outputs.get("result", outputs)
             # Apply conversion function if provided
             if conversion_function:
-                value = execute_conversion_function_flexible(conversion_function, value)
+                # Engine extracted value using output_key
+                # Conversion function receives already-extracted value
+                wrapped_input = {
+                    "value": value,  # ✅ Direct access to extracted output
+                    "output": value,  # ✅ Alias
+                    "data": {"result": value},  # Legacy (deprecated)
+                }
+                value = execute_conversion_function_flexible(conversion_function, wrapped_input)
             input_key = "result"
             if input_key in successor_node_inputs:
                 existing = successor_node_inputs[input_key]
@@ -1742,7 +1772,16 @@ class ExecutionEngine:
                     value2 = outputs2.get(output_key2) or outputs2.get("result", outputs2)
                     # Apply conversion function if provided
                     if conversion_function2:
-                        value2 = execute_conversion_function_flexible(conversion_function2, value2)
+                        # Engine extracted value using output_key
+                        # Conversion function receives already-extracted value
+                        wrapped_input2 = {
+                            "value": value2,  # ✅ Direct access to extracted output
+                            "output": value2,  # ✅ Alias
+                            "data": {"result": value2},  # Legacy (deprecated)
+                        }
+                        value2 = execute_conversion_function_flexible(
+                            conversion_function2, wrapped_input2
+                        )
                     input_key2 = "result"
                     if input_key2 in successor_node_inputs2:
                         existing2 = successor_node_inputs2[input_key2]

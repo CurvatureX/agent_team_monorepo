@@ -85,9 +85,6 @@ class AnthropicClaudeRunner(NodeRunner):
                 provider_guidance = get_tool_invocation_guidance("anthropic")
                 system_prompt = f"{system_prompt}\n\n{mcp_guidance}\n\n{provider_guidance}".strip()
 
-        # Enhance with downstream node configuration context
-        system_prompt = self._enhance_prompt_with_downstream_guidance(system_prompt, node, ctx)
-
         # Log the final enhanced system prompt for debugging
         logger.info("=" * 80)
         logger.info("📝 FINAL ENHANCED SYSTEM PROMPT:")
@@ -892,87 +889,6 @@ class AnthropicClaudeRunner(NodeRunner):
             )
         else:
             return "(No pre-configured values - all parameters must come from your output)"
-
-    def _enhance_prompt_with_downstream_guidance(
-        self, base_prompt: str, node: Node, ctx: Any
-    ) -> str:
-        """Enhance system prompt with downstream EXTERNAL_ACTION node usage instructions AND configuration context.
-
-        This method detects if the current AI_AGENT node's output flows into an
-        EXTERNAL_ACTION node, and if so, appends:
-        1. The node's system_prompt_appendix (static guidance)
-        2. The node's configuration context (dynamic configuration values)
-
-        This allows the AI to make informed decisions about what to include in its output.
-        """
-        if not ctx or not hasattr(ctx, "graph"):
-            return base_prompt
-
-        try:
-            # Import here to avoid circular dependencies
-            from workflow_engine_v2.core.spec import get_spec
-
-            graph = ctx.graph  # WorkflowGraph instance
-
-            # Get successor nodes (nodes that receive output from this AI node)
-            downstream_nodes = graph.successors(node.id)
-
-            if not downstream_nodes:
-                return base_prompt
-
-            appendices = []
-
-            for next_node_id, output_key, _ in downstream_nodes:
-                next_node = graph.nodes.get(next_node_id)
-
-                # Only enhance for EXTERNAL_ACTION nodes
-                if next_node and next_node.type == NodeType.EXTERNAL_ACTION:
-                    # Load node spec to get system_prompt_appendix
-                    try:
-                        spec = get_spec(next_node.type, next_node.subtype)
-
-                        # Build the guidance section
-                        guidance_text = ""
-                        if (
-                            spec
-                            and hasattr(spec, "system_prompt_appendix")
-                            and spec.system_prompt_appendix
-                        ):
-                            guidance_text = spec.system_prompt_appendix
-
-                        # Extract configuration context
-                        config_context = self._extract_config_context(next_node, spec)
-
-                        logger.info(
-                            f"📋 Enhancing prompt with guidance + config for downstream node: {next_node.name} ({next_node.subtype})"
-                        )
-
-                        # Combine guidance and configuration context
-                        appendix = (
-                            f"\n\n## Downstream Node: {next_node.name} ({next_node.subtype})\n\n"
-                        )
-
-                        if guidance_text:
-                            appendix += f"{guidance_text}\n\n"
-
-                        appendix += f"**Current Configuration:**\n{config_context}"
-
-                        appendices.append(appendix)
-
-                    except Exception as e:
-                        logger.debug(f"⚠️ Could not load spec for {next_node.subtype}: {str(e)}")
-
-            if appendices:
-                enhanced = base_prompt + "\n".join(appendices)
-                logger.info(
-                    f"✨ Enhanced system prompt with {len(appendices)} downstream node context(s)"
-                )
-                return enhanced
-
-        except Exception as e:
-            logger.warning(f"⚠️ Failed to enhance prompt with downstream guidance: {str(e)}")
-
-        return base_prompt
 
 
 __all__ = ["AnthropicClaudeRunner"]

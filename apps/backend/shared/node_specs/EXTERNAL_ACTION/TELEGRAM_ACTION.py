@@ -498,44 +498,6 @@ class TelegramActionSpec(BaseNodeSpec):
                     },
                 },
             ],
-            # System prompt appendix for AI guidance
-            system_prompt_appendix="""Output `action_type` to dynamically control Telegram operations. **If you don't know chat_id, leave blank - workflow may provide it.**
-
-**All Action Types:**
-
-**Messages:**
-- `send_message`: Send text - needs chat_id, text, optional parse_mode (Markdown/HTML)
-- `edit_message`: Update message - needs chat_id, message_id, new text
-- `delete_message`: Remove message - needs chat_id, message_id
-- `forward_message`: Forward message - needs chat_id (destination), from_chat_id (source), message_id
-- `pin_message`: Pin in chat - needs chat_id, message_id
-
-**Media:**
-- `send_photo`: Send image - needs chat_id, photo (url/file_id), optional caption
-- `send_document`: Send file - needs chat_id, document (url/file_id), optional caption
-- `send_video`: Send video - needs chat_id, video (url/file_id), optional caption
-- `send_audio`: Send audio - needs chat_id, audio (url/file_id), optional caption
-- `send_voice`: Voice message - needs chat_id, voice (url/file_id)
-- `send_sticker`: Send sticker - needs chat_id, sticker (file_id)
-
-**Interactive:**
-- `send_location`: Share location - needs chat_id, latitude, longitude
-- `send_contact`: Share contact - needs chat_id, phone_number, first_name
-- `create_poll`: Create poll - needs chat_id, question, options array
-
-**Parse Modes:**
-- `Markdown`: *bold* _italic_ `code` [link](url)
-- `MarkdownV2`: Stricter escaping required
-- `HTML`: <b>bold</b> <i>italic</i> <code>code</code>
-
-**Keyboards:** Reply keyboard: `{"keyboard": [[{"text": "Yes"}, {"text": "No"}]], "resize_keyboard": true}`
-Inline keyboard: `{"inline_keyboard": [[{"text": "Click", "url": "https://..."}]]}`
-
-**Example:**
-```json
-{"action_type": "send_message", "chat_id": "", "text": "*Deployment Complete* ✅\\nAll services running", "parse_mode": "Markdown"}
-```
-""",
         )
 
 

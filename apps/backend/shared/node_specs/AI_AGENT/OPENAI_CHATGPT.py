@@ -89,26 +89,26 @@ class OpenAIChatGPTSpec(BaseNodeSpec):
             output_params={
                 "content": {
                     "type": "object",
-                    "default": "",
-                    "description": "The model response content includes fields that match the input parameters of connected nodes. When passing values to connected nodes, use these matching fields so the values are delivered correctly.",
+                    "default": {},
+                    "description": "AI model JSON response containing structured data that matches the input parameters of downstream connected nodes. The AI is instructed to produce a JSON object with fields matching the exact parameter names expected by connected nodes (e.g., {'instruction': '...', 'context': {...}} for Notion append action). This enables direct data flow without complex conversion functions.",
                     "required": True,
                 },
                 "metadata": {
                     "type": "object",
                     "default": {},
-                    "description": "Additional metadata returned with the response",
+                    "description": "Additional metadata returned with the response (model version, stop reason, etc.)",
                     "required": False,
                 },
                 "token_usage": {
                     "type": "object",
                     "default": {},
-                    "description": "Token usage statistics (input/output/total)",
+                    "description": "Token usage statistics (input_tokens, output_tokens, total_tokens)",
                     "required": False,
                 },
                 "function_calls": {
                     "type": "array",
                     "default": [],
-                    "description": "List of function/tool calls invoked by the model",
+                    "description": "List of function/tool calls invoked by the model during execution",
                     "required": False,
                 },
             },
@@ -131,11 +131,19 @@ class OpenAIChatGPTSpec(BaseNodeSpec):
                         "context": {"product": "mobile_app"},
                     },
                     "expected_output": {
-                        "content": '{"sentiment": "mixed", "score": 0.65, "themes": ["UI design", "performance"], "recommendations": ["Optimize loading speed"]}',
-                        "metadata": {"model": "gpt-5", "tokens": 124},
-                        "format_type": "json",
-                        "source_node": "sentiment_analysis_ai",
-                        "timestamp": "2025-01-28T12:00:00Z",
+                        "content": {
+                            "sentiment": "mixed",
+                            "score": 0.65,
+                            "themes": ["UI design", "performance"],
+                            "recommendations": ["Optimize loading speed"],
+                        },
+                        "metadata": {"model_version": "gpt-5", "stop_reason": "stop"},
+                        "token_usage": {
+                            "input_tokens": 45,
+                            "output_tokens": 79,
+                            "total_tokens": 124,
+                        },
+                        "function_calls": [],
                     },
                 }
             ],
