@@ -297,6 +297,7 @@ services:
       - WORKFLOW_AGENT_PORT=8001
       - WORKFLOW_SCHEDULER_HOST=workflow-scheduler
       - WORKFLOW_SCHEDULER_HTTP_PORT=8003
+      - WORKFLOW_SCHEDULER_URL=http://workflow-scheduler:8003
 
       - USE_HTTP_CLIENT=true
       # OpenTelemetry configuration

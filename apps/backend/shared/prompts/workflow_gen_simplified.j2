@@ -34,13 +34,40 @@ You are creating a new workflow based on an existing one.
 2. **CONNECTIONS REQUIRED**: Every workflow MUST have connections linking all executable nodes (EXCLUDE TOOL/MEMORY from connections)
 3. **CONFIGURATIONS ONLY**: Use ONLY "configurations" field in nodes, NEVER generate "parameters" field
 4. **USER VALUES OVERRIDE MCP DEFAULTS**: When user specifies values (like channel names), use those EXACT values and ignore any MCP default values
-5. **PLACEHOLDER REQUIREMENT**: For ANY required parameter without user input, use EXACTLY `{{$placeholder}}` - NO descriptive variations, NO fake tokens
+5. **PLACEHOLDER REQUIREMENT**: For ANY required parameter without user input, use EXACTLY `{{"{{$placeholder}}"}}` - NO descriptive variations, NO fake tokens
 6. **OUTPUT ONLY JSON**: Your final response must be ONLY the workflow JSON (no explanations)
 7. **SINGLE-PASS GENERATION**: You get ONE chance to generate the complete workflow correctly
 
+## Connection Logic - CRITICAL GUIDANCE
+
+🚨 **ANALYZE USER INTENT BEFORE CONNECTING NODES** 🚨
+
+When determining node connections, follow this decision process:
+
+**Step 1: Identify the Final Action**
+- What is the ULTIMATE action the user wants? (e.g., "send to Slack", "update Notion", "create GitHub issue")
+- The final action node should be directly connected from the AI Agent when possible
+
+**Step 2: Avoid Unnecessary Intermediate Nodes**
+- Only add intermediate nodes when they are LOGICALLY NECESSARY for data transformation
+
+**Step 3: Check Input/Output Compatibility**
+- The AI Agent's output (input_params) MUST match the downstream node's expected input
+- Example: If connecting to Slack EXTERNAL_ACTION, AI must output {"message": "..."}
+- Example: If connecting to Notion EXTERNAL_ACTION, AI must output {"instruction": "...", "context": {...}}
+- Example: If connecting to a Slack and Notion EXTERNAL_ACTION, AI must output {"message": "..."}
+
+**Decision Framework:**
+**User says "analyze X and send results to Y"** → Connect AI Agent DIRECTLY to Y (final destination)
+
+**Key Principle: MINIMIZE INTERMEDIATE NODES**
+- Each connection must serve a clear purpose
+- AI Agents should connect directly to their intended destination
+- Only add intermediate nodes when they perform essential transformations
+
 ## Parameter Generation Strategy
 
-🚨 **CRITICAL RULE**: Use ONLY `{{$placeholder}}` for uncertain required parameters
+🚨 **CRITICAL RULE**: Use ONLY `{{"{{$placeholder}}"}}` for uncertain required parameters
 
 **Priority 1: User-Specified Values (HIGHEST PRIORITY)**
 - If user mentions specific values, use those EXACT values and OVERRIDE any MCP defaults
@@ -234,7 +261,7 @@ DO NOT INCLUDE: notion_token, operation_type, timeout, retry_attempts (these are
 
 ## Final Checklist
 1. **MCP COMPLIANCE** - Match exact parameter types from MCP response
-2. **PARAMETER GENERATION** - Required params use EXACTLY `{{$placeholder}}` (no descriptive variations), optional params omitted
+2. **PARAMETER GENERATION** - Required params use EXACTLY `{{"{{$placeholder}}"}}` (no descriptive variations), optional params omitted
 3. **CONNECTIONS** - Array format excluding TOOL/MEMORY nodes
 4. **NODE NAMES** - CRITICAL: No spaces allowed! Use underscores/dashes only (e.g. "slack_trigger", "ai_agent_1", "notion_action")
 5. **ATTACHED NODES** - Only AI_AGENT can have attached_nodes for TOOL/MEMORY

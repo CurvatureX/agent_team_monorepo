@@ -1,9 +1,14 @@
 """
 NOTION_MCP_TOOL Tool Node Specification
 
-MCP tool for Notion integration capabilities.
-This tool is attached to AI_AGENT nodes and provides Notion database
-and page manipulation through the MCP protocol.
+Ultra-simple Notion MCP tool designed for maximum AI usability.
+This tool is attached to AI_AGENT nodes and provides read-only access to
+Notion databases and pages through the MCP protocol.
+
+Only 3 tools with minimal parameters:
+1. notion_database() - List all database items (zero parameters needed!)
+2. notion_page(page_id) - Get page content
+3. notion_search(query) - Search for databases/pages by keywords
 
 Note: TOOL nodes are attached to AI_AGENT nodes via attached_nodes,
 not connected through input/output ports.
@@ -23,7 +28,7 @@ class NotionMCPToolSpec(BaseNodeSpec):
             type=NodeType.TOOL,
             subtype=ToolSubtype.NOTION_MCP_TOOL,
             name="Notion_MCP_Tool",
-            description="Notion MCP tool for database and page operations through MCP protocol",
+            description="Ultra-simple Notion MCP tool for reading database/page content - Only 3 tools, minimal parameters, maximum AI usability",
             # Configuration parameters
             configurations={
                 "access_token": {
@@ -57,16 +62,16 @@ class NotionMCPToolSpec(BaseNodeSpec):
                 "available_tools": {
                     "type": "array",
                     "default": [
-                        "notion_search",
-                        "notion_page",
                         "notion_database",
+                        "notion_page",
+                        "notion_search",
                     ],
-                    "description": "可用的Notion工具列表 (notion_page包含create/get/update页面操作, notion_database包含查询和管理数据库)",
+                    "description": "Only 3 ultra-simple read-only tools: notion_database (list database items), notion_page (get page content), notion_search (find databases/pages by keywords)",
                     "required": False,
                     "options": [
-                        "notion_search",
-                        "notion_page",
                         "notion_database",
+                        "notion_page",
+                        "notion_search",
                     ],
                 },
                 "page_size_limit": {
@@ -86,7 +91,7 @@ class NotionMCPToolSpec(BaseNodeSpec):
                 "auto_create_missing_props": {
                     "type": "boolean",
                     "default": False,
-                    "description": "是否自动创建缺失的属性",
+                    "description": "是否自动创建缺失的属性 (Read-only mode: unused)",
                     "required": False,
                 },
                 **COMMON_CONFIGS,
@@ -169,198 +174,118 @@ class NotionMCPToolSpec(BaseNodeSpec):
             # Examples
             examples=[
                 {
-                    "name": "Search Notion Pages",
-                    "description": "Search for pages and databases in Notion workspace",
+                    "name": "List Database Items (Most Common)",
+                    "description": "List all items in a Notion database - just one call with zero parameters!",
                     "configurations": {
-                        "access_token": "secret_notion_token_123",
-                        "available_tools": ["notion_search"],
-                        "page_size_limit": 50,
-                        "enable_rich_text": True,
+                        "access_token": "{{$placeholder}}",  # Auto-fetched from oauth_tokens
+                        "operation_type": "database",
+                        "default_database_id": "240784b4-8366-8084-81c7-eac647e2bbc4",
+                        "available_tools": ["notion_database"],
+                        "page_size_limit": 100,
                     },
                     "usage_example": {
-                        "attached_to": "notion_assistant_ai",
+                        "attached_to": "task_management_ai",
+                        "ai_instruction": "Just call notion_database() - that's it! The database_id is auto-injected.",
                         "function_call": {
-                            "tool_name": "notion_search",
-                            "function_args": {
-                                "access_token": "secret_notion_token_123",
-                                "query": "project management",
-                                "filter": {"value": "page", "property": "object"},
-                                "sort": {
-                                    "direction": "descending",
-                                    "timestamp": "last_edited_time",
-                                },
-                                "start_cursor": None,
-                                "page_size": 20,
-                            },
-                            "context": {
-                                "user_request": "Find all project management related pages"
-                            },
+                            "tool_name": "notion_database",
+                            "function_args": {},  # No parameters needed!
                         },
                         "expected_result": {
                             "result": {
-                                "results": [
+                                "action": "query",
+                                "database_id": "240784b4-8366-8084-81c7-eac647e2bbc4",
+                                "pages": [
                                     {
                                         "id": "page_123",
-                                        "title": "Project Management Best Practices",
-                                        "object": "page",
-                                        "last_edited_time": "2025-01-20T10:30:00Z",
+                                        "title": "Task 1: Implement feature",
+                                        "properties": {
+                                            "Status": {"select": {"name": "In Progress"}},
+                                            "Priority": {"select": {"name": "High"}},
+                                        },
                                         "url": "https://notion.so/page_123",
                                     }
                                 ],
                                 "total_count": 15,
-                                "has_more": True,
-                                "next_cursor": "cursor_456",
-                            },
-                            "success": True,
-                            "execution_time": 1.2,
-                            "cached": False,
-                            "notion_object_type": "search_results",
-                        },
-                    },
-                },
-                {
-                    "name": "Create Notion Database Entry",
-                    "description": "Create new items in Notion databases with properties",
-                    "configurations": {
-                        "access_token": "secret_notion_token_456",
-                        "operation_type": "database",
-                        "default_database_id": "db_789",
-                        "available_tools": ["notion_create_database_item"],
-                        "auto_create_missing_props": True,
-                    },
-                    "usage_example": {
-                        "attached_to": "task_management_ai",
-                        "function_call": {
-                            "tool_name": "notion_create_database_item",
-                            "function_args": {
-                                "access_token": "secret_notion_token_456",
-                                "database_id": "db_789",
-                                "properties": {
-                                    "Task Name": {
-                                        "title": [
-                                            {"text": {"content": "Implement user authentication"}}
-                                        ]
-                                    },
-                                    "Status": {"select": {"name": "In Progress"}},
-                                    "Priority": {"select": {"name": "High"}},
-                                    "Due Date": {"date": {"start": "2025-01-25"}},
-                                    "Assignee": {"people": [{"id": "user_123"}]},
-                                },
-                            },
-                            "context": {"user_id": "user_123", "project": "web_app"},
-                        },
-                        "expected_result": {
-                            "result": {
-                                "id": "page_new_456",
-                                "object": "page",
-                                "parent": {"database_id": "db_789"},
-                                "properties": {
-                                    "Task Name": {
-                                        "title": [
-                                            {"text": {"content": "Implement user authentication"}}
-                                        ]
-                                    },
-                                    "Status": {"select": {"name": "In Progress"}},
-                                },
-                                "url": "https://notion.so/page_new_456",
-                            },
-                            "success": True,
-                            "execution_time": 0.8,
-                            "notion_object_id": "page_new_456",
-                            "notion_object_type": "page",
-                        },
-                    },
-                },
-                {
-                    "name": "Query Notion Database",
-                    "description": "Query database with filters and sorting options",
-                    "configurations": {
-                        "access_token": "secret_notion_token_789",
-                        "operation_type": "database",
-                        "default_database_id": "db_analytics_101",
-                        "available_tools": ["notion_query_database"],
-                        "page_size_limit": 25,
-                    },
-                    "usage_example": {
-                        "attached_to": "analytics_ai",
-                        "function_call": {
-                            "tool_name": "notion_query_database",
-                            "function_args": {
-                                "access_token": "secret_notion_token_789",
-                                "database_id": "db_analytics_101",
-                                "filter": {
-                                    "and": [
-                                        {"property": "Status", "select": {"equals": "Completed"}},
-                                        {"property": "Priority", "select": {"equals": "High"}},
-                                    ]
-                                },
-                                "sorts": [{"property": "Due Date", "direction": "descending"}],
-                                "page_size": 25,
-                            },
-                            "context": {"report_type": "completed_high_priority_tasks"},
-                        },
-                        "expected_result": {
-                            "result": {
-                                "results": [
-                                    {
-                                        "id": "page_completed_1",
-                                        "properties": {
-                                            "Task Name": {
-                                                "title": [
-                                                    {"text": {"content": "Database optimization"}}
-                                                ]
-                                            },
-                                            "Status": {"select": {"name": "Completed"}},
-                                            "Priority": {"select": {"name": "High"}},
-                                            "Due Date": {"date": {"start": "2025-01-18"}},
-                                        },
-                                    }
-                                ],
-                                "total_count": 12,
                                 "has_more": False,
                             },
                             "success": True,
-                            "execution_time": 1.1,
-                            "notion_object_type": "database_query_results",
+                            "execution_time": 0.8,
                         },
                     },
                 },
                 {
-                    "name": "Update Notion Page",
-                    "description": "Update content and properties of an existing Notion page",
+                    "name": "Get Page Content",
+                    "description": "Read full content of a Notion page including all text blocks",
                     "configurations": {
-                        "access_token": "secret_notion_token_update",
+                        "access_token": "{{$placeholder}}",
                         "operation_type": "page",
                         "default_page_id": "27f0b1df-411b-80ac-aa54-c4cba158a1f9",
-                        "available_tools": ["notion_update_page", "notion_get_page"],
+                        "available_tools": ["notion_page"],
                         "enable_rich_text": True,
                     },
                     "usage_example": {
-                        "attached_to": "content_management_ai",
+                        "attached_to": "content_reader_ai",
+                        "ai_instruction": "Call notion_page(page_id='...') to get full page content",
                         "function_call": {
-                            "tool_name": "notion_update_page",
+                            "tool_name": "notion_page",
                             "function_args": {
-                                "access_token": "secret_notion_token_update",
                                 "page_id": "27f0b1df-411b-80ac-aa54-c4cba158a1f9",
-                                "properties": {
-                                    "title": {
-                                        "title": [{"text": {"content": "Updated Page Title"}}]
-                                    }
-                                },
-                                "archived": False,
                             },
-                            "context": {"operation": "update_page_title"},
                         },
                         "expected_result": {
                             "result": {
-                                "id": "27f0b1df-411b-80ac-aa54-c4cba158a1f9",
-                                "object": "page",
-                                "url": "https://www.notion.so/Updated-Page-Title-27f0b1df411b80acaa54c4cba158a1f9",
+                                "action": "get",
+                                "page_id": "27f0b1df-411b-80ac-aa54-c4cba158a1f9",
+                                "title": "Project Documentation",
+                                "url": "https://www.notion.so/Project-Documentation-27f0b1df411b80acaa54c4cba158a1f9",
+                                "content": [
+                                    {
+                                        "id": "block_1",
+                                        "type": "paragraph",
+                                        "content": "This is the main documentation page...",
+                                    }
+                                ],
                             },
                             "success": True,
                             "execution_time": 0.6,
-                            "notion_object_id": "27f0b1df-411b-80ac-aa54-c4cba158a1f9",
-                            "notion_object_type": "page",
+                        },
+                    },
+                },
+                {
+                    "name": "Search for Databases/Pages",
+                    "description": "Search Notion workspace to find databases or pages by keywords",
+                    "configurations": {
+                        "access_token": "{{$placeholder}}",
+                        "operation_type": "both",
+                        "available_tools": ["notion_search"],
+                        "page_size_limit": 50,
+                    },
+                    "usage_example": {
+                        "attached_to": "notion_discovery_ai",
+                        "ai_instruction": "Use notion_search to find databases/pages when you don't have the ID",
+                        "function_call": {
+                            "tool_name": "notion_search",
+                            "function_args": {
+                                "query": "TODO List",
+                                "filter": {"object_type": "database"},
+                                "limit": 10,
+                            },
+                        },
+                        "expected_result": {
+                            "result": {
+                                "query": "TODO List",
+                                "results": [
+                                    {
+                                        "id": "240784b4-8366-8084-81c7-eac647e2bbc4",
+                                        "object": "database",
+                                        "title": "TODO List",
+                                        "url": "https://notion.so/240784b4836680....",
+                                    }
+                                ],
+                                "total_count": 1,
+                            },
+                            "success": True,
+                            "execution_time": 1.2,
                         },
                     },
                 },

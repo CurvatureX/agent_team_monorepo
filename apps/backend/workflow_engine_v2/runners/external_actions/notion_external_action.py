@@ -104,50 +104,9 @@ class NotionExternalAction(BaseExternalAction):
         configuration = context.node.configurations or {}
         operation_type = configuration.get("operation_type", "database")
 
-        def _extract_database_id(config: Dict[str, Any]) -> str:
-            direct = config.get("database_id")
-            if direct:
-                return direct
-
-            database_cfg = config.get("database_config") or {}
-            for key in ("database_id", "id", "target_id"):
-                value = database_cfg.get(key)
-                if value:
-                    return value
-
-            parent_cfg = database_cfg.get("parent") or {}
-            for key in ("database_id", "page_id", "id"):
-                value = parent_cfg.get(key)
-                if value:
-                    return value
-
-            return ""
-
-        def _extract_page_id(config: Dict[str, Any]) -> str:
-            direct = config.get("page_id")
-            if direct:
-                return direct
-
-            page_cfg = config.get("page_config") or {}
-            for key in ("page_id", "id", "target_id"):
-                value = page_cfg.get(key)
-                if value:
-                    return value
-
-            parent_cfg = page_cfg.get("parent") or {}
-            for key in ("page_id", "database_id", "id"):
-                value = parent_cfg.get(key)
-                if value:
-                    return value
-
-            return ""
-
-        page_id = _extract_page_id(configuration)
-        database_id = _extract_database_id(configuration)
-
-        # Cache resolved IDs so downstream helpers (_build_ai_context/_ensure_parent) can reuse them
-        configuration.setdefault("_resolved_ids", {})
-        configuration["_resolved_ids"].update({"page_id": page_id, "database_id": database_id})
+        # Extract IDs directly from configuration (simplified structure)
+        page_id = configuration.get("page_id", "").strip()
+        database_id = configuration.get("database_id", "").strip()
 
         if operation_type == "page" and not page_id:
             self.log_execution(
@@ -275,9 +234,35 @@ class NotionExternalAction(BaseExternalAction):
                 action_type = ai_decision.get("action_type")
                 parameters = ai_decision.get("parameters", {})
 
-                if not action_type:
-                    self.log_execution(context, "⚠️ AI decision missing action_type", "WARNING")
+                # Handle sentinel values that signal "no operation needed"
+                SENTINEL_ACTIONS = ["complete", "none", "skip", "finish", "done"]
+
+                if not action_type or action_type.lower() in SENTINEL_ACTIONS:
+                    if action_type and action_type.lower() in SENTINEL_ACTIONS:
+                        self.log_execution(
+                            context,
+                            f"⏭️ AI signaled '{action_type}' - skipping Notion API execution",
+                        )
+                    else:
+                        self.log_execution(context, "⚠️ AI decision missing action_type", "WARNING")
+
+                    # Update telemetry without API call
+                    round_telemetry.api_call = None
+                    round_telemetry.api_success = True
+                    round_telemetry.discovered_resources = execution_state[
+                        "discovered_resources"
+                    ].copy()
+                    round_telemetry.duration_ms = int(
+                        (datetime.utcnow() - round_start).total_seconds() * 1000
+                    )
                     execution_state["rounds"].append(asdict(round_telemetry))
+
+                    # Check if task is marked as completed
+                    if ai_decision.get("completed", False):
+                        execution_state["completed"] = True
+                        self.log_execution(context, "✅ AI marked task as completed")
+                        break
+
                     continue
 
                 # Log API call
@@ -345,6 +330,7 @@ class NotionExternalAction(BaseExternalAction):
                 # Update context for next round
                 ai_context["execution_history"] = execution_state["rounds"]
                 ai_context["notion_context"] = execution_state["discovered_resources"]
+                ai_context["schemas_cache"] = execution_state["schemas_cache"]
 
         # Build final result
         total_duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
@@ -387,17 +373,19 @@ class NotionExternalAction(BaseExternalAction):
         """Build comprehensive 5-layer context with operation_type awareness."""
         ai_context = await helper_build_ai_context(context, instruction, execution_state)
 
-        # Add operation_type configuration to context
+        # Add operation_type configuration to context (simplified)
         operation_type = context.node.configurations.get("operation_type", "database")
-        page_id = context.node.configurations.get("page_id", "")
-        database_id = context.node.configurations.get("database_id", "")
-        resolved_ids = context.node.configurations.get("_resolved_ids", {})
+        page_id = context.node.configurations.get("page_id", "").strip()
+        database_id = context.node.configurations.get("database_id", "").strip()
 
         ai_context["configuration"] = {
             "operation_type": operation_type,
-            "page_id": resolved_ids.get("page_id") or page_id,
-            "database_id": resolved_ids.get("database_id") or database_id,
+            "page_id": page_id,
+            "database_id": database_id,
         }
+
+        # Include cached schemas so AI can see actual database properties
+        ai_context["schemas_cache"] = execution_state["schemas_cache"]
 
         return ai_context
 
@@ -416,11 +404,25 @@ class NotionExternalAction(BaseExternalAction):
 
 **YOUR TASK:** Break down natural language instructions into Notion API operations and execute them intelligently.
 
+**CRITICAL OUTPUT FORMAT:**
+Your response MUST be raw JSON only. Do NOT wrap it in markdown code blocks (```json), do NOT use backticks, do NOT add any explanatory text before or after the JSON.
+
+Example of CORRECT output:
+{"action_type": "search", "parameters": {"query": "test"}, "reasoning": "...", "completed": false, "planning_phase": false, "plan": []}
+
+Example of INCORRECT output (DO NOT DO THIS):
+```json
+{"action_type": "search", ...}
+```
+
 **CRITICAL RULES:**
-1. **Output ONLY valid JSON** - No markdown, no explanations, no code blocks
+1. **Output ONLY raw JSON** - No markdown fences, no backticks, no explanations, no code blocks
 2. **Maximum 5 rounds total** - Plan efficiently within budget
-3. **Schema safety** - Always retrieve database schema before using properties
-4. **Resource accumulation** - Use discovered resources from previous rounds
+3. **MANDATORY: Use cached schemas** - If a database schema is cached, you MUST use the exact property names shown. NEVER guess or invent property names like "Name", "Description", "Assignee" - only use properties that exist in the cached schema
+4. **Schema retrieval** - If schema not cached, retrieve database first before creating/updating pages
+5. **Resource accumulation** - Use discovered resources from previous rounds
+6. **Keep responses concise** - Limit content blocks to 3-5 items maximum per operation to avoid token limits
+7. **Reuse configured resources** - If page_id or database_id is configured, use them directly. Do NOT create new pages/databases or search for them.
 
 **Available Notion Operations:**
 - search: Find databases/pages by query
@@ -443,9 +445,23 @@ class NotionExternalAction(BaseExternalAction):
 - Check discovered_resources for cached block_ids before retrieving again
 - Use cached block_ids directly for batch operations to save rounds
 
+**Common Patterns:**
+
+Pattern A: Append to Configured Page (page_id is configured)
+- Round 1: append_blocks with page_id and children blocks
+- Do NOT create a new page - the page already exists
+
+Pattern B: Create Page in Configured Database (database_id is configured)
+- Round 1: retrieve_database to get schema (check Cached Database Schemas first - may already be cached!)
+- Round 2: create_page with parent: {"database_id": "..."} and properties using ONLY property names from cached schema
+
+Pattern C: Update Existing Page (page_id is configured)
+- Round 1: retrieve_block_children to get current content
+- Round 2: batch_delete_blocks or append_blocks to modify content
+
 **JSON Response Format:**
 {
-  "action_type": "operation_name",
+  "action_type": "operation_name",  // Use "complete" to skip execution when task is done
   "parameters": { /* operation-specific params */ },
   "reasoning": "Brief explanation of this step",
   "completed": false,  // true only when task is fully done
@@ -453,7 +469,16 @@ class NotionExternalAction(BaseExternalAction):
   "plan": []  // only for Round 1: array of {step, action_type}
 }
 
-**IMPORTANT:** Return ONLY the JSON object above. Do not wrap in markdown code blocks or add any other text."""
+**Completion Signal:**
+When the task is complete and no further Notion operations are needed:
+- Set `completed: true`
+- Set `action_type: "complete"` (or "done", "none") to skip API execution
+- The system will exit the loop successfully
+
+**FINAL REMINDER - OUTPUT FORMAT:**
+Return ONLY raw JSON. No markdown code blocks (```json), no backticks, no explanations.
+Your entire response should be parseable by JSON.parse() directly.
+Start your response with { and end with }"""
 
         # Build user message with full context
         configuration = ai_context.get("configuration", {})
@@ -471,9 +496,13 @@ class NotionExternalAction(BaseExternalAction):
 - Database ID: {database_id if database_id else "(not configured)"}
 
 **Configuration Guidance:**
-- When operation_type is "page": Use the configured page_id for page operations
+- When page_id is configured: **REUSE the existing page** - Do NOT create a new page. Append blocks, update properties, or read content from this page.
+- When database_id is configured: **REUSE the existing database** - Create new pages IN this database, or query/update it.
+- When operation_type is "page": Use the configured page_id for all page operations
 - When operation_type is "database": Use the configured database_id for database operations
 - When operation_type is "both": You can use either page_id or database_id as needed
+- **IMPORTANT**: If a resource ID is already configured, do NOT search for it or create a new one. Use the provided ID directly.
+- **CRITICAL**: Check "Cached Database Schemas" section below - if a database schema is already cached, you MUST use those exact property names. Do NOT invent properties!
 
 **Available Context:**
 
@@ -502,6 +531,9 @@ class NotionExternalAction(BaseExternalAction):
 ```json
 {json.dumps(ai_context["notion_context"], indent=2)}
 ```
+
+### Cached Database Schemas:
+{self._format_cached_schemas(ai_context.get("schemas_cache", {}))}
 
 **Round Budget:**
 - Current: {round_num}/{self.MAX_ROUNDS}
@@ -554,6 +586,23 @@ class NotionExternalAction(BaseExternalAction):
 
         return "\n".join(history_lines)
 
+    def _format_cached_schemas(self, schemas_cache: Dict[str, Any]) -> str:
+        """Format cached database schemas for AI context."""
+        if not schemas_cache:
+            return "(No database schemas cached yet - retrieve database first to see properties)"
+
+        schema_lines = []
+        for db_id, schema_data in schemas_cache.items():
+            properties = schema_data.get("properties", [])
+            schema_lines.append(f"**Database {db_id}:**")
+            schema_lines.append(f"- Available properties: {', '.join(properties)}")
+            schema_lines.append(
+                f"- IMPORTANT: Use these exact property names when creating/updating pages"
+            )
+            schema_lines.append("")
+
+        return "\n".join(schema_lines)
+
     def _get_round_specific_prompt(
         self, round_num: int, rounds_remaining: int, execution_state: dict
     ) -> str:
@@ -600,28 +649,39 @@ Be efficient - prefer completing in fewer rounds.
             filter_obj = parameters.get("filter", {})
             page_size = parameters.get("page_size", 10)
 
-            # Extract filter value if it's a dict, otherwise use as string
-            if isinstance(filter_obj, dict):
-                filter_value = filter_obj.get("value", "page")
-            else:
-                filter_value = filter_obj or "page"
+            # Build filter_conditions for Notion API
+            filter_conditions = None
+            if filter_obj:
+                if isinstance(filter_obj, dict):
+                    # If it has 'property' and 'value', use as-is (proper Notion API format)
+                    if "property" in filter_obj and "value" in filter_obj:
+                        filter_conditions = filter_obj
+                    # If it just has 'value', assume it's an object type filter
+                    elif "value" in filter_obj:
+                        filter_conditions = {"property": "object", "value": filter_obj["value"]}
+                    else:
+                        # Use the dict as-is, might be a complete filter
+                        filter_conditions = filter_obj
+                elif isinstance(filter_obj, str):
+                    # String filter, assume it's an object type
+                    filter_conditions = {"property": "object", "value": filter_obj}
 
             result = await client.search(
-                query=query, filter_value=filter_value, page_size=page_size
+                query=query, filter_conditions=filter_conditions, page_size=page_size
             )
 
             return {
                 "notion_response": {
                     "object": "list",
-                    "results": [asdict(item) for item in result.results],
-                    "has_more": result.has_more,
-                    "next_cursor": result.next_cursor,
+                    "results": [asdict(item) for item in result["results"]],
+                    "has_more": result.get("has_more", False),
+                    "next_cursor": result.get("next_cursor"),
                 },
                 "resource_id": "",
                 "execution_metadata": {
                     "action_type": "search",
                     "query": query,
-                    "result_count": len(result.results),
+                    "result_count": len(result["results"]),
                 },
             }
 
@@ -836,44 +896,29 @@ Be efficient - prefer completing in fewer rounds.
         """Ensure parent payload contains database_id/page_id derived from workflow configuration."""
 
         parent = parent or {}
+        # If parent already has valid IDs, return it
         if parent.get("database_id") or parent.get("page_id") or parent.get("workspace"):
             return parent
 
+        # Otherwise, use IDs from node configuration
         config = context.node.configurations or {}
-        resolved_ids = config.get("_resolved_ids") or {}
 
         def _sanitize(notion_id: Optional[str]) -> Optional[str]:
             if not notion_id or not isinstance(notion_id, str):
                 return None
-            return notion_id.replace("-", "")
+            return notion_id.replace("-", "").strip()
 
-        database_id = _sanitize(resolved_ids.get("database_id") or config.get("database_id"))
-        page_id = _sanitize(resolved_ids.get("page_id") or config.get("page_id"))
+        database_id = _sanitize(config.get("database_id"))
+        page_id = _sanitize(config.get("page_id"))
 
+        # Prefer database_id if configured
         if database_id:
             return {"database_id": database_id}
+        # Fall back to page_id
         if page_id:
             return {"page_id": page_id}
 
-        page_parent = ((config.get("page_config") or {}).get("parent") or {}).copy()
-        database_parent = ((config.get("database_config") or {}).get("parent") or {}).copy()
-
-        for candidate in (page_parent, database_parent):
-            if not candidate:
-                continue
-            db_id = _sanitize(candidate.get("database_id"))
-            pg_id = _sanitize(candidate.get("page_id"))
-            if db_id or pg_id:
-                payload: Dict[str, Any] = {}
-                if db_id:
-                    payload["database_id"] = db_id
-                if pg_id:
-                    payload["page_id"] = pg_id
-                if candidate.get("type"):
-                    payload["type"] = candidate.get("type")
-                return payload
-
-        # No hint available; return empty dict so upstream error surfaces
+        # No configuration available; return empty parent so error surfaces
         return parent
 
     async def _search(
@@ -881,28 +926,38 @@ Be efficient - prefer completing in fewer rounds.
     ) -> NodeExecutionResult:
         """Search Notion workspace."""
         query = context.input_data.get("query", "")
-        filter_type = context.input_data.get("filter", {}).get("value", "page")
+        filter_obj = context.input_data.get("filter", {})
         page_size = context.input_data.get("page_size", 10)
 
-        self.log_execution(context, f"Searching Notion: query='{query}', filter={filter_type}")
+        # Build filter_conditions for Notion API
+        filter_conditions = None
+        if filter_obj:
+            filter_type = filter_obj.get("value", "page")
+            filter_conditions = {"property": "object", "value": filter_type}
 
-        result = await client.search(query=query, filter_type=filter_type, page_size=page_size)
+        self.log_execution(
+            context, f"Searching Notion: query='{query}', filter={filter_conditions}"
+        )
 
-        self.log_execution(context, f"✅ Found {len(result.results)} items")
+        result = await client.search(
+            query=query, filter_conditions=filter_conditions, page_size=page_size
+        )
+
+        self.log_execution(context, f"✅ Found {len(result['results'])} items")
 
         return self._create_success_result(
             notion_response={
                 "object": "list",
-                "results": [asdict(item) for item in result.results],
-                "has_more": result.has_more,
-                "next_cursor": result.next_cursor,
+                "results": [asdict(item) for item in result["results"]],
+                "has_more": result.get("has_more", False),
+                "next_cursor": result.get("next_cursor"),
             },
             resource_id="",
             resource_url="",
             execution_metadata={
                 "action_type": "search",
                 "query": query,
-                "result_count": len(result.results),
+                "result_count": len(result["results"]),
             },
         )
 
@@ -1131,7 +1186,7 @@ Be efficient - prefer completing in fewer rounds.
             or context.input_data.get("result", {})
             .get("data", {})
             .get("page_id")  # From conversion function
-            or context.node.configurations.get("page_config", {}).get("parent", {}).get("page_id")
+            or context.node.configurations.get("page_id", "")  # Simplified: directly from config
         )
 
         children = (
@@ -1140,7 +1195,7 @@ Be efficient - prefer completing in fewer rounds.
             or context.input_data.get("result", {})
             .get("data", {})
             .get("children")  # From conversion function
-            or context.node.configurations.get("page_config", {}).get("children", [])
+            or []  # No default children from config
         )
 
         if not page_id:

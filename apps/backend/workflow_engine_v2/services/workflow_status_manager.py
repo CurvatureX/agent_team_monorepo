@@ -37,9 +37,7 @@ class WorkflowStatusManagerV2:
         # Initialize Supabase connection
         try:
             self.supabase = create_supabase_client()
-            if self.supabase:
-                self.logger.info("Workflow Status Manager: Using Supabase for persistence")
-            else:
+            if not self.supabase:
                 self.logger.warning(
                     "Workflow Status Manager: Supabase not available, using cache only"
                 )

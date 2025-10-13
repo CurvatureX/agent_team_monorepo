@@ -258,8 +258,9 @@ const WorkflowDetailPage = () => {
         // Ensure workflowData has required properties
         if (workflowData) {
           // Ensure id is included in workflowData
+          // CRITICAL: Use UUID from metadata.id (correct source) not workflow.id
           if (!workflowData.id) {
-            workflowData.id = response?.workflow?.id || workflowId;
+            workflowData.id = response?.workflow?.metadata?.id || workflowId;
           }
 
           // Don't manually convert connections - let the workflow editor's converter handle it

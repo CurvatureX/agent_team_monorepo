@@ -147,14 +147,13 @@ class PersistentMemoryBase(MemoryBase):
                 f"Database {operation} on {table}: {len(result.data) if result.data else 0} rows affected"
             )
 
+            # Always compute count from data length to avoid PostgREST COUNT relationship issues
+            row_count = len(result.data) if result.data else 0
+
             return {
                 "success": True,
                 "data": result.data,
-                "count": result.count
-                if hasattr(result, "count")
-                else len(result.data)
-                if result.data
-                else 0,
+                "count": row_count,
             }
 
         except Exception as e:

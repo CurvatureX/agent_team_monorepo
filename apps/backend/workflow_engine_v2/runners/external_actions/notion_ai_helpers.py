@@ -143,7 +143,7 @@ async def call_ai_model_anthropic(
     api_key: str,
     system_prompt: str,
     user_message: str,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = "claude-sonnet-4-5-20250929",
     timeout: int = 120,
 ) -> dict:
     """Call Anthropic Claude API for AI decision."""
@@ -155,7 +155,7 @@ async def call_ai_model_anthropic(
 
     body = {
         "model": model,
-        "max_tokens": 4096,
+        "max_tokens": 8000,
         "temperature": 0.7,
         "system": system_prompt,
         "messages": [{"role": "user", "content": user_message}],
@@ -169,6 +169,14 @@ async def call_ai_model_anthropic(
             resp.raise_for_status()
             data = resp.json()
 
+            # Check if response was cut off
+            stop_reason = data.get("stop_reason")
+            if stop_reason == "max_tokens":
+                logger.warning(
+                    "⚠️ AI response hit max_tokens limit. Response may be incomplete. "
+                    "Consider reducing instruction complexity."
+                )
+
             # Extract content
             content = ""
             if "content" in data and data["content"]:
@@ -178,9 +186,33 @@ async def call_ai_model_anthropic(
 
             # Try to parse as JSON
             try:
-                return json.loads(content)
-            except json.JSONDecodeError:
+                # Strip markdown code fences if present
+                cleaned_content = content.strip()
+                if cleaned_content.startswith("```"):
+                    # Remove opening fence (```json or ```)
+                    lines = cleaned_content.split("\n")
+                    if lines[0].startswith("```"):
+                        lines = lines[1:]
+                    # Remove closing fence
+                    if lines and lines[-1].strip() == "```":
+                        lines = lines[:-1]
+                    cleaned_content = "\n".join(lines)
+
+                return json.loads(cleaned_content)
+            except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse AI response as JSON: {content[:500]}")
+
+                # Check if response was truncated (common issue with complex Notion structures)
+                if len(content) > 0 and not content.rstrip().endswith("}"):
+                    logger.error(
+                        "⚠️ AI response appears truncated. The response may have exceeded token limits. "
+                        "Try simplifying the instruction or reducing content complexity."
+                    )
+                    raise ValueError(
+                        f"AI response was truncated (likely exceeded max_tokens). "
+                        f"Last 200 chars: ...{content[-200:]}"
+                    )
+
                 raise ValueError(f"AI returned invalid JSON: {content[:200]}")
 
     except httpx.HTTPStatusError as e:
@@ -229,7 +261,19 @@ async def call_ai_model_openai(
 
             # Parse JSON
             try:
-                return json.loads(content)
+                # Strip markdown code fences if present
+                cleaned_content = content.strip()
+                if cleaned_content.startswith("```"):
+                    # Remove opening fence (```json or ```)
+                    lines = cleaned_content.split("\n")
+                    if lines[0].startswith("```"):
+                        lines = lines[1:]
+                    # Remove closing fence
+                    if lines and lines[-1].strip() == "```":
+                        lines = lines[:-1]
+                    cleaned_content = "\n".join(lines)
+
+                return json.loads(cleaned_content)
             except json.JSONDecodeError:
                 logger.error(f"Failed to parse OpenAI response as JSON: {content[:500]}")
                 raise ValueError(f"AI returned invalid JSON: {content[:200]}")

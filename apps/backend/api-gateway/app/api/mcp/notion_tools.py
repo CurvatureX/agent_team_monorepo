@@ -109,23 +109,18 @@ class NotionMCPService:
             ),
             MCPTool(
                 name="notion_page",
-                description="Complete page management (get, create, update, retrieve documents with full content) - AI-optimized for OpenAI, Claude, and Gemini",
+                description="Get full content of a Notion page including all text blocks. Perfect for 'show me page content', 'what's in this page', 'read this document'.",
                 category="notion",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "access_token": {
                             "type": "string",
-                            "description": "Notion integration access token",
-                        },
-                        "action": {
-                            "type": "string",
-                            "enum": ["get", "create", "update", "retrieve", "list_metadata"],
-                            "description": "Action to perform: get (single page), create (new page), update (modify existing), retrieve (multiple documents with full content), list_metadata (document metadata overview)",
+                            "description": "Notion integration access token (auto-injected if configured)",
                         },
                         "page_id": {
                             "type": "string",
-                            "description": "Page ID (required for get/update actions)",
+                            "description": "Page ID to retrieve content from",
                         },
                         "parent_id": {
                             "type": "string",
@@ -306,73 +301,42 @@ class NotionMCPService:
             ),
             MCPTool(
                 name="notion_database",
-                description="Complete database operations (get schema, query with advanced filtering) - AI-optimized for OpenAI, Claude, and Gemini",
+                description="List all items/pages in a Notion database WITH FULL CONTENT. Perfect for 'how many tasks', 'list all items', 'show me the TODO list with details'. Returns all items with their complete text content by default.",
                 category="notion",
                 inputSchema={
                     "type": "object",
                     "properties": {
                         "access_token": {
                             "type": "string",
-                            "description": "Notion integration access token",
-                        },
-                        "action": {
-                            "type": "string",
-                            "enum": ["get", "query"],
-                            "description": "Action to perform (get schema or query data)",
+                            "description": "Notion integration access token (auto-injected if configured)",
                         },
                         "database_id": {
                             "type": "string",
-                            "description": "Database ID",
+                            "description": "Database ID (auto-injected if default_database_id is configured)",
                         },
-                        "query": {
+                        "filter": {
                             "type": "object",
-                            "properties": {
-                                "filter": {
-                                    "type": "object",
-                                    "description": "Notion API filter object (advanced filtering)",
-                                },
-                                "sorts": {
-                                    "type": "array",
-                                    "items": {"type": "object"},
-                                    "description": "Sort configuration array",
-                                },
-                                "limit": {
-                                    "type": "integer",
-                                    "default": 10,
-                                    "minimum": 1,
-                                    "maximum": 100,
-                                    "description": "Maximum results to return",
-                                },
-                                "simple_filter": {
-                                    "type": "object",
-                                    "properties": {
-                                        "property": {"type": "string"},
-                                        "value": {"type": "string"},
-                                        "condition": {
-                                            "type": "string",
-                                            "enum": [
-                                                "equals",
-                                                "contains",
-                                                "starts_with",
-                                                "ends_with",
-                                            ],
-                                            "default": "contains",
-                                        },
-                                    },
-                                    "description": "Simple property-based filtering",
-                                },
-                            },
-                            "description": "Query configuration for database action",
+                            "description": "Optional: Filter items (Notion API filter format)",
+                        },
+                        "sorts": {
+                            "type": "array",
+                            "items": {"type": "object"},
+                            "description": "Optional: Sort items",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "default": 100,
+                            "description": "Optional: Max items to return (default 100)",
                         },
                         "include_content": {
                             "type": "boolean",
-                            "default": False,
-                            "description": "Include page content for query results",
+                            "default": True,
+                            "description": "Include full page content blocks (default: True)",
                         },
                     },
-                    "required": ["access_token", "action", "database_id"],
+                    "required": ["access_token", "database_id"],
                 },
-                tags=["database", "query", "schema", "filter"],
+                tags=["database", "query", "list", "content"],
             ),
         ]
 
@@ -589,7 +553,7 @@ class NotionMCPService:
         self, client: NotionClient, params: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Handle all page operations (get, create, update)."""
-        action = params.get("action")
+        action = params.get("action", "get")  # Default to "get" if not specified
         page_id = params.get("page_id")
         include_content = params.get("include_content", True)
 
@@ -806,7 +770,7 @@ class NotionMCPService:
         self, client: NotionClient, params: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Handle database operations (get schema, query)."""
-        action = params.get("action")
+        action = params.get("action", "query")  # Default to "query" if not specified
         database_id = params.get("database_id")
 
         if action == "get":
@@ -828,7 +792,9 @@ class NotionMCPService:
 
         elif action == "query":
             query_config = params.get("query", {})
-            include_content = params.get("include_content", False)
+            include_content = params.get(
+                "include_content", True
+            )  # Default to True - include full content
 
             # Handle simple filter
             filter_conditions = None
@@ -882,19 +848,22 @@ class NotionMCPService:
                     "url": getattr(page, "url", None),
                 }
 
-                # Add content if requested
+                # Add full content blocks if requested
                 if include_content:
                     try:
                         children = await client.get_block_children(page.id)
                         page_data["content"] = [
-                            (
-                                child.to_dict()
-                                if hasattr(child, "to_dict")
-                                else {"id": getattr(child, "id", "unknown")}
-                            )
+                            {
+                                "id": child.id,
+                                "type": str(
+                                    child.type.value if hasattr(child.type, "value") else child.type
+                                ),
+                                "content": child.content if hasattr(child, "content") else None,
+                            }
                             for child in children.get("blocks", [])
                         ]
-                    except:
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch content for page {page.id}: {str(e)}")
                         page_data["content"] = []
 
                 pages.append(page_data)

@@ -101,6 +101,7 @@ const NewWorkflowPage = () => {
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const hasAutoSentMessage = useRef(false);
   const hasInitializedSession = useRef(false);
+  const [isSessionReady, setIsSessionReady] = useState(false);
 
   const { toast } = useToast();
   // const { session } = useAuth();
@@ -177,10 +178,21 @@ const NewWorkflowPage = () => {
 
         // New workflow should start with empty chat history
         setMessages([]);
+
+        // Mark session as ready
+        setIsSessionReady(true);
+        console.log("[NewWorkflow] Session is now ready");
       } catch (error) {
         console.error("[NewWorkflow] Error initializing chat:", error);
-        // Reset flag on error so user can retry
+        // Reset flags on error so user can retry
         hasInitializedSession.current = false;
+        setIsSessionReady(false);
+
+        toast({
+          title: "Session Initialization Error",
+          description: "Failed to initialize chat session. Please refresh the page.",
+          variant: "destructive",
+        });
       }
     };
 
@@ -189,24 +201,8 @@ const NewWorkflowPage = () => {
     // Reset flag on unmount so a fresh session is created if user returns
     return () => {
       hasInitializedSession.current = false;
+      setIsSessionReady(false);
     };
-  }, []);
-
-  // Auto-send initial message from sessionStorage
-  useEffect(() => {
-    if (hasAutoSentMessage.current) return;
-
-    const initialMessage = sessionStorage.getItem("initialMessage");
-    if (initialMessage) {
-      hasAutoSentMessage.current = true;
-      sessionStorage.removeItem("initialMessage");
-
-      // Send the message after a brief delay to ensure chat is initialized
-      setTimeout(() => {
-        handleSendMessage(initialMessage);
-      }, 500);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSendMessage = useCallback(
@@ -359,6 +355,21 @@ const NewWorkflowPage = () => {
     },
     [toast, streamCancelFn]
   );
+
+  // Auto-send initial message from sessionStorage once session is ready
+  useEffect(() => {
+    if (hasAutoSentMessage.current || !isSessionReady) return;
+
+    const initialMessage = sessionStorage.getItem("initialMessage");
+    if (initialMessage) {
+      console.log("[NewWorkflow] Session ready, auto-sending initial message:", initialMessage);
+      hasAutoSentMessage.current = true;
+      sessionStorage.removeItem("initialMessage");
+
+      // Send the message immediately since session is confirmed ready
+      handleSendMessage(initialMessage);
+    }
+  }, [isSessionReady, handleSendMessage]);
 
   // Redirect to workflow detail page when workflow ID is received
   // The AI agent already saves the workflow to the database and returns the ID

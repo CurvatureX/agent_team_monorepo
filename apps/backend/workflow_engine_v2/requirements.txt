@@ -4,3 +4,4 @@ httpx>=0.27
 supabase>=2.0.0
 croniter>=1.4.1
 firecrawl-py>=4.3.0
+redis>=5.0.0

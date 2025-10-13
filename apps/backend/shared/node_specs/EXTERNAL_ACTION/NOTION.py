@@ -50,29 +50,6 @@ class NotionActionSpec(BaseNodeSpec):
                     "required": False,
                     "search_endpoint": "/api/proxy/v1/app/integrations/notion/search",
                 },
-                "database_config": {
-                    "type": "object",
-                    "default": {
-                        "title": "",
-                        "description": "",
-                        "properties": {},
-                        "parent": {},
-                    },
-                    "description": "数据库配置（用于创建数据库时的额外配置）",
-                    "required": False,
-                },
-                "page_config": {
-                    "type": "object",
-                    "default": {
-                        "parent": {},
-                        "properties": {},
-                        "children": [],
-                        "icon": {},
-                        "cover": {},
-                    },
-                    "description": "页面配置（用于创建页面时的额外配置）",
-                    "required": False,
-                },
                 **COMMON_CONFIGS,
             },
             # Parameter schemas (preferred over legacy defaults)

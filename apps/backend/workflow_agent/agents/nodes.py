@@ -366,7 +366,8 @@ class WorkflowAgentNodes:
         metadata = workflow.get("metadata") or {}
         workflow_name = workflow.get("name", metadata.get("name", "Generated Workflow"))
 
-        metadata.setdefault("id", workflow.get("id", str(uuid.uuid4())))
+        # Don't set an ID here - workflow_engine will generate a proper UUID
+        # metadata.setdefault("id", workflow.get("id", str(uuid.uuid4())))
         metadata.setdefault("name", workflow_name)
         metadata.setdefault(
             "description", workflow.get("description", metadata.get("description", ""))
@@ -382,7 +383,7 @@ class WorkflowAgentNodes:
             metadata["session_id"] = state.get("session_id")
 
         workflow["metadata"] = metadata
-        workflow["id"] = metadata["id"]
+        # Don't set workflow["id"] - workflow_engine will generate it
 
         triggers = workflow.get("triggers")
         if not triggers:
@@ -509,7 +510,10 @@ Next node's purpose: {next_node.get('name', 'Unknown')}
 
             if node_spec:
                 # Add spec details if available - but ONLY input_params, not configurations
-                input_params = node_spec.get("input_params", {})
+                # Try input_params_schema first (serialized format), then fall back to input_params
+                input_params = node_spec.get("input_params_schema") or node_spec.get(
+                    "input_params", {}
+                )
                 if input_params:
                     enhancement_prompt += (
                         "Next node expects these INPUT PARAMETERS (runtime data):\n"
@@ -549,6 +553,9 @@ Next node's purpose: {next_node.get('name', 'Unknown')}
                                 param_name.endswith("_key"),
                                 param_name.endswith("_secret"),
                                 param_name.endswith("_config"),
+                                param_name.endswith(
+                                    "_id"
+                                ),  # Skip *_id fields (database_id, page_id, workspace_id, etc.)
                                 param_name
                                 in ["timeout", "retry_attempts", "enabled", "operation_type"],
                                 param.get("sensitive", False),
@@ -744,16 +751,16 @@ Check the node's expected input format and structure your response accordingly.
         # Extract input parameters from the node spec
         input_params = {}
 
-        # PRIORITY 1: Try input_params dict (the actual field used in node specs)
-        if "input_params" in node_spec and isinstance(node_spec["input_params"], dict):
-            input_params = node_spec["input_params"]
-            logger.debug(f"Using input_params for {node_type}:{node_subtype}")
-        # PRIORITY 2: Try input_params_schema (alternative format)
-        elif "input_params_schema" in node_spec and isinstance(
+        # PRIORITY 1: Try input_params_schema first (serialized format from MCP)
+        if "input_params_schema" in node_spec and isinstance(
             node_spec["input_params_schema"], dict
         ):
             input_params = node_spec["input_params_schema"]
             logger.debug(f"Using input_params_schema for {node_type}:{node_subtype}")
+        # PRIORITY 2: Try input_params dict (alternative format)
+        elif "input_params" in node_spec and isinstance(node_spec["input_params"], dict):
+            input_params = node_spec["input_params"]
+            logger.debug(f"Using input_params for {node_type}:{node_subtype}")
         # PRIORITY 3: Try to extract from parameters list, but ONLY if they're marked as input params
         elif "parameters" in node_spec and isinstance(node_spec["parameters"], list):
             # Filter parameters to ONLY include input params, exclude configurations
@@ -771,10 +778,11 @@ Check the node's expected input format and structure your response accordingly.
                             param_name.endswith("_key"),
                             param_name.endswith("_secret"),
                             param_name.endswith("_config"),
+                            param_name.endswith(
+                                "_id"
+                            ),  # Skip *_id fields (database_id, page_id, workspace_id, etc.)
                             param_name
                             in ["timeout", "retry_attempts", "enabled", "operation_type"],
-                            # Only skip *_id if it's clearly a configuration (not data)
-                            # Keep database_id/page_id if they're in context data, but skip if direct configs
                             param.get("sensitive", False),  # Skip sensitive fields
                         ]
                     )

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures as _fut
+import json as _json
 import logging
 import os
 import random
@@ -93,9 +94,17 @@ def execute_conversion_function_flexible(
 
     try:
         # Create a restricted namespace for security
+        # Allow only a very small set of builtins and a safe importer that permits json only
+        def _safe_import(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "json":
+                return _json
+            raise ImportError(f"Unsafe import blocked: {name}")
+
         namespace = {
             "Dict": Dict,
             "Any": Any,
+            # Expose json directly so conversions can use it without importing
+            "json": _json,
             "__builtins__": {
                 "len": len,
                 "str": str,
@@ -118,6 +127,8 @@ def execute_conversion_function_flexible(
                 "all": all,
                 "isinstance": isinstance,
                 "type": type,
+                # Safe, narrowly-scoped import support (json only)
+                "__import__": _safe_import,
             },
         }
 
@@ -468,6 +479,10 @@ class ExecutionEngine:
                 )
                 node_execution.status = NodeExecutionStatus.FAILED
                 workflow_execution.status = ExecutionStatus.ERROR
+                workflow_execution.end_time = _now_ms()
+                workflow_execution.duration_ms = workflow_execution.end_time - (
+                    workflow_execution.start_time or workflow_execution.end_time
+                )
                 error_msg = str(last_exc)
                 self._log.log(
                     workflow_execution,
@@ -519,6 +534,25 @@ class ExecutionEngine:
                     except Exception as log_err:
                         logger.error(f"❌ Failed to log node exception: {log_err}")
 
+                # Update workflow execution fields to mark failure
+                self._update_workflow_execution_fields(
+                    workflow_id=workflow_id,
+                    latest_execution_status=ExecutionStatus.ERROR.value,
+                    latest_execution_id=workflow_execution.execution_id,
+                )
+
+                # Update workflow statistics (even for failed executions)
+                self._update_workflow_statistics(
+                    workflow_id=workflow_id,
+                    duration_ms=workflow_execution.duration_ms or 0,
+                    credits_consumed=workflow_execution.credits_consumed or 0,
+                    success=False,
+                    execution_time=workflow_execution.end_time or _now_ms(),
+                )
+
+                # CRITICAL: Break from the outer queue loop to stop workflow execution
+                # Clear the queue to prevent any remaining nodes from executing
+                queue.clear()
                 break
 
             # HIL (Human-in-the-Loop) Wait handling with database persistence
@@ -721,6 +755,10 @@ class ExecutionEngine:
 
                         # Mark workflow as error
                         workflow_execution.status = ExecutionStatus.ERROR
+                        workflow_execution.end_time = _now_ms()
+                        workflow_execution.duration_ms = workflow_execution.end_time - (
+                            workflow_execution.start_time or workflow_execution.end_time
+                        )
                         workflow_execution.error = ExecutionError(
                             error_code="EXECUTION_FAILED",
                             error_message=f"Node {node.name} failed: {error_msg}",
@@ -769,6 +807,22 @@ class ExecutionEngine:
                             except Exception as log_err:
                                 logger.error(f"❌ Failed to log node failure: {log_err}")
 
+                        # Update workflow execution fields to mark failure
+                        self._update_workflow_execution_fields(
+                            workflow_id=workflow_id,
+                            latest_execution_status=ExecutionStatus.ERROR.value,
+                            latest_execution_id=workflow_execution.execution_id,
+                        )
+
+                        # Update workflow statistics (even for failed executions)
+                        self._update_workflow_statistics(
+                            workflow_id=workflow_id,
+                            duration_ms=workflow_execution.duration_ms or 0,
+                            credits_consumed=workflow_execution.credits_consumed or 0,
+                            success=False,
+                            execution_time=workflow_execution.end_time or _now_ms(),
+                        )
+
                         node_failed = True
                         break  # Stop checking other ports
             except Exception as check_err:
@@ -776,6 +830,8 @@ class ExecutionEngine:
 
             # If node failed, stop workflow execution
             if node_failed:
+                # CRITICAL: Clear the queue to prevent any remaining nodes from executing
+                queue.clear()
                 break
             # Merge execution details patch if provided by runner
             try:
@@ -895,16 +951,6 @@ class ExecutionEngine:
                     node_name = node.name
                     execution_context.node_outputs_by_name[node_name] = shaped_outputs
                 except Exception:
-                    pass
-
-                # Record node run (append copy)
-                try:
-                    # Deep copy NodeExecution for run record
-                    run_record = NodeExecution(**node_execution.model_dump())
-                    workflow_execution.node_runs.setdefault(current_node_id, []).append(run_record)
-                    logger.info(f"✓ Recorded node run for {current_node_id}")
-                except Exception as e:
-                    logger.warning(f"⚠️ Failed to record node run: {e}")
                     pass
 
                 logger.info(f"🚦 Starting successor propagation for node {current_node_id}")

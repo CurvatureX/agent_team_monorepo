@@ -382,9 +382,9 @@ class BaseNodeSpec(BaseModel):
 COMMON_CONFIGS = {
     "timeout": {
         "type": "integer",
-        "default": 30,
+        "default": 420,
         "min": 1,
-        "max": 300,
+        "max": 1000,
         "description": "执行超时时间（秒）",
         "required": False,
     },

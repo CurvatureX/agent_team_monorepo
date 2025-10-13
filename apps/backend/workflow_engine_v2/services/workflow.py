@@ -154,7 +154,6 @@ class WorkflowServiceV2:
     def create_workflow(
         self,
         *,
-        workflow_id: str,
         name: str,
         created_by: str,
         created_time_ms: int,
@@ -167,6 +166,12 @@ class WorkflowServiceV2:
         parent_workflow: Optional[str] = None,
         icon_url: Optional[str] = None,
     ) -> Workflow:
+        # Generate new UUID for the workflow
+        import uuid
+
+        workflow_id = str(uuid.uuid4())
+        self.logger.info(f"🆕 Generated workflow ID: {workflow_id}")
+
         # Use provided icon URL or generate one
         if not icon_url:
             icon_url = metadata.get("icon_url") if metadata else None
@@ -271,9 +276,6 @@ class WorkflowServiceV2:
                 icon_url = row.get("icon_url")
 
                 if workflow_data:
-                    # Debug: Log the actual workflow data structure
-                    self.logger.info(f"🔍 Raw workflow_data structure: {workflow_data}")
-
                     # Fix missing fields in workflow_data for Pydantic validation
                     if "metadata" in workflow_data:
                         metadata = workflow_data["metadata"]

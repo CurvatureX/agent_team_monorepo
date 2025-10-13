@@ -319,7 +319,7 @@ class WorkflowEngineHTTPClient:
         start_from_node: Optional[str] = None,
         skip_trigger_validation: bool = False,
         access_token: Optional[str] = None,
-        async_execution: bool = False,
+        async_execution: bool = True,  # Default to async to prevent timeouts
     ) -> Dict[str, Any]:
         """Execute workflow via HTTP"""
         if not self.connected:

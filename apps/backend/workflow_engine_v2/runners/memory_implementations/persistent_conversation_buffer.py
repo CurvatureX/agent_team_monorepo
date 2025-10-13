@@ -322,15 +322,18 @@ class PersistentConversationBufferMemory(PersistentMemoryBase):
     async def _get_next_message_order(self) -> int:
         """Get the next message order number."""
         try:
+            # Fetch all message_order values and find max in Python
             result = await self._execute_query(
                 table="conversation_buffers",
                 operation="select",
                 filters=self._build_base_filters(),
-                select_columns="MAX(message_order) as max_order",
+                select_columns="message_order",
             )
 
-            if result["success"] and result["data"] and result["data"][0]["max_order"] is not None:
-                return result["data"][0]["max_order"] + 1
+            if result["success"] and result["data"]:
+                # Find the maximum message_order
+                max_order = max([msg["message_order"] for msg in result["data"]], default=-1)
+                return max_order + 1
             return 0
 
         except Exception as e:
@@ -340,15 +343,16 @@ class PersistentConversationBufferMemory(PersistentMemoryBase):
     async def _get_total_message_count(self) -> int:
         """Get total message count for this buffer."""
         try:
+            # Fetch all messages and count in Python
             result = await self._execute_query(
                 table="conversation_buffers",
                 operation="select",
                 filters=self._build_base_filters(),
-                select_columns="COUNT(*) as count",
+                select_columns="id",
             )
 
             if result["success"] and result["data"]:
-                return result["data"][0]["count"]
+                return len(result["data"])
             return 0
 
         except Exception as e:
@@ -358,18 +362,12 @@ class PersistentConversationBufferMemory(PersistentMemoryBase):
     async def _get_buffer_statistics(self) -> Dict[str, Any]:
         """Get detailed buffer statistics from database."""
         try:
-            # Use PostgreSQL aggregation functions for efficiency
+            # Fetch all messages and compute statistics in Python
             result = await self._execute_query(
                 table="conversation_buffers",
                 operation="select",
                 filters=self._build_base_filters(),
-                select_columns="""
-                    COUNT(*) as message_count,
-                    MIN(created_at) as oldest_message,
-                    MAX(created_at) as newest_message,
-                    role,
-                    COUNT(*) as role_count
-                """,
+                select_columns="role,created_at,metadata",
             )
 
             if not result["success"] or not result["data"]:
@@ -381,32 +379,28 @@ class PersistentConversationBufferMemory(PersistentMemoryBase):
                     "newest_message": None,
                 }
 
-            # Process aggregated results
-            message_count = 0
+            messages = result["data"]
+            message_count = len(messages)
+
+            # Calculate role counts
             by_role = {}
-            oldest_message = None
-            newest_message = None
+            for msg in messages:
+                role = msg.get("role", "unknown")
+                by_role[role] = by_role.get(role, 0) + 1
 
-            for row in result["data"]:
-                role = row.get("role")
-                count = row.get("role_count", 0)
+            # Find oldest and newest messages
+            timestamps = [msg["created_at"] for msg in messages if msg.get("created_at")]
+            oldest_message = min(timestamps) if timestamps else None
+            newest_message = max(timestamps) if timestamps else None
 
-                if role:
-                    by_role[role] = count
-                    message_count += count
-
-                if row.get("oldest_message") and (
-                    not oldest_message or row["oldest_message"] < oldest_message
-                ):
-                    oldest_message = row["oldest_message"]
-
-                if row.get("newest_message") and (
-                    not newest_message or row["newest_message"] > newest_message
-                ):
-                    newest_message = row["newest_message"]
-
-            # Get total tokens (approximate - would need to sum from metadata)
-            total_tokens = message_count * 10  # Rough estimate
+            # Calculate total tokens (approximate - from metadata if available)
+            total_tokens = 0
+            for msg in messages:
+                metadata = msg.get("metadata", {})
+                if isinstance(metadata, dict):
+                    total_tokens += metadata.get("token_count", 10)
+                else:
+                    total_tokens += 10  # Default estimate
 
             return {
                 "message_count": message_count,

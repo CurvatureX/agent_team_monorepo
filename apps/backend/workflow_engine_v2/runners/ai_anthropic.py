@@ -106,7 +106,13 @@ class AnthropicClaudeRunner(NodeRunner):
             )
 
             ai_response = generation_result["content"]
-            logger.info(f"✅ Claude response generated: {len(ai_response)} characters")
+            # Handle both string and dict responses for logging
+            if isinstance(ai_response, str):
+                logger.info(f"✅ Claude response generated: {len(ai_response)} characters")
+            else:
+                logger.info(
+                    f"✅ Claude response generated: {type(ai_response).__name__} with {len(str(ai_response))} chars"
+                )
 
             # Store conversation in memory
             if memory_nodes and ai_response:
@@ -121,7 +127,6 @@ class AnthropicClaudeRunner(NodeRunner):
             output = {
                 "content": ai_response,
                 "metadata": generation_result.get("metadata", {}),
-                "format_type": generation_result.get("format_type", "text"),
                 "token_usage": generation_result.get("token_usage", {}),
                 "function_calls": generation_result.get("function_calls", []),
             }
@@ -183,9 +188,12 @@ class AnthropicClaudeRunner(NodeRunner):
             "model": model,
             "max_tokens": max_tokens,
             "temperature": temperature,
-            "top_p": top_p,
             "messages": messages,
         }
+
+        # Only add top_p for non-4.5 models (Claude 4.5 doesn't allow both temperature and top_p)
+        if "4-5" not in model and "sonnet-4-5" not in model.lower():
+            body["top_p"] = top_p
 
         # Add system prompt if provided
         if system_prompt:
@@ -243,9 +251,17 @@ class AnthropicClaudeRunner(NodeRunner):
                     "total_tokens": usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
                 }
 
-                # Determine format type
-                response_format = configs.get("response_format", "text")
-                format_type = "json" if response_format == "json" else "text"
+                # Always attempt to parse JSON responses
+                parsed_content = content
+                if isinstance(content, str) and content.strip():
+                    try:
+                        import json
+
+                        parsed_content = json.loads(content)
+                        logger.debug(f"✅ Parsed JSON response: {type(parsed_content)}")
+                    except json.JSONDecodeError:
+                        # Not JSON, keep as string
+                        parsed_content = content
 
                 # Build metadata
                 metadata = {
@@ -255,9 +271,8 @@ class AnthropicClaudeRunner(NodeRunner):
                 }
 
                 return {
-                    "content": content,
+                    "content": parsed_content,
                     "metadata": metadata,
-                    "format_type": format_type,
                     "token_usage": token_usage,
                     "function_calls": tool_calls,
                 }
@@ -341,9 +356,12 @@ class AnthropicClaudeRunner(NodeRunner):
                 "model": model,
                 "max_tokens": max_tokens,
                 "temperature": temperature,
-                "top_p": top_p,
                 "messages": messages,
             }
+
+            # Only add top_p for non-4.5 models (Claude 4.5 doesn't allow both temperature and top_p)
+            if "4-5" not in model and "sonnet-4-5" not in model.lower():
+                body["top_p"] = top_p
 
             if system_prompt:
                 body["system"] = system_prompt
@@ -388,14 +406,26 @@ class AnthropicClaudeRunner(NodeRunner):
                 # If no tool calls, we're done
                 if not tool_calls:
                     logger.info(f"✅ Claude generated final response ({len(content_text)} chars)")
+
+                    # Always attempt to parse JSON responses
+                    parsed_content = content_text
+                    if isinstance(content_text, str) and content_text.strip():
+                        try:
+                            import json
+
+                            parsed_content = json.loads(content_text)
+                            logger.debug(f"✅ Parsed JSON response: {type(parsed_content)}")
+                        except json.JSONDecodeError:
+                            # Not JSON, keep as string
+                            parsed_content = content_text
+
                     return {
-                        "content": content_text,
+                        "content": parsed_content,
                         "metadata": {
                             "model_version": model,
                             "stop_reason": data.get("stop_reason"),
                             "stop_sequence": data.get("stop_sequence"),
                         },
-                        "format_type": "text",
                         "token_usage": {
                             "input_tokens": total_input_tokens,
                             "output_tokens": total_output_tokens,
@@ -516,10 +546,22 @@ class AnthropicClaudeRunner(NodeRunner):
 
         # Max iterations reached
         logger.warning(f"⚠️ Max iterations ({max_iterations}) reached")
+
+        # Always attempt to parse JSON responses
+        parsed_content = content_text
+        if isinstance(content_text, str) and content_text.strip():
+            try:
+                import json
+
+                parsed_content = json.loads(content_text)
+                logger.debug(f"✅ Parsed JSON response: {type(parsed_content)}")
+            except json.JSONDecodeError:
+                # Not JSON, keep as string
+                parsed_content = content_text
+
         return {
-            "content": content_text,
+            "content": parsed_content,
             "metadata": {"model_version": model, "stop_reason": "max_iterations"},
-            "format_type": "text",
             "token_usage": {
                 "input_tokens": total_input_tokens,
                 "output_tokens": total_output_tokens,
@@ -757,10 +799,18 @@ class AnthropicClaudeRunner(NodeRunner):
 
         self._memory_runner.run(memory_node_copy, user_inputs, trigger)
 
-        # Store AI response
+        # Store AI response (convert dict to JSON string if needed)
+        import json
+
+        ai_message = (
+            ai_response
+            if isinstance(ai_response, str)
+            else json.dumps(ai_response, ensure_ascii=False)
+        )
+
         ai_inputs = {
             "main": {
-                "message": ai_response,
+                "message": ai_message,
                 "role": "assistant",
                 "metadata": {
                     "ai_model": ai_node.configurations.get("model", "claude-sonnet-4-20250514"),

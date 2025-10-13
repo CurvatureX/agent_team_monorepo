@@ -179,28 +179,20 @@ class WorkflowEngineClient:
                 icon_url = generate_random_icon_url()
                 logger.info(f"🎨 Generated random icon_url: {icon_url}")
 
-                # Extract workflow ID from metadata or top-level
-                workflow_id = workflow_copy.get("id") or workflow_copy.get("metadata", {}).get("id")
-                if workflow_id:
-                    logger.info(f"📋 Using existing workflow ID: {workflow_id}")
-                else:
-                    logger.warning(
-                        "⚠️ No workflow ID found in workflow data, engine will generate one"
-                    )
+                # Don't extract or pass workflow_id - let the engine generate it
+                # This prevents invalid IDs from causing database errors
+                logger.info("📋 Workflow engine will generate a new UUID for this workflow")
 
                 # Prepare the request data according to CreateWorkflowRequest model
+                # NOTE: workflow_id is NOT included - the engine generates it
                 request_data = {
-                    "workflow_id": workflow_id,  # Pass existing workflow ID to preserve it
                     "name": workflow_copy.get("name", "Automated Workflow"),
                     "description": workflow_copy.get("description", ""),
                     "nodes": nodes,  # Use the modified nodes
                     "connections": connections_list,  # Use converted list format
-                    "settings": settings if settings else None,
-                    "static_data": workflow_copy.get("static_data", {}),
                     "tags": workflow_copy.get("tags", ["debug", "test"]),
-                    "user_id": user_id,
-                    "created_by": user_id,  # Add required created_by field
-                    "icon_url": icon_url,  # Add random icon URL
+                    "created_by": user_id,  # Required field
+                    "icon_url": icon_url,  # Random icon URL
                 }
 
                 # Prepare metadata dict and add session_id if provided

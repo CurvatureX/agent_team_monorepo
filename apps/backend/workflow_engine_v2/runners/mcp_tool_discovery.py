@@ -448,6 +448,9 @@ def discover_mcp_tools_from_nodes(tool_nodes: List[Node]) -> List[Dict[str, Any]
                 tool_def["_source_node_name"] = tool_node.name
                 tool_def["_tool_subtype"] = tool_subtype
 
+                # Store tool node configurations for context enrichment
+                tool_def["_node_configurations"] = tool_node.configurations
+
                 available_tools.append(tool_def)
                 logger.info(f"🔧 Added MCP tool: {tool_schema['name']} from {tool_node.id}")
 
@@ -472,34 +475,99 @@ def generate_mcp_system_guidance(available_tools: List[Dict[str, Any]]) -> str:
 
     tool_names = [tool["name"] for tool in available_tools]
 
-    guidance = f"""
-## Available MCP Tools
+    # Build guidance with special instructions for configured tools
+    guidance_parts = [
+        "## Available MCP Tools",
+        "",
+        "You have access to the following Model Context Protocol (MCP) tools that you can invoke to perform actions:",
+        "",
+        ", ".join(tool_names),
+    ]
 
-You have access to the following Model Context Protocol (MCP) tools that you can invoke to perform actions:
+    # Add Notion-specific configuration guidance
+    notion_configs = []
+    for tool in available_tools:
+        if tool["name"].startswith("notion_"):
+            configs = tool.get("_node_configurations", {})
+            operation_type = configs.get("operation_type", "")
+            default_database_id = configs.get("default_database_id", "")
+            default_page_id = configs.get("default_page_id", "")
 
-{', '.join(tool_names)}
+            if default_database_id:
+                notion_configs.append(
+                    {
+                        "database_id": default_database_id,
+                        "operation_type": operation_type,
+                    }
+                )
 
-**Important Instructions for Tool Usage:**
+    if notion_configs:
+        guidance_parts.extend(
+            [
+                "",
+                "### Pre-configured Notion Databases",
+                "",
+                "**IMPORTANT**: The following Notion databases are pre-configured and ready to use:",
+            ]
+        )
 
-1. **When to Use Tools**: Use these tools whenever the user's request requires external actions like sending messages, querying data, or performing operations outside of text generation.
+        for config in notion_configs:
+            db_id = config["database_id"]
+            guidance_parts.append(f"- Database ID: `{db_id}`")
 
-2. **How to Invoke Tools**: When you need to use a tool, invoke it using the function calling mechanism. Provide all required parameters as specified in the tool definition.
+        guidance_parts.extend(
+            [
+                "",
+                "**ULTRA-SIMPLE Notion Tool Usage:**",
+                "",
+                "1. **To list ALL items in the database** (most common):",
+                "   - Just call: `notion_database()`",
+                f"   - The database_id `{notion_configs[0]['database_id']}` is auto-injected",
+                "   - Returns ALL pages/items in the database",
+                "",
+                "2. **To filter items** (optional):",
+                "   - Call: `notion_database(filter={{...}}, limit=50)`",
+                "",
+                "3. **To get a specific page content**:",
+                '   - Call: `notion_page(page_id="page-id-here")`',
+                "",
+                "4. **To search for databases/pages by name**:",
+                '   - Call: `notion_search(query="TODO")`',
+                "",
+                "**Tool Selection Guide:**",
+                "- `notion_database()`: List/query database items (use for 'how many tasks', 'show TODO list', 'list all items')",
+                "- `notion_page(page_id)`: Get page content (use for 'read this page', 'show page content')",
+                "- `notion_search(query)`: Find databases/pages by keywords (use for 'find TODO database', 'search for X')",
+                "",
+                "**NO action parameter needed!** Everything has smart defaults.",
+            ]
+        )
 
-3. **Tool Results**: After invoking a tool, wait for the result before continuing. The tool execution result will be provided to you, and you should incorporate it into your response to the user.
+    guidance_parts.extend(
+        [
+            "",
+            "**Important Instructions for Tool Usage:**",
+            "",
+            "1. **When to Use Tools**: Use these tools whenever the user's request requires external actions like sending messages, querying data, or performing operations outside of text generation.",
+            "",
+            "2. **How to Invoke Tools**: When you need to use a tool, invoke it using the function calling mechanism. Provide all required parameters as specified in the tool definition.",
+            "",
+            "3. **Tool Results**: After invoking a tool, wait for the result before continuing. The tool execution result will be provided to you, and you should incorporate it into your response to the user.",
+            "",
+            "4. **Multiple Tools**: You can invoke multiple tools if needed to complete the user's request. Invoke them sequentially or in parallel as appropriate.",
+            "",
+            "5. **Error Handling**: If a tool invocation fails, acknowledge the error and suggest alternative approaches or ask the user for clarification.",
+            "",
+            "**Example Usage:**",
+            '- User asks: "Send a message to #general saying hello"',
+            '- You should invoke: slack_send_message(channel="#general", text="hello")',
+            '- Then respond: "I\'ve sent the message to #general."',
+            "",
+            "Use these tools proactively when they can help accomplish the user's goals.",
+        ]
+    )
 
-4. **Multiple Tools**: You can invoke multiple tools if needed to complete the user's request. Invoke them sequentially or in parallel as appropriate.
-
-5. **Error Handling**: If a tool invocation fails, acknowledge the error and suggest alternative approaches or ask the user for clarification.
-
-**Example Usage:**
-- User asks: "Send a message to #general saying hello"
-- You should invoke: slack_send_message(channel="#general", text="hello")
-- Then respond: "I've sent the message to #general."
-
-Use these tools proactively when they can help accomplish the user's goals.
-"""
-
-    return guidance.strip()
+    return "\n".join(guidance_parts)
 
 
 def get_tool_invocation_guidance(provider: str) -> str:

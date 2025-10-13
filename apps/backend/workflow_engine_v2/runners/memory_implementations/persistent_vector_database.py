@@ -438,18 +438,12 @@ class PersistentVectorDatabaseMemory(PersistentMemoryBase):
     async def get_statistics(self) -> Dict[str, Any]:
         """Get vector database statistics."""
         try:
-            # Get vector count by namespace and document type
+            # Fetch all embeddings and compute statistics in Python
             result = await self._execute_query(
                 table="embeddings",
                 operation="select",
                 filters=self._build_base_filters(),
-                select_columns="""
-                    COUNT(*) as total_vectors,
-                    metadata ->> 'namespace' as namespace,
-                    metadata ->> 'document_type' as document_type,
-                    MIN(created_at) as oldest_vector,
-                    MAX(created_at) as newest_vector
-                """,
+                select_columns="metadata,created_at",
             )
 
             if result["success"]:
@@ -463,32 +457,40 @@ class PersistentVectorDatabaseMemory(PersistentMemoryBase):
                     "default_similarity_threshold": self.similarity_threshold,
                 }
 
-                for row in result["data"]:
-                    namespace = row.get("namespace", "default")
-                    doc_type = row.get("document_type", "text")
-                    count = row.get("total_vectors", 0)
+                vectors = result["data"]
+                stats["total_vectors"] = len(vectors)
 
-                    stats["total_vectors"] += count
-                    stats["by_namespace"][namespace] = (
-                        stats["by_namespace"].get(namespace, 0) + count
-                    )
+                # Compute statistics from fetched data
+                for row in vectors:
+                    metadata = row.get("metadata", {})
+
+                    # Handle both dict and JSON string metadata
+                    if isinstance(metadata, str):
+                        import json
+
+                        try:
+                            metadata = json.loads(metadata)
+                        except:
+                            metadata = {}
+
+                    namespace = metadata.get("namespace", "default")
+                    doc_type = metadata.get("document_type", "text")
+
+                    # Count by namespace
+                    stats["by_namespace"][namespace] = stats["by_namespace"].get(namespace, 0) + 1
+
+                    # Count by document type
                     stats["by_document_type"][doc_type] = (
-                        stats["by_document_type"].get(doc_type, 0) + count
+                        stats["by_document_type"].get(doc_type, 0) + 1
                     )
 
-                    if row.get("oldest_vector"):
-                        if (
-                            not stats["oldest_vector"]
-                            or row["oldest_vector"] < stats["oldest_vector"]
-                        ):
-                            stats["oldest_vector"] = row["oldest_vector"]
-
-                    if row.get("newest_vector"):
-                        if (
-                            not stats["newest_vector"]
-                            or row["newest_vector"] > stats["newest_vector"]
-                        ):
-                            stats["newest_vector"] = row["newest_vector"]
+                    # Track oldest and newest vectors
+                    created_at = row.get("created_at")
+                    if created_at:
+                        if not stats["oldest_vector"] or created_at < stats["oldest_vector"]:
+                            stats["oldest_vector"] = created_at
+                        if not stats["newest_vector"] or created_at > stats["newest_vector"]:
+                            stats["newest_vector"] = created_at
 
                 return {"success": True, "statistics": stats, "storage": "persistent_database"}
             else:

@@ -16,7 +16,7 @@ from pydantic import BaseModel
 class CreateWorkflowRequest(BaseModel):
     """Request to create a workflow"""
 
-    workflow_id: Optional[str] = None
+    # Note: workflow_id is NOT accepted - the engine generates it
     name: str
     created_by: str
     created_time_ms: Optional[int] = None

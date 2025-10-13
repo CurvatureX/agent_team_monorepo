@@ -41,13 +41,10 @@ async def create_workflow(request: CreateWorkflowRequest):
     try:
         logger.info(f"📝 [v2] Creating workflow: {request.name} for user {request.created_by}")
 
-        # Use provided workflow ID or generate one
-        workflow_id = request.workflow_id or str(uuid.uuid4())
         created_time_ms = request.created_time_ms or int(time.time() * 1000)
 
-        # Create workflow using the service
+        # Create workflow using the service (service generates the workflow_id)
         workflow = workflow_service.create_workflow(
-            workflow_id=workflow_id,
             name=request.name,
             created_by=request.created_by,
             created_time_ms=created_time_ms,
@@ -61,6 +58,7 @@ async def create_workflow(request: CreateWorkflowRequest):
             metadata=request.metadata or {},  # Use provided metadata (includes session_id)
         )
 
+        workflow_id = workflow.metadata.id
         logger.info(f"✅ [v2] Workflow created: {workflow_id}")
 
         # Convert workflow to dict for response

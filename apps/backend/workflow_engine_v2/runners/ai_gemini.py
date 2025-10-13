@@ -103,7 +103,13 @@ class GoogleGeminiRunner(NodeRunner):
             )
 
             ai_response = generation_result["content"]
-            logger.info(f"✅ Gemini response generated: {len(ai_response)} characters")
+            # Handle both string and dict responses for logging
+            if isinstance(ai_response, str):
+                logger.info(f"✅ Gemini response generated: {len(ai_response)} characters")
+            else:
+                logger.info(
+                    f"✅ Gemini response generated: {type(ai_response).__name__} with {len(str(ai_response))} chars"
+                )
 
             # Store conversation in memory
             if memory_nodes and ai_response:
@@ -118,7 +124,6 @@ class GoogleGeminiRunner(NodeRunner):
             output = {
                 "content": ai_response,
                 "metadata": generation_result.get("metadata", {}),
-                "format_type": generation_result.get("format_type", "text"),
                 "token_usage": generation_result.get("token_usage", {}),
                 "function_calls": generation_result.get("function_calls", []),
             }
@@ -290,11 +295,15 @@ class GoogleGeminiRunner(NodeRunner):
                     "total_tokens": usage_metadata.get("totalTokenCount", 0),
                 }
 
-                # Determine format type
-                response_format = configs.get("response_format", "text")
-                format_type = (
-                    response_format if response_format in ["text", "json", "schema"] else "text"
-                )
+                # Always attempt to parse JSON responses
+                parsed_content = content
+                if isinstance(content, str) and content.strip():
+                    try:
+                        parsed_content = json.loads(content)
+                        logger.debug(f"✅ Parsed JSON response: {type(parsed_content)}")
+                    except json.JSONDecodeError:
+                        # Not JSON, keep as string
+                        parsed_content = content
 
                 # Build metadata
                 metadata = {
@@ -308,9 +317,8 @@ class GoogleGeminiRunner(NodeRunner):
                 }
 
                 return {
-                    "content": content,
+                    "content": parsed_content,
                     "metadata": metadata,
-                    "format_type": format_type,
                     "token_usage": token_usage,
                     "function_calls": tool_calls,
                 }
@@ -510,10 +518,16 @@ class GoogleGeminiRunner(NodeRunner):
 
         self._memory_runner.run(memory_node_copy, user_inputs, trigger)
 
-        # Store AI response
+        # Store AI response (convert dict to JSON string if needed)
+        ai_message = (
+            ai_response
+            if isinstance(ai_response, str)
+            else json.dumps(ai_response, ensure_ascii=False)
+        )
+
         ai_inputs = {
             "main": {
-                "message": ai_response,
+                "message": ai_message,
                 "role": "assistant",  # Use "assistant" for consistency, even though Gemini uses "model"
                 "metadata": {
                     "ai_model": ai_node.configurations.get("model", "gemini-2.5-flash"),

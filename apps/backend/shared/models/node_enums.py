@@ -77,7 +77,7 @@ class AnthropicModel(str, Enum):
 
     # Claude Sonnet 4 - Optimal balance of intelligence, cost, and speed
     # Output: ≤200K $15/MTok, >200K $22.50/MTok
-    CLAUDE_SONNET_4 = "claude-sonnet-4-20250514"
+    CLAUDE_SONNET_4 = "claude-sonnet-4-5-20250929"
 
     # Claude Haiku 3.5 - Fastest, most cost-effective model
     # Output: $4/MTok

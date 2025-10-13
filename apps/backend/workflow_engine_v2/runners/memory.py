@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import sys
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Coroutine, Dict
 
 # Add backend directory to path for absolute imports
 backend_dir = Path(__file__).parent.parent.parent
@@ -28,6 +28,46 @@ from workflow_engine_v2.runners.memory_implementations import (
     VectorDatabaseMemory,
 )
 from workflow_engine_v2.services.memory import InMemoryVectorStore, KeyValueMemory
+
+
+def _run_async(coro: Coroutine) -> Any:
+    """
+    Helper to run async code from sync context.
+    Handles both cases: when event loop exists and when it doesn't.
+    """
+    try:
+        # Try to get the current event loop
+        loop = asyncio.get_running_loop()
+        # We're inside an event loop (FastAPI context)
+        # Create a future and run it
+        import concurrent.futures
+        import threading
+
+        result_holder = {"result": None, "exception": None}
+
+        def run_in_new_loop():
+            """Run coroutine in a new event loop in a separate thread."""
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            try:
+                result_holder["result"] = new_loop.run_until_complete(coro)
+            except Exception as e:
+                result_holder["exception"] = e
+            finally:
+                new_loop.close()
+
+        # Run in a separate thread to avoid event loop conflicts
+        thread = threading.Thread(target=run_in_new_loop)
+        thread.start()
+        thread.join(timeout=30)  # 30 second timeout
+
+        if result_holder["exception"]:
+            raise result_holder["exception"]
+        return result_holder["result"]
+
+    except RuntimeError:
+        # No event loop is running, safe to use asyncio.run()
+        return asyncio.run(coro)
 
 
 class MemoryRunner(NodeRunner):
@@ -63,14 +103,35 @@ class MemoryRunner(NodeRunner):
             # Fallback to input data
             user_id = inputs.get("user_id")
 
+        # Extract workflow_id with defensive attribute access
+        workflow_id = None
+        if ctx and hasattr(ctx, "workflow") and ctx.workflow:
+            workflow_obj = ctx.workflow
+            # Try multiple possible attribute paths
+            workflow_id = getattr(workflow_obj, "workflow_id", None)
+            if not workflow_id and hasattr(workflow_obj, "metadata"):
+                workflow_id = getattr(workflow_obj.metadata, "id", None)
+            if not workflow_id and hasattr(workflow_obj, "id"):
+                workflow_id = workflow_obj.id
+        # Fallback to input data
+        if not workflow_id:
+            workflow_id = inputs.get("workflow_id")
+
+        # Extract execution_id with defensive attribute access
+        execution_id = None
+        if ctx and hasattr(ctx, "execution") and ctx.execution:
+            execution_obj = ctx.execution
+            execution_id = getattr(execution_obj, "execution_id", None)
+            if not execution_id and hasattr(execution_obj, "id"):
+                execution_id = execution_obj.id
+        # Fallback to input data
+        if not execution_id:
+            execution_id = inputs.get("execution_id")
+
         self._execution_context = {
             "user_id": user_id,
-            "workflow_id": ctx.workflow.workflow_id
-            if ctx and hasattr(ctx, "workflow") and ctx.workflow
-            else inputs.get("workflow_id"),
-            "execution_id": ctx.execution.execution_id
-            if ctx and hasattr(ctx, "execution") and ctx.execution
-            else inputs.get("execution_id"),
+            "workflow_id": workflow_id,
+            "execution_id": execution_id,
         }
 
         # Check if advanced memory is requested (default to True for persistent storage)
@@ -97,17 +158,17 @@ class MemoryRunner(NodeRunner):
 
             # Execute async operation
             if operation == "store":
-                result = asyncio.run(memory_instance.store(main_data))
+                result = _run_async(memory_instance.store(main_data))
             elif operation == "retrieve":
                 query = main_data if isinstance(main_data, dict) else {"query": main_data}
-                result = asyncio.run(memory_instance.retrieve(query))
+                result = _run_async(memory_instance.retrieve(query))
             elif operation == "get_context":
                 query = main_data if isinstance(main_data, dict) else {"query": main_data}
-                result = asyncio.run(memory_instance.get_context(query))
+                result = _run_async(memory_instance.get_context(query))
             else:
                 # Default to retrieve for backwards compatibility
                 query = {"key": node.configurations.get("key", node.id)}
-                result = asyncio.run(memory_instance.retrieve(query))
+                result = _run_async(memory_instance.retrieve(query))
 
             shaped = self._shape_output(node, subtype, result)
             return {"result": shaped}
@@ -175,7 +236,7 @@ class MemoryRunner(NodeRunner):
 
                 try:
                     instance = memory_class(config)
-                    asyncio.run(instance.initialize())
+                    _run_async(instance.initialize())
                     self._memory_instances[memory_key] = instance
                 except Exception as e:
                     # If persistent memory fails, fall back to in-memory
@@ -185,9 +246,18 @@ class MemoryRunner(NodeRunner):
                             MemorySubtype.VECTOR_DATABASE: VectorDatabaseMemory,
                         }
                         memory_class = fallback_classes.get(subtype, KeyValueStoreMemory)
-                        instance = memory_class(config)
-                        asyncio.run(instance.initialize())
-                        self._memory_instances[memory_key] = instance
+                        try:
+                            instance = memory_class(config)
+                            _run_async(instance.initialize())
+                            self._memory_instances[memory_key] = instance
+                        except Exception as fallback_error:
+                            # Fallback failed too - log and return None
+                            print(f"⚠️ Memory fallback initialization failed: {fallback_error}")
+                            return None
+                    else:
+                        # Not using persistent, propagate error
+                        print(f"⚠️ Memory initialization failed: {e}")
+                        return None
 
         return self._memory_instances.get(memory_key)
 
