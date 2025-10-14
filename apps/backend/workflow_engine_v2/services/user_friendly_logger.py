@@ -32,6 +32,24 @@ from shared.models.workflow import Node
 logger = logging.getLogger(__name__)
 
 
+def _serialize_for_json(obj: Any) -> Any:
+    """
+    Recursively serialize objects to JSON-compatible types.
+    Converts datetime objects to ISO format strings.
+    """
+    if isinstance(obj, datetime):
+        return obj.isoformat() + "Z" if obj.tzinfo is None else obj.isoformat()
+    elif isinstance(obj, dict):
+        return {key: _serialize_for_json(value) for key, value in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [_serialize_for_json(item) for item in obj]
+    elif hasattr(obj, "__dict__"):
+        # Handle custom objects by converting to dict
+        return _serialize_for_json(obj.__dict__)
+    else:
+        return obj
+
+
 class LogCategory(str, Enum):
     """Categories for log entries"""
 
@@ -93,6 +111,9 @@ class UserFriendlyLogEntry:
         if level_value == "WARN":
             level_value = "WARNING"
 
+        # Serialize data field to ensure JSON compatibility
+        serialized_data = _serialize_for_json(self.data) if self.data else {}
+
         return {
             "execution_id": self.execution_id,
             "created_at": self.created_at,
@@ -107,7 +128,7 @@ class UserFriendlyLogEntry:
             "total_steps": self.total_steps,
             "display_priority": self.display_priority,
             "is_milestone": self.is_milestone,
-            "data": self.data or {},
+            "data": serialized_data,
         }
 
 
@@ -285,7 +306,7 @@ class AsyncUserFriendlyLogger:
                     "event_type": entry.event_type.value,
                     "message": entry.user_friendly_message,
                     "level": entry.level.value.lower(),
-                    "data": entry.data or {},
+                    "data": _serialize_for_json(entry.data) if entry.data else {},
                 }
                 self._redis.publish(channel, json.dumps(log_data))
             except Exception as e:

@@ -18,13 +18,13 @@ function LoginContent() {
   }, [searchParams]);
 
   return (
-    <LoginSupabase 
+    <LoginSupabase
       heading="Welcome Back"
       logo={{
         url: "/",
         src: "/assistant/AlfieKnowledgeBaseQueryAssistantIcon.png",
-        alt: "Agent Team",
-        title: "Agent Team",
+        alt: "Starmates",
+        title: "Starmates",
       }}
       buttonText="Sign In"
       googleText="Sign in with Google"
@@ -37,11 +37,13 @@ function LoginContent() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={
-      <div className="flex h-screen items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="flex h-screen items-center justify-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+      }
+    >
       <LoginContent />
     </Suspense>
   );

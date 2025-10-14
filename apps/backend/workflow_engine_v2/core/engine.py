@@ -358,7 +358,16 @@ class ExecutionEngine:
             current_node_id = task["node_id"]
             override = task.get("override")
             is_fanout_run = override is not None
+
+            logger.info(
+                f"📤 QUEUE: Popped node {current_node_id} from queue (queue_size={len(queue)}, is_fanout={is_fanout_run})"
+            )
+            logger.info(
+                f"📋 QUEUE: executed_main={executed_main}, checking if {current_node_id} already executed"
+            )
+
             if not is_fanout_run and current_node_id in executed_main:
+                logger.info(f"⏭️ QUEUE: Skipping {current_node_id} - already in executed_main")
                 continue
             node = graph.nodes[current_node_id]
 
@@ -418,9 +427,19 @@ class ExecutionEngine:
             start_exec = _now_ms()
             backoff = float(_get_config_value("retry_backoff_seconds", 0) or 0)
             backoff_factor = float(_get_config_value("retry_backoff_factor", 1.0) or 1.0)
+
+            logger.info(
+                f"🔄 RETRY LOOP: Starting retry loop for {current_node_id}, max_retries={max_retries}"
+            )
+
             while attempt <= max_retries:
+                logger.info(f"🔄 RETRY LOOP: Attempt {attempt}/{max_retries} for {current_node_id}")
                 try:
                     runner = default_runner_for(node)
+                    logger.info(
+                        f"🔄 RETRY LOOP: Got runner {type(runner).__name__} for {current_node_id}"
+                    )
+
                     # Timeout handling
                     exec_timeout = None
                     try:
@@ -431,11 +450,22 @@ class ExecutionEngine:
                             exec_timeout = float(timeout_val)
                     except Exception:
                         exec_timeout = None
+
                     if exec_timeout and exec_timeout > 0:
+                        logger.info(
+                            f"⏱️ RETRY LOOP: About to call runner.run() via ThreadPool (timeout={exec_timeout}s) for {current_node_id}"
+                        )
                         future = self._pool.submit(runner.run, node, inputs, trigger)
                         outputs = future.result(timeout=max(0.001, exec_timeout))
                     else:
+                        logger.info(
+                            f"🎯 RETRY LOOP: About to call runner.run() directly (no timeout) for {current_node_id}"
+                        )
                         outputs = runner.run(node, inputs, trigger)
+
+                    logger.info(
+                        f"✅ RETRY LOOP: runner.run() completed successfully for {current_node_id}"
+                    )
                     last_exc = None
                     break
                 except Exception as e:
@@ -1052,7 +1082,13 @@ class ExecutionEngine:
                     else:
                         successor_node_inputs[input_key] = value
                     if self._is_node_ready(graph, successor_node, pending_inputs):
+                        logger.info(
+                            f"➕ QUEUE: Adding successor {successor_node} to queue (from {current_node_id})"
+                        )
                         queue.append({"node_id": successor_node, "override": None})
+                        logger.info(
+                            f"📊 QUEUE: Current queue size: {len(queue)}, queue={[t['node_id'] for t in queue]}"
+                        )
             except Exception as post_completion_err:
                 logger.error(
                     f"❌❌❌ CRITICAL: Post-completion processing failed for {current_node_id}: {post_completion_err}"
@@ -1065,6 +1101,9 @@ class ExecutionEngine:
             workflow_execution.execution_sequence.append(current_node_id)
             if not is_fanout_run:
                 executed_main.add(current_node_id)
+                logger.info(
+                    f"✅ QUEUE: Added {current_node_id} to executed_main. Total executed: {len(executed_main)}"
+                )
 
         if workflow_execution.status != ExecutionStatus.ERROR:
             workflow_execution.status = ExecutionStatus.SUCCESS

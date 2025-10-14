@@ -40,14 +40,14 @@ The Workflow Execution Log API provides comprehensive logging capabilities for A
 ### 2.2 Component Architecture
 
 **API Gateway (Port 8000)**:
-- Endpoint: `/api/v1/app/executions/{execution_id}/logs`
-- Endpoint: `/api/v1/app/executions/{execution_id}/logs/stream`
+- Endpoint: `/api/v1/app/executions/\{execution_id\}/logs`
+- Endpoint: `/api/v1/app/executions/\{execution_id\}/logs/stream`
 - Authentication: Supabase JWT token validation
 - Function: Request routing, SSE streaming, token forwarding
 
 **Workflow Engine V2 (Port 8002)**:
-- Endpoint: `/v2/workflows/executions/{execution_id}/logs`
-- Endpoint: `/v2/executions/{execution_id}/logs/stream`
+- Endpoint: `/v2/workflows/executions/\{execution_id\}/logs`
+- Endpoint: `/v2/executions/\{execution_id\}/logs/stream`
 - Authentication: Bearer token (optional for RLS)
 - Function: Database queries, log formatting, SSE generation
 
@@ -190,7 +190,7 @@ FOR UPDATE USING (auth.role() = 'service_role');
 
 ### 4.1 REST API for Historical Logs
 
-#### Endpoint: GET /api/v1/app/executions/{execution_id}/logs
+#### Endpoint: GET /api/v1/app/executions/\{execution_id\}/logs
 
 **API Gateway Implementation** (`api-gateway/app/api/app/executions.py`):
 ```python
@@ -348,7 +348,7 @@ curl -X GET "http://localhost:8000/api/v1/app/executions/exec-123/logs?start_tim
 
 ### 4.2 SSE Streaming API for Real-time Logs
 
-#### Endpoint: GET /api/v1/app/executions/{execution_id}/logs/stream
+#### Endpoint: GET /api/v1/app/executions/\{execution_id\}/logs/stream
 
 **API Gateway SSE Implementation** (`api-gateway/app/api/app/executions.py`):
 ```python
@@ -609,7 +609,7 @@ interface RecentLogsResponse {
 }
 ```
 
-#### GET /v2/executions/{execution_id}/logs/summary
+#### GET /v2/executions/\{execution_id\}/logs/summary
 
 **Purpose**: Get execution logs summary including counts and milestones
 

@@ -31,15 +31,15 @@ const DemoOne = () => {
 
   const handleSendMessage = (message: string, files?: File[]) => {
     // Store message in sessionStorage for canvas page
-    sessionStorage.setItem('initialMessage', message);
-    
+    sessionStorage.setItem("initialMessage", message);
+
     // Handle file uploads if any
     if (files && files.length > 0) {
-      console.log('Uploaded files:', files);
+      console.log("Uploaded files:", files);
     }
-    
+
     // Navigate to canvas page
-    router.push('/canvas');
+    router.push("/canvas");
   };
 
   return (
@@ -103,7 +103,7 @@ const DemoOne = () => {
           transition={{ duration: 0.8, delay: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
         >
           <div className="flex items-center justify-center gap-3 mb-6">
-            <HandWrittenTitle title="Agent Team" />
+            <HandWrittenTitle title="Starmates" />
           </div>
           <motion.p
             className="text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed"
@@ -129,8 +129,6 @@ const DemoOne = () => {
             />
           </div>
         </motion.div>
-
-
       </div>
 
       {/* Divider */}

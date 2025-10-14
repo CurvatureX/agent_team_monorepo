@@ -32,7 +32,7 @@ const LoginSupabase = ({
     url: "/",
     src: "/logo.png",
     alt: "logo",
-    title: "Agent Team",
+    title: "Starmates",
   },
   buttonText = "Sign In",
   googleText = "Sign in with Google",
@@ -116,7 +116,7 @@ const LoginSupabase = ({
     try {
       setIsLoading(true);
       const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
+        provider: "google",
         options: {
           redirectTo: `${window.location.origin}/auth/supabase-callback`,
         },
@@ -151,7 +151,7 @@ const LoginSupabase = ({
             {/* Logo */}
             <div className="flex items-center gap-1 lg:justify-start">
               <a href={logo.url}>
-                {logo.src.startsWith('http') ? (
+                {logo.src.startsWith("http") ? (
                   <Image
                     src={logo.src}
                     alt={logo.alt}
@@ -170,7 +170,10 @@ const LoginSupabase = ({
             </h1>
           </div>
 
-          <form onSubmit={handleEmailAuth} className="flex w-full flex-col gap-8">
+          <form
+            onSubmit={handleEmailAuth}
+            className="flex w-full flex-col gap-8"
+          >
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-2">
                 <Input
@@ -203,8 +206,10 @@ const LoginSupabase = ({
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       {isSignUp ? "Creating Account..." : "Signing In..."}
                     </>
+                  ) : isSignUp ? (
+                    "Sign Up"
                   ) : (
-                    isSignUp ? "Sign Up" : buttonText
+                    buttonText
                   )}
                 </Button>
 

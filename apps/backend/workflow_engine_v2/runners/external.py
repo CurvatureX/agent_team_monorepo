@@ -40,11 +40,60 @@ class ExternalActionRunner(NodeRunner):
         self.notion_handler = NotionExternalAction()
         self.firecrawl_handler = FirecrawlExternalAction()
 
+        # Track execution count to detect infinite loops
+        self._execution_tracker = {}  # {(execution_id, node_id): count}
+        self._MAX_EXECUTIONS_PER_NODE = 3  # Maximum times a node can execute in same workflow
+
     def run(self, node: Node, inputs: Dict[str, Any], trigger: TriggerInfo) -> Dict[str, Any]:
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         try:
             esub = ExternalActionSubtype(str(node.subtype))
         except Exception:
             esub = None
+
+        # CRITICAL: Loop detection to prevent infinite execution
+        # Extract execution_id from inputs context
+        execution_id = None
+        node_id = node.id if hasattr(node, "id") else str(node.name)
+
+        if isinstance(inputs, dict):
+            ctx = inputs.get("_ctx")
+            if ctx and hasattr(ctx, "execution"):
+                execution_id = getattr(ctx.execution, "execution_id", None)
+
+        # Track execution count
+        if execution_id:
+            tracker_key = (execution_id, node_id)
+            current_count = self._execution_tracker.get(tracker_key, 0) + 1
+            self._execution_tracker[tracker_key] = current_count
+
+            logger.info(
+                f"🔁 LOOP DETECTION: Node {node_id} execution #{current_count} in workflow {execution_id[:8]}"
+            )
+
+            # Prevent infinite loops
+            if current_count > self._MAX_EXECUTIONS_PER_NODE:
+                logger.error(
+                    f"🛑 INFINITE LOOP DETECTED: Node {node_id} has executed {current_count} times. "
+                    f"Max allowed: {self._MAX_EXECUTIONS_PER_NODE}. Stopping execution."
+                )
+                # Clear tracker to prevent memory leak
+                self._execution_tracker.pop(tracker_key, None)
+
+                # Return error result
+                return {
+                    "result": {
+                        "success": False,
+                        "error_message": f"Infinite loop detected: Node executed {current_count} times. "
+                        f"Check workflow connections for circular dependencies.",
+                        "error_code": "INFINITE_LOOP_DETECTED",
+                        "execution_count": current_count,
+                        "node_id": node_id,
+                    }
+                }
 
         # Create execution context
         # Extract user_id from trigger information - check both attribute and dict access
@@ -60,9 +109,6 @@ class ExternalActionRunner(NodeRunner):
                 user_id = trigger.trigger_data.get("user_id")
 
         # Add debug logging
-        import logging
-
-        logger = logging.getLogger(__name__)
         logger.info(f"🔍 EXTERNAL ACTION DEBUG: trigger={trigger}")
         logger.info(
             f"🔍 EXTERNAL ACTION DEBUG: trigger.user_id={getattr(trigger, 'user_id', 'NO_ATTR') if trigger else 'NO_TRIGGER'}"
@@ -92,28 +138,47 @@ class ExternalActionRunner(NodeRunner):
         # Route to dedicated handlers for OAuth-based integrations
         # All handlers use execute() which extracts action_type from input_data or configurations
         if esub == ExternalActionSubtype.SLACK:
-            return self._run_async_handler(node, esub, self.slack_handler.execute(context))
+            return self._run_async_handler(
+                node, esub, self.slack_handler.execute(context), execution_id, node_id
+            )
 
         elif esub == ExternalActionSubtype.GITHUB:
-            return self._run_async_handler(node, esub, self.github_handler.execute(context))
+            return self._run_async_handler(
+                node, esub, self.github_handler.execute(context), execution_id, node_id
+            )
 
         elif esub == ExternalActionSubtype.GOOGLE_CALENDAR:
-            return self._run_async_handler(node, esub, self.google_handler.execute(context))
+            return self._run_async_handler(
+                node, esub, self.google_handler.execute(context), execution_id, node_id
+            )
 
         elif esub == ExternalActionSubtype.NOTION:
-            return self._run_async_handler(node, esub, self.notion_handler.execute(context))
+            return self._run_async_handler(
+                node, esub, self.notion_handler.execute(context), execution_id, node_id
+            )
 
         elif esub == ExternalActionSubtype.FIRECRAWL:
-            return self._run_async_handler(node, esub, self.firecrawl_handler.execute(context))
+            return self._run_async_handler(
+                node, esub, self.firecrawl_handler.execute(context), execution_id, node_id
+            )
 
         # Fallback to original implementations for backward compatibility
         return self._run_legacy_action(node, inputs, trigger, esub)
 
-    def _run_async_handler(self, node: Node, esub, coro) -> Dict[str, Any]:
+    def _run_async_handler(
+        self, node: Node, esub, coro, execution_id: str = None, node_id: str = None
+    ) -> Dict[str, Any]:
         """Run async handler and convert result to dict format."""
+        import logging
+
+        logger = logging.getLogger(__name__)
+
         try:
             # Run the async handler
             result = asyncio.run(coro)
+
+            # DON'T clean up tracker here - it needs to persist for the entire workflow execution
+            # The tracker will be automatically garbage collected when the runner instance is destroyed
 
             # Shape to spec-defined output params
             def _shape(payload: Dict[str, Any]) -> Dict[str, Any]:

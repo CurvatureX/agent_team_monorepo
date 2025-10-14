@@ -419,10 +419,12 @@ Example of INCORRECT output (DO NOT DO THIS):
 1. **Output ONLY raw JSON** - No markdown fences, no backticks, no explanations, no code blocks
 2. **Maximum 5 rounds total** - Plan efficiently within budget
 3. **MANDATORY: Use cached schemas** - If a database schema is cached, you MUST use the exact property names shown. NEVER guess or invent property names like "Name", "Description", "Assignee" - only use properties that exist in the cached schema
-4. **Schema retrieval** - If schema not cached, retrieve database first before creating/updating pages
-5. **Resource accumulation** - Use discovered resources from previous rounds
-6. **Keep responses concise** - Limit content blocks to 3-5 items maximum per operation to avoid token limits
-7. **Reuse configured resources** - If page_id or database_id is configured, use them directly. Do NOT create new pages/databases or search for them.
+4. **MANDATORY: Use exact property values** - For status/select/multi_select properties, you MUST use ONLY the exact option values shown in the cached schema. If "Status" shows valid options as ["Not Started", "In Progress", "Done"], you CANNOT use "To Do" or any other value
+5. **Handle property errors intelligently** - If a property fails (e.g., invalid option), try again WITHOUT that property rather than guessing different values
+6. **Schema retrieval** - If schema not cached, retrieve database first before creating/updating pages
+7. **Resource accumulation** - Use discovered resources from previous rounds
+8. **Keep responses concise** - Limit content blocks to 3-5 items maximum per operation to avoid token limits
+9. **Reuse configured resources** - If page_id or database_id is configured, use them directly. Do NOT create new pages/databases or search for them.
 
 **Available Notion Operations:**
 - search: Find databases/pages by query
@@ -453,7 +455,10 @@ Pattern A: Append to Configured Page (page_id is configured)
 
 Pattern B: Create Page in Configured Database (database_id is configured)
 - Round 1: retrieve_database to get schema (check Cached Database Schemas first - may already be cached!)
-- Round 2: create_page with parent: {"database_id": "..."} and properties using ONLY property names from cached schema
+- Round 2: create_page with parent: {"database_id": "..."} and properties using:
+  - ONLY property names from cached schema
+  - ONLY exact option values for status/select properties (check Cached Database Schemas section!)
+  - Example: If Status options are ["Not Started", "In Progress", "Done"], use one of these exact values, NOT "To Do"
 
 Pattern C: Update Existing Page (page_id is configured)
 - Round 1: retrieve_block_children to get current content
@@ -502,7 +507,11 @@ Start your response with { and end with }"""
 - When operation_type is "database": Use the configured database_id for database operations
 - When operation_type is "both": You can use either page_id or database_id as needed
 - **IMPORTANT**: If a resource ID is already configured, do NOT search for it or create a new one. Use the provided ID directly.
-- **CRITICAL**: Check "Cached Database Schemas" section below - if a database schema is already cached, you MUST use those exact property names. Do NOT invent properties!
+- **CRITICAL**: Check "Cached Database Schemas" section below - if a database schema is already cached:
+  1. Use ONLY the exact property names listed
+  2. For status/select properties, use ONLY the exact option values shown
+  3. Do NOT guess or invent property names or values
+  4. If you see an error about an invalid option, check the cached schema for valid options
 
 **Available Context:**
 
@@ -587,17 +596,51 @@ Start your response with { and end with }"""
         return "\n".join(history_lines)
 
     def _format_cached_schemas(self, schemas_cache: Dict[str, Any]) -> str:
-        """Format cached database schemas for AI context."""
+        """Format cached database schemas for AI context with property options."""
         if not schemas_cache:
             return "(No database schemas cached yet - retrieve database first to see properties)"
 
         schema_lines = []
         for db_id, schema_data in schemas_cache.items():
             properties = schema_data.get("properties", [])
+            full_schema = schema_data.get("schema", {})  # Full property definitions
+
             schema_lines.append(f"**Database {db_id}:**")
             schema_lines.append(f"- Available properties: {', '.join(properties)}")
+            schema_lines.append("")
+
+            # Extract and display valid options for status/select/multi_select properties
+            for prop_name in properties:
+                prop_def = full_schema.get(prop_name, {})
+                prop_type = prop_def.get("type", "")
+
+                if prop_type == "status" and "status" in prop_def:
+                    options = prop_def["status"].get("options", [])
+                    if options:
+                        option_names = [opt.get("name") for opt in options if opt.get("name")]
+                        schema_lines.append(
+                            f"  - **{prop_name}** (status): Valid options: {', '.join(option_names)}"
+                        )
+
+                elif prop_type == "select" and "select" in prop_def:
+                    options = prop_def["select"].get("options", [])
+                    if options:
+                        option_names = [opt.get("name") for opt in options if opt.get("name")]
+                        schema_lines.append(
+                            f"  - **{prop_name}** (select): Valid options: {', '.join(option_names)}"
+                        )
+
+                elif prop_type == "multi_select" and "multi_select" in prop_def:
+                    options = prop_def["multi_select"].get("options", [])
+                    if options:
+                        option_names = [opt.get("name") for opt in options if opt.get("name")]
+                        schema_lines.append(
+                            f"  - **{prop_name}** (multi_select): Valid options: {', '.join(option_names)}"
+                        )
+
+            schema_lines.append("")
             schema_lines.append(
-                f"- IMPORTANT: Use these exact property names when creating/updating pages"
+                "- **CRITICAL**: Use ONLY the exact property names and option values shown above. Do NOT invent or guess values!"
             )
             schema_lines.append("")
 
